@@ -3,12 +3,6 @@ name: Release Build
 on:
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Release version without leading v
-        required: false
-        type: string
 
 jobs:
   build:
@@ -28,7 +22,6 @@ jobs:
         run: chmod +x dev.sh build.sh scripts/dev/restart-dev-gui.sh scripts/release/package-local-dmg.sh
 
       - name: Configure signing and notarization
-        if: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 != '' && secrets.APPLE_BUILD_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
         env:
           APPLE_BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
           APPLE_BUILD_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_BUILD_CERTIFICATE_PASSWORD }}
@@ -39,6 +32,11 @@ jobs:
           APPLE_API_PRIVATE_KEY_BASE64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
         shell: zsh
         run: |
+          if [[ -z "${APPLE_BUILD_CERTIFICATE_BASE64:-}" || -z "${APPLE_BUILD_CERTIFICATE_PASSWORD:-}" || -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+            echo "[release] signing secrets not configured, continuing with ad-hoc signing"
+            exit 0
+          fi
+
           cert_path="$RUNNER_TEMP/build_certificate.p12"
           keychain_path="$RUNNER_TEMP/dmux-build.keychain-db"
           keychain_password="$(uuidgen)"
@@ -68,13 +66,11 @@ jobs:
         id: meta
         shell: zsh
         run: |
-          if [[ -n "${{ github.event.release.tag_name || '' }}" ]]; then
-            version="${{ github.event.release.tag_name }}"
-            version="${version#v}"
-          elif [[ -n "${{ inputs.version || '' }}" ]]; then
-            version="${{ inputs.version }}"
-          else
-            version="0.1.0"
+          version="${{ github.event.release.tag_name }}"
+          version="${version#v}"
+          if [[ -z "${version}" ]]; then
+            echo "Release tag is missing" >&2
+            exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "build_number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
@@ -103,7 +99,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload release assets
-        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |

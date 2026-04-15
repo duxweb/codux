@@ -8,6 +8,7 @@ bundle_id="com.duxweb.dmux"
 version="${DMUX_VERSION:-0.1.0}"
 build_number="${DMUX_BUILD_NUMBER:-1}"
 configuration="${DMUX_CONFIGURATION:-release}"
+target_archs=(${=DMUX_ARCHS:-"arm64 x86_64"})
 codesign_identity="${APPLE_CODESIGN_IDENTITY:--}"
 enable_notarization="${DMUX_NOTARIZE:-0}"
 apple_team_id="${APPLE_TEAM_ID:-}"
@@ -33,6 +34,11 @@ checksums_path="${dist_dir}/SHA256SUMS.txt"
 iconset_dir="${dist_dir}/AppIcon.iconset"
 icns_path="${resources_dir}/AppIcon.icns"
 localizations=(en zh-Hans zh-Hant de es fr ja ko pt-BR ru)
+
+function build_dir_for_arch() {
+  local arch="$1"
+  swift build -c "${configuration}" --arch "${arch}" --show-bin-path
+}
 
 function sign_app() {
   if [[ "${codesign_identity}" == "-" ]]; then
@@ -80,26 +86,43 @@ function notarize_app_if_needed() {
   xcrun stapler staple "${app_dir}"
 }
 
-echo "[package] building swift package (${configuration})"
-swift build -c "${configuration}" >/dev/null
-swift build -c "${configuration}" --product dmux-notify-helper >/dev/null
-build_products_dir="$(swift build -c "${configuration}" --show-bin-path)"
-build_bin="${build_products_dir}/${binary_name}"
-notify_helper_bin="${build_products_dir}/dmux-notify-helper"
+echo "[package] building universal swift package (${configuration}) for: ${target_archs[*]}"
 
-if [[ ! -x "${build_bin}" || ! -x "${notify_helper_bin}" ]]; then
-  echo "[package] missing built binary: ${build_bin}" >&2
-  exit 1
-fi
+build_product_dirs=()
+build_bins=()
+notify_helper_bins=()
+
+for arch in "${target_archs[@]}"; do
+  echo "[package] building architecture ${arch}"
+  swift build -c "${configuration}" --arch "${arch}" >/dev/null
+  swift build -c "${configuration}" --arch "${arch}" --product dmux-notify-helper >/dev/null
+
+  build_products_dir="$(build_dir_for_arch "${arch}")"
+  build_bin="${build_products_dir}/${binary_name}"
+  notify_helper_bin="${build_products_dir}/dmux-notify-helper"
+
+  if [[ ! -x "${build_bin}" || ! -x "${notify_helper_bin}" ]]; then
+    echo "[package] missing built binary for ${arch}: ${build_bin}" >&2
+    exit 1
+  fi
+
+  build_product_dirs+=("${build_products_dir}")
+  build_bins+=("${build_bin}")
+  notify_helper_bins+=("${notify_helper_bin}")
+done
 
 echo "[package] assembling app bundle at ${app_dir}"
 rm -rf "${app_dir}" "${dmg_staging_dir}" "${dmg_path}" "${zip_path}" "${checksums_path}" "${iconset_dir}"
 mkdir -p "${macos_dir}" "${resources_dir}" "${helpers_dir}" "${runtime_root}" "${dmg_staging_dir}"
 
-cp -f "${build_bin}" "${binary_path}"
-chmod +x "${binary_path}"
-cp -f "${notify_helper_bin}" "${helpers_dir}/dmux-notify-helper"
-chmod +x "${helpers_dir}/dmux-notify-helper"
+if (( ${#build_bins[@]} == 1 )); then
+  cp -f "${build_bins[1]}" "${binary_path}"
+  cp -f "${notify_helper_bins[1]}" "${helpers_dir}/dmux-notify-helper"
+else
+  lipo -create "${build_bins[@]}" -output "${binary_path}"
+  lipo -create "${notify_helper_bins[@]}" -output "${helpers_dir}/dmux-notify-helper"
+fi
+chmod +x "${binary_path}" "${helpers_dir}/dmux-notify-helper"
 
 cat > "${launcher_path}" <<'EOF'
 #!/bin/zsh
@@ -115,11 +138,14 @@ exec "${script_dir}/dmux-bin" "$@"
 EOF
 chmod +x "${launcher_path}"
 
-for bundle_path in "${build_products_dir}"/*.bundle; do
+for bundle_path in "${build_product_dirs[1]}"/*.bundle; do
   if [[ -d "${bundle_path}" ]]; then
     cp -R "${bundle_path}" "${resources_dir}/"
   fi
 done
+
+echo "[package] app binary: $(lipo -info "${binary_path}")"
+echo "[package] notify helper: $(lipo -info "${helpers_dir}/dmux-notify-helper")"
 
 swift "${root_dir}/scripts/release/generate-app-icon.swift" "${iconset_dir}" >/dev/null
 iconutil -c icns "${iconset_dir}" -o "${icns_path}"
