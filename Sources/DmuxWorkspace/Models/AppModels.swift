@@ -100,7 +100,7 @@ struct TerminalSession: Identifiable, Codable, Hashable, Sendable {
             previewLines: [
                 "Launching \(project.shell) in \(project.path)",
                 command.isEmpty ? "No default command configured." : "$ \(command)",
-                "dmux terminal bridge is ready for native terminal embedding.",
+                "Codux terminal bridge is ready for native terminal embedding.",
             ]
         )
     }

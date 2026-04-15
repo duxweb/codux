@@ -870,7 +870,7 @@ private struct ProjectTitleView: View {
     let project: Project?
 
     var body: some View {
-        Text(project?.name ?? "dmux")
+        Text(project?.name ?? "Codux")
             .font(.system(size: 13, weight: .semibold, design: .rounded))
             .foregroundStyle(AppTheme.textPrimary)
             .lineLimit(1)

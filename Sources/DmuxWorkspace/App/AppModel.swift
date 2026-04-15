@@ -2333,7 +2333,7 @@ final class AppModel {
         if let name = Bundle.main.object(forInfoDictionaryKey: kCFBundleNameKey as String) as? String, !name.isEmpty {
             return name
         }
-        return "dmux"
+        return "Codux"
     }
 
     var appVersionDescription: String {
@@ -2345,9 +2345,9 @@ final class AppModel {
     var localizedUserAgreementDocument: String {
         [
             String(localized: "about.user_agreement_body", defaultValue: "This app is currently a development preview. By using it, you understand that terminal, Git, and AI activity features read local project metadata and runtime state, but do not proactively upload your project contents.", bundle: .module),
-            String(localized: "about.user_agreement_data", defaultValue: "dmux only reads the local state needed to display terminal sessions, Git repository status, AI tool activity, and local statistics. You are responsible for reviewing any third-party CLI behavior and network activity triggered by those tools.", bundle: .module),
+            String(localized: "about.user_agreement_data", defaultValue: "Codux only reads the local state needed to display terminal sessions, Git repository status, AI tool activity, and local statistics. You are responsible for reviewing any third-party CLI behavior and network activity triggered by those tools.", bundle: .module),
             String(localized: "about.user_agreement_responsibility", defaultValue: "You are responsible for your local environment, file permissions, repository credentials, notification permissions, and any commands executed inside the terminal.", bundle: .module),
-            String(localized: "about.user_agreement_license", defaultValue: "dmux is distributed as open-source software under the GPL-3.0 license. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time.", bundle: .module)
+            String(localized: "about.user_agreement_license", defaultValue: "Codux is distributed as open-source software under the GPL-3.0 license. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time.", bundle: .module)
         ].joined(separator: "\n\n")
     }
 
@@ -2503,7 +2503,7 @@ final class AppModel {
 
         let dialog = ConfirmDialogState(
             title: String(localized: "settings.language.restart_title", defaultValue: "Restart Required", bundle: .module),
-            message: String(localized: "settings.language.restart_message", defaultValue: "Restart dmux to apply the selected language.", bundle: .module),
+            message: String(localized: "settings.language.restart_message", defaultValue: "Restart Codux to apply the selected language.", bundle: .module),
             icon: "globe",
             iconColor: AppTheme.focus,
             primaryTitle: String(localized: "common.restart_now", defaultValue: "Restart Now", bundle: .module),

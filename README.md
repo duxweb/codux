@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="128" height="128" alt="dmux">
+  <img src="docs/images/icon.png" width="128" height="128" alt="Codux">
 </p>
 
-<h1 align="center">dmux</h1>
+<h1 align="center">Codux</h1>
 
 <p align="center">
-  The terminal workspace built for the AI coding era.
+  A native macOS terminal workspace for AI coding tools.
 </p>
 
 <p align="center">
-  <a href="https://dmux.dux.cn">Website</a> &middot;
-  <a href="https://github.com/dmuxapp/dmux/releases">Download</a> &middot;
-  <a href="https://github.com/dmuxapp/dmux/issues">Feedback</a>
+  <a href="https://codux.dux.cn">Website</a> &middot;
+  <a href="https://github.com/duxweb/codux/releases">Download</a> &middot;
+  <a href="https://github.com/duxweb/codux/issues">Feedback</a>
 </p>
 
 <p align="center">
@@ -20,9 +20,9 @@
 
 ---
 
-![dmux](docs/images/screenshot.png)
+![Codux](docs/images/screenshot.png)
 
-## Why dmux?
+## Why Codux?
 
 In the age of AI-assisted development, your IDE is no longer the center of your workflow — **the terminal is**.
 
@@ -34,7 +34,7 @@ Tools like Claude Code, GitHub Copilot CLI, Cursor, and Aider are turning the te
 - **AI usage is a black box** — you have no idea how many tokens you've burned today or which model is draining your quota
 - **Electron-based alternatives are resource hogs** — they eat RAM and battery for what should be a lightweight tool
 
-**dmux fixes all of this.** A native macOS terminal workspace purpose-built for AI CLI tools — multi-project, multi-pane, with built-in Git and real-time AI usage tracking. No Electron. No WebKit. Just pure SwiftUI + AppKit, fast and light.
+**Codux fixes all of this.** A native macOS terminal workspace purpose-built for AI CLI tools — multi-project, multi-pane, with built-in Git and real-time AI usage tracking. No Electron. No WebKit. Just pure SwiftUI + AppKit, fast and light.
 
 ## Features
 
@@ -64,20 +64,20 @@ Crafted with attention to every pixel. Glass vibrancy backgrounds, smooth animat
 
 ## Getting Started
 
-1. Download the latest release from [GitHub Releases](https://github.com/dmuxapp/dmux/releases) or [dmux.dux.cn](https://dmux.dux.cn)
-2. Drag dmux to your Applications folder
-3. Open dmux, click **New Project**, and pick a directory
+1. Download the latest release from [GitHub Releases](https://github.com/duxweb/codux/releases) or [codux.dux.cn](https://codux.dux.cn)
+2. Drag Codux to your Applications folder
+3. Open Codux, click **New Project**, and pick a directory
 4. Start typing — you're ready to go
 
 > **"Cannot be opened because the developer cannot be verified"**
 >
-> Since dmux is not yet notarized by Apple, macOS may block the first launch. To fix this:
+> Since Codux is not yet notarized by Apple, macOS may block the first launch. To fix this:
 >
 > ```bash
-> sudo xattr -rd com.apple.quarantine /Applications/dmux.app
+> sudo xattr -rd com.apple.quarantine /Applications/Codux.app
 > ```
 >
-> Or go to **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to the dmux warning.
+> Or go to **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to the Codux warning.
 
 ## Keyboard Shortcuts
 
@@ -97,10 +97,14 @@ All shortcuts can be customized in **Settings > Shortcuts**.
 
 ## Feedback
 
-Found a bug or have a feature request? Open an [issue on GitHub](https://github.com/dmuxapp/dmux/issues).
+Found a bug or have a feature request? Open an [issue on GitHub](https://github.com/duxweb/codux/issues).
 
 ---
 
 <p align="center">
-  <a href="https://dmux.dux.cn">dmux.dux.cn</a>
+  Wanted to be dmux, but that name was taken. So it's Codux now, which sounds like "Cool Dux" in Chinese.
+</p>
+
+<p align="center">
+  <a href="https://codux.dux.cn">codux.dux.cn</a>
 </p>

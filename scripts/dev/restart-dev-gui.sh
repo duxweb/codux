@@ -8,13 +8,13 @@ configuration="Debug"
 native_arch="${DMUX_ARCHS:-$(uname -m)}"
 build_dir="${root_dir}/.xcode-dev"
 build_products_dir="${build_dir}/Build/Products/${configuration}"
-built_app_dir="${build_products_dir}/dmux.app"
+built_app_dir="${build_products_dir}/Codux.app"
 dev_apps_dir="${HOME}/Applications"
-app_dir="${dev_apps_dir}/dmux-dev.app"
+app_dir="${dev_apps_dir}/Codux-dev.app"
 main_plist_path="${app_dir}/Contents/Info.plist"
 main_icns_path="${app_dir}/Contents/Resources/AppIcon.icns"
 iconset_dir="${build_dir}/AppIcon.iconset"
-icon_generator_bin="$(mktemp "${TMPDIR:-/tmp}/dmux-dev-generate-app-icon.XXXXXX")"
+icon_generator_bin="$(mktemp "${TMPDIR:-/tmp}/codux-dev-generate-app-icon.XXXXXX")"
 
 cleanup() {
   rm -f "${icon_generator_bin}"
@@ -62,16 +62,16 @@ build_app() {
 }
 
 install_dev_bundle() {
-  pkill -x dmux >/dev/null 2>&1 || true
+  pkill -x Codux >/dev/null 2>&1 || true
   mkdir -p "${dev_apps_dir}"
   rm -rf "${app_dir}"
   cp -R "${built_app_dir}" "${app_dir}"
 }
 
 update_dev_metadata() {
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.dmux.dev" "${main_plist_path}"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName dmux-dev" "${main_plist_path}" >/dev/null 2>&1 || true
-  /usr/libexec/PlistBuddy -c "Set :CFBundleName dmux-dev" "${main_plist_path}" >/dev/null 2>&1 || true
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.duxweb.codux.dev" "${main_plist_path}"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Codux-dev" "${main_plist_path}" >/dev/null 2>&1 || true
+  /usr/libexec/PlistBuddy -c "Set :CFBundleName Codux-dev" "${main_plist_path}" >/dev/null 2>&1 || true
 }
 
 generate_app_icons() {

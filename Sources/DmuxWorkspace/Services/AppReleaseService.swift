@@ -23,17 +23,17 @@ enum AppReleaseCheckResult {
 }
 
 enum AppReleaseService {
-    private static let latestReleaseURL = URL(string: "https://api.github.com/repos/duxweb/dmux/releases/latest")!
+    private static let latestReleaseURL = URL(string: "https://api.github.com/repos/duxweb/codux/releases/latest")!
 
     static func checkForUpdates(currentVersion: String) async throws -> AppReleaseCheckResult {
         var request = URLRequest(url: latestReleaseURL)
         request.timeoutInterval = 15
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("dmux", forHTTPHeaderField: "User-Agent")
+        request.setValue("codux", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200 ..< 300).contains(httpResponse.statusCode) else {
-            throw NSError(domain: "dmux.update", code: 1, userInfo: [
+            throw NSError(domain: "codux.update", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Unable to fetch the latest release information."
             ])
         }

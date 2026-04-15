@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "D982FBD1925D65F9FC3FA4CB"
-               BuildableName = "dmux.app"
+               BuildableName = "Codux.app"
                BlueprintName = "dmux"
                ReferencedContainer = "container:dmux.xcodeproj">
             </BuildableReference>
@@ -33,7 +33,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "D982FBD1925D65F9FC3FA4CB"
-            BuildableName = "dmux.app"
+            BuildableName = "Codux.app"
             BlueprintName = "dmux"
             ReferencedContainer = "container:dmux.xcodeproj">
          </BuildableReference>
@@ -56,7 +56,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "D982FBD1925D65F9FC3FA4CB"
-            BuildableName = "dmux.app"
+            BuildableName = "Codux.app"
             BlueprintName = "dmux"
             ReferencedContainer = "container:dmux.xcodeproj">
          </BuildableReference>
@@ -75,7 +75,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "D982FBD1925D65F9FC3FA4CB"
-            BuildableName = "dmux.app"
+            BuildableName = "Codux.app"
             BlueprintName = "dmux"
             ReferencedContainer = "container:dmux.xcodeproj">
          </BuildableReference>

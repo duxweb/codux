@@ -116,7 +116,7 @@ struct AboutWindowView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
 
-                Text(String(localized: "about.copyright", defaultValue: "Copyright © 2025 dmux contributors", bundle: .module))
+                Text(String(localized: "about.copyright", defaultValue: "Copyright © 2025 Codux contributors", bundle: .module))
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
             }

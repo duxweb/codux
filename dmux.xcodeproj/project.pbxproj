@@ -124,7 +124,7 @@
 		D04D38E3662D2E19AA2BFF38 /* OpenCodeGlobalEventService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeGlobalEventService.swift; sourceTree = "<group>"; };
 		D218CBB783275650D562D0EA /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		D48B542546FE32FD237D7575 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
-		DA51FF0D184B4B658DF3C288 /* dmux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = dmux.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA51FF0D184B4B658DF3C288 /* Codux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Codux.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppReleaseService.swift; sourceTree = "<group>"; };
 		E0E565A0971373275B0012B0 /* WorkspacePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePaths.swift; sourceTree = "<group>"; };
 		E4DFD3851711A42A405F5E7D /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
@@ -250,7 +250,7 @@
 		7651A8B853F6627D943F04C9 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				DA51FF0D184B4B658DF3C288 /* dmux.app */,
+				DA51FF0D184B4B658DF3C288 /* Codux.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -371,7 +371,7 @@
 				79E5F0CE1296648C8A61C45E /* SwiftTerm */,
 			);
 			productName = dmux;
-			productReference = DA51FF0D184B4B658DF3C288 /* dmux.app */;
+			productReference = DA51FF0D184B4B658DF3C288 /* Codux.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -555,7 +555,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.duxweb.dmux;
-				PRODUCT_NAME = dmux;
+				PRODUCT_NAME = Codux;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DMUX_XCODE_BUILD";
 			};
@@ -636,7 +636,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.duxweb.dmux;
-				PRODUCT_NAME = dmux;
+				PRODUCT_NAME = Codux;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DMUX_XCODE_BUILD";
 			};

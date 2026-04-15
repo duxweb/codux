@@ -4,7 +4,7 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "$0")/../.." && pwd)"
 project_path="${root_dir}/dmux.xcodeproj"
 scheme="dmux"
-app_name="dmux"
+app_name="Codux"
 version="${DMUX_VERSION:-0.1.0}"
 build_number="${DMUX_BUILD_NUMBER:-1}"
 configuration="${DMUX_CONFIGURATION:-Release}"

@@ -138,61 +138,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2025 dmux contributors"
+            "value": "Copyright © 2025 Codux contributors"
           }
         }
       }
@@ -463,61 +463,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux only reads the local state needed to display terminal sessions, Git repository status, AI tool activity, and local statistics. You are responsible for reviewing any third-party CLI behavior and network activity triggered by those tools."
+            "value": "Codux only reads the local state needed to display terminal sessions, Git repository status, AI tool activity, and local statistics. You are responsible for reviewing any third-party CLI behavior and network activity triggered by those tools."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux 只会读取展示终端会话、Git 仓库状态、AI 工具活动和本地统计所需的本机状态。涉及第三方 CLI 的行为和网络请求，需要你自行确认与承担风险。"
+            "value": "Codux 只会读取展示终端会话、Git 仓库状态、AI 工具活动和本地统计所需的本机状态。涉及第三方 CLI 的行为和网络请求，需要你自行确认与承担风险。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux 只會讀取顯示終端工作階段、Git 倉庫狀態、AI 工具活動與本機統計所需的本機狀態。涉及第三方 CLI 的行為與網路請求，需由您自行確認並承擔風險。"
+            "value": "Codux 只會讀取顯示終端工作階段、Git 倉庫狀態、AI 工具活動與本機統計所需的本機狀態。涉及第三方 CLI 的行為與網路請求，需由您自行確認並承擔風險。"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux liest nur den lokalen Zustand, der zum Anzeigen von Terminalsitzungen, Git-Status, KI-Aktivitäten und lokalen Statistiken benötigt wird. Verhalten und Netzwerkanfragen von Drittanbieter-CLIs müssen Sie selbst prüfen."
+            "value": "Codux liest nur den lokalen Zustand, der zum Anzeigen von Terminalsitzungen, Git-Status, KI-Aktivitäten und lokalen Statistiken benötigt wird. Verhalten und Netzwerkanfragen von Drittanbieter-CLIs müssen Sie selbst prüfen."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux solo lee el estado local necesario para mostrar sesiones de terminal, estado del repositorio Git, actividad de herramientas de IA y estadísticas locales. Debes revisar por tu cuenta el comportamiento y las conexiones de red de las CLI de terceros."
+            "value": "Codux solo lee el estado local necesario para mostrar sesiones de terminal, estado del repositorio Git, actividad de herramientas de IA y estadísticas locales. Debes revisar por tu cuenta el comportamiento y las conexiones de red de las CLI de terceros."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux lit uniquement l’état local nécessaire pour afficher les sessions du terminal, l’état du dépôt Git, l’activité des outils IA et les statistiques locales. Vous devez vérifier vous-même le comportement et les accès réseau des CLI tierces."
+            "value": "Codux lit uniquement l’état local nécessaire pour afficher les sessions du terminal, l’état du dépôt Git, l’activité des outils IA et les statistiques locales. Vous devez vérifier vous-même le comportement et les accès réseau des CLI tierces."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux は、ターミナルセッション、Git リポジトリ状態、AI ツールのアクティビティ、ローカル統計を表示するために必要なローカル状態のみを読み取ります。サードパーティ CLI の挙動やネットワーク通信はご自身で確認してください。"
+            "value": "Codux は、ターミナルセッション、Git リポジトリ状態、AI ツールのアクティビティ、ローカル統計を表示するために必要なローカル状態のみを読み取ります。サードパーティ CLI の挙動やネットワーク通信はご自身で確認してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux 는 터미널 세션, Git 저장소 상태, AI 도구 활동, 로컬 통계를 표시하는 데 필요한 로컬 상태만 읽습니다. 서드파티 CLI 의 동작과 네트워크 요청은 직접 확인해야 합니다."
+            "value": "Codux 는 터미널 세션, Git 저장소 상태, AI 도구 활동, 로컬 통계를 표시하는 데 필요한 로컬 상태만 읽습니다. 서드파티 CLI 의 동작과 네트워크 요청은 직접 확인해야 합니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O dmux lê apenas o estado local necessário para mostrar sessões de terminal, status do repositório Git, atividade de ferramentas de IA e estatísticas locais. O comportamento e as conexões de rede de CLIs de terceiros devem ser verificados por você."
+            "value": "O Codux lê apenas o estado local necessário para mostrar sessões de terminal, status do repositório Git, atividade de ferramentas de IA e estatísticas locais. O comportamento e as conexões de rede de CLIs de terceiros devem ser verificados por você."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux читает только локальное состояние, которое нужно для показа терминальных сессий, статуса Git-репозитория, активности ИИ-инструментов и локальной статистики. Поведение и сетевую активность сторонних CLI вы должны проверять самостоятельно."
+            "value": "Codux читает только локальное состояние, которое нужно для показа терминальных сессий, статуса Git-репозитория, активности ИИ-инструментов и локальной статистики. Поведение и сетевую активность сторонних CLI вы должны проверять самостоятельно."
           }
         }
       }
@@ -528,61 +528,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux is distributed as open-source software under the GPL-3.0 license. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time."
+            "value": "Codux is distributed as open-source software under the GPL-3.0 license. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux 以 GPL-3.0 开源协议发布。继续使用即表示你接受该实验性软件后续可能发生行为、界面和兼容性调整。"
+            "value": "Codux 以 GPL-3.0 开源协议发布。继续使用即表示你接受该实验性软件后续可能发生行为、界面和兼容性调整。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux 以 GPL-3.0 開源授權發佈。繼續使用即表示您接受此實驗性軟體後續可能在行為、介面與相容性上有所調整。"
+            "value": "Codux 以 GPL-3.0 開源授權發佈。繼續使用即表示您接受此實驗性軟體後續可能在行為、介面與相容性上有所調整。"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux wird als Open-Source-Software unter der GPL-3.0 veröffentlicht. Wenn Sie die App weiter nutzen, akzeptieren Sie, dass sich Verhalten, Oberfläche und Kompatibilität dieser experimentellen Software noch ändern können."
+            "value": "Codux wird als Open-Source-Software unter der GPL-3.0 veröffentlicht. Wenn Sie die App weiter nutzen, akzeptieren Sie, dass sich Verhalten, Oberfläche und Kompatibilität dieser experimentellen Software noch ändern können."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux se distribuye como software de código abierto bajo la licencia GPL-3.0. Si continúas usándolo, aceptas que este software experimental puede cambiar en comportamiento, interfaz y compatibilidad con el tiempo."
+            "value": "Codux se distribuye como software de código abierto bajo la licencia GPL-3.0. Si continúas usándolo, aceptas que este software experimental puede cambiar en comportamiento, interfaz y compatibilidad con el tiempo."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux est distribué comme logiciel open source sous licence GPL-3.0. En continuant à l’utiliser, vous acceptez que le comportement, l’interface et la compatibilité de ce logiciel expérimental puissent encore évoluer."
+            "value": "Codux est distribué comme logiciel open source sous licence GPL-3.0. En continuant à l’utiliser, vous acceptez que le comportement, l’interface et la compatibilité de ce logiciel expérimental puissent encore évoluer."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux は GPL-3.0 ライセンスのオープンソースソフトウェアとして提供されます。利用を続けることで、この実験的なソフトウェアの挙動、UI、互換性が今後変わる可能性があることに同意したものとみなされます。"
+            "value": "Codux は GPL-3.0 ライセンスのオープンソースソフトウェアとして提供されます。利用を続けることで、この実験的なソフトウェアの挙動、UI、互換性が今後変わる可能性があることに同意したものとみなされます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux 는 GPL-3.0 라이선스의 오픈소스 소프트웨어로 배포됩니다. 계속 사용하면 이 실험적 소프트웨어의 동작, 인터페이스, 호환성이 앞으로 바뀔 수 있다는 점에 동의하는 것으로 봅니다."
+            "value": "Codux 는 GPL-3.0 라이선스의 오픈소스 소프트웨어로 배포됩니다. 계속 사용하면 이 실험적 소프트웨어의 동작, 인터페이스, 호환성이 앞으로 바뀔 수 있다는 점에 동의하는 것으로 봅니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O dmux é distribuído como software de código aberto sob a licença GPL-3.0. Ao continuar usando, você aceita que o comportamento, a interface e a compatibilidade deste software experimental ainda podem mudar com o tempo."
+            "value": "O Codux é distribuído como software de código aberto sob a licença GPL-3.0. Ao continuar usando, você aceita que o comportamento, a interface e a compatibilidade deste software experimental ainda podem mudar com o tempo."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "dmux распространяется как программное обеспечение с открытым исходным кодом по лицензии GPL-3.0. Продолжая использовать приложение, вы принимаете, что поведение, интерфейс и совместимость этого экспериментального ПО со временем могут меняться."
+            "value": "Codux распространяется как программное обеспечение с открытым исходным кодом по лицензии GPL-3.0. Продолжая использовать приложение, вы принимаете, что поведение, интерфейс и совместимость этого экспериментального ПО со временем могут меняться."
           }
         }
       }
@@ -23473,61 +23473,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Restart dmux to apply the selected language."
+            "value": "Restart Codux to apply the selected language."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重启 dmux 后才会应用所选语言。"
+            "value": "重启 Codux 后才会应用所选语言。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "重新啟動 dmux 後才會套用所選語言。"
+            "value": "重新啟動 Codux 後才會套用所選語言。"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Starte dmux neu, um die ausgewählte Sprache anzuwenden."
+            "value": "Starte Codux neu, um die ausgewählte Sprache anzuwenden."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reinicia dmux para aplicar el idioma seleccionado."
+            "value": "Reinicia Codux para aplicar el idioma seleccionado."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Redémarrez dmux pour appliquer la langue sélectionnée."
+            "value": "Redémarrez Codux pour appliquer la langue sélectionnée."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "選択した言語を適用するには dmux を再起動してください。"
+            "value": "選択した言語を適用するには Codux を再起動してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "선택한 언어를 적용하려면 dmux를 다시 시작하세요."
+            "value": "선택한 언어를 적용하려면 Codux를 다시 시작하세요."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reinicie o dmux para aplicar o idioma selecionado."
+            "value": "Reinicie o Codux para aplicar o idioma selecionado."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Перезапустите dmux, чтобы применить выбранный язык."
+            "value": "Перезапустите Codux, чтобы применить выбранный язык."
           }
         }
       }
