@@ -1,0 +1,64 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:未命名文件夹}",
+            "name": "Debug dmux",
+            "target": "dmux",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dmux"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:未命名文件夹}",
+            "name": "Release dmux",
+            "target": "dmux",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dmux"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:未命名文件夹}",
+            "name": "Debug Dumx",
+            "target": "Dumx",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Dumx"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:未命名文件夹}",
+            "name": "Release Dumx",
+            "target": "Dumx",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Dumx"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:未命名文件夹}",
+            "name": "Debug dmux-notify-helper",
+            "target": "dmux-notify-helper",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dmux-notify-helper"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:未命名文件夹}",
+            "name": "Release dmux-notify-helper",
+            "target": "dmux-notify-helper",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dmux-notify-helper"
+        }
+    ]
+}

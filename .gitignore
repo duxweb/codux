@@ -1,0 +1,11 @@
+.build/
+.DS_Store
+dist/
+.claude
+.ruff_cache
+
+# Xcode user state
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/

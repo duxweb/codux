@@ -1,0 +1,123 @@
+name: Release Build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without leading v
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    concurrency:
+      group: release-${{ github.event.release.tag_name || github.run_id }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x dev.sh build.sh scripts/dev/restart-dev-gui.sh scripts/release/package-local-dmg.sh
+
+      - name: Configure signing and notarization
+        if: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 != '' && secrets.APPLE_BUILD_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
+        env:
+          APPLE_BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
+          APPLE_BUILD_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_BUILD_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY_BASE64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
+        shell: zsh
+        run: |
+          cert_path="$RUNNER_TEMP/build_certificate.p12"
+          keychain_path="$RUNNER_TEMP/dmux-build.keychain-db"
+          keychain_password="$(uuidgen)"
+
+          echo "$APPLE_BUILD_CERTIFICATE_BASE64" | base64 --decode > "$cert_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$cert_path" -P "$APPLE_BUILD_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | tr -d '"')
+
+          echo "APPLE_CODESIGN_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+          echo "DMUX_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+
+          if [[ -n "$APPLE_API_KEY_ID" && -n "$APPLE_API_ISSUER_ID" && -n "$APPLE_API_PRIVATE_KEY_BASE64" ]]; then
+            api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            echo "$APPLE_API_PRIVATE_KEY_BASE64" | base64 --decode > "$api_key_path"
+            echo "APPLE_API_PRIVATE_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+            echo "APPLE_API_KEY_ID=$APPLE_API_KEY_ID" >> "$GITHUB_ENV"
+            echo "APPLE_API_ISSUER_ID=$APPLE_API_ISSUER_ID" >> "$GITHUB_ENV"
+            echo "DMUX_NOTARIZE=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Resolve build metadata
+        id: meta
+        shell: zsh
+        run: |
+          if [[ -n "${{ github.event.release.tag_name || '' }}" ]]; then
+            version="${{ github.event.release.tag_name }}"
+            version="${version#v}"
+          elif [[ -n "${{ inputs.version || '' }}" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="0.1.0"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Build app and dmg
+        env:
+          DMUX_VERSION: ${{ steps.meta.outputs.version }}
+          DMUX_BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          APPLE_CODESIGN_IDENTITY: ${{ env.APPLE_CODESIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+          APPLE_API_PRIVATE_KEY_PATH: ${{ env.APPLE_API_PRIVATE_KEY_PATH }}
+          APPLE_API_KEY_ID: ${{ env.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ env.APPLE_API_ISSUER_ID }}
+          DMUX_NOTARIZE: ${{ env.DMUX_NOTARIZE }}
+        run: ./build.sh
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmux-${{ steps.meta.outputs.version }}
+          path: |
+            dist/*.app
+            dist/*.dmg
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.zip
+            dist/SHA256SUMS.txt
+
+      - name: Cleanup signing assets
+        if: always()
+        shell: zsh
+        run: |
+          if [[ -n "${DMUX_KEYCHAIN_PATH:-}" && -f "${DMUX_KEYCHAIN_PATH}" ]]; then
+            security delete-keychain "${DMUX_KEYCHAIN_PATH}" || true
+          fi
+          if [[ -n "${APPLE_API_PRIVATE_KEY_PATH:-}" && -f "${APPLE_API_PRIVATE_KEY_PATH}" ]]; then
+            rm -f "${APPLE_API_PRIVATE_KEY_PATH}"
+          fi
