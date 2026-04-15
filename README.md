@@ -52,7 +52,7 @@ Branches, staged changes, file diffs, commit history, remote sync — all in a s
 
 ### AI Usage Dashboard
 
-Track every AI coding tool running in your terminal — token consumption, model usage, tool breakdowns, daily trends, and live session monitoring. Know exactly where your AI budget goes. Plus a fun daily tier system (Iron → Bronze → Silver → Gold → Platinum → Diamond → Master → Grandmaster) that ranks your AI usage intensity — how far can you climb today?
+Track AI coding tools running in your terminal — token consumption, model usage, tool breakdowns, daily trends, and live session monitoring. Currently supports **Claude Code**, **Codex (OpenAI)**, and **Gemini CLI**, with more tools coming soon. Know exactly where your AI budget goes. Plus a fun daily tier system (Iron → Bronze → Silver → Gold → Platinum → Diamond → Master → Grandmaster) that ranks your AI usage intensity — how far can you climb today?
 
 ### Beautiful & Intuitive
 
