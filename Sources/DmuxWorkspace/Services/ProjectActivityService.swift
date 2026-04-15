@@ -158,15 +158,39 @@ struct ProjectActivityService: @unchecked Sendable {
             AppDebugLog.shared.log("notifications", "fallback success transport=dmux-notify-helper reason=\(reason) project=\(projectName) tool=\(tool)")
             return
         }
-
-        if sendAppleScriptNotification(title: title, body: body) {
-            AppDebugLog.shared.log("notifications", "fallback success transport=osascript reason=\(reason) project=\(projectName) tool=\(tool)")
-        } else {
-            AppDebugLog.shared.log("notifications", "fallback failed reason=\(reason) project=\(projectName) tool=\(tool)")
-        }
+        AppDebugLog.shared.log("notifications", "fallback failed reason=\(reason) project=\(projectName) tool=\(tool)")
     }
 
     private func sendBundledNotificationHelper(title: String, body: String) -> Bool {
+        if let appBundle = bundledNotificationHelperAppURL() {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            process.arguments = [
+                "-n",
+                appBundle.path,
+                "--args",
+                "--title", title,
+                "--message", body,
+            ]
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+            do {
+                AppDebugLog.shared.log("notifications", "notify-helper app=\(appBundle.path)")
+                try process.run()
+                process.waitUntilExit()
+                if process.terminationStatus == 0 {
+                    return true
+                }
+                let errorOutput = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                AppDebugLog.shared.log("notifications", "notify-helper app exit=\(process.terminationStatus) stderr=\(errorOutput)")
+            } catch {
+                AppDebugLog.shared.log("notifications", "notify-helper app failed error=\(error.localizedDescription)")
+            }
+        }
+
         guard let executable = bundledNotificationHelperURL() else {
             return false
         }
@@ -198,8 +222,22 @@ struct ProjectActivityService: @unchecked Sendable {
         }
     }
 
+    private func bundledNotificationHelperAppURL() -> URL? {
+        let candidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("Helpers/dmux-notify-helper.app"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Helpers/dmux-notify-helper.app"),
+        ]
+
+        for url in candidates.compactMap({ $0 }) where fileManager.fileExists(atPath: url.path) {
+            return url
+        }
+        return nil
+    }
+
     private func bundledNotificationHelperURL() -> URL? {
         let candidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("Helpers/dmux-notify-helper.app/Contents/MacOS/dmux-notify-helper"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Helpers/dmux-notify-helper.app/Contents/MacOS/dmux-notify-helper"),
             Bundle.main.resourceURL?.appendingPathComponent("Helpers/dmux-notify-helper"),
             Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Helpers/dmux-notify-helper"),
         ]
@@ -209,31 +247,6 @@ struct ProjectActivityService: @unchecked Sendable {
         }
         return nil
     }
-
-    private func sendAppleScriptNotification(title: String, body: String) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = [
-            "-e",
-            "on run argv",
-            "-e",
-            "display notification (item 1 of argv) with title (item 2 of argv)",
-            "-e",
-            "end run",
-            body,
-            title,
-        ]
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
-        } catch {
-            AppDebugLog.shared.log("notifications", "osascript fallback failed error=\(error.localizedDescription)")
-            return false
-        }
-    }
-
     func writeTestStatus(project: Project, tool: String, phase: String, exitCode: Int? = nil) {
         let fileURL = statusDirectoryURL().appendingPathComponent("\(project.id.uuidString).json")
         let now = Date().timeIntervalSince1970

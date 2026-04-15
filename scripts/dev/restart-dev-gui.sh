@@ -1,19 +1,27 @@
 #!/bin/zsh
 set -euo pipefail
+setopt null_glob
 
 root_dir="$(cd "$(dirname "$0")/../.." && pwd)"
 configuration="debug"
 app_name="dmux"
 binary_name="dmux"
 bundle_id="com.dmux.dev"
-app_dir="/tmp/${app_name}-dev.app"
+dev_apps_dir="${HOME}/Applications"
+app_dir="${dev_apps_dir}/${app_name}-dev.app"
 contents_dir="${app_dir}/Contents"
 macos_dir="${contents_dir}/MacOS"
 resources_dir="${contents_dir}/Resources"
 helpers_dir="${resources_dir}/Helpers"
+helper_app_dir="${helpers_dir}/dmux-notify-helper.app"
+helper_contents_dir="${helper_app_dir}/Contents"
+helper_macos_dir="${helper_contents_dir}/MacOS"
+helper_resources_dir="${helper_contents_dir}/Resources"
 plist_path="${contents_dir}/Info.plist"
+helper_plist_path="${helper_contents_dir}/Info.plist"
 launcher_path="${macos_dir}/${binary_name}"
 pkginfo_path="${contents_dir}/PkgInfo"
+helper_pkginfo_path="${helper_contents_dir}/PkgInfo"
 iconset_dir="${app_dir}.iconset"
 icns_path="${resources_dir}/AppIcon.icns"
 localizations=(en zh-Hans zh-Hant de es fr ja ko pt-BR ru)
@@ -30,16 +38,18 @@ if [[ ! -x "${build_bin}" || ! -x "${notify_helper_bin}" ]]; then
 fi
 
 pkill -x "${binary_name}" >/dev/null 2>&1 || true
+mkdir -p "${dev_apps_dir}"
 mkdir -p "${macos_dir}"
 mkdir -p "${resources_dir}"
 rm -rf "${resources_dir}"/*
 mkdir -p "${helpers_dir}"
+mkdir -p "${helper_macos_dir}" "${helper_resources_dir}"
 rm -f "${launcher_path}"
 rm -rf "${iconset_dir}"
 cp -f "${build_bin}" "${launcher_path}"
 chmod +x "${launcher_path}"
-cp -f "${notify_helper_bin}" "${helpers_dir}/dmux-notify-helper"
-chmod +x "${helpers_dir}/dmux-notify-helper"
+cp -f "${notify_helper_bin}" "${helper_macos_dir}/dmux-notify-helper"
+chmod +x "${helper_macos_dir}/dmux-notify-helper"
 
 for bundle_path in "${build_products_dir}"/*.bundle; do
   if [[ -d "${bundle_path}" ]]; then
@@ -50,6 +60,7 @@ done
 swift "${root_dir}/scripts/release/generate-app-icon.swift" "${iconset_dir}" >/dev/null
 iconutil -c icns "${iconset_dir}" -o "${icns_path}"
 rm -rf "${iconset_dir}"
+cp -f "${icns_path}" "${helper_resources_dir}/AppIcon.icns"
 
 for localization in "${localizations[@]}"; do
   mkdir -p "${resources_dir}/${localization}.lproj"
@@ -114,8 +125,42 @@ cat > "${plist_path}" <<'PLIST'
 </plist>
 PLIST
 
+cat > "${helper_plist_path}" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>dmux</string>
+  <key>CFBundleExecutable</key>
+  <string>dmux-notify-helper</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.dmux.dev.notify-helper</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>dmux</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+</dict>
+</plist>
+PLIST
+
 perl -0pi -e "s#__DMUX_WORKSPACE_ROOT__#${root_dir//\#/\\#}#g" "${plist_path}"
 printf 'APPL????' > "${pkginfo_path}"
+printf 'APPL????' > "${helper_pkginfo_path}"
 codesign --force --deep --sign - --timestamp=none "${app_dir}" >/dev/null
 
 open -n "${app_dir}"

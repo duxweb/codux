@@ -24,11 +24,18 @@ contents_dir="${app_dir}/Contents"
 macos_dir="${contents_dir}/MacOS"
 resources_dir="${contents_dir}/Resources"
 helpers_dir="${resources_dir}/Helpers"
+helper_app_dir="${helpers_dir}/dmux-notify-helper.app"
+helper_contents_dir="${helper_app_dir}/Contents"
+helper_macos_dir="${helper_contents_dir}/MacOS"
+helper_resources_dir="${helper_contents_dir}/Resources"
 runtime_root="${resources_dir}/runtime-root"
 launcher_path="${macos_dir}/${binary_name}"
 binary_path="${macos_dir}/${binary_name}-bin"
+helper_binary_path="${helper_macos_dir}/dmux-notify-helper"
 plist_path="${contents_dir}/Info.plist"
+helper_plist_path="${helper_contents_dir}/Info.plist"
 pkginfo_path="${contents_dir}/PkgInfo"
+helper_pkginfo_path="${helper_contents_dir}/PkgInfo"
 dmg_staging_dir="${dist_dir}/dmg"
 dmg_path="${dist_dir}/${package_basename}.dmg"
 zip_path="${dist_dir}/${package_basename}.zip"
@@ -116,15 +123,16 @@ done
 echo "[package] assembling app bundle at ${app_dir}"
 rm -rf "${app_dir}" "${dmg_staging_dir}" "${dmg_path}" "${zip_path}" "${checksums_path}" "${iconset_dir}"
 mkdir -p "${macos_dir}" "${resources_dir}" "${helpers_dir}" "${runtime_root}" "${dmg_staging_dir}"
+mkdir -p "${helper_macos_dir}" "${helper_resources_dir}"
 
 if (( ${#build_bins[@]} == 1 )); then
   cp -f "${build_bins[0]}" "${binary_path}"
-  cp -f "${notify_helper_bins[0]}" "${helpers_dir}/dmux-notify-helper"
+  cp -f "${notify_helper_bins[0]}" "${helper_binary_path}"
 else
   lipo -create "${build_bins[@]}" -output "${binary_path}"
-  lipo -create "${notify_helper_bins[@]}" -output "${helpers_dir}/dmux-notify-helper"
+  lipo -create "${notify_helper_bins[@]}" -output "${helper_binary_path}"
 fi
-chmod +x "${binary_path}" "${helpers_dir}/dmux-notify-helper"
+chmod +x "${binary_path}" "${helper_binary_path}"
 
 cat > "${launcher_path}" <<'EOF'
 #!/bin/bash
@@ -147,11 +155,12 @@ for bundle_path in "${build_product_dirs[0]}"/*.bundle; do
 done
 
 echo "[package] app binary: $(lipo -info "${binary_path}")"
-echo "[package] notify helper: $(lipo -info "${helpers_dir}/dmux-notify-helper")"
+echo "[package] notify helper: $(lipo -info "${helper_binary_path}")"
 
 swift "${root_dir}/scripts/release/generate-app-icon.swift" "${iconset_dir}" >/dev/null
 iconutil -c icns "${iconset_dir}" -o "${icns_path}"
 rm -rf "${iconset_dir}"
+cp -f "${icns_path}" "${helper_resources_dir}/AppIcon.icns"
 
 cp -f "${root_dir}/Package.swift" "${runtime_root}/Package.swift"
 cp -R "${root_dir}/scripts" "${runtime_root}/scripts"
@@ -214,7 +223,41 @@ cat > "${plist_path}" <<EOF
 </plist>
 EOF
 
+cat > "${helper_plist_path}" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>${app_name}</string>
+  <key>CFBundleExecutable</key>
+  <string>dmux-notify-helper</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleIdentifier</key>
+  <string>${bundle_id}.notify-helper</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>${app_name}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${version}</string>
+  <key>CFBundleVersion</key>
+  <string>${build_number}</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+</dict>
+</plist>
+EOF
+
 printf 'APPL????' > "${pkginfo_path}"
+printf 'APPL????' > "${helper_pkginfo_path}"
 
 sign_app
 verify_app_signature

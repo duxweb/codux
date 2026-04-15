@@ -424,7 +424,7 @@
   "about.user_agreement_license": "dmux 以 GPL-3.0 开源协议发布。继续使用即表示你接受该实验性软件后续可能发生行为、界面和兼容性调整。",
   "update.checking": "正在检查更新...",
   "update.latest.title": "当前已是最新版本",
-  "update.latest.message_format": "当前版本：v%@\\n最新版本：v%@",
+  "update.latest.message_format": "当前版本：v%@\n最新版本：v%@",
   "update.available.title": "发现新版本",
   "update.available.message_format": "发现新版本 v%@，你当前使用的是 v%@。",
   "update.available.open": "立即下载",

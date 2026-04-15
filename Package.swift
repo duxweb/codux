@@ -40,7 +40,9 @@ let package = Package(
             name: "DmuxNotifyHelper",
             path: "Sources/DmuxNotifyHelper",
             linkerSettings: [
+                .linkedFramework("AppKit"),
                 .linkedFramework("Foundation"),
+                .linkedFramework("UserNotifications"),
             ]
         ),
     ]

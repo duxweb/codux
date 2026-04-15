@@ -424,7 +424,7 @@
   "about.user_agreement_license": "dmux wird als Open-Source-Software unter der GPL-3.0 veröffentlicht. Wenn Sie die App weiter nutzen, akzeptieren Sie, dass sich Verhalten, Oberfläche und Kompatibilität dieser experimentellen Software noch ändern können.",
   "update.checking": "Suche nach Updates...",
   "update.latest.title": "Sie verwenden bereits die neueste Version.",
-  "update.latest.message_format": "Aktuelle Version: v%@\\nNeueste Version: v%@",
+  "update.latest.message_format": "Aktuelle Version: v%@\nNeueste Version: v%@",
   "update.available.title": "Update verfügbar",
   "update.available.message_format": "Eine neue Version v%@ ist verfügbar. Sie verwenden derzeit v%@.",
   "update.available.open": "Herunterladen",
