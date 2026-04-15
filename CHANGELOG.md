@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-04-16
+
+### Changed
+
+- Refined the terminal and right-side assistant chrome so the top and split dividers use a unified separator treatment.
+- Softened the AI Assistant card backgrounds and increased the panel title spacing for a calmer visual rhythm.
+
+### Fixed
+
+- Corrected the terminal top-left border rendering so only the intended top and left edges are drawn, without broken joins or stray rounded corners.
+- Fixed the right sidebar top divider gap when opening the panel.
+- Removed the Git commit split menu checkmark state so action items no longer look like persistent selections.
+
 ## [0.1.2] - 2026-04-16
 
 ### Changed

@@ -794,7 +794,9 @@ private struct GitCommitSplitButton: View {
     @Binding var selectedAction: GitCommitAction
     let isDisabled: Bool
     let onSubmit: () -> Void
+    @State private var menuAnchorView: NSView?
     private let menuSegmentWidth: CGFloat = 30
+    private let menuIconSize: CGFloat = 10
 
     var body: some View {
         HStack(spacing: 0) {
@@ -804,22 +806,18 @@ private struct GitCommitSplitButton: View {
             .frame(maxWidth: .infinity)
             .buttonStyle(CommitMainButtonStyle())
 
-            Menu {
-                ForEach(GitCommitAction.allCases, id: \.self) { action in
-                    Button(commitActionTitle(action)) {
-                        selectedAction = action
-                    }
+            Button(action: presentMenu) {
+                ZStack {
+                    Color.clear
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: menuIconSize, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
                 }
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .frame(width: menuSegmentWidth, height: 32)
+                .contentShape(Rectangle())
             }
-            .frame(width: menuSegmentWidth, height: 32)
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .buttonStyle(CommitMenuButtonStyle())
+            .buttonStyle(.plain)
+            .background(GitCommitMenuAnchorView(anchorView: $menuAnchorView))
         }
         .background(AppTheme.focus)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -830,7 +828,7 @@ private struct GitCommitSplitButton: View {
         .overlay(alignment: .trailing) {
             HStack(spacing: 0) {
                 Rectangle()
-                    .fill(Color.white.opacity(isDisabled ? 0.08 : 0.16))
+                    .fill(Color.white.opacity(isDisabled ? 0.08 : 0.14))
                     .frame(width: 1)
                 Color.clear
                     .frame(width: menuSegmentWidth)
@@ -849,6 +847,65 @@ private struct GitCommitSplitButton: View {
             return String(localized: "git.commit.action_push", defaultValue: "Commit and Push", bundle: .module)
         case .commitAndSync:
             return String(localized: "git.commit.action_sync", defaultValue: "Commit and Sync", bundle: .module)
+        }
+    }
+
+    private func presentMenu() {
+        guard let anchorView = menuAnchorView else {
+            return
+        }
+
+        let menu = NSMenu()
+        var handlers: [GitCommitMenuActionHandler] = []
+
+        func addItem(for action: GitCommitAction) {
+            let title = commitActionTitle(action)
+            let handler = GitCommitMenuActionHandler {
+                selectedAction = action
+            }
+            handlers.append(handler)
+
+            let item = NSMenuItem(title: title, action: #selector(GitCommitMenuActionHandler.performAction), keyEquivalent: "")
+            item.target = handler
+            menu.addItem(item)
+        }
+
+        GitCommitAction.allCases.forEach(addItem)
+
+        objc_setAssociatedObject(anchorView, Unmanaged.passUnretained(anchorView).toOpaque(), handlers, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: anchorView.bounds.height + 4), in: anchorView)
+    }
+}
+
+private final class GitCommitMenuActionHandler: NSObject {
+    private let action: () -> Void
+
+    init(action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    @objc
+    func performAction() {
+        action()
+    }
+}
+
+private struct GitCommitMenuAnchorView: NSViewRepresentable {
+    @Binding var anchorView: NSView?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            anchorView = view
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if anchorView !== nsView {
+            DispatchQueue.main.async {
+                anchorView = nsView
+            }
         }
     }
 }
@@ -1820,16 +1877,6 @@ private struct CommitMainButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .frame(height: 32)
             .foregroundStyle(Color.white.opacity(isEnabled ? 0.98 : 0.78))
-            .background(AppTheme.focus.opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1.0) : 0.5))
-    }
-}
-
-private struct CommitMenuButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(Color.white.opacity(isEnabled ? 0.96 : 0.76))
-            .background(AppTheme.focus.opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1.0) : 0.5))
+            .background(Color.white.opacity(isEnabled && configuration.isPressed ? 0.08 : 0))
     }
 }

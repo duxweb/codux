@@ -43,6 +43,7 @@ enum AppTheme {
     static let terminalSurface = Color.clear
     static let terminalChrome = Color(nsColor: .dmuxTerminalBackground)
     static let terminalDivider = Color(nsColor: .dmuxTerminalDivider)
+    static let chromeDivider = Color(nsColor: .separatorColor)
     static let terminalText = Color(nsColor: .dmuxTerminalText)
     static let terminalMutedText = Color(nsColor: .dmuxTerminalMutedText)
     static let border = Color(nsColor: .separatorColor)
