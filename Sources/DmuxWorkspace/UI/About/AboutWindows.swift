@@ -127,17 +127,20 @@ struct AboutWindowView: View {
                 Button(String(localized: "about.agreement", defaultValue: "Agreement", bundle: .module)) {
                     UserAgreementWindowPresenter.show(model: model)
                 }
+                .font(.system(size: 12, weight: .semibold))
 
                 Button(String(localized: "about.website", defaultValue: "Website", bundle: .module)) {
                     model.openURL(AppSupportLinks.website)
                 }
+                .font(.system(size: 12, weight: .semibold))
 
                 Button(model.isCheckingForUpdates ? String(localized: "about.checking_updates", defaultValue: "Checking...", bundle: .module) : String(localized: "about.updates", defaultValue: "Updates", bundle: .module)) {
                     model.checkForUpdates()
                 }
+                .font(.system(size: 12, weight: .semibold))
                 .disabled(model.isCheckingForUpdates)
             }
-            .controlSize(.small)
+            .controlSize(.regular)
 
             Spacer().frame(height: 24)
         }

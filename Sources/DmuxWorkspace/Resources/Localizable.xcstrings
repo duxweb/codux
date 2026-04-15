@@ -21913,61 +21913,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bronze"
+            "value": "Light"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "青铜"
+            "value": "轻量"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "青銅"
+            "value": "輕量"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bronze"
+            "value": "Leicht"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bronce"
+            "value": "Ligero"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bronze"
+            "value": "Léger"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ブロンズ"
+            "value": "軽量"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "청동"
+            "value": "경량"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bronze"
+            "value": "Leve"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Бронза"
+            "value": "Легкий"
           }
         }
       }
@@ -21978,61 +21978,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diamond"
+            "value": "Grind"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "钻石"
+            "value": "爆肝"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "鑽石"
+            "value": "爆肝"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diamant"
+            "value": "Vollgas"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diamante"
+            "value": "A tope"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diamant"
+            "value": "Turbo"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ダイヤモンド"
+            "value": "修羅場"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "다이아몬드"
+            "value": "풀가동"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diamante"
+            "value": "Virado"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Алмаз"
+            "value": "Аврал"
           }
         }
       }
@@ -22043,61 +22043,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gold"
+            "value": "Focus"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "黄金"
+            "value": "专注"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "黃金"
+            "value": "專注"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gold"
+            "value": "Fokus"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oro"
+            "value": "Enfoque"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Or"
+            "value": "Focus"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ゴールド"
+            "value": "集中"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "금"
+            "value": "집중"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ouro"
+            "value": "Foco"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Золото"
+            "value": "Фокус"
           }
         }
       }
@@ -22108,61 +22108,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grandmaster"
+            "value": "Godlike"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "宗师"
+            "value": "封神"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "宗師"
+            "value": "封神"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Großmeister"
+            "value": "Legende"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "gran maestro"
+            "value": "Legendario"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grand maître"
+            "value": "Légende"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "グランドマスター"
+            "value": "神域"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "그랜드마스터"
+            "value": "신급"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grão-Mestre"
+            "value": "Lendário"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Гроссмейстер"
+            "value": "Легенда"
           }
         }
       }
@@ -22173,61 +22173,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Iron"
+            "value": "Idle"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "黑铁"
+            "value": "待机"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "黑鐵"
+            "value": "待機"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eisen"
+            "value": "Leerlauf"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hierro"
+            "value": "Reposo"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fer"
+            "value": "Veille"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "黒鉄"
+            "value": "待機"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "철"
+            "value": "대기"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ferro"
+            "value": "Inativo"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Железо"
+            "value": "Простой"
           }
         }
       }
@@ -22238,61 +22238,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Master"
+            "value": "Limit"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "大师"
+            "value": "极限"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "大師"
+            "value": "極限"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Master"
+            "value": "Limit"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Maestro"
+            "value": "Límite"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Maître"
+            "value": "Limite"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "マスター"
+            "value": "限界"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "마스터"
+            "value": "한계"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mestre"
+            "value": "Limite"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Мастер"
+            "value": "Предел"
           }
         }
       }
@@ -22303,61 +22303,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Platinum"
+            "value": "Intense"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "白金"
+            "value": "高强度"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "白金"
+            "value": "高強度"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Platin"
+            "value": "Intensiv"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Platino"
+            "value": "Intenso"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Platine"
+            "value": "Intense"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "プラチナ"
+            "value": "高負荷"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "백금"
+            "value": "고강도"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Platina"
+            "value": "Intenso"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Платина"
+            "value": "Интенсив"
           }
         }
       }
@@ -22368,61 +22368,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Silver"
+            "value": "Active"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "白银"
+            "value": "活跃"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "白銀"
+            "value": "活躍"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Silber"
+            "value": "Aktiv"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Plata"
+            "value": "Activo"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Argent"
+            "value": "Actif"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "シルバー"
+            "value": "アクティブ"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "은"
+            "value": "활성"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prata"
+            "value": "Ativo"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Серебро"
+            "value": "Актив"
           }
         }
       }

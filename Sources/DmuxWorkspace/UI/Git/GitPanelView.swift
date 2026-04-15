@@ -794,6 +794,7 @@ private struct GitCommitSplitButton: View {
     @Binding var selectedAction: GitCommitAction
     let isDisabled: Bool
     let onSubmit: () -> Void
+    private let menuSegmentWidth: CGFloat = 30
 
     var body: some View {
         HStack(spacing: 0) {
@@ -813,9 +814,9 @@ private struct GitCommitSplitButton: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
-            .frame(width: 40, height: 32)
-            .fixedSize(horizontal: true, vertical: false)
+            .frame(width: menuSegmentWidth, height: 32)
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .buttonStyle(CommitMenuButtonStyle())
@@ -832,7 +833,7 @@ private struct GitCommitSplitButton: View {
                     .fill(Color.white.opacity(isDisabled ? 0.08 : 0.16))
                     .frame(width: 1)
                 Color.clear
-                    .frame(width: 40)
+                    .frame(width: menuSegmentWidth)
             }
             .allowsHitTesting(false)
         }

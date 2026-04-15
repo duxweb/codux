@@ -54,6 +54,11 @@ enum AppTheme {
     static let success = Color(hex: 0x3FC17B)
     static let warning = Color(hex: 0xF4B85A)
     static let inputFill = Color(nsColor: .controlBackgroundColor).opacity(0.72)
+    static let emphasizedControlFill = Color(nsColor: .tertiarySystemFill).opacity(0.92)
+    static let titlebarControlHoverFill = Color(nsColor: .tertiarySystemFill)
+    static let titlebarControlBorder = Color(nsColor: .separatorColor).opacity(0.32)
+    static let titlebarControlHoverBorder = Color(nsColor: .separatorColor).opacity(0.44)
+    static let sidebarSelectionFill = emphasizedControlFill
 
     static func inputBorder(isFocused: Bool, isHovered: Bool) -> Color {
         if isFocused {

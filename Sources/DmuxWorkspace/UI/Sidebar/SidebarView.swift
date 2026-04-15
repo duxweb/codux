@@ -196,7 +196,7 @@ private struct ProjectRow: View {
 
     private var selectionContainer: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(isSelected ? Color(nsColor: .quaternarySystemFill) : Color.clear)
+            .fill(isSelected ? AppTheme.sidebarSelectionFill : Color.clear)
     }
 
     var body: some View {

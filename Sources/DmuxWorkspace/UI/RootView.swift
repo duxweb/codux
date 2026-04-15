@@ -449,7 +449,7 @@ private struct TitlebarOpenSplitButton: View {
             .disabled(!isEnabled)
 
             Rectangle()
-                .fill(Color(nsColor: .separatorColor).opacity(isHovered ? 0.6 : 0.4))
+                .fill(Color(nsColor: .separatorColor).opacity(isHovered ? 0.42 : 0.3))
                 .frame(width: 0.5, height: 16)
 
             Menu {
@@ -520,11 +520,11 @@ private struct TitlebarOpenSplitButton: View {
         .frame(width: primaryWidth + menuWidth + 1, height: controlHeight)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(isHovered ? Color(nsColor: .quaternarySystemFill) : Color(nsColor: .quaternarySystemFill).opacity(0.5))
+                .fill(isHovered ? AppTheme.titlebarControlHoverFill : AppTheme.emphasizedControlFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(isHovered ? 0.4 : 0.2), lineWidth: 0.5)
+                .stroke(isHovered ? AppTheme.titlebarControlHoverBorder : AppTheme.titlebarControlBorder, lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
@@ -572,16 +572,16 @@ private struct TitlebarAITodayLevelButton: View {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(
                         isShowingPopover
-                        ? level.accent.opacity(0.15)
-                        : (isHovered ? level.accent.opacity(0.09) : Color(nsColor: .quaternarySystemFill).opacity(0.5))
+                        ? level.accent.opacity(0.2)
+                        : (isHovered ? level.accent.opacity(0.13) : AppTheme.emphasizedControlFill)
                     )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .stroke(
                         isShowingPopover
-                        ? level.accent.opacity(0.24)
-                        : Color(nsColor: .separatorColor).opacity(isHovered ? 0.4 : 0.2),
+                        ? level.accent.opacity(0.3)
+                        : (isHovered ? AppTheme.titlebarControlHoverBorder : AppTheme.titlebarControlBorder),
                         lineWidth: 0.5
                     )
             )
@@ -718,26 +718,26 @@ private enum AITodayLevelTier: String, CaseIterable, Identifiable {
     @MainActor
     func localizedTitle(using model: AppModel) -> String {
         switch self {
-        case .blankSlate: return String(localized: "rank.iron", defaultValue: "Iron", bundle: .module)
-        case .bronze: return String(localized: "rank.bronze", defaultValue: "Bronze", bundle: .module)
-        case .silver: return String(localized: "rank.silver", defaultValue: "Silver", bundle: .module)
-        case .gold: return String(localized: "rank.gold", defaultValue: "Gold", bundle: .module)
-        case .platinum: return String(localized: "rank.platinum", defaultValue: "Platinum", bundle: .module)
-        case .diamond: return String(localized: "rank.diamond", defaultValue: "Diamond", bundle: .module)
-        case .master: return String(localized: "rank.master", defaultValue: "Master", bundle: .module)
-        case .grandmaster: return String(localized: "rank.grandmaster", defaultValue: "Grandmaster", bundle: .module)
+        case .blankSlate: return String(localized: "rank.iron", defaultValue: "Idle", bundle: .module)
+        case .bronze: return String(localized: "rank.bronze", defaultValue: "Light", bundle: .module)
+        case .silver: return String(localized: "rank.silver", defaultValue: "Active", bundle: .module)
+        case .gold: return String(localized: "rank.gold", defaultValue: "Focus", bundle: .module)
+        case .platinum: return String(localized: "rank.platinum", defaultValue: "Intense", bundle: .module)
+        case .diamond: return String(localized: "rank.diamond", defaultValue: "Grind", bundle: .module)
+        case .master: return String(localized: "rank.master", defaultValue: "Limit", bundle: .module)
+        case .grandmaster: return String(localized: "rank.grandmaster", defaultValue: "Godlike", bundle: .module)
         }
     }
 
     var minimumTokens: Int {
         switch self {
         case .blankSlate: return 0
-        case .bronze: return 1_000_000
-        case .silver: return 5_000_000
-        case .gold: return 15_000_000
-        case .platinum: return 40_000_000
-        case .diamond: return 80_000_000
-        case .master: return 150_000_000
+        case .bronze: return 5_000_000
+        case .silver: return 10_000_000
+        case .gold: return 30_000_000
+        case .platinum: return 70_000_000
+        case .diamond: return 100_000_000
+        case .master: return 200_000_000
         case .grandmaster: return 300_000_000
         }
     }
