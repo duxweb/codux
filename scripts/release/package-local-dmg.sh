@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 set -euo pipefail
 
 root_dir="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -8,7 +8,8 @@ bundle_id="com.duxweb.dmux"
 version="${DMUX_VERSION:-0.1.0}"
 build_number="${DMUX_BUILD_NUMBER:-1}"
 configuration="${DMUX_CONFIGURATION:-release}"
-target_archs=(${=DMUX_ARCHS:-"arm64 x86_64"})
+arch_list="${DMUX_ARCHS:-arm64 x86_64}"
+read -r -a target_archs <<< "${arch_list}"
 codesign_identity="${APPLE_CODESIGN_IDENTITY:--}"
 enable_notarization="${DMUX_NOTARIZE:-0}"
 apple_team_id="${APPLE_TEAM_ID:-}"
@@ -116,8 +117,8 @@ rm -rf "${app_dir}" "${dmg_staging_dir}" "${dmg_path}" "${zip_path}" "${checksum
 mkdir -p "${macos_dir}" "${resources_dir}" "${helpers_dir}" "${runtime_root}" "${dmg_staging_dir}"
 
 if (( ${#build_bins[@]} == 1 )); then
-  cp -f "${build_bins[1]}" "${binary_path}"
-  cp -f "${notify_helper_bins[1]}" "${helpers_dir}/dmux-notify-helper"
+  cp -f "${build_bins[0]}" "${binary_path}"
+  cp -f "${notify_helper_bins[0]}" "${helpers_dir}/dmux-notify-helper"
 else
   lipo -create "${build_bins[@]}" -output "${binary_path}"
   lipo -create "${notify_helper_bins[@]}" -output "${helpers_dir}/dmux-notify-helper"
@@ -125,7 +126,7 @@ fi
 chmod +x "${binary_path}" "${helpers_dir}/dmux-notify-helper"
 
 cat > "${launcher_path}" <<'EOF'
-#!/bin/zsh
+#!/bin/bash
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
@@ -138,7 +139,7 @@ exec "${script_dir}/dmux-bin" "$@"
 EOF
 chmod +x "${launcher_path}"
 
-for bundle_path in "${build_product_dirs[1]}"/*.bundle; do
+for bundle_path in "${build_product_dirs[0]}"/*.bundle; do
   if [[ -d "${bundle_path}" ]]; then
     cp -R "${bundle_path}" "${resources_dir}/"
   fi
