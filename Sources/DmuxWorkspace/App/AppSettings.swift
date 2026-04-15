@@ -556,7 +556,7 @@ private extension NSColor {
 enum AppSupportLinks {
     static let github = URL(string: "https://github.com/duxweb/dmux")!
     static let issues = URL(string: "https://github.com/duxweb/dmux/issues")!
-    static let website = URL(string: "https://dmux.app")!
+    static let website = URL(string: "https://dmux.dux.cn")!
     static let releases = URL(string: "https://github.com/duxweb/dmux/releases")!
 }
 

@@ -398,61 +398,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This app is currently a development preview. By using it, you understand that terminal, Git, and AI activity features read local project metadata and runtime state, but do not proactively upload your project contents. You are responsible for the safety of your local environment, permissions, third-party CLIs, and repository credentials. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time."
+            "value": "By using it, you understand that terminal, Git, and AI activity features read local project metadata and runtime state, but do not proactively upload your project contents. You are responsible for the safety of your local environment, permissions, third-party CLIs, and repository credentials. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "本应用当前为开发预览版。使用本应用即表示你理解：终端、Git 与 AI 统计功能会读取本机项目目录中的元数据与运行状态，但不会主动上传你的项目内容。你应自行确认本地环境、权限设置、第三方 CLI 与仓库访问凭据的安全性。继续使用即代表你接受该实验性软件可能存在功能变更、界面调整与兼容性问题。"
+            "value": "使用本应用即表示你理解：终端、Git 与 AI 统计功能会读取本机项目目录中的元数据与运行状态，但不会主动上传你的项目内容。你应自行确认本地环境、权限设置、第三方 CLI 与仓库访问凭据的安全性。继续使用即代表你接受该实验性软件可能存在功能变更、界面调整与兼容性问题。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "本應用目前為開發預覽版。使用本應用即表示您了解：終端、Git 與 AI 活動功能會讀取本機專案的中繼資料與執行狀態，但不會主動上傳您的專案內容。您需自行負責本機環境、權限、第三方 CLI 與儲存庫憑證的安全性。繼續使用即代表您接受此實驗性軟體未來可能在行為、介面與相容性上有所變更。"
+            "value": "使用本應用即表示您了解：終端、Git 與 AI 活動功能會讀取本機專案的中繼資料與執行狀態，但不會主動上傳您的專案內容。您需自行負責本機環境、權限、第三方 CLI 與儲存庫憑證的安全性。繼續使用即代表您接受此實驗性軟體未來可能在行為、介面與相容性上有所變更。"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diese App ist derzeit eine Entwicklungsvorschau. Mit der Nutzung bestätigen Sie, dass die Aktivitäten für Terminal, Git und KI lokale Projektmetadaten und Laufzeitstatus lesen, Ihre Projektinhalte aber nicht eigenständig hochladen. Für die Sicherheit Ihrer lokalen Umgebung, Berechtigungen, Drittanbieter-CLIs und Repository-Zugangsdaten sind Sie selbst verantwortlich. Wenn Sie die App weiter nutzen, akzeptieren Sie, dass sich Verhalten, Oberfläche und Kompatibilität dieser experimentellen Software im Laufe der Zeit ändern können."
+            "value": "Mit der Nutzung bestätigen Sie, dass die Aktivitäten für Terminal, Git und KI lokale Projektmetadaten und Laufzeitstatus lesen, Ihre Projektinhalte aber nicht eigenständig hochladen. Für die Sicherheit Ihrer lokalen Umgebung, Berechtigungen, Drittanbieter-CLIs und Repository-Zugangsdaten sind Sie selbst verantwortlich. Wenn Sie die App weiter nutzen, akzeptieren Sie, dass sich Verhalten, Oberfläche und Kompatibilität dieser experimentellen Software im Laufe der Zeit ändern können."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Esta aplicación está actualmente en vista previa de desarrollo. Al usarla, entiendes que las funciones de actividad de terminal, Git e IA leen los metadatos del proyecto local y el estado de ejecución, pero no suben por su cuenta el contenido de tu proyecto. La seguridad de tu entorno local, los permisos, las CLI de terceros y las credenciales del repositorio sigue siendo tu responsabilidad. Si continúas usándola, aceptas que este software experimental puede cambiar su comportamiento, interfaz y compatibilidad con el tiempo."
+            "value": "Al usarla, entiendes que las funciones de actividad de terminal, Git e IA leen los metadatos del proyecto local y el estado de ejecución, pero no suben por su cuenta el contenido de tu proyecto. La seguridad de tu entorno local, los permisos, las CLI de terceros y las credenciales del repositorio sigue siendo tu responsabilidad. Si continúas usándola, aceptas que este software experimental puede cambiar su comportamiento, interfaz y compatibilidad con el tiempo."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cette application est actuellement en préversion de développement. En l’utilisant, vous acceptez que les fonctions d’activité du terminal, de Git et de l’IA lisent les métadonnées locales du projet ainsi que l’état d’exécution, sans pour autant envoyer automatiquement le contenu de votre projet. La sécurité de votre environnement local, de vos autorisations, des CLI tierces et des identifiants du dépôt reste sous votre responsabilité. En continuant à utiliser l’application, vous acceptez que ce logiciel expérimental puisse faire évoluer son comportement, son interface et sa compatibilité au fil du temps."
+            "value": "En l’utilisant, vous acceptez que les fonctions d’activité du terminal, de Git et de l’IA lisent les métadonnées locales du projet ainsi que l’état d’exécution, sans pour autant envoyer automatiquement le contenu de votre projet. La sécurité de votre environnement local, de vos autorisations, des CLI tierces et des identifiants du dépôt reste sous votre responsabilité. En continuant à utiliser l’application, vous acceptez que ce logiciel expérimental puisse faire évoluer son comportement, son interface et sa compatibilité au fil du temps."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このアプリは現在開発プレビュー版です。ご利用にあたっては、ターミナル、Git、AI アクティビティ機能がローカルプロジェクトのメタデータや実行状態を読み取る一方で、プロジェクト内容を勝手にアップロードしないことをご理解ください。ローカル環境、権限、サードパーティ CLI、リポジトリ認証情報の管理と安全性はご自身の責任となります。引き続き利用することで、この実験的なソフトウェアの挙動、UI、互換性が今後変わる可能性があることに同意したものとみなされます。"
+            "value": "ご利用にあたっては、ターミナル、Git、AI アクティビティ機能がローカルプロジェクトのメタデータや実行状態を読み取る一方で、プロジェクト内容を勝手にアップロードしないことをご理解ください。ローカル環境、権限、サードパーティ CLI、リポジトリ認証情報の管理と安全性はご自身の責任となります。引き続き利用することで、この実験的なソフトウェアの挙動、UI、互換性が今後変わる可能性があることに同意したものとみなされます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이 앱은 현재 개발 프리뷰 버전입니다. 사용 시 터미널, Git, AI 활동 기능이 로컬 프로젝트 메타데이터와 실행 상태를 읽지만, 프로젝트 내용을 임의로 업로드하지는 않습니다. 로컬 환경, 권한, 서드파티 CLI, 저장소 인증 정보의 보안은 사용자 책임입니다. 계속 사용하면 이 실험적 소프트웨어의 동작, 인터페이스, 호환성이 앞으로 바뀔 수 있다는 점에 동의하는 것으로 봅니다."
+            "value": "사용 시 터미널, Git, AI 활동 기능이 로컬 프로젝트 메타데이터와 실행 상태를 읽지만, 프로젝트 내용을 임의로 업로드하지는 않습니다. 로컬 환경, 권한, 서드파티 CLI, 저장소 인증 정보의 보안은 사용자 책임입니다. 계속 사용하면 이 실험적 소프트웨어의 동작, 인터페이스, 호환성이 앞으로 바뀔 수 있다는 점에 동의하는 것으로 봅니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Este aplicativo está atualmente em prévia de desenvolvimento. Ao usá-lo, você entende que os recursos de atividade do terminal, Git e IA leem os metadados do projeto local e o estado de execução, mas não enviam por conta própria o conteúdo do seu projeto. A segurança do seu ambiente local, das permissões, das CLIs de terceiros e das credenciais do repositório continua sendo sua responsabilidade. Ao continuar usando, você aceita que este software experimental pode mudar de comportamento, interface e compatibilidade ao longo do tempo."
+            "value": "Ao usá-lo, você entende que os recursos de atividade do terminal, Git e IA leem os metadados do projeto local e o estado de execução, mas não enviam por conta própria o conteúdo do seu projeto. A segurança do seu ambiente local, das permissões, das CLIs de terceiros e das credenciais do repositório continua sendo sua responsabilidade. Ao continuar usando, você aceita que este software experimental pode mudar de comportamento, interface e compatibilidade ao longo do tempo."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Это приложение сейчас находится в стадии предварительной разработки. Используя его, вы соглашаетесь с тем, что функции активности терминала, Git и ИИ читают метаданные локального проекта и текущее состояние выполнения, но не отправляют содержимое проекта сами по себе. За безопасность локальной среды, разрешений, сторонних CLI и учетных данных репозитория отвечаете вы. Продолжая использовать приложение, вы принимаете, что поведение, интерфейс и совместимость этого экспериментального ПО со временем могут меняться."
+            "value": "Используя его, вы соглашаетесь с тем, что функции активности терминала, Git и ИИ читают метаданные локального проекта и текущее состояние выполнения, но не отправляют содержимое проекта сами по себе. За безопасность локальной среды, разрешений, сторонних CLI и учетных данных репозитория отвечаете вы. Продолжая использовать приложение, вы принимаете, что поведение, интерфейс и совместимость этого экспериментального ПО со временем могут меняться."
           }
         }
       }
