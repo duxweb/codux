@@ -7,7 +7,7 @@ if [[ -z "${DMUX_VERSION:-}" ]]; then
   if git -C "${root_dir}" describe --tags --abbrev=0 >/dev/null 2>&1; then
     export DMUX_VERSION="$(git -C "${root_dir}" describe --tags --abbrev=0 | sed 's/^v//')"
   else
-    export DMUX_VERSION="0.1.0"
+    export DMUX_VERSION="0.1.1"
   fi
 fi
 
