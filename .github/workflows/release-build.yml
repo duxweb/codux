@@ -1,8 +1,9 @@
 name: Release Build
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
 
 jobs:
   build:
@@ -11,7 +12,7 @@ jobs:
       contents: write
 
     concurrency:
-      group: release-${{ github.event.release.tag_name || github.run_id }}
+      group: release-${{ github.ref_name || github.run_id }}
       cancel-in-progress: false
 
     steps:
@@ -19,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Make scripts executable
-        run: chmod +x dev.sh build.sh scripts/dev/restart-dev-gui.sh scripts/release/package-local-dmg.sh
+        run: chmod +x dev.sh build.sh scripts/dev/restart-dev-gui.sh scripts/release/package-local-dmg.sh scripts/release/extract-release-notes.sh
 
       - name: Configure signing and notarization
         env:
@@ -66,7 +67,7 @@ jobs:
         id: meta
         shell: bash
         run: |
-          version="${{ github.event.release.tag_name }}"
+          version="${GITHUB_REF_NAME}"
           version="${version#v}"
           if [[ -z "${version}" ]]; then
             echo "Release tag is missing" >&2
@@ -74,6 +75,14 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "build_number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes
+        id: notes
+        shell: bash
+        run: |
+          notes_path="$RUNNER_TEMP/release-notes.md"
+          bash scripts/release/extract-release-notes.sh "${{ steps.meta.outputs.version }}" CHANGELOG.md > "$notes_path"
+          echo "path=${notes_path}" >> "$GITHUB_OUTPUT"
 
       - name: Build app and dmg
         env:
@@ -101,6 +110,9 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: Codux v${{ steps.meta.outputs.version }}
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             dist/*.dmg
             dist/*.zip
