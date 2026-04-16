@@ -1,0 +1,89 @@
+name: Test Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "App version, for example 0.1.3"
+        required: true
+      package_version:
+        description: "Artifact label, for example 0.1.3-test-20260416"
+        required: false
+      build_number:
+        description: "Build number override"
+        required: false
+      configuration:
+        description: "Xcode build configuration"
+        required: false
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+
+    concurrency:
+      group: test-build-${{ github.ref_name }}-${{ github.run_id }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x build.sh scripts/release/package-local-dmg.sh
+
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          version="${{ github.event.inputs.version }}"
+          package_version="${{ github.event.inputs.package_version }}"
+          build_number="${{ github.event.inputs.build_number }}"
+          configuration="${{ github.event.inputs.configuration }}"
+
+          if [[ -z "${version}" ]]; then
+            echo "Build version is missing" >&2
+            exit 1
+          fi
+
+          if [[ -z "${build_number}" ]]; then
+            build_number="${GITHUB_RUN_NUMBER}"
+          fi
+
+          if [[ -z "${package_version}" ]]; then
+            package_version="${version}"
+          fi
+
+          if [[ -z "${configuration}" ]]; then
+            configuration="Release"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${build_number}" >> "$GITHUB_OUTPUT"
+          echo "configuration=${configuration}" >> "$GITHUB_OUTPUT"
+
+      - name: Build app and dmg
+        env:
+          DMUX_VERSION: ${{ steps.meta.outputs.version }}
+          DMUX_PACKAGE_VERSION: ${{ steps.meta.outputs.package_version }}
+          DMUX_BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          DMUX_CONFIGURATION: ${{ steps.meta.outputs.configuration }}
+        run: ./build.sh
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codux-${{ steps.meta.outputs.package_version }}-${{ steps.meta.outputs.configuration }}-manual
+          path: |
+            dist/*.app
+            dist/*.dmg
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error

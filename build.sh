@@ -11,5 +11,9 @@ if [[ -z "${DMUX_VERSION:-}" ]]; then
   fi
 fi
 
+if [[ -z "${DMUX_PACKAGE_VERSION:-}" ]]; then
+  export DMUX_PACKAGE_VERSION="${DMUX_VERSION}"
+fi
+
 export DMUX_BUILD_NUMBER="${DMUX_BUILD_NUMBER:-1}"
 exec "${root_dir}/scripts/release/package-local-dmg.sh"
