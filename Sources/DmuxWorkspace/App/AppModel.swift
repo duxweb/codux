@@ -2170,17 +2170,18 @@ final class AppModel {
     private func openSelectedProjectInApplication(_ project: Project, bundleIdentifier: String, fallbackURL: URL? = nil, successMessage: String, failureMessage: String) {
         let projectURL = URL(fileURLWithPath: project.path, isDirectory: true)
         if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) != nil {
-            Task.detached(priority: .userInitiated) { [weak self] in
-                let didOpen = Self.openProjectURL(projectURL, withBundleIdentifier: bundleIdentifier)
-                await MainActor.run {
-                    guard let self else { return }
-                    if didOpen {
-                        self.statusMessage = successMessage
-                    } else if let fallbackURL, NSWorkspace.shared.open(fallbackURL) {
-                        self.statusMessage = successMessage
-                    } else {
-                        self.statusMessage = failureMessage
-                    }
+            Task { [weak self, projectURL, bundleIdentifier, fallbackURL, successMessage, failureMessage] in
+                let didOpen = await Task.detached(priority: .userInitiated) {
+                    Self.openProjectURL(projectURL, withBundleIdentifier: bundleIdentifier)
+                }.value
+
+                guard let self else { return }
+                if didOpen {
+                    self.statusMessage = successMessage
+                } else if let fallbackURL, NSWorkspace.shared.open(fallbackURL) {
+                    self.statusMessage = successMessage
+                } else {
+                    self.statusMessage = failureMessage
                 }
             }
             return
