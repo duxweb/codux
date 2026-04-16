@@ -132,6 +132,91 @@
         }
       }
     },
+    "startup.recovery.invalid_state": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The saved app configuration was invalid and has been reset to defaults."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检测到已保存的应用配置无效，现已恢复为默认配置。"
+          }
+        }
+      }
+    },
+    "startup.recovery.invalid_state.backup_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检测到已保存的应用配置无效，现已恢复为默认配置，并已备份为 %@。"
+          }
+        }
+      }
+    },
+    "startup.recovery.sanitized": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some saved projects or terminal layout data were invalid and were repaired automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分已保存的项目或终端布局数据存在异常，现已自动修复。"
+          }
+        }
+      }
+    },
+    "startup.recovery.status": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recovered invalid saved app data."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已恢复异常的应用保存数据。"
+          }
+        }
+      }
+    },
+    "startup.recovery.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recovered App Data"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已恢复应用数据"
+          }
+        }
+      }
+    },
     "about.copyright": {
       "extractionState": "manual",
       "localizations": {
@@ -18133,6 +18218,125 @@
           "stringUnit": {
             "state": "translated",
             "value": "Открыть папку…"
+          }
+        }
+      }
+    },
+    "diagnostics.export.error.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to Export Diagnostics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导出诊断包"
+          }
+        }
+      }
+    },
+    "diagnostics.export.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to export diagnostics."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出诊断包失败。"
+          }
+        }
+      }
+    },
+    "diagnostics.export.panel.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose where to save the diagnostics archive."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择诊断包的保存位置。"
+          }
+        }
+      }
+    },
+    "diagnostics.export.panel.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Diagnostics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出诊断包"
+          }
+        }
+      }
+    },
+    "diagnostics.export.running": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exporting diagnostics…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在导出诊断包…"
+          }
+        }
+      }
+    },
+    "diagnostics.export.success_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exported diagnostics to %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "诊断包已导出到 %@。"
+          }
+        }
+      }
+    },
+    "menu.help.export_diagnostics": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Diagnostics…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出诊断包…"
           }
         }
       }

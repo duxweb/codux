@@ -220,6 +220,7 @@ final class SwiftTermTerminalContainerView: NSView {
 
     func terminateProcessTree() {
         let shellPID = terminalShellPID ?? terminalView.process.shellPid
+        resetTransientTerminalModes()
         guard shellPID > 0 else {
             terminalView.terminate()
             return
@@ -278,6 +279,10 @@ final class SwiftTermTerminalContainerView: NSView {
         loadingShieldView.translatesAutoresizingMaskIntoConstraints = false
         loadingShieldView.wantsLayer = true
 
+        processDelegateProxy.onProcessTerminated = { [weak self] exitCode in
+            self?.handleProcessTermination(exitCode: exitCode)
+        }
+
         if let scrollView = terminalView.enclosingScrollView {
             scrollView.drawsBackground = false
         }
@@ -297,6 +302,10 @@ final class SwiftTermTerminalContainerView: NSView {
             loadingShieldView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
         updateLoadingShieldVisibility()
+    }
+
+    private func resetTransientTerminalModes() {
+        terminalView.getTerminal().feed(text: "\u{1b}[<u")
     }
 
     private func applyTheme(_ preset: AppTerminalBackgroundPreset) {
@@ -398,6 +407,19 @@ final class SwiftTermTerminalContainerView: NSView {
             pendingFocusRequest = false
             focusTerminal()
         }
+    }
+
+    private func handleProcessTermination(exitCode: Int32?) {
+        resetTransientTerminalModes()
+        if hasReceivedInitialOutput == false {
+            hasReceivedInitialOutput = true
+            updateLoadingShieldVisibility()
+        }
+        pendingFocusRequest = false
+        logger.log(
+            "terminal-exit",
+            "session=\(configuredSession.id.uuidString) project=\(configuredSession.projectID.uuidString) exit=\(exitCode.map(String.init) ?? "nil")"
+        )
     }
 
     private func updateLoadingShieldVisibility() {
@@ -588,8 +610,12 @@ final class SwiftTermTerminalRegistry {
 }
 
 final class SwiftTermProcessDelegateProxy: NSObject, LocalProcessTerminalViewDelegate {
+    var onProcessTerminated: ((Int32?) -> Void)?
+
     nonisolated func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
     nonisolated func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
     nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
-    nonisolated func processTerminated(source: TerminalView, exitCode: Int32?) {}
+    nonisolated func processTerminated(source: TerminalView, exitCode: Int32?) {
+        onProcessTerminated?(exitCode)
+    }
 }

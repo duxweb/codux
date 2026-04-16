@@ -5,6 +5,7 @@ import SwiftUI
 func appendProjectEditLog(_ message: String) {
     let line = "[ProjectEdit] \(message)\n"
     let url = URL(fileURLWithPath: "/tmp/dmux-dev.log")
+    AppDebugLog.shared.log("project-editor", message)
 
     if let data = line.data(using: .utf8) {
         if FileManager.default.fileExists(atPath: url.path) {
@@ -255,6 +256,7 @@ final class ProjectEditorPanelController: AppDialogController<ProjectEditorDialo
         }
         viewModel.onChooseDirectory = { [weak self] in
             guard let self, let window = self.window else { return }
+            appendProjectEditLog("[ChooseDirectoryBegin]")
             let panel = NSOpenPanel()
             panel.canChooseDirectories = true
             panel.canChooseFiles = false
@@ -263,7 +265,11 @@ final class ProjectEditorPanelController: AppDialogController<ProjectEditorDialo
             panel.prompt = String(localized: "project.editor.choose_directory.prompt", defaultValue: "Choose", bundle: .module)
             panel.message = String(localized: "project.editor.choose_directory.message", defaultValue: "Select a folder for this project.", bundle: .module)
             panel.beginSheetModal(for: window) { response in
-                guard response == .OK, let url = panel.url else { return }
+                guard response == .OK, let url = panel.url else {
+                    appendProjectEditLog("[ChooseDirectoryCancelled]")
+                    return
+                }
+                appendProjectEditLog("[ChooseDirectorySelected] path=\(url.path)")
                 self.viewModel.path = url.path
                 if self.viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     self.viewModel.name = url.lastPathComponent

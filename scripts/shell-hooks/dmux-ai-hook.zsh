@@ -53,6 +53,11 @@ _dmux_send_runtime_event() {
   print -r -- "${payload}" | /usr/bin/nc -U -w 1 "${DMUX_RUNTIME_SOCKET}" >/dev/null 2>&1 || true
 }
 
+_dmux_reset_terminal_input_modes() {
+  [[ -t 1 ]] || return 0
+  printf '\033[<u' || true
+}
+
 _dmux_prepend_wrapper_bin() {
   [[ -n "${DMUX_WRAPPER_BIN:-}" && -d "${DMUX_WRAPPER_BIN}" ]] || return 0
   typeset -gaU path
@@ -162,6 +167,7 @@ _dmux_ai_preexec() {
 _dmux_ai_precmd() {
   local exit_code=$?
   [[ -n "${DMUX_ACTIVE_AI_TOOL}" ]] || return 0
+  _dmux_reset_terminal_input_modes
   _dmux_write_usage_event completed "${exit_code}"
   _dmux_clear_status
   DMUX_ACTIVE_AI_TOOL=""
@@ -174,6 +180,7 @@ _dmux_ai_precmd() {
 
 _dmux_ai_zshexit() {
   if [[ -n "${DMUX_ACTIVE_AI_TOOL}" ]]; then
+    _dmux_reset_terminal_input_modes
     _dmux_write_usage_event completed "$?"
     _dmux_clear_status
   fi
@@ -190,4 +197,5 @@ add-zsh-hook precmd _dmux_ai_precmd
 add-zsh-hook zshexit _dmux_ai_zshexit
 
 _dmux_prepend_wrapper_bin
+_dmux_reset_terminal_input_modes
 _dmux_log_line "loaded session=${DMUX_SESSION_ID:-nil} wrapper=${DMUX_WRAPPER_BIN:-nil} claude=$(whence -p claude 2>/dev/null || print -r -- nil) codex=$(whence -p codex 2>/dev/null || print -r -- nil)"

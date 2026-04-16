@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, for example 0.1.3"
+        required: true
+      publish_release:
+        description: "Publish GitHub Release assets after build"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -67,10 +77,13 @@ jobs:
         id: meta
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME}"
-          version="${version#v}"
+          version="${{ github.event.inputs.version }}"
           if [[ -z "${version}" ]]; then
-            echo "Release tag is missing" >&2
+            version="${GITHUB_REF_NAME}"
+            version="${version#v}"
+          fi
+          if [[ -z "${version}" ]]; then
+            echo "Release version is missing" >&2
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
@@ -108,9 +121,10 @@ jobs:
           if-no-files-found: error
 
       - name: Upload release assets
+        if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: v${{ steps.meta.outputs.version }}
           name: Codux v${{ steps.meta.outputs.version }}
           body_path: ${{ steps.notes.outputs.path }}
           files: |

@@ -200,8 +200,8 @@ fi
 if [[ "$tool_name" == "codex" ]]; then
   helper_script="${wrapper_dir}/dmux-ai-state.sh"
   if [[ "${1:-}" != "app-server" && -x "$helper_script" && -n "${DMUX_SESSION_ID:-}" && -n "${DMUX_RUNTIME_SOCKET:-}" ]]; then
-    log_line "launch codex with hooks.json session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} binary=${real_bin}"
-    exec env PATH="$search_path" "$real_bin" -c features.codex_hooks=true "$@"
+    log_line "launch codex managed session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} binary=${real_bin} hooks=enabled"
+    exec env PATH="$search_path" "$real_bin" --enable codex_hooks "$@"
   fi
 fi
 

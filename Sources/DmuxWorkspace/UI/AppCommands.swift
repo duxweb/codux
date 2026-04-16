@@ -47,6 +47,12 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(replacing: .help) {
+            Button(String(localized: "menu.help.export_diagnostics", defaultValue: "Export Diagnostics…", bundle: .module)) {
+                model.exportDiagnosticsArchive()
+            }
+
+            Divider()
+
             Button(String(localized: "menu.help.github", defaultValue: "GitHub", bundle: .module)) {
                 model.openURL(AppSupportLinks.github)
             }

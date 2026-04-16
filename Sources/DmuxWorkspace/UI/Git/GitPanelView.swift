@@ -743,7 +743,6 @@ private struct GitTopRegion: View {
     let gitState: GitRepositoryState
     let focusedField: FocusState<GitPanelFocusField?>.Binding
     @State private var selectedCommitAction: GitCommitAction = .commit
-    @State private var isComposerHovered = false
 
     private let composerFont = NSFont.systemFont(ofSize: 14, weight: .medium)
     private let composerHorizontalInset: CGFloat = 14
@@ -751,27 +750,22 @@ private struct GitTopRegion: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ZStack(alignment: .topLeading) {
-                AppMultilineInputArea(
-                    text: Binding(
-                        get: { model.commitMessage },
-                        set: { model.commitMessage = $0 }
-                    ),
-                    placeholder: String(localized: "git.commit.message.placeholder", defaultValue: "Enter Commit Message", bundle: .module),
-                    isFocused: Binding(
-                        get: { focusedField.wrappedValue == .commitMessage },
-                        set: { focusedField.wrappedValue = $0 ? .commitMessage : nil }
-                    ),
-                    font: composerFont,
-                    horizontalInset: composerHorizontalInset,
-                    verticalInset: composerVerticalInset,
-                    enablesSpellChecking: false
-                )
-                    .frame(height: composerHeight)
-                    .onHover { hovering in
-                        isComposerHovered = hovering
-                    }
-            }
+            AppMultilineInputArea(
+                text: Binding(
+                    get: { model.commitMessage },
+                    set: { model.commitMessage = $0 }
+                ),
+                placeholder: String(localized: "git.commit.message.placeholder", defaultValue: "Enter Commit Message", bundle: .module),
+                isFocused: Binding(
+                    get: { focusedField.wrappedValue == .commitMessage },
+                    set: { focusedField.wrappedValue = $0 ? .commitMessage : nil }
+                ),
+                font: composerFont,
+                horizontalInset: composerHorizontalInset,
+                verticalInset: composerVerticalInset,
+                enablesSpellChecking: false
+            )
+            .frame(height: composerHeight)
 
             GitCommitSplitButton(
                 model: model,
@@ -928,7 +922,7 @@ private struct GitFilesRegion: View {
 
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     GitListSection(
-                        title: String(localized: "git.files.staged", defaultValue: "Staged", bundle: .module),
+                        kind: .staged,
                         entries: gitState.staged,
                         accent: AppTheme.success,
                         isExpanded: $stagedExpanded,
@@ -940,7 +934,7 @@ private struct GitFilesRegion: View {
                     )
 
                     GitListSection(
-                        title: String(localized: "git.files.changes", defaultValue: "Changes", bundle: .module),
+                        kind: .changed,
                         entries: gitState.changes,
                         accent: AppTheme.warning,
                         isExpanded: $changesExpanded,
@@ -952,7 +946,7 @@ private struct GitFilesRegion: View {
                     )
 
                     GitListSection(
-                        title: String(localized: "git.files.untracked", defaultValue: "Untracked", bundle: .module),
+                        kind: .untracked,
                         entries: gitState.untracked,
                         accent: AppTheme.textSecondary,
                         isExpanded: $untrackedExpanded,
@@ -978,7 +972,7 @@ private struct GitFilesRegion: View {
 }
 
 private struct GitListSection: View {
-    let title: String
+    let kind: GitFileKind
     let entries: [GitFileEntry]
     let accent: Color
     @Binding var isExpanded: Bool
@@ -987,55 +981,45 @@ private struct GitListSection: View {
     let secondaryIcon: String?
     let secondaryAction: ((GitFileEntry) -> Void)?
     let model: AppModel
-    @State private var isHovered = false
 
     private var selectedEntries: [GitFileEntry] {
         entries.filter { model.isGitEntrySelected($0) }
     }
 
-    private var usesSelectedEntries: Bool {
-        model.selectedGitEntryIDs.count > 1 && !selectedEntries.isEmpty
-    }
-
     private var shouldShowHeaderActions: Bool {
-        isHovered || usesSelectedEntries
+        !selectedEntries.isEmpty
     }
 
     private var actionEntries: [GitFileEntry] {
-        usesSelectedEntries ? selectedEntries : entries
+        selectedEntries
     }
 
     private var headerActions: [GitSectionHeaderAction] {
-        switch title {
-        case "Staged":
+        switch kind {
+        case .staged:
             guard !actionEntries.isEmpty else { return [] }
             return [
-                GitSectionHeaderAction(icon: "minus", help: usesSelectedEntries ? String(localized: "git.files.unstage_selected", defaultValue: "Unstage Selected", bundle: .module) : String(localized: "git.files.unstage_all", defaultValue: "Unstage All", bundle: .module)) {
+                GitSectionHeaderAction(icon: "minus", help: String(localized: "git.files.unstage_selected", defaultValue: "Unstage Selected", bundle: .module)) {
                     model.unstageEntries(actionEntries)
                 }
             ]
-        case "Changes":
+        case .changed:
             guard !actionEntries.isEmpty else { return [] }
             return [
-                GitSectionHeaderAction(icon: "plus", help: usesSelectedEntries ? String(localized: "git.files.stage_selected", defaultValue: "Stage Selected", bundle: .module) : String(localized: "git.files.stage_all", defaultValue: "Stage All", bundle: .module)) {
+                GitSectionHeaderAction(icon: "plus", help: String(localized: "git.files.stage_selected", defaultValue: "Stage Selected", bundle: .module)) {
                     model.stageEntries(actionEntries)
                 },
-                GitSectionHeaderAction(icon: "discard", help: usesSelectedEntries ? String(localized: "git.files.discard_selected", defaultValue: "Discard Selected", bundle: .module) : String(localized: "git.files.discard_all", defaultValue: "Discard All", bundle: .module)) {
+                GitSectionHeaderAction(icon: "discard", help: String(localized: "git.files.discard_selected", defaultValue: "Discard Selected", bundle: .module)) {
                     model.discardEntries(actionEntries)
                 }
             ]
-        case "Untracked":
+        case .untracked:
             guard !actionEntries.isEmpty else { return [] }
             return [
-                GitSectionHeaderAction(icon: "plus", help: usesSelectedEntries ? String(localized: "git.files.stage_selected", defaultValue: "Stage Selected", bundle: .module) : String(localized: "git.files.stage_all", defaultValue: "Stage All", bundle: .module)) {
+                GitSectionHeaderAction(icon: "plus", help: String(localized: "git.files.stage_selected", defaultValue: "Stage Selected", bundle: .module)) {
                     model.stageEntries(actionEntries)
-                },
-                GitSectionHeaderAction(icon: "discard", help: usesSelectedEntries ? String(localized: "git.files.remove_selected", defaultValue: "Remove Selected", bundle: .module) : String(localized: "git.files.remove_all", defaultValue: "Remove All", bundle: .module)) {
-                    model.discardEntries(actionEntries)
                 }
             ]
-        default:
-            return []
         }
     }
 
@@ -1068,6 +1052,18 @@ private struct GitListSection: View {
 
                     Spacer()
 
+                    if shouldShowHeaderActions, !headerActions.isEmpty {
+                        HStack(spacing: 2) {
+                            ForEach(Array(headerActions.enumerated()), id: \.offset) { _, action in
+                                Button(action: action.action) {
+                                    HeaderActionIcon(symbol: action.icon)
+                                }
+                                .buttonStyle(GitHeaderIconButtonStyle())
+                                .help(action.help)
+                            }
+                        }
+                    }
+
                     Text("\(entries.count)")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(accent)
@@ -1084,44 +1080,23 @@ private struct GitListSection: View {
                 AppPinnedHeaderBackground()
                     .overlay(Color(nsColor: .shadowColor).opacity(0.06))
             }
-            .overlay(alignment: .trailing) {
-                if shouldShowHeaderActions, !headerActions.isEmpty {
-                    HStack(spacing: 2) {
-                        ForEach(Array(headerActions.enumerated()), id: \.offset) { _, action in
-                            Button(action: action.action) {
-                                HeaderActionIcon(symbol: action.icon)
-                            }
-                            .buttonStyle(GitHeaderIconButtonStyle())
-                            .help(action.help)
-                        }
-                    }
-                    .padding(.leading, 12)
-                    .padding(.trailing, 14)
-                    .frame(height: 34)
-                }
-            }
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(AppTheme.separator)
                     .frame(height: 1)
             }
             .zIndex(1)
-            .onHover { hovering in
-                isHovered = hovering
-            }
         }
     }
 
     private var displayTitle: String {
-        switch title {
-        case "Staged":
+        switch kind {
+        case .staged:
             return String(localized: "git.files.staged", defaultValue: "Staged", bundle: .module)
-        case "Changes":
+        case .changed:
             return String(localized: "git.files.changes", defaultValue: "Changes", bundle: .module)
-        case "Untracked":
+        case .untracked:
             return String(localized: "git.files.untracked", defaultValue: "Untracked", bundle: .module)
-        default:
-            return title
         }
     }
 }
@@ -1173,8 +1148,15 @@ private struct GitFileRow: View {
 
     var body: some View {
         Button {
-            let shiftPressed = NSApp.currentEvent?.modifierFlags.contains(.shift) == true
-            model.selectGitEntry(entry, extendingRange: shiftPressed)
+            let modifierFlags = NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags
+            let shiftPressed = modifierFlags.contains(.shift)
+            let commandPressed = modifierFlags.contains(.command)
+
+            if commandPressed {
+                model.toggleGitEntrySelection(entry)
+            } else {
+                model.selectGitEntry(entry, extendingRange: shiftPressed)
+            }
             model.loadDiff(for: entry)
         } label: {
             HStack(spacing: 8) {

@@ -121,6 +121,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         for window in NSApp.windows {
             configure(window)
         }
+
+        Task { @MainActor [weak self] in
+            self?.model?.presentStartupRecoveryIfNeeded()
+        }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
@@ -196,6 +200,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationDidBecomeActive(_ notification: Notification) {
         for window in NSApp.windows {
             configure(window)
+        }
+        Task { @MainActor [weak self] in
+            self?.model?.presentStartupRecoveryIfNeeded()
         }
     }
 

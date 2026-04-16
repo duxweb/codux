@@ -232,24 +232,6 @@ final class GitStore {
         }
     }
 
-    func setAllEntrySelection(for kind: GitFileKind, in gitState: GitRepositoryState?, selected: Bool) {
-        guard let gitState else { return }
-        let ids: [String]
-        switch kind {
-        case .staged:
-            ids = gitState.staged.map(\.id)
-        case .changed:
-            ids = gitState.changes.map(\.id)
-        case .untracked:
-            ids = gitState.untracked.map(\.id)
-        }
-        if selected {
-            panelState.selectedGitEntryIDs.formUnion(ids)
-        } else {
-            panelState.selectedGitEntryIDs.subtract(ids)
-        }
-    }
-
     func prepareEntryContextMenu(_ entry: GitFileEntry) {
         panelState.selectedGitEntry = entry
         panelState.gitSelectionAnchorID = entry.id

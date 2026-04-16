@@ -178,7 +178,7 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
 }
 
 enum AppLanguageBootstrap {
-    static let languageAtLaunch: AppLanguage = PersistenceService().load()?.appSettings?.language ?? .system
+    static let languageAtLaunch: AppLanguage = PersistenceService().loadStoredLanguagePreference()
 
     static func prepareForLaunch() {
         apply(language: languageAtLaunch)

@@ -143,27 +143,17 @@ struct AppMultilineInputArea: View {
     @State private var isComposing = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            AppMultilineEditor(
-                text: $text,
-                isFocused: $isFocused,
-                isComposing: $isComposing,
-                font: font,
-                horizontalInset: horizontalInset,
-                verticalInset: verticalInset,
-                enablesSpellChecking: enablesSpellChecking
-            )
-            .padding(2)
-
-            if text.isEmpty && !isComposing {
-                Text(placeholder)
-                    .font(Font(font))
-                    .foregroundStyle(Color(nsColor: .placeholderTextColor))
-                    .padding(.horizontal, horizontalInset + 2)
-                    .padding(.top, verticalInset + 2)
-                    .allowsHitTesting(false)
-            }
-        }
+        AppMultilineEditor(
+            text: $text,
+            placeholder: placeholder,
+            isFocused: $isFocused,
+            isComposing: $isComposing,
+            font: font,
+            horizontalInset: horizontalInset,
+            verticalInset: verticalInset,
+            enablesSpellChecking: enablesSpellChecking
+        )
+        .padding(2)
         .appInputSurface(isFocused: isFocused, isHovered: isHovered)
         .onHover { isHovered = $0 }
     }
@@ -171,6 +161,7 @@ struct AppMultilineInputArea: View {
 
 struct AppMultilineEditor: NSViewRepresentable {
     @Binding var text: String
+    let placeholder: String
     @Binding var isFocused: Bool
     @Binding var isComposing: Bool
     let font: NSFont
@@ -190,15 +181,45 @@ struct AppMultilineEditor: NSViewRepresentable {
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
 
-        let textView = AppCompositionAwareTextView()
-        textView.delegate = context.coordinator
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.widthTracksTextView = true
+        textContainer.lineFragmentPadding = 0
+        layoutManager.addTextContainer(textContainer)
+        textStorage.addLayoutManager(layoutManager)
+
+        let textView = AppCompositionAwareTextView(frame: .zero, textContainer: textContainer)
         textView.onCompositionChange = { isComposing in
             DispatchQueue.main.async {
                 context.coordinator.isComposing = isComposing
             }
         }
+        textView.onTextChange = { (value: String) in
+            context.coordinator.isUpdatingFromTextView = true
+            context.coordinator.text = value
+            DispatchQueue.main.async {
+                context.coordinator.isUpdatingFromTextView = false
+            }
+        }
+        textView.onFocusChange = { (focused: Bool) in
+            DispatchQueue.main.async {
+                context.coordinator.isFocused = focused
+                if !focused {
+                    context.coordinator.didRequestInitialFocus = false
+                }
+            }
+        }
         textView.drawsBackground = false
         textView.isRichText = false
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.allowsUndo = true
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width, .height]
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.importsGraphics = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -206,9 +227,9 @@ struct AppMultilineEditor: NSViewRepresentable {
         textView.isGrammarCheckingEnabled = false
         textView.isContinuousSpellCheckingEnabled = enablesSpellChecking
         textView.textContainerInset = NSSize(width: horizontalInset, height: verticalInset)
-        textView.textContainer?.lineFragmentPadding = 0
         textView.font = font
         textView.textColor = NSColor.labelColor
+        textView.placeholder = placeholder
         textView.string = text
 
         scrollView.documentView = textView
@@ -235,6 +256,8 @@ struct AppMultilineEditor: NSViewRepresentable {
         textView.font = font
         textView.textContainerInset = NSSize(width: horizontalInset, height: verticalInset)
         textView.isContinuousSpellCheckingEnabled = enablesSpellChecking
+        textView.placeholder = placeholder
+        textView.needsDisplay = true
 
         if isFocused,
            textView.window?.firstResponder !== textView,
@@ -248,11 +271,11 @@ struct AppMultilineEditor: NSViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject {
         @Binding var text: String
         @Binding var isFocused: Bool
         @Binding var isComposing: Bool
-        weak var textView: NSTextView?
+        weak var textView: AppCompositionAwareTextView?
         var didRequestInitialFocus = false
         var isUpdatingFromTextView = false
 
@@ -261,51 +284,78 @@ struct AppMultilineEditor: NSViewRepresentable {
             _isFocused = isFocused
             _isComposing = isComposing
         }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView else { return }
-            isUpdatingFromTextView = true
-            isComposing = textView.hasMarkedText()
-            text = textView.string
-            DispatchQueue.main.async {
-                self.isUpdatingFromTextView = false
-            }
-        }
-
-        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
-            true
-        }
-
-        func textDidBeginEditing(_ notification: Notification) {
-            isFocused = true
-            didRequestInitialFocus = true
-            isComposing = textView?.hasMarkedText() ?? false
-        }
-
-        func textDidEndEditing(_ notification: Notification) {
-            isFocused = false
-            didRequestInitialFocus = false
-            isComposing = false
-        }
     }
 }
 
-private final class AppCompositionAwareTextView: NSTextView {
+final class AppCompositionAwareTextView: NSTextView {
+    var placeholder = ""
     var onCompositionChange: ((Bool) -> Void)?
+    var onTextChange: ((String) -> Void)?
+    var onFocusChange: ((Bool) -> Void)?
+
+    override var string: String {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        onTextChange?(string)
+        onCompositionChange?(hasMarkedText())
+        needsDisplay = true
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted {
+            onFocusChange?(true)
+            needsDisplay = true
+        }
+        return accepted
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let accepted = super.resignFirstResponder()
+        if accepted {
+            onFocusChange?(false)
+            needsDisplay = true
+        }
+        return accepted
+    }
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
         onCompositionChange?(hasMarkedText())
+        needsDisplay = true
     }
 
     override func unmarkText() {
         super.unmarkText()
         onCompositionChange?(hasMarkedText())
+        needsDisplay = true
     }
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
         super.insertText(string, replacementRange: replacementRange)
         onCompositionChange?(hasMarkedText())
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        guard string.isEmpty, !hasMarkedText(), !placeholder.isEmpty else {
+            return
+        }
+
+        let origin = textContainerOrigin
+        let point = NSPoint(x: origin.x, y: origin.y + 1)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+            .foregroundColor: NSColor.placeholderTextColor
+        ]
+        (placeholder as NSString).draw(at: point, withAttributes: attributes)
     }
 }
 

@@ -2,6 +2,7 @@ import Foundation
 
 struct AIRuntimeBridgeService {
     private let fileManager = FileManager.default
+    private let debugLog = AppDebugLog.shared
     private let codexManagedHookStatusMessage = "dmux codex live"
     private let geminiManagedHookStatusMessage = "dmux gemini live"
 
@@ -153,23 +154,34 @@ struct AIRuntimeBridgeService {
     private func ensureCodexHooksInstalled() {
         let hooksFileURL = codexHooksFileURL()
         let hooksDirectoryURL = hooksFileURL.deletingLastPathComponent()
-        let helperScriptURL = WorkspacePaths.repositoryResourceURL("scripts/wrappers/dmux-ai-state.sh")
 
         try? fileManager.createDirectory(at: hooksDirectoryURL, withIntermediateDirectories: true)
-
-        let promptSubmitCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-prompt-submit")
-        let stopCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-stop")
 
         var rootObject: [String: Any] = [:]
         if let existingData = try? Data(contentsOf: hooksFileURL),
            !existingData.isEmpty {
             guard let jsonObject = try? JSONSerialization.jsonObject(with: existingData),
                   let dictionary = jsonObject as? [String: Any] else {
-                AppDebugLog.shared.log("codex-hook-config", "skip invalid hooks.json path=\(hooksFileURL.path)")
+                let backupURL = backupInvalidJSONFile(at: hooksFileURL)
+                debugLog.log(
+                    "codex-hook-config",
+                    "recovered invalid hooks.json path=\(hooksFileURL.path) backup=\(backupURL?.lastPathComponent ?? "nil")"
+                )
+                rootObject = [:]
+                installCodexHooks(&rootObject)
                 return
             }
             rootObject = dictionary
         }
+
+        installCodexHooks(&rootObject)
+    }
+
+    private func installCodexHooks(_ rootObject: inout [String: Any]) {
+        let hooksFileURL = codexHooksFileURL()
+        let helperScriptURL = WorkspacePaths.repositoryResourceURL("scripts/wrappers/dmux-ai-state.sh")
+        let promptSubmitCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-prompt-submit")
+        let stopCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-stop")
 
         var hooksObject = rootObject["hooks"] as? [String: Any] ?? [:]
         hooksObject["UserPromptSubmit"] = mergedCodexHookGroups(
@@ -188,7 +200,7 @@ struct AIRuntimeBridgeService {
 
         guard JSONSerialization.isValidJSONObject(rootObject),
               let data = try? JSONSerialization.data(withJSONObject: rootObject, options: [.prettyPrinted, .sortedKeys]) else {
-            AppDebugLog.shared.log("codex-hook-config", "failed to encode hooks.json path=\(hooksFileURL.path)")
+            debugLog.log("codex-hook-config", "failed to encode hooks.json path=\(hooksFileURL.path)")
             return
         }
 
@@ -199,34 +211,45 @@ struct AIRuntimeBridgeService {
 
         do {
             try data.write(to: hooksFileURL, options: .atomic)
-            AppDebugLog.shared.log("codex-hook-config", "installed hooks path=\(hooksFileURL.path)")
+            debugLog.log("codex-hook-config", "installed hooks path=\(hooksFileURL.path)")
         } catch {
-            AppDebugLog.shared.log("codex-hook-config", "write failed path=\(hooksFileURL.path) error=\(error.localizedDescription)")
+            debugLog.log("codex-hook-config", "write failed path=\(hooksFileURL.path) error=\(error.localizedDescription)")
         }
     }
 
     private func ensureGeminiHooksInstalled() {
         let settingsFileURL = geminiSettingsFileURL()
         let settingsDirectoryURL = settingsFileURL.deletingLastPathComponent()
-        let helperScriptURL = WorkspacePaths.repositoryResourceURL("scripts/wrappers/dmux-ai-state.sh")
 
         try? fileManager.createDirectory(at: settingsDirectoryURL, withIntermediateDirectories: true)
-
-        let sessionStartCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "session-start")
-        let beforeAgentCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "before-agent")
-        let afterAgentCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "after-agent")
-        let sessionEndCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "session-end")
 
         var rootObject: [String: Any] = [:]
         if let existingData = try? Data(contentsOf: settingsFileURL),
            !existingData.isEmpty {
             guard let jsonObject = try? JSONSerialization.jsonObject(with: existingData),
                   let dictionary = jsonObject as? [String: Any] else {
-                AppDebugLog.shared.log("gemini-hook-config", "skip invalid settings path=\(settingsFileURL.path)")
+                let backupURL = backupInvalidJSONFile(at: settingsFileURL)
+                debugLog.log(
+                    "gemini-hook-config",
+                    "recovered invalid settings path=\(settingsFileURL.path) backup=\(backupURL?.lastPathComponent ?? "nil")"
+                )
+                rootObject = [:]
+                installGeminiHooks(&rootObject)
                 return
             }
             rootObject = dictionary
         }
+
+        installGeminiHooks(&rootObject)
+    }
+
+    private func installGeminiHooks(_ rootObject: inout [String: Any]) {
+        let settingsFileURL = geminiSettingsFileURL()
+        let helperScriptURL = WorkspacePaths.repositoryResourceURL("scripts/wrappers/dmux-ai-state.sh")
+        let sessionStartCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "session-start")
+        let beforeAgentCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "before-agent")
+        let afterAgentCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "after-agent")
+        let sessionEndCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "session-end")
 
         var hooksObject = rootObject["hooks"] as? [String: Any] ?? [:]
         hooksObject["SessionStart"] = mergedGeminiHookGroups(
@@ -257,7 +280,7 @@ struct AIRuntimeBridgeService {
 
         guard JSONSerialization.isValidJSONObject(rootObject),
               let data = try? JSONSerialization.data(withJSONObject: rootObject, options: [.prettyPrinted, .sortedKeys]) else {
-            AppDebugLog.shared.log("gemini-hook-config", "failed to encode settings path=\(settingsFileURL.path)")
+            debugLog.log("gemini-hook-config", "failed to encode settings path=\(settingsFileURL.path)")
             return
         }
 
@@ -268,9 +291,9 @@ struct AIRuntimeBridgeService {
 
         do {
             try data.write(to: settingsFileURL, options: .atomic)
-            AppDebugLog.shared.log("gemini-hook-config", "installed hooks path=\(settingsFileURL.path)")
+            debugLog.log("gemini-hook-config", "installed hooks path=\(settingsFileURL.path)")
         } catch {
-            AppDebugLog.shared.log("gemini-hook-config", "write failed path=\(settingsFileURL.path) error=\(error.localizedDescription)")
+            debugLog.log("gemini-hook-config", "write failed path=\(settingsFileURL.path) error=\(error.localizedDescription)")
         }
     }
 
@@ -436,4 +459,34 @@ struct AIRuntimeBridgeService {
             try? fileManager.removeItem(at: fileURL)
         }
     }
+
+    private func backupInvalidJSONFile(at fileURL: URL) -> URL? {
+        let timestamp = Self.invalidFileDateFormatter.string(from: Date())
+        let backupURL = fileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("\(fileURL.deletingPathExtension().lastPathComponent).invalid-\(timestamp).\(fileURL.pathExtension)")
+
+        do {
+            if fileManager.fileExists(atPath: backupURL.path) {
+                try fileManager.removeItem(at: backupURL)
+            }
+            try fileManager.copyItem(at: fileURL, to: backupURL)
+            return backupURL
+        } catch {
+            debugLog.log(
+                "hook-config",
+                "backup failed source=\(fileURL.path) target=\(backupURL.path) error=\(error.localizedDescription)"
+            )
+            return nil
+        }
+    }
+}
+
+private extension AIRuntimeBridgeService {
+    static let invalidFileDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
 }

@@ -53,6 +53,7 @@ final class AppModel {
     private let gitService = GitService()
     private let gitCredentialStore = GitCredentialStore()
     private let activityService = ProjectActivityService()
+    private let diagnosticsExportService = AppDiagnosticsExportService()
     private let runtimeIngressService = AIRuntimeIngressService.shared
     private let toolDriverFactory = AIToolDriverFactory.shared
     private let debugLog = AppDebugLog.shared
@@ -66,8 +67,10 @@ final class AppModel {
     private var lastRealtimeResponseBySessionID: [UUID: AIResponseState?] = [:]
     private var realtimeProjectIDBySessionID: [UUID: UUID] = [:]
     private var isSystemUIReady = false
+    private var pendingStartupRecoveryDialog: ConfirmDialogState?
+    private var hasPresentedStartupRecoveryDialog = false
 
-    init(snapshot: AppSnapshot?, persistenceService: PersistenceService) {
+    init(snapshot: AppSnapshot?, persistenceService: PersistenceService, startupIssues: [PersistenceLoadIssue] = []) {
         self.persistenceService = persistenceService
         debugLog.reset()
 
@@ -110,6 +113,11 @@ final class AppModel {
         updateGitRemoteSyncPolling()
         refreshAIStatsIfNeeded()
 
+        pendingStartupRecoveryDialog = startupRecoveryDialog(for: startupIssues)
+        if pendingStartupRecoveryDialog != nil {
+            statusMessage = String(localized: "startup.recovery.status", defaultValue: "Recovered invalid saved app data.", bundle: .module)
+        }
+
         Task { @MainActor in
             self.isSystemUIReady = true
             self.applyThemeMode()
@@ -131,8 +139,12 @@ final class AppModel {
 
     static func bootstrap() -> AppModel {
         let persistenceService = PersistenceService()
-        let snapshot = persistenceService.load()
-        return AppModel(snapshot: snapshot, persistenceService: persistenceService)
+        let loadResult = persistenceService.loadWithRecovery()
+        return AppModel(
+            snapshot: loadResult.snapshot,
+            persistenceService: persistenceService,
+            startupIssues: loadResult.issues
+        )
     }
 
     var selectedProject: Project? {
@@ -141,6 +153,18 @@ final class AppModel {
         }
 
         return projects.first(where: { $0.id == selectedProjectID })
+    }
+
+    func presentStartupRecoveryIfNeeded() {
+        guard hasPresentedStartupRecoveryDialog == false,
+              let dialog = pendingStartupRecoveryDialog,
+              let parentWindow = presentationWindow() else {
+            return
+        }
+
+        hasPresentedStartupRecoveryDialog = true
+        pendingStartupRecoveryDialog = nil
+        ConfirmDialogPresenter.present(dialog: dialog, parentWindow: parentWindow) { _ in }
     }
 
     var selectedWorkspace: ProjectWorkspace? {
@@ -295,6 +319,42 @@ final class AppModel {
         statusMessage = String(localized: "app.debug_log.opened", defaultValue: "Opened debug log.", bundle: .module)
     }
 
+    func exportDiagnosticsArchive() {
+        do {
+            let destinationURL = try diagnosticsExportService.requestExportDestination(appDisplayName: appDisplayName)
+            statusMessage = String(localized: "diagnostics.export.running", defaultValue: "Exporting diagnostics…", bundle: .module)
+
+            let appDisplayName = self.appDisplayName
+            let appVersionDescription = self.appVersionDescription
+            Task.detached(priority: .userInitiated) {
+                do {
+                    let archiveURL = try AppDiagnosticsExportService().exportArchive(
+                        to: destinationURL,
+                        appDisplayName: appDisplayName,
+                        appVersion: appVersionDescription
+                    )
+                    await MainActor.run {
+                        NSWorkspace.shared.activateFileViewerSelecting([archiveURL])
+                        self.statusMessage = String(
+                            format: String(localized: "diagnostics.export.success_format", defaultValue: "Exported diagnostics to %@.", bundle: .module),
+                            archiveURL.lastPathComponent
+                        )
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.debugLog.log("diagnostics-export", "failed error=\(error.localizedDescription)")
+                        self.presentDiagnosticsExportError(error)
+                    }
+                }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            debugLog.log("diagnostics-export", "failed error=\(error.localizedDescription)")
+            presentDiagnosticsExportError(error)
+        }
+    }
+
     func openSelectedProjectInVSCode() {
         guard let project = selectedProject else {
             statusMessage = String(localized: "project.none_selected", defaultValue: "No project selected.", bundle: .module)
@@ -393,8 +453,10 @@ final class AppModel {
     func addProject() {
         guard let parentWindow = presentationWindow() else {
             statusMessage = String(localized: "app.window.main_missing", defaultValue: "Unable to find the main window.", bundle: .module)
+            debugLog.log("project-create", "open-dialog failed reason=main-window-missing")
             return
         }
+        debugLog.log("project-create", "open-dialog")
 
         let dialog = ProjectEditorDialogState(
             title: String(localized: "project.create.title", defaultValue: "Create Project", bundle: .module),
@@ -408,7 +470,15 @@ final class AppModel {
         )
 
         ProjectEditorPanelPresenter.present(dialog: dialog, parentWindow: parentWindow) { [weak self] result in
-            guard let self, let result else { return }
+            guard let self else { return }
+            guard let result else {
+                self.debugLog.log("project-create", "dialog cancelled")
+                return
+            }
+            self.debugLog.log(
+                "project-create",
+                "dialog confirmed name=\(result.name) path=\(result.path) symbol=\(result.badgeSymbol ?? "nil") color=\(result.badgeColorHex)"
+            )
             self.importProject(
                 name: result.name.trimmingCharacters(in: .whitespacesAndNewlines),
                 path: result.path.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -430,9 +500,14 @@ final class AppModel {
         panel.message = String(localized: "project.open_folder.message", defaultValue: "Choose a project folder to import.", bundle: .module)
 
         let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self, response == .OK, let url = panel.url else {
+            guard let self else {
                 return
             }
+            guard response == .OK, let url = panel.url else {
+                self.debugLog.log("project-create", "open-folder cancelled")
+                return
+            }
+            self.debugLog.log("project-create", "open-folder selected path=\(url.path)")
             self.importProject(
                 name: url.lastPathComponent,
                 path: url.path,
@@ -847,10 +922,6 @@ final class AppModel {
 
     func selectGitEntry(_ entry: GitFileEntry, extendingRange: Bool) {
         gitStore.selectEntry(entry, in: gitState, extendingRange: extendingRange)
-    }
-
-    func setAllGitEntrySelection(for kind: GitFileKind, selected: Bool) {
-        gitStore.setAllEntrySelection(for: kind, in: gitState, selected: selected)
     }
 
     func prepareGitEntryContextMenu(_ entry: GitFileEntry) {
@@ -1941,6 +2012,72 @@ final class AppModel {
         return NSApp.windows.first(where: { !($0 is NSPanel) && $0.isVisible })
     }
 
+    private func presentDiagnosticsExportError(_ error: Error) {
+        guard let parentWindow = presentationWindow() else {
+            statusMessage = error.localizedDescription
+            return
+        }
+
+        statusMessage = error.localizedDescription
+        let dialog = ConfirmDialogState(
+            title: String(localized: "diagnostics.export.error.title", defaultValue: "Unable to Export Diagnostics", bundle: .module),
+            message: error.localizedDescription,
+            icon: "tray.and.arrow.down.fill",
+            iconColor: AppTheme.warning,
+            primaryTitle: String(localized: "common.ok", defaultValue: "OK", bundle: .module)
+        )
+        ConfirmDialogPresenter.present(dialog: dialog, parentWindow: parentWindow) { _ in }
+    }
+
+    private func startupRecoveryDialog(for issues: [PersistenceLoadIssue]) -> ConfirmDialogState? {
+        guard !issues.isEmpty else {
+            return nil
+        }
+
+        var lines: [String] = []
+        for issue in issues {
+            switch issue {
+            case let .invalidStateFile(backupFileName):
+                if let backupFileName, !backupFileName.isEmpty {
+                    lines.append(
+                        String(
+                            format: String(
+                                localized: "startup.recovery.invalid_state.backup_format",
+                                defaultValue: "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+                                bundle: .module
+                            ),
+                            backupFileName
+                        )
+                    )
+                } else {
+                    lines.append(
+                        String(
+                            localized: "startup.recovery.invalid_state",
+                            defaultValue: "The saved app configuration was invalid and has been reset to defaults.",
+                            bundle: .module
+                        )
+                    )
+                }
+            case .sanitizedState:
+                lines.append(
+                    String(
+                        localized: "startup.recovery.sanitized",
+                        defaultValue: "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+                        bundle: .module
+                    )
+                )
+            }
+        }
+
+        return ConfirmDialogState(
+            title: String(localized: "startup.recovery.title", defaultValue: "Recovered App Data", bundle: .module),
+            message: lines.joined(separator: "\n\n"),
+            icon: "exclamationmark.triangle.fill",
+            iconColor: .orange,
+            primaryTitle: String(localized: "common.ok", defaultValue: "OK", bundle: .module)
+        )
+    }
+
     private func startActivityWatchers() {
         activityStatusWatcher?.cancel()
 
@@ -2527,15 +2664,46 @@ final class AppModel {
     }
 
     private func importProject(name: String, path: String, badgeText: String, badgeSymbol: String?, badgeColorHex: String) {
-        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawPath = (path as NSString).expandingTildeInPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPath = URL(fileURLWithPath: rawPath).standardizedFileURL.path
+        debugLog.log(
+            "project-create",
+            "import start rawPath=\(path) normalizedPath=\(normalizedPath) name=\(name) symbol=\(badgeSymbol ?? "nil") color=\(badgeColorHex)"
+        )
         guard !normalizedPath.isEmpty else {
             statusMessage = String(localized: "project.path.empty", defaultValue: "Project path cannot be empty.", bundle: .module)
+            debugLog.log("project-create", "import failed reason=empty-path")
             return
         }
 
-        if let existing = projects.first(where: { $0.path == normalizedPath }) {
+        var isDirectory: ObjCBool = false
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: normalizedPath, isDirectory: &isDirectory) {
+            guard isDirectory.boolValue else {
+                statusMessage = String(localized: "project.path.invalid_directory", defaultValue: "Project path must be a folder.", bundle: .module)
+                debugLog.log("project-create", "import failed reason=path-is-file path=\(normalizedPath)")
+                return
+            }
+            debugLog.log("project-create", "path exists path=\(normalizedPath)")
+        } else {
+            do {
+                debugLog.log("project-create", "creating directory path=\(normalizedPath)")
+                try fileManager.createDirectory(atPath: normalizedPath, withIntermediateDirectories: true, attributes: nil)
+                debugLog.log("project-create", "created directory path=\(normalizedPath)")
+            } catch {
+                statusMessage = String(
+                    format: String(localized: "project.path.create_failed", defaultValue: "Failed to create project folder: %@.", bundle: .module),
+                    error.localizedDescription
+                )
+                debugLog.log("project-create", "import failed reason=create-directory error=\(error.localizedDescription) path=\(normalizedPath)")
+                return
+            }
+        }
+
+        if let existing = projects.first(where: { URL(fileURLWithPath: $0.path).standardizedFileURL.path == normalizedPath }) {
             selectedProjectID = existing.id
             statusMessage = String(localized: "project.exists.switched", defaultValue: "Project already exists. Switched to it.", bundle: .module)
+            debugLog.log("project-create", "switched-to-existing projectID=\(existing.id.uuidString) path=\(normalizedPath)")
             refreshGitState()
             updateGitRemoteSyncPolling()
             refreshAIStatsIfNeeded()
@@ -2553,6 +2721,7 @@ final class AppModel {
             badgeColorHex: badgeColorHex,
             gitDefaultPushRemoteName: nil
         )
+        debugLog.log("project-create", "project-created id=\(project.id.uuidString) name=\(project.name) path=\(project.path)")
         projects.append(project)
         workspaces.append(ProjectWorkspace.sample(projectID: project.id, path: project.path))
         selectedProjectID = project.id
@@ -2560,10 +2729,14 @@ final class AppModel {
             format: String(localized: "project.add.success_format", defaultValue: "Added project %@.", bundle: .module),
             project.name
         )
+        debugLog.log("project-create", "persist begin projectID=\(project.id.uuidString)")
         persist()
+        debugLog.log("project-create", "persist complete projectID=\(project.id.uuidString)")
         refreshGitState()
+        debugLog.log("project-create", "git refresh requested projectID=\(project.id.uuidString)")
         updateGitRemoteSyncPolling()
         refreshAIStatsIfNeeded()
+        debugLog.log("project-create", "import complete projectID=\(project.id.uuidString)")
     }
 
 }

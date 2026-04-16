@@ -99,6 +99,72 @@ All shortcuts can be customized in **Settings > Shortcuts**.
 
 Found a bug or have a feature request? Open an [issue on GitHub](https://github.com/duxweb/codux/issues).
 
+When reporting a bug, please include the following diagnostics whenever possible:
+
+### App Logs
+
+The easiest way is:
+
+- Open `Help -> Export Diagnostics…`
+- Save the generated `.zip`
+- Attach that archive to your GitHub issue
+
+The diagnostics archive includes the most important files for troubleshooting, including:
+
+- app runtime logs
+- previous rotated logs
+- saved app state files
+- invalid state backups when available
+- related crash / hang / spin reports from macOS when available
+
+If you need to collect logs manually, Codux writes runtime logs to:
+
+- `~/Library/Application Support/dmux/logs/dmux-debug.log`
+- `~/Library/Application Support/dmux/logs/dmux-debug.previous.log`
+
+You can also open the current log file from the app via the top bar action: `Debug Log`.
+
+Or run this command in Terminal to open the log folder directly:
+
+```bash
+open ~/Library/Application\ Support/dmux/logs
+```
+
+### Crash Reports
+
+If the app is frozen or unresponsive, still export diagnostics first from:
+
+- `Help -> Export Diagnostics…`
+
+If the app crashes or becomes unresponsive right after launch, macOS may generate a crash report here:
+
+- `~/Library/Logs/DiagnosticReports/`
+
+In most cases, the file you need will be named like one of these:
+
+- `dmux-YYYY-MM-DD-*.ips`
+- `dmux-bin-YYYY-MM-DD-*.ips`
+
+If there are multiple files, please attach the one whose timestamp is closest to the time of the crash.
+
+To open the crash report folder directly, run:
+
+```bash
+open ~/Library/Logs/DiagnosticReports
+```
+
+### Recommended Issue Attachments
+
+Please attach or paste:
+
+1. Your macOS version and Codux version
+2. Steps to reproduce the issue
+3. `dmux-debug.log`
+4. `dmux-debug.previous.log` if it exists
+5. The matching crash report from `~/Library/Logs/DiagnosticReports/` if the app crashed
+
+If convenient, compress the relevant files into a single `.zip` before submitting the issue.
+
 ---
 
 <p align="center">
