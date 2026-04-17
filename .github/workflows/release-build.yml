@@ -103,12 +103,29 @@ jobs:
           bash scripts/release/extract-release-notes.sh "${{ steps.meta.outputs.version }}" CHANGELOG.md > "$notes_path"
           echo "path=${notes_path}" >> "$GITHUB_OUTPUT"
 
+      - name: Validate Sparkle signing configuration
+        if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
+        shell: bash
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_PUBLIC_ED_KEY:-}" ]]; then
+            echo "SPARKLE_PUBLIC_ED_KEY is required for published releases" >&2
+            exit 1
+          fi
+          if [[ -z "${SPARKLE_PRIVATE_ED_KEY:-}" ]]; then
+            echo "SPARKLE_PRIVATE_ED_KEY is required for published releases" >&2
+            exit 1
+          fi
+
       - name: Build app and dmg
         shell: bash
         env:
           DMUX_VERSION: ${{ steps.meta.outputs.version }}
           DMUX_BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
           DMUX_LOG_PROFILE: compact
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
           APPLE_CODESIGN_IDENTITY: ${{ env.APPLE_CODESIGN_IDENTITY }}
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
           APPLE_API_PRIVATE_KEY_PATH: ${{ env.APPLE_API_PRIVATE_KEY_PATH }}
@@ -144,6 +161,41 @@ jobs:
           mkdir -p dist
           cp "$release_assets_dir"/* dist/
 
+      - name: Generate Sparkle appcast
+        shell: bash
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_PRIVATE_ED_KEY:-}" ]]; then
+            echo "SPARKLE_PRIVATE_ED_KEY is required to publish a signed Sparkle appcast" >&2
+            exit 1
+          fi
+
+          sparkle_bin_dir="$(find "${PWD}/.xcode-release/SourcePackages" -path '*sparkle/Sparkle/bin' | head -n 1)"
+          if [[ -z "${sparkle_bin_dir}" ]]; then
+            echo "Unable to locate Sparkle tools in SourcePackages" >&2
+            exit 1
+          fi
+
+          appcast_dir="$RUNNER_TEMP/sparkle-appcast"
+          rm -rf "$appcast_dir"
+          mkdir -p "$appcast_dir"
+
+          release_dmg="Codux-${{ steps.meta.outputs.version }}-macos-universal.dmg"
+          cp "dist/${release_dmg}" "$appcast_dir/"
+          cp "${{ steps.notes.outputs.path }}" "$appcast_dir/Codux-${{ steps.meta.outputs.version }}-macos-universal.md"
+
+          printf '%s' "$SPARKLE_PRIVATE_ED_KEY" | "${sparkle_bin_dir}/generate_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/duxweb/codux/releases/download/v${{ steps.meta.outputs.version }}/" \
+            --full-release-notes-url "https://github.com/duxweb/codux/releases/tag/v${{ steps.meta.outputs.version }}" \
+            --embed-release-notes \
+            --link "https://github.com/duxweb/codux" \
+            -o "$appcast_dir/appcast.xml" \
+            "$appcast_dir"
+
+          cp "$appcast_dir/appcast.xml" dist/appcast.xml
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -152,6 +204,7 @@ jobs:
             dist/Codux-${{ steps.meta.outputs.version }}-macos-universal.dmg
             dist/Codux-${{ steps.meta.outputs.version }}-macos-universal.zip
             dist/Codux-debug-${{ steps.meta.outputs.version }}-debug-macos-universal.dmg
+            dist/appcast.xml
             dist/SHA256SUMS.txt
           if-no-files-found: error
 
@@ -166,6 +219,7 @@ jobs:
             dist/Codux-${{ steps.meta.outputs.version }}-macos-universal.dmg
             dist/Codux-${{ steps.meta.outputs.version }}-macos-universal.zip
             dist/Codux-debug-${{ steps.meta.outputs.version }}-debug-macos-universal.dmg
+            dist/appcast.xml
             dist/SHA256SUMS.txt
 
       - name: Publish Homebrew tap

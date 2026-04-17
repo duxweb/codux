@@ -62,6 +62,7 @@ final class AppModel {
     private let gitCredentialStore = GitCredentialStore()
     private let activityService = ProjectActivityService()
     private let diagnosticsExportService = AppDiagnosticsExportService()
+    private let appUpdaterService = AppUpdaterService(isEnabled: AppUpdaterService.isSupportedConfiguration)
     private let runtimeBridgeService = AIRuntimeBridgeService()
     private let runtimeIngressService = AIRuntimeIngressService.shared
     private let toolDriverFactory = AIToolDriverFactory.shared
@@ -90,6 +91,7 @@ final class AppModel {
     private var terminalRecoveryRetryTokenBySessionID: [UUID: Int] = [:]
     private var pendingStartupRecoveryDialog: ConfirmDialogState?
     private var hasPresentedStartupRecoveryDialog = false
+    private var hasScheduledLaunchUpdateCheck = false
 
     init(snapshot: AppSnapshot?, persistenceService: PersistenceService, startupIssues: [PersistenceLoadIssue] = []) {
         self.persistenceService = persistenceService
@@ -146,6 +148,15 @@ final class AppModel {
         pendingStartupRecoveryDialog = startupRecoveryDialog(for: startupIssues)
         if pendingStartupRecoveryDialog != nil {
             statusMessage = String(localized: "startup.recovery.status", defaultValue: "Recovered invalid saved app data.", bundle: .module)
+        }
+
+        appUpdaterService.onCanCheckForUpdatesChanged = { [weak self] canCheck in
+            guard let self else {
+                return
+            }
+            if canCheck {
+                self.isCheckingForUpdates = false
+            }
         }
 
         Task { @MainActor in
@@ -209,6 +220,7 @@ final class AppModel {
         hasLoggedRootViewAppearance = true
         debugLog.log("startup-ui", "root-view appeared selectedProject=\(selectedProject?.name ?? "nil")")
         unlockDeferredTerminalStartupAfterInitialPresentation()
+        scheduleLaunchUpdateCheckIfNeeded()
     }
 
     func noteWorkspaceViewAppeared() {
@@ -2950,20 +2962,54 @@ final class AppModel {
     }
 
     func checkForUpdates() {
+        if appUpdaterService.isAvailable {
+            do {
+                try appUpdaterService.checkForUpdates()
+            } catch {
+                presentSparkleConfigurationError(error)
+            }
+            return
+        }
+
+        runLegacyUpdateCheck(interactive: true)
+    }
+
+    private func scheduleLaunchUpdateCheckIfNeeded() {
+        guard hasScheduledLaunchUpdateCheck == false else {
+            return
+        }
+        hasScheduledLaunchUpdateCheck = true
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard let self else {
+                return
+            }
+            if self.appUpdaterService.isAvailable {
+                self.appUpdaterService.performLaunchBackgroundCheckIfNeeded()
+            } else {
+                self.runLegacyUpdateCheck(interactive: false)
+            }
+        }
+    }
+
+    private func runLegacyUpdateCheck(interactive: Bool) {
         guard !isCheckingForUpdates else {
             return
         }
         isCheckingForUpdates = true
-        statusMessage = String(localized: "update.checking", defaultValue: "Checking for updates...", bundle: .module)
+        if interactive {
+            statusMessage = String(localized: "update.checking", defaultValue: "Checking for updates...", bundle: .module)
+        }
 
         Task { @MainActor in
             defer { isCheckingForUpdates = false }
 
             do {
                 let result = try await AppReleaseService.checkForUpdates(currentVersion: currentAppVersion)
-                presentUpdateCheckResult(result)
+                presentLegacyUpdateCheckResult(result, interactive: interactive)
             } catch {
-                presentUpdateCheckError(error)
+                presentLegacyUpdateCheckError(error, interactive: interactive)
             }
         }
     }
@@ -3070,14 +3116,19 @@ final class AppModel {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func presentUpdateCheckResult(_ result: AppReleaseCheckResult) {
+    private func presentLegacyUpdateCheckResult(_ result: AppReleaseCheckResult, interactive: Bool) {
         guard let parentWindow = presentationWindow() else {
-            statusMessage = String(localized: "app.window.main_missing", defaultValue: "Unable to find the main window.", bundle: .module)
+            if interactive {
+                statusMessage = String(localized: "app.window.main_missing", defaultValue: "Unable to find the main window.", bundle: .module)
+            }
             return
         }
 
         switch result {
         case .upToDate(let currentVersion, let latestVersion):
+            guard interactive else {
+                return
+            }
             statusMessage = String(localized: "update.latest.title", defaultValue: "You're up to date.", bundle: .module)
             let dialog = ConfirmDialogState(
                 title: String(localized: "update.latest.title", defaultValue: "You're up to date.", bundle: .module),
@@ -3093,6 +3144,11 @@ final class AppModel {
             ConfirmDialogPresenter.present(dialog: dialog, parentWindow: parentWindow) { _ in }
 
         case .updateAvailable(let currentVersion, let latest):
+            statusMessage = String(
+                format: String(localized: "update.available.message_format", defaultValue: "A new version v%@ is available. You are currently using v%@.", bundle: .module),
+                latest.version,
+                currentVersion
+            )
             let notes = AppReleaseService.releaseNotesExcerpt(from: latest.body)
             var message = String(
                 format: String(localized: "update.available.message_format", defaultValue: "A new version v%@ is available. You are currently using v%@.", bundle: .module),
@@ -3120,7 +3176,11 @@ final class AppModel {
         }
     }
 
-    private func presentUpdateCheckError(_ error: Error) {
+    private func presentLegacyUpdateCheckError(_ error: Error, interactive: Bool) {
+        guard interactive else {
+            return
+        }
+
         guard let parentWindow = presentationWindow() else {
             statusMessage = error.localizedDescription
             return
@@ -3130,6 +3190,23 @@ final class AppModel {
         let dialog = ConfirmDialogState(
             title: String(localized: "update.error.title", defaultValue: "Unable to Check for Updates", bundle: .module),
             message: String(localized: "update.error.message", defaultValue: "Please check your network connection and try again.", bundle: .module),
+            icon: "wifi.exclamationmark",
+            iconColor: AppTheme.warning,
+            primaryTitle: String(localized: "common.ok", defaultValue: "OK", bundle: .module)
+        )
+        ConfirmDialogPresenter.present(dialog: dialog, parentWindow: parentWindow) { _ in }
+    }
+
+    private func presentSparkleConfigurationError(_ error: Error) {
+        guard let parentWindow = presentationWindow() else {
+            statusMessage = error.localizedDescription
+            return
+        }
+
+        statusMessage = error.localizedDescription
+        let dialog = ConfirmDialogState(
+            title: String(localized: "update.error.title", defaultValue: "Unable to Check for Updates", bundle: .module),
+            message: error.localizedDescription,
             icon: "wifi.exclamationmark",
             iconColor: AppTheme.warning,
             primaryTitle: String(localized: "common.ok", defaultValue: "OK", bundle: .module)

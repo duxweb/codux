@@ -102,6 +102,7 @@ update_app_metadata_if_needed() {
   local bundle_name="${DMUX_APP_BUNDLE_NAME:-${app_name}}"
   local bundle_identifier_suffix="${DMUX_BUNDLE_IDENTIFIER_SUFFIX:-}"
   local log_profile="${DMUX_LOG_PROFILE:-}"
+  local sparkle_public_ed_key="${SPARKLE_PUBLIC_ED_KEY:-}"
 
   if [[ "${display_name}" != "${base_app_name}" ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${display_name}" "${main_plist_path}" >/dev/null 2>&1 || true
@@ -122,6 +123,11 @@ update_app_metadata_if_needed() {
   if [[ -n "${log_profile}" ]]; then
     /usr/libexec/PlistBuddy -c "Delete :DMUXLogProfile" "${main_plist_path}" >/dev/null 2>&1 || true
     /usr/libexec/PlistBuddy -c "Add :DMUXLogProfile string ${log_profile}" "${main_plist_path}" >/dev/null 2>&1 || true
+  fi
+
+  /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "${main_plist_path}" >/dev/null 2>&1 || true
+  if [[ -n "${sparkle_public_ed_key}" ]]; then
+    /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string ${sparkle_public_ed_key}" "${main_plist_path}" >/dev/null 2>&1 || true
   fi
 }
 

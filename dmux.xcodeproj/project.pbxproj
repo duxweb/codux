@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		011BED1E652A34A9642CEDEA /* Package.swift in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8AF9CB866BDB2AF3ECA35178 /* Package.swift */; };
 		0677DA593A0554DAC639D0A3 /* AppReleaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* AppUpdaterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */; };
+		A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B60 /* Sparkle */; };
 		0D664E0A08F199B7A97D0BA2 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CDEB30421E61195A008FD00E /* Localizable.xcstrings */; };
 		0E5992E59E3539EDBAD6E6F5 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 79E5F0CE1296648C8A61C45E /* SwiftTerm */; };
 		0FA3288DB5DECC9BDA2E1291 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E1EC9BC74648163A178985 /* Theme.swift */; };
@@ -136,6 +138,7 @@
 		D48B542546FE32FD237D7575 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		DA51FF0D184B4B658DF3C288 /* Codux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Codux.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppReleaseService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdaterService.swift; sourceTree = "<group>"; };
 		E0E565A0971373275B0012B0 /* WorkspacePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePaths.swift; sourceTree = "<group>"; };
 		E4DFD3851711A42A405F5E7D /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
 		ED37E17B7F68D17CEE7E83E4 /* CodexHookRuntimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexHookRuntimeService.swift; sourceTree = "<group>"; };
@@ -147,6 +150,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */,
 				0E5992E59E3539EDBAD6E6F5 /* SwiftTerm in Frameworks */,
 				94E74A9C02052D31600A15A8 /* UniformTypeIdentifiers.framework in Frameworks */,
 				7CC77BFB4230078241327312 /* Carbon.framework in Frameworks */,
@@ -334,6 +338,7 @@
 				88EA7F3568E80A7CE3A272F8 /* AppDebugLog.swift */,
 				2A3B4C5D6E7F8091A2B3C4D5 /* AppDiagnosticsExportService.swift */,
 				DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */,
+				A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */,
 				9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */,
 				3CAAE910372ED268D7D027AC /* CodexBarRuntimeTransport.swift */,
 				ED37E17B7F68D17CEE7E83E4 /* CodexHookRuntimeService.swift */,
@@ -383,6 +388,7 @@
 			);
 			name = dmux;
 			packageProductDependencies = (
+				A1B2C3D4E5F60718293A4B60 /* Sparkle */,
 				79E5F0CE1296648C8A61C45E /* SwiftTerm */,
 			);
 			productName = dmux;
@@ -422,6 +428,7 @@
 			mainGroup = 6D7A0B5D2BCF85EFCB8A088C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A1B2C3D4E5F60718293A4B5F /* XCRemoteSwiftPackageReference "Sparkle" */,
 				DE0EE30F04D33716522175BA /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -473,6 +480,7 @@
 				1E6B5C4D3A2F1E0D9C8B7A6F /* AppPerformanceMonitorStore.swift in Sources */,
 				CF756E0559A097A4F15FF4E4 /* AppModels.swift in Sources */,
 				0677DA593A0554DAC639D0A3 /* AppReleaseService.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* AppUpdaterService.swift in Sources */,
 				2CD0F523B4EB37800317D6CD /* AppSettings.swift in Sources */,
 				DFD93F9919DEF6621A8E543A /* CodexBarRuntimeTransport.swift in Sources */,
 				4634F57FC973786B1BC12CE7 /* CodexHookRuntimeService.swift in Sources */,
@@ -686,6 +694,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D4E5F60718293A4B5F /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.1;
+			};
+		};
 		DE0EE30F04D33716522175BA /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
@@ -697,6 +713,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D4E5F60718293A4B60 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F60718293A4B5F /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
 		79E5F0CE1296648C8A61C45E /* SwiftTerm */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = DE0EE30F04D33716522175BA /* XCRemoteSwiftPackageReference "SwiftTerm" */;

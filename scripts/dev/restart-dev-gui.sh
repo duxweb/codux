@@ -15,6 +15,7 @@ main_plist_path="${app_dir}/Contents/Info.plist"
 main_icns_path="${app_dir}/Contents/Resources/AppIcon.icns"
 iconset_dir="${build_dir}/AppIcon.iconset"
 icon_generator_bin="$(mktemp "${TMPDIR:-/tmp}/codux-dev-generate-app-icon.XXXXXX")"
+sparkle_public_ed_key="${SPARKLE_PUBLIC_ED_KEY:-Ya1zKPqmYxZUgJR7d/hJMEed3aw4nRuTu2TZR7Swd1M=}"
 
 cleanup() {
   rm -f "${icon_generator_bin}"
@@ -72,6 +73,10 @@ update_dev_metadata() {
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.duxweb.codux.dev" "${main_plist_path}"
   /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Codux-dev" "${main_plist_path}" >/dev/null 2>&1 || true
   /usr/libexec/PlistBuddy -c "Set :CFBundleName Codux-dev" "${main_plist_path}" >/dev/null 2>&1 || true
+  /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "${main_plist_path}" >/dev/null 2>&1 || true
+  if [[ -n "${sparkle_public_ed_key}" ]]; then
+    /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string ${sparkle_public_ed_key}" "${main_plist_path}" >/dev/null 2>&1 || true
+  fi
 }
 
 generate_app_icons() {

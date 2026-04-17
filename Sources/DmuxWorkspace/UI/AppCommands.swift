@@ -44,6 +44,13 @@ struct AppCommands: Commands {
             Button(String(format: String(localized: "menu.app.about_format", defaultValue: "About %@", bundle: .module), model.appDisplayName)) {
                 AboutWindowPresenter.show(model: model)
             }
+
+            Divider()
+
+            Button(model.isCheckingForUpdates ? String(localized: "about.checking_updates", defaultValue: "Checking...", bundle: .module) : String(localized: "about.updates", defaultValue: "Updates", bundle: .module)) {
+                model.checkForUpdates()
+            }
+            .disabled(model.isCheckingForUpdates)
         }
 
         CommandGroup(replacing: .help) {
