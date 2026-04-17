@@ -864,19 +864,69 @@ final class AppModel {
 
     func openAISession(_ session: AISessionSummary) {
         guard let command = toolDriverFactory.resumeCommand(for: session) else {
+            debugLog.log(
+                "ai-session-open",
+                "unsupported session=\(session.sessionID.uuidString) tool=\(session.lastTool ?? "nil") external=\(session.externalSessionID ?? "nil") reason=missing-command"
+            )
             statusMessage = String(localized: "ai.session.open.unsupported", defaultValue: "This session does not support opening.", bundle: .module)
             return
         }
+        guard let tool = session.lastTool?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !tool.isEmpty else {
+            debugLog.log(
+                "ai-session-open",
+                "unsupported session=\(session.sessionID.uuidString) tool=nil external=\(session.externalSessionID ?? "nil") reason=missing-tool"
+            )
+            statusMessage = String(localized: "ai.session.open.unsupported", defaultValue: "This session does not support opening.", bundle: .module)
+            return
+        }
+        guard let externalSessionID = session.externalSessionID, !externalSessionID.isEmpty else {
+            debugLog.log(
+                "ai-session-open",
+                "unsupported session=\(session.sessionID.uuidString) tool=\(tool) external=nil reason=missing-external"
+            )
+            statusMessage = String(localized: "ai.session.identifier.missing", defaultValue: "Missing session identifier.", bundle: .module)
+            return
+        }
+        debugLog.log(
+            "ai-session-open",
+            "request source=indexed session=\(session.sessionID.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") tool=\(tool) external=\(externalSessionID) command=\(command)"
+        )
 
+        if let selectedSessionID = selectedSessionID {
+            runtimeStore.registerExpectedLogicalSession(
+                sessionID: selectedSessionID,
+                tool: tool,
+                externalSessionID: externalSessionID,
+                indexedSummary: session
+            )
+        }
         if tryReuseSelectedTopTerminalForCommand(command) {
+            debugLog.log(
+                "ai-session-open",
+                "reuse-current selected=\(selectedSessionID?.uuidString ?? "nil") tool=\(tool) external=\(externalSessionID) command=\(command)"
+            )
             statusMessage = String(localized: "ai.session.open.current_success", defaultValue: "Opened session in the current terminal.", bundle: .module)
             return
+        }
+        if let selectedSessionID = selectedSessionID {
+            runtimeStore.clearExpectedLogicalSession(sessionID: selectedSessionID)
         }
 
         guard let newSessionID = createSplitTerminal(command: command, axis: .horizontal) else {
             statusMessage = String(localized: "workspace.split.create_failed", defaultValue: "Unable to create a new split pane.", bundle: .module)
             return
         }
+        runtimeStore.registerExpectedLogicalSession(
+            sessionID: newSessionID,
+            tool: tool,
+            externalSessionID: externalSessionID,
+            indexedSummary: session
+        )
+        debugLog.log(
+            "ai-session-open",
+            "create-split newSession=\(newSessionID.uuidString) tool=\(tool) external=\(externalSessionID) command=\(command)"
+        )
         terminalFocusRequestID = newSessionID
         statusMessage = String(localized: "ai.session.open.split_success", defaultValue: "Opened session in a new split pane.", bundle: .module)
     }
@@ -1083,46 +1133,7 @@ final class AppModel {
         }
         terminalFocusRequestID = sessionID
         let didSend = SwiftTermTerminalRegistry.shared.sendInterrupt(to: sessionID)
-        guard didSend else {
-            return false
-        }
-
-        if runtimeStore.markInterrupted(sessionID: sessionID) {
-            NotificationCenter.default.post(
-                name: .dmuxAIRuntimeActivityPulse,
-                object: nil
-            )
-            NotificationCenter.default.post(
-                name: .dmuxAIRuntimeBridgeDidChange,
-                object: nil,
-                userInfo: ["kind": "interrupt"]
-            )
-        }
-
-        return true
-    }
-
-    @discardableResult
-    func markSelectedSessionInterruptedIfResponding() -> Bool {
-        guard let sessionID = selectedSessionID,
-              runtimeStore.responseState(for: sessionID) == .responding else {
-            return false
-        }
-
-        guard runtimeStore.markInterrupted(sessionID: sessionID) else {
-            return false
-        }
-
-        NotificationCenter.default.post(
-            name: .dmuxAIRuntimeActivityPulse,
-            object: nil
-        )
-        NotificationCenter.default.post(
-            name: .dmuxAIRuntimeBridgeDidChange,
-            object: nil,
-            userInfo: ["kind": "escape-interrupt"]
-        )
-        return true
+        return didSend
     }
 
     func session(for sessionID: UUID) -> TerminalSession? {
@@ -2201,6 +2212,10 @@ final class AppModel {
         guard let selectedProjectID,
               let project = projects.first(where: { $0.id == selectedProjectID }),
               let index = workspaces.firstIndex(where: { $0.projectID == selectedProjectID }) else {
+            debugLog.log(
+                "terminal-command",
+                "split-failed axis=\(axis == .horizontal ? "horizontal" : "vertical") reason=missing-selected-project command=\(command)"
+            )
             return nil
         }
 
@@ -2220,6 +2235,10 @@ final class AppModel {
         workspaces = updatedWorkspaces
         persist()
         refreshAIStatsIfNeeded()
+        debugLog.log(
+            "terminal-command",
+            "split-created session=\(session.id.uuidString) axis=\(axis == .horizontal ? "horizontal" : "vertical") command=\(command)"
+        )
         return session.id
     }
 
@@ -2227,6 +2246,20 @@ final class AppModel {
         guard let workspace = selectedWorkspace,
               let selectedSessionID,
               workspace.topSessionIDs.contains(selectedSessionID) else {
+            debugLog.log(
+                "terminal-command",
+                "reuse-skip reason=selection-not-top selected=\(selectedSessionID?.uuidString ?? "nil") command=\(command)"
+            )
+            return false
+        }
+
+        if let binding = runtimeStore.terminalBindingsByID[selectedSessionID],
+           binding.status == "running",
+           !binding.tool.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            debugLog.log(
+                "terminal-command",
+                "reuse-failed session=\(selectedSessionID.uuidString) reason=runtime-live tool=\(binding.tool) response=\(binding.responseState?.rawValue ?? "nil") command=\(command)"
+            )
             return false
         }
 
@@ -2238,17 +2271,30 @@ final class AppModel {
               selectedSessionID == sessionID,
               let shellPID = SwiftTermTerminalRegistry.shared.shellPID(for: sessionID),
               shellPID > 0 else {
+            debugLog.log(
+                "terminal-command",
+                "reuse-failed session=\(sessionID.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") shellPID=\(SwiftTermTerminalRegistry.shared.shellPID(for: sessionID).map(String.init) ?? "nil") reason=missing-shell command=\(command)"
+            )
             return false
         }
 
         let inspector = TerminalProcessInspector()
         guard inspector.activeTool(forShellPID: shellPID) == nil,
               inspector.hasActiveCommand(forShellPID: shellPID) == false else {
+            debugLog.log(
+                "terminal-command",
+                "reuse-failed session=\(sessionID.uuidString) shellPID=\(shellPID) reason=busy command=\(command)"
+            )
             return false
         }
 
         terminalFocusRequestID = sessionID
-        return SwiftTermTerminalRegistry.shared.sendText(command + "\n", to: sessionID)
+        let didSend = SwiftTermTerminalRegistry.shared.sendText(command + "\n", to: sessionID)
+        debugLog.log(
+            "terminal-command",
+            "reuse-send session=\(sessionID.uuidString) shellPID=\(shellPID) sent=\(didSend) command=\(command)"
+        )
+        return didSend
     }
 
     private func invalidateAISessionCachesAndRefresh() {

@@ -35,6 +35,10 @@ protocol AIToolDriver: Sendable {
     var runtimeRefreshInterval: TimeInterval { get }
     var isRealtimeTool: Bool { get }
     var prefersHookDrivenResponseState: Bool { get }
+    var freezesDisplayTokensWhileResponding: Bool { get }
+    var seedsObservedBaselineOnFreshLaunch: Bool { get }
+    var allowsRuntimeExternalSessionSwitch: Bool { get }
+    var usesHistoricalExternalSessionHintForRuntimeProbe: Bool { get }
     var appliesGenericResponsePayloads: Bool { get }
 
     func matches(tool: String) -> Bool
@@ -59,6 +63,10 @@ protocol AIToolDriver: Sendable {
 
 extension AIToolDriver {
     var prefersHookDrivenResponseState: Bool { false }
+    var freezesDisplayTokensWhileResponding: Bool { false }
+    var seedsObservedBaselineOnFreshLaunch: Bool { false }
+    var allowsRuntimeExternalSessionSwitch: Bool { false }
+    var usesHistoricalExternalSessionHintForRuntimeProbe: Bool { true }
     var appliesGenericResponsePayloads: Bool { true }
 
     func handleRuntimeIngressEvent(
@@ -142,6 +150,18 @@ struct AIToolDriverFactory: Sendable {
         driver(for: tool)?.prefersHookDrivenResponseState ?? false
     }
 
+    func freezesDisplayTokensWhileResponding(for tool: String) -> Bool {
+        driver(for: tool)?.freezesDisplayTokensWhileResponding ?? false
+    }
+
+    func seedsObservedBaselineOnFreshLaunch(for tool: String) -> Bool {
+        driver(for: tool)?.seedsObservedBaselineOnFreshLaunch ?? false
+    }
+
+    func allowsRuntimeExternalSessionSwitch(for tool: String) -> Bool {
+        driver(for: tool)?.allowsRuntimeExternalSessionSwitch ?? false
+    }
+
     func appliesGenericResponsePayloads(for tool: String) -> Bool {
         driver(for: tool)?.appliesGenericResponsePayloads ?? true
     }
@@ -196,6 +216,7 @@ private struct ClaudeToolDriver: AIToolDriver {
     let runtimeRefreshInterval: TimeInterval = 0.9
     let isRealtimeTool = true
     let prefersHookDrivenResponseState = true
+    let allowsRuntimeExternalSessionSwitch = true
 
     func matches(tool: String) -> Bool {
         aliases.contains(tool)
@@ -247,6 +268,7 @@ private struct CodexToolDriver: AIToolDriver {
     let runtimeRefreshInterval: TimeInterval = 0.55
     let isRealtimeTool = true
     let prefersHookDrivenResponseState = true
+    let allowsRuntimeExternalSessionSwitch = true
     let appliesGenericResponsePayloads = false
 
     func matches(tool: String) -> Bool {
@@ -470,6 +492,8 @@ private struct OpenCodeToolDriver: AIToolDriver {
     let aliases: Set<String> = ["opencode"]
     let runtimeRefreshInterval: TimeInterval = 0.75
     let isRealtimeTool = true
+    let prefersHookDrivenResponseState = true
+    let allowsRuntimeExternalSessionSwitch = true
 
     func matches(tool: String) -> Bool {
         aliases.contains(tool)
@@ -487,6 +511,107 @@ private struct OpenCodeToolDriver: AIToolDriver {
             descriptors.append(AIToolRuntimeSourceDescriptor(path: walURL.path, watchKind: .file))
         }
         return descriptors
+    }
+
+    func handleRuntimeSocketEvent(
+        kind: String,
+        payloadData: Data,
+        projects: [Project],
+        liveEnvelopes: [AIToolUsageEnvelope],
+        existingRuntime: [UUID: AIRuntimeContextSnapshot]
+    ) async -> AIToolRuntimeIngressUpdate? {
+        _ = projects
+        guard kind == "opencode-runtime",
+              let envelope = try? JSONDecoder().decode(AIToolUsageEnvelope.self, from: payloadData),
+              let sessionID = UUID(uuidString: envelope.sessionId),
+              let projectID = UUID(uuidString: envelope.projectId) else {
+            return nil
+        }
+
+        let liveEnvelope = liveEnvelopes.first { UUID(uuidString: $0.sessionId) == sessionID }
+        let existingSnapshot = existingRuntime[sessionID]
+        if let liveEnvelope,
+           canonicalTool(liveEnvelope.tool) != id {
+            AppDebugLog.shared.log(
+                "opencode-driver",
+                "ignore stale kind=\(kind) session=\(sessionID.uuidString) liveTool=\(liveEnvelope.tool)"
+            )
+            return nil
+        }
+        if liveEnvelope == nil,
+           let existingSnapshot,
+           canonicalTool(existingSnapshot.tool) != id {
+            AppDebugLog.shared.log(
+                "opencode-driver",
+                "ignore stale kind=\(kind) session=\(sessionID.uuidString) runtimeTool=\(existingSnapshot.tool)"
+            )
+            return nil
+        }
+
+        let externalSessionID = normalizedSessionID(envelope.externalSessionID)
+            ?? existingSnapshot?.externalSessionID
+            ?? normalizedSessionID(liveEnvelope?.externalSessionID)
+        let model = normalizedSessionID(envelope.model)
+            ?? existingSnapshot?.model
+            ?? normalizedSessionID(liveEnvelope?.model)
+        let canReuseExistingTotals = shouldReuseExistingTotals(
+            externalSessionID: externalSessionID,
+            liveEnvelope: liveEnvelope,
+            existingSnapshot: existingSnapshot
+        )
+        let inheritedInputTokens = canReuseExistingTotals
+            ? max(liveEnvelope?.inputTokens ?? 0, existingSnapshot?.inputTokens ?? 0)
+            : 0
+        let inheritedOutputTokens = canReuseExistingTotals
+            ? max(liveEnvelope?.outputTokens ?? 0, existingSnapshot?.outputTokens ?? 0)
+            : 0
+        let inheritedTotalTokens = canReuseExistingTotals
+            ? max(liveEnvelope?.totalTokens ?? 0, existingSnapshot?.totalTokens ?? 0)
+            : 0
+        let updatedAt = max(
+            envelope.updatedAt,
+            liveEnvelope?.updatedAt ?? 0,
+            existingSnapshot?.updatedAt ?? 0
+        )
+
+        let runtimeSnapshot = AIRuntimeContextSnapshot(
+            tool: id,
+            externalSessionID: externalSessionID,
+            model: model,
+            inputTokens: max(envelope.inputTokens ?? 0, inheritedInputTokens),
+            outputTokens: max(envelope.outputTokens ?? 0, inheritedOutputTokens),
+            totalTokens: max(envelope.totalTokens ?? 0, inheritedTotalTokens),
+            updatedAt: updatedAt,
+            responseState: envelope.responseState
+        )
+
+        let responsePayloads: [AIResponseStatePayload]
+        if let responseState = envelope.responseState {
+            responsePayloads = [
+                AIResponseStatePayload(
+                    sessionId: sessionID.uuidString,
+                    sessionInstanceId: envelope.sessionInstanceId,
+                    invocationId: envelope.invocationId,
+                    projectId: projectID.uuidString,
+                    projectPath: envelope.projectPath,
+                    tool: id,
+                    responseState: responseState,
+                    updatedAt: updatedAt
+                ),
+            ]
+        } else {
+            responsePayloads = []
+        }
+
+        AppDebugLog.shared.log(
+            "opencode-driver",
+            "socket kind=\(kind) session=\(sessionID.uuidString) external=\(externalSessionID ?? "nil") model=\(model ?? "nil") response=\(envelope.responseState?.rawValue ?? "nil") total=\(runtimeSnapshot.totalTokens) reuseTotals=\(canReuseExistingTotals)"
+        )
+
+        return AIToolRuntimeIngressUpdate(
+            responsePayloads: responsePayloads,
+            runtimeSnapshotsBySessionID: [sessionID: runtimeSnapshot]
+        )
     }
 
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities {
@@ -543,6 +668,35 @@ private struct OpenCodeToolDriver: AIToolDriver {
             }
         }
     }
+
+    private func canonicalTool(_ tool: String) -> String {
+        aliases.contains(tool) ? id : tool
+    }
+
+    private func normalizedSessionID(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private func shouldReuseExistingTotals(
+        externalSessionID: String?,
+        liveEnvelope: AIToolUsageEnvelope?,
+        existingSnapshot: AIRuntimeContextSnapshot?
+    ) -> Bool {
+        guard let externalSessionID, !externalSessionID.isEmpty else {
+            return false
+        }
+        if normalizedSessionID(liveEnvelope?.externalSessionID) == externalSessionID {
+            return true
+        }
+        if existingSnapshot?.externalSessionID == externalSessionID {
+            return true
+        }
+        return false
+    }
 }
 
 private struct GeminiToolDriver: AIToolDriver {
@@ -550,6 +704,11 @@ private struct GeminiToolDriver: AIToolDriver {
     let aliases: Set<String> = ["gemini"]
     let runtimeRefreshInterval: TimeInterval = 0.75
     let isRealtimeTool = true
+    let prefersHookDrivenResponseState = true
+    let freezesDisplayTokensWhileResponding = true
+    let allowsRuntimeExternalSessionSwitch = true
+    let seedsObservedBaselineOnFreshLaunch = true
+    let usesHistoricalExternalSessionHintForRuntimeProbe = false
 
     func matches(tool: String) -> Bool {
         aliases.contains(tool)
@@ -557,64 +716,7 @@ private struct GeminiToolDriver: AIToolDriver {
 
     func runtimeSourceDescriptors(project: Project, envelope: AIToolUsageEnvelope?) -> [AIToolRuntimeSourceDescriptor] {
         _ = envelope
-        guard let chatsDirectoryURL = AIRuntimeSourceLocator.geminiChatsDirectoryURL(projectPath: project.path),
-              FileManager.default.fileExists(atPath: chatsDirectoryURL.path) else {
-            return []
-        }
-        return [AIToolRuntimeSourceDescriptor(path: chatsDirectoryURL.path, watchKind: .directory)]
-    }
-
-    func handleRuntimeIngressEvent(
-        descriptor: AIToolRuntimeSourceDescriptor,
-        projects: [Project],
-        liveEnvelopes: [AIToolUsageEnvelope]
-    ) async -> AIToolRuntimeIngressUpdate? {
-        _ = descriptor
-        let relevantEnvelopes = liveEnvelopes.filter { matches(tool: $0.tool) && $0.status == "running" }
-        guard !relevantEnvelopes.isEmpty else {
-            return nil
-        }
-
-        var update = AIToolRuntimeIngressUpdate()
-        for envelope in relevantEnvelopes {
-            guard let sessionID = UUID(uuidString: envelope.sessionId),
-                  let projectID = UUID(uuidString: envelope.projectId),
-                  let project = projects.first(where: { $0.id == projectID }),
-                  let parsed = parseGeminiSessionRuntimeState(
-                      projectPath: project.path,
-                      startedAt: envelope.startedAt ?? envelope.updatedAt,
-                      preferredSessionID: envelope.externalSessionID
-                  ) else {
-                continue
-            }
-
-            update.runtimeSnapshotsBySessionID[sessionID] = AIRuntimeContextSnapshot(
-                tool: id,
-                externalSessionID: parsed.externalSessionID,
-                model: parsed.model,
-                inputTokens: parsed.inputTokens,
-                outputTokens: parsed.outputTokens,
-                totalTokens: parsed.totalTokens,
-                updatedAt: parsed.updatedAt,
-                responseState: parsed.responseState
-            )
-
-            if let responseState = parsed.responseState {
-                update.responsePayloads.append(
-                    AIResponseStatePayload(
-                        sessionId: sessionID.uuidString,
-                        sessionInstanceId: envelope.sessionInstanceId,
-                        invocationId: envelope.invocationId,
-                        projectId: projectID.uuidString,
-                        projectPath: project.path,
-                        tool: id,
-                        responseState: responseState,
-                        updatedAt: parsed.updatedAt
-                    )
-                )
-            }
-        }
-        return update.isEmpty ? nil : update
+        return []
     }
 
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities {

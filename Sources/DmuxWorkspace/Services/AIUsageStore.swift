@@ -84,6 +84,30 @@ struct AIUsageStore: Sendable {
         }
     }
 
+    func indexedSessionTotal(projectID: UUID, tool: String, externalSessionID: String) -> Int? {
+        guard let snapshot = indexedProjectSnapshot(projectID: projectID) else {
+            return nil
+        }
+        return snapshot.sessions
+            .filter { $0.externalSessionID == externalSessionID && $0.lastTool == tool }
+            .map(\.totalTokens)
+            .max()
+    }
+
+    func indexedSessionSummary(projectID: UUID, tool: String, externalSessionID: String) -> AISessionSummary? {
+        guard let snapshot = indexedProjectSnapshot(projectID: projectID) else {
+            return nil
+        }
+        return snapshot.sessions
+            .filter { $0.externalSessionID == externalSessionID && $0.lastTool == tool }
+            .max { lhs, rhs in
+                if lhs.lastSeenAt != rhs.lastSeenAt {
+                    return lhs.lastSeenAt < rhs.lastSeenAt
+                }
+                return lhs.totalTokens < rhs.totalTokens
+            }
+    }
+
     func saveIndexedProjectSnapshot(_ snapshot: AIIndexedProjectSnapshot) {
         guard let data = try? JSONEncoder().encode(snapshot),
               let payload = String(data: data, encoding: .utf8) else {

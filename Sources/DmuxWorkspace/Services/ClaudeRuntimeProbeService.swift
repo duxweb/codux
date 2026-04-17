@@ -274,11 +274,55 @@ actor ClaudeRuntimeProbeService {
     private var lastLogAtByDedupeKey: [String: Double] = [:]
     private let logger = AppDebugLog.shared
 
+    func reset(runtimeSessionID: String) {
+        externalSessionIDByRuntimeSessionID[runtimeSessionID] = nil
+        lastLogMessageByRuntimeSessionID[runtimeSessionID] = nil
+    }
+
     func snapshot(
         runtimeSessionID: String,
         projectPath: String,
         knownExternalSessionID: String?
     ) async -> AIRuntimeContextSnapshot? {
+        let mappedExternalSessionID = mappedExternalSessionID(for: runtimeSessionID)
+        let preferredExternalSessionID: String? = {
+            if let mappedExternalSessionID, !mappedExternalSessionID.isEmpty {
+                return mappedExternalSessionID
+            }
+            guard let knownExternalSessionID, !knownExternalSessionID.isEmpty else {
+                return nil
+            }
+            return knownExternalSessionID
+        }()
+
+        if let preferredExternalSessionID {
+            if let snapshot = await ClaudeRuntimeLogCache.shared.snapshot(
+                projectPath: projectPath,
+                externalSessionID: preferredExternalSessionID
+            ) {
+                let source = mappedExternalSessionID == preferredExternalSessionID ? "mapped" : "live"
+                logRuntime(
+                    runtimeSessionID: runtimeSessionID,
+                    message: "hit source=\(source) runtimeSession=\(runtimeSessionID) externalSession=\(preferredExternalSessionID) model=\(snapshot.model ?? "nil") total=\(snapshot.totalTokens) response=\(snapshot.responseState?.rawValue ?? "nil")"
+                )
+                return normalizedSnapshot(
+                    runtimeSessionID: runtimeSessionID,
+                    externalSessionID: preferredExternalSessionID,
+                    snapshot: snapshot
+                )
+            }
+            let source = mappedExternalSessionID == preferredExternalSessionID ? "mapped" : "live"
+            logRuntime(
+                runtimeSessionID: runtimeSessionID,
+                message: "miss source=\(source) runtimeSession=\(runtimeSessionID) externalSession=\(preferredExternalSessionID)",
+                dedupeKey: "\(runtimeSessionID):miss:\(source)",
+                minimumInterval: 15
+            )
+            if mappedExternalSessionID == preferredExternalSessionID {
+                return nil
+            }
+        }
+
         if let knownExternalSessionID, !knownExternalSessionID.isEmpty {
             if let snapshot = await ClaudeRuntimeLogCache.shared.snapshot(
                 projectPath: projectPath,
@@ -302,7 +346,7 @@ actor ClaudeRuntimeProbeService {
             )
         }
 
-        if let mappedExternalSessionID = mappedExternalSessionID(for: runtimeSessionID) {
+        if let mappedExternalSessionID {
             guard let snapshot = await ClaudeRuntimeLogCache.shared.snapshot(
                 projectPath: projectPath,
                 externalSessionID: mappedExternalSessionID

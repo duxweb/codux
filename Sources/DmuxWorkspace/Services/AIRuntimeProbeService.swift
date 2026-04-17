@@ -99,6 +99,13 @@ struct AIRuntimeContextSnapshot {
     var responseState: AIResponseState?
     var wasInterrupted: Bool = false
     var hasCompletedTurn: Bool = false
+    var sessionOrigin: AIRuntimeSessionOrigin = .unknown
+}
+
+enum AIRuntimeSessionOrigin: String {
+    case unknown
+    case fresh
+    case restored
 }
 
 func parseCodexISO8601Date(_ value: String) -> Date? {
@@ -138,7 +145,8 @@ actor AIRuntimeContextProbe {
             return await opencodeRuntimeProbe.snapshot(
                 runtimeSessionID: runtimeSessionID,
                 projectPath: projectPath,
-                startedAt: startedAt
+                startedAt: startedAt,
+                knownExternalSessionID: nil
             )
         case "gemini":
             return await geminiRuntimeProbe.snapshot(
@@ -195,7 +203,8 @@ actor AIRuntimeContextProbe {
             return await opencodeRuntimeProbe.snapshot(
                 runtimeSessionID: runtimeSessionID,
                 projectPath: projectPath,
-                startedAt: startedAt
+                startedAt: startedAt,
+                knownExternalSessionID: knownExternalSessionID
             )
         case "gemini":
             return await geminiRuntimeProbe.snapshot(
@@ -216,6 +225,24 @@ actor AIRuntimeContextProbe {
                 responseState: nil,
                 hasCompletedTurn: false
             )
+        }
+    }
+
+    func reset(for tool: String?, runtimeSessionID: String) async {
+        guard let tool else {
+            return
+        }
+        switch normalize(tool: tool) {
+        case "codex":
+            await codexRuntimeProbe.reset(runtimeSessionID: runtimeSessionID)
+        case "claude":
+            await claudeRuntimeProbe.reset(runtimeSessionID: runtimeSessionID)
+        case "opencode":
+            await opencodeRuntimeProbe.reset(runtimeSessionID: runtimeSessionID)
+        case "gemini":
+            await geminiRuntimeProbe.reset(runtimeSessionID: runtimeSessionID)
+        default:
+            break
         }
     }
 

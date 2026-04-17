@@ -14,7 +14,6 @@ final class AIRuntimeIngressService {
     private let runtimeStore = AIRuntimeStateStore.shared
     private let usageStore = AIUsageStore()
     private let toolDriverFactory = AIToolDriverFactory.shared
-    private let responseRuntimeSyncService = AIResponseRuntimeSyncService.shared
     private let appLaunchCutoff = Date().timeIntervalSince1970
     private var runtimeSocketListenerFD: Int32 = -1
     private var runtimeSocketWatcher: DispatchSourceRead?
@@ -58,6 +57,7 @@ final class AIRuntimeIngressService {
                     sessionInstanceID: envelope.sessionInstanceId
                 )
             }
+            .map { effectiveLiveEnvelope($0) }
             .sorted { $0.updatedAt > $1.updatedAt }
 
         let responseStates = responsePayloadsBySessionID.values
@@ -116,6 +116,31 @@ final class AIRuntimeIngressService {
         return sessionInstanceID == expectedInstanceID
     }
 
+    private func postRuntimeBridgeDidChange(
+        kind: String,
+        switchedSessionID: UUID? = nil,
+        tool: String? = nil,
+        clearedSessionID: UUID? = nil,
+        clearedTool: String? = nil
+    ) {
+        var userInfo: [String: Any] = ["kind": kind]
+        if let switchedSessionID, let tool {
+            userInfo["didSwitchExternalSession"] = true
+            userInfo["sessionID"] = switchedSessionID.uuidString
+            userInfo["tool"] = canonicalToolName(tool)
+        }
+        if let clearedSessionID, let clearedTool {
+            userInfo["didClearRuntimeSession"] = true
+            userInfo["clearedSessionID"] = clearedSessionID.uuidString
+            userInfo["clearedTool"] = canonicalToolName(clearedTool)
+        }
+        NotificationCenter.default.post(
+            name: .dmuxAIRuntimeBridgeDidChange,
+            object: nil,
+            userInfo: userInfo
+        )
+    }
+
     func runtimeSourceDescriptors(for liveEnvelopes: [AIToolUsageEnvelope], projects: [Project]) -> [(path: String, tool: String)] {
         liveEnvelopes
             .filter { $0.status == "running" }
@@ -150,18 +175,6 @@ final class AIRuntimeIngressService {
                 .filter { isRealtimeTool($0.tool) }
                 .map { canonicalToolName($0.tool) }
         ).subtracting(excluded)
-    }
-
-    func syncResponseStates(
-        for tool: String,
-        liveEnvelopes: [AIToolUsageEnvelope],
-        projects: [Project]
-    ) async -> [AIResponseStatePayload] {
-        await responseRuntimeSyncService.responseStateUpdates(
-            liveEnvelopes: liveEnvelopes,
-            projects: projects,
-            toolFilter: canonicalToolName(tool)
-        )
     }
 
     func clearResponseState(sessionID: UUID) {
@@ -221,6 +234,7 @@ final class AIRuntimeIngressService {
 
         _ = fcntl(listener, F_SETFL, fcntl(listener, F_GETFL) | O_NONBLOCK)
         runtimeSocketListenerFD = listener
+        logger.log("runtime-socket", "listening path=\(socketPath)")
         let watcher = DispatchSource.makeReadSource(fileDescriptor: listener, queue: .main)
         watcher.setEventHandler { [weak self] in
             self?.acceptPendingRuntimeConnections()
@@ -325,6 +339,8 @@ final class AIRuntimeIngressService {
                    liveEnvelopes: liveEnvelopes
                ) {
                 let hasActivityUpdate = !customUpdate.responsePayloads.isEmpty || !customUpdate.runtimeSnapshotsBySessionID.isEmpty
+                var switchedSessionID: UUID?
+                var switchedTool: String?
                 for payload in customUpdate.responsePayloads {
                     self.runtimeStore.applyResponsePayload(payload)
                     self.logger.log(
@@ -333,7 +349,11 @@ final class AIRuntimeIngressService {
                     )
                 }
                 for (sessionID, snapshot) in customUpdate.runtimeSnapshotsBySessionID {
-                    self.runtimeStore.applyRuntimeSnapshot(sessionID: sessionID, snapshot: snapshot)
+                    let result = self.runtimeStore.applyRuntimeSnapshot(sessionID: sessionID, snapshot: snapshot)
+                    if result?.didSwitchExternalSession == true {
+                        switchedSessionID = sessionID
+                        switchedTool = snapshot.tool
+                    }
                     self.logger.log(
                         "runtime-ingress",
                         "snapshot tool=\(snapshot.tool) session=\(sessionID.uuidString) model=\(snapshot.model ?? "nil") total=\(snapshot.totalTokens) response=\(snapshot.responseState?.rawValue ?? "nil")"
@@ -346,31 +366,15 @@ final class AIRuntimeIngressService {
                         object: nil
                     )
                 }
-                NotificationCenter.default.post(
-                    name: .dmuxAIRuntimeBridgeDidChange,
-                    object: nil,
-                    userInfo: ["kind": "runtime-source"]
+                self.postRuntimeBridgeDidChange(
+                    kind: "runtime-source",
+                    switchedSessionID: switchedSessionID,
+                    tool: switchedTool
                 )
                 return
             }
 
-            let updates = await self.syncResponseStates(
-                for: canonicalTool,
-                liveEnvelopes: liveEnvelopes,
-                projects: currentProjects
-            )
-
-            for payload in updates {
-                self.runtimeStore.applyResponsePayload(payload)
-            }
-
             self.runtimeResponseSyncTasksByTool[canonicalTool] = nil
-            if !updates.isEmpty {
-                NotificationCenter.default.post(
-                    name: .dmuxAIRuntimeActivityPulse,
-                    object: nil
-                )
-            }
             NotificationCenter.default.post(
                 name: .dmuxAIRuntimeBridgeDidChange,
                 object: nil,
@@ -445,10 +449,11 @@ final class AIRuntimeIngressService {
                 logger.log("runtime-socket", "drop kind=usage session=\(envelope.sessionId) reason=invalid-session-id")
                 return
             }
-            persistManagedRealtimeEnvelope(envelope)
-            if envelope.status == "running" {
-                liveEnvelopesBySessionID[sessionID] = envelope
-                runtimeStore.applyLiveEnvelope(envelope)
+            let effectiveEnvelope = effectiveLiveEnvelope(envelope)
+            persistManagedRealtimeEnvelope(effectiveEnvelope)
+            if effectiveEnvelope.status == "running" {
+                liveEnvelopesBySessionID[sessionID] = effectiveEnvelope
+                runtimeStore.applyLiveEnvelope(effectiveEnvelope)
             } else {
                 liveEnvelopesBySessionID[sessionID] = nil
                 responsePayloadsBySessionID[sessionID] = nil
@@ -456,13 +461,17 @@ final class AIRuntimeIngressService {
             }
             logger.log(
                 "runtime-socket",
-                "accept kind=usage tool=\(canonicalToolName(envelope.tool)) session=\(envelope.sessionId) status=\(envelope.status) instance=\(envelope.sessionInstanceId ?? "nil")"
+                "accept kind=usage tool=\(canonicalToolName(effectiveEnvelope.tool)) session=\(effectiveEnvelope.sessionId) status=\(effectiveEnvelope.status) instance=\(effectiveEnvelope.sessionInstanceId ?? "nil")"
             )
-            NotificationCenter.default.post(
-                name: .dmuxAIRuntimeBridgeDidChange,
-                object: nil,
-                userInfo: ["kind": "runtime-socket"]
-            )
+            if effectiveEnvelope.status == "running" {
+                postRuntimeBridgeDidChange(kind: "runtime-socket")
+            } else {
+                postRuntimeBridgeDidChange(
+                    kind: "runtime-socket",
+                    clearedSessionID: sessionID,
+                    clearedTool: effectiveEnvelope.tool
+                )
+            }
 
         case "response":
             guard let payload = try? JSONDecoder().decode(AIResponseStatePayload.self, from: payloadData) else {
@@ -493,11 +502,7 @@ final class AIRuntimeIngressService {
                 "runtime-socket",
                 "accept kind=response tool=\(canonicalToolName(payload.tool)) session=\(payload.sessionId) state=\(payload.responseState.rawValue) instance=\(payload.sessionInstanceId ?? "nil")"
             )
-            NotificationCenter.default.post(
-                name: .dmuxAIRuntimeBridgeDidChange,
-                object: nil,
-                userInfo: ["kind": "runtime-socket"]
-            )
+            postRuntimeBridgeDidChange(kind: "runtime-socket")
 
         default:
             let liveEnvelopes = liveEnvelopesBySessionID.values.sorted { $0.updatedAt > $1.updatedAt }
@@ -514,6 +519,8 @@ final class AIRuntimeIngressService {
                     return
                 }
                 await MainActor.run {
+                    var switchedSessionID: UUID?
+                    var switchedTool: String?
                     for payload in update.responsePayloads {
                         if let sessionID = UUID(uuidString: payload.sessionId) {
                             self.responsePayloadsBySessionID[sessionID] = payload
@@ -521,12 +528,16 @@ final class AIRuntimeIngressService {
                         self.runtimeStore.applyResponsePayload(payload)
                     }
                     for (sessionID, snapshot) in update.runtimeSnapshotsBySessionID {
-                        self.runtimeStore.applyRuntimeSnapshot(sessionID: sessionID, snapshot: snapshot)
+                        let result = self.runtimeStore.applyRuntimeSnapshot(sessionID: sessionID, snapshot: snapshot)
+                        if result?.didSwitchExternalSession == true {
+                            switchedSessionID = sessionID
+                            switchedTool = snapshot.tool
+                        }
                     }
-                    NotificationCenter.default.post(
-                        name: .dmuxAIRuntimeBridgeDidChange,
-                        object: nil,
-                        userInfo: ["kind": "runtime-socket"]
+                    self.postRuntimeBridgeDidChange(
+                        kind: "runtime-socket",
+                        switchedSessionID: switchedSessionID,
+                        tool: switchedTool
                     )
                 }
             }
@@ -552,6 +563,48 @@ final class AIRuntimeIngressService {
                 )
             )
         })
+    }
+
+    private func effectiveLiveEnvelope(_ envelope: AIToolUsageEnvelope) -> AIToolUsageEnvelope {
+        guard toolDriverFactory.allowsRuntimeExternalSessionSwitch(for: envelope.tool),
+              let sessionID = UUID(uuidString: envelope.sessionId),
+              let binding = runtimeStore.terminalBindingsByID[sessionID],
+              let existingExternalSessionID = normalizedExternalSessionID(binding.lastKnownExternalSessionID) else {
+            return envelope
+        }
+
+        let incomingExternalSessionID = normalizedExternalSessionID(envelope.externalSessionID)
+        guard existingExternalSessionID != incomingExternalSessionID else {
+            return envelope
+        }
+
+        var effectiveEnvelope = envelope
+        effectiveEnvelope.externalSessionID = existingExternalSessionID
+        if (effectiveEnvelope.model?.isEmpty ?? true),
+           let existingModel = normalizedNonEmptyString(binding.lastKnownModel) {
+            effectiveEnvelope.model = existingModel
+        }
+        if effectiveEnvelope.responseState == nil {
+            effectiveEnvelope.responseState = binding.responseState
+        }
+
+        logger.log(
+            "runtime-ingress",
+            "normalize live session=\(sessionID.uuidString) tool=\(canonicalToolName(envelope.tool)) external=\(incomingExternalSessionID ?? "nil")->\(existingExternalSessionID)"
+        )
+        return effectiveEnvelope
+    }
+
+    private func normalizedExternalSessionID(_ value: String?) -> String? {
+        normalizedNonEmptyString(value)
+    }
+
+    private func normalizedNonEmptyString(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 
     private func shouldPersistManagedRealtime(tool: String) -> Bool {

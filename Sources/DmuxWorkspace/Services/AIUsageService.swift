@@ -16,6 +16,7 @@ struct AIUsageService: Sendable {
     private struct CodexThreadMetadata {
         var titleByID: [String: String]
         var firstUserMessageByID: [String: String]
+        var threadIDByRolloutPath: [String: String]
         var rolloutPaths: [URL]
     }
 
@@ -96,11 +97,16 @@ struct AIUsageService: Sendable {
         currentSnapshot: AITerminalSessionSnapshot?,
         status: AIIndexingStatus
     ) -> AIStatsPanelState {
-        let nextLiveOverlayTokens = liveSnapshots.reduce(0) { $0 + $1.currentTotalTokens }
+        let adjustedLiveSnapshots = adjustedLiveSnapshots(from: liveSnapshots)
+        let adjustedCurrentSnapshot = adjustedCurrentSnapshot(
+            from: currentSnapshot,
+            adjustedLiveSnapshots: adjustedLiveSnapshots
+        )
+        let nextLiveOverlayTokens = adjustedLiveSnapshots.reduce(0) { $0 + $1.currentTotalTokens }
 
         var nextState = currentState
-        nextState.currentSnapshot = currentSnapshot
-        nextState.liveSnapshots = liveSnapshots
+        nextState.currentSnapshot = adjustedCurrentSnapshot
+        nextState.liveSnapshots = adjustedLiveSnapshots
         nextState.liveOverlayTokens = nextLiveOverlayTokens
         nextState.indexingStatus = status
 
@@ -109,18 +115,18 @@ struct AIUsageService: Sendable {
             let baseTodayTotal = max(0, summary.todayTotalTokens - currentState.liveOverlayTokens)
             summary.projectTotalTokens = baseProjectTotal + nextLiveOverlayTokens
             summary.todayTotalTokens = baseTodayTotal + nextLiveOverlayTokens
-            summary.currentSessionTokens = currentSnapshot?.currentTotalTokens ?? 0
-            summary.currentTool = currentSnapshot?.tool
-            summary.currentModel = currentSnapshot?.model
-            summary.currentContextUsagePercent = currentSnapshot?.currentContextUsagePercent
-            summary.currentContextUsedTokens = currentSnapshot?.currentContextUsedTokens
-            summary.currentContextWindow = currentSnapshot?.currentContextWindow
-            summary.currentSessionUpdatedAt = currentSnapshot?.updatedAt
+            summary.currentSessionTokens = adjustedCurrentSnapshot?.currentTotalTokens ?? 0
+            summary.currentTool = adjustedCurrentSnapshot?.tool
+            summary.currentModel = adjustedCurrentSnapshot?.model
+            summary.currentContextUsagePercent = adjustedCurrentSnapshot?.currentContextUsagePercent
+            summary.currentContextUsedTokens = adjustedCurrentSnapshot?.currentContextUsedTokens
+            summary.currentContextWindow = adjustedCurrentSnapshot?.currentContextWindow
+            summary.currentSessionUpdatedAt = adjustedCurrentSnapshot?.updatedAt
             nextState.projectSummary = summary
         } else {
             nextState.projectSummary = baseProjectSummary(
                 project: project,
-                liveSnapshot: currentSnapshot,
+                liveSnapshot: adjustedCurrentSnapshot,
                 sessions: currentState.sessions,
                 todayTotalTokens: todayTotalTokens(
                     timeBuckets: currentState.todayTimeBuckets,
@@ -231,11 +237,12 @@ struct AIUsageService: Sendable {
         currentSnapshot: AITerminalSessionSnapshot?,
         status: AIIndexingStatus
     ) -> AIStatsPanelState {
-        let totalLiveDelta = liveSnapshots.reduce(0) { partial, snapshot in
-            let indexedSession = indexed.flatMap { self.indexedSession(matching: snapshot, in: $0.sessions) }
-            let delta = max(0, snapshot.currentTotalTokens - (indexedSession?.totalTokens ?? 0))
-            return partial + delta
-        }
+        let adjustedLiveSnapshots = adjustedLiveSnapshots(from: liveSnapshots)
+        let adjustedCurrentSnapshot = adjustedCurrentSnapshot(
+            from: currentSnapshot,
+            adjustedLiveSnapshots: adjustedLiveSnapshots
+        )
+        let totalLiveDelta = adjustedLiveSnapshots.reduce(0) { $0 + $1.currentTotalTokens }
 
         var summary = indexed?.projectSummary ?? AIProjectUsageSummary(
             projectID: project.id,
@@ -258,18 +265,18 @@ struct AIUsageService: Sendable {
             timeBuckets: indexed?.todayTimeBuckets ?? [],
             heatmap: indexed?.heatmap ?? []
         ) + totalLiveDelta
-        summary.currentSessionTokens = currentSnapshot?.currentTotalTokens ?? 0
-        summary.currentTool = currentSnapshot?.tool
-        summary.currentModel = currentSnapshot?.model
-        summary.currentContextUsagePercent = currentSnapshot?.currentContextUsagePercent
-        summary.currentContextUsedTokens = currentSnapshot?.currentContextUsedTokens
-        summary.currentContextWindow = currentSnapshot?.currentContextWindow
-        summary.currentSessionUpdatedAt = currentSnapshot?.updatedAt ?? indexed?.projectSummary.currentSessionUpdatedAt
+        summary.currentSessionTokens = adjustedCurrentSnapshot?.currentTotalTokens ?? 0
+        summary.currentTool = adjustedCurrentSnapshot?.tool
+        summary.currentModel = adjustedCurrentSnapshot?.model
+        summary.currentContextUsagePercent = adjustedCurrentSnapshot?.currentContextUsagePercent
+        summary.currentContextUsedTokens = adjustedCurrentSnapshot?.currentContextUsedTokens
+        summary.currentContextWindow = adjustedCurrentSnapshot?.currentContextWindow
+        summary.currentSessionUpdatedAt = adjustedCurrentSnapshot?.updatedAt ?? indexed?.projectSummary.currentSessionUpdatedAt
 
         return AIStatsPanelState(
             projectSummary: summary,
-            currentSnapshot: currentSnapshot,
-            liveSnapshots: liveSnapshots,
+            currentSnapshot: adjustedCurrentSnapshot,
+            liveSnapshots: adjustedLiveSnapshots,
             liveOverlayTokens: totalLiveDelta,
             sessions: indexed?.sessions ?? [],
             heatmap: indexed?.heatmap ?? [],
@@ -305,18 +312,24 @@ struct AIUsageService: Sendable {
         return snapshots.first
     }
 
-    private func indexedSession(matching liveSnapshot: AITerminalSessionSnapshot, in sessions: [AISessionSummary]) -> AISessionSummary? {
-        sessions.first { sessionMatchesLiveSnapshot(session: $0, liveSnapshot: liveSnapshot) }
+    private func adjustedCurrentSnapshot(
+        from currentSnapshot: AITerminalSessionSnapshot?,
+        adjustedLiveSnapshots: [AITerminalSessionSnapshot]
+    ) -> AITerminalSessionSnapshot? {
+        guard let currentSnapshot else {
+            return nil
+        }
+        return adjustedLiveSnapshots.first(where: { $0.sessionID == currentSnapshot.sessionID }) ?? currentSnapshot
     }
 
-    private func sessionMatchesLiveSnapshot(session: AISessionSummary, liveSnapshot: AITerminalSessionSnapshot) -> Bool {
-        if let liveExternalSessionID = liveSnapshot.externalSessionID,
-           let indexedExternalSessionID = session.externalSessionID,
-           !liveExternalSessionID.isEmpty,
-           !indexedExternalSessionID.isEmpty {
-            return liveExternalSessionID == indexedExternalSessionID
+    private func adjustedLiveSnapshots(from liveSnapshots: [AITerminalSessionSnapshot]) -> [AITerminalSessionSnapshot] {
+        return liveSnapshots.map { snapshot in
+            var adjustedSnapshot = snapshot
+            adjustedSnapshot.currentInputTokens = max(0, snapshot.currentInputTokens - snapshot.baselineInputTokens)
+            adjustedSnapshot.currentOutputTokens = max(0, snapshot.currentOutputTokens - snapshot.baselineOutputTokens)
+            adjustedSnapshot.currentTotalTokens = max(0, snapshot.currentTotalTokens - snapshot.baselineTotalTokens)
+            return adjustedSnapshot
         }
-        return session.sessionID == liveSnapshot.sessionID
     }
 
     private func baseProjectSummary(
@@ -360,6 +373,9 @@ struct AIUsageService: Sendable {
             currentInputTokens: envelope.inputTokens ?? 0,
             currentOutputTokens: envelope.outputTokens ?? 0,
             currentTotalTokens: envelope.totalTokens ?? 0,
+            baselineInputTokens: envelope.baselineInputTokens ?? 0,
+            baselineOutputTokens: envelope.baselineOutputTokens ?? 0,
+            baselineTotalTokens: envelope.baselineTotalTokens ?? 0,
             currentContextWindow: envelope.contextWindow,
             currentContextUsedTokens: envelope.contextUsedTokens,
             currentContextUsagePercent: envelope.contextUsagePercent,
@@ -440,6 +456,9 @@ struct AIUsageService: Sendable {
                 currentInputTokens: $0.totalInputTokens,
                 currentOutputTokens: $0.totalOutputTokens,
                 currentTotalTokens: $0.totalTokens,
+                baselineInputTokens: 0,
+                baselineOutputTokens: 0,
+                baselineTotalTokens: 0,
                 currentContextWindow: nil,
                 currentContextUsedTokens: nil,
                 currentContextUsagePercent: $0.maxContextUsagePercent,
@@ -727,7 +746,13 @@ struct AIUsageService: Sendable {
                 for fileURL in batch {
                     group.addTask {
                         let modifiedAt = ((try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast).timeIntervalSince1970
-                        if let cached = wrapperStore.cachedExternalSummary(source: codexSource, filePath: fileURL.path, modifiedAt: modifiedAt), cached.projectPath == project.path {
+                        if let cached = wrapperStore.cachedExternalSummary(source: codexSource, filePath: fileURL.path, modifiedAt: modifiedAt),
+                           cached.projectPath == project.path,
+                           codexCachedSummaryMatchesCurrentThreadMetadata(
+                               cached,
+                               fileURL: fileURL,
+                               threadMetadata: threadMetadata
+                           ) {
                             return cached
                         }
 
@@ -754,6 +779,21 @@ struct AIUsageService: Sendable {
 
         let sessions = sortSessions(summaries.flatMap(\.sessions))
         return AISourceLoadResult(sessions: sessions, summaries: summaries)
+    }
+
+    private func codexCachedSummaryMatchesCurrentThreadMetadata(
+        _ summary: AIExternalFileSummary,
+        fileURL: URL,
+        threadMetadata: CodexThreadMetadata
+    ) -> Bool {
+        let expectedThreadID = threadMetadata.threadIDByRolloutPath[fileURL.standardizedFileURL.path]
+        guard let expectedThreadID, !expectedThreadID.isEmpty else {
+            return true
+        }
+        guard let session = summary.sessions.first else {
+            return false
+        }
+        return session.externalSessionID == expectedThreadID
     }
 
     private func loadCodexSessionSummary(from fileURL: URL, modifiedAt: Double, project: Project, previous: AIExternalFileSummary?, threadMetadata: CodexThreadMetadata) -> AIExternalFileSummary? {
@@ -832,9 +872,11 @@ struct AIUsageService: Sendable {
             return nil
         }
 
+        let threadID = threadMetadata.threadIDByRolloutPath[fileURL.standardizedFileURL.path]
+
         let session = AISessionSummary(
             sessionID: resolvedSessionID,
-            externalSessionID: resolvedSessionID.uuidString,
+            externalSessionID: threadID ?? resolvedSessionID.uuidString,
             projectID: project.id,
             projectName: project.name,
             sessionTitle: codexSessionTitle(sessionID: resolvedSessionID, inlineTitle: title, derivedTitle: derivedTitle, threadMetadata: threadMetadata) ?? project.name,
@@ -1240,25 +1282,26 @@ struct AIUsageService: Sendable {
     private func loadCodexThreadMetadata(projectPath: String) -> CodexThreadMetadata {
         let dbPath = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/state_5.sqlite").path
         guard FileManager.default.fileExists(atPath: dbPath) else {
-            return CodexThreadMetadata(titleByID: [:], firstUserMessageByID: [:], rolloutPaths: [])
+            return CodexThreadMetadata(titleByID: [:], firstUserMessageByID: [:], threadIDByRolloutPath: [:], rolloutPaths: [])
         }
 
         var db: OpaquePointer?
         guard sqlite3_open(dbPath, &db) == SQLITE_OK, let db else {
-            return CodexThreadMetadata(titleByID: [:], firstUserMessageByID: [:], rolloutPaths: [])
+            return CodexThreadMetadata(titleByID: [:], firstUserMessageByID: [:], threadIDByRolloutPath: [:], rolloutPaths: [])
         }
         defer { sqlite3_close(db) }
 
         let sql = "SELECT id, title, first_user_message, rollout_path FROM threads WHERE cwd = ? AND archived = 0;"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-            return CodexThreadMetadata(titleByID: [:], firstUserMessageByID: [:], rolloutPaths: [])
+            return CodexThreadMetadata(titleByID: [:], firstUserMessageByID: [:], threadIDByRolloutPath: [:], rolloutPaths: [])
         }
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_text(statement, 1, projectPath, -1, SQLITE_TRANSIENT)
 
         var titles: [String: String] = [:]
         var firstMessages: [String: String] = [:]
+        var threadIDsByRolloutPath: [String: String] = [:]
         var rolloutPaths: [URL] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let id = sqlite3_column_text(statement, 0) else {
@@ -1272,11 +1315,18 @@ struct AIUsageService: Sendable {
                 firstMessages[key] = String(cString: rawMessage)
             }
             if let rawPath = sqlite3_column_text(statement, 3) {
-                rolloutPaths.append(URL(fileURLWithPath: String(cString: rawPath)))
+                let rolloutPath = URL(fileURLWithPath: String(cString: rawPath)).standardizedFileURL
+                rolloutPaths.append(rolloutPath)
+                threadIDsByRolloutPath[rolloutPath.path] = String(cString: id)
             }
         }
 
-        return CodexThreadMetadata(titleByID: titles, firstUserMessageByID: firstMessages, rolloutPaths: rolloutPaths)
+        return CodexThreadMetadata(
+            titleByID: titles,
+            firstUserMessageByID: firstMessages,
+            threadIDByRolloutPath: threadIDsByRolloutPath,
+            rolloutPaths: rolloutPaths
+        )
     }
 
     private func buildHeatmap(from summaries: [AIExternalFileSummary], fallbackSessions: [AISessionSummary]) -> [AIHeatmapDay] {

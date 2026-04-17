@@ -3,6 +3,7 @@ import Foundation
 actor OpenCodeGlobalEventService {
     static let shared = OpenCodeGlobalEventService()
 
+    private let logger = AppDebugLog.shared
     private let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 4
@@ -18,6 +19,13 @@ actor OpenCodeGlobalEventService {
         await ensureStreaming()
         let statuses = statusByDirectory[directory] ?? [:]
         return statuses.isEmpty ? nil : statuses
+    }
+
+    func sessionStatuses(directory: String) async -> [String: AIResponseState]? {
+        if let cached = await cachedStatuses(directory: directory) {
+            return cached
+        }
+        return await fetchStatuses(directory: directory)
     }
 
     private func ensureStreaming() async {
@@ -52,12 +60,16 @@ actor OpenCodeGlobalEventService {
             let (bytes, response) = try await session.bytes(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200 ..< 300).contains(httpResponse.statusCode) else {
+                logger.log("opencode-global", "stream rejected")
                 return
             }
+
+            logger.log("opencode-global", "stream connected")
 
             var eventLines: [String] = []
             for try await line in bytes.lines {
                 if Task.isCancelled {
+                    logger.log("opencode-global", "stream cancelled")
                     return
                 }
 
@@ -70,6 +82,7 @@ actor OpenCodeGlobalEventService {
                 eventLines.append(line)
             }
         } catch {
+            logger.log("opencode-global", "stream failed error=\(error.localizedDescription)")
             return
         }
     }
@@ -118,6 +131,41 @@ actor OpenCodeGlobalEventService {
         default:
             return
         }
+    }
+
+    private func fetchStatuses(directory: String) async -> [String: AIResponseState]? {
+        var components = URLComponents(string: "http://127.0.0.1:4096/session/status")
+        components?.queryItems = [
+            URLQueryItem(name: "directory", value: directory),
+        ]
+        guard let url = components?.url else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 0.18
+
+        guard let (data, response) = try? await session.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              (200 ..< 300).contains(httpResponse.statusCode),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        var result: [String: AIResponseState] = [:]
+        for (sessionID, rawStatus) in object {
+            guard let rawStatus = rawStatus as? [String: Any],
+                  let type = rawStatus["type"] as? String,
+                  let responseState = mapOpenCodeStatus(type) else {
+                continue
+            }
+            result[sessionID] = responseState
+        }
+
+        if !result.isEmpty {
+            statusByDirectory[directory] = result
+        }
+        return result.isEmpty ? nil : result
     }
 
     private func mapOpenCodeStatus(_ statusType: String) -> AIResponseState? {

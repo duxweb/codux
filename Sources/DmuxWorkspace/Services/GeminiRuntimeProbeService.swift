@@ -10,11 +10,16 @@ struct GeminiParsedRuntimeState {
     var startedAt: Double
     var updatedAt: Double
     var responseState: AIResponseState?
+    var origin: AIRuntimeSessionOrigin
 }
 
 actor GeminiRuntimeProbeService {
     private var sessionIDByRuntimeSessionID: [String: String] = [:]
     private let logger = AppDebugLog.shared
+
+    func reset(runtimeSessionID: String) {
+        sessionIDByRuntimeSessionID[runtimeSessionID] = nil
+    }
 
     func snapshot(
         runtimeSessionID: String,
@@ -22,20 +27,31 @@ actor GeminiRuntimeProbeService {
         startedAt: Double,
         knownExternalSessionID: String?
     ) -> AIRuntimeContextSnapshot? {
+        let previousExternalSessionID = sessionIDByRuntimeSessionID[runtimeSessionID]
         let preferredSessionID = knownExternalSessionID
-            ?? sessionIDByRuntimeSessionID[runtimeSessionID]
+            ?? previousExternalSessionID
+        let preferredSessionIsAuthoritative =
+            knownExternalSessionID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         guard let parsedState = parseGeminiSessionRuntimeState(
             projectPath: projectPath,
             startedAt: startedAt,
-            preferredSessionID: preferredSessionID
+            preferredSessionID: preferredSessionID,
+            preferredSessionIsAuthoritative: preferredSessionIsAuthoritative
         ) else {
             return nil
         }
 
         sessionIDByRuntimeSessionID[runtimeSessionID] = parsedState.externalSessionID
+        if let previousExternalSessionID,
+           previousExternalSessionID != parsedState.externalSessionID {
+            logger.log(
+                "gemini-runtime",
+                "switch runtimeSession=\(runtimeSessionID) externalSession=\(previousExternalSessionID)->\(parsedState.externalSessionID) reason=probe-detected"
+            )
+        }
         logger.log(
             "gemini-runtime",
-            "hit runtimeSession=\(runtimeSessionID) externalSession=\(parsedState.externalSessionID) model=\(parsedState.model ?? "nil") total=\(parsedState.totalTokens) response=\(parsedState.responseState?.rawValue ?? "nil")"
+            "hit runtimeSession=\(runtimeSessionID) externalSession=\(parsedState.externalSessionID) model=\(parsedState.model ?? "nil") total=\(parsedState.totalTokens) response=\(parsedState.responseState?.rawValue ?? "nil") origin=\(parsedState.origin.rawValue)"
         )
         return AIRuntimeContextSnapshot(
             tool: "gemini",
@@ -45,7 +61,8 @@ actor GeminiRuntimeProbeService {
             outputTokens: parsedState.outputTokens,
             totalTokens: parsedState.totalTokens,
             updatedAt: parsedState.updatedAt,
-            responseState: parsedState.responseState
+            responseState: parsedState.responseState,
+            sessionOrigin: parsedState.origin
         )
     }
 }
@@ -53,14 +70,16 @@ actor GeminiRuntimeProbeService {
 func parseGeminiSessionRuntimeState(
     projectPath: String,
     startedAt: Double?,
-    preferredSessionID: String?
+    preferredSessionID: String?,
+    preferredSessionIsAuthoritative: Bool
 ) -> GeminiParsedRuntimeState? {
     let fileURLs = AIRuntimeSourceLocator.geminiSessionFileURLs(projectPath: projectPath)
     guard !fileURLs.isEmpty else {
         return nil
     }
 
-    var preferredMatch: GeminiParsedRuntimeState?
+    var preferredMatch: (state: GeminiParsedRuntimeState, isCurrentLaunch: Bool)?
+    var currentLaunchMatch: GeminiParsedRuntimeState?
     var candidateMatch: GeminiParsedRuntimeState?
 
     for fileURL in fileURLs.prefix(16) {
@@ -68,24 +87,54 @@ func parseGeminiSessionRuntimeState(
             continue
         }
 
+        let isCurrentLaunch: Bool = {
+            guard let startedAt else {
+                return false
+            }
+            return state.startedAt >= startedAt
+        }()
         if let preferredSessionID,
            state.externalSessionID == preferredSessionID {
-            preferredMatch = state
-            break
+            preferredMatch = (state, isCurrentLaunch)
         }
 
-        if let startedAt {
-            if state.updatedAt >= startedAt - 5 {
-                if candidateMatch == nil || state.updatedAt > (candidateMatch?.updatedAt ?? 0) {
-                    candidateMatch = state
-                }
+        if isCurrentLaunch {
+            if currentLaunchMatch == nil || state.updatedAt > (currentLaunchMatch?.updatedAt ?? 0) {
+                currentLaunchMatch = state
             }
-        } else if candidateMatch == nil {
+            continue
+        }
+
+        if startedAt == nil, candidateMatch == nil {
+            candidateMatch = state
+        }
+
+        if candidateMatch == nil || state.updatedAt > (candidateMatch?.updatedAt ?? 0) {
             candidateMatch = state
         }
     }
 
-    return preferredMatch ?? candidateMatch
+    if preferredSessionIsAuthoritative {
+        guard let preferredMatch else {
+            return nil
+        }
+        var state = preferredMatch.state
+        state.origin = preferredMatch.isCurrentLaunch ? .fresh : .restored
+        return state
+    }
+    if var currentLaunchMatch {
+        currentLaunchMatch.origin = .fresh
+        return currentLaunchMatch
+    }
+    if let preferredMatch {
+        var state = preferredMatch.state
+        state.origin = preferredMatch.isCurrentLaunch ? .fresh : .restored
+        return state
+    }
+    if startedAt != nil {
+        return nil
+    }
+    return candidateMatch
 }
 
 func parseGeminiSessionRuntimeState(fileURL: URL) -> GeminiParsedRuntimeState? {
@@ -171,7 +220,8 @@ func parseGeminiSessionRuntimeState(fileURL: URL) -> GeminiParsedRuntimeState? {
         totalTokens: totalTokens,
         startedAt: startedAtDate.timeIntervalSince1970,
         updatedAt: updatedAtDate.timeIntervalSince1970,
-        responseState: responseState
+        responseState: responseState,
+        origin: .unknown
     )
 }
 

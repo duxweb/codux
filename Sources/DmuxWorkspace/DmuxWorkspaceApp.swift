@@ -196,11 +196,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return nil
         }
 
-        if modifiers.isEmpty,
-           event.keyCode == 53 {
-            handleTerminalEscapeIfNeeded()
-        }
-
         if modifiers == [.command],
            (event.keyCode == 123 || event.keyCode == 124),
            handleTerminalCommandArrowIfNeeded(event) {
@@ -269,30 +264,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         return model.sendInterruptToSelectedSession()
-    }
-
-    @MainActor
-    private func handleTerminalEscapeIfNeeded() {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
-              !isStandardChromeWindow(window),
-              let model else {
-            return
-        }
-
-        let responder = window.firstResponder
-        let ownsResponder = SwiftTermTerminalRegistry.shared.ownsResponder(responder)
-        let terminalFocused = SwiftTermTerminalRegistry.shared.focusedSessionID() == model.selectedSessionID
-        if responder is NSTextView,
-           ownsResponder == false,
-           terminalFocused == false {
-            return
-        }
-
-        guard responder == nil || ownsResponder || terminalFocused else {
-            return
-        }
-
-        _ = model.markSelectedSessionInterruptedIfResponding()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

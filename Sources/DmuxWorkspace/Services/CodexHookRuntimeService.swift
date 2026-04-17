@@ -56,6 +56,10 @@ func resolveCodexStopRuntimeState(transcriptPath: String?) async -> CodexParsedR
 actor CodexRuntimeProbeService {
     private var threadIDByRuntimeSessionID: [String: String] = [:]
 
+    func reset(runtimeSessionID: String) {
+        threadIDByRuntimeSessionID[runtimeSessionID] = nil
+    }
+
     func snapshot(
         runtimeSessionID: String,
         projectPath: String,

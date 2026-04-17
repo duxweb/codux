@@ -87,7 +87,7 @@ _dmux_write_usage_event() {
       print -rn -- "\"tool\":\"$(_dmux_json_escape "${DMUX_ACTIVE_AI_TOOL}")\","
       print -rn -- "\"model\":null,"
       print -rn -- "\"status\":\"$(_dmux_json_escape "${phase}")\","
-      if [[ "${phase}" == "running" && ( "${DMUX_ACTIVE_AI_TOOL}" == "codex" || "${DMUX_ACTIVE_AI_TOOL}" == "claude" || "${DMUX_ACTIVE_AI_TOOL}" == "claude-code" || "${DMUX_ACTIVE_AI_TOOL}" == "gemini" ) ]]; then
+      if [[ "${phase}" == "running" && ( "${DMUX_ACTIVE_AI_TOOL}" == "codex" || "${DMUX_ACTIVE_AI_TOOL}" == "claude" || "${DMUX_ACTIVE_AI_TOOL}" == "claude-code" || "${DMUX_ACTIVE_AI_TOOL}" == "gemini" || "${DMUX_ACTIVE_AI_TOOL}" == "opencode" ) ]]; then
         print -rn -- "\"responseState\":null,"
       else
         print -rn -- "\"responseState\":\"idle\","

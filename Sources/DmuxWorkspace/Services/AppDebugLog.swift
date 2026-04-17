@@ -177,6 +177,21 @@ final class AppDebugLog: @unchecked Sendable {
                 return 1.5
             }
             return nil
+        case "runtime-ingress":
+            if message.hasPrefix("normalize live session=") {
+                return 5
+            }
+            return nil
+        case "opencode-global":
+            if message.hasPrefix("stream failed error=") {
+                return 30
+            }
+            if message == "stream connected"
+                || message == "stream cancelled"
+                || message == "stream rejected" {
+                return 10
+            }
+            return nil
         default:
             return nil
         }

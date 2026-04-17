@@ -84,9 +84,18 @@ struct AIRuntimeBridgeService {
     private let codexManagedHookStatusMessage = "dmux codex live"
     private let geminiManagedHookStatusMessage = "dmux gemini live"
 
-    func claudeSessionMapDirectoryURL(createIfNeeded: Bool = true) -> URL {
+    func runtimeSupportRootURL(createIfNeeded: Bool = true) -> URL {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let url = appSupport.appendingPathComponent("dmux/claude-session-map", isDirectory: true)
+        let url = appSupport.appendingPathComponent(runtimeSupportDirectoryName(), isDirectory: true)
+        if createIfNeeded {
+            try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        return url
+    }
+
+    func claudeSessionMapDirectoryURL(createIfNeeded: Bool = true) -> URL {
+        let url = runtimeSupportRootURL(createIfNeeded: createIfNeeded)
+            .appendingPathComponent("claude-session-map", isDirectory: true)
         if createIfNeeded {
             try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         }
@@ -98,16 +107,19 @@ struct AIRuntimeBridgeService {
     }
 
     func clearLegacyLiveRuntimeState() {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        clearJSONFiles(in: appSupport.appendingPathComponent("dmux/ai-usage-live", isDirectory: true))
-        clearJSONFiles(in: appSupport.appendingPathComponent("dmux/ai-response-live", isDirectory: true))
-        clearJSONFiles(in: appSupport.appendingPathComponent("dmux/ai-usage-inbox", isDirectory: true))
-        clearJSONFiles(in: appSupport.appendingPathComponent("dmux/ai-response-inbox", isDirectory: true))
-        clearJSONFiles(in: appSupport.appendingPathComponent("dmux/codex-hook-inbox", isDirectory: true))
+        let rootURL = runtimeSupportRootURL(createIfNeeded: false)
+        clearJSONFiles(in: rootURL.appendingPathComponent("ai-usage-live", isDirectory: true))
+        clearJSONFiles(in: rootURL.appendingPathComponent("ai-response-live", isDirectory: true))
+        clearJSONFiles(in: rootURL.appendingPathComponent("ai-usage-inbox", isDirectory: true))
+        clearJSONFiles(in: rootURL.appendingPathComponent("ai-response-inbox", isDirectory: true))
+        clearJSONFiles(in: rootURL.appendingPathComponent("codex-hook-inbox", isDirectory: true))
     }
 
     func runtimeEventSocketURL() -> URL {
-        URL(fileURLWithPath: "/tmp/dmux-runtime-events.sock", isDirectory: false)
+        URL(
+            fileURLWithPath: "/tmp/\(runtimeSocketFileName())",
+            isDirectory: false
+        )
     }
 
     func environment(for session: TerminalSession) -> [(String, String)] {
@@ -234,6 +246,10 @@ struct AIRuntimeBridgeService {
         guard Self.managedHookBootstrapCoordinator.schedule({
             let service = AIRuntimeBridgeService()
             service.debugLog.log("runtime-hooks", "bootstrap start")
+            service.debugLog.log(
+                "runtime-hooks",
+                "bootstrap namespace channel=\(service.runtimeChannel()) root=\(service.runtimeSupportRootURL().path) socket=\(service.runtimeEventSocketURL().path)"
+            )
             service.debugLog.log("runtime-hooks", "bootstrap step=status-directory")
             _ = service.statusDirectoryURL()
             service.debugLog.log("runtime-hooks", "bootstrap step=claude-session-map")
@@ -264,9 +280,9 @@ struct AIRuntimeBridgeService {
             .appendingPathComponent("settings.json", isDirectory: false)
     }
 
-    private func statusDirectoryURL() -> URL {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let url = appSupport.appendingPathComponent("dmux/agent-status", isDirectory: true)
+    func statusDirectoryURL() -> URL {
+        let url = runtimeSupportRootURL()
+            .appendingPathComponent("agent-status", isDirectory: true)
         try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
@@ -282,8 +298,7 @@ struct AIRuntimeBridgeService {
     }
 
     private func stagedShellHooksRootURL() -> URL {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("dmux/shell-hooks", isDirectory: true)
+        runtimeSupportRootURL().appendingPathComponent("shell-hooks", isDirectory: true)
     }
 
     private func ensureShellHooksStaged() {
@@ -311,14 +326,56 @@ struct AIRuntimeBridgeService {
     }
 
     private func preparedStatusDirectoryPath() -> String? {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let url = appSupport.appendingPathComponent("dmux/agent-status", isDirectory: true)
+        let url = runtimeSupportRootURL(createIfNeeded: false)
+            .appendingPathComponent("agent-status", isDirectory: true)
         return fileManager.fileExists(atPath: url.path) ? url.path : nil
     }
 
     private func preparedClaudeSessionMapDirectoryPath() -> String? {
         let url = claudeSessionMapDirectoryURL(createIfNeeded: false)
         return fileManager.fileExists(atPath: url.path) ? url.path : nil
+    }
+
+    private func runtimeSupportDirectoryName() -> String {
+        let channel = runtimeChannel()
+        if channel == "release" {
+            return "dmux"
+        }
+        return "dmux-\(channel)"
+    }
+
+    private func runtimeSocketFileName() -> String {
+        let channel = runtimeChannel()
+        if channel == "release" {
+            return "dmux-runtime-events.sock"
+        }
+        return "dmux-runtime-events-\(channel).sock"
+    }
+
+    private func runtimeChannel() -> String {
+        if let override = ProcessInfo.processInfo.environment["DMUX_RUNTIME_CHANNEL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+           !override.isEmpty {
+            return sanitizeRuntimeChannel(override)
+        }
+
+        let bundleName = Bundle.main.bundleURL
+            .deletingPathExtension()
+            .lastPathComponent
+            .lowercased()
+        if bundleName.contains("dev") {
+            return "dev"
+        }
+        if bundleName.contains("beta") {
+            return "beta"
+        }
+        return "release"
+    }
+
+    private func sanitizeRuntimeChannel(_ value: String) -> String {
+        let filtered = value.filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        return filtered.isEmpty ? "release" : filtered
     }
 
     private func environmentCacheSignature(

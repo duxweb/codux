@@ -232,8 +232,7 @@ struct AppDiagnosticsExportService {
     }
 
     private func appSupportDirectoryURL() -> URL {
-        fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("dmux", isDirectory: true)
+        AIRuntimeBridgeService().runtimeSupportRootURL(createIfNeeded: false)
     }
 
     private func diagnosticReportsDirectoryURL() -> URL {

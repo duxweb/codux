@@ -20,16 +20,14 @@ struct ProjectActivityPayload: Codable, Equatable {
 
 struct ProjectActivityService: @unchecked Sendable {
     private let fileManager = FileManager.default
+    private let runtimeBridgeService = AIRuntimeBridgeService()
 
     private var supportsSystemNotifications: Bool {
         Bundle.main.bundleURL.pathExtension == "app" && Bundle.main.bundleIdentifier != nil
     }
 
     func statusDirectoryURL() -> URL {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let url = appSupport.appendingPathComponent("dmux/agent-status", isDirectory: true)
-        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
+        runtimeBridgeService.statusDirectoryURL()
     }
 
     func loadStatuses(projects: [Project]) -> [UUID: ProjectActivityPayload] {

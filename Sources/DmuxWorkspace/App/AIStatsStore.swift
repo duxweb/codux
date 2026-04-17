@@ -36,12 +36,7 @@ final class AIStatsStore {
     private let logger = AppDebugLog.shared
     private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     private var runtimeRefreshTasksBySessionID: [UUID: Task<Void, Never>] = [:]
-    private var activeRuntimeBySessionID: [UUID: AIRuntimeContextSnapshot] = [:]
     private var lastRuntimeRefreshAtBySessionID: [UUID: Date] = [:]
-    private var sessionInstanceIDBySessionID: [UUID: String] = [:]
-    private var sessionProjectIDBySessionID: [UUID: UUID] = [:]
-    private var sessionToolBySessionID: [UUID: String] = [:]
-    private var sessionStartedAtBySessionID: [UUID: Double] = [:]
     private var indexingStatusByProjectID: [UUID: AIIndexingStatus] = [:]
     private var panelStateByProjectID: [UUID: AIStatsPanelState] = [:]
     private var refreshStateByProjectID: [UUID: PanelRefreshState] = [:]
@@ -193,8 +188,9 @@ final class AIStatsStore {
         }
 
         _ = ingestRuntime(project: project, projects: projects)
-        let liveSnapshots = runtimeStateStore.liveSnapshots(projectID: project.id)
-        let currentSnapshot = runtimeStateStore.currentSnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
+        let displayLiveSnapshots = runtimeStateStore.liveDisplaySnapshots(projectID: project.id)
+        let summaryLiveSnapshots = runtimeStateStore.liveAggregationSnapshots(projectID: project.id)
+        let currentSnapshot = runtimeStateStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
         let cachedState = cachedState(for: project.id)
         let refreshDecision = automaticRefreshDecision(
             projectID: project.id,
@@ -214,18 +210,20 @@ final class AIStatsStore {
             let status = indexingStatusByProjectID[project.id] ?? cachedState.indexingStatus
             var nextState = aiUsageService.snapshotBackedPanelState(
                 project: project,
-                liveSnapshots: liveSnapshots,
+                liveSnapshots: summaryLiveSnapshots,
                 currentSnapshot: currentSnapshot,
                 status: status
             )
+            nextState.liveSnapshots = displayLiveSnapshots
             nextState.indexingStatus = status
             storeState(nextState, refreshState: projectRefreshState, for: project.id, updateCurrent: true)
         } else {
-            let emptyState = aiUsageService.fastPanelState(
+            var emptyState = aiUsageService.fastPanelState(
                 project: project,
-                liveSnapshots: liveSnapshots,
+                liveSnapshots: summaryLiveSnapshots,
                 currentSnapshot: currentSnapshot
             )
+            emptyState.liveSnapshots = displayLiveSnapshots
             storeState(emptyState, refreshState: .refreshing, for: project.id, updateCurrent: true)
         }
 
@@ -303,14 +301,16 @@ final class AIStatsStore {
         let cancelledStatus = AIIndexingStatus.cancelled(detail: String(localized: "ai.indexing.stopped", defaultValue: "Indexing stopped.", bundle: .module))
         indexingStatusByProjectID[project.id] = cancelledStatus
         _ = ingestRuntime(project: project, projects: projects)
-        let liveSnapshots = runtimeStateStore.liveSnapshots(projectID: project.id)
-        let currentSnapshot = runtimeStateStore.currentSnapshot(projectID: project.id, selectedSessionID: currentSelectedSessionID)
-        let nextState = aiUsageService.snapshotBackedPanelState(
+        let displayLiveSnapshots = runtimeStateStore.liveDisplaySnapshots(projectID: project.id)
+        let summaryLiveSnapshots = runtimeStateStore.liveAggregationSnapshots(projectID: project.id)
+        let currentSnapshot = runtimeStateStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: currentSelectedSessionID)
+        var nextState = aiUsageService.snapshotBackedPanelState(
             project: project,
-            liveSnapshots: liveSnapshots,
+            liveSnapshots: summaryLiveSnapshots,
             currentSnapshot: currentSnapshot,
             status: cancelledStatus
         )
+        nextState.liveSnapshots = displayLiveSnapshots
         storeState(nextState, refreshState: .idle, for: project.id, updateCurrent: true)
         automaticRefreshInProgressByProjectID[project.id] = false
         manualRefreshInProgressByProjectID[project.id] = false
@@ -425,16 +425,23 @@ final class AIStatsStore {
             let liveSnapshots = await MainActor.run {
                 self.runtimeStateStore.liveSnapshots(projectID: project.id)
             }
-            let currentSnapshot = await MainActor.run {
-                self.runtimeStateStore.currentSnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
+            let displayLiveSnapshots = await MainActor.run {
+                self.runtimeStateStore.liveDisplaySnapshots(projectID: project.id)
             }
-            let quickState = await Task.detached(priority: .userInitiated) {
-                service.fastPanelState(project: project, liveSnapshots: liveSnapshots, currentSnapshot: currentSnapshot)
+            let summaryLiveSnapshots = await MainActor.run {
+                self.runtimeStateStore.liveAggregationSnapshots(projectID: project.id)
+            }
+            let currentSnapshot = await MainActor.run {
+                self.runtimeStateStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
+            }
+            var quickState = await Task.detached(priority: .userInitiated) {
+                service.fastPanelState(project: project, liveSnapshots: summaryLiveSnapshots, currentSnapshot: currentSnapshot)
             }.value
+            quickState.liveSnapshots = displayLiveSnapshots
             await MainActor.run {
                 self.logger.log(
                     "ai-panel-bridge",
-                    "phase=quick project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") live=\(liveSnapshots.count) snapshotSession=\(currentSnapshot?.sessionID.uuidString ?? "nil") snapshotTool=\(currentSnapshot?.tool ?? "nil") snapshotModel=\(currentSnapshot?.model ?? "nil") snapshotTotal=\(currentSnapshot?.currentTotalTokens ?? 0) summaryTool=\(quickState.projectSummary?.currentTool ?? "nil") summaryModel=\(quickState.projectSummary?.currentModel ?? "nil") summaryTotal=\(quickState.projectSummary?.currentSessionTokens ?? 0)"
+                    "phase=quick project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") live=\(liveSnapshots.count) liveUnique=\(self.uniqueLiveSnapshotCount(liveSnapshots)) snapshotSession=\(currentSnapshot?.sessionID.uuidString ?? "nil") snapshotTool=\(currentSnapshot?.tool ?? "nil") snapshotModel=\(currentSnapshot?.model ?? "nil") snapshotTotal=\(currentSnapshot?.currentTotalTokens ?? 0) summaryTool=\(quickState.projectSummary?.currentTool ?? "nil") summaryModel=\(quickState.projectSummary?.currentModel ?? "nil") summaryTotal=\(quickState.projectSummary?.currentSessionTokens ?? 0)"
                 )
                 self.indexingStatusByProjectID[project.id] = quickState.indexingStatus
                 self.panelStateByProjectID[project.id] = quickState
@@ -471,7 +478,16 @@ final class AIStatsStore {
                     self.lastCompletedRefreshAtByProjectID[project.id] = Date()
                     nextRefreshState = .idle
                 }
-                let nextState = service.snapshotBackedPanelState(project: project, liveEnvelopes: liveEnvelopes, selectedSessionID: selectedSessionID, status: finalStatus)
+                let displayLiveSnapshots = self.runtimeStateStore.liveDisplaySnapshots(projectID: project.id)
+                let summaryLiveSnapshots = self.runtimeStateStore.liveAggregationSnapshots(projectID: project.id)
+                let currentSnapshot = self.runtimeStateStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
+                var nextState = service.snapshotBackedPanelState(
+                    project: project,
+                    liveSnapshots: summaryLiveSnapshots,
+                    currentSnapshot: currentSnapshot,
+                    status: finalStatus
+                )
+                nextState.liveSnapshots = displayLiveSnapshots
                 self.logger.log(
                     "ai-panel-bridge",
                     "phase=indexed project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") live=\(nextState.liveSnapshots.count) indexedSessions=\(nextState.sessions.count) summaryTool=\(nextState.projectSummary?.currentTool ?? "nil") summaryModel=\(nextState.projectSummary?.currentModel ?? "nil") summaryTotal=\(nextState.projectSummary?.currentSessionTokens ?? 0)"
@@ -719,7 +735,35 @@ final class AIStatsStore {
                 return
             }
             let kind = notification.userInfo?["kind"] as? String
+            let didSwitchExternalSession =
+                (notification.userInfo?["didSwitchExternalSession"] as? Bool) == true
+            let switchedSessionID = (notification.userInfo?["sessionID"] as? String)
+                .flatMap(UUID.init(uuidString:))
+            let switchedTool = notification.userInfo?["tool"] as? String
+            let didClearRuntimeSession =
+                (notification.userInfo?["didClearRuntimeSession"] as? Bool) == true
+            let clearedSessionID = (notification.userInfo?["clearedSessionID"] as? String)
+                .flatMap(UUID.init(uuidString:))
+            let clearedTool = notification.userInfo?["clearedTool"] as? String
             Task { @MainActor [weak self] in
+                if didSwitchExternalSession,
+                   let switchedSessionID,
+                   let switchedTool {
+                    self?.resetRuntimeProbeState(
+                        for: switchedSessionID,
+                        tool: switchedTool,
+                        reason: "bridge-external-switch"
+                    )
+                }
+                if didClearRuntimeSession,
+                   let clearedSessionID,
+                   let clearedTool {
+                    self?.resetRuntimeProbeState(
+                        for: clearedSessionID,
+                        tool: clearedTool,
+                        reason: "bridge-session-cleared"
+                    )
+                }
                 self?.scheduleRuntimeBridgeRefresh(force: kind != nil)
             }
         }
@@ -850,30 +894,11 @@ final class AIStatsStore {
                     if !self.needsRuntimeBootstrap(
                         sessionID: sessionID,
                         tool: tool,
+                        projectID: project.id,
                         liveSnapshot: liveSnapshot
                     ) {
                         return
                     }
-                }
-
-                self.sessionProjectIDBySessionID[sessionID] = project.id
-                self.sessionToolBySessionID[sessionID] = tool
-                self.sessionStartedAtBySessionID[sessionID] =
-                    liveSnapshot?.startedAt?.timeIntervalSince1970
-                    ?? liveSnapshot?.updatedAt.timeIntervalSince1970
-                    ?? self.sessionStartedAtBySessionID[sessionID]
-                if self.activeRuntimeBySessionID[sessionID] == nil, let liveSnapshot {
-                    self.activeRuntimeBySessionID[sessionID] = AIRuntimeContextSnapshot(
-                        tool: tool,
-                        externalSessionID: liveSnapshot.externalSessionID,
-                        model: liveSnapshot.model,
-                        inputTokens: max(0, liveSnapshot.currentInputTokens),
-                        outputTokens: max(0, liveSnapshot.currentOutputTokens),
-                        totalTokens: max(0, liveSnapshot.currentTotalTokens),
-                        updatedAt: liveSnapshot.updatedAt.timeIntervalSince1970,
-                        responseState: liveSnapshot.responseState
-                    )
-                    self.runtimeStateStore.applyRuntimeSnapshot(sessionID: sessionID, snapshot: self.activeRuntimeBySessionID[sessionID]!)
                 }
 
                 self.scheduleRuntimeRefresh(
@@ -896,16 +921,19 @@ final class AIStatsStore {
 
     private func refreshLiveState(project: Project, projects: [Project], selectedSessionID: UUID?) {
         let liveSnapshots = runtimeStateStore.liveSnapshots(projectID: project.id)
-        let currentSnapshot = runtimeStateStore.currentSnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
+        let displayLiveSnapshots = runtimeStateStore.liveDisplaySnapshots(projectID: project.id)
+        let summaryLiveSnapshots = runtimeStateStore.liveAggregationSnapshots(projectID: project.id)
+        let currentSnapshot = runtimeStateStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
         let status = indexingStatusByProjectID[project.id] ?? .completed(detail: String(localized: "ai.indexing.complete", defaultValue: "Index complete.", bundle: .module))
         let currentState = panelStateByProjectID[project.id] ?? cachedState(for: project.id) ?? .empty
-        let nextState = aiUsageService.lightweightLivePanelState(
+        var nextState = aiUsageService.lightweightLivePanelState(
             from: currentState,
             project: project,
-            liveSnapshots: liveSnapshots,
+            liveSnapshots: summaryLiveSnapshots,
             currentSnapshot: currentSnapshot,
             status: status
         )
+        nextState.liveSnapshots = displayLiveSnapshots
         if nextState == currentState,
            normalizedRestingRefreshState(refreshStateByProjectID[project.id]) == .idle {
             return
@@ -913,10 +941,28 @@ final class AIStatsStore {
 
         logger.log(
             "ai-panel-bridge",
-            "phase=live project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") live=\(liveSnapshots.count) snapshotSession=\(currentSnapshot?.sessionID.uuidString ?? "nil") snapshotTool=\(currentSnapshot?.tool ?? "nil") snapshotModel=\(currentSnapshot?.model ?? "nil") snapshotTotal=\(currentSnapshot?.currentTotalTokens ?? 0) summaryTool=\(nextState.projectSummary?.currentTool ?? "nil") summaryModel=\(nextState.projectSummary?.currentModel ?? "nil") summaryTotal=\(nextState.projectSummary?.currentSessionTokens ?? 0)"
+            "phase=live project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") live=\(liveSnapshots.count) liveUnique=\(uniqueLiveSnapshotCount(liveSnapshots)) snapshotSession=\(currentSnapshot?.sessionID.uuidString ?? "nil") snapshotTool=\(currentSnapshot?.tool ?? "nil") snapshotModel=\(currentSnapshot?.model ?? "nil") snapshotTotal=\(currentSnapshot?.currentTotalTokens ?? 0) summaryTool=\(nextState.projectSummary?.currentTool ?? "nil") summaryModel=\(nextState.projectSummary?.currentModel ?? "nil") summaryTotal=\(nextState.projectSummary?.currentSessionTokens ?? 0)"
         )
         storeState(nextState, refreshState: .idle, for: project.id, updateCurrent: true)
         syncCurrentAutomaticRefreshFlag()
+    }
+
+    private func uniqueLiveSnapshotCount(_ snapshots: [AITerminalSessionSnapshot]) -> Int {
+        var keys = Set<String>()
+        var fallbackCount = 0
+
+        for snapshot in snapshots {
+            guard let tool = snapshot.tool?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !tool.isEmpty,
+                  let externalSessionID = snapshot.externalSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !externalSessionID.isEmpty else {
+                fallbackCount += 1
+                continue
+            }
+            keys.insert("\(tool.lowercased()):\(externalSessionID.lowercased())")
+        }
+
+        return keys.count + fallbackCount
     }
 
     private func scheduleRuntimeRefreshesForLiveSessions(
@@ -979,8 +1025,7 @@ final class AIStatsStore {
         runtimeStateStore.liveSnapshots(projectID: projectID)
             .first(where: { $0.sessionID == sessionID })?
             .tool
-            ?? activeRuntimeBySessionID[sessionID]?.tool
-            ?? sessionToolBySessionID[sessionID]
+            ?? runtimeStateStore.tool(for: sessionID)
     }
 
     private func normalizedToolName(_ tool: String) -> String {
@@ -990,9 +1035,11 @@ final class AIStatsStore {
     private func needsRuntimeBootstrap(
         sessionID: UUID,
         tool: String,
+        projectID: UUID,
         liveSnapshot: AITerminalSessionSnapshot?
     ) -> Bool {
-        guard let runtime = activeRuntimeBySessionID[sessionID] else {
+        _ = projectID
+        guard let runtime = runtimeStateStore.runtimeContext(for: sessionID) else {
             return true
         }
 
@@ -1005,8 +1052,8 @@ final class AIStatsStore {
             return true
         }
         if runtime.totalTokens <= 0,
-           (liveSnapshot?.currentTotalTokens ?? 0) <= 0,
-           liveSnapshot?.responseState == .responding {
+           (liveSnapshot?.currentTotalTokens ?? runtime.totalTokens) <= 0,
+           (liveSnapshot?.responseState ?? runtime.responseState) == .responding {
             return true
         }
 
@@ -1015,24 +1062,10 @@ final class AIStatsStore {
 
     private func syncRuntimeSessions(with envelopes: [AIToolUsageEnvelope], project: Project) {
         let liveSessionIDs = Set(envelopes.compactMap { UUID(uuidString: $0.sessionId) })
-        let runtimeStateBySessionID = Dictionary(
-            uniqueKeysWithValues: runtimeStateStore
-                .liveSnapshots(projectID: project.id)
-                .map { snapshot in
-                    (
-                        snapshot.sessionID,
-                        AIRuntimeContextSnapshot(
-                            tool: snapshot.tool ?? "",
-                            externalSessionID: snapshot.externalSessionID,
-                            model: snapshot.model,
-                            inputTokens: snapshot.currentInputTokens,
-                            outputTokens: snapshot.currentOutputTokens,
-                            totalTokens: snapshot.currentTotalTokens,
-                            updatedAt: snapshot.updatedAt.timeIntervalSince1970,
-                            responseState: snapshot.responseState
-                        )
-                    )
-                }
+        let trackedSessionIDs = Set(
+            runtimeStateStore.terminalBindingsByID.values
+                .filter { $0.projectID == project.id }
+                .map(\.sessionID)
         )
 
         for envelope in envelopes {
@@ -1040,71 +1073,42 @@ final class AIStatsStore {
                 continue
             }
 
-            if let incomingInstanceID = envelope.sessionInstanceId, !incomingInstanceID.isEmpty {
-                let previousInstanceID = sessionInstanceIDBySessionID[sessionID]
-                if let previousInstanceID, previousInstanceID != incomingInstanceID {
-                    clearRuntimeState(for: sessionID)
-                }
-                sessionInstanceIDBySessionID[sessionID] = incomingInstanceID
+            let existingBinding = runtimeStateStore.terminalBindingsByID[sessionID]
+            if let incomingInvocationID = normalizedInvocationID(envelope.invocationId),
+               let previousInvocationID = normalizedInvocationID(existingBinding?.invocationID),
+               previousInvocationID != incomingInvocationID {
+                resetRuntimeProbeState(for: sessionID, tool: existingBinding?.tool ?? envelope.tool)
             }
 
-            runtimeStateStore.applyLiveEnvelope(envelope)
-            sessionProjectIDBySessionID[sessionID] = project.id
-            sessionToolBySessionID[sessionID] = envelope.tool
-            sessionStartedAtBySessionID[sessionID] = envelope.startedAt ?? envelope.updatedAt
-
-            let runtimeStateSnapshot = runtimeStateBySessionID[sessionID]
-            let prefersHookDrivenResponseState = toolDriverFactory.prefersHookDrivenResponseState(for: envelope.tool)
-            if let existing = activeRuntimeBySessionID[sessionID], existing.tool == envelope.tool {
-                var mergedRuntime = existing
-                if (existing.externalSessionID?.isEmpty ?? true),
-                   let externalSessionID = envelope.externalSessionID,
-                   !externalSessionID.isEmpty {
-                    mergedRuntime.externalSessionID = externalSessionID
-                }
-                if (existing.model?.isEmpty ?? true), let model = envelope.model, !model.isEmpty {
-                    mergedRuntime.model = model
-                }
-                if existing.responseState == nil, let responseState = envelope.responseState {
-                    mergedRuntime.responseState = responseState
-                }
-                if let runtimeStateSnapshot {
-                    mergedRuntime.externalSessionID = runtimeStateSnapshot.externalSessionID ?? mergedRuntime.externalSessionID
-                    mergedRuntime.model = runtimeStateSnapshot.model ?? mergedRuntime.model
-                    mergedRuntime.inputTokens = max(existing.inputTokens, runtimeStateSnapshot.inputTokens)
-                    mergedRuntime.outputTokens = max(existing.outputTokens, runtimeStateSnapshot.outputTokens)
-                    mergedRuntime.totalTokens = max(existing.totalTokens, runtimeStateSnapshot.totalTokens)
-                    if prefersHookDrivenResponseState {
-                        if runtimeStateSnapshot.responseState == .responding {
-                            mergedRuntime.responseState = .responding
-                        } else if mergedRuntime.responseState == nil {
-                            mergedRuntime.responseState = runtimeStateSnapshot.responseState ?? mergedRuntime.responseState
-                        }
-                    } else {
-                        mergedRuntime.responseState = runtimeStateSnapshot.responseState ?? mergedRuntime.responseState
-                    }
-                    mergedRuntime.updatedAt = max(existing.updatedAt, runtimeStateSnapshot.updatedAt)
-                }
-                mergedRuntime.updatedAt = max(mergedRuntime.updatedAt, envelope.updatedAt)
-                activeRuntimeBySessionID[sessionID] = mergedRuntime
-                continue
+            if let incomingInstanceID = normalizedInvocationID(envelope.sessionInstanceId),
+               let previousInstanceID = normalizedInvocationID(existingBinding?.sessionInstanceID),
+               previousInstanceID != incomingInstanceID {
+                resetRuntimeProbeState(for: sessionID, tool: existingBinding?.tool ?? envelope.tool)
             }
 
-            activeRuntimeBySessionID[sessionID] = AIRuntimeContextSnapshot(
-                tool: envelope.tool,
-                externalSessionID: runtimeStateSnapshot?.externalSessionID ?? envelope.externalSessionID,
-                model: runtimeStateSnapshot?.model ?? envelope.model,
-                inputTokens: max(max(0, envelope.inputTokens ?? 0), runtimeStateSnapshot?.inputTokens ?? 0),
-                outputTokens: max(max(0, envelope.outputTokens ?? 0), runtimeStateSnapshot?.outputTokens ?? 0),
-                totalTokens: max(max(0, envelope.totalTokens ?? 0), runtimeStateSnapshot?.totalTokens ?? 0),
-                updatedAt: max(envelope.updatedAt, runtimeStateSnapshot?.updatedAt ?? 0),
-                responseState: envelope.responseState ?? runtimeStateSnapshot?.responseState
+            let previousExternalSessionID = normalizedExternalSessionID(
+                runtimeStateStore.externalSessionID(for: sessionID)
+                ?? runtimeStateStore.runtimeContext(for: sessionID)?.externalSessionID
+                ?? existingBinding?.lastKnownExternalSessionID
             )
+            runtimeStateStore.applyLiveEnvelope(envelope)
+            let incomingExternalSessionID = normalizedExternalSessionID(
+                runtimeStateStore.externalSessionID(for: sessionID)
+                ?? runtimeStateStore.runtimeContext(for: sessionID)?.externalSessionID
+                ?? envelope.externalSessionID
+            )
+            if toolDriverFactory.allowsRuntimeExternalSessionSwitch(for: envelope.tool),
+               externalSessionIDDidChange(
+                   previous: previousExternalSessionID,
+                   incoming: incomingExternalSessionID
+               ) {
+                resetRuntimeProbeState(for: sessionID, tool: envelope.tool)
+                logger.log(
+                    "runtime-refresh",
+                    "switch session=\(sessionID.uuidString) tool=\(normalizedToolName(envelope.tool)) external=\(previousExternalSessionID ?? "nil")->\(incomingExternalSessionID ?? "nil") source=live-envelope"
+                )
+            }
         }
-
-        let trackedSessionIDs = sessionProjectIDBySessionID
-            .filter { $0.value == project.id }
-            .map(\.key)
 
         for sessionID in trackedSessionIDs where !liveSessionIDs.contains(sessionID) {
             clearRuntimeState(for: sessionID)
@@ -1113,17 +1117,36 @@ final class AIStatsStore {
     }
 
     private func clearRuntimeState(for sessionID: UUID) {
+        let tool = runtimeStateStore.tool(for: sessionID)
+        resetRuntimeProbeState(for: sessionID, tool: tool)
+        runtimeStateStore.clearSession(sessionID)
+    }
+
+    private func resetRuntimeProbeState(for sessionID: UUID, tool: String?, reason: String = "reset") {
+        logger.log(
+            "runtime-refresh",
+            "reset session=\(sessionID.uuidString) tool=\(tool.map(normalizedToolName(_:)) ?? "nil") reason=\(reason)"
+        )
         runtimeRefreshTasksBySessionID[sessionID]?.cancel()
         runtimeRefreshTasksBySessionID[sessionID] = nil
         runtimeTailRefreshTasksBySessionID[sessionID]?.cancel()
         runtimeTailRefreshTasksBySessionID[sessionID] = nil
-        activeRuntimeBySessionID[sessionID] = nil
         lastRuntimeRefreshAtBySessionID[sessionID] = nil
-        sessionInstanceIDBySessionID[sessionID] = nil
-        sessionProjectIDBySessionID[sessionID] = nil
-        sessionToolBySessionID[sessionID] = nil
-        sessionStartedAtBySessionID[sessionID] = nil
-        runtimeStateStore.clearSession(sessionID)
+        Task {
+            await runtimeContextProbe.reset(
+                for: tool,
+                runtimeSessionID: sessionID.uuidString
+            )
+        }
+    }
+
+    private func matchesTrackedRuntimeSession(sessionID: UUID, projectID: UUID, tool: String) -> Bool {
+        guard let binding = runtimeStateStore.terminalBindingsByID[sessionID],
+              binding.projectID == projectID,
+              binding.status == "running" else {
+            return false
+        }
+        return normalizedToolName(binding.tool) == normalizedToolName(tool)
     }
 
     func handleTerminalSessionClosed(sessionID: UUID, project: Project?, projects: [Project], selectedSessionID: UUID?) {
@@ -1139,6 +1162,11 @@ final class AIStatsStore {
         project: Project,
         selectedSessionID: UUID?
     ) -> [AIToolUsageEnvelope] {
+        let liveSnapshotsBySessionID = Dictionary(
+            uniqueKeysWithValues: runtimeStateStore
+                .liveSnapshots(projectID: project.id)
+                .map { ($0.sessionID, $0) }
+        )
         let projectEnvelopes = envelopes
             .filter { UUID(uuidString: $0.projectId) == project.id }
             .filter { envelope in
@@ -1148,29 +1176,30 @@ final class AIStatsStore {
             .map { envelope in
                 var enriched = envelope
                 if let sessionUUID = UUID(uuidString: enriched.sessionId),
-                   let runtime = activeRuntimeBySessionID[sessionUUID] {
-                    if (enriched.externalSessionID?.isEmpty ?? true), let externalSessionID = runtime.externalSessionID, !externalSessionID.isEmpty {
+                   let liveSnapshot = liveSnapshotsBySessionID[sessionUUID] {
+                    if (enriched.externalSessionID?.isEmpty ?? true),
+                       let externalSessionID = liveSnapshot.externalSessionID,
+                       !externalSessionID.isEmpty {
                         enriched.externalSessionID = externalSessionID
                     }
-                    if (enriched.model?.isEmpty ?? true), let runtimeModel = runtime.model, !runtimeModel.isEmpty {
+                    if (enriched.model?.isEmpty ?? true),
+                       let runtimeModel = liveSnapshot.model,
+                       !runtimeModel.isEmpty {
                         enriched.model = runtimeModel
                     }
-                    if enriched.tool.isEmpty {
-                        enriched.tool = runtime.tool
+                    if enriched.tool.isEmpty,
+                       let runtimeTool = liveSnapshot.tool,
+                       !runtimeTool.isEmpty {
+                        enriched.tool = runtimeTool
                     }
-                    if (enriched.inputTokens ?? 0) <= 0 {
-                        enriched.inputTokens = runtime.inputTokens
-                    }
-                    if (enriched.outputTokens ?? 0) <= 0 {
-                        enriched.outputTokens = runtime.outputTokens
-                    }
-                    if (enriched.totalTokens ?? 0) <= 0 {
-                        enriched.totalTokens = runtime.totalTokens
-                    }
-                    if enriched.responseState == nil {
-                        enriched.responseState = runtime.responseState
-                    }
-                    enriched.updatedAt = max(enriched.updatedAt, runtime.updatedAt)
+                    enriched.inputTokens = liveSnapshot.currentInputTokens
+                    enriched.outputTokens = liveSnapshot.currentOutputTokens
+                    enriched.totalTokens = liveSnapshot.currentTotalTokens
+                    enriched.baselineInputTokens = liveSnapshot.baselineInputTokens
+                    enriched.baselineOutputTokens = liveSnapshot.baselineOutputTokens
+                    enriched.baselineTotalTokens = liveSnapshot.baselineTotalTokens
+                    enriched.responseState = liveSnapshot.responseState ?? enriched.responseState
+                    enriched.updatedAt = max(enriched.updatedAt, liveSnapshot.updatedAt.timeIntervalSince1970)
                 }
                 return enriched
             }
@@ -1187,32 +1216,37 @@ final class AIStatsStore {
            filtered.contains(where: { $0.sessionId == selectedEnvelope.sessionId }) == false {
             filtered.append(selectedEnvelope)
         } else if let selectedSessionID,
-                  sessionProjectIDBySessionID[selectedSessionID] == project.id,
-                  let activeRuntime = activeRuntimeBySessionID[selectedSessionID],
+                  let selectedSnapshot = liveSnapshotsBySessionID[selectedSessionID],
+                  let binding = runtimeStateStore.terminalBindingsByID[selectedSessionID],
+                  binding.projectID == project.id,
+                  binding.status == "running",
                   filtered.contains(where: { $0.sessionId == selectedSessionID.uuidString }) == false {
             filtered.append(
                 AIToolUsageEnvelope(
                     sessionId: selectedSessionID.uuidString,
-                    sessionInstanceId: nil,
-                    invocationId: nil,
-                    externalSessionID: activeRuntime.externalSessionID,
+                    sessionInstanceId: binding.sessionInstanceID,
+                    invocationId: binding.invocationID,
+                    externalSessionID: selectedSnapshot.externalSessionID,
                     projectId: project.id.uuidString,
                     projectName: project.name,
                     projectPath: project.path,
-                    sessionTitle: runtimeStateStore.sessionTitle(for: selectedSessionID) ?? project.name,
-                    tool: activeRuntime.tool,
-                    model: activeRuntime.model,
-                    status: "running",
-                    responseState: activeRuntime.responseState,
-                    updatedAt: max(Date().timeIntervalSince1970, activeRuntime.updatedAt),
-                    startedAt: nil,
+                    sessionTitle: binding.sessionTitle,
+                    tool: selectedSnapshot.tool ?? binding.tool,
+                    model: selectedSnapshot.model,
+                    status: binding.status,
+                    responseState: selectedSnapshot.responseState,
+                    updatedAt: max(Date().timeIntervalSince1970, selectedSnapshot.updatedAt.timeIntervalSince1970),
+                    startedAt: binding.startedAt,
                     finishedAt: nil,
-                    inputTokens: activeRuntime.inputTokens,
-                    outputTokens: activeRuntime.outputTokens,
-                    totalTokens: activeRuntime.totalTokens,
-                    contextWindow: nil,
-                    contextUsedTokens: nil,
-                    contextUsagePercent: nil
+                    inputTokens: selectedSnapshot.currentInputTokens,
+                    outputTokens: selectedSnapshot.currentOutputTokens,
+                    totalTokens: selectedSnapshot.currentTotalTokens,
+                    baselineInputTokens: selectedSnapshot.baselineInputTokens,
+                    baselineOutputTokens: selectedSnapshot.baselineOutputTokens,
+                    baselineTotalTokens: selectedSnapshot.baselineTotalTokens,
+                    contextWindow: selectedSnapshot.currentContextWindow,
+                    contextUsedTokens: selectedSnapshot.currentContextUsedTokens,
+                    contextUsagePercent: selectedSnapshot.currentContextUsagePercent
                 )
             )
         }
@@ -1227,9 +1261,6 @@ final class AIStatsStore {
         projects: [Project],
         force: Bool
     ) {
-        sessionProjectIDBySessionID[sessionID] = project.id
-        sessionToolBySessionID[sessionID] = tool
-
         guard runtimeRefreshTasksBySessionID[sessionID] == nil else {
             return
         }
@@ -1256,8 +1287,6 @@ final class AIStatsStore {
         }
 
         let runtimeProbe = runtimeContextProbe
-        let startedAt = sessionStartedAtBySessionID[sessionID] ?? Date().timeIntervalSince1970
-        let knownExternalSessionID = activeRuntimeBySessionID[sessionID]?.externalSessionID
         runtimeRefreshTasksBySessionID[sessionID] = Task.detached(priority: .utility) {
             if delay > 0 {
                 let nanoseconds = UInt64(delay * 1_000_000_000)
@@ -1268,12 +1297,33 @@ final class AIStatsStore {
                 return
             }
 
+            let runtimeInputs = await MainActor.run { () -> (startedAt: Double, knownExternalSessionID: String?)? in
+                guard self.matchesTrackedRuntimeSession(
+                    sessionID: sessionID,
+                    projectID: project.id,
+                    tool: tool
+                ) else {
+                    return nil
+                }
+                return (
+                    self.runtimeStateStore.terminalBindingsByID[sessionID]?.startedAt
+                        ?? Date().timeIntervalSince1970,
+                    self.runtimeStateStore.runtimeProbeExternalSessionHint(
+                        for: sessionID,
+                        tool: tool
+                    )
+                )
+            }
+            guard let runtimeInputs else {
+                return
+            }
+
             let runtime = await runtimeProbe.snapshot(
                 for: tool,
                 runtimeSessionID: sessionID.uuidString,
                 projectPath: project.path,
-                startedAt: startedAt,
-                knownExternalSessionID: knownExternalSessionID
+                startedAt: runtimeInputs.startedAt,
+                knownExternalSessionID: runtimeInputs.knownExternalSessionID
             )
 
             await MainActor.run {
@@ -1293,8 +1343,11 @@ final class AIStatsStore {
                     }
                 }
 
-                guard self.sessionProjectIDBySessionID[sessionID] == project.id,
-                      self.sessionToolBySessionID[sessionID] == tool else {
+                guard self.matchesTrackedRuntimeSession(
+                    sessionID: sessionID,
+                    projectID: project.id,
+                    tool: tool
+                ) else {
                     return
                 }
 
@@ -1303,65 +1356,52 @@ final class AIStatsStore {
                     print("[AIStats] sessionID=\(sessionID.uuidString) applyRuntimeRefresh tool=\(tool) model=\(runtimeModel)")
                 }
 
-                let previousRuntime = self.activeRuntimeBySessionID[sessionID]
-                let liveStoreRuntime = self.runtimeStateStore
-                    .liveSnapshots(projectID: project.id)
-                    .first(where: { $0.sessionID == sessionID })
-                    .map { snapshot in
-                        AIRuntimeContextSnapshot(
-                            tool: snapshot.tool ?? tool,
-                            externalSessionID: snapshot.externalSessionID,
-                            model: snapshot.model,
-                            inputTokens: snapshot.currentInputTokens,
-                            outputTokens: snapshot.currentOutputTokens,
-                            totalTokens: snapshot.currentTotalTokens,
-                            updatedAt: snapshot.updatedAt.timeIntervalSince1970,
-                            responseState: snapshot.responseState,
-                            wasInterrupted: snapshot.wasInterrupted,
-                            hasCompletedTurn: snapshot.hasCompletedTurn
+                let previousRuntime = self.runtimeStateStore.runtimeContext(for: sessionID)
+                if let runtime {
+                    guard let result = self.runtimeStateStore.applyRuntimeSnapshot(
+                        sessionID: sessionID,
+                        snapshot: runtime
+                    ) else {
+                        self.lastRuntimeRefreshAtBySessionID[sessionID] = Date()
+                        shouldReschedule = self.shouldContinueRuntimeRefresh(
+                            for: sessionID,
+                            tool: tool,
+                            projectID: project.id
                         )
+                        return
                     }
-                let effectivePreviousRuntime = liveStoreRuntime ?? previousRuntime
-                if var runtime = runtime {
-                    if self.toolDriverFactory.prefersHookDrivenResponseState(for: tool),
-                       let existingResponseState = effectivePreviousRuntime?.responseState {
-                        if existingResponseState == .responding,
-                           runtime.responseState == .idle,
-                           runtime.wasInterrupted == false,
-                           runtime.hasCompletedTurn == false {
-                            runtime.responseState = .responding
-                        } else if runtime.responseState != .idle {
-                            runtime.responseState = existingResponseState
-                        }
+                    if result.ignored {
+                        self.lastRuntimeRefreshAtBySessionID[sessionID] = Date()
+                        shouldReschedule = self.shouldContinueRuntimeRefresh(
+                            for: sessionID,
+                            tool: tool,
+                            projectID: project.id
+                        )
+                        return
                     }
-                    if let effectivePreviousRuntime {
-                        runtime.externalSessionID = runtime.externalSessionID ?? effectivePreviousRuntime.externalSessionID
-                        runtime.model = runtime.model ?? effectivePreviousRuntime.model
-                        runtime.inputTokens = max(runtime.inputTokens, effectivePreviousRuntime.inputTokens)
-                        runtime.outputTokens = max(runtime.outputTokens, effectivePreviousRuntime.outputTokens)
-                        runtime.totalTokens = max(runtime.totalTokens, effectivePreviousRuntime.totalTokens)
-                        runtime.updatedAt = max(runtime.updatedAt, effectivePreviousRuntime.updatedAt)
-                    }
-                    let changed = self.runtimeDisplayDidChange(previous: previousRuntime, current: runtime)
-                    self.activeRuntimeBySessionID[sessionID] = runtime
-                    self.runtimeStateStore.applyRuntimeSnapshot(sessionID: sessionID, snapshot: runtime)
-                    if changed {
+                    if result.didSwitchExternalSession {
                         self.logger.log(
                             "runtime-refresh",
-                            "apply session=\(sessionID.uuidString) tool=\(self.normalizedToolName(tool)) model=\(runtime.model ?? "nil") total=\(runtime.totalTokens) response=\(runtime.responseState?.rawValue ?? "nil")"
+                            "switch session=\(sessionID.uuidString) tool=\(self.normalizedToolName(tool)) external=\(result.previousContext?.externalSessionID ?? "nil")->\(result.currentContext.externalSessionID ?? "nil") source=runtime-refresh"
                         )
                     }
-                    if self.runtimeDidAdvance(previous: previousRuntime, current: runtime) {
+                    if result.didChangeDisplay {
+                        self.logger.log(
+                            "runtime-refresh",
+                            "apply session=\(sessionID.uuidString) tool=\(self.normalizedToolName(tool)) model=\(result.currentContext.model ?? "nil") total=\(result.currentContext.totalTokens) response=\(result.currentContext.responseState?.rawValue ?? "nil")"
+                        )
+                    }
+                    if result.didAdvance {
                         NotificationCenter.default.post(
                             name: .dmuxAIRuntimeActivityPulse,
                             object: nil,
                             userInfo: [
                                 "projectID": project.id.uuidString,
-                                "tool": runtime.tool,
+                                "tool": result.currentContext.tool,
                             ]
                         )
                     }
-                    guard changed else {
+                    guard result.didChangeDisplay else {
                         self.lastRuntimeRefreshAtBySessionID[sessionID] = Date()
                         shouldReschedule = self.shouldContinueRuntimeRefresh(
                             for: sessionID,
@@ -1418,8 +1458,11 @@ final class AIStatsStore {
 
             await MainActor.run {
                 self.runtimeTailRefreshTasksBySessionID[sessionID] = nil
-                guard self.sessionProjectIDBySessionID[sessionID] == project.id,
-                      self.sessionToolBySessionID[sessionID] == tool else {
+                guard self.matchesTrackedRuntimeSession(
+                    sessionID: sessionID,
+                    projectID: project.id,
+                    tool: tool
+                ) else {
                     return
                 }
                 self.scheduleRuntimeRefresh(
@@ -1438,7 +1481,7 @@ final class AIStatsStore {
 
     private func shouldContinueRuntimeRefresh(for sessionID: UUID, tool: String, projectID: UUID) -> Bool {
         guard toolDriverFactory.isRealtimeTool(tool),
-              sessionProjectIDBySessionID[sessionID] == projectID else {
+              matchesTrackedRuntimeSession(sessionID: sessionID, projectID: projectID, tool: tool) else {
             logger.log(
                 "runtime-refresh",
                 "stop session=\(sessionID.uuidString) tool=\(normalizedToolName(tool)) project=\(projectID.uuidString) reason=not-live-or-mismatch"
@@ -1457,35 +1500,28 @@ final class AIStatsStore {
         return shouldContinue
     }
 
-    private func runtimeDidAdvance(previous: AIRuntimeContextSnapshot?, current: AIRuntimeContextSnapshot) -> Bool {
-        guard let previous else {
-            return current.totalTokens > 0
-                || current.outputTokens > 0
-                || current.responseState != nil
+    private func normalizedExternalSessionID(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
         }
-        if current.totalTokens > previous.totalTokens {
-            return true
-        }
-        if current.outputTokens > previous.outputTokens {
-            return true
-        }
-        if current.responseState != previous.responseState {
-            return true
-        }
-        return false
+        return value
     }
 
-    private func runtimeDisplayDidChange(previous: AIRuntimeContextSnapshot?, current: AIRuntimeContextSnapshot) -> Bool {
-        guard let previous else {
-            return true
+    private func normalizedInvocationID(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
         }
-        return previous.tool != current.tool
-            || previous.externalSessionID != current.externalSessionID
-            || previous.model != current.model
-            || previous.inputTokens != current.inputTokens
-            || previous.outputTokens != current.outputTokens
-            || previous.totalTokens != current.totalTokens
-            || previous.responseState != current.responseState
+        return value
+    }
+
+    private func externalSessionIDDidChange(previous: String?, incoming: String?) -> Bool {
+        guard let previous = normalizedExternalSessionID(previous),
+              let incoming = normalizedExternalSessionID(incoming) else {
+            return false
+        }
+        return previous != incoming
     }
 
     private func isMeaningfulLiveEnvelope(_ envelope: AIToolUsageEnvelope) -> Bool {

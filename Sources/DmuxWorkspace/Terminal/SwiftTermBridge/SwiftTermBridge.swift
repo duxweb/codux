@@ -529,6 +529,9 @@ final class SwiftTermTerminalContainerView: NSView {
     }
 
     private func handlePotentialInteractionEvent(_ event: NSEvent) -> NSEvent? {
+        guard isVisibleTerminal else {
+            return event
+        }
         guard event.window === window else {
             return event
         }

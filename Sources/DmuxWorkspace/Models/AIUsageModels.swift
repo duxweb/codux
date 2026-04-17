@@ -57,6 +57,9 @@ struct AITerminalSessionSnapshot: Codable, Equatable, Identifiable, Sendable {
     var currentInputTokens: Int
     var currentOutputTokens: Int
     var currentTotalTokens: Int
+    var baselineInputTokens: Int
+    var baselineOutputTokens: Int
+    var baselineTotalTokens: Int
     var currentContextWindow: Int?
     var currentContextUsedTokens: Int?
     var currentContextUsagePercent: Double?
@@ -160,6 +163,9 @@ struct AIToolUsageEnvelope: Codable, Sendable {
     var inputTokens: Int?
     var outputTokens: Int?
     var totalTokens: Int?
+    var baselineInputTokens: Int?
+    var baselineOutputTokens: Int?
+    var baselineTotalTokens: Int?
     var contextWindow: Int?
     var contextUsedTokens: Int?
     var contextUsagePercent: Double?

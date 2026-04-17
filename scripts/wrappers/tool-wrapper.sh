@@ -115,7 +115,7 @@ send_usage_runtime_event() {
         print -rn -- "\"model\":null,"
       fi
       print -rn -- "\"status\":\"$(json_escape "${phase}")\","
-      if [[ "${phase}" == "running" && ( "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "codex" || "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "claude" || "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "claude-code" || "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "gemini" ) ]]; then
+      if [[ "${phase}" == "running" && ( "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "codex" || "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "claude" || "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "claude-code" || "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "gemini" || "${DMUX_ACTIVE_AI_TOOL:-$tool_name}" == "opencode" ) ]]; then
         print -rn -- "\"responseState\":null,"
       else
         print -rn -- "\"responseState\":\"idle\","
@@ -160,6 +160,10 @@ extract_resume_target() {
         [[ -n "$arg" && "$arg" != -* ]] && print -r -- "$arg"
         return 0
         ;;
+      --session)
+        [[ -n "$arg" && "$arg" != -* ]] && print -r -- "$arg"
+        return 0
+        ;;
       resume)
         [[ -n "$arg" && "$arg" != -* ]] && print -r -- "$arg"
         return 0
@@ -168,6 +172,10 @@ extract_resume_target() {
     case "$arg" in
       --resume=*)
         print -r -- "${arg#--resume=}"
+        return 0
+        ;;
+      --session=*)
+        print -r -- "${arg#--session=}"
         return 0
         ;;
     esac
@@ -249,6 +257,18 @@ if [[ "$tool_name" == "gemini" ]]; then
   fi
   log_line "launch managed tool=${tool_name} session=${DMUX_SESSION_ID:-nil} project=${DMUX_PROJECT_ID:-nil} binary=${real_bin} invocation=${DMUX_ACTIVE_AI_INVOCATION_ID:-nil} resume=${resume_target:-nil}"
   run_wrapped_command "${resume_target}" "" env PATH="$search_path" "$real_bin" "$@"
+  exit $?
+fi
+
+if [[ "$tool_name" == "opencode" ]]; then
+  resume_target=""
+  resume_target="$(extract_resume_target "$@" || true)"
+  opencode_config_dir="${wrapper_dir}/opencode-config"
+  if [[ -n "${resume_target}" ]]; then
+    send_usage_runtime_event running "${resume_target}"
+  fi
+  log_line "launch managed tool=${tool_name} session=${DMUX_SESSION_ID:-nil} project=${DMUX_PROJECT_ID:-nil} binary=${real_bin} invocation=${DMUX_ACTIVE_AI_INVOCATION_ID:-nil} resume=${resume_target:-nil} configDir=${opencode_config_dir}"
+  run_wrapped_command "${resume_target}" "" env PATH="$search_path" OPENCODE_CONFIG_DIR="${opencode_config_dir}" DMUX_EXTERNAL_SESSION_ID="${resume_target}" "$real_bin" "$@"
   exit $?
 fi
 
