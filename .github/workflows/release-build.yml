@@ -226,10 +226,10 @@ jobs:
         if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          if [[ -z "${GH_TOKEN:-}" ]]; then
+          if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
             echo "[tap] HOMEBREW_TAP_TOKEN is not configured, skipping tap publish"
             {
               echo "### Homebrew tap"
@@ -242,16 +242,17 @@ jobs:
           set +e
 
           tap_dir="$RUNNER_TEMP/homebrew-tap"
+          tap_repo_url="https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/duxweb/homebrew-tap.git"
           rm -rf "$tap_dir"
-          gh repo clone duxweb/homebrew-tap "$tap_dir"
+          git clone "$tap_repo_url" "$tap_dir"
           clone_status=$?
           if [[ $clone_status -ne 0 ]]; then
-            echo "::warning::[tap] Failed to clone duxweb/homebrew-tap. Check HOMEBREW_TAP_TOKEN validity and repo write access."
+            echo "::warning::[tap] Failed to clone duxweb/homebrew-tap using HOMEBREW_TAP_TOKEN. Check token validity and repo write access."
             {
               echo "### Homebrew tap"
               echo
               echo "- Failed: could not clone \`duxweb/homebrew-tap\`."
-              echo "- Check whether \`HOMEBREW_TAP_TOKEN\` is valid and has write access to the tap repository."
+              echo "- Check whether \`HOMEBREW_TAP_TOKEN\` is valid and has read/write access to the tap repository."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -290,12 +291,12 @@ jobs:
           git push origin HEAD:main
           push_status=$?
           if [[ $push_status -ne 0 ]]; then
-            echo "::warning::[tap] Failed to push Homebrew tap update. Check HOMEBREW_TAP_TOKEN validity and tap repository permissions."
+            echo "::warning::[tap] Failed to push Homebrew tap update using HOMEBREW_TAP_TOKEN. Check token validity and tap repository permissions."
             {
               echo "### Homebrew tap"
               echo
               echo "- Failed: could not push the cask update to \`duxweb/homebrew-tap\`."
-              echo "- Check whether \`HOMEBREW_TAP_TOKEN\` is valid and has write access to the tap repository."
+              echo "- Check whether \`HOMEBREW_TAP_TOKEN\` is valid and has read/write access to the tap repository."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
