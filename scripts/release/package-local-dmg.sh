@@ -33,6 +33,7 @@ iconset_dir="${dist_dir}/AppIcon.iconset"
 main_icns_path="${app_dir}/Contents/Resources/AppIcon.icns"
 main_plist_path="${app_dir}/Contents/Info.plist"
 icon_generator_bin="$(mktemp "${TMPDIR:-/tmp}/dmux-generate-app-icon.XXXXXX")"
+icon_variant="${DMUX_ICON_VARIANT:-$([[ "${app_variant_suffix}" == "-debug" ]] && echo debug || echo standard)}"
 
 cleanup() {
   rm -f "${icon_generator_bin}"
@@ -59,7 +60,7 @@ generate_app_icons() {
   rm -rf "${iconset_dir}"
   mkdir -p "$(dirname "${main_icns_path}")"
   swiftc -framework AppKit "${root_dir}/scripts/release/generate-app-icon.swift" -o "${icon_generator_bin}"
-  "${icon_generator_bin}" "${iconset_dir}" >/dev/null
+  "${icon_generator_bin}" "${iconset_dir}" "${icon_variant}" >/dev/null
   iconutil -c icns "${iconset_dir}" -o "${main_icns_path}"
   rm -rf "${iconset_dir}"
 }

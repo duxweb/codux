@@ -3091,14 +3091,20 @@ final class AppModel {
 
     private func persistApplicationBundleIcon() {
         let bundlePath = Bundle.main.bundleURL.path
-        let iconImage: NSImage? = appSettings.iconStyle == .default
-            ? nil
-            : AppIconRenderer.image(for: appSettings.iconStyle, size: 1024)
+        let iconVariant = AppIconRenderer.Variant.current()
+        let iconImage: NSImage? = {
+            if appSettings.iconStyle == .default {
+                return iconVariant == .standard
+                    ? nil
+                    : AppIconRenderer.image(for: appSettings.iconStyle, size: 1024, variant: iconVariant)
+            }
+            return AppIconRenderer.image(for: appSettings.iconStyle, size: 1024, variant: iconVariant)
+        }()
 
         let didUpdate = NSWorkspace.shared.setIcon(iconImage, forFile: bundlePath, options: [])
         debugLog.log(
             "app",
-            "bundle icon update style=\(appSettings.iconStyle.rawValue) success=\(didUpdate) path=\(bundlePath)"
+            "bundle icon update style=\(appSettings.iconStyle.rawValue) variant=\(String(describing: iconVariant)) success=\(didUpdate) path=\(bundlePath)"
         )
 
         guard didUpdate else {
@@ -3134,7 +3140,10 @@ final class AppModel {
     }
 
     private func applyRuntimeDockIcon() {
-        NSApplication.shared.applicationIconImage = AppIconRenderer.image(for: appSettings.iconStyle)
+        NSApplication.shared.applicationIconImage = AppIconRenderer.image(
+            for: appSettings.iconStyle,
+            variant: AppIconRenderer.Variant.current()
+        )
     }
 
     private var currentAppVersion: String {

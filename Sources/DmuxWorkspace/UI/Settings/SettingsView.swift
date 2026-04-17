@@ -77,7 +77,8 @@ struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .background(
             SettingsWindowConfigurator(
-                title: String(localized: "menu.settings", defaultValue: "Settings", bundle: .module)
+                title: String(localized: "menu.settings", defaultValue: "Settings", bundle: .module),
+                contentSize: NSSize(width: 640, height: selectedTab.preferredContentHeight)
             )
         )
     }
@@ -210,13 +211,14 @@ private struct AppearanceSettingsPane: View {
                 LabeledContent(String(localized: "settings.terminal_font_size", defaultValue: "Terminal Font Size", bundle: .module)) {
                     HStack(spacing: 8) {
                         TextField(
-                            String(localized: "settings.terminal_font_size", defaultValue: "Terminal Font Size", bundle: .module),
+                            "",
                             value: Binding(
                                 get: { model.appSettings.terminalFontSize },
                                 set: { model.updateTerminalFontSize($0) }
                             ),
                             format: .number
                         )
+                        .labelsHidden()
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 58)
 
@@ -267,12 +269,6 @@ private struct ToolSettingsPane: View {
 
     var body: some View {
         Form {
-            Section(String(localized: "settings.tools.description", defaultValue: "Configure default launch behavior for supported AI tools inside Codux terminals.", bundle: .module)) {
-                Text(String(localized: "settings.tools.hint", defaultValue: "These defaults apply the next time a supported AI tool is launched inside a Codux terminal. Explicit command-line flags still take priority.", bundle: .module))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-
             Section(String(localized: "settings.tools.permissions", defaultValue: "Tool Permissions", bundle: .module)) {
                 permissionRow(tool: .codex)
                 permissionRow(tool: .claudeCode)
@@ -288,19 +284,17 @@ private struct ToolSettingsPane: View {
     @ViewBuilder
     private func permissionRow(tool: AppSupportedAITool) -> some View {
         LabeledContent(tool.title) {
-            Picker(
-                tool.title,
-                selection: Binding(
-                    get: { tool.permissionMode(from: model.appSettings.toolPermissions) },
-                    set: { model.updateToolPermissionMode($0, for: tool) }
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { tool.permissionMode(from: model.appSettings.toolPermissions) == .fullAccess },
+                    set: { isEnabled in
+                        model.updateToolPermissionMode(isEnabled ? .fullAccess : .default, for: tool)
+                    }
                 )
-            ) {
-                ForEach(AppAIToolPermissionMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .pickerStyle(.menu)
-            .frame(width: 150)
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
         }
     }
 }
@@ -380,9 +374,10 @@ private struct DeveloperSettingsPane: View {
 
 private struct SettingsWindowConfigurator: NSViewRepresentable {
     let title: String
+    let contentSize: NSSize
 
     func makeNSView(context: Context) -> NSView {
-        ConfigView(title: title)
+        ConfigView(title: title, contentSize: contentSize)
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
@@ -390,14 +385,18 @@ private struct SettingsWindowConfigurator: NSViewRepresentable {
             return
         }
         configView.title = title
+        configView.contentSize = contentSize
         configView.applyWindowConfigurationIfNeeded()
     }
 
     private final class ConfigView: NSView {
         var title: String
+        var contentSize: NSSize
+        private var lastAppliedFrameSize: NSSize?
 
-        init(title: String) {
+        init(title: String, contentSize: NSSize) {
             self.title = title
+            self.contentSize = contentSize
             super.init(frame: .zero)
         }
 
@@ -409,6 +408,9 @@ private struct SettingsWindowConfigurator: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             applyWindowConfigurationIfNeeded()
+            DispatchQueue.main.async { [weak self] in
+                self?.applyWindowConfigurationIfNeeded()
+            }
         }
 
         func applyWindowConfigurationIfNeeded() {
@@ -417,6 +419,23 @@ private struct SettingsWindowConfigurator: NSViewRepresentable {
             }
             window.identifier = AppWindowIdentifier.settings
             applyStandardWindowChrome(window, title: title, toolbarStyle: .preference)
+
+            let targetContentRect = NSRect(origin: .zero, size: contentSize)
+            let targetFrame = window.frameRect(forContentRect: targetContentRect)
+            let targetFrameSize = targetFrame.size
+
+            guard lastAppliedFrameSize != targetFrameSize
+                || abs(window.frame.size.width - targetFrameSize.width) > 0.5
+                || abs(window.frame.size.height - targetFrameSize.height) > 0.5 else {
+                return
+            }
+
+            var nextFrame = window.frame
+            nextFrame.origin.y += nextFrame.height - targetFrameSize.height
+            nextFrame.size = targetFrameSize
+
+            lastAppliedFrameSize = targetFrameSize
+            window.setFrame(nextFrame, display: true, animate: false)
         }
     }
 }

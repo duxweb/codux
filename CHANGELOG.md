@@ -16,7 +16,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- None yet.
+- Localized the new Tools settings copy across the app's supported languages and removed the duplicate tool-name label shown beside each permission picker.
+- Fixed the Sparkle update prompt background so it no longer turns transparent after the window loses focus.
 
 ## [0.2.0] - 2026-04-17
 

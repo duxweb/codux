@@ -6,6 +6,8 @@ project_path="${root_dir}/dmux.xcodeproj"
 scheme="dmux"
 configuration="Debug"
 native_arch="${DMUX_ARCHS:-$(uname -m)}"
+dev_marketing_version="${DMUX_DEV_MARKETING_VERSION:-9999.0.0}"
+dev_build_number="${DMUX_DEV_BUILD_NUMBER:-99990000}"
 build_dir="${root_dir}/.xcode-dev"
 build_products_dir="${build_dir}/Build/Products/${configuration}"
 built_app_dir="${build_products_dir}/Codux.app"
@@ -16,6 +18,7 @@ main_icns_path="${app_dir}/Contents/Resources/AppIcon.icns"
 iconset_dir="${build_dir}/AppIcon.iconset"
 icon_generator_bin="$(mktemp "${TMPDIR:-/tmp}/codux-dev-generate-app-icon.XXXXXX")"
 sparkle_public_ed_key="${SPARKLE_PUBLIC_ED_KEY:-Ya1zKPqmYxZUgJR7d/hJMEed3aw4nRuTu2TZR7Swd1M=}"
+icon_variant="${DMUX_DEV_ICON_VARIANT:-dev}"
 
 cleanup() {
   rm -f "${icon_generator_bin}"
@@ -50,6 +53,8 @@ build_app() {
     -destination "platform=macOS" \
     ARCHS="${native_arch}" \
     ONLY_ACTIVE_ARCH=YES \
+    MARKETING_VERSION="${dev_marketing_version}" \
+    CURRENT_PROJECT_VERSION="${dev_build_number}" \
     CONFIGURATION_BUILD_DIR="${build_products_dir}" \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO \
@@ -83,7 +88,7 @@ generate_app_icons() {
   rm -rf "${iconset_dir}"
   mkdir -p "$(dirname "${main_icns_path}")"
   swiftc -framework AppKit "${root_dir}/scripts/release/generate-app-icon.swift" -o "${icon_generator_bin}"
-  "${icon_generator_bin}" "${iconset_dir}" >/dev/null
+  "${icon_generator_bin}" "${iconset_dir}" "${icon_variant}" >/dev/null
   iconutil -c icns "${iconset_dir}" -o "${main_icns_path}"
   rm -rf "${iconset_dir}"
 }

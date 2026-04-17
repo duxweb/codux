@@ -44,6 +44,11 @@ func isStandardChromeWindow(_ window: NSWindow) -> Bool {
 }
 
 @MainActor
+func isMainWorkspaceWindow(_ window: NSWindow) -> Bool {
+    window.identifier == AppWindowIdentifier.main
+}
+
+@MainActor
 func applyImmersiveWindowChrome(_ window: NSWindow) {
     window.styleMask.insert(.fullSizeContentView)
     window.titleVisibility = .hidden
@@ -321,6 +326,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         if isStandardChromeWindow(window) {
             applyStandardWindowChrome(window, toolbarStyle: .preference)
+            return
+        }
+
+        guard isMainWorkspaceWindow(window) else {
             return
         }
 

@@ -696,7 +696,24 @@ enum AppSupportLinks {
 }
 
 enum AppIconRenderer {
-    static func image(for style: AppIconStyle, size: CGFloat = 128) -> NSImage {
+    enum Variant {
+        case standard
+        case dev
+        case debug
+
+        static func current(bundle: Bundle = .main) -> Variant {
+            let bundleIdentifier = (bundle.bundleIdentifier ?? "").lowercased()
+            if bundleIdentifier.hasSuffix(".dev") {
+                return .dev
+            }
+            if bundleIdentifier.hasSuffix(".debug") {
+                return .debug
+            }
+            return .standard
+        }
+    }
+
+    static func image(for style: AppIconStyle, size: CGFloat = 128, variant: Variant = .current()) -> NSImage {
         let image = NSImage(size: NSSize(width: size, height: size))
         image.lockFocus()
         defer { image.unlockFocus() }
@@ -750,7 +767,8 @@ enum AppIconRenderer {
         backChevron.move(to: CGPoint(x: cx + backOffsetX - chevronW * 0.5 * backScale, y: cy + chevronH * 0.5 * backScale))
         backChevron.line(to: CGPoint(x: cx + backOffsetX + chevronW * 0.5 * backScale, y: cy))
         backChevron.line(to: CGPoint(x: cx + backOffsetX - chevronW * 0.5 * backScale, y: cy - chevronH * 0.5 * backScale))
-        NSColor.white.withAlphaComponent(0.4).setStroke()
+        let backChevronColor: NSColor = .white.withAlphaComponent(0.4)
+        backChevronColor.setStroke()
         backChevron.lineWidth = weight * backScale
         backChevron.lineCapStyle = .square
         backChevron.lineJoinStyle = .miter
@@ -769,7 +787,18 @@ enum AppIconRenderer {
         frontChevron.move(to: CGPoint(x: cx + frontOffsetX - chevronW * 0.5, y: cy + chevronH * 0.5))
         frontChevron.line(to: CGPoint(x: cx + frontOffsetX + chevronW * 0.5, y: cy))
         frontChevron.line(to: CGPoint(x: cx + frontOffsetX - chevronW * 0.5, y: cy - chevronH * 0.5))
-        NSColor.white.setStroke()
+        let frontChevronColor: NSColor = {
+            guard style == .default else {
+                return .white
+            }
+            switch variant {
+            case .standard, .debug:
+                return .white
+            case .dev:
+                return NSColor(calibratedRed: 1.00, green: 0.88, blue: 0.22, alpha: 1.0)
+            }
+        }()
+        frontChevronColor.setStroke()
         frontChevron.lineWidth = weight
         frontChevron.lineCapStyle = .square
         frontChevron.lineJoinStyle = .miter

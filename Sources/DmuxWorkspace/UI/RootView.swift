@@ -29,9 +29,35 @@ struct RootView: View {
                 .frame(height: titlebarHeight)
         }
         .background(Color.clear)
+        .background(MainWorkspaceWindowConfigurator())
         .ignoresSafeArea(.container, edges: .top)
         .onAppear {
             model.noteRootViewAppeared()
+        }
+    }
+}
+
+private struct MainWorkspaceWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        ConfigView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? ConfigView)?.applyWindowConfigurationIfNeeded()
+    }
+
+    private final class ConfigView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            applyWindowConfigurationIfNeeded()
+        }
+
+        func applyWindowConfigurationIfNeeded() {
+            guard let window else {
+                return
+            }
+            window.identifier = AppWindowIdentifier.main
+            applyImmersiveWindowChrome(window)
         }
     }
 }

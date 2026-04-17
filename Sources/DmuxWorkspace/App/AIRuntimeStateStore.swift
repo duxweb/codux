@@ -406,8 +406,6 @@ final class AIRuntimeStateStore {
             )
         }
 
-        runtimeContextsByTerminalID[sessionID] = mergedRuntime
-
         let prefersHookDrivenResponseState = toolDriverFactory.prefersHookDrivenResponseState(for: mergedRuntime.tool)
         let shouldPreserveHookRespondingState = prefersHookDrivenResponseState
             && existing.responseState == .responding
@@ -453,7 +451,20 @@ final class AIRuntimeStateStore {
             existing.hasCompletedTurn = false
         }
 
-        if let externalSessionID = normalizedExternalSessionID(mergedRuntime.externalSessionID) {
+        var effectiveRuntime = mergedRuntime
+        if prefersHookDrivenResponseState {
+            effectiveRuntime.responseState = existing.responseState ?? effectiveRuntime.responseState
+            if existing.responseState == .responding {
+                effectiveRuntime.wasInterrupted = false
+                effectiveRuntime.hasCompletedTurn = false
+            } else if existing.interruptedAt != nil {
+                effectiveRuntime.wasInterrupted = true
+            }
+        }
+
+        runtimeContextsByTerminalID[sessionID] = effectiveRuntime
+
+        if let externalSessionID = normalizedExternalSessionID(effectiveRuntime.externalSessionID) {
             let logicalKey = LogicalSessionKey(
                 tool: canonicalToolName(existing.tool),
                 externalSessionID: externalSessionID
@@ -492,22 +503,22 @@ final class AIRuntimeStateStore {
                 existing.pendingSessionOrigin = .unknown
             }
             clearPendingAttachmentIfMatched(sessionID: sessionID, logicalKey: logicalKey)
-            if mergedRuntime.responseState == .responding {
+            if effectiveRuntime.responseState == .responding {
                 lockBaselineRebase(for: logicalKey, reason: "snapshot-responding")
             }
         } else if existing.logicalSessionKey == nil {
             detachTerminal(sessionID)
         }
 
-        let runtimeChanged = runtimeDisplayDidChange(previous: previousRuntime, current: mergedRuntime)
+        let runtimeChanged = runtimeDisplayDidChange(previous: previousRuntime, current: effectiveRuntime)
         let bindingChanged = previousBinding != existing
         let didChangeDisplay = runtimeChanged || bindingChanged
-        let didAdvance = runtimeDidAdvance(previous: previousRuntime, current: mergedRuntime)
+        let didAdvance = runtimeDidAdvance(previous: previousRuntime, current: effectiveRuntime)
         let didSwitchExternalSession =
-            toolDriverFactory.allowsRuntimeExternalSessionSwitch(for: mergedRuntime.tool)
+            toolDriverFactory.allowsRuntimeExternalSessionSwitch(for: effectiveRuntime.tool)
             && externalSessionIDDidChange(
                 previous: previousRuntime?.externalSessionID,
-                incoming: mergedRuntime.externalSessionID
+                incoming: effectiveRuntime.externalSessionID
             )
 
         apply(existing, for: sessionID)
@@ -515,13 +526,13 @@ final class AIRuntimeStateStore {
             let projected = self.snapshot(from: existing)
             logger.log(
                 "runtime-store",
-                "snapshot session=\(sessionID.uuidString) tool=\(existing.tool) model=\(projected.model ?? "nil") response=\(existing.responseState?.rawValue ?? "nil") total=\(projected.currentTotalTokens) external=\(projected.externalSessionID ?? "nil") origin=\(mergedRuntime.sessionOrigin.rawValue)"
+                "snapshot session=\(sessionID.uuidString) tool=\(existing.tool) model=\(projected.model ?? "nil") response=\(existing.responseState?.rawValue ?? "nil") total=\(projected.currentTotalTokens) external=\(projected.externalSessionID ?? "nil") origin=\(effectiveRuntime.sessionOrigin.rawValue)"
             )
         }
 
         return RuntimeSnapshotApplyResult(
             previousContext: previousRuntime,
-            currentContext: mergedRuntime,
+            currentContext: effectiveRuntime,
             didChangeDisplay: didChangeDisplay,
             didAdvance: didAdvance,
             didSwitchExternalSession: didSwitchExternalSession,

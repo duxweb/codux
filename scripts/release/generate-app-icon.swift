@@ -3,7 +3,13 @@
 import AppKit
 import Foundation
 
-func renderIcon(size: CGFloat) -> NSImage {
+enum IconVariant: String {
+    case standard
+    case dev
+    case debug
+}
+
+func renderIcon(size: CGFloat, variant: IconVariant) -> NSImage {
     let image = NSImage(size: NSSize(width: size, height: size))
     image.lockFocus()
     defer { image.unlockFocus() }
@@ -46,12 +52,30 @@ func renderIcon(size: CGFloat) -> NSImage {
     let chevronW = size * 0.17
     let weight = size * 0.09
 
+    let backChevronColor: NSColor = {
+        switch variant {
+        case .standard, .dev, .debug:
+            return NSColor.white.withAlphaComponent(0.4)
+        }
+    }()
+
+    let frontChevronColor: NSColor = {
+        switch variant {
+        case .standard:
+            return .white
+        case .dev:
+            return NSColor(calibratedRed: 1.00, green: 0.88, blue: 0.22, alpha: 1.0)
+        case .debug:
+            return .white
+        }
+    }()
+
     let backOffsetX = size * -0.10
     let backChevron = NSBezierPath()
     backChevron.move(to: CGPoint(x: cx + backOffsetX - chevronW * 0.5, y: cy + chevronH * 0.5))
     backChevron.line(to: CGPoint(x: cx + backOffsetX + chevronW * 0.5, y: cy))
     backChevron.line(to: CGPoint(x: cx + backOffsetX - chevronW * 0.5, y: cy - chevronH * 0.5))
-    NSColor.white.withAlphaComponent(0.4).setStroke()
+    backChevronColor.setStroke()
     backChevron.lineWidth = weight
     backChevron.lineCapStyle = .square
     backChevron.lineJoinStyle = .miter
@@ -68,7 +92,7 @@ func renderIcon(size: CGFloat) -> NSImage {
     frontChevron.move(to: CGPoint(x: cx + frontOffsetX - chevronW * 0.5, y: cy + chevronH * 0.5))
     frontChevron.line(to: CGPoint(x: cx + frontOffsetX + chevronW * 0.5, y: cy))
     frontChevron.line(to: CGPoint(x: cx + frontOffsetX - chevronW * 0.5, y: cy - chevronH * 0.5))
-    NSColor.white.setStroke()
+    frontChevronColor.setStroke()
     frontChevron.lineWidth = weight
     frontChevron.lineCapStyle = .square
     frontChevron.lineJoinStyle = .miter
@@ -87,8 +111,8 @@ func renderIcon(size: CGFloat) -> NSImage {
     return image
 }
 
-func writePNG(to url: URL, size: CGFloat) throws {
-    let image = renderIcon(size: size)
+func writePNG(to url: URL, size: CGFloat, variant: IconVariant) throws {
+    let image = renderIcon(size: size, variant: variant)
     guard let tiffData = image.tiffRepresentation,
           let bitmap = NSBitmapImageRep(data: tiffData),
           let png = bitmap.representation(using: .png, properties: [:]) else {
@@ -99,12 +123,15 @@ func writePNG(to url: URL, size: CGFloat) throws {
 
 let arguments = CommandLine.arguments
 guard arguments.count >= 2 else {
-    fputs("usage: generate-app-icon.swift <iconset-dir>\n", stderr)
+    fputs("usage: generate-app-icon.swift <iconset-dir> [standard|dev|debug]\n", stderr)
     exit(1)
 }
 
 let outputDirectory = URL(fileURLWithPath: arguments[1], isDirectory: true)
 try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+let variant = arguments.count >= 3
+    ? IconVariant(rawValue: arguments[2]) ?? .standard
+    : .standard
 
 let entries: [(String, CGFloat)] = [
     ("icon_16x16.png", 16),
@@ -120,5 +147,5 @@ let entries: [(String, CGFloat)] = [
 ]
 
 for (name, size) in entries {
-    try writePNG(to: outputDirectory.appendingPathComponent(name), size: size)
+    try writePNG(to: outputDirectory.appendingPathComponent(name), size: size, variant: variant)
 }
