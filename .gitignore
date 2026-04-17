@@ -4,6 +4,7 @@ dist/
 .claude
 .ruff_cache
 .swiftpm
+/plan/
 
 # Xcode user state
 DerivedData/
