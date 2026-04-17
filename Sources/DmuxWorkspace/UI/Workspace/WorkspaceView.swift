@@ -256,12 +256,19 @@ private final class TopPaneSplitController: NSViewController, NSSplitViewDelegat
             paneSplitView.addArrangedSubview(host.view)
             logger.log("startup-ui", "top-pane attached-host-view session=\(session.id.uuidString)")
             host.view.translatesAutoresizingMaskIntoConstraints = true
+            host.view.needsLayout = true
         }
 
         let validIDs = Set(workspace.topSessionIDs)
         paneHosts = paneHosts.filter { validIDs.contains($0.key) }
         lastRenderedSessionByID = lastRenderedSessionByID.filter { validIDs.contains($0.key) }
         lastRenderedFocusedSessionID = activeTerminalSessionID
+
+        paneSplitView.needsLayout = true
+        paneSplitView.layoutSubtreeIfNeeded()
+        for sessionID in workspace.topSessionIDs {
+            paneHosts[sessionID]?.view.layoutSubtreeIfNeeded()
+        }
 
         DispatchQueue.main.async { [weak self] in
             self?.applyRatiosIfNeeded()
@@ -335,6 +342,13 @@ private final class TopPaneSplitController: NSViewController, NSSplitViewDelegat
         }
 
         paneSplitView.adjustSubviews()
+        paneSplitView.needsLayout = true
+        paneSplitView.layoutSubtreeIfNeeded()
+        for sessionID in currentSessionIDs {
+            paneHosts[sessionID]?.view.needsLayout = true
+            paneHosts[sessionID]?.view.layoutSubtreeIfNeeded()
+            paneHosts[sessionID]?.view.needsDisplay = true
+        }
         paneSplitView.needsDisplay = true
         if needsEqualDistribution {
             model.updateTopPaneRatios(ratios)

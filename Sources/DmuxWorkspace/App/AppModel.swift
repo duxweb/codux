@@ -2644,7 +2644,12 @@ final class AppModel {
             if lastCompletionTokenByProjectID[project.id] != token {
                 lastCompletionTokenByProjectID[project.id] = token
                 clearedCompletionTokenByProjectID[project.id] = nil
-                activityService.notifyCompletion(projectName: project.name, tool: tool, exitCode: exitCode)
+                activityService.notifyCompletion(
+                    projectName: project.name,
+                    tool: tool,
+                    exitCode: exitCode,
+                    settings: appSettings.notifications
+                )
             }
         }
 
@@ -2800,7 +2805,12 @@ final class AppModel {
                 lastCompletionTokenByProjectID[project.id] = token
                 clearedCompletionTokenByProjectID[project.id] = nil
             }
-            activityService.notifyCompletion(projectName: project.name, tool: tool, exitCode: 0)
+            activityService.notifyTest(
+                projectName: project.name,
+                tool: tool,
+                exitCode: 0,
+                settings: appSettings.notifications
+            )
             refreshProjectActivity(sendNotifications: false)
         }
     }
@@ -2893,6 +2903,24 @@ final class AppModel {
         persist()
     }
 
+    func updateNotificationChannelEnabled(_ enabled: Bool, for channel: AppNotificationChannel) {
+        updateNotificationChannel(channel) { configuration in
+            configuration.isEnabled = enabled
+        }
+    }
+
+    func updateNotificationChannelEndpoint(_ endpoint: String, for channel: AppNotificationChannel) {
+        updateNotificationChannel(channel) { configuration in
+            configuration.endpoint = endpoint
+        }
+    }
+
+    func updateNotificationChannelToken(_ token: String, for channel: AppNotificationChannel) {
+        updateNotificationChannel(channel) { configuration in
+            configuration.token = token
+        }
+    }
+
     func updateDockBadgeEnabled(_ enabled: Bool) {
         var settings = appSettings
         settings.showsDockBadge = enabled
@@ -2980,6 +3008,37 @@ final class AppModel {
             isEnabled: settings.developer.showsPerformanceMonitor,
             sampleInterval: settings.developer.performanceMonitorSamplingInterval
         )
+        persist()
+    }
+
+    private func updateNotificationChannel(
+        _ channel: AppNotificationChannel,
+        update: (inout AppNotificationChannelConfiguration) -> Void
+    ) {
+        var settings = appSettings
+        switch channel {
+        case .bark:
+            update(&settings.notifications.bark)
+        case .ntfy:
+            update(&settings.notifications.ntfy)
+        case .wxpusher:
+            update(&settings.notifications.wxpusher)
+        case .feishu:
+            update(&settings.notifications.feishu)
+        case .dingTalk:
+            update(&settings.notifications.dingTalk)
+        case .weCom:
+            update(&settings.notifications.weCom)
+        case .telegram:
+            update(&settings.notifications.telegram)
+        case .discord:
+            update(&settings.notifications.discord)
+        case .slack:
+            update(&settings.notifications.slack)
+        case .webhook:
+            update(&settings.notifications.webhook)
+        }
+        appSettings = settings
         persist()
     }
 

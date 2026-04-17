@@ -12,6 +12,7 @@ struct AppSettings: Codable, Equatable {
     var iconStyle: AppIconStyle = .default
     var defaultTerminal: AppTerminalProfile = .zsh
     var toolPermissions = AppAIToolPermissionSettings()
+    var notifications = AppNotificationSettings()
     var showsDockBadge = true
     var gitAutoRefreshInterval: TimeInterval = 60
     var aiAutoRefreshInterval: TimeInterval = 180
@@ -31,6 +32,7 @@ struct AppSettings: Codable, Equatable {
         case iconStyle
         case defaultTerminal
         case toolPermissions
+        case notifications
         case showsDockBadge
         case gitAutoRefreshInterval
         case aiAutoRefreshInterval
@@ -50,6 +52,7 @@ struct AppSettings: Codable, Equatable {
         iconStyle = try container.decodeIfPresent(AppIconStyle.self, forKey: .iconStyle) ?? .default
         defaultTerminal = try container.decodeIfPresent(AppTerminalProfile.self, forKey: .defaultTerminal) ?? .zsh
         toolPermissions = try container.decodeIfPresent(AppAIToolPermissionSettings.self, forKey: .toolPermissions) ?? .init()
+        notifications = try container.decodeIfPresent(AppNotificationSettings.self, forKey: .notifications) ?? .init()
         showsDockBadge = try container.decodeIfPresent(Bool.self, forKey: .showsDockBadge) ?? true
         gitAutoRefreshInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .gitAutoRefreshInterval) ?? 60
         aiAutoRefreshInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .aiAutoRefreshInterval) ?? 180
@@ -81,6 +84,199 @@ struct AppAIToolPermissionSettings: Codable, Equatable {
     var claudeCode: AppAIToolPermissionMode = .default
     var gemini: AppAIToolPermissionMode = .default
     var opencode: AppAIToolPermissionMode = .default
+}
+
+struct AppNotificationChannelConfiguration: Codable, Equatable, Sendable {
+    var isEnabled = false
+    var endpoint = ""
+    var token = ""
+}
+
+struct AppNotificationSettings: Codable, Equatable, Sendable {
+    var bark = AppNotificationChannelConfiguration()
+    var ntfy = AppNotificationChannelConfiguration()
+    var wxpusher = AppNotificationChannelConfiguration()
+    var feishu = AppNotificationChannelConfiguration()
+    var dingTalk = AppNotificationChannelConfiguration()
+    var weCom = AppNotificationChannelConfiguration()
+    var telegram = AppNotificationChannelConfiguration()
+    var discord = AppNotificationChannelConfiguration()
+    var slack = AppNotificationChannelConfiguration()
+    var webhook = AppNotificationChannelConfiguration()
+}
+
+enum AppNotificationChannel: CaseIterable, Identifiable, Sendable {
+    case bark
+    case ntfy
+    case wxpusher
+    case feishu
+    case dingTalk
+    case weCom
+    case telegram
+    case discord
+    case slack
+    case webhook
+
+    var id: String { rawValue }
+
+    private var rawValue: String {
+        switch self {
+        case .bark:
+            return "bark"
+        case .ntfy:
+            return "ntfy"
+        case .wxpusher:
+            return "wxpusher"
+        case .feishu:
+            return "feishu"
+        case .dingTalk:
+            return "dingTalk"
+        case .weCom:
+            return "weCom"
+        case .telegram:
+            return "telegram"
+        case .discord:
+            return "discord"
+        case .slack:
+            return "slack"
+        case .webhook:
+            return "webhook"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .bark:
+            return "Bark"
+        case .ntfy:
+            return "ntfy"
+        case .wxpusher:
+            return "WxPusher"
+        case .feishu:
+            return "Feishu"
+        case .dingTalk:
+            return "DingTalk"
+        case .weCom:
+            return "WeCom"
+        case .telegram:
+            return "Telegram"
+        case .discord:
+            return "Discord"
+        case .slack:
+            return "Slack"
+        case .webhook:
+            return "Webhook"
+        }
+    }
+
+    var endpointPlaceholder: String {
+        switch self {
+        case .bark:
+            return "https://api.day.app"
+        case .ntfy:
+            return "https://ntfy.sh/topic"
+        case .wxpusher:
+            return "SPT_xxx"
+        case .feishu:
+            return "https://open.feishu.cn/open-apis/bot/v2/hook/..."
+        case .dingTalk:
+            return "https://oapi.dingtalk.com/robot/send?access_token=..."
+        case .weCom:
+            return "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+        case .telegram:
+            return "chat_id"
+        case .discord:
+            return "https://discord.com/api/webhooks/..."
+        case .slack:
+            return "https://hooks.slack.com/services/..."
+        case .webhook:
+            return "https://example.com/webhook"
+        }
+    }
+
+    var showsTokenField: Bool {
+        switch self {
+        case .wxpusher:
+            return false
+        default:
+            return true
+        }
+    }
+
+    var tokenPlaceholder: String {
+        switch self {
+        case .bark:
+            return "device_key"
+        case .ntfy:
+            return "bearer_token"
+        case .wxpusher:
+            return "app_token"
+        case .feishu:
+            return "hook_token"
+        case .dingTalk:
+            return "access_token"
+        case .weCom:
+            return "key"
+        case .telegram:
+            return "bot_token"
+        case .discord:
+            return "webhook_token"
+        case .slack:
+            return "webhook_token"
+        case .webhook:
+            return "bearer_token"
+        }
+    }
+
+    var websiteURL: URL? {
+        switch self {
+        case .bark:
+            return URL(string: "https://bark.day.app")
+        case .ntfy:
+            return URL(string: "https://docs.ntfy.sh")
+        case .wxpusher:
+            return URL(string: "https://wxpusher.zjiecode.com/docs/#/")
+        case .feishu:
+            return URL(string: "https://open.feishu.cn")
+        case .dingTalk:
+            return URL(string: "https://open.dingtalk.com")
+        case .weCom:
+            return URL(string: "https://developer.work.weixin.qq.com")
+        case .telegram:
+            return URL(string: "https://core.telegram.org/bots/api")
+        case .discord:
+            return URL(string: "https://docs.discord.com/developers/resources/webhook")
+        case .slack:
+            return URL(string: "https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/")
+        case .webhook:
+            return nil
+        }
+    }
+
+    func configuration(from settings: AppNotificationSettings) -> AppNotificationChannelConfiguration {
+        switch self {
+        case .bark:
+            return settings.bark
+        case .ntfy:
+            return settings.ntfy
+        case .wxpusher:
+            return settings.wxpusher
+        case .feishu:
+            return settings.feishu
+        case .dingTalk:
+            return settings.dingTalk
+        case .weCom:
+            return settings.weCom
+        case .telegram:
+            return settings.telegram
+        case .discord:
+            return settings.discord
+        case .slack:
+            return settings.slack
+        case .webhook:
+            return settings.webhook
+        }
+    }
 }
 
 enum AppSupportedAITool: CaseIterable, Identifiable {

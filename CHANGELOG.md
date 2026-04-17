@@ -8,16 +8,22 @@ All notable changes to this project will be documented in this file.
 
 - Added terminal font-size controls in Settings > Appearance so terminal text size can be adjusted with direct numeric input.
 - Added a dedicated Tools settings tab for configuring default permission mode for Codex, Claude Code, Gemini, and OpenCode launches inside Codux terminals.
+- Added a Notifications settings tab with per-channel enable switches plus address/token fields for Bark, ntfy, WxPusher, Feishu, DingTalk, WeCom, Telegram, Discord, Slack, and generic webhooks.
+- Added background external notification delivery for the configured notification channels so completion events can fan out without blocking the UI, with silent failure handling recorded in debug logs.
+- Simplified the WxPusher notification channel to the SPT quick-send flow, removing the unused token field and aligning the setup UI with the one-parameter mode.
 
 ### Changed
 
 - Refined the AI stats status bar so the refresh action is hidden while a stats refresh is actively running, keeping the update state focused on progress and stop controls.
 - Updated the app menu's About and Updates actions to use icons and appear as one grouped app-info section.
+- Refined the Notifications settings cards with channel-specific labels, localized setup copy, cleaner field alignment, and direct links to each provider's documentation.
+- Hardened external notification delivery with unified request timeouts, disabled request caching, and richer debug logs for request start, latency, status codes, and sanitized response summaries.
 
 ### Fixed
 
 - Localized the new Tools settings copy across the app's supported languages and removed the duplicate tool-name label shown beside each permission picker.
 - Fixed the Sparkle update prompt background so it no longer turns transparent after the window loses focus.
+- Fixed split-pane terminal relayout so creating or resizing splits no longer compresses terminal content into broken multi-column text layouts.
 
 ## [0.2.0] - 2026-04-17
 

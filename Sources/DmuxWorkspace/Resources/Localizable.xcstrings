@@ -25166,6 +25166,71 @@
         }
       }
     },
+    "settings.tab.notifications": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benachrichtigungen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notificaciones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "알림"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notificações"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уведомления"
+          }
+        }
+      }
+    },
     "settings.tab.shortcuts": {
       "extractionState": "manual",
       "localizations": {
@@ -25749,6 +25814,591 @@
             "value": "Полный доступ"
           }
         }
+      }
+    },
+    "settings.notifications.channel.bark.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Send push alerts through a Bark server with your device key." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "通过 Bark 服务器和设备 Key 发送推送通知。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "透過 Bark 伺服器和裝置 Key 發送推播通知。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet Push-Benachrichtigungen über einen Bark-Server mit Ihrem Geräteschlüssel." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía avisos push mediante un servidor Bark con la clave de tu dispositivo." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des alertes push via un serveur Bark avec la clé de votre appareil." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Bark サーバーとデバイスキーを使ってプッシュ通知を送信します。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Bark 서버와 기기 키로 푸시 알림을 보냅니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia alertas push por um servidor Bark com a chave do dispositivo." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет push-уведомления через сервер Bark с ключом устройства." } }
+      }
+    },
+    "settings.notifications.channel.bark.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Server URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "服务器地址" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "伺服器地址" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Server-URL" } },
+        "es": { "stringUnit": { "state": "translated", "value": "URL del servidor" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "URL du serveur" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "サーバー URL" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "서버 URL" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "URL do servidor" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "URL сервера" } }
+      }
+    },
+    "settings.notifications.channel.bark.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Bark" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Bark" } }
+      }
+    },
+    "settings.notifications.channel.bark.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Device Key" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "设备 Key" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "裝置 Key" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Geräteschlüssel" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Clave del dispositivo" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Clé de l'appareil" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "デバイスキー" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "기기 키" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Chave do dispositivo" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Ключ устройства" } }
+      }
+    },
+    "settings.notifications.channel.dingtalk.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Post messages with a DingTalk robot webhook. You can fill either the full URL or the access token." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用钉钉机器人 Webhook 发送消息，可填写完整 Webhook 地址或 Access Token。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "使用釘釘機器人 Webhook 發送訊息，可填寫完整 Webhook 位址或 Access Token。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet Nachrichten über einen DingTalk-Roboter-Webhook. Sie können die vollständige URL oder das Zugriffstoken eintragen." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía mensajes con un webhook de robot de DingTalk. Puedes completar la URL completa o el access token." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des messages avec un webhook de robot DingTalk. Vous pouvez renseigner l'URL complète ou le jeton d'accès." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "DingTalk ロボットの Webhook でメッセージを送信します。完全な URL または Access Token を入力できます。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "DingTalk 로봇 Webhook으로 메시지를 보냅니다. 전체 URL 또는 Access Token을 입력할 수 있습니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia mensagens com um webhook de robô do DingTalk. Você pode informar a URL completa ou o token de acesso." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет сообщения через webhook-робота DingTalk. Можно указать полный URL или токен доступа." } }
+      }
+    },
+    "settings.notifications.channel.dingtalk.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Webhook 地址" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Webhook 位址" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Webhook-URL" } },
+        "es": { "stringUnit": { "state": "translated", "value": "URL del webhook" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "URL du webhook" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "URL do webhook" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "URL webhook" } }
+      }
+    },
+    "settings.notifications.channel.dingtalk.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "DingTalk" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "钉钉" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "釘釘" } },
+        "de": { "stringUnit": { "state": "translated", "value": "DingTalk" } },
+        "es": { "stringUnit": { "state": "translated", "value": "DingTalk" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "DingTalk" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "DingTalk" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "DingTalk" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "DingTalk" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "DingTalk" } }
+      }
+    },
+    "settings.notifications.channel.dingtalk.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Access Token" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Access Token" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Access Token" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Zugriffstoken" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Access Token" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jeton d'accès" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Access Token" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Access Token" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Token de acesso" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Токен доступа" } }
+      }
+    },
+    "settings.notifications.channel.discord.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Deliver notifications to a Discord webhook. Optional auth token is only needed for custom gateways." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "发送通知到 Discord Webhook；仅在自定义网关需要鉴权时填写可选 Token。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "發送通知到 Discord Webhook；僅在自訂閘道需要驗證時填寫可選 Token。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet Benachrichtigungen an einen Discord-Webhook. Ein optionales Auth-Token wird nur für benutzerdefinierte Gateways benötigt." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía notificaciones a un webhook de Discord. El token de autenticación opcional solo se necesita para pasarelas personalizadas." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des notifications vers un webhook Discord. Un jeton d'authentification facultatif n'est requis que pour des passerelles personnalisées." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Discord Webhook に通知を送信します。オプションの認証トークンはカスタムゲートウェイでのみ必要です。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Discord Webhook으로 알림을 보냅니다. 선택적 인증 토큰은 사용자 지정 게이트웨이에서만 필요합니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia notificações para um webhook do Discord. O token opcional de autenticação só é necessário para gateways personalizados." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет уведомления в webhook Discord. Необязательный токен авторизации нужен только для пользовательских шлюзов." } }
+      }
+    },
+    "settings.notifications.channel.discord.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Webhook 地址" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Webhook 位址" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Webhook-URL" } },
+        "es": { "stringUnit": { "state": "translated", "value": "URL del webhook" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "URL du webhook" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "URL do webhook" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "URL webhook" } }
+      }
+    },
+    "settings.notifications.channel.discord.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Discord" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Discord" } }
+      }
+    },
+    "settings.notifications.channel.discord.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Optional Auth Token" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "可选鉴权 Token" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "可選驗證 Token" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Optionales Auth-Token" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Token de autenticación opcional" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jeton d'authentification facultatif" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "任意の認証トークン" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "선택적 인증 토큰" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Token opcional de autenticação" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Необязательный токен авторизации" } }
+      }
+    },
+    "settings.notifications.channel.feishu.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Post messages with a Feishu bot webhook. You can fill either the full URL or the hook token." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用飞书机器人 Webhook 发送消息，可填写完整 Webhook 地址或 Hook Token。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "使用飛書機器人 Webhook 發送訊息，可填寫完整 Webhook 位址或 Hook Token。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet Nachrichten über einen Feishu-Bot-Webhook. Sie können die vollständige URL oder das Hook-Token eintragen." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía mensajes con un webhook de bot de Feishu. Puedes completar la URL completa o el hook token." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des messages avec un webhook de bot Feishu. Vous pouvez renseigner l'URL complète ou le hook token." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Feishu ボットの Webhook でメッセージを送信します。完全な URL または Hook Token を入力できます。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Feishu 봇 Webhook으로 메시지를 보냅니다. 전체 URL 또는 Hook Token을 입력할 수 있습니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia mensagens com um webhook de bot do Feishu. Você pode informar a URL completa ou o hook token." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет сообщения через webhook-бота Feishu. Можно указать полный URL или hook token." } }
+      }
+    },
+    "settings.notifications.channel.feishu.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Webhook 地址" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Webhook 位址" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Webhook-URL" } },
+        "es": { "stringUnit": { "state": "translated", "value": "URL del webhook" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "URL du webhook" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "URL do webhook" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "URL webhook" } }
+      }
+    },
+    "settings.notifications.channel.feishu.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Feishu" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "飞书" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "飛書" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Feishu" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Feishu" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Feishu" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Feishu" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Feishu" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Feishu" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Feishu" } }
+      }
+    },
+    "settings.notifications.channel.feishu.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Hook Token" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Hook Token" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Hook Token" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Hook-Token" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Hook Token" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Hook Token" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Hook Token" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Hook Token" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Hook Token" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Hook Token" } }
+      }
+    },
+    "settings.notifications.channel.ntfy.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Publish messages to an ntfy topic. Add a bearer token only when your server requires it." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "发布消息到 ntfy 主题；仅在服务端要求时填写 Bearer Token。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "發布訊息到 ntfy 主題；僅在服務端要求時填寫 Bearer Token。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Veröffentlicht Nachrichten in einem ntfy-Thema. Fügen Sie nur dann ein Bearer-Token hinzu, wenn Ihr Server es verlangt." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Publica mensajes en un tema de ntfy. Añade un bearer token solo si tu servidor lo requiere." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Publie des messages dans un sujet ntfy. Ajoutez un bearer token uniquement si votre serveur l'exige." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ntfy トピックにメッセージを配信します。Bearer Token はサーバーが必要とする場合のみ入力します。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "ntfy 토픽으로 메시지를 게시합니다. Bearer Token은 서버가 요구할 때만 입력합니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Publica mensagens em um tópico do ntfy. Adicione um bearer token apenas se o servidor exigir." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Публикует сообщения в тему ntfy. Добавляйте Bearer Token только если этого требует сервер." } }
+      }
+    },
+    "settings.notifications.channel.ntfy.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Topic URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "主题地址" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "主題位址" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Themen-URL" } },
+        "es": { "stringUnit": { "state": "translated", "value": "URL del tema" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "URL du sujet" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "トピック URL" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "토픽 URL" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "URL do tópico" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "URL темы" } }
+      }
+    },
+    "settings.notifications.channel.ntfy.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "de": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "es": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "ntfy" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "ntfy" } }
+      }
+    },
+    "settings.notifications.channel.ntfy.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Bearer-Token" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Bearer Token" } }
+      }
+    },
+    "settings.notifications.channel.slack.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Deliver notifications to a Slack incoming webhook. Optional auth token is only needed for custom gateways." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "发送通知到 Slack Incoming Webhook；仅在自定义网关需要鉴权时填写可选 Token。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "發送通知到 Slack Incoming Webhook；僅在自訂閘道需要驗證時填寫可選 Token。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet Benachrichtigungen an einen eingehenden Slack-Webhook. Ein optionales Auth-Token wird nur für benutzerdefinierte Gateways benötigt." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía notificaciones a un webhook entrante de Slack. El token de autenticación opcional solo se necesita para pasarelas personalizadas." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des notifications vers un webhook entrant Slack. Un jeton d'authentification facultatif n'est requis que pour des passerelles personnalisées." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Slack Incoming Webhook に通知を送信します。オプションの認証トークンはカスタムゲートウェイでのみ必要です。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Slack Incoming Webhook으로 알림을 보냅니다. 선택적 인증 토큰은 사용자 지정 게이트웨이에서만 필요합니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia notificações para um webhook de entrada do Slack. O token opcional de autenticação só é necessário para gateways personalizados." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет уведомления во входящий webhook Slack. Необязательный токен авторизации нужен только для пользовательских шлюзов." } }
+      }
+    },
+    "settings.notifications.channel.slack.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Webhook 地址" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Webhook 位址" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Webhook-URL" } },
+        "es": { "stringUnit": { "state": "translated", "value": "URL del webhook" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "URL du webhook" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "URL do webhook" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "URL webhook" } }
+      }
+    },
+    "settings.notifications.channel.slack.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Slack" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Slack" } }
+      }
+    },
+    "settings.notifications.channel.slack.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Optional Auth Token" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "可选鉴权 Token" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "可選驗證 Token" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Optionales Auth-Token" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Token de autenticación opcional" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jeton d'authentification facultatif" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "任意の認証トークン" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "선택적 인증 토큰" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Token opcional de autenticação" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Необязательный токен авторизации" } }
+      }
+    },
+    "settings.notifications.channel.telegram.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Send messages with a Telegram bot token and target chat ID." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用 Telegram Bot Token 和目标 Chat ID 发送消息。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "使用 Telegram Bot Token 和目標 Chat ID 發送訊息。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet Nachrichten mit einem Telegram-Bot-Token und der Ziel-Chat-ID." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía mensajes con un bot token de Telegram y el chat ID de destino." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des messages avec un bot token Telegram et l'identifiant du chat cible." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Telegram の Bot Token と送信先 Chat ID でメッセージを送信します。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Telegram Bot Token과 대상 Chat ID로 메시지를 보냅니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia mensagens com um bot token do Telegram e o chat ID de destino." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет сообщения с помощью Telegram Bot Token и целевого Chat ID." } }
+      }
+    },
+    "settings.notifications.channel.telegram.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Chat ID" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Chat ID" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Chat ID" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Chat-ID" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Chat ID" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "ID du chat" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Chat ID" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Chat ID" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Chat ID" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Chat ID" } }
+      }
+    },
+    "settings.notifications.channel.telegram.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Telegram" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Telegram" } }
+      }
+    },
+    "settings.notifications.channel.telegram.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Bot Token" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Bot Token" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Bot Token" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Bot-Token" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Bot Token" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jeton du bot" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Bot Token" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Bot Token" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Bot Token" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Токен бота" } }
+      }
+    },
+    "settings.notifications.channel.webhook.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Send JSON POST requests to your own endpoint. Add a bearer token if the receiver requires authorization." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "向自定义端点发送 JSON POST 请求；如接收方要求鉴权可填写 Bearer Token。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "向自訂端點發送 JSON POST 請求；如接收方要求驗證可填寫 Bearer Token。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet JSON-POST-Anfragen an Ihren eigenen Endpunkt. Fügen Sie ein Bearer-Token hinzu, wenn der Empfänger eine Autorisierung verlangt." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía solicitudes JSON POST a tu propio endpoint. Añade un bearer token si el receptor requiere autorización." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des requêtes POST JSON à votre propre point de terminaison. Ajoutez un bearer token si le destinataire exige une autorisation." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "独自のエンドポイントへ JSON POST リクエストを送信します。受信側で認証が必要な場合は Bearer Token を入力します。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "사용자 지정 엔드포인트로 JSON POST 요청을 보냅니다. 수신 측에서 인증이 필요하면 Bearer Token을 입력합니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia requisições JSON POST para seu próprio endpoint. Adicione um bearer token se o destino exigir autorização." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет JSON POST-запросы на ваш собственный endpoint. Добавьте Bearer Token, если получатель требует авторизацию." } }
+      }
+    },
+    "settings.notifications.channel.webhook.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Request URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请求地址" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "請求位址" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Anfrage-URL" } },
+        "es": { "stringUnit": { "state": "translated", "value": "URL de la solicitud" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "URL de requête" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "リクエスト URL" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "요청 URL" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "URL da requisição" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "URL запроса" } }
+      }
+    },
+    "settings.notifications.channel.webhook.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Webhook" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Webhook" } }
+      }
+    },
+    "settings.notifications.channel.webhook.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Bearer-Token" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Bearer Token" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Bearer Token" } }
+      }
+    },
+    "settings.notifications.channel.wecom.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Post messages to a WeCom group bot. You can fill either the full URL or the webhook key." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用企业微信群机器人发送消息，可填写完整 Webhook 地址或 Webhook Key。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "使用企業微信群機器人發送訊息，可填寫完整 Webhook 位址或 Webhook Key。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet Nachrichten an einen WeCom-Gruppen-Bot. Sie können die vollständige URL oder den Webhook-Schlüssel eintragen." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía mensajes a un bot de grupo de WeCom. Puedes completar la URL completa o la clave del webhook." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des messages à un bot de groupe WeCom. Vous pouvez renseigner l'URL complète ou la clé du webhook." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "WeCom グループボットへメッセージを送信します。完全な URL または Webhook Key を入力できます。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "WeCom 그룹 봇으로 메시지를 보냅니다. 전체 URL 또는 Webhook Key를 입력할 수 있습니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia mensagens para um bot de grupo do WeCom. Você pode informar a URL completa ou a chave do webhook." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет сообщения в группового бота WeCom. Можно указать полный URL или ключ webhook." } }
+      }
+    },
+    "settings.notifications.channel.wecom.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Webhook 地址" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Webhook 位址" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Webhook-URL" } },
+        "es": { "stringUnit": { "state": "translated", "value": "URL del webhook" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "URL du webhook" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Webhook URL" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "URL do webhook" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "URL webhook" } }
+      }
+    },
+    "settings.notifications.channel.wecom.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "WeCom" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "企业微信" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "企業微信" } },
+        "de": { "stringUnit": { "state": "translated", "value": "WeCom" } },
+        "es": { "stringUnit": { "state": "translated", "value": "WeCom" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "WeCom" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "WeCom" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "WeCom" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "WeCom" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "WeCom" } }
+      }
+    },
+    "settings.notifications.channel.wecom.token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Webhook Key" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Webhook Key" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Webhook Key" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Webhook-Schlüssel" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Clave del webhook" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Clé du webhook" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Webhook Key" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "Webhook Key" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Chave do webhook" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Ключ webhook" } }
+      }
+    },
+    "settings.notifications.channel.wxpusher.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Send notifications to a WxPusher SPT target. No extra token is required." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "向 WxPusher 的 SPT 目标发送通知，无需额外 Token。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "向 WxPusher 的 SPT 目標發送通知，無需額外 Token。" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Sendet Benachrichtigungen an ein WxPusher-SPT-Ziel. Es ist kein zusätzliches Token erforderlich." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Envía notificaciones a un destino SPT de WxPusher. No se requiere ningún token adicional." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Envoie des notifications vers une cible SPT WxPusher. Aucun jeton supplémentaire n'est requis." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "WxPusher の SPT 宛先へ通知を送信します。追加のトークンは不要です。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "WxPusher SPT 대상에 알림을 보냅니다. 추가 토큰은 필요하지 않습니다." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Envia notificações para um destino SPT do WxPusher. Nenhum token extra é necessário." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отправляет уведомления в SPT-цель WxPusher. Дополнительный токен не требуется." } }
+      }
+    },
+    "settings.notifications.channel.wxpusher.endpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "SPT Token" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "SPT 标识" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "SPT 標識" } },
+        "de": { "stringUnit": { "state": "translated", "value": "SPT-Token" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Token SPT" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jeton SPT" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "SPT トークン" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "SPT 토큰" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Token SPT" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "SPT-токен" } }
+      }
+    },
+    "settings.notifications.channel.wxpusher.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "de": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "es": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "WxPusher" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "WxPusher" } }
       }
     },
     "settings.terminal_background": {
