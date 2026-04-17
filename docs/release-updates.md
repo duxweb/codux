@@ -11,11 +11,12 @@ This project publishes macOS updates through Sparkle backed by GitHub Releases.
 
 ## Release Flow
 
-1. Update the entry for the target version in `CHANGELOG.md`.
-2. If you want bilingual release notes, add the matching version entry to `CHANGELOG.zh-CN.md`.
-3. Push a Git tag in the form `vX.Y.Z`.
-4. GitHub Actions runs `.github/workflows/release-build.yml`.
-5. The workflow builds and uploads:
+1. Keep ongoing development notes under `## [Unreleased]` in `CHANGELOG.md`.
+2. If you want bilingual notes during development, keep the matching `## [Unreleased]` section in `CHANGELOG.zh-CN.md` too.
+3. When preparing a release, move the finalized `Unreleased` notes into a new `## [X.Y.Z] - YYYY-MM-DD` section in both changelog files.
+4. Push a Git tag in the form `vX.Y.Z`.
+5. GitHub Actions runs `.github/workflows/release-build.yml`.
+6. The workflow builds and uploads:
    - `Codux-<version>-macos-universal.dmg`
    - `Codux-<version>-macos-universal.zip`
    - `Codux-debug-<version>-debug-macos-universal.dmg`
