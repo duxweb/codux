@@ -8,6 +8,8 @@ This project publishes macOS updates through Sparkle backed by GitHub Releases.
   The public Ed25519 key embedded into the app as `SUPublicEDKey`.
 - `SPARKLE_PRIVATE_ED_KEY`
   The private Ed25519 key used by CI to sign `appcast.xml`.
+- `HOMEBREW_TAP_TOKEN`
+  A GitHub token with write access to `duxweb/homebrew-tap`, used to update the Homebrew cask after a release is published.
 
 ## Release Flow
 
@@ -22,6 +24,9 @@ This project publishes macOS updates through Sparkle backed by GitHub Releases.
    - `Codux-debug-<version>-debug-macos-universal.dmg`
    - `SHA256SUMS.txt`
    - `appcast.xml`
+7. If `HOMEBREW_TAP_TOKEN` is valid, the workflow also updates `duxweb/homebrew-tap`.
+
+The Homebrew tap update is best-effort. If the token is missing or invalid, the main app release still succeeds and the workflow summary reports the tap failure separately.
 
 ## Release Notes Source
 
