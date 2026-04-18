@@ -24,40 +24,59 @@ if [[ -z "$search_path" ]]; then
   search_path="$orig_path"
 fi
 
-find_real_binary() {
-  if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" ]]; then
-    if [[ -n "${DMUX_ACTIVE_AI_RESOLVED_PATH:-}" \
-      && -x "${DMUX_ACTIVE_AI_RESOLVED_PATH}" \
-      && "${DMUX_ACTIVE_AI_RESOLVED_PATH}" != "$wrapper_dir/bin/$tool_name" ]]; then
-      print -r -- "${DMUX_ACTIVE_AI_RESOLVED_PATH}"
-      return 0
-    fi
-    return 1
+resolve_from_search_path() {
+  local binary_name="$1"
+  local resolved=""
+  resolved="$(PATH="$search_path" whence -p "$binary_name" 2>/dev/null || true)"
+  if [[ -n "$resolved" && -x "$resolved" && "$resolved" != "$wrapper_bin_dir/"* ]]; then
+    print -r -- "$resolved"
+    return 0
   fi
+  return 1
+}
 
+find_real_binary() {
   if [[ -n "${DMUX_ACTIVE_AI_RESOLVED_PATH:-}" \
     && -x "${DMUX_ACTIVE_AI_RESOLVED_PATH}" \
-    && "${DMUX_ACTIVE_AI_RESOLVED_PATH}" != "$wrapper_dir/bin/$tool_name" ]]; then
+    && "${DMUX_ACTIVE_AI_RESOLVED_PATH}" != "$wrapper_bin_dir/$tool_name" ]]; then
     print -r -- "${DMUX_ACTIVE_AI_RESOLVED_PATH}"
     return 0
   fi
 
-  local search_parts
-  search_parts=(${(s/:/)search_path})
-  local -a candidate_names=("$tool_name")
-  local -a candidates=()
-  for dir in "${search_parts[@]}"; do
-    for binary_name in "${candidate_names[@]}"; do
-      local candidate="$dir/$binary_name"
-      if [[ -x "$candidate" && "$candidate" != "$wrapper_dir/bin/$tool_name" ]]; then
-        candidates+=("$candidate")
-      fi
-    done
+  local -a candidate_names=()
+  case "$tool_name" in
+    claude)
+      candidate_names=("claude" "claude-code")
+      ;;
+    claude-code)
+      candidate_names=("claude-code" "claude")
+      ;;
+    *)
+      candidate_names=("$tool_name")
+      ;;
+  esac
+
+  local binary_name=""
+  local resolved=""
+  for binary_name in "${candidate_names[@]}"; do
+    resolved="$(resolve_from_search_path "$binary_name" || true)"
+    if [[ -n "$resolved" ]]; then
+      print -r -- "$resolved"
+      return 0
+    fi
   done
 
-  if [[ ${#candidates[@]} -ge 1 ]]; then
-    print -r -- "${candidates[1]}"
-    return 0
+  if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" ]]; then
+    local claude_code_root="${HOME}/Library/Application Support/Claude/claude-code"
+    local -a bundle_candidates
+    bundle_candidates=("${claude_code_root}"/*/claude.app/Contents/MacOS/claude(N))
+    if [[ ${#bundle_candidates[@]} -gt 0 ]]; then
+      local candidate="${bundle_candidates[-1]}"
+      if [[ -x "$candidate" ]]; then
+        print -r -- "$candidate"
+        return 0
+      fi
+    fi
   fi
 
   return 1
