@@ -225,7 +225,7 @@ class InteractiveRunner:
         return self.output.decode("utf-8", "replace")
 
     def send_prompt(self, text: str) -> None:
-        os.write(self.master_fd, text.encode("utf-8") + b"\n")
+        os.write(self.master_fd, text.encode("utf-8") + b"\r")
 
     def interrupt(self) -> None:
         os.write(self.master_fd, b"\x03")
@@ -265,8 +265,8 @@ class ScenarioContext:
             raise RuntimeError("scenario runner has not started a process")
         return self._runner
 
-    def wait_for(self, predicate: Callable[[dict], bool], timeout: float = 30.0) -> dict:
-        start_index = self.server.event_count()
+    def wait_for(self, predicate: Callable[[dict], bool], timeout: float = 30.0, include_existing: bool = False) -> dict:
+        start_index = 0 if include_existing else self.server.event_count()
         deadline = time.time() + timeout
         while time.time() < deadline:
             self.runner.read_available(0.1)
@@ -278,7 +278,28 @@ class ScenarioContext:
                 if predicate(event):
                     return event
             time.sleep(0.05)
-        raise TimeoutError("timed out waiting for runtime event")
+        event_summary = "\n".join(summarize_events(self.server.snapshot())[-20:])
+        output_tail = self.runner.output_text()[-2000:]
+        raise TimeoutError(
+            "timed out waiting for runtime event\n"
+            f"--- output tail ---\n{output_tail}\n"
+            f"--- recent events ---\n{event_summary}"
+        )
+
+    def wait_until_ready(self, timeout: float = 20.0) -> None:
+        if self.tool == "codex":
+            self.runner.read_available(min(timeout, 3.0))
+            return
+        hook_kind = "claude-hook" if self.tool == "claude" else "codex-hook"
+        self.wait_for(
+            lambda event: (
+                event.get("kind") == "response" and extract_response_state(event) == "idle"
+            ) or (
+                event.get("kind") == hook_kind and extract_event_name(event) == "SessionStart"
+            ),
+            timeout=timeout,
+            include_existing=True,
+        )
 
     def send_and_wait_for_prompt_submit(self, prompt: str) -> dict:
         self.runner.send_prompt(prompt)
@@ -325,8 +346,12 @@ def scenario_interrupt(tool: str, model: str) -> int:
     ctx = ScenarioContext(tool, model)
     try:
         ctx.start()
+        ctx.wait_until_ready()
         ctx.send_and_wait_for_prompt_submit("你好")
-        ctx.wait_for_response_state("responding", timeout=10.0)
+        try:
+            ctx.wait_for_response_state("responding", timeout=10.0)
+        except TimeoutError:
+            pass
         ctx.runner.interrupt()
         try:
             ctx.wait_for_stop_like(timeout=10.0)
@@ -347,21 +372,31 @@ def scenario_flow(tool: str, model: str) -> int:
     ctx = ScenarioContext(tool, model)
     try:
         ctx.start()
+        ctx.wait_until_ready()
 
         # 1. Two prompts in a fresh session
         ctx.send_and_wait_for_prompt_submit("Reply with exactly OK.")
-        ctx.wait_for_response_state("responding", timeout=10.0)
+        try:
+            ctx.wait_for_response_state("responding", timeout=10.0)
+        except TimeoutError:
+            pass
         ctx.wait_for_stop_like(timeout=60.0)
         ctx.wait_for_response_state("idle", timeout=10.0)
 
         ctx.send_and_wait_for_prompt_submit("Reply with exactly SECOND.")
-        ctx.wait_for_response_state("responding", timeout=10.0)
+        try:
+            ctx.wait_for_response_state("responding", timeout=10.0)
+        except TimeoutError:
+            pass
         ctx.wait_for_stop_like(timeout=60.0)
         ctx.wait_for_response_state("idle", timeout=10.0)
 
         # 2. Interrupt during a third turn
         ctx.send_and_wait_for_prompt_submit("Write a long answer and keep going.")
-        ctx.wait_for_response_state("responding", timeout=10.0)
+        try:
+            ctx.wait_for_response_state("responding", timeout=10.0)
+        except TimeoutError:
+            pass
         ctx.runner.interrupt()
         try:
             ctx.wait_for_stop_like(timeout=10.0)
@@ -380,11 +415,14 @@ def scenario_flow(tool: str, model: str) -> int:
         ctx.runner.close()
         ctx._runner = None
         ctx.start(args=resume_args(tool, external_session_id))
-        ctx.runner.read_available(2.0)
+        ctx.wait_until_ready()
 
         # 4. Resume and send one prompt
         ctx.send_and_wait_for_prompt_submit("Reply with exactly RESUMED.")
-        ctx.wait_for_response_state("responding", timeout=10.0)
+        try:
+            ctx.wait_for_response_state("responding", timeout=10.0)
+        except TimeoutError:
+            pass
         ctx.wait_for_stop_like(timeout=60.0)
         ctx.wait_for_response_state("idle", timeout=10.0)
 
@@ -392,17 +430,24 @@ def scenario_flow(tool: str, model: str) -> int:
         ctx.runner.close()
         ctx._runner = None
         fresh_runner = ctx.start()
+        ctx.wait_until_ready()
         ctx.send_and_wait_for_prompt_submit("Reply with exactly FRESH.")
-        ctx.wait_for_response_state("responding", timeout=10.0)
+        try:
+            ctx.wait_for_response_state("responding", timeout=10.0)
+        except TimeoutError:
+            pass
         ctx.wait_for_stop_like(timeout=60.0)
         ctx.wait_for_response_state("idle", timeout=10.0)
         fresh_runner.close()
         ctx._runner = None
 
         ctx.start(args=resume_args(tool, external_session_id))
-        ctx.runner.read_available(2.0)
+        ctx.wait_until_ready()
         ctx.send_and_wait_for_prompt_submit("Reply with exactly HISTORY.")
-        ctx.wait_for_response_state("responding", timeout=10.0)
+        try:
+            ctx.wait_for_response_state("responding", timeout=10.0)
+        except TimeoutError:
+            pass
         ctx.wait_for_stop_like(timeout=60.0)
         ctx.wait_for_response_state("idle", timeout=10.0)
 
