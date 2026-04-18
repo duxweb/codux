@@ -64,6 +64,14 @@ actor CodexRuntimeResponseLatch {
         guard wasInterrupted || hasCompletedTurn else {
             return
         }
+        release(runtimeSessionID: runtimeSessionID, externalSessionID: externalSessionID)
+    }
+
+    func releaseIfSettled(runtimeSessionID: String, externalSessionID: String?) {
+        release(runtimeSessionID: runtimeSessionID, externalSessionID: externalSessionID)
+    }
+
+    private func release(runtimeSessionID: String, externalSessionID: String?) {
         reset(runtimeSessionID: runtimeSessionID)
         if let normalizedExternalSessionID = normalizedSessionID(externalSessionID),
            let runtimeSessionIDs = runtimeSessionIDsByExternalSessionID[normalizedExternalSessionID] {
@@ -132,7 +140,7 @@ func resolveCodexStopRuntimeState(transcriptPath: String?) async -> CodexParsedR
     }
 
     let fileURL = URL(fileURLWithPath: transcriptPath)
-    let retryDelays: [UInt64] = [0, 120_000_000, 280_000_000, 500_000_000]
+    let retryDelays: [UInt64] = [0, 120_000_000, 280_000_000, 500_000_000, 900_000_000, 1_500_000_000]
     var latestState: CodexParsedRuntimeState?
 
     for delay in retryDelays {
@@ -143,7 +151,7 @@ func resolveCodexStopRuntimeState(transcriptPath: String?) async -> CodexParsedR
         guard let latestState else {
             continue
         }
-        if latestState.wasInterrupted || latestState.hasCompletedTurn {
+        if latestState.wasInterrupted || latestState.hasCompletedTurn || latestState.responseState == .idle {
             return latestState
         }
     }
@@ -236,13 +244,23 @@ actor CodexRuntimeProbeService {
         let rolloutPath = sqlite3_column_type(statement, 3) == SQLITE_NULL ? nil : String(cString: sqlite3_column_text(statement, 3))
         let parsedState = parseCodexRolloutRuntimeState(fileURL: rolloutPath.map(URL.init(fileURLWithPath:)))
 
-        let shouldForceResponding = await CodexRuntimeResponseLatch.shared.shouldForceResponding(
+        let stopLooksSettled = (parsedState?.responseState == .idle)
+            && (parsedState?.wasInterrupted != true)
+        let hasDefinitiveStop = (parsedState?.hasCompletedTurn == true)
+            || (parsedState?.wasInterrupted == true)
+            || stopLooksSettled
+        if hasDefinitiveStop {
+            await CodexRuntimeResponseLatch.shared.releaseIfSettled(
+                runtimeSessionID: runtimeSessionID,
+                externalSessionID: threadID
+            )
+        }
+        let shouldForceResponding = hasDefinitiveStop ? false : await CodexRuntimeResponseLatch.shared.shouldForceResponding(
             runtimeSessionID: runtimeSessionID,
             externalSessionID: threadID,
             snapshotUpdatedAt: max(updatedAt, parsedState?.updatedAt ?? 0),
             wasInterrupted: parsedState?.wasInterrupted ?? false
         )
-        let hasDefinitiveStop = (parsedState?.hasCompletedTurn == true) || (parsedState?.wasInterrupted == true)
         let probeResponseState: AIResponseState? = {
             if shouldForceResponding {
                 logger.log(
@@ -273,7 +291,7 @@ actor CodexRuntimeProbeService {
             updatedAt: max(updatedAt, parsedState?.updatedAt ?? 0),
             responseState: probeResponseState,
             wasInterrupted: parsedState?.wasInterrupted ?? false,
-            hasCompletedTurn: probeResponseState == nil ? false : (parsedState?.hasCompletedTurn ?? false)
+            hasCompletedTurn: probeResponseState == nil ? false : ((parsedState?.hasCompletedTurn ?? false) || stopLooksSettled)
         )
     }
 }

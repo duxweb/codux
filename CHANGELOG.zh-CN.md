@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 Claude 完成态处理：`Stop` 现在会直接按 hook 语义标记本轮完成，`Idle` 与 `SessionEnd` 仍负责清理 loading，但不再混淆“真正完成”和“会话收尾”。
+- 修复 Codex 在 `Stop` 非 definitive 时偶发卡住 loading 的问题：当 probe 后续确认已 idle 时会将其视为真实完成，同时不再让延迟 stop hook 重新写回过期的 `responding` 状态。
+
 ## [0.2.2] - 2026-04-18
 
 ### Changed

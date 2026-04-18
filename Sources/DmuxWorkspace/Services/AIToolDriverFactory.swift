@@ -401,7 +401,49 @@ private struct ClaudeToolDriver: AIToolDriver {
                 "claude-hook",
                 "notification session=\(sessionID.uuidString) type=\(notificationType)"
             )
-        case "Stop", "StopFailure", "SessionEnd", "SessionStart", "PreToolUse", "PostToolUse", "PermissionRequest", "Idle":
+        case "Stop":
+            AppDebugLog.shared.log(
+                "claude-hook",
+                "event=\(envelope.event) session=\(sessionID.uuidString) external=\(externalSessionID ?? "nil")"
+            )
+            let settledSnapshot = AIRuntimeContextSnapshot(
+                tool: id,
+                externalSessionID: externalSessionID,
+                model: existingSnapshot?.model ?? liveEnvelope?.model,
+                inputTokens: max(liveEnvelope?.inputTokens ?? 0, existingSnapshot?.inputTokens ?? 0),
+                outputTokens: max(liveEnvelope?.outputTokens ?? 0, existingSnapshot?.outputTokens ?? 0),
+                totalTokens: max(liveEnvelope?.totalTokens ?? 0, existingSnapshot?.totalTokens ?? 0),
+                updatedAt: max(envelope.receivedAt, existingSnapshot?.updatedAt ?? 0, liveEnvelope?.updatedAt ?? 0),
+                responseState: .idle,
+                wasInterrupted: false,
+                hasCompletedTurn: true,
+                source: .hook
+            )
+            return AIToolRuntimeIngressUpdate(
+                runtimeSnapshotsBySessionID: [sessionID: settledSnapshot]
+            )
+        case "Idle", "SessionEnd":
+            AppDebugLog.shared.log(
+                "claude-hook",
+                "event=\(envelope.event) session=\(sessionID.uuidString) external=\(externalSessionID ?? "nil")"
+            )
+            let settledSnapshot = AIRuntimeContextSnapshot(
+                tool: id,
+                externalSessionID: externalSessionID,
+                model: existingSnapshot?.model ?? liveEnvelope?.model,
+                inputTokens: max(liveEnvelope?.inputTokens ?? 0, existingSnapshot?.inputTokens ?? 0),
+                outputTokens: max(liveEnvelope?.outputTokens ?? 0, existingSnapshot?.outputTokens ?? 0),
+                totalTokens: max(liveEnvelope?.totalTokens ?? 0, existingSnapshot?.totalTokens ?? 0),
+                updatedAt: max(envelope.receivedAt, existingSnapshot?.updatedAt ?? 0, liveEnvelope?.updatedAt ?? 0),
+                responseState: .idle,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                source: .hook
+            )
+            return AIToolRuntimeIngressUpdate(
+                runtimeSnapshotsBySessionID: [sessionID: settledSnapshot]
+            )
+        case "StopFailure", "SessionStart", "PreToolUse", "PostToolUse", "PermissionRequest":
             AppDebugLog.shared.log(
                 "claude-hook",
                 "event=\(envelope.event) session=\(sessionID.uuidString) external=\(externalSessionID ?? "nil")"
@@ -607,17 +649,21 @@ private struct CodexToolDriver: AIToolDriver {
         case "Stop":
             let transcriptPath = stringValue(in: payloadObject, key: "transcript_path")
             let parsedState = await resolveCodexStopRuntimeState(transcriptPath: transcriptPath)
+            let stopLooksSettled = (parsedState?.responseState == .idle)
+                && (parsedState?.wasInterrupted != true)
+            let hasDefinitiveStop = (parsedState?.wasInterrupted == true)
+                || (parsedState?.hasCompletedTurn == true)
+                || stopLooksSettled
             await CodexRuntimeResponseLatch.shared.releaseIfDefinitiveStop(
                 runtimeSessionID: sessionID.uuidString,
                 externalSessionID: externalSessionID,
                 wasInterrupted: parsedState?.wasInterrupted ?? false,
-                hasCompletedTurn: parsedState?.hasCompletedTurn ?? false
+                hasCompletedTurn: (parsedState?.hasCompletedTurn ?? false) || stopLooksSettled
             )
             AppDebugLog.shared.log(
                 "codex-hook",
                 "stop session=\(sessionID.uuidString) external=\(externalSessionID ?? "nil") transcript=\(transcriptPath ?? "nil") parsedModel=\(parsedState?.model ?? model ?? "nil") parsedTokens=\(parsedState?.totalTokens.map(String.init) ?? "nil") interrupted=\(parsedState?.wasInterrupted == true) completed=\(parsedState?.hasCompletedTurn == true)"
             )
-            let hasDefinitiveStop = (parsedState?.wasInterrupted == true) || (parsedState?.hasCompletedTurn == true)
             runtimeSnapshot = AIRuntimeContextSnapshot(
                 tool: id,
                 externalSessionID: externalSessionID,
@@ -628,7 +674,7 @@ private struct CodexToolDriver: AIToolDriver {
                 updatedAt: max(updatedAt, parsedState?.updatedAt ?? 0),
                 responseState: hasDefinitiveStop ? .idle : nil,
                 wasInterrupted: parsedState?.wasInterrupted ?? false,
-                hasCompletedTurn: parsedState?.hasCompletedTurn ?? false,
+                hasCompletedTurn: (parsedState?.hasCompletedTurn ?? false) || stopLooksSettled,
                 source: .hook
             )
             if hasDefinitiveStop {
@@ -648,16 +694,8 @@ private struct CodexToolDriver: AIToolDriver {
                     "codex-hook",
                     "defer stop session=\(sessionID.uuidString) external=\(externalSessionID ?? "nil") reason=non-definitive"
                 )
-                responsePayload = AIResponseStatePayload(
-                    sessionId: sessionID.uuidString,
-                    sessionInstanceId: nil,
-                    invocationId: nil,
-                    projectId: projectID.uuidString,
-                    projectPath: nil,
-                    tool: id,
-                    responseState: .responding,
-                    updatedAt: runtimeSnapshot.updatedAt,
-                    source: .hook
+                return AIToolRuntimeIngressUpdate(
+                    runtimeSnapshotsBySessionID: [sessionID: runtimeSnapshot]
                 )
             }
         default:
