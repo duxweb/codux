@@ -234,7 +234,8 @@ class InteractiveRunner:
         return self.output.decode("utf-8", "replace")
 
     def send_prompt(self, text: str) -> None:
-        os.write(self.master_fd, text.encode("utf-8") + b"\r")
+        terminator = b"\n" if self.tool == "codex" else b"\r"
+        os.write(self.master_fd, text.encode("utf-8") + terminator)
 
     def interrupt(self) -> None:
         os.write(self.master_fd, b"\x03")
