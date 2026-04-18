@@ -16,8 +16,6 @@ import argparse
 import json
 import os
 import subprocess
-import tempfile
-import uuid
 from pathlib import Path
 
 
@@ -192,7 +190,44 @@ def opencode_run(model: str, prompt: str, resume_id: str | None = None) -> tuple
     return proc.returncode, events, session_id
 
 
-def run_flow(tool: str, model: str) -> int:
+def opencode_provider_list() -> str:
+    proc = subprocess.run(
+        ["opencode", "providers", "list"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=os.environ.copy(),
+    )
+    return (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+
+
+def opencode_has_provider_hint(name: str) -> bool:
+    listing = opencode_provider_list().lower()
+    return name.lower() in listing
+
+
+def finalize_report(report: dict, report_json: str | None) -> int:
+    text = json.dumps(report, ensure_ascii=False, indent=2)
+    print(text)
+    if report_json:
+        path = Path(report_json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    steps = report.get("steps")
+    if isinstance(steps, list):
+        return 0 if all(step.get("exit_code") == 0 for step in steps) else 1
+    attempts = report.get("attempts")
+    if isinstance(attempts, list):
+        return 0 if any(
+            isinstance(attempt.get("steps"), list)
+            and all(step.get("exit_code") == 0 for step in attempt.get("steps", []))
+            for attempt in attempts
+        ) else 1
+    return 1
+
+
+def run_flow(tool: str, model: str, report_json: str | None = None) -> int:
     run = {
         "claude": claude_run,
         "codex": codex_run,
@@ -214,8 +249,7 @@ def run_flow(tool: str, model: str) -> int:
         "events": summarize_events(events),
     })
     if code != 0 or not session_id:
-        print(json.dumps(report, ensure_ascii=False, indent=2))
-        return 1
+        return finalize_report(report, report_json)
 
     code, events, _ = run(model, prompts[1], session_id)
     report["steps"].append({
@@ -242,15 +276,22 @@ def run_flow(tool: str, model: str) -> int:
         "events": summarize_events(hist_events),
     })
 
-    print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0 if all(step["exit_code"] == 0 for step in report["steps"]) else 1
+    return finalize_report(report, report_json)
 
 
-def run_flow_with_candidates(tool: str, explicit_model: str | None) -> int:
+def run_flow_with_candidates(tool: str, explicit_model: str | None, report_json: str | None = None) -> int:
     if tool not in {"codex", "opencode"}:
-        return run_flow(tool, explicit_model or DEFAULT_MODELS[tool])
+        return run_flow(tool, explicit_model or DEFAULT_MODELS[tool], report_json)
 
-    candidates = [explicit_model] if explicit_model else DEFAULT_MODEL_CANDIDATES[tool]
+    if explicit_model:
+        candidates = [explicit_model]
+    elif tool == "opencode":
+        candidates = []
+        if opencode_has_provider_hint("minimax"):
+            candidates.append("minimax/minimax-m2.5-free")
+        candidates.append("")
+    else:
+        candidates = DEFAULT_MODEL_CANDIDATES[tool]
     attempts: list[dict] = []
     for model in candidates:
         selected_model = model or "(default)"
@@ -298,22 +339,21 @@ def run_flow_with_candidates(tool: str, explicit_model: str | None) -> int:
         })
 
         if all(step["exit_code"] == 0 for step in report["steps"]):
-            print(json.dumps(report, ensure_ascii=False, indent=2))
-            return 0
+            return finalize_report(report, report_json)
         attempts.append(report)
-    print(json.dumps({"tool": tool, "attempts": attempts}, ensure_ascii=False, indent=2))
-    return 1
+    return finalize_report({"tool": tool, "attempts": attempts}, report_json)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tool", choices=["claude", "codex", "gemini", "opencode"], required=True)
     parser.add_argument("--model", default=None)
+    parser.add_argument("--report-json", default=None)
     args = parser.parse_args()
     if args.tool in {"codex", "opencode"}:
-        return run_flow_with_candidates(args.tool, args.model)
+        return run_flow_with_candidates(args.tool, args.model, args.report_json)
     model = args.model or DEFAULT_MODELS[args.tool]
-    return run_flow(args.tool, model)
+    return run_flow(args.tool, model, args.report_json)
 
 
 if __name__ == "__main__":
