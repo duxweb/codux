@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 
 - Hardened the Codex, Claude, Gemini, and OpenCode runtime drivers so loading, interrupt, resume, and per-turn live token display now follow tool-driven session events instead of unstable cross-session carryover.
 - Tightened tool binary resolution inside Codux terminals so Claude now follows the exact executable path resolved by the user's current shell environment rather than guessing install locations.
+- Hardened wrapped Claude launches so Codux now resolves the real Claude binary more reliably and prefers system tool paths when starting managed Claude sessions.
 - Refined the AI stats status bar so the refresh action is hidden while a stats refresh is actively running, keeping the update state focused on progress and stop controls.
 - Updated the app menu's About and Updates actions to use icons and appear as one grouped app-info section.
 - Refined the Notifications settings cards with channel-specific labels, localized setup copy, cleaner field alignment, and direct links to each provider's documentation.
@@ -29,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - Fixed tool-session rebinding across reopen, resume, interrupt, and multi-terminal paths so restored sessions no longer inherit totals, models, or loading state from the previous live session.
 - Reduced live runtime log noise to keep only actionable tracing around hook/socket events, logical session lifecycle, response transitions, and token commits.
 - Localized the new Tools settings copy across the app's supported languages and removed the duplicate tool-name label shown beside each permission picker.
+- Reduced the risk of terminal process exhaustion by delaying hidden pane PTY startup and capping managed Claude process trees before they can exhaust the user's process budget.
 - Fixed the Sparkle update prompt background so it no longer turns transparent after the window loses focus.
 - Fixed split-pane terminal relayout so creating or resizing splits no longer compresses terminal content into broken multi-column text layouts.
 
