@@ -255,6 +255,7 @@ class ScenarioContext:
         self._runner: InteractiveRunner | None = None
         self.external_session_id: str | None = None
         self.steps: list[StepResult] = []
+        self.current_turn_start_index: int = 0
 
     def close(self) -> None:
         if self._runner is not None:
@@ -313,6 +314,7 @@ class ScenarioContext:
         )
 
     def send_and_wait_for_prompt_submit(self, prompt: str) -> dict:
+        self.current_turn_start_index = max(0, self.server.event_count() - 2)
         self.runner.send_prompt(prompt)
         return self.wait_for(
             lambda event: event.get("kind") in {f"{self.tool}-hook", "claude-hook", "codex-hook"}
@@ -320,18 +322,47 @@ class ScenarioContext:
         )
 
     def wait_for_response_state(self, state: str, timeout: float = 30.0) -> dict:
-        return self.wait_for(
-            lambda event: event.get("kind") == "response"
-            and extract_response_state(event) == state,
-            timeout=timeout,
+        start_index = self.current_turn_start_index
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.runner.read_available(0.1)
+            events = self.server.snapshot()
+            for event in events[start_index:]:
+                ext = extract_external_session_id(event)
+                if ext and not self.external_session_id:
+                    self.external_session_id = ext
+                if event.get("kind") == "response" and extract_response_state(event) == state:
+                    return event
+            time.sleep(0.05)
+        event_summary = "\n".join(summarize_events(self.server.snapshot())[-20:])
+        output_tail = self.runner.output_text()[-2000:]
+        raise TimeoutError(
+            "timed out waiting for turn-scoped response event\n"
+            f"--- output tail ---\n{output_tail}\n"
+            f"--- recent events ---\n{event_summary}"
         )
 
     def wait_for_stop_like(self, timeout: float = 30.0) -> dict:
         hook_kind = "claude-hook" if self.tool == "claude" else "codex-hook"
         stop_events = {"Stop", "SessionEnd"} if self.tool == "claude" else {"Stop"}
-        return self.wait_for(
-            lambda event: event.get("kind") == hook_kind and extract_event_name(event) in stop_events,
-            timeout=timeout,
+        start_index = self.current_turn_start_index
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.runner.read_available(0.1)
+            events = self.server.snapshot()
+            for event in events[start_index:]:
+                ext = extract_external_session_id(event)
+                if ext and not self.external_session_id:
+                    self.external_session_id = ext
+                if event.get("kind") == hook_kind and extract_event_name(event) in stop_events:
+                    return event
+            time.sleep(0.05)
+        event_summary = "\n".join(summarize_events(self.server.snapshot())[-20:])
+        output_tail = self.runner.output_text()[-2000:]
+        raise TimeoutError(
+            "timed out waiting for stop-like runtime event\n"
+            f"--- output tail ---\n{output_tail}\n"
+            f"--- recent events ---\n{event_summary}"
         )
 
     def print_report(self) -> None:
