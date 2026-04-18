@@ -237,6 +237,163 @@ final class RuntimeDriverTests: XCTestCase {
         XCTAssertFalse(snapshot.hasCompletedTurn)
     }
 
+    func testGeminiSessionStartProducesIdleState() async throws {
+        let factory = AIToolDriverFactory.shared
+        let sessionID = UUID()
+        let projectID = UUID()
+
+        let payloadData = Data(
+            """
+            {
+              "event": "SessionStart",
+              "tool": "gemini",
+              "dmuxSessionId": "\(sessionID.uuidString)",
+              "dmuxProjectId": "\(projectID.uuidString)",
+              "dmuxProjectPath": "/tmp/codux",
+              "receivedAt": 1776511000,
+              "payload": "{}"
+            }
+            """.utf8
+        )
+
+        let update = await factory.handleRuntimeSocketEvent(
+            kind: "gemini-hook",
+            payloadData: payloadData,
+            projects: [],
+            liveEnvelopes: [],
+            existingRuntime: [:]
+        )
+
+        XCTAssertEqual(update?.responsePayloads.first?.responseState, .idle)
+        let snapshot: AIRuntimeContextSnapshot = try XCTUnwrap(update?.runtimeSnapshotsBySessionID[sessionID])
+        XCTAssertEqual(snapshot.responseState, .idle)
+        XCTAssertFalse(snapshot.hasCompletedTurn)
+    }
+
+    func testOpenCodeRuntimeSocketPassesThroughRespondingState() async throws {
+        let factory = AIToolDriverFactory.shared
+        let sessionID = UUID()
+        let projectID = UUID()
+
+        let envelope = AIToolUsageEnvelope(
+            sessionId: sessionID.uuidString,
+            sessionInstanceId: "instance-opencode",
+            invocationId: "invoke-opencode",
+            externalSessionID: "opencode-session-1",
+            projectId: projectID.uuidString,
+            projectName: "codux",
+            projectPath: "/tmp/codux",
+            sessionTitle: "Terminal",
+            tool: "opencode",
+            model: "open-small",
+            status: "running",
+            responseState: .responding,
+            updatedAt: 1_776_511_100,
+            startedAt: 1_776_511_050,
+            finishedAt: nil,
+            inputTokens: 11,
+            outputTokens: 22,
+            totalTokens: 33,
+            contextWindow: nil,
+            contextUsedTokens: nil,
+            contextUsagePercent: nil,
+            source: .socket
+        )
+
+        let payloadData = try XCTUnwrap(try? JSONEncoder().encode(envelope))
+        let update = await factory.handleRuntimeSocketEvent(
+            kind: "opencode-runtime",
+            payloadData: payloadData,
+            projects: [],
+            liveEnvelopes: [],
+            existingRuntime: [:]
+        )
+
+        XCTAssertEqual(update?.responsePayloads.first?.responseState, .responding)
+        let snapshot: AIRuntimeContextSnapshot = try XCTUnwrap(update?.runtimeSnapshotsBySessionID[sessionID])
+        XCTAssertEqual(snapshot.responseState, .responding)
+        XCTAssertEqual(snapshot.externalSessionID, "opencode-session-1")
+        XCTAssertEqual(snapshot.totalTokens, 33)
+    }
+
+    @MainActor
+    func testRuntimeStateStorePreservesRespondingUntilDefinitiveCompletion() throws {
+        let store = AIRuntimeStateStore.shared
+        store.reset()
+        defer { store.reset() }
+
+        let sessionID = UUID()
+        let projectID = UUID()
+
+        store.applyLiveEnvelope(
+            AIToolUsageEnvelope(
+                sessionId: sessionID.uuidString,
+                sessionInstanceId: "instance-store",
+                invocationId: "invoke-store",
+                externalSessionID: "codex-thread-store",
+                projectId: projectID.uuidString,
+                projectName: "codux",
+                projectPath: "/tmp/codux",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                model: "gpt-5.4",
+                status: "running",
+                responseState: .responding,
+                updatedAt: 100,
+                startedAt: 90,
+                finishedAt: nil,
+                inputTokens: 10,
+                outputTokens: 0,
+                totalTokens: 10,
+                contextWindow: nil,
+                contextUsedTokens: nil,
+                contextUsagePercent: nil,
+                source: .socket
+            )
+        )
+
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .running(tool: "codex"))
+
+        _ = store.applyRuntimeSnapshot(
+            sessionID: sessionID,
+            snapshot: AIRuntimeContextSnapshot(
+                tool: "codex",
+                externalSessionID: "codex-thread-store",
+                model: "gpt-5.4",
+                inputTokens: 10,
+                outputTokens: 0,
+                totalTokens: 10,
+                updatedAt: 101,
+                responseState: .idle,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                source: .hook
+            )
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+
+        _ = store.applyRuntimeSnapshot(
+            sessionID: sessionID,
+            snapshot: AIRuntimeContextSnapshot(
+                tool: "codex",
+                externalSessionID: "codex-thread-store",
+                model: "gpt-5.4",
+                inputTokens: 10,
+                outputTokens: 5,
+                totalTokens: 15,
+                updatedAt: 102,
+                responseState: .idle,
+                wasInterrupted: false,
+                hasCompletedTurn: true,
+                source: .hook
+            )
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .idle)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+    }
+
     private func makeCodexTranscript(lines: [String]) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("dmux-runtime-tests", isDirectory: true)
