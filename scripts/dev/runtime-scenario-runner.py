@@ -10,6 +10,7 @@ resume regressions with low-cost models.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import pty
@@ -130,6 +131,14 @@ class RuntimeSocketServer:
             server.close()
 
 
+@dataclasses.dataclass
+class StepResult:
+    name: str
+    status: str
+    detail: str
+    event_count: int
+
+
 def extract_event_name(event: dict) -> str | None:
     payload = event.get("payload") or {}
     return payload.get("event")
@@ -244,6 +253,7 @@ class ScenarioContext:
         self.server.start()
         self._runner: InteractiveRunner | None = None
         self.external_session_id: str | None = None
+        self.steps: list[StepResult] = []
 
     def close(self) -> None:
         if self._runner is not None:
@@ -327,11 +337,35 @@ class ScenarioContext:
         print(f"tool={self.tool}")
         print(f"model={self.model}")
         print(f"external_session_id={self.external_session_id}")
+        if self.steps:
+            print("--- steps ---")
+            for step in self.steps:
+                print(f"{step.status.upper()} {step.name}: {step.detail}")
         print("--- output tail ---")
         print(self.runner.output_text()[-4000:])
         print("--- event summary ---")
         for line in summarize_events(self.server.snapshot()):
             print(line)
+
+    def report_data(self) -> dict:
+        return {
+            "tool": self.tool,
+            "model": self.model,
+            "external_session_id": self.external_session_id,
+            "steps": [dataclasses.asdict(step) for step in self.steps],
+            "events": self.server.snapshot(),
+            "output_tail": self.runner.output_text()[-4000:] if self._runner else "",
+        }
+
+    def record_step(self, name: str, status: str, detail: str) -> None:
+        self.steps.append(
+            StepResult(
+                name=name,
+                status=status,
+                detail=detail,
+                event_count=self.server.event_count(),
+            )
+        )
 
 
 def resume_args(tool: str, external_session_id: str) -> list[str]:
@@ -342,120 +376,167 @@ def resume_args(tool: str, external_session_id: str) -> list[str]:
     raise ValueError(tool)
 
 
-def scenario_interrupt(tool: str, model: str) -> int:
+def scenario_interrupt(tool: str, model: str) -> tuple[int, ScenarioContext]:
     ctx = ScenarioContext(tool, model)
     try:
         ctx.start()
         ctx.wait_until_ready()
+        ctx.record_step("ready", "ok", "initial runtime ready")
         ctx.send_and_wait_for_prompt_submit("你好")
+        ctx.record_step("prompt_submit", "ok", "captured UserPromptSubmit")
         try:
             ctx.wait_for_response_state("responding", timeout=10.0)
+            ctx.record_step("responding", "ok", "captured responding state")
         except TimeoutError:
-            pass
+            ctx.record_step("responding", "warn", "responding state did not arrive before interrupt")
         ctx.runner.interrupt()
+        ctx.record_step("interrupt", "ok", "sent Ctrl-C")
         try:
             ctx.wait_for_stop_like(timeout=10.0)
+            ctx.record_step("stop_like", "ok", "captured stop/session-end hook")
         except TimeoutError:
-            pass
+            ctx.record_step("stop_like", "warn", "no stop-like hook observed after interrupt")
         try:
             ctx.wait_for_response_state("idle", timeout=10.0)
+            ctx.record_step("idle", "ok", "captured idle response after interrupt")
         except TimeoutError:
-            pass
+            ctx.record_step("idle", "warn", "idle response not observed after interrupt")
         ctx.runner.read_available(1.0)
-        ctx.print_report()
-        return 0
-    finally:
-        ctx.close()
+        return 0, ctx
+    except Exception as error:
+        ctx.record_step("scenario_error", "error", str(error))
+        return 1, ctx
 
 
-def scenario_flow(tool: str, model: str) -> int:
+def scenario_flow(tool: str, model: str) -> tuple[int, ScenarioContext]:
     ctx = ScenarioContext(tool, model)
     try:
         ctx.start()
         ctx.wait_until_ready()
+        ctx.record_step("ready", "ok", "initial runtime ready")
 
         # 1. Two prompts in a fresh session
         ctx.send_and_wait_for_prompt_submit("Reply with exactly OK.")
+        ctx.record_step("fresh_prompt_1_submit", "ok", "first prompt submitted")
         try:
             ctx.wait_for_response_state("responding", timeout=10.0)
+            ctx.record_step("fresh_prompt_1_responding", "ok", "first prompt entered responding")
         except TimeoutError:
-            pass
+            ctx.record_step("fresh_prompt_1_responding", "warn", "responding not observed")
         ctx.wait_for_stop_like(timeout=60.0)
+        ctx.record_step("fresh_prompt_1_stop", "ok", "first prompt stop observed")
         ctx.wait_for_response_state("idle", timeout=10.0)
+        ctx.record_step("fresh_prompt_1_idle", "ok", "first prompt idle observed")
 
         ctx.send_and_wait_for_prompt_submit("Reply with exactly SECOND.")
+        ctx.record_step("fresh_prompt_2_submit", "ok", "second prompt submitted")
         try:
             ctx.wait_for_response_state("responding", timeout=10.0)
+            ctx.record_step("fresh_prompt_2_responding", "ok", "second prompt entered responding")
         except TimeoutError:
-            pass
+            ctx.record_step("fresh_prompt_2_responding", "warn", "responding not observed")
         ctx.wait_for_stop_like(timeout=60.0)
+        ctx.record_step("fresh_prompt_2_stop", "ok", "second prompt stop observed")
         ctx.wait_for_response_state("idle", timeout=10.0)
+        ctx.record_step("fresh_prompt_2_idle", "ok", "second prompt idle observed")
 
         # 2. Interrupt during a third turn
         ctx.send_and_wait_for_prompt_submit("Write a long answer and keep going.")
+        ctx.record_step("interrupt_prompt_submit", "ok", "interrupt prompt submitted")
         try:
             ctx.wait_for_response_state("responding", timeout=10.0)
+            ctx.record_step("interrupt_prompt_responding", "ok", "interrupt prompt entered responding")
         except TimeoutError:
-            pass
+            ctx.record_step("interrupt_prompt_responding", "warn", "responding not observed before interrupt")
         ctx.runner.interrupt()
+        ctx.record_step("interrupt_sent", "ok", "sent Ctrl-C")
         try:
             ctx.wait_for_stop_like(timeout=10.0)
+            ctx.record_step("interrupt_stop", "ok", "stop/session-end observed after interrupt")
         except TimeoutError:
-            pass
+            ctx.record_step("interrupt_stop", "warn", "no stop/session-end observed after interrupt")
         try:
             ctx.wait_for_response_state("idle", timeout=10.0)
+            ctx.record_step("interrupt_idle", "ok", "idle observed after interrupt")
         except TimeoutError:
-            pass
+            ctx.record_step("interrupt_idle", "warn", "idle not observed after interrupt")
 
         external_session_id = ctx.external_session_id
         if not external_session_id:
             raise RuntimeError("failed to capture external session id for resume")
+        ctx.record_step("capture_external_session", "ok", external_session_id)
 
         # 3. Close and reopen into resume flow
         ctx.runner.close()
         ctx._runner = None
         ctx.start(args=resume_args(tool, external_session_id))
         ctx.wait_until_ready()
+        ctx.record_step("resume_open", "ok", "reopened historical session")
 
         # 4. Resume and send one prompt
         ctx.send_and_wait_for_prompt_submit("Reply with exactly RESUMED.")
+        ctx.record_step("resume_prompt_submit", "ok", "resume prompt submitted")
         try:
             ctx.wait_for_response_state("responding", timeout=10.0)
+            ctx.record_step("resume_prompt_responding", "ok", "resume prompt entered responding")
         except TimeoutError:
-            pass
+            ctx.record_step("resume_prompt_responding", "warn", "responding not observed")
         ctx.wait_for_stop_like(timeout=60.0)
+        ctx.record_step("resume_prompt_stop", "ok", "resume prompt stop observed")
         ctx.wait_for_response_state("idle", timeout=10.0)
+        ctx.record_step("resume_prompt_idle", "ok", "resume prompt idle observed")
 
         # 5. Reopen once more and start fresh before resuming historical session
         ctx.runner.close()
         ctx._runner = None
         fresh_runner = ctx.start()
         ctx.wait_until_ready()
+        ctx.record_step("fresh_reopen", "ok", "opened fresh session after resume")
         ctx.send_and_wait_for_prompt_submit("Reply with exactly FRESH.")
+        ctx.record_step("fresh_after_resume_submit", "ok", "fresh prompt after resume submitted")
         try:
             ctx.wait_for_response_state("responding", timeout=10.0)
+            ctx.record_step("fresh_after_resume_responding", "ok", "fresh prompt entered responding")
         except TimeoutError:
-            pass
+            ctx.record_step("fresh_after_resume_responding", "warn", "responding not observed")
         ctx.wait_for_stop_like(timeout=60.0)
+        ctx.record_step("fresh_after_resume_stop", "ok", "fresh prompt stop observed")
         ctx.wait_for_response_state("idle", timeout=10.0)
+        ctx.record_step("fresh_after_resume_idle", "ok", "fresh prompt idle observed")
         fresh_runner.close()
         ctx._runner = None
 
         ctx.start(args=resume_args(tool, external_session_id))
         ctx.wait_until_ready()
+        ctx.record_step("history_reopen", "ok", "reopened original historical session")
         ctx.send_and_wait_for_prompt_submit("Reply with exactly HISTORY.")
+        ctx.record_step("history_prompt_submit", "ok", "history prompt submitted")
         try:
             ctx.wait_for_response_state("responding", timeout=10.0)
+            ctx.record_step("history_prompt_responding", "ok", "history prompt entered responding")
         except TimeoutError:
-            pass
+            ctx.record_step("history_prompt_responding", "warn", "responding not observed")
         ctx.wait_for_stop_like(timeout=60.0)
+        ctx.record_step("history_prompt_stop", "ok", "history prompt stop observed")
         ctx.wait_for_response_state("idle", timeout=10.0)
+        ctx.record_step("history_prompt_idle", "ok", "history prompt idle observed")
 
         ctx.runner.read_available(1.0)
-        ctx.print_report()
-        return 0
-    finally:
-        ctx.close()
+        return 0, ctx
+    except Exception as error:
+        ctx.record_step("scenario_error", "error", str(error))
+        return 1, ctx
+
+
+def finalize(code: int, ctx: ScenarioContext, report_json_path: str | None) -> int:
+    ctx.print_report()
+    if report_json_path:
+        path = Path(report_json_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(ctx.report_data(), ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"report_json={path}")
+    ctx.close()
+    return code
 
 
 def main() -> int:
@@ -463,13 +544,16 @@ def main() -> int:
     parser.add_argument("--tool", choices=["claude", "codex"], required=True)
     parser.add_argument("--scenario", choices=["interrupt", "flow"], default="interrupt")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--report-json", default=None)
     args = parser.parse_args()
 
     model = args.model or DEFAULT_MODELS[args.tool]
     if args.scenario == "interrupt":
-        return scenario_interrupt(args.tool, model)
+        code, ctx = scenario_interrupt(args.tool, model)
+        return finalize(code, ctx, args.report_json)
     if args.scenario == "flow":
-        return scenario_flow(args.tool, model)
+        code, ctx = scenario_flow(args.tool, model)
+        return finalize(code, ctx, args.report_json)
     return 1
 
 
