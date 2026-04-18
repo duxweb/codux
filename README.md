@@ -114,7 +114,7 @@ All shortcuts can be customized in **Settings > Shortcuts**.
 
 Found a bug or have a feature request? Open an [issue on GitHub](https://github.com/duxweb/codux/issues).
 
-For AI runtime regression work, see [docs/runtime-regression.md](docs/runtime-regression.md).
+For AI runtime regression work, see [docs/runtime-regression.md](docs/runtime-regression.md). A one-shot developer entrypoint is also available at `./scripts/dev/runtime-regression.sh`.
 
 When reporting a bug, please include the following diagnostics whenever possible:
 

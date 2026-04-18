@@ -12,6 +12,36 @@ Use it when verifying:
 
 ## Test Layers
 
+### 0. One-shot regression entrypoint
+
+Runs the core regression set and writes logs / JSON reports into one directory.
+
+Script:
+
+- `scripts/dev/runtime-regression.sh`
+
+Command:
+
+```bash
+./scripts/dev/runtime-regression.sh
+```
+
+Optional output directory:
+
+```bash
+./scripts/dev/runtime-regression.sh /tmp/dmux-runtime-regression
+```
+
+Current default bundle:
+
+- `RuntimeDriverTests`
+- `RuntimeLifecycleScenarioTests`
+- Claude interactive flow
+- Claude non-interactive flow
+- Codex non-interactive flow
+- Gemini non-interactive flow
+- OpenCode non-interactive flow
+
 ### 1. Unit tests
 
 Fastest feedback. These run entirely inside Swift tests.
@@ -75,12 +105,16 @@ Commands:
 ```bash
 python3 scripts/dev/runtime-noninteractive-flow.py --tool claude
 python3 scripts/dev/runtime-noninteractive-flow.py --tool codex
+python3 scripts/dev/runtime-noninteractive-flow.py --tool gemini
+python3 scripts/dev/runtime-noninteractive-flow.py --tool opencode
 ```
 
 Current behavior:
 
 - `claude` uses `--print --output-format stream-json --verbose --resume`
 - `codex` uses `exec --json` and `exec resume --json`
+- `gemini` uses `-p/--prompt` plus `--resume`
+- `opencode` uses `run --format json` plus `--session`
 
 For `codex`, the script automatically falls back across candidate models until one works.
 
@@ -91,12 +125,16 @@ Current default candidate order:
 3. `gpt-5.4-mini`
 4. `gpt-5.4`
 
+For `opencode`, the runner first tries the configured MiniMax target and then falls back to the default configured provider if needed.
+
 ## Real Model Defaults
 
 Current low-cost defaults:
 
 - `codex`: `gpt-5.1-codex-mini`
 - `claude`: `claude-haiku-4-5`
+- `gemini`: `gemini-2.5-flash`
+- `opencode`: `minimax/minimax-m2.5-free`
 
 You can override them:
 
@@ -136,6 +174,8 @@ This is the preferred path for codex resume/reopen regression checks.
 
 - `codex` interactive TUI can still panic before hooks complete on some prompt/input paths.
 - `claude` interactive flow is the most reliable real-time regression target right now.
+- `codex`, `claude`, and `gemini` non-interactive flows are currently the most stable end-to-end regression targets.
+- `opencode` non-interactive flow depends on whichever provider credentials are actually configured on the local machine.
 - These scripts are for developer regression work, not CI defaults.
 
 ## When To Use Which Tool
@@ -143,3 +183,4 @@ This is the preferred path for codex resume/reopen regression checks.
 - If you are changing shared merge / lifecycle logic: start with `swift test`.
 - If you are changing Claude hook behavior: run `RuntimeDriverTests` and `runtime-scenario-runner.py --tool claude`.
 - If you are changing Codex stop / resume logic: run `RuntimeDriverTests`, `RuntimeLifecycleScenarioTests`, and `runtime-noninteractive-flow.py --tool codex`.
+- If you want the broadest quick regression pass before a release, run `./scripts/dev/runtime-regression.sh`.
