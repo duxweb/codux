@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-18
+
 ### Added
 
 - Added terminal font-size controls in Settings > Appearance so terminal text size can be adjusted with direct numeric input.
