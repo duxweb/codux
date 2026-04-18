@@ -684,6 +684,9 @@ final class SwiftTermTerminalContainerView: NSView {
         guard hasStartedProcess == false else {
             return
         }
+        guard isVisibleTerminal || isFocusedTerminal else {
+            return
+        }
         guard pendingStartWorkItem == nil else {
             return
         }
@@ -705,6 +708,10 @@ final class SwiftTermTerminalContainerView: NSView {
 
     private func startProcessIfPossible(trigger: String) {
         guard hasStartedProcess == false else {
+            return
+        }
+        guard isVisibleTerminal || isFocusedTerminal else {
+            scheduleProcessStartIfPossible(reason: "\(trigger)-awaiting-visibility")
             return
         }
         guard window != nil,

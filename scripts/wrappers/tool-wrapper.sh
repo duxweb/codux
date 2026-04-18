@@ -24,6 +24,9 @@ if [[ -z "$search_path" ]]; then
   search_path="$orig_path"
 fi
 
+system_bin_prefix="/usr/bin:/bin:/usr/sbin:/sbin"
+managed_system_first_path="${system_bin_prefix}${search_path:+:${search_path}}"
+
 resolve_from_search_path() {
   local binary_name="$1"
   local resolved=""
@@ -33,6 +36,17 @@ resolve_from_search_path() {
     return 0
   fi
   return 1
+}
+
+apply_process_limit_cap() {
+  local maxproc="${1:-}"
+  [[ -n "$maxproc" && "$maxproc" == <-> ]] || return 0
+
+  local current_limit
+  current_limit="$(ulimit -u 2>/dev/null || true)"
+  if [[ "$current_limit" == "unlimited" || ( "$current_limit" == <-> && "$current_limit" -gt "$maxproc" ) ]]; then
+    ulimit -u "$maxproc" 2>/dev/null || true
+  fi
 }
 
 find_real_binary() {
@@ -348,6 +362,9 @@ if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" ]]; then
   helper_script="${wrapper_dir}/dmux-ai-state.sh"
   if [[ -x "$helper_script" && -n "${DMUX_SESSION_ID:-}" && -n "${DMUX_RUNTIME_SOCKET:-}" ]]; then
     local_permission_mode="$(configured_permission_mode || true)"
+    claude_launch_path="${managed_system_first_path}"
+    claude_maxproc="${DMUX_CLAUDE_MAXPROC:-2048}"
+    apply_process_limit_cap "${claude_maxproc}"
     launch_args=("$@")
     if [[ "${local_permission_mode}" == "fullAccess" ]] \
       && ! has_exact_arg "--dangerously-skip-permissions" "${launch_args[@]}" \
@@ -383,14 +400,14 @@ if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" ]]; then
       if [[ -n "${resume_target}" ]]; then
         send_usage_runtime_event running "${resume_target}"
       fi
-      run_wrapped_command "${resume_target}" "" env PATH="$search_path" "$real_bin" --settings "$hooks_json" "${launch_args[@]}"
+      run_wrapped_command "${resume_target}" "" env PATH="$claude_launch_path" "$real_bin" --settings "$hooks_json" "${launch_args[@]}"
       exit $?
     else
       claude_external_session_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
       write_claude_session_map "${claude_external_session_id}"
       send_usage_runtime_event running "${claude_external_session_id}"
       log_line "launch claude session=${DMUX_SESSION_ID} externalSession=${claude_external_session_id}"
-      run_wrapped_command "${claude_external_session_id}" "" env PATH="$search_path" DMUX_EXTERNAL_SESSION_ID="${claude_external_session_id}" "$real_bin" --session-id "${claude_external_session_id}" --settings "$hooks_json" "${launch_args[@]}"
+      run_wrapped_command "${claude_external_session_id}" "" env PATH="$claude_launch_path" DMUX_EXTERNAL_SESSION_ID="${claude_external_session_id}" "$real_bin" --session-id "${claude_external_session_id}" --settings "$hooks_json" "${launch_args[@]}"
       exit $?
     fi
   fi
