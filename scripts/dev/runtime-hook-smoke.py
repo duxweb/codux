@@ -33,7 +33,7 @@ WRAPPER_BIN = ROOT / "scripts" / "wrappers" / "bin"
 
 DEFAULT_MODELS = {
     "claude": "claude-haiku-4-5",
-    "codex": "gpt-5-mini",
+    "codex": "gpt-5.1-codex-mini",
 }
 
 
