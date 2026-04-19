@@ -747,47 +747,6 @@ private struct DeveloperSettingsPane: View {
                     Text(option.title(model: model)).tag(option.seconds)
                 }
             }
-
-            Section(String(localized: "settings.pet_debug.section", defaultValue: "Pet Debug", bundle: .module)) {
-                HStack {
-                    Button(String(localized: "settings.pet_debug.bubble", defaultValue: "Bubble", bundle: .module)) {
-                        model.debugShowPetBubble()
-                    }
-                    Button(String(localized: "settings.pet_debug.evolution", defaultValue: "Evolution FX", bundle: .module)) {
-                        model.debugShowPetEvolutionEffect()
-                    }
-                    Button(String(localized: "settings.pet_debug.max_level", defaultValue: "Max Level FX", bundle: .module)) {
-                        model.debugShowPetMaxLevelEffect()
-                    }
-                }
-
-                HStack {
-                    Button(String(localized: "settings.pet_debug.complete_hatch", defaultValue: "Complete Hatch", bundle: .module)) {
-                        model.debugCompletePetHatch()
-                    }
-                    Button(String(localized: "settings.pet_debug.level_up", defaultValue: "Level Up", bundle: .module)) {
-                        model.debugAdvancePetLevel()
-                    }
-                    Button(String(localized: "settings.pet_debug.next_stage", defaultValue: "Next Stage", bundle: .module)) {
-                        model.debugAdvancePetToNextStage()
-                    }
-                }
-
-                HStack {
-                    Button(PetSpecies.voidcat.eggChoiceName) {
-                        model.debugSwitchPetSpecies(.voidcat)
-                    }
-                    Button(PetSpecies.rusthound.eggChoiceName) {
-                        model.debugSwitchPetSpecies(.rusthound)
-                    }
-                    Button(PetSpecies.goose.eggChoiceName) {
-                        model.debugSwitchPetSpecies(.goose)
-                    }
-                    Button(PetSpecies.chaossprite.eggChoiceName) {
-                        model.debugSwitchPetSpecies(.chaossprite)
-                    }
-                }
-            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

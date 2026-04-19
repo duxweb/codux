@@ -4,14 +4,6 @@ import Foundation
 import Observation
 import SwiftUI
 
-extension Notification.Name {
-    static let dmuxPetDebugBubble = Notification.Name("dmux.pet.debug.bubble")
-    static let dmuxPetDebugEvolution = Notification.Name("dmux.pet.debug.evolution")
-    static let dmuxPetDebugMaxLevel = Notification.Name("dmux.pet.debug.maxLevel")
-    static let dmuxPetDebugLevelUp = Notification.Name("dmux.pet.debug.levelUp")
-    static let dmuxPetDebugHatch = Notification.Name("dmux.pet.debug.hatch")
-}
-
 enum GitRemoteAction {
     case fetch
     case pull
@@ -60,7 +52,6 @@ final class AppModel {
     var isGeneratingCommitMessage = false
     var terminalFocusRequestID: UUID?
     var terminalFocusRenderVersion: UInt64 = 0
-    var workspaceSelectionRenderVersion: UInt64 = 0
     let runtimeStore = AIRuntimeStateStore.shared
     let aiStatsStore = AIStatsStore()
     let petStore = PetStore.shared
@@ -481,9 +472,6 @@ final class AppModel {
     }
 
     func selectProject(_ projectID: UUID) {
-        if selectedProjectID != projectID {
-            workspaceSelectionRenderVersion &+= 1
-        }
         selectedProjectID = projectID
         restoreSelectedTerminalFocusIfNeeded()
         restoreCachedGitPanelIfAvailable(for: projectID)
@@ -491,7 +479,11 @@ final class AppModel {
         persist()
         refreshGitState()
         updateGitRemoteSyncPolling()
-        refreshAIStatsIfNeeded()
+        if rightPanel == .aiStats {
+            aiStatsStore.syncSelection(project: selectedProject, projects: projects, selectedSessionID: selectedSessionID)
+        } else {
+            refreshAIStatsIfNeeded()
+        }
     }
 
     func selectProject(atSidebarIndex index: Int) {
@@ -3089,97 +3081,6 @@ final class AppModel {
         settings.pet.lateNightReminderInterval = interval
         appSettings = settings
         persist()
-    }
-
-    func debugCompletePetHatch() {
-        let totalTokens = aiStatsStore.totalAllTimeTokensAcrossProjects(projects)
-        petStore.debugForceExperienceTokens(0, currentAllTimeTokens: totalTokens)
-        NotificationCenter.default.post(name: .dmuxPetDebugHatch, object: nil)
-    }
-
-    func debugSwitchPetSpecies(_ species: PetSpecies) {
-        let totalTokens = aiStatsStore.totalAllTimeTokensAcrossProjects(projects)
-        petStore.debugSwitchSpecies(species, currentAllTimeTokens: totalTokens)
-    }
-
-    func debugAdvancePetLevel() {
-        guard petStore.isClaimed else {
-            return
-        }
-        let totalTokens = aiStatsStore.totalAllTimeTokensAcrossProjects(projects)
-        let currentXP = petStore.currentExperienceTokens
-        let info = PetProgressInfo(
-            totalXP: currentXP,
-            hatchTokens: petStore.currentHatchTokens,
-            evoPath: petStore.currentEvoPath()
-        )
-        let targetXP: Int
-        if info.isHatching {
-            targetXP = 0
-        } else {
-            targetXP = PetProgressInfo.totalXPRequired(toReach: info.level + 1)
-        }
-        petStore.debugForceExperienceTokens(targetXP, currentAllTimeTokens: totalTokens)
-        let targetInfo = PetProgressInfo(
-            totalXP: targetXP,
-            hatchTokens: PetProgressInfo.hatchThreshold,
-            evoPath: petStore.currentEvoPath()
-        )
-        NotificationCenter.default.post(
-            name: .dmuxPetDebugLevelUp,
-            object: nil,
-            userInfo: ["level": targetInfo.level]
-        )
-    }
-
-    func debugAdvancePetToNextStage() {
-        guard petStore.isClaimed else {
-            return
-        }
-        let totalTokens = aiStatsStore.totalAllTimeTokensAcrossProjects(projects)
-        let currentXP = petStore.currentExperienceTokens
-        let info = PetProgressInfo(
-            totalXP: currentXP,
-            hatchTokens: petStore.currentHatchTokens,
-            evoPath: petStore.currentEvoPath()
-        )
-
-        let targetXP: Int
-        switch info.stage {
-        case .egg:
-            targetXP = 0
-        case .infant:
-            targetXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.childRange.lowerBound)
-        case .child:
-            targetXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.adultRange.lowerBound)
-        case .adult:
-            targetXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.evoRange.lowerBound)
-        case .evoA, .evoB:
-            targetXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.megaStartLevel)
-        case .megaA, .megaB:
-            targetXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.maxLevel)
-        }
-
-        petStore.debugForceExperienceTokens(targetXP, currentAllTimeTokens: totalTokens)
-        if info.stage == .egg {
-            NotificationCenter.default.post(name: .dmuxPetDebugHatch, object: nil)
-        } else if targetXP >= PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.maxLevel) {
-            NotificationCenter.default.post(name: .dmuxPetDebugMaxLevel, object: nil)
-        } else {
-            NotificationCenter.default.post(name: .dmuxPetDebugEvolution, object: nil)
-        }
-    }
-
-    func debugShowPetBubble() {
-        NotificationCenter.default.post(name: .dmuxPetDebugBubble, object: nil)
-    }
-
-    func debugShowPetEvolutionEffect() {
-        NotificationCenter.default.post(name: .dmuxPetDebugEvolution, object: nil)
-    }
-
-    func debugShowPetMaxLevelEffect() {
-        NotificationCenter.default.post(name: .dmuxPetDebugMaxLevel, object: nil)
     }
 
     func updateShortcut(_ shortcut: AppKeyboardShortcut?, for target: AppShortcutTarget) {

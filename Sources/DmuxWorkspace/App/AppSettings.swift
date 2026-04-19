@@ -70,11 +70,11 @@ struct AppPetSettings: Codable, Equatable {
     var enabled = true
     var staticMode = false
     var hydrationReminderEnabled = true
-    var hydrationReminderInterval: TimeInterval = 3600
+    var hydrationReminderInterval: TimeInterval = 7200
     var sedentaryReminderEnabled = true
-    var sedentaryReminderInterval: TimeInterval = 5400
+    var sedentaryReminderInterval: TimeInterval = 1800
     var lateNightReminderEnabled = true
-    var lateNightReminderInterval: TimeInterval = 7200
+    var lateNightReminderInterval: TimeInterval = 3600
 
     init() {}
 
@@ -94,11 +94,11 @@ struct AppPetSettings: Codable, Equatable {
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         staticMode = try container.decodeIfPresent(Bool.self, forKey: .staticMode) ?? false
         hydrationReminderEnabled = try container.decodeIfPresent(Bool.self, forKey: .hydrationReminderEnabled) ?? true
-        hydrationReminderInterval = max(300, try container.decodeIfPresent(TimeInterval.self, forKey: .hydrationReminderInterval) ?? 3600)
+        hydrationReminderInterval = max(300, try container.decodeIfPresent(TimeInterval.self, forKey: .hydrationReminderInterval) ?? 7200)
         sedentaryReminderEnabled = try container.decodeIfPresent(Bool.self, forKey: .sedentaryReminderEnabled) ?? true
-        sedentaryReminderInterval = max(300, try container.decodeIfPresent(TimeInterval.self, forKey: .sedentaryReminderInterval) ?? 5400)
+        sedentaryReminderInterval = max(300, try container.decodeIfPresent(TimeInterval.self, forKey: .sedentaryReminderInterval) ?? 1800)
         lateNightReminderEnabled = try container.decodeIfPresent(Bool.self, forKey: .lateNightReminderEnabled) ?? true
-        lateNightReminderInterval = max(300, try container.decodeIfPresent(TimeInterval.self, forKey: .lateNightReminderInterval) ?? 7200)
+        lateNightReminderInterval = max(300, try container.decodeIfPresent(TimeInterval.self, forKey: .lateNightReminderInterval) ?? 3600)
     }
 }
 

@@ -250,6 +250,63 @@ final class AIStatsStore {
         )
     }
 
+    func syncSelection(project: Project?, projects: [Project], selectedSessionID: UUID?) {
+        let selectedSessionID = effectiveSessionID(selectedSessionID)
+        currentProjects = projects
+        currentProjectID = project?.id
+        currentSelectedSessionID = selectedSessionID
+        syncCurrentAutomaticRefreshFlag()
+
+        guard let project else {
+            state = .empty
+            refreshState = .idle
+            isAutomaticRefreshInProgress = false
+            return
+        }
+
+        _ = ingestRuntime(project: project, projects: projects)
+        let displayLiveSnapshots = runtimeStateStore.liveDisplaySnapshots(projectID: project.id)
+        let summaryLiveSnapshots = runtimeStateStore.liveAggregationSnapshots(projectID: project.id)
+        let currentSnapshot = runtimeStateStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
+        let status = indexingStatusByProjectID[project.id]
+            ?? cachedState(for: project.id)?.indexingStatus
+            ?? .completed(detail: String(localized: "ai.indexing.complete", defaultValue: "Index complete.", bundle: .module))
+
+        let hasCachedState = cachedState(for: project.id) != nil
+
+        if hasCachedState {
+            var nextState = aiUsageService.snapshotBackedPanelState(
+                project: project,
+                liveSnapshots: summaryLiveSnapshots,
+                currentSnapshot: currentSnapshot,
+                status: status
+            )
+            nextState.liveSnapshots = displayLiveSnapshots
+            nextState.indexingStatus = status
+            storeState(nextState, refreshState: normalizedRestingRefreshState(refreshStateByProjectID[project.id]), for: project.id, updateCurrent: true)
+        } else {
+            var nextState = aiUsageService.fastPanelState(
+                project: project,
+                liveSnapshots: summaryLiveSnapshots,
+                currentSnapshot: currentSnapshot
+            )
+            nextState.liveSnapshots = displayLiveSnapshots
+            nextState.indexingStatus = status
+            storeState(nextState, refreshState: .idle, for: project.id, updateCurrent: true)
+        }
+
+        logger.log(
+            "ai-panel-bridge",
+            "phase=selection-sync project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") cached=\(hasCachedState) live=\(displayLiveSnapshots.count)"
+        )
+
+        scheduleRuntimeRefreshesForLiveSessions(
+            project: project,
+            projects: projects,
+            force: false
+        )
+    }
+
     func refreshCurrent(project: Project?, projects: [Project], selectedSessionID: UUID?) {
         guard let project else { return }
         let selectedSessionID = effectiveSessionID(selectedSessionID)

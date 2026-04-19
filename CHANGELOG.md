@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-20
+
+### Changed
+
+- Refined the AI stats panel so project switching now shows a lightweight summary first, defers heavier detail sections, and limits session history to the most recent 20 entries for smoother navigation.
+- Adjusted the default pet reminder cadence to healthier starter values: sedentary reminders every 30 minutes, hydration reminders every 2 hours, and late-night reminders every 1 hour.
+
+### Fixed
+
+- Fixed queued-turn loading state handling for Codex and Claude so follow-up prompts in the same session stay in `loading` until the final queued response really settles, instead of clearing too early or getting stuck.
+- Fixed terminal key passthrough so unreserved shortcuts such as `Shift+Tab` reach the underlying AI terminal correctly without being swallowed by the app shell.
+- Fixed top/bottom terminal split persistence so resized tab-region height no longer resets when switching projects and returning.
+- Fixed AI panel project switching stutter by synchronizing live runtime state immediately and postponing heavy detail rendering until after the lightweight panel state is visible.
+- Removed the remaining pet debug controls and unused pet debug localization entries from the shipping app so release builds no longer expose internal testing affordances.
+
 ## [0.3.0] - 2026-04-19
 
 ### Added

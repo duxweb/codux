@@ -5,6 +5,37 @@ extension Notification.Name {
     static let dmuxAIRuntimeBridgeDidChange = Notification.Name("dmuxAIRuntimeBridgeDidChange")
 }
 
+private actor AIRuntimeSocketEventPipeline {
+    static let shared = AIRuntimeSocketEventPipeline()
+
+    private var tailTasksByKey: [String: Task<Void, Never>] = [:]
+    private var latestTokenByKey: [String: UInt64] = [:]
+    private var nextToken: UInt64 = 0
+
+    func enqueue(key: String, operation: @escaping @Sendable () async -> Void) {
+        nextToken &+= 1
+        let token = nextToken
+        let previous = tailTasksByKey[key]
+        latestTokenByKey[key] = token
+
+        let task = Task {
+            _ = await previous?.result
+            await operation()
+            finish(key: key, token: token)
+        }
+
+        tailTasksByKey[key] = task
+    }
+
+    private func finish(key: String, token: UInt64) {
+        guard latestTokenByKey[key] == token else {
+            return
+        }
+        latestTokenByKey[key] = nil
+        tailTasksByKey[key] = nil
+    }
+}
+
 @MainActor
 final class AIRuntimeIngressService {
     static let shared = AIRuntimeIngressService()
@@ -537,42 +568,78 @@ final class AIRuntimeIngressService {
                 logger.log("runtime-socket", "drop kind=\(kind) reason=dedupe")
                 return
             }
-            let liveEnvelopes = liveEnvelopesBySessionID.values.sorted { $0.updatedAt > $1.updatedAt }
-            let existingRuntime = currentRuntimeSnapshotsBySessionID()
+            if let pipelineKey = runtimeEventPipelineKey(kind: kind, payloadData: payloadData) {
+                Task { [weak self] in
+                    guard let self else {
+                        return
+                    }
+                    await AIRuntimeSocketEventPipeline.shared.enqueue(key: pipelineKey) { [weak self] in
+                        guard let self else {
+                            return
+                        }
+                        await self.processManagedRuntimeSocketEvent(kind: kind, payloadData: payloadData)
+                    }
+                }
+                return
+            }
             Task { [weak self] in
-                guard let self,
-                      let update = await self.toolDriverFactory.handleRuntimeSocketEvent(
-                        kind: kind,
-                        payloadData: payloadData,
-                        projects: self.latestProjects,
-                        liveEnvelopes: liveEnvelopes,
-                        existingRuntime: existingRuntime
-                      ) else {
+                guard let self else {
                     return
                 }
-                await MainActor.run {
-                    var switchedSessionID: UUID?
-                    var switchedTool: String?
-                    for payload in update.responsePayloads {
-                        if let sessionID = UUID(uuidString: payload.sessionId) {
-                            self.responsePayloadsBySessionID[sessionID] = payload
-                        }
-                        self.runtimeStore.applyResponsePayload(payload)
-                    }
-                    for (sessionID, snapshot) in update.runtimeSnapshotsBySessionID {
-                        let result = self.runtimeStore.applyRuntimeSnapshot(sessionID: sessionID, snapshot: snapshot)
-                        if result?.didSwitchExternalSession == true {
-                            switchedSessionID = sessionID
-                            switchedTool = snapshot.tool
-                        }
-                    }
-                    self.postRuntimeBridgeDidChange(
-                        kind: "runtime-socket",
-                        switchedSessionID: switchedSessionID,
-                        tool: switchedTool
-                    )
+                await self.processManagedRuntimeSocketEvent(kind: kind, payloadData: payloadData)
+            }
+        }
+    }
+
+    private func runtimeEventPipelineKey(kind: String, payloadData: Data) -> String? {
+        guard kind == "codex-hook",
+              let envelope = try? JSONDecoder().decode(CodexHookRuntimeEnvelope.self, from: payloadData),
+              !envelope.dmuxSessionId.isEmpty else {
+            return nil
+        }
+        return "\(kind)|\(envelope.dmuxSessionId)"
+    }
+
+    private func processManagedRuntimeSocketEvent(kind: String, payloadData: Data) async {
+        let context = await MainActor.run {
+            (
+                projects: latestProjects,
+                liveEnvelopes: liveEnvelopesBySessionID.values.sorted { $0.updatedAt > $1.updatedAt },
+                existingRuntime: currentRuntimeSnapshotsBySessionID()
+            )
+        }
+
+        guard let update = await AIToolDriverFactory.shared.handleRuntimeSocketEvent(
+            kind: kind,
+            payloadData: payloadData,
+            projects: context.projects,
+            liveEnvelopes: context.liveEnvelopes,
+            existingRuntime: context.existingRuntime
+        ) else {
+            return
+        }
+
+        await MainActor.run {
+            var switchedSessionID: UUID?
+            var switchedTool: String?
+            for payload in update.responsePayloads {
+                if let sessionID = UUID(uuidString: payload.sessionId) {
+                    responsePayloadsBySessionID[sessionID] = payload
+                }
+                runtimeStore.applyResponsePayload(payload)
+            }
+            for (sessionID, snapshot) in update.runtimeSnapshotsBySessionID {
+                let result = runtimeStore.applyRuntimeSnapshot(sessionID: sessionID, snapshot: snapshot)
+                if result?.didSwitchExternalSession == true {
+                    switchedSessionID = sessionID
+                    switchedTool = snapshot.tool
                 }
             }
+            postRuntimeBridgeDidChange(
+                kind: "runtime-socket",
+                switchedSessionID: switchedSessionID,
+                tool: switchedTool
+            )
         }
     }
 

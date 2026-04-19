@@ -108,6 +108,250 @@ final class RuntimeLifecycleScenarioTests: XCTestCase {
         XCTAssertEqual(displaySnapshot(projectID: projectID, sessionID: sessionID)?.currentTotalTokens, 30)
     }
 
+    func testCodexStaleStopSnapshotDoesNotClearCurrentRespondingState() throws {
+        let sessionID = UUID()
+        let projectID = UUID()
+        let externalSessionID = "codex-stale-stop"
+
+        applyLiveResponding(
+            sessionID: sessionID,
+            projectID: projectID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 320,
+            totalTokens: 40
+        )
+
+        _ = store.applyRuntimeSnapshot(
+            sessionID: sessionID,
+            snapshot: AIRuntimeContextSnapshot(
+                tool: "codex",
+                externalSessionID: externalSessionID,
+                model: "gpt-5.4",
+                inputTokens: 35,
+                outputTokens: 0,
+                totalTokens: 35,
+                updatedAt: 321,
+                responseState: nil,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                source: .hook
+            )
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+    }
+
+    func testCodexQueuedSecondTurnFinalAnswerClearsLoadingImmediately() throws {
+        let sessionID = UUID()
+        let projectID = UUID()
+        let externalSessionID = "codex-queued-final-answer"
+
+        applyLiveResponding(
+            sessionID: sessionID,
+            projectID: projectID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 330,
+            totalTokens: 100
+        )
+        applyCompletedSnapshot(
+            sessionID: sessionID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 331,
+            totalTokens: 140
+        )
+        XCTAssertEqual(store.responseState(for: sessionID), .idle)
+
+        applyLiveResponding(
+            sessionID: sessionID,
+            projectID: projectID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 340,
+            totalTokens: 140
+        )
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+
+        _ = store.applyRuntimeSnapshot(
+            sessionID: sessionID,
+            snapshot: AIRuntimeContextSnapshot(
+                tool: "codex",
+                externalSessionID: externalSessionID,
+                model: "gpt-5.4",
+                inputTokens: 177,
+                outputTokens: 0,
+                totalTokens: 177,
+                updatedAt: 341,
+                responseState: .idle,
+                wasInterrupted: false,
+                hasCompletedTurn: true,
+                source: .hook
+            )
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .idle)
+        XCTAssertTrue(displaySnapshot(projectID: projectID, sessionID: sessionID)?.hasCompletedTurn == true)
+        XCTAssertEqual(displaySnapshot(projectID: projectID, sessionID: sessionID)?.currentTotalTokens, 177)
+    }
+
+    func testCodexQueuedSecondTurnIgnoresStaleProbeIdleUntilRealSecondStop() throws {
+        let sessionID = UUID()
+        let projectID = UUID()
+        let externalSessionID = "codex-queued-probe-stale"
+
+        applyLiveResponding(
+            sessionID: sessionID,
+            projectID: projectID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 350,
+            totalTokens: 100
+        )
+        applyCompletedSnapshot(
+            sessionID: sessionID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 351,
+            totalTokens: 140
+        )
+        XCTAssertEqual(store.responseState(for: sessionID), .idle)
+
+        applyLiveResponding(
+            sessionID: sessionID,
+            projectID: projectID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 360,
+            totalTokens: 140
+        )
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+
+        _ = store.applyRuntimeSnapshot(
+            sessionID: sessionID,
+            snapshot: AIRuntimeContextSnapshot(
+                tool: "codex",
+                externalSessionID: externalSessionID,
+                model: "gpt-5.4",
+                inputTokens: 140,
+                outputTokens: 0,
+                totalTokens: 140,
+                updatedAt: 361,
+                responseState: nil,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                source: .probe
+            )
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+
+        applyCompletedSnapshot(
+            sessionID: sessionID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 370,
+            totalTokens: 220
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .idle)
+        XCTAssertEqual(displaySnapshot(projectID: projectID, sessionID: sessionID)?.currentTotalTokens, 220)
+    }
+
+    func testCodexQueuedSubmitKeepsLoadingAfterFirstStopAndClearsAfterSecondStop() throws {
+        let sessionID = UUID()
+        let projectID = UUID()
+        let externalSessionID = "codex-queued-submit-store"
+
+        applyLiveResponding(
+            sessionID: sessionID,
+            projectID: projectID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 380,
+            totalTokens: 100
+        )
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+
+        applyLiveResponding(
+            sessionID: sessionID,
+            projectID: projectID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 381,
+            totalTokens: 100
+        )
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+
+        _ = store.applyRuntimeSnapshot(
+            sessionID: sessionID,
+            snapshot: AIRuntimeContextSnapshot(
+                tool: "codex",
+                externalSessionID: externalSessionID,
+                model: "gpt-5.4",
+                inputTokens: 140,
+                outputTokens: 0,
+                totalTokens: 140,
+                updatedAt: 382,
+                responseState: nil,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                source: .hook
+            )
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+        XCTAssertFalse(displaySnapshot(projectID: projectID, sessionID: sessionID)?.hasCompletedTurn ?? true)
+
+        applyCompletedSnapshot(
+            sessionID: sessionID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 390,
+            totalTokens: 180
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .idle)
+        XCTAssertTrue(displaySnapshot(projectID: projectID, sessionID: sessionID)?.hasCompletedTurn == true)
+        XCTAssertEqual(displaySnapshot(projectID: projectID, sessionID: sessionID)?.currentTotalTokens, 180)
+    }
+
+    func testCodexProbeSnapshotAfterNewSubmitKeepsRespondingWhenOnlyOldTurnWasCompleted() throws {
+        let sessionID = UUID()
+        let projectID = UUID()
+        let externalSessionID = "codex-health-race"
+
+        applyLiveResponding(
+            sessionID: sessionID,
+            projectID: projectID,
+            tool: "codex",
+            externalSessionID: externalSessionID,
+            updatedAt: 470,
+            totalTokens: 140
+        )
+
+        _ = store.applyRuntimeSnapshot(
+            sessionID: sessionID,
+            snapshot: AIRuntimeContextSnapshot(
+                tool: "codex",
+                externalSessionID: externalSessionID,
+                model: "gpt-5.4",
+                inputTokens: 140,
+                outputTokens: 0,
+                totalTokens: 140,
+                updatedAt: 472,
+                responseState: nil,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                source: .probe
+            )
+        )
+
+        XCTAssertEqual(store.responseState(for: sessionID), .responding)
+        XCTAssertEqual(displaySnapshot(projectID: projectID, sessionID: sessionID)?.currentTotalTokens, 140)
+    }
+
     func testRestoredSessionStartsFromZeroThenGrowsAcrossMessages() throws {
         let sessionID = UUID()
         let projectID = UUID()

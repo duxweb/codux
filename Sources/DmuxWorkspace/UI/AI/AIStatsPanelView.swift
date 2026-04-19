@@ -8,6 +8,7 @@ struct AIStatsPanelView: View {
     let isAutomaticRefreshInProgress: Bool
     let onRefresh: () -> Void
     let onCancel: () -> Void
+    @State private var showsDeferredDetails = false
 
     private var stateMatchesCurrentProject: Bool {
         guard let currentProject else {
@@ -26,7 +27,7 @@ struct AIStatsPanelView: View {
 
             if stateMatchesCurrentProject, let summary = store.state.projectSummary {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    LazyVStack(alignment: .leading, spacing: 12) {
                         AIStatsLiveSessionsCard(model: model, snapshots: store.state.liveSnapshots)
                         AIStatsSummaryCards(
                             model: model,
@@ -34,18 +35,22 @@ struct AIStatsPanelView: View {
                             heatmap: store.state.heatmap,
                             todayTimeBuckets: store.state.todayTimeBuckets
                         )
-                        AIStatsTodayUsageBarChart(model: model, buckets: store.state.todayTimeBuckets)
-                        AIStatsHeatmapCard(model: model, days: store.state.heatmap)
-                        AIStatsBreakdownCard(model: model, title: String(localized: "ai.breakdown.tool_ranking", defaultValue: "Tool Ranking", bundle: .module), items: store.state.toolBreakdown)
-                        AIStatsBreakdownCard(model: model, title: String(localized: "ai.breakdown.model_ranking", defaultValue: "Model Ranking", bundle: .module), items: store.state.modelBreakdown)
-                        AIStatsSessionsCard(model: model, sessions: store.state.sessions)
+                        if showsDeferredDetails {
+                            AIStatsTodayUsageBarChart(model: model, buckets: store.state.todayTimeBuckets)
+                            AIStatsHeatmapCard(model: model, days: store.state.heatmap)
+                            AIStatsBreakdownCard(model: model, title: String(localized: "ai.breakdown.tool_ranking", defaultValue: "Tool Ranking", bundle: .module), items: store.state.toolBreakdown)
+                            AIStatsBreakdownCard(model: model, title: String(localized: "ai.breakdown.model_ranking", defaultValue: "Model Ranking", bundle: .module), items: store.state.modelBreakdown)
+                            AIStatsSessionsCard(model: model, sessions: store.state.sessions)
+                        } else {
+                            AIStatsDeferredSectionsPlaceholder()
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 16)
                 }
             } else if case .indexing = store.state.indexingStatus {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(0..<5, id: \.self) { index in
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
@@ -70,8 +75,17 @@ struct AIStatsPanelView: View {
         }
         .background(Color.clear)
         .task(id: currentProject?.id) {
+            showsDeferredDetails = false
             if !stateMatchesCurrentProject {
                 onRefresh()
+            }
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 160_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            withAnimation(.easeOut(duration: 0.14)) {
+                showsDeferredDetails = true
             }
         }
     }
@@ -81,6 +95,31 @@ struct AIStatsPanelView: View {
             return store.state.indexingStatus
         }
         return .indexing(progress: 0.0, detail: String(localized: "ai.state.switching_current_project", defaultValue: "Switching to Current Project", bundle: .module))
+    }
+}
+
+private struct AIStatsDeferredSectionsPlaceholder: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(String(localized: "ai.panel.loading_details", defaultValue: "Loading project details…", bundle: .module))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.22))
+                .frame(height: 76)
+
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.18))
+                .frame(height: 110)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -821,20 +860,38 @@ private struct AIStatsSessionsCard: View {
     let model: AppModel
     let sessions: [AISessionSummary]
     @State private var selectedSessionID: UUID?
+    private let maxVisibleSessions = 20
+
+    private var visibleSessions: [AISessionSummary] {
+        Array(sessions.prefix(maxVisibleSessions))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(String(localized: "ai.sessions.history", defaultValue: "Session History", bundle: .module))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(String(localized: "ai.sessions.history", defaultValue: "Session History", bundle: .module))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                if sessions.count > maxVisibleSessions {
+                    Text(
+                        String(
+                            format: String(localized: "ai.sessions.recent_limit_format", defaultValue: "Recent %d", bundle: .module),
+                            maxVisibleSessions
+                        )
+                    )
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                }
+            }
 
             if sessions.isEmpty {
                 Text(String(localized: "ai.sessions.empty", defaultValue: "No Session History", bundle: .module))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.tertiary)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(visibleSessions.enumerated()), id: \.element.id) { index, session in
                         let capabilities = model.aiSessionCapabilities(for: session)
                         let isSelected = selectedSessionID == session.sessionID
 
@@ -909,7 +966,7 @@ private struct AIStatsSessionsCard: View {
                             .disabled(!capabilities.canRemove)
                         }
 
-                        if index < sessions.count - 1 {
+                        if index < visibleSessions.count - 1 {
                             Rectangle()
                                 .fill(Color(nsColor: .separatorColor).opacity(0.4))
                                 .frame(height: 0.5)

@@ -138,7 +138,7 @@ enum PetStage: String {
         switch species {
         case .voidcat:
             switch self {
-            case .egg:    return petL("pet.species.voidcat.base", "Voidcat")
+            case .egg:    return petL("pet.species.voidcat.egg", "花花蛋")
             case .infant: return petL("pet.species.voidcat.infant", "Huahua")
             case .child:  return petL("pet.species.voidcat.child", "Shadow Cat")
             case .adult:  return petL("pet.species.voidcat.adult", "Voidcat")
@@ -149,7 +149,7 @@ enum PetStage: String {
             }
         case .rusthound:
             switch self {
-            case .egg:    return petL("pet.species.rusthound.base", "Ruff")
+            case .egg:    return petL("pet.species.rusthound.egg", "毛团蛋")
             case .infant: return petL("pet.species.rusthound.infant", "Furball")
             case .child:  return petL("pet.species.rusthound.child", "Flop-Eared Pup")
             case .adult:  return petL("pet.species.rusthound.adult", "Rusthound")
@@ -160,7 +160,7 @@ enum PetStage: String {
             }
         case .goose:
             switch self {
-            case .egg:    return petL("pet.species.goose.base", "Goosey")
+            case .egg:    return petL("pet.species.goose.egg", "啾啾蛋")
             case .infant: return petL("pet.species.goose.infant", "Chirpy")
             case .child:  return petL("pet.species.goose.child", "Dozy")
             case .adult:  return petL("pet.species.goose.adult", "Goosey")
@@ -171,7 +171,7 @@ enum PetStage: String {
             }
         case .chaossprite:
             switch self {
-            case .egg:    return petL("pet.species.chaossprite.egg", "Chaos Sprite")
+            case .egg:    return petL("pet.species.chaossprite.egg", "混沌蛋")
             case .infant: return petL("pet.species.chaossprite.infant", "Chaos")
             case .child:  return petL("pet.species.chaossprite.child", "Mischief")
             case .adult:  return petL("pet.species.chaossprite.adult", "Glimmer")
@@ -392,14 +392,6 @@ struct TitlebarPetButton: View {
             return false
         }
     }
-    private var isDeveloperBuild: Bool {
-        switch AppIconRenderer.Variant.current() {
-        case .dev, .debug:
-            return true
-        case .standard:
-            return false
-        }
-    }
     private var isSleeping: Bool {
         if !appIsActive {
             return true
@@ -503,10 +495,6 @@ struct TitlebarPetButton: View {
         }
     }
 
-    private func triggerDebugBubble() {
-        showBubble(petL("pet.debug.bubble.preview", "Debug bubble"), duration: 3.2)
-    }
-
     private func syncRunningBaselines(now: Date = Date()) {
         if hasAnyRunningActivity {
             if anyRunningSince == nil {
@@ -514,41 +502,6 @@ struct TitlebarPetButton: View {
             }
         } else {
             anyRunningSince = nil
-        }
-    }
-
-    private func triggerDebugEvolutionEffect() {
-        guard petStore.isClaimed, !info.isHatching else {
-            return
-        }
-        pendingEvoFrom = debugEffectSourceStage(for: info.stage)
-        isShowingPopover = true
-    }
-
-    private func triggerDebugMaxLevelEffect() {
-        guard petStore.isClaimed, !info.isHatching else {
-            return
-        }
-        isShowingPopover = true
-        showMaxLevelEffect = true
-    }
-
-    private func debugEffectSourceStage(for stage: PetStage) -> PetStage {
-        switch stage {
-        case .egg:
-            return .egg
-        case .infant:
-            return .egg
-        case .child:
-            return .infant
-        case .adult:
-            return .child
-        case .evoA, .evoB:
-            return .adult
-        case .megaA:
-            return .evoA
-        case .megaB:
-            return .evoB
         }
     }
 
@@ -630,29 +583,6 @@ struct TitlebarPetButton: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             appIsActive = false
             recentActivityTick = Date()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .dmuxPetDebugBubble)) { _ in
-            guard isDeveloperBuild else { return }
-            triggerDebugBubble()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .dmuxPetDebugEvolution)) { _ in
-            guard isDeveloperBuild else { return }
-            triggerDebugEvolutionEffect()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .dmuxPetDebugMaxLevel)) { _ in
-            guard isDeveloperBuild else { return }
-            triggerDebugMaxLevelEffect()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .dmuxPetDebugLevelUp)) { note in
-            guard isDeveloperBuild else { return }
-            levelUpTarget = note.userInfo?["level"] as? Int ?? max(1, info.level)
-            showLevelUpEffect = true
-            isShowingPopover = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .dmuxPetDebugHatch)) { _ in
-            guard isDeveloperBuild else { return }
-            showHatchEffect = true
-            isShowingPopover = true
         }
         .onAppear {
             syncRunningBaselines()
@@ -1071,6 +1001,7 @@ struct PetPopoverView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
+                    .appCursor(.arrow)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 0) {

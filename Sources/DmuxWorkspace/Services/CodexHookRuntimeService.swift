@@ -5,115 +5,85 @@ struct CodexParsedRuntimeState {
     var model: String?
     var totalTokens: Int?
     var updatedAt: Double?
+    var startedAt: Double?
+    var completedAt: Double?
     var responseState: AIResponseState?
     var wasInterrupted: Bool
     var hasCompletedTurn: Bool
 }
 
-actor CodexRuntimeResponseLatch {
-    static let shared = CodexRuntimeResponseLatch()
+struct CodexHookStopResolution {
+    var hasDefinitiveStop: Bool
+    var shouldEmitIdle: Bool
+    var effectiveWasInterrupted: Bool
+    var effectiveHasCompletedTurn: Bool
+}
 
-    private struct LatchState {
-        var lastRespondingAt: Double
-        var externalSessionID: String?
-        var awaitingDefinitiveStop: Bool
+struct CodexProbeResolution {
+    var responseState: AIResponseState?
+    var effectiveWasInterrupted: Bool
+    var effectiveHasCompletedTurn: Bool
+}
+
+func resolveCodexHookStopResolution(
+    parsedState: CodexParsedRuntimeState?,
+    currentResponseState: AIResponseState?,
+    shouldIgnoreDefinitiveStop: Bool
+) -> CodexHookStopResolution {
+    let stopLooksSettled = (parsedState?.responseState == .idle)
+        && (parsedState?.wasInterrupted != true)
+    let explicitDefinitiveStop = (parsedState?.wasInterrupted == true)
+        || (parsedState?.hasCompletedTurn == true)
+    let settledOnlyStop = stopLooksSettled && !explicitDefinitiveStop
+    let shouldTreatSettledOnlyStopAsNonDefinitive =
+        settledOnlyStop && currentResponseState == .responding
+    let hasDefinitiveStop = explicitDefinitiveStop || (stopLooksSettled && !shouldTreatSettledOnlyStopAsNonDefinitive)
+    let effectiveWasInterrupted = hasDefinitiveStop && !shouldIgnoreDefinitiveStop
+        ? (parsedState?.wasInterrupted ?? false)
+        : false
+    let effectiveHasCompletedTurn = hasDefinitiveStop && !shouldIgnoreDefinitiveStop
+        ? ((parsedState?.hasCompletedTurn ?? false) || (stopLooksSettled && !explicitDefinitiveStop))
+        : false
+
+    return CodexHookStopResolution(
+        hasDefinitiveStop: hasDefinitiveStop,
+        shouldEmitIdle: hasDefinitiveStop && !shouldIgnoreDefinitiveStop,
+        effectiveWasInterrupted: effectiveWasInterrupted,
+        effectiveHasCompletedTurn: effectiveHasCompletedTurn
+    )
+}
+
+func resolveCodexProbeResolution(
+    parsedState: CodexParsedRuntimeState?,
+    shouldIgnoreDefinitiveStop: Bool,
+    didReleaseDefinitiveStop: Bool
+) -> CodexProbeResolution {
+    let stopLooksSettled = (parsedState?.responseState == .idle)
+        && (parsedState?.wasInterrupted != true)
+    let explicitDefinitiveStop = (parsedState?.wasInterrupted == true)
+        || (parsedState?.hasCompletedTurn == true)
+    let hasDefinitiveStop =
+        (explicitDefinitiveStop || stopLooksSettled)
+        && !shouldIgnoreDefinitiveStop
+        && didReleaseDefinitiveStop
+
+    return CodexProbeResolution(
+        responseState: hasDefinitiveStop ? .idle : nil,
+        effectiveWasInterrupted: hasDefinitiveStop ? (parsedState?.wasInterrupted ?? false) : false,
+        effectiveHasCompletedTurn: hasDefinitiveStop
+            ? ((parsedState?.hasCompletedTurn ?? false) || stopLooksSettled)
+            : false
+    )
+}
+
+func resolveCodexDefinitiveStopReferenceUpdatedAt(
+    parsedState: CodexParsedRuntimeState?,
+    fallbackUpdatedAt: Double
+) -> Double {
+    if let completedAt = parsedState?.completedAt {
+        return completedAt
     }
-
-    private var stateByRuntimeSessionID: [String: LatchState] = [:]
-    private var runtimeSessionIDsByExternalSessionID: [String: Set<String>] = [:]
-
-    func reset(runtimeSessionID: String) {
-        guard let existing = stateByRuntimeSessionID.removeValue(forKey: runtimeSessionID) else {
-            return
-        }
-        guard let externalSessionID = existing.externalSessionID else {
-            return
-        }
-        runtimeSessionIDsByExternalSessionID[externalSessionID]?.remove(runtimeSessionID)
-        if runtimeSessionIDsByExternalSessionID[externalSessionID]?.isEmpty == true {
-            runtimeSessionIDsByExternalSessionID[externalSessionID] = nil
-        }
-    }
-
-    func markResponding(runtimeSessionID: String, externalSessionID: String?, updatedAt: Double) {
-        let normalizedExternalSessionID = normalizedSessionID(externalSessionID)
-        let previousExternalSessionID = stateByRuntimeSessionID[runtimeSessionID]?.externalSessionID
-        if let previousExternalSessionID, previousExternalSessionID != normalizedExternalSessionID {
-            runtimeSessionIDsByExternalSessionID[previousExternalSessionID]?.remove(runtimeSessionID)
-            if runtimeSessionIDsByExternalSessionID[previousExternalSessionID]?.isEmpty == true {
-                runtimeSessionIDsByExternalSessionID[previousExternalSessionID] = nil
-            }
-        }
-
-        stateByRuntimeSessionID[runtimeSessionID] = LatchState(
-            lastRespondingAt: updatedAt,
-            externalSessionID: normalizedExternalSessionID,
-            awaitingDefinitiveStop: true
-        )
-        if let normalizedExternalSessionID {
-            runtimeSessionIDsByExternalSessionID[normalizedExternalSessionID, default: []].insert(runtimeSessionID)
-        }
-    }
-
-    func releaseIfDefinitiveStop(
-        runtimeSessionID: String,
-        externalSessionID: String?,
-        wasInterrupted: Bool,
-        hasCompletedTurn: Bool
-    ) {
-        guard wasInterrupted || hasCompletedTurn else {
-            return
-        }
-        release(runtimeSessionID: runtimeSessionID, externalSessionID: externalSessionID)
-    }
-
-    func releaseIfSettled(runtimeSessionID: String, externalSessionID: String?) {
-        release(runtimeSessionID: runtimeSessionID, externalSessionID: externalSessionID)
-    }
-
-    private func release(runtimeSessionID: String, externalSessionID: String?) {
-        reset(runtimeSessionID: runtimeSessionID)
-        if let normalizedExternalSessionID = normalizedSessionID(externalSessionID),
-           let runtimeSessionIDs = runtimeSessionIDsByExternalSessionID[normalizedExternalSessionID] {
-            for id in runtimeSessionIDs {
-                stateByRuntimeSessionID[id] = nil
-            }
-            runtimeSessionIDsByExternalSessionID[normalizedExternalSessionID] = nil
-        }
-    }
-
-    func shouldForceResponding(
-        runtimeSessionID: String,
-        externalSessionID: String?,
-        snapshotUpdatedAt: Double,
-        wasInterrupted: Bool
-    ) -> Bool {
-        guard wasInterrupted == false else {
-            return false
-        }
-
-        if let existing = stateByRuntimeSessionID[runtimeSessionID] {
-            return existing.awaitingDefinitiveStop
-        }
-
-        if let normalizedExternalSessionID = normalizedSessionID(externalSessionID),
-           let runtimeSessionIDs = runtimeSessionIDsByExternalSessionID[normalizedExternalSessionID] {
-            for id in runtimeSessionIDs {
-                if let existing = stateByRuntimeSessionID[id],
-                   existing.awaitingDefinitiveStop {
-                    stateByRuntimeSessionID[runtimeSessionID] = LatchState(
-                        lastRespondingAt: existing.lastRespondingAt,
-                        externalSessionID: normalizedExternalSessionID,
-                        awaitingDefinitiveStop: true
-                    )
-                    runtimeSessionIDsByExternalSessionID[normalizedExternalSessionID, default: []].insert(runtimeSessionID)
-                    return true
-                }
-            }
-        }
-
-        return false
-    }
+    return parsedState?.updatedAt ?? fallbackUpdatedAt
 }
 
 struct CodexHookRuntimeEnvelope: Decodable, Sendable {
@@ -166,7 +136,7 @@ actor CodexRuntimeProbeService {
     func reset(runtimeSessionID: String) {
         threadIDByRuntimeSessionID[runtimeSessionID] = nil
         Task {
-            await CodexRuntimeResponseLatch.shared.reset(runtimeSessionID: runtimeSessionID)
+            await AIToolRuntimeResponseLatch.shared.reset(tool: "codex", runtimeSessionID: runtimeSessionID)
         }
     }
 
@@ -246,19 +216,47 @@ actor CodexRuntimeProbeService {
 
         let stopLooksSettled = (parsedState?.responseState == .idle)
             && (parsedState?.wasInterrupted != true)
-        let hasDefinitiveStop = (parsedState?.hasCompletedTurn == true)
+        let hasCandidateDefinitiveStop = (parsedState?.hasCompletedTurn == true)
             || (parsedState?.wasInterrupted == true)
             || stopLooksSettled
-        if hasDefinitiveStop {
-            await CodexRuntimeResponseLatch.shared.releaseIfSettled(
+        let semanticUpdatedAt = max(updatedAt, parsedState?.updatedAt ?? 0)
+        let definitiveStopReferenceUpdatedAt = resolveCodexDefinitiveStopReferenceUpdatedAt(
+            parsedState: parsedState,
+            fallbackUpdatedAt: semanticUpdatedAt
+        )
+        let shouldIgnoreDefinitiveStop: Bool
+        if hasCandidateDefinitiveStop {
+            shouldIgnoreDefinitiveStop = await AIToolRuntimeResponseLatch.shared.shouldIgnoreDefinitiveStop(
+                tool: "codex",
                 runtimeSessionID: runtimeSessionID,
-                externalSessionID: threadID
+                externalSessionID: threadID,
+                stopUpdatedAt: definitiveStopReferenceUpdatedAt
             )
+        } else {
+            shouldIgnoreDefinitiveStop = false
         }
-        let shouldForceResponding = hasDefinitiveStop ? false : await CodexRuntimeResponseLatch.shared.shouldForceResponding(
+        let didReleaseDefinitiveStop = await AIToolRuntimeResponseLatch.shared.releaseIfDefinitiveStop(
+            tool: "codex",
             runtimeSessionID: runtimeSessionID,
             externalSessionID: threadID,
-            snapshotUpdatedAt: max(updatedAt, parsedState?.updatedAt ?? 0),
+            stopUpdatedAt: definitiveStopReferenceUpdatedAt,
+            wasInterrupted: hasCandidateDefinitiveStop && !shouldIgnoreDefinitiveStop
+                ? (parsedState?.wasInterrupted ?? false)
+                : false,
+            hasCompletedTurn: hasCandidateDefinitiveStop && !shouldIgnoreDefinitiveStop
+                ? ((parsedState?.hasCompletedTurn ?? false) || stopLooksSettled)
+                : false
+        )
+        let resolution = resolveCodexProbeResolution(
+            parsedState: parsedState,
+            shouldIgnoreDefinitiveStop: shouldIgnoreDefinitiveStop,
+            didReleaseDefinitiveStop: didReleaseDefinitiveStop
+        )
+        let shouldForceResponding = resolution.responseState == .idle ? false : await AIToolRuntimeResponseLatch.shared.shouldForceResponding(
+            tool: "codex",
+            runtimeSessionID: runtimeSessionID,
+            externalSessionID: threadID,
+            snapshotUpdatedAt: semanticUpdatedAt,
             wasInterrupted: parsedState?.wasInterrupted ?? false
         )
         let probeResponseState: AIResponseState? = {
@@ -269,13 +267,13 @@ actor CodexRuntimeProbeService {
                 )
                 return nil
             }
-            if hasDefinitiveStop {
+            if resolution.responseState == .idle {
                 return .idle
             }
             if parsedState?.responseState == .idle {
                 logger.log(
                     "codex-runtime",
-                    "reject idle runtimeSession=\(runtimeSessionID) external=\(threadID) reason=non-definitive-probe-idle updatedAt=\(max(updatedAt, parsedState?.updatedAt ?? 0)) total=\(parsedState?.totalTokens ?? totalTokens)"
+                    "reject idle runtimeSession=\(runtimeSessionID) external=\(threadID) reason=\(shouldIgnoreDefinitiveStop ? "stale-definitive-stop" : "non-definitive-probe-idle") updatedAt=\(semanticUpdatedAt) total=\(parsedState?.totalTokens ?? totalTokens)"
                 )
             }
             return nil
@@ -288,10 +286,10 @@ actor CodexRuntimeProbeService {
             inputTokens: parsedState?.totalTokens ?? totalTokens,
             outputTokens: 0,
             totalTokens: parsedState?.totalTokens ?? totalTokens,
-            updatedAt: max(updatedAt, parsedState?.updatedAt ?? 0),
+            updatedAt: semanticUpdatedAt,
             responseState: probeResponseState,
-            wasInterrupted: parsedState?.wasInterrupted ?? false,
-            hasCompletedTurn: probeResponseState == nil ? false : ((parsedState?.hasCompletedTurn ?? false) || stopLooksSettled)
+            wasInterrupted: resolution.effectiveWasInterrupted,
+            hasCompletedTurn: resolution.effectiveHasCompletedTurn
         )
     }
 }
@@ -326,8 +324,9 @@ private func parseCodexRuntimeState(fileURL: URL?, projectPath: String?) -> Code
             latestUpdatedAt = max(latestUpdatedAt ?? timestamp, timestamp)
         }
 
+        let rowType = row["type"] as? String
         let payload = row["payload"] as? [String: Any] ?? [:]
-        if row["type"] as? String == "turn_context",
+        if rowType == "turn_context",
            let model = payload["model"] as? String,
            !model.isEmpty,
            projectPath == nil || (payload["cwd"] as? String) == projectPath {
@@ -335,7 +334,32 @@ private func parseCodexRuntimeState(fileURL: URL?, projectPath: String?) -> Code
             continue
         }
 
-        guard row["type"] as? String == "event_msg",
+        let marksAssistantFinalAnswer: Bool = {
+            if rowType == "event_msg",
+               payload["type"] as? String == "agent_message",
+               payload["phase"] as? String == "final_answer" {
+                return true
+            }
+            if rowType == "response_item",
+               payload["type"] as? String == "message",
+               payload["phase"] as? String == "final_answer" {
+                return true
+            }
+            return false
+        }()
+
+        if marksAssistantFinalAnswer {
+            let completedAt = timestamp ?? latestUpdatedAt
+            if let completedAt,
+               latestCompletedAt == nil || completedAt >= (latestCompletedAt ?? 0) {
+                latestCompletedAt = completedAt
+                latestTurnWasInterrupted = false
+                latestTurnCompleted = true
+            }
+            continue
+        }
+
+        guard rowType == "event_msg",
               let eventType = payload["type"] as? String else {
             continue
         }
@@ -390,6 +414,8 @@ private func parseCodexRuntimeState(fileURL: URL?, projectPath: String?) -> Code
         model: latestModel,
         totalTokens: totalTokens,
         updatedAt: latestUpdatedAt,
+        startedAt: latestStartedAt,
+        completedAt: latestCompletedAt,
         responseState: responseState,
         wasInterrupted: latestTurnWasInterrupted,
         hasCompletedTurn: latestTurnCompleted
@@ -420,11 +446,3 @@ private func tailJSONLinesFromFile(at fileURL: URL, maxBytes: Int = 262_144) -> 
 }
 
 private let SQLITE_TRANSIENT_CODEX_RUNTIME = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-
-private func normalizedSessionID(_ value: String?) -> String? {
-    guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !value.isEmpty else {
-        return nil
-    }
-    return value
-}

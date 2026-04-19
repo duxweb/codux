@@ -205,7 +205,9 @@ private final class TopPaneSplitController: NSViewController, NSSplitViewDelegat
             let survivingSessionIDs = workspace.topSessionIDs.filter { previousSessionIDs.contains($0) }
             SwiftTermTerminalRegistry.shared.beginStructuralResizeTransition(for: survivingSessionIDs)
         }
-        rebuildPanes(for: workspace)
+        if sessionIDsChanged {
+            rebuildPanes(for: workspace)
+        }
         updatePaneViews(for: workspace)
         applyRatiosIfNeeded()
         DispatchQueue.main.async { [weak self] in
@@ -258,9 +260,6 @@ private final class TopPaneSplitController: NSViewController, NSSplitViewDelegat
             host.view.needsLayout = true
         }
 
-        let validIDs = Set(workspace.topSessionIDs)
-        paneHosts = paneHosts.filter { validIDs.contains($0.key) }
-        lastRenderedSessionByID = lastRenderedSessionByID.filter { validIDs.contains($0.key) }
         lastRenderedFocusedSessionID = activeTerminalSessionID
 
         paneSplitView.needsLayout = true

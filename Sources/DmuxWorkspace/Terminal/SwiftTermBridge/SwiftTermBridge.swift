@@ -1045,6 +1045,13 @@ final class SwiftTermTerminalContainerView: NSView {
         return true
     }
 
+    func forwardKeyDown(_ event: NSEvent) -> Bool {
+        handleTerminalInteraction()
+        focusTerminal()
+        terminalView.keyDown(with: event)
+        return true
+    }
+
     func ownsResponder(_ responder: NSResponder?) -> Bool {
         guard let responder else {
             return false
@@ -1224,6 +1231,20 @@ final class SwiftTermTerminalRegistry {
         if let sessionID = focusedSessionID(),
            let container = containers[sessionID] {
             return container.sendNativeCommandArrow(keyCode: keyCode)
+        }
+
+        return false
+    }
+
+    func forwardKeyDown(_ event: NSEvent, responder: NSResponder?) -> Bool {
+        if let responder,
+           let container = containers.values.first(where: { $0.ownsResponder(responder) }) {
+            return container.forwardKeyDown(event)
+        }
+
+        if let sessionID = focusedSessionID(),
+           let container = containers[sessionID] {
+            return container.forwardKeyDown(event)
         }
 
         return false

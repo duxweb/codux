@@ -22,6 +22,12 @@
 		1E6B5C4D3A2F1E0D9C8B7A6F /* AppPerformanceMonitorStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6B5C4D3A2F1E0D9C8B7A6E /* AppPerformanceMonitorStore.swift */; };
 		1F2A3B4C5D6E7F8091A2B3C4 /* AppDiagnosticsExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A3B4C5D6E7F8091A2B3C4D5 /* AppDiagnosticsExportService.swift */; };
 		21A2B3C4D5E6F708192A3B4C /* AIToolPermissionSettingsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B4D /* AIToolPermissionSettingsService.swift */; };
+		21A2B3C4D5E6F708192A3B4E /* AIToolDriverSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B4F /* AIToolDriverSupport.swift */; };
+		21A2B3C4D5E6F708192A3B50 /* AIToolRuntimeResponseLatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B51 /* AIToolRuntimeResponseLatch.swift */; };
+		21A2B3C4D5E6F708192A3B52 /* ClaudeToolDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B53 /* ClaudeToolDriver.swift */; };
+		21A2B3C4D5E6F708192A3B54 /* CodexToolDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B55 /* CodexToolDriver.swift */; };
+		21A2B3C4D5E6F708192A3B56 /* OpenCodeToolDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B57 /* OpenCodeToolDriver.swift */; };
+		21A2B3C4D5E6F708192A3B58 /* GeminiToolDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B59 /* GeminiToolDriver.swift */; };
 		1FAA135C58E6AB5DD9A23ED3 /* FloatingTooltip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42E01A9B97E740A3EBF3C68 /* FloatingTooltip.swift */; };
 		27017F50D1E8D2D2E53E4CA1 /* GitPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26171F8711B1E3EA99875C1C /* GitPanelView.swift */; };
 		2CD0F523B4EB37800317D6CD /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDDBF2B08A1049FDB3CF220 /* AppSettings.swift */; };
@@ -103,6 +109,12 @@
 		1E6B5C4D3A2F1E0D9C8B7A6E /* AppPerformanceMonitorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPerformanceMonitorStore.swift; sourceTree = "<group>"; };
 		2A3B4C5D6E7F8091A2B3C4D5 /* AppDiagnosticsExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiagnosticsExportService.swift; sourceTree = "<group>"; };
 		21A2B3C4D5E6F708192A3B4D /* AIToolPermissionSettingsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolPermissionSettingsService.swift; sourceTree = "<group>"; };
+		21A2B3C4D5E6F708192A3B4F /* AIToolDriverSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolDriverSupport.swift; sourceTree = "<group>"; };
+		21A2B3C4D5E6F708192A3B51 /* AIToolRuntimeResponseLatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolRuntimeResponseLatch.swift; sourceTree = "<group>"; };
+		21A2B3C4D5E6F708192A3B53 /* ClaudeToolDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeToolDriver.swift; sourceTree = "<group>"; };
+		21A2B3C4D5E6F708192A3B55 /* CodexToolDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexToolDriver.swift; sourceTree = "<group>"; };
+		21A2B3C4D5E6F708192A3B57 /* OpenCodeToolDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeToolDriver.swift; sourceTree = "<group>"; };
+		21A2B3C4D5E6F708192A3B59 /* GeminiToolDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiToolDriver.swift; sourceTree = "<group>"; };
 		26171F8711B1E3EA99875C1C /* GitPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPanelView.swift; sourceTree = "<group>"; };
 		2AF5C2FE0B6382F826D0E6D4 /* GitInputDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitInputDialog.swift; sourceTree = "<group>"; };
 		2D565A7C32094080CBA3579E /* AIRuntimeStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRuntimeStateStore.swift; sourceTree = "<group>"; };
@@ -363,6 +375,12 @@
 				074C18D4269F6F5CD51744B9 /* AIRuntimeIngressService.swift */,
 				4D85422E8521FBC10775A5DF /* AIRuntimeProbeService.swift */,
 				320478127BE80D1F255F229E /* AIToolDriverFactory.swift */,
+				21A2B3C4D5E6F708192A3B4F /* AIToolDriverSupport.swift */,
+				21A2B3C4D5E6F708192A3B51 /* AIToolRuntimeResponseLatch.swift */,
+				21A2B3C4D5E6F708192A3B53 /* ClaudeToolDriver.swift */,
+				21A2B3C4D5E6F708192A3B55 /* CodexToolDriver.swift */,
+				21A2B3C4D5E6F708192A3B59 /* GeminiToolDriver.swift */,
+				21A2B3C4D5E6F708192A3B57 /* OpenCodeToolDriver.swift */,
 				0598FB11F350F43D5A39628A /* AIUsageService.swift */,
 				C9E2A14549F6FB2DF8C4F7CF /* AIUsageStore.swift */,
 				21A2B3C4D5E6F708192A3B4D /* AIToolPermissionSettingsService.swift */,
@@ -501,6 +519,12 @@
 				6FE3BAABA1DF148107499517 /* AIStatsPanelView.swift in Sources */,
 				DF6B0826DCE2CFF91D90BF0D /* AIStatsStore.swift in Sources */,
 				D49FDC9CAB55B3DAD5FE45C5 /* AIToolDriverFactory.swift in Sources */,
+				21A2B3C4D5E6F708192A3B4E /* AIToolDriverSupport.swift in Sources */,
+				21A2B3C4D5E6F708192A3B50 /* AIToolRuntimeResponseLatch.swift in Sources */,
+				21A2B3C4D5E6F708192A3B52 /* ClaudeToolDriver.swift in Sources */,
+				21A2B3C4D5E6F708192A3B54 /* CodexToolDriver.swift in Sources */,
+				21A2B3C4D5E6F708192A3B58 /* GeminiToolDriver.swift in Sources */,
+				21A2B3C4D5E6F708192A3B56 /* OpenCodeToolDriver.swift in Sources */,
 				21A2B3C4D5E6F708192A3B4C /* AIToolPermissionSettingsService.swift in Sources */,
 				B681B0D405B974DC389EE8AC /* AIUsageModels.swift in Sources */,
 				5F0A9C1D7E2B4A5C8D9E0F21 /* PetModels.swift in Sources */,
@@ -589,7 +613,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -602,7 +626,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.3.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -663,7 +687,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -682,7 +706,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.3.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

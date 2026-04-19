@@ -215,6 +215,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return nil
         }
 
+        if handleTerminalKeyDownIfNeeded(event, modifiers: modifiers) {
+            return nil
+        }
+
         guard modifiers == [.command],
               event.charactersIgnoringModifiers?.lowercased() == "w" else {
             return event
@@ -256,6 +260,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             keyCode: event.keyCode,
             responder: window.firstResponder
         )
+    }
+
+    @MainActor
+    private func handleTerminalKeyDownIfNeeded(_ event: NSEvent, modifiers: NSEvent.ModifierFlags) -> Bool {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
+              !isStandardChromeWindow(window),
+              shouldRouteKeyToTerminal(event, modifiers: modifiers) else {
+            return false
+        }
+
+        let responder = window.firstResponder
+        if responder is NSTextView,
+           SwiftTermTerminalRegistry.shared.ownsResponder(responder) == false {
+            return false
+        }
+
+        guard responder == nil || SwiftTermTerminalRegistry.shared.ownsResponder(responder) else {
+            return false
+        }
+
+        return SwiftTermTerminalRegistry.shared.forwardKeyDown(
+            event,
+            responder: responder
+        )
+    }
+
+    @MainActor
+    private func shouldRouteKeyToTerminal(_ event: NSEvent, modifiers: NSEvent.ModifierFlags) -> Bool {
+        if isReservedApplicationShortcut(event, modifiers: modifiers) {
+            return false
+        }
+
+        return true
+    }
+
+    @MainActor
+    private func isReservedApplicationShortcut(_ event: NSEvent, modifiers: NSEvent.ModifierFlags) -> Bool {
+        modifiers == [.command] && event.charactersIgnoringModifiers?.lowercased() == ","
     }
 
     @MainActor
