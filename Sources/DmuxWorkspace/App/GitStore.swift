@@ -2,6 +2,41 @@ import CoreServices
 import Foundation
 import Observation
 
+enum GitRepositoryWatchFilter {
+    static func shouldForward(repositoryPath: String, path: String, flags: FSEventStreamEventFlags) -> Bool {
+        let ignoredFlags = FSEventStreamEventFlags(
+            kFSEventStreamEventFlagHistoryDone
+                | kFSEventStreamEventFlagMount
+                | kFSEventStreamEventFlagUnmount
+        )
+        if (flags & ignoredFlags) != 0 {
+            return false
+        }
+
+        let normalizedRepositoryPath = URL(fileURLWithPath: repositoryPath).standardizedFileURL.path
+        let normalizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        let gitDirectoryPath = normalizedRepositoryPath + "/.git"
+
+        guard normalizedPath == gitDirectoryPath || normalizedPath.hasPrefix(gitDirectoryPath + "/") else {
+            return true
+        }
+
+        let allowedGitMetadataPrefixes = [
+            gitDirectoryPath + "/HEAD",
+            gitDirectoryPath + "/index",
+            gitDirectoryPath + "/refs/",
+            gitDirectoryPath + "/logs/HEAD",
+            gitDirectoryPath + "/FETCH_HEAD",
+            gitDirectoryPath + "/ORIG_HEAD",
+            gitDirectoryPath + "/packed-refs",
+        ]
+
+        return allowedGitMetadataPrefixes.contains { prefix in
+            normalizedPath == prefix || normalizedPath.hasPrefix(prefix)
+        }
+    }
+}
+
 private final class GitRepositoryWatcher {
     private let repositoryPath: String
     private let onChange: ([String]) -> Void
@@ -83,21 +118,11 @@ private final class GitRepositoryWatcher {
     }
 
     private func shouldForward(path: String, flags: FSEventStreamEventFlags) -> Bool {
-        let ignoredFlags = FSEventStreamEventFlags(
-            kFSEventStreamEventFlagHistoryDone
-                | kFSEventStreamEventFlagMount
-                | kFSEventStreamEventFlagUnmount
+        GitRepositoryWatchFilter.shouldForward(
+            repositoryPath: repositoryPath,
+            path: path,
+            flags: flags
         )
-        if (flags & ignoredFlags) != 0 {
-            return false
-        }
-
-        let gitDirectoryPath = repositoryPath + "/.git"
-        if path == gitDirectoryPath || path.hasPrefix(gitDirectoryPath + "/") {
-            return false
-        }
-
-        return true
     }
 }
 
