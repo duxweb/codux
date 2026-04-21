@@ -9,7 +9,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            AppWindowGlassBackground()
+            AppWindowGlassBackground(tintColor: model.windowGlassTintColor)
 
             HStack(spacing: 0) {
                 SidebarView(model: model)

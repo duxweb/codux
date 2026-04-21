@@ -361,88 +361,95 @@ final class AIStatsStore {
         let sessionCount  = max(1, sessions.count)
 
         let avgTokPerReq = totalRequests > 0 ? Double(totalTokens) / Double(totalRequests) : 0
-        let reqPerHour  = totalSecs > 0 ? Double(totalRequests) / (Double(totalSecs) / 3600.0) : 0
-        let shortCount  = sessions.filter { $0.activeDurationSeconds < 300 }.count
-        let shortRatio  = Double(shortCount) / Double(sessions.count)
-        let nightCount = sessions.filter {
+        let reqPerHour   = totalSecs > 0 ? Double(totalRequests) / (Double(totalSecs) / 3600.0) : 0
+        let shortCount   = sessions.filter { $0.activeDurationSeconds < 300 }.count
+        let shortRatio   = Double(shortCount) / Double(sessions.count)
+        let nightCount   = sessions.filter {
             let h = Calendar.current.component(.hour, from: $0.firstSeenAt)
             return h >= 22 || h < 6
         }.count
-        let nightRatio = Double(nightCount) / Double(sessionCount)
-        let maxSecs = sessions.map { $0.activeDurationSeconds }.max() ?? 0
-        let avgSecs = totalSecs / sessions.count
+        let nightRatio   = Double(nightCount) / Double(sessionCount)
+        let maxSecs      = sessions.map { $0.activeDurationSeconds }.max() ?? 0
+        let avgSecs      = totalSecs / sessions.count
         let multiTurnSessions = sessions.filter { $0.requestCount >= 4 }
-        let multiTurnRatio = Double(multiTurnSessions.count) / Double(sessionCount)
+        let multiTurnRatio    = Double(multiTurnSessions.count) / Double(sessionCount)
+
+        // Iterative-repair sessions: widened avgPerTurn window (200-3500) to
+        // capture a broader range of debugging / refinement workflows.
         let iterativeRepairSessions = sessions.filter { s in
             guard s.requestCount >= 4, s.totalTokens > 0 else { return false }
             let avgPerTurn = Double(s.totalTokens) / Double(s.requestCount)
-            return s.activeDurationSeconds >= 600 && avgPerTurn >= 280 && avgPerTurn <= 2_400
+            return s.activeDurationSeconds >= 600 && avgPerTurn >= 200 && avgPerTurn <= 3_500
         }
-        let iterativeRepairRatio = Double(iterativeRepairSessions.count) / Double(sessionCount)
-        let repairMinutes = iterativeRepairSessions.reduce(0) { $0 + $1.activeDurationSeconds }
+        let repairSecs        = iterativeRepairSessions.reduce(0) { $0 + $1.activeDurationSeconds }
+        let repairRatio       = min(1.0, Double(repairSecs) / Double(max(1, totalSecs)))
+        let repairTokenBudget = iterativeRepairSessions.reduce(0) { $0 + $1.totalTokens }
         let adjustmentLoopCount = sessions.filter { s in
             guard s.requestCount >= 3, s.totalTokens > 0 else { return false }
             let avgPerTurn = Double(s.totalTokens) / Double(s.requestCount)
-            return avgPerTurn >= 220 && avgPerTurn <= 1_800
+            return avgPerTurn >= 200 && avgPerTurn <= 2_800
         }.count
-        let adjustmentLoopRatio = Double(adjustmentLoopCount) / Double(sessionCount)
-        let repairTokenBudget = iterativeRepairSessions.reduce(0) { $0 + $1.totalTokens }
 
-        func logPoints(_ value: Double, divisor: Double, weight: Double) -> Double {
-            guard value > 0, divisor > 0, weight > 0 else {
-                return 0
-            }
-            return log1p(value / divisor) * weight
+        // Scoring helpers.
+        func logPts(_ value: Double, divisor: Double, weight: Double, cap: Double) -> Double {
+            guard value > 0, divisor > 0, weight > 0 else { return 0 }
+            return min(log1p(value / divisor) * weight, cap)
+        }
+        func ratioPts(_ value: Double, exponent: Double, weight: Double, cap: Double) -> Double {
+            guard value > 0, exponent > 0, weight > 0 else { return 0 }
+            return min(pow(value, exponent) * weight, cap)
         }
 
-        func ratioPoints(_ value: Double, exponent: Double, weight: Double) -> Double {
-            guard value > 0, exponent > 0, weight > 0 else {
-                return 0
-            }
-            return pow(value, exponent) * weight
-        }
+        // Shared growth (capped at 20) — provides a tiny baseline for any
+        // active pet but cannot dominate or mask behavioral differences.
+        let shared = logPts(Double(totalTokens), divisor: 250_000, weight: 16, cap: 20)
 
-        // Uncapped growth values. Use log/sqrt compression to keep huge token users from exploding
-        // while still letting long-term growth continue naturally.
-        let sharedGrowth =
-            logPoints(Double(totalTokens), divisor: 220_000, weight: 18)
-
+        // Wisdom — depth of thinking (avg tokens/request is the key signal).
         let wisdomScore =
-            logPoints(avgTokPerReq, divisor: 520, weight: 92) +
-            logPoints(Double(totalSecs), divisor: 7_200, weight: 12) +
-            sharedGrowth
+            logPts(avgTokPerReq,       divisor: 400,    weight: 110, cap: 175) +
+            logPts(Double(totalSecs),  divisor: 12_000, weight: 12,  cap: 24)  +
+            shared
 
+        // Chaos — speed and frequency (req/hour + short-session ratio).
         let chaosScore =
-            logPoints(reqPerHour, divisor: 2.4, weight: 112) +
-            ratioPoints(shortRatio, exponent: 0.72, weight: 84) +
-            logPoints(Double(totalRequests), divisor: 26, weight: 34) +
-            sharedGrowth
+            logPts(reqPerHour,            divisor: 1.8, weight: 108, cap: 150) +
+            ratioPts(shortRatio,          exponent: 0.68, weight: 62, cap: 62) +
+            logPts(Double(totalRequests), divisor: 22,  weight: 26,  cap: 44)  +
+            shared
 
-        let nightScore =
-            ratioPoints(nightRatio, exponent: 0.68, weight: 132) +
-            logPoints(Double(nightCount), divisor: 3, weight: 36) +
-            logPoints(Double(totalTokens) * max(0.15, nightRatio), divisor: 160_000, weight: 16) +
-            sharedGrowth
+        // Night — strictly zero when nightRatio < 0.10 (daytime users get 0).
+        let nightScore: Double
+        if nightRatio >= 0.10 {
+            let nightTokens = Double(totalTokens) * max(0.15, nightRatio)
+            nightScore =
+                ratioPts(nightRatio,          exponent: 0.62, weight: 140, cap: 140) +
+                logPts(Double(nightCount),    divisor: 3.5,   weight: 34,  cap: 68)  +
+                logPts(nightTokens,           divisor: 120_000, weight: 14, cap: 28) +
+                shared
+        } else {
+            nightScore = 0
+        }
 
+        // Stamina — endurance (longest session and average session length).
         let staminaScore =
-            logPoints(Double(maxSecs), divisor: 1_000, weight: 84) +
-            logPoints(Double(avgSecs), divisor: 480, weight: 86) +
-            logPoints(Double(totalSecs), divisor: 12_600, weight: 40) +
-            sharedGrowth
+            logPts(Double(maxSecs),  divisor: 800,    weight: 82, cap: 124) +
+            logPts(Double(avgSecs),  divisor: 400,    weight: 80, cap: 100) +
+            logPts(Double(totalSecs),divisor: 16_000, weight: 30, cap: 50)  +
+            shared
 
+        // Empathy — iterative refinement and debugging behaviour.
         let empathyScore =
-            ratioPoints(iterativeRepairRatio, exponent: 0.72, weight: 112) +
-            ratioPoints(multiTurnRatio, exponent: 0.58, weight: 48) +
-            ratioPoints(adjustmentLoopRatio, exponent: 0.62, weight: 28) +
-            logPoints(Double(repairMinutes), divisor: 2_400, weight: 42) +
-            logPoints(Double(repairTokenBudget), divisor: 180_000, weight: 24) +
-            logPoints(Double(adjustmentLoopCount), divisor: 2, weight: 20) +
-            sharedGrowth
+            ratioPts(repairRatio,              exponent: 0.65, weight: 120, cap: 120) +
+            ratioPts(multiTurnRatio,           exponent: 0.52, weight: 52,  cap: 52)  +
+            logPts(Double(repairSecs) / 60,    divisor: 1_600, weight: 40,  cap: 72)  +
+            logPts(Double(repairTokenBudget),  divisor: 120_000, weight: 24, cap: 46) +
+            logPts(Double(adjustmentLoopCount),divisor: 1.8,   weight: 18,  cap: 30)  +
+            shared
 
         return PetStats(
-            wisdom: max(0, Int(wisdomScore.rounded())),
-            chaos: max(0, Int(chaosScore.rounded())),
-            night: max(0, Int(nightScore.rounded())),
+            wisdom:  max(0, Int(wisdomScore.rounded())),
+            chaos:   max(0, Int(chaosScore.rounded())),
+            night:   max(0, Int(nightScore.rounded())),
             stamina: max(0, Int(staminaScore.rounded())),
             empathy: max(0, Int(empathyScore.rounded()))
         )

@@ -328,6 +328,7 @@ private final class TopPaneSplitController: NSViewController, NSSplitViewDelegat
             model: model,
             session: session,
             terminalBackgroundPreset: model.terminalBackgroundPreset,
+            backgroundColorPreset: model.backgroundColorPreset,
             isFocused: sessionID == activeTerminalSessionID,
             isVisible: true,
             showsInactiveOverlay: showsInactiveOverlay,
@@ -466,6 +467,7 @@ private struct BottomTabbedPaneView: View {
                         model: model,
                         session: session,
                         terminalBackgroundPreset: model.terminalBackgroundPreset,
+                        backgroundColorPreset: model.backgroundColorPreset,
                         isFocused: selectedBottomSessionID == activeTerminalSessionID,
                         isVisible: true,
                         showsInactiveOverlay: showsInactiveOverlay,
@@ -493,7 +495,7 @@ private struct BottomTabbedPaneView: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(model.terminalMutedTextColor)
                 .frame(width: 22, height: 22)
-                .background(model.terminalBackgroundPreset.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08))
+                .background(model.terminalUsesLightBackground ? Color.black.opacity(0.06) : Color.white.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -705,15 +707,15 @@ private struct TabChip: View {
     }
 
     private var hoverFill: Color {
-        model.terminalBackgroundPreset.isLight ? Color.black.opacity(0.04) : Color.white.opacity(0.05)
+        model.terminalUsesLightBackground ? Color.black.opacity(0.04) : Color.white.opacity(0.05)
     }
 
     private var selectedFill: Color {
-        model.terminalBackgroundPreset.isLight ? Color.black.opacity(0.07) : Color.white.opacity(0.11)
+        model.terminalUsesLightBackground ? Color.black.opacity(0.07) : Color.white.opacity(0.11)
     }
 
     private var selectedStroke: Color {
-        model.terminalBackgroundPreset.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.1)
+        model.terminalUsesLightBackground ? Color.black.opacity(0.12) : Color.white.opacity(0.1)
     }
 }
 
@@ -721,6 +723,7 @@ struct TerminalPaneView: View {
     let model: AppModel
     let session: TerminalSession
     let terminalBackgroundPreset: AppTerminalBackgroundPreset
+    let backgroundColorPreset: AppBackgroundColorPreset
     let isFocused: Bool
     let isVisible: Bool
     let showsInactiveOverlay: Bool
@@ -738,9 +741,6 @@ struct TerminalPaneView: View {
     }
 
     private var paneBackgroundColor: Color {
-        if showsInactiveOverlay && !isFocused {
-            return Color(nsColor: terminalBackgroundPreset.inactiveBackgroundColor)
-        }
         return model.terminalChromeColor
     }
 
@@ -760,6 +760,11 @@ struct TerminalPaneView: View {
         ZStack {
             Rectangle()
                 .fill(paneBackgroundColor)
+
+            if showsInactiveOverlay && !isFocused {
+                Rectangle()
+                    .fill(Color(nsColor: model.terminalInactiveDimColor))
+            }
 
             Group {
                 if let recoveryIssue {
@@ -838,9 +843,8 @@ struct TerminalPaneView: View {
             session: session,
             environment: terminalEnvironment(),
             terminalBackgroundPreset: terminalBackgroundPreset,
+            backgroundColorPreset: backgroundColorPreset,
             terminalFontSize: model.appSettings.terminalFontSize,
-            useMetalRendering: model.appSettings.terminalGPUAccelerationEnabled,
-            gpuMode: model.appSettings.terminalGPUMode,
             isFocused: isFocused,
             isVisible: isVisible,
             showsInactiveOverlay: showsInactiveOverlay,
@@ -996,6 +1000,7 @@ private struct DetachedTerminalWindowView: View {
             model: model,
             session: session,
             terminalBackgroundPreset: model.terminalBackgroundPreset,
+            backgroundColorPreset: model.backgroundColorPreset,
             isFocused: true,
             isVisible: true,
             showsInactiveOverlay: false,
@@ -1018,15 +1023,15 @@ private struct TerminalRecoveryFallbackView: View {
     let onRetry: () -> Void
 
     private var cardFill: Color {
-        model.terminalBackgroundPreset.isLight ? Color.black.opacity(0.035) : Color.white.opacity(0.05)
+        model.terminalUsesLightBackground ? Color.black.opacity(0.035) : Color.white.opacity(0.05)
     }
 
     private var cardStroke: Color {
-        model.terminalBackgroundPreset.isLight ? Color.black.opacity(0.1) : Color.white.opacity(0.1)
+        model.terminalUsesLightBackground ? Color.black.opacity(0.1) : Color.white.opacity(0.1)
     }
 
     private var accent: Color {
-        model.terminalBackgroundPreset.isLight ? AppTheme.warning.opacity(0.88) : AppTheme.warning.opacity(0.92)
+        model.terminalUsesLightBackground ? AppTheme.warning.opacity(0.88) : AppTheme.warning.opacity(0.92)
     }
 
     var body: some View {

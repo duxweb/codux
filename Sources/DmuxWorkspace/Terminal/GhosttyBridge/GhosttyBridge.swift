@@ -2,19 +2,47 @@ import AppKit
 import Darwin
 import Foundation
 import GhosttyTerminal
+import GhosttyTheme
 import QuartzCore
 import SwiftUI
 
 enum GhosttyEmbeddedConfig {
+    private struct ParsedThemeOverrides {
+        var backgroundColor: NSColor?
+        var foregroundColor: NSColor?
+        var cursorColor: NSColor?
+        var cursorTextColor: NSColor?
+        var selectionBackgroundColor: NSColor?
+        var selectionForegroundColor: NSColor?
+        var palette: [Int: String] = [:]
+    }
+
     struct ResolvedControllerConfig {
         let configSource: TerminalController.ConfigSource
-        let prefersUserConfig: Bool
-        let userConfigPath: String?
+        let userConfigPaths: [String]
+
+        var prefersUserConfig: Bool {
+            !userConfigPaths.isEmpty
+        }
+
+        var userConfigDescription: String? {
+            guard !userConfigPaths.isEmpty else {
+                return nil
+            }
+            return userConfigPaths.joined(separator: ", ")
+        }
     }
 
     static let candidateRelativePaths = [
+        ".config/ghostty/config.ghostty",
+        ".config/ghostty/config",
         "Library/Application Support/com.mitchellh.ghostty/config.ghostty",
         "Library/Application Support/com.mitchellh.ghostty/config",
+    ]
+
+    static let candidateThemeDirectoryRelativePaths = [
+        ".config/ghostty/themes",
+        "Library/Application Support/com.mitchellh.ghostty/themes",
     ]
 
     static let fallbackEditingKeybinds = [
@@ -26,43 +54,48 @@ enum GhosttyEmbeddedConfig {
         "option+backspace=text:\\x17",
     ]
 
-    static func resolvedUserConfigFileURL(
+    static func resolvedUserConfigFileURLs(
         fileManager: FileManager = .default,
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
-    ) -> URL? {
+    ) -> [URL] {
+        var urls: [URL] = []
+        var seenPaths = Set<String>()
         for relativePath in candidateRelativePaths {
             let url = homeDirectoryURL.appendingPathComponent(relativePath, isDirectory: false)
             var isDirectory = ObjCBool(false)
             guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
-                  isDirectory.boolValue == false else {
+                  isDirectory.boolValue == false,
+                  seenPaths.insert(url.path).inserted else {
                 continue
             }
-            return url
+            urls.append(url)
         }
-        return nil
+        return urls
     }
 
     static func resolvedControllerConfig(
         fileManager: FileManager = .default,
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> ResolvedControllerConfig {
-        guard let url = resolvedUserConfigFileURL(
+        let urls = resolvedUserConfigFileURLs(
             fileManager: fileManager,
             homeDirectoryURL: homeDirectoryURL
-        ) else {
+        )
+        guard !urls.isEmpty else {
             return ResolvedControllerConfig(
                 configSource: .generated(fallbackEditingConfigContents()),
-                prefersUserConfig: false,
-                userConfigPath: nil
+                userConfigPaths: []
             )
         }
 
-        let userContents = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        let mergedContents = mergedUserConfigContents(userContents)
+        let mergedContents = mergedUserConfigContents(
+            urls.map { url in
+                (url, (try? String(contentsOf: url, encoding: .utf8)) ?? "")
+            }
+        )
         return ResolvedControllerConfig(
             configSource: .generated(mergedContents),
-            prefersUserConfig: true,
-            userConfigPath: url.path
+            userConfigPaths: urls.map(\.path)
         )
     }
 
@@ -72,22 +105,453 @@ enum GhosttyEmbeddedConfig {
             .joined(separator: "\n") + "\n"
     }
 
-    static func mergedUserConfigContents(_ userContents: String) -> String {
-        let normalizedUserContents = userContents.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedUserContents.isEmpty else {
-            return fallbackEditingConfigContents()
+    static func mergedUserConfigContents(_ userConfigEntries: [(URL, String)]) -> String {
+        var sections = [fallbackEditingConfigContents().trimmingCharacters(in: .whitespacesAndNewlines)]
+
+        for (url, contents) in userConfigEntries {
+            let normalizedContents = sanitizedEmbeddedUserConfigContents(contents)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalizedContents.isEmpty else {
+                continue
+            }
+            sections.append("# Source: \(url.path)\n\(normalizedContents)")
         }
 
-        return fallbackEditingConfigContents()
-            + "\n"
-            + normalizedUserContents
-            + "\n"
+        return sections.joined(separator: "\n\n") + "\n"
+    }
+
+    private static func sanitizedEmbeddedUserConfigContents(_ contents: String) -> String {
+        contents
+            .components(separatedBy: .newlines)
+            .filter { rawLine in
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard line.isEmpty == false, line.hasPrefix("#") == false else {
+                    return true
+                }
+
+                guard let separatorIndex = line.firstIndex(of: "=") else {
+                    return true
+                }
+
+                let key = line[..<separatorIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+
+                // Embedded Ghostty uses a different host/composition path than the
+                // standalone app. Cursor thickness amplification is visually unstable
+                // here, so keep the cursor style/opacity but ignore explicit thickness.
+                return key != "adjust-cursor-thickness"
+            }
+            .joined(separator: "\n")
+    }
+
+    static func resolvedAutomaticTerminalAppearance(
+        fileManager: FileManager = .default,
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        prefersDarkAppearance: Bool = true
+    ) -> AppEffectiveTerminalAppearance {
+        let fallbackBase = AppTerminalBackgroundPreset
+            .automaticFallbackPreset(prefersDarkAppearance: prefersDarkAppearance)
+            .effectiveAppearance(backgroundColorPreset: .automatic)
+        let fallback = AppEffectiveTerminalAppearance(
+            backgroundColor: AppBackgroundColorPreset.base950.swatchColor ?? fallbackBase.backgroundColor,
+            foregroundColor: fallbackBase.foregroundColor,
+            cursorColor: fallbackBase.cursorColor,
+            cursorTextColor: fallbackBase.cursorTextColor,
+            selectionBackgroundColor: fallbackBase.selectionBackgroundColor,
+            selectionForegroundColor: fallbackBase.selectionForegroundColor,
+            paletteHexStrings: fallbackBase.paletteHexStrings,
+            isLight: false,
+            minimumContrast: fallbackBase.minimumContrast
+        )
+
+        let urls = resolvedUserConfigFileURLs(
+            fileManager: fileManager,
+            homeDirectoryURL: homeDirectoryURL
+        )
+        guard !urls.isEmpty else {
+            return fallback
+        }
+
+        let entries = urls.map { url in
+            (url, (try? String(contentsOf: url, encoding: .utf8)) ?? "")
+        }
+        return automaticTerminalAppearance(
+            from: entries,
+            fallback: fallback,
+            fileManager: fileManager,
+            homeDirectoryURL: homeDirectoryURL
+        )
+    }
+
+    static func automaticTerminalAppearance(
+        from userConfigEntries: [(URL, String)],
+        fallback: AppEffectiveTerminalAppearance,
+        fileManager: FileManager = .default,
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> AppEffectiveTerminalAppearance {
+        var appearance = fallback
+
+        for (_, contents) in userConfigEntries {
+            for rawLine in contents.components(separatedBy: .newlines) {
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard line.isEmpty == false, line.hasPrefix("#") == false,
+                      let separatorIndex = line.firstIndex(of: "=") else {
+                    continue
+                }
+
+                let key = line[..<separatorIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                let rawValue = line[line.index(after: separatorIndex)...]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard rawValue.isEmpty == false else {
+                    continue
+                }
+
+                if key == "theme",
+                   let themeName = Self.unquoted(rawValue) as String? {
+                    if let themeAppearance = Self.themeAppearance(
+                        named: themeName,
+                        fileManager: fileManager,
+                        homeDirectoryURL: homeDirectoryURL
+                    ) {
+                        appearance = themeAppearance
+                        continue
+                    }
+                    if let themePreset = AppTerminalBackgroundPreset.automaticMatch(
+                        forGhosttyThemeName: themeName
+                    ) {
+                        appearance = themePreset.effectiveAppearance(backgroundColorPreset: .automatic)
+                        continue
+                    }
+                }
+
+                if key == "palette",
+                   let paletteIndex = Self.parsePaletteIndex(from: rawValue),
+                   let paletteColor = Self.parseHexColorString(from: rawValue) {
+                    var palette = appearance.paletteHexStrings
+                    while palette.count <= paletteIndex {
+                        palette.append(appearance.backgroundColor.ghosttyHexString)
+                    }
+                    palette[paletteIndex] = paletteColor
+                    appearance = AppEffectiveTerminalAppearance(
+                        backgroundColor: appearance.backgroundColor,
+                        foregroundColor: appearance.foregroundColor,
+                        cursorColor: appearance.cursorColor,
+                        cursorTextColor: appearance.cursorTextColor,
+                        selectionBackgroundColor: appearance.selectionBackgroundColor,
+                        selectionForegroundColor: appearance.selectionForegroundColor,
+                        paletteHexStrings: palette,
+                        isLight: appearance.isLight,
+                        minimumContrast: appearance.minimumContrast
+                    )
+                    continue
+                }
+
+                var overrides = ParsedThemeOverrides()
+
+                switch key {
+                case "background":
+                    overrides.backgroundColor = Self.parseColor(from: rawValue)
+                case "foreground":
+                    overrides.foregroundColor = Self.parseColor(from: rawValue)
+                case "cursor-color":
+                    overrides.cursorColor = Self.parseColor(from: rawValue)
+                case "cursor-text":
+                    overrides.cursorTextColor = Self.parseColor(from: rawValue)
+                case "selection-background":
+                    overrides.selectionBackgroundColor = Self.parseColor(from: rawValue)
+                case "selection-foreground":
+                    overrides.selectionForegroundColor = Self.parseColor(from: rawValue)
+                default:
+                    continue
+                }
+
+                appearance = apply(overrides: overrides, to: appearance)
+            }
+        }
+
+        return appearance
+    }
+
+    private static func apply(
+        overrides: ParsedThemeOverrides,
+        to appearance: AppEffectiveTerminalAppearance
+    ) -> AppEffectiveTerminalAppearance {
+        let backgroundColor = overrides.backgroundColor ?? appearance.backgroundColor
+        let isLight = backgroundColor.dmuxPerceivedBrightness >= 0.72
+        return AppEffectiveTerminalAppearance(
+            backgroundColor: backgroundColor,
+            foregroundColor: overrides.foregroundColor ?? appearance.foregroundColor,
+            cursorColor: overrides.cursorColor ?? appearance.cursorColor,
+            cursorTextColor: overrides.cursorTextColor ?? appearance.cursorTextColor,
+            selectionBackgroundColor: overrides.selectionBackgroundColor ?? appearance.selectionBackgroundColor,
+            selectionForegroundColor: overrides.selectionForegroundColor ?? appearance.selectionForegroundColor,
+            paletteHexStrings: overrides.palette.isEmpty ? appearance.paletteHexStrings : mergedPalette(overrides.palette, into: appearance.paletteHexStrings),
+            isLight: isLight,
+            minimumContrast: isLight ? 1.05 : 1.0
+        )
+    }
+
+    private static func themeAppearance(
+        named name: String,
+        fileManager: FileManager = .default,
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> AppEffectiveTerminalAppearance? {
+        let definition = resolvedThemeDefinition(
+            named: name,
+            fileManager: fileManager,
+            homeDirectoryURL: homeDirectoryURL
+        )
+        return definition.map { appearance(from: $0) }
+    }
+
+    private static func resolvedThemeDefinition(
+        named name: String,
+        fileManager: FileManager = .default,
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> GhosttyThemeDefinition? {
+        if let userTheme = resolvedUserThemeDefinition(
+            named: name,
+            fileManager: fileManager,
+            homeDirectoryURL: homeDirectoryURL
+        ) {
+            return userTheme
+        }
+
+        if let exact = GhosttyThemeCatalog.theme(named: name) {
+            return exact
+        }
+
+        let normalizedQuery = normalizeThemeName(name)
+        guard normalizedQuery.isEmpty == false else {
+            return nil
+        }
+
+        return GhosttyThemeCatalog
+            .search(name)
+            .first(where: { normalizeThemeName($0.name) == normalizedQuery })
+    }
+
+    private static func resolvedUserThemeDefinition(
+        named name: String,
+        fileManager: FileManager = .default,
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> GhosttyThemeDefinition? {
+        guard let url = resolvedUserThemeFileURL(
+            named: name,
+            fileManager: fileManager,
+            homeDirectoryURL: homeDirectoryURL
+        ),
+        let contents = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+
+        return parseUserThemeDefinition(
+            name: url.lastPathComponent,
+            contents: contents
+        )
+    }
+
+    private static func resolvedUserThemeFileURL(
+        named name: String,
+        fileManager: FileManager = .default,
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL? {
+        let candidates = [name, name.lowercased(), name.capitalized]
+        for relativePath in candidateThemeDirectoryRelativePaths {
+            let directory = homeDirectoryURL.appendingPathComponent(relativePath, isDirectory: true)
+            for candidate in candidates {
+                let url = directory.appendingPathComponent(candidate, isDirectory: false)
+                var isDirectory = ObjCBool(false)
+                if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                   isDirectory.boolValue == false {
+                    return url
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func parseUserThemeDefinition(
+        name: String,
+        contents: String
+    ) -> GhosttyThemeDefinition? {
+        var background: String?
+        var foreground: String?
+        var cursorColor: String?
+        var cursorText: String?
+        var selectionBackground: String?
+        var selectionForeground: String?
+        var palette: [Int: String] = [:]
+
+        for rawLine in contents.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard line.isEmpty == false,
+                  line.hasPrefix("#") == false,
+                  let separatorIndex = line.firstIndex(of: "=") else {
+                continue
+            }
+
+            let key = line[..<separatorIndex]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let rawValue = line[line.index(after: separatorIndex)...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            switch key {
+            case "background":
+                background = parseHexColorString(from: rawValue)
+            case "foreground":
+                foreground = parseHexColorString(from: rawValue)
+            case "cursor-color":
+                cursorColor = parseHexColorString(from: rawValue)
+            case "cursor-text":
+                cursorText = parseHexColorString(from: rawValue)
+            case "selection-background":
+                selectionBackground = parseHexColorString(from: rawValue)
+            case "selection-foreground":
+                selectionForeground = parseHexColorString(from: rawValue)
+            case "palette":
+                if let index = parsePaletteIndex(from: rawValue),
+                   let color = parseHexColorString(from: rawValue) {
+                    palette[index] = String(color.dropFirst())
+                }
+            default:
+                continue
+            }
+        }
+
+        guard let background, let foreground else {
+            return nil
+        }
+
+        return GhosttyThemeDefinition(
+            name: name,
+            background: background,
+            foreground: foreground,
+            cursorColor: cursorColor,
+            cursorText: cursorText,
+            selectionBackground: selectionBackground,
+            selectionForeground: selectionForeground,
+            palette: palette
+        )
+    }
+
+    private static func appearance(from definition: GhosttyThemeDefinition) -> AppEffectiveTerminalAppearance {
+        let backgroundColor = parseColor(from: definition.background) ?? .black
+        let foregroundColor = parseColor(from: definition.foreground)
+            ?? (backgroundColor.dmuxPerceivedBrightness >= 0.72 ? .black : .white)
+        let selectionBackgroundColor = parseColor(from: definition.selectionBackground)
+            ?? (backgroundColor.blended(withFraction: 0.2, of: foregroundColor) ?? backgroundColor)
+        let selectionForegroundColor = parseColor(from: definition.selectionForeground)
+            ?? foregroundColor
+        let cursorColor = parseColor(from: definition.cursorColor) ?? foregroundColor
+        let cursorTextColor = parseColor(from: definition.cursorText) ?? backgroundColor
+        let isLight = backgroundColor.dmuxPerceivedBrightness >= 0.72
+        let paletteHexStrings = (0..<16).map { index in
+            definition.palette[index]?.uppercased() ?? backgroundColor.ghosttyHexString
+        }
+
+        return AppEffectiveTerminalAppearance(
+            backgroundColor: backgroundColor,
+            foregroundColor: foregroundColor,
+            cursorColor: cursorColor,
+            cursorTextColor: cursorTextColor,
+            selectionBackgroundColor: selectionBackgroundColor,
+            selectionForegroundColor: selectionForegroundColor,
+            paletteHexStrings: paletteHexStrings,
+            isLight: isLight,
+            minimumContrast: isLight ? 1.05 : 1.0
+        )
+    }
+
+    private static func mergedPalette(
+        _ overrides: [Int: String],
+        into palette: [String]
+    ) -> [String] {
+        var palette = palette
+        for (index, color) in overrides {
+            while palette.count <= index {
+                palette.append("#000000")
+            }
+            palette[index] = color
+        }
+        return palette
+    }
+
+    private static func parsePaletteIndex(from rawValue: String) -> Int? {
+        guard let match = rawValue.range(
+            of: #"^\s*(\d+)\s*="#,
+            options: .regularExpression
+        ) else {
+            return nil
+        }
+        let prefix = rawValue[match]
+        let digits = prefix.replacingOccurrences(of: #"[^0-9]"#, with: "", options: .regularExpression)
+        return Int(digits)
+    }
+
+    private static func parseColor(from rawValue: String) -> NSColor? {
+        guard let hex = parseHexColorString(from: rawValue),
+              let rgb = UInt(hex.dropFirst(), radix: 16) else {
+            return nil
+        }
+        return NSColor(
+            calibratedRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+
+    private static func parseColor(from rawValue: String?) -> NSColor? {
+        guard let rawValue else {
+            return nil
+        }
+        return parseColor(from: rawValue)
+    }
+
+    private static func parseHexColorString(from rawValue: String) -> String? {
+        guard let match = rawValue.range(
+            of: #"#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})"#,
+            options: .regularExpression
+        ) else {
+            return nil
+        }
+        let value = String(rawValue[match])
+        if value.count == 9 {
+            return "#\(value.dropFirst().prefix(6))"
+        }
+        return value.uppercased()
+    }
+
+    private static func unquoted<S: StringProtocol>(_ value: S) -> String {
+        let string = String(value).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard string.count >= 2 else {
+            return string
+        }
+        if (string.hasPrefix("\"") && string.hasSuffix("\"")) || (string.hasPrefix("'") && string.hasSuffix("'")) {
+            return String(string.dropFirst().dropLast())
+        }
+        return string
+    }
+
+    private static func normalizeThemeName(_ value: String) -> String {
+        value
+            .lowercased()
+            .replacingOccurrences(
+                of: #"[^a-z0-9]+"#,
+                with: "",
+                options: .regularExpression
+            )
     }
 
     static func terminalConfiguration() -> TerminalConfiguration {
         TerminalConfiguration { builder in
-            builder.withCursorStyle(.bar)
-            builder.withCursorStyleBlink(true)
+            builder.withBackgroundOpacity(1.0)
+            builder.withBackgroundBlur(0)
             builder.withWindowPaddingX(0)
             builder.withWindowPaddingY(0)
         }
@@ -120,6 +584,11 @@ private extension NSColor {
         let green = Int(round(converted.greenComponent * 255.0))
         let blue = Int(round(converted.blueComponent * 255.0))
         return String(format: "#%02X%02X%02X", red, green, blue)
+    }
+
+    var dmuxPerceivedBrightness: CGFloat {
+        let resolved = usingColorSpace(.deviceRGB) ?? self
+        return (resolved.redComponent * 0.299) + (resolved.greenComponent * 0.587) + (resolved.blueComponent * 0.114)
     }
 }
 
@@ -561,9 +1030,8 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
     let session: TerminalSession
     let environment: [(String, String)]
     let terminalBackgroundPreset: AppTerminalBackgroundPreset
+    let backgroundColorPreset: AppBackgroundColorPreset
     let terminalFontSize: Int
-    let useMetalRendering: Bool
-    let gpuMode: AppTerminalGPUMode
     let isFocused: Bool
     let isVisible: Bool
     let showsInactiveOverlay: Bool
@@ -588,9 +1056,8 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
             for: session,
             environment: environment,
             terminalBackgroundPreset: terminalBackgroundPreset,
+            backgroundColorPreset: backgroundColorPreset,
             terminalFontSize: terminalFontSize,
-            useMetalRendering: useMetalRendering,
-            gpuMode: gpuMode,
             isFocused: isFocused,
             isVisible: isVisible,
             showsInactiveOverlay: showsInactiveOverlay,
@@ -1136,6 +1603,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     private var configuredSession: TerminalSession
     private var configuredEnvironment: [(String, String)]
     private var terminalBackgroundPreset: AppTerminalBackgroundPreset
+    private var backgroundColorPreset: AppBackgroundColorPreset
     private var terminalFontSize: Int
     private var onInteraction: (() -> Void)?
     private var onFocusConsumed: (() -> Void)?
@@ -1153,6 +1621,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     private var pendingGeometryReconcilePasses = 0
     private var lastAppliedFocusedState: Bool?
     private var lastAppliedVisibleState: Bool?
+    private var lastShowsInactiveOverlay = false
     private let startupDelay: TimeInterval = 0.18
     private let startupWatchdogDelay: TimeInterval = 3.5
     private let logger = AppDebugLog.shared
@@ -1176,7 +1645,8 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     ) {
         configuredSession = session
         configuredEnvironment = environment
-        terminalBackgroundPreset = .obsidian
+        terminalBackgroundPreset = .flexokiDark
+        backgroundColorPreset = .automatic
         self.terminalFontSize = terminalFontSize
         self.onInteraction = onInteraction
         self.onFocusConsumed = onFocusConsumed
@@ -1192,7 +1662,8 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         } else {
             processBridge = GhosttyPTYProcessBridge(sessionID: session.id)
             controller = Self.makeController(
-                backgroundPreset: .obsidian,
+                backgroundPreset: .flexokiDark,
+                backgroundColorPreset: .automatic,
                 logger: AppDebugLog.shared
             )
         }
@@ -1209,9 +1680,8 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         _ session: TerminalSession,
         environment: [(String, String)],
         terminalBackgroundPreset: AppTerminalBackgroundPreset,
+        backgroundColorPreset: AppBackgroundColorPreset,
         terminalFontSize: Int,
-        useMetalRendering: Bool,
-        gpuMode: AppTerminalGPUMode,
         isFocused: Bool,
         isVisible: Bool,
         showsInactiveOverlay: Bool,
@@ -1220,19 +1690,16 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         onStartupSucceeded: (() -> Void)?,
         onStartupFailure: ((String) -> Void)?
     ) {
-        _ = useMetalRendering
-        _ = gpuMode
-
         configuredEnvironment = environment
         self.onInteraction = onInteraction
         self.onFocusConsumed = onFocusConsumed
         self.onStartupSucceeded = onStartupSucceeded
         self.onStartupFailure = onStartupFailure
+        lastShowsInactiveOverlay = showsInactiveOverlay
 
-        if self.terminalBackgroundPreset != terminalBackgroundPreset {
-            self.terminalBackgroundPreset = terminalBackgroundPreset
-            controller.setTheme(Self.theme(for: terminalBackgroundPreset))
-            inactiveOverlayView.layer?.backgroundColor = Self.inactiveOverlayColor(for: terminalBackgroundPreset).cgColor
+        if self.terminalBackgroundPreset != terminalBackgroundPreset || self.backgroundColorPreset != backgroundColorPreset {
+            self.backgroundColorPreset = backgroundColorPreset
+            applyTerminalBackgroundPreset(terminalBackgroundPreset)
         }
 
         if self.terminalFontSize != terminalFontSize {
@@ -1274,15 +1741,38 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
         let showsDimOverlay = showsInactiveOverlay && isVisible && !isFocused
         setInactiveOverlay(visible: showsDimOverlay)
-        applyEffectiveBackgroundColor(
-            isFocused: isFocused,
-            isVisible: isVisible,
-            showsInactiveOverlay: showsInactiveOverlay
-        )
+        applyEffectiveBackgroundColor()
 
         if isFocused && focusChanged {
             focusTerminal()
         }
+    }
+
+    func applyTerminalBackgroundPreset(_ preset: AppTerminalBackgroundPreset) {
+        guard terminalBackgroundPreset != preset else {
+            if controller.setTheme(Self.theme(for: preset, backgroundColorPreset: backgroundColorPreset)) == false {
+                return
+            }
+            inactiveOverlayView.layer?.backgroundColor = Self.inactiveOverlayColor(for: preset, backgroundColorPreset: backgroundColorPreset).cgColor
+            applyEffectiveBackgroundColor()
+            return
+        }
+        terminalBackgroundPreset = preset
+        let themeChanged = controller.setTheme(Self.theme(for: preset, backgroundColorPreset: backgroundColorPreset))
+        inactiveOverlayView.layer?.backgroundColor = Self.inactiveOverlayColor(for: preset, backgroundColorPreset: backgroundColorPreset).cgColor
+
+        let isFocused = lastAppliedFocusedState ?? false
+        let isVisible = lastAppliedVisibleState ?? false
+        let showsDimOverlay = lastShowsInactiveOverlay && isVisible && !isFocused
+        setInactiveOverlay(visible: showsDimOverlay)
+        applyEffectiveBackgroundColor()
+
+        guard themeChanged, window != nil else {
+            return
+        }
+
+        _ = terminalView.reconcileGeometryNow()
+        terminalView.refreshSurfaceNow(reason: "theme-preset-changed")
     }
 
     func focusTerminal() {
@@ -1503,21 +1993,25 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
     private func setup() {
         wantsLayer = true
-        layer?.backgroundColor = terminalBackgroundPreset.backgroundColor.cgColor
+        let appearance = Self.resolvedAppearance(
+            for: terminalBackgroundPreset,
+            backgroundColorPreset: backgroundColorPreset
+        )
+        layer?.backgroundColor = appearance.backgroundColor.cgColor
         layerContentsRedrawPolicy = .duringViewResize
 
         loadingShieldView.translatesAutoresizingMaskIntoConstraints = false
         loadingShieldView.wantsLayer = true
-        loadingShieldView.layer?.backgroundColor = terminalBackgroundPreset.backgroundColor.cgColor
+        loadingShieldView.layer?.backgroundColor = appearance.backgroundColor.cgColor
         inactiveOverlayView.translatesAutoresizingMaskIntoConstraints = false
         inactiveOverlayView.wantsLayer = true
-        inactiveOverlayView.layer?.backgroundColor = Self.inactiveOverlayColor(for: terminalBackgroundPreset).cgColor
+        inactiveOverlayView.layer?.backgroundColor = Self.inactiveOverlayColor(for: terminalBackgroundPreset, backgroundColorPreset: backgroundColorPreset).cgColor
         inactiveOverlayView.isHidden = true
 
         configureTerminalView(terminalView)
         addSubview(terminalView)
-        addSubview(inactiveOverlayView)
         addSubview(loadingShieldView)
+        addSubview(inactiveOverlayView)
         pinTerminalView(terminalView)
         pinInactiveOverlayView()
         pinLoadingShieldView()
@@ -1898,60 +2392,81 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         ])
     }
 
-    private static func makeController(backgroundPreset: AppTerminalBackgroundPreset, logger: AppDebugLog) -> TerminalController {
+    private static func makeController(
+        backgroundPreset: AppTerminalBackgroundPreset,
+        backgroundColorPreset: AppBackgroundColorPreset,
+        logger: AppDebugLog
+    ) -> TerminalController {
         let resolvedConfig = GhosttyEmbeddedConfig.resolvedControllerConfig()
         logger.log(
             "ghostty-config",
-            "source=\(resolvedConfig.prefersUserConfig ? "user" : "embedded") path=\(resolvedConfig.userConfigPath ?? Self.configSourceDescription(resolvedConfig.configSource))"
+            "source=\(resolvedConfig.prefersUserConfig ? "user" : "embedded") path=\(resolvedConfig.userConfigDescription ?? Self.configSourceDescription(resolvedConfig.configSource))"
         )
         return TerminalController(
             configSource: resolvedConfig.configSource,
-            theme: Self.theme(for: backgroundPreset),
+            theme: Self.theme(for: backgroundPreset, backgroundColorPreset: backgroundColorPreset),
             terminalConfiguration: GhosttyEmbeddedConfig.terminalConfiguration()
         )
     }
 
-    private static func theme(for preset: AppTerminalBackgroundPreset) -> TerminalTheme {
+    private static func resolvedAppearance(
+        for preset: AppTerminalBackgroundPreset,
+        backgroundColorPreset: AppBackgroundColorPreset
+    ) -> AppEffectiveTerminalAppearance {
+        let automaticAppearance = GhosttyEmbeddedConfig.resolvedAutomaticTerminalAppearance(
+            prefersDarkAppearance: true
+        )
+        return preset.effectiveAppearance(
+            backgroundColorPreset: backgroundColorPreset,
+            automaticAppearance: automaticAppearance
+        )
+    }
+
+    private static func theme(for preset: AppTerminalBackgroundPreset, backgroundColorPreset: AppBackgroundColorPreset) -> TerminalTheme {
+        let appearance = resolvedAppearance(
+            for: preset,
+            backgroundColorPreset: backgroundColorPreset
+        )
+        return theme(from: appearance)
+    }
+
+    private static func theme(from appearance: AppEffectiveTerminalAppearance) -> TerminalTheme {
         let configuration = TerminalConfiguration { builder in
-            builder.withBackground(preset.backgroundColor.ghosttyHexString)
-            builder.withForeground(preset.foregroundColor.ghosttyHexString)
-            builder.withSelectionBackground(preset.mutedForegroundColor.ghosttyHexString)
-            builder.withSelectionForeground(preset.foregroundColor.ghosttyHexString)
-            builder.withCursorColor(preset.foregroundColor.ghosttyHexString)
-            builder.withCursorText(preset.backgroundColor.ghosttyHexString)
-            builder.withMinimumContrast(preset.isLight ? 1.05 : 1.0)
+            builder.withBackground(appearance.backgroundColor.ghosttyHexString)
+            builder.withForeground(appearance.foregroundColor.ghosttyHexString)
+            builder.withSelectionBackground(appearance.selectionBackgroundColor.ghosttyHexString)
+            builder.withSelectionForeground(appearance.selectionForegroundColor.ghosttyHexString)
+            builder.withCursorColor(appearance.cursorColor.ghosttyHexString)
+            builder.withCursorText(appearance.cursorTextColor.ghosttyHexString)
+            builder.withBoldColor(appearance.foregroundColor.ghosttyHexString)
+            builder.withMinimumContrast(appearance.minimumContrast)
             builder.withBackgroundOpacity(1.0)
+
+            for (index, color) in appearance.paletteHexStrings.enumerated() {
+                builder.withPalette(index, color: color)
+            }
         }
         return TerminalTheme(light: configuration, dark: configuration)
     }
 
-    private static func inactiveOverlayColor(for preset: AppTerminalBackgroundPreset) -> NSColor {
-        preset.inactiveDimColor
+    private static func inactiveOverlayColor(for preset: AppTerminalBackgroundPreset, backgroundColorPreset: AppBackgroundColorPreset) -> NSColor {
+        resolvedAppearance(
+            for: preset,
+            backgroundColorPreset: backgroundColorPreset
+        ).inactiveDimColor
     }
 
-    private func applyEffectiveBackgroundColor(
-        isFocused: Bool,
-        isVisible: Bool,
-        showsInactiveOverlay: Bool
-    ) {
-        let backgroundColor = effectiveBackgroundColor(
-            isFocused: isFocused,
-            isVisible: isVisible,
-            showsInactiveOverlay: showsInactiveOverlay
-        )
+    private func applyEffectiveBackgroundColor() {
+        let backgroundColor = effectiveBackgroundColor()
         layer?.backgroundColor = backgroundColor.cgColor
         loadingShieldView.layer?.backgroundColor = backgroundColor.cgColor
     }
 
-    private func effectiveBackgroundColor(
-        isFocused: Bool,
-        isVisible: Bool,
-        showsInactiveOverlay: Bool
-    ) -> NSColor {
-        if showsInactiveOverlay && isVisible && !isFocused {
-            return terminalBackgroundPreset.inactiveBackgroundColor
-        }
-        return terminalBackgroundPreset.backgroundColor
+    private func effectiveBackgroundColor() -> NSColor {
+        return Self.resolvedAppearance(
+            for: terminalBackgroundPreset,
+            backgroundColorPreset: backgroundColorPreset
+        ).backgroundColor
     }
 
     private func setInactiveOverlay(visible: Bool) {
@@ -1990,9 +2505,8 @@ final class GhosttyTerminalRegistry {
         for session: TerminalSession,
         environment: [(String, String)],
         terminalBackgroundPreset: AppTerminalBackgroundPreset,
+        backgroundColorPreset: AppBackgroundColorPreset,
         terminalFontSize: Int,
-        useMetalRendering: Bool,
-        gpuMode: AppTerminalGPUMode,
         isFocused: Bool,
         isVisible: Bool,
         showsInactiveOverlay: Bool,
@@ -2006,9 +2520,8 @@ final class GhosttyTerminalRegistry {
                 session,
                 environment: environment,
                 terminalBackgroundPreset: terminalBackgroundPreset,
+                backgroundColorPreset: backgroundColorPreset,
                 terminalFontSize: terminalFontSize,
-                useMetalRendering: useMetalRendering,
-                gpuMode: gpuMode,
                 isFocused: isFocused,
                 isVisible: isVisible,
                 showsInactiveOverlay: showsInactiveOverlay,
@@ -2033,9 +2546,8 @@ final class GhosttyTerminalRegistry {
             session,
             environment: environment,
             terminalBackgroundPreset: terminalBackgroundPreset,
+            backgroundColorPreset: backgroundColorPreset,
             terminalFontSize: terminalFontSize,
-            useMetalRendering: useMetalRendering,
-            gpuMode: gpuMode,
             isFocused: isFocused,
             isVisible: isVisible,
             showsInactiveOverlay: showsInactiveOverlay,

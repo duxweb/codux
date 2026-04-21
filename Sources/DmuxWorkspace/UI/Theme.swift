@@ -375,8 +375,14 @@ struct AppVisualEffectBackground: NSViewRepresentable {
 }
 
 struct AppWindowGlassBackground: View {
+    let tintColor: Color
+
     var body: some View {
-        AppVisualEffectBackground(material: .underWindowBackground, blendingMode: .behindWindow)
+        ZStack {
+            AppVisualEffectBackground(material: .underWindowBackground, blendingMode: .behindWindow)
+            Rectangle()
+                .fill(tintColor)
+        }
     }
 }
 

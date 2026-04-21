@@ -42,6 +42,8 @@ final class AppModel {
     var workspaces: [ProjectWorkspace]
     var selectedProjectID: UUID?
     var appSettings: AppSettings
+    var activeTerminalBackgroundPreset: AppTerminalBackgroundPreset
+    var activeBackgroundColorPreset: AppBackgroundColorPreset
     var rightPanel: RightPanelKind?
     var commitMessage = ""
     var statusMessage = ""
@@ -102,17 +104,22 @@ final class AppModel {
         self.persistenceService = persistenceService
         debugLog.reset()
 
+        let resolvedSettings: AppSettings
         if let snapshot {
             self.projects = snapshot.projects
             self.workspaces = snapshot.workspaces
             self.selectedProjectID = snapshot.selectedProjectID ?? snapshot.projects.first?.id
-            self.appSettings = snapshot.appSettings ?? AppSettings()
+            resolvedSettings = snapshot.appSettings ?? AppSettings()
+            self.appSettings = resolvedSettings
         } else {
             self.projects = []
             self.workspaces = []
             self.selectedProjectID = nil
-            self.appSettings = AppSettings()
+            resolvedSettings = AppSettings()
+            self.appSettings = resolvedSettings
         }
+        self.activeTerminalBackgroundPreset = resolvedSettings.terminalBackgroundPreset
+        self.activeBackgroundColorPreset = resolvedSettings.backgroundColorPreset
 
         DmuxTerminalBackend.shared.configure(using: appSettings)
 
@@ -425,27 +432,70 @@ final class AppModel {
     }
 
     var terminalBackgroundPreset: AppTerminalBackgroundPreset {
-        appSettings.terminalBackgroundPreset
+        activeTerminalBackgroundPreset
+    }
+
+    var backgroundColorPreset: AppBackgroundColorPreset {
+        activeBackgroundColorPreset
+    }
+
+    var automaticTerminalAppearance: AppEffectiveTerminalAppearance {
+        GhosttyEmbeddedConfig.resolvedAutomaticTerminalAppearance(
+            prefersDarkAppearance: systemPrefersDarkAppearance
+        )
+    }
+
+    var terminalAppearance: AppEffectiveTerminalAppearance {
+        terminalBackgroundPreset.effectiveAppearance(
+            backgroundColorPreset: backgroundColorPreset,
+            automaticAppearance: automaticTerminalAppearance
+        )
+    }
+
+    var effectiveThemeMode: AppThemeMode {
+        terminalAppearance.isLight ? .light : .dark
     }
 
     var terminalChromeColor: Color {
-        Color(nsColor: terminalBackgroundPreset.backgroundColor)
+        Color(nsColor: terminalAppearance.backgroundColor)
+    }
+
+    var windowGlassTintColor: Color {
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                return self.terminalAppearance.windowGlassTintColor(forDarkAppearance: isDark)
+            }
+        )
     }
 
     var terminalDividerColor: Color {
-        Color(nsColor: terminalBackgroundPreset.dividerColor)
+        Color(nsColor: terminalAppearance.dividerColor)
     }
 
     var terminalDividerNSColor: NSColor {
-        terminalBackgroundPreset.dividerColor
+        terminalAppearance.dividerColor
     }
 
     var terminalTextColor: Color {
-        Color(nsColor: terminalBackgroundPreset.foregroundColor)
+        Color(nsColor: terminalAppearance.foregroundColor)
     }
 
     var terminalMutedTextColor: Color {
-        Color(nsColor: terminalBackgroundPreset.mutedForegroundColor)
+        Color(nsColor: terminalAppearance.mutedForegroundColor)
+    }
+
+    var terminalUsesLightBackground: Bool {
+        terminalAppearance.isLight
+    }
+
+    var terminalInactiveDimColor: NSColor {
+        terminalAppearance.inactiveDimColor
+    }
+
+    private var systemPrefersDarkAppearance: Bool {
+        let appearance = NSApplication.shared.effectiveAppearance
+        return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
 
     var gitPanelState: GitPanelState {
@@ -3135,14 +3185,6 @@ final class AppModel {
         ].joined(separator: "|")
     }
 
-    func updateThemeMode(_ mode: AppThemeMode) {
-        var settings = appSettings
-        settings.themeMode = mode
-        appSettings = settings
-        applyThemeMode()
-        persist()
-    }
-
     func updateLanguage(_ language: AppLanguage) {
         var settings = appSettings
         settings.language = language
@@ -3162,29 +3204,30 @@ final class AppModel {
     }
 
     func updateTerminalBackgroundPreset(_ preset: AppTerminalBackgroundPreset) {
+        guard appSettings.terminalBackgroundPreset != preset else {
+            return
+        }
         var settings = appSettings
         settings.terminalBackgroundPreset = preset
         appSettings = settings
         persist()
+        presentThemeRestartPrompt()
+    }
+
+    func updateBackgroundColorPreset(_ preset: AppBackgroundColorPreset) {
+        guard appSettings.backgroundColorPreset != preset else {
+            return
+        }
+        var settings = appSettings
+        settings.backgroundColorPreset = preset
+        appSettings = settings
+        persist()
+        presentThemeRestartPrompt()
     }
 
     func updateTerminalFontSize(_ size: Int) {
         var settings = appSettings
         settings.terminalFontSize = max(10, min(28, size))
-        appSettings = settings
-        persist()
-    }
-
-    func updateTerminalGPUAccelerationEnabled(_ enabled: Bool) {
-        var settings = appSettings
-        settings.terminalGPUAccelerationEnabled = enabled
-        appSettings = settings
-        persist()
-    }
-
-    func updateTerminalGPUMode(_ mode: AppTerminalGPUMode) {
-        var settings = appSettings
-        settings.terminalGPUMode = mode
         appSettings = settings
         persist()
     }
@@ -3508,10 +3551,11 @@ final class AppModel {
         guard isSystemUIReady else {
             return
         }
-        NSApp.appearance = appSettings.themeMode.appearance
+        let appearance = effectiveThemeMode.appearance
+        NSApp.appearance = appearance
         for window in NSApp.windows {
             guard !(window is NSPanel) else { continue }
-            window.appearance = appSettings.themeMode.appearance
+            window.appearance = appearance
         }
     }
 
@@ -3707,6 +3751,33 @@ final class AppModel {
                 self.relaunchApplication()
             } else {
                 self.statusMessage = String(localized: "settings.language.restart_pending", defaultValue: "Language changes will apply after restart.", bundle: .module)
+            }
+        }
+    }
+
+    private func presentThemeRestartPrompt() {
+        guard let parentWindow = presentationWindow() else {
+            statusMessage = String(localized: "settings.theme.restart_required", defaultValue: "Restart the app to apply the selected theme.", bundle: .module)
+            return
+        }
+
+        let dialog = ConfirmDialogState(
+            title: String(localized: "settings.theme.restart_title", defaultValue: "Restart Required", bundle: .module),
+            message: String(localized: "settings.theme.restart_message", defaultValue: "Restart Codux to apply the selected theme to the app and all terminals.", bundle: .module),
+            icon: "paintpalette",
+            iconColor: AppTheme.focus,
+            primaryTitle: String(localized: "common.restart_now", defaultValue: "Restart Now", bundle: .module),
+            secondaryTitle: String(localized: "common.later", defaultValue: "Later", bundle: .module)
+        )
+
+        ConfirmDialogPresenter.present(dialog: dialog, parentWindow: parentWindow) { [weak self] result in
+            guard let self else {
+                return
+            }
+            if result == .primary {
+                self.relaunchApplication()
+            } else {
+                self.statusMessage = String(localized: "settings.theme.restart_pending", defaultValue: "Theme changes will apply after restart.", bundle: .module)
             }
         }
     }

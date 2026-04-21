@@ -12,7 +12,10 @@ struct PetProgressInfo {
 
     static let hatchThreshold = 200_000_000
     static let xpBase = 7_500_000
-    static let xpIncrement = 180_000
+    // Raised from 180_000 → 750_000 so the curve grows ~11x from Lv1 to Lv100
+    // (was ~3.4x — almost flat, causing rapid level-ups at all stages).
+    // Full run Lv1→100 now requires ~4.4B XP vs the old 1.6B.
+    static let xpIncrement = 750_000
     static let maxLevel = 100
     static let postCapXP = xpBase + (maxLevel - 1) * xpIncrement
     static let infantRange = 1 ... 15
@@ -96,6 +99,36 @@ struct PetProgressInfo {
         }
 
         return level
+    }
+
+    // MARK: - Daily pace limiter
+
+    /// Number of calendar days from `hatchDate` to `now` (0-based: hatch day itself = 0).
+    static func dayIndex(from hatchDate: Date, to now: Date = Date()) -> Int {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: hatchDate)
+        let today = calendar.startOfDay(for: now)
+        return max(0, calendar.dateComponents([.day], from: start, to: today).day ?? 0)
+    }
+
+    /// Expected level on day `dayIndex` based on a 30-day-to-level-100 pace.
+    static func expectedLevel(forDayIndex dayIndex: Int) -> Int {
+        let totalXPForCap = totalXPRequired(toReach: maxLevel + 1)
+        let dailyBudget = Double(totalXPForCap) / 30.0
+        let expectedXP = Int(Double(max(0, dayIndex)) * dailyBudget)
+        return levelFromXP(expectedXP)
+    }
+
+    /// XP rate multiplier for today.
+    /// Returns 1.0 if the pet is at or below the daily pace.
+    /// Rate curve: on-pace = 100%, +1 level ahead = 50%, each further level
+    /// -10 pp (min 5%). This gives an immediate meaningful brake the moment
+    /// the pet outpaces the 30-day schedule, without a harsh cliff.
+    static func dailyXPRate(currentLevel: Int, dayIndex: Int) -> Double {
+        let expected = expectedLevel(forDayIndex: dayIndex)
+        let levelsAhead = max(0, currentLevel - expected)
+        guard levelsAhead > 0 else { return 1.0 }
+        return max(0.05, 0.50 - Double(levelsAhead - 1) * 0.10)
     }
 }
 

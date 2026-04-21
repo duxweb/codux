@@ -4,37 +4,37 @@ struct WorkspaceEmptyStateView: View {
     let model: AppModel
 
     private var titleColor: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? model.terminalTextColor.opacity(0.9)
             : model.terminalTextColor.opacity(0.82)
     }
 
     private var subtitleColor: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? model.terminalMutedTextColor.opacity(0.84)
             : model.terminalMutedTextColor.opacity(0.78)
     }
 
     private var tertiaryColor: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? model.terminalMutedTextColor.opacity(0.72)
             : model.terminalMutedTextColor.opacity(0.74)
     }
 
     private var secondaryButtonFill: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? Color.black.opacity(0.07)
             : Color.white.opacity(0.09)
     }
 
     private var secondaryButtonPressedFill: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? Color.black.opacity(0.11)
             : Color.white.opacity(0.13)
     }
 
     private var secondaryButtonStroke: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? Color.black.opacity(0.12)
             : Color.white.opacity(0.11)
     }
@@ -48,7 +48,7 @@ struct WorkspaceEmptyStateView: View {
     }
 
     private var primaryButtonStroke: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? Color.white.opacity(0.18)
             : Color.white.opacity(0.12)
     }
@@ -170,13 +170,13 @@ private struct WelcomeShortcutHintsView: View {
     let model: AppModel
 
     private var subtitleColor: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? model.terminalMutedTextColor.opacity(0.84)
             : model.terminalMutedTextColor.opacity(0.78)
     }
 
     private var tertiaryColor: Color {
-        model.terminalBackgroundPreset.isLight
+        model.terminalUsesLightBackground
             ? model.terminalMutedTextColor.opacity(0.72)
             : model.terminalMutedTextColor.opacity(0.74)
     }

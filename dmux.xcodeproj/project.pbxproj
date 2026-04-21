@@ -12,6 +12,7 @@
 		A1B2C3D4E5F60718293A4B5C /* AppUpdaterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */; };
 		A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B60 /* Sparkle */; };
 		A7B8C9D0E1F2031425364758 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A7B8C9D0E1F2031425364759 /* GhosttyTerminal */; };
+		A7B8C9D0E1F2031425364767 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = A7B8C9D0E1F2031425364768 /* GhosttyTheme */; };
 		0D664E0A08F199B7A97D0BA2 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CDEB30421E61195A008FD00E /* Localizable.xcstrings */; };
 		E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = E1A41C4E3A0A4C0A9D7B42A2 /* Logging */; };
 		0FA3288DB5DECC9BDA2E1291 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E1EC9BC74648163A178985 /* Theme.swift */; };
@@ -174,6 +175,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A7B8C9D0E1F2031425364758 /* GhosttyTerminal in Frameworks */,
+				A7B8C9D0E1F2031425364767 /* GhosttyTheme in Frameworks */,
 				A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */,
 				E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */,
 				94E74A9C02052D31600A15A8 /* UniformTypeIdentifiers.framework in Frameworks */,
@@ -441,6 +443,7 @@
 			packageProductDependencies = (
 				A1B2C3D4E5F60718293A4B60 /* Sparkle */,
 				A7B8C9D0E1F2031425364759 /* GhosttyTerminal */,
+				A7B8C9D0E1F2031425364768 /* GhosttyTheme */,
 				E1A41C4E3A0A4C0A9D7B42A2 /* Logging */,
 			);
 			productName = dmux;
@@ -789,6 +792,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A7B8C9D0E1F2031425364766 /* XCRemoteSwiftPackageReference "libghostty-spm" */;
 			productName = GhosttyTerminal;
+		};
+		A7B8C9D0E1F2031425364768 /* GhosttyTheme */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A7B8C9D0E1F2031425364766 /* XCRemoteSwiftPackageReference "libghostty-spm" */;
+			productName = GhosttyTheme;
 		};
 		A1B2C3D4E5F60718293A4B60 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;

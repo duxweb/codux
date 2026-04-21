@@ -37,45 +37,45 @@ struct PetStats: Codable, Equatable, Sendable {
         let dominanceRatio = second > 0 ? Double(strongest.1) / Double(second) : Double(strongest.1)
 
         if strongest.1 == 0 {
-            return petL("pet.persona.observer", "Gentle Observer")
+            return petL("pet.persona.observer", "Null Signal")
         }
         if dominantGap < max(18, strongest.1 / 8) || dominanceRatio < 1.12 {
-            return petL("pet.persona.balanced", "Balanced Type")
+            return petL("pet.persona.balanced", "Zero Protocol")
         }
         if strongest.0 == "wisdom", wisdom >= max(chaos + 60, Int(Double(second) * 1.18)) {
             return night >= Int(Double(wisdom) * 0.72)
-                ? petL("pet.persona.midnight_thinker", "Midnight Thinker")
-                : petL("pet.persona.philosopher", "Philosopher")
+                ? petL("pet.persona.midnight_thinker", "Darknet Oracle")
+                : petL("pet.persona.philosopher", "Core Architect")
         }
         if strongest.0 == "chaos", stamina >= Int(Double(chaos) * 0.7) {
-            return petL("pet.persona.mad_scientist", "Mad Scientist")
+            return petL("pet.persona.mad_scientist", "Rogue Compiler")
         }
         if strongest.0 == "night", empathy >= Int(Double(night) * 0.55) {
-            return petL("pet.persona.night_companion", "Night Companion")
+            return petL("pet.persona.night_companion", "Neon Specter")
         }
         if strongest.0 == "stamina", empathy >= Int(Double(stamina) * 0.6) {
-            return petL("pet.persona.debug_comrade", "Debug Comrade")
+            return petL("pet.persona.debug_comrade", "Neural Patch")
         }
         if strongest.0 == "night" {
-            return petL("pet.persona.night_owl", "Night Owl")
+            return petL("pet.persona.night_owl", "Shadow Crawler")
         }
         if strongest.0 == "chaos" {
             return dominantGap > 40
-                ? petL("pet.persona.firebrand", "Firebrand")
-                : petL("pet.persona.action_seeker", "Action Seeker")
+                ? petL("pet.persona.firebrand", "Overclock")
+                : petL("pet.persona.action_seeker", "Full Throttle")
         }
         if strongest.0 == "stamina" {
             return dominantGap > 40
-                ? petL("pet.persona.marathoner", "Marathoner")
-                : petL("pet.persona.steady_type", "Steady Type")
+                ? petL("pet.persona.marathoner", "Iron Protocol")
+                : petL("pet.persona.steady_type", "Steady Kernel")
         }
         if strongest.0 == "empathy" {
-            return petL("pet.persona.debug_buddy", "Debug Buddy")
+            return petL("pet.persona.debug_buddy", "Sync Node")
         }
         if strongest.0 == "wisdom" {
-            return petL("pet.persona.wise_type", "Wise Type")
+            return petL("pet.persona.wise_type", "Deep Cache")
         }
-        return petL("pet.persona.observer", "Gentle Observer")
+        return petL("pet.persona.observer", "Null Signal")
     }
 
     func applyingDamping(toward target: PetStats, factor: Double = 0.25) -> PetStats {

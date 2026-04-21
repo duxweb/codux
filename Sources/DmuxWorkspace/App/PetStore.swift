@@ -7,6 +7,19 @@ import CryptoKit
 final class PetStore {
     private static let statsRefreshInterval: TimeInterval = 3600
 
+    // Captures the XP state at the start of each calendar day so the
+    // daily-pace limiter can apply a per-day rate to that day's token gains.
+    struct DailyXPCapture: Codable, Equatable {
+        /// Calendar day this capture belongs to (stored as start-of-day).
+        let day: Date
+        /// Rate-limited effective XP total at the moment this day started.
+        let effectiveXPAtDayStart: Int
+        /// Raw allTimeTokens at the moment this day started.
+        let allTimeTokensAtDayStart: Int
+        /// XP rate multiplier applied for tokens earned on this day (0.05 … 1.0).
+        let rate: Double
+    }
+
     struct Storage: Sendable {
         var fileURL: URL?
         var cryptoNamespace: String
@@ -46,6 +59,8 @@ final class PetStore {
     private(set) var statsUpdatedDay: Date?
     private(set) var lockedEvoPath: PetEvoPath?
     private(set) var legacy: [PetLegacyRecord] = []
+    /// Today's XP rate capture. Nil until the first refresh after hatch.
+    private(set) var dailyXPCapture: DailyXPCapture?
 
     var isClaimed: Bool {
         baselineAllTimeTokens != nil
@@ -77,6 +92,7 @@ final class PetStore {
         claimedAt = Date()
         baselineAllTimeTokens = max(0, totalTokens)
         growthBaselineAllTimeTokens = nil
+        dailyXPCapture = nil
         species = option.resolveSpecies(hiddenSpeciesChance: hiddenSpeciesChance)
         self.customName = customName.trimmingCharacters(in: .whitespacesAndNewlines)
         currentHatchTokens = 0
@@ -136,6 +152,7 @@ final class PetStore {
         claimedAt = nil
         baselineAllTimeTokens = nil
         growthBaselineAllTimeTokens = nil
+        dailyXPCapture = nil
         species = .voidcat
         customName = ""
         currentHatchTokens = 0
@@ -168,19 +185,83 @@ final class PetStore {
         let claimed = claimedTokens(currentAllTimeTokens: currentAllTimeTokens)
         let nextHatchTokens = min(claimed, PetProgressInfo.hatchThreshold)
         let nextXP: Int
+
         if nextHatchTokens < PetProgressInfo.hatchThreshold {
+            // Still in egg phase — reset growth baseline and daily capture.
             if growthBaselineAllTimeTokens != nil {
                 growthBaselineAllTimeTokens = nil
+                dailyXPCapture = nil
                 didChange = true
             }
             nextXP = 0
         } else {
+            // Hatched — set growth baseline on first entry.
             if growthBaselineAllTimeTokens == nil {
                 growthBaselineAllTimeTokens = max(0, currentAllTimeTokens)
+                dailyXPCapture = nil
                 didChange = true
             }
-            nextXP = experienceTokens(currentAllTimeTokens: currentAllTimeTokens)
+
+            // ── Daily pace limiter ──────────────────────────────────────────
+            // Each calendar day we compute a rate multiplier based on how far
+            // ahead of the 30-day-to-Lv100 pace the pet is:
+            //   • At pace or behind  → rate = 1.0 (no penalty)
+            //   • N levels ahead     → rate = max(5%, 1 - N × 20%)
+            // The rate applies only to tokens earned *today*. At day rollover
+            // we snapshot the current effective XP and re-evaluate the rate,
+            // so recovering or slowing down is reflected the next morning.
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: now)
+
+            let capture: DailyXPCapture
+            if let existing = dailyXPCapture, calendar.isDate(existing.day, inSameDayAs: today) {
+                // Same day — keep the existing rate and snapshot.
+                capture = existing
+            } else {
+                // New day (or first time after hatch): determine today's effective
+                // XP total and recalculate the rate for today.
+                let effectiveXPSoFar: Int
+                if let prev = dailyXPCapture {
+                    // Carry forward the rate-limited XP already accumulated.
+                    let rawPrevDayGain = max(0, currentAllTimeTokens - prev.allTimeTokensAtDayStart)
+                    effectiveXPSoFar = prev.effectiveXPAtDayStart + Int(Double(rawPrevDayGain) * prev.rate)
+                } else {
+                    // First capture after hatch — raw XP with no limiter yet.
+                    effectiveXPSoFar = max(0, currentAllTimeTokens - (growthBaselineAllTimeTokens ?? currentAllTimeTokens))
+                }
+
+                let currentLevel = PetProgressInfo.levelFromXP(effectiveXPSoFar)
+                let dayIndex: Int
+                if let hatchDate = claimedAt {
+                    dayIndex = PetProgressInfo.dayIndex(from: hatchDate, to: now)
+                } else {
+                    dayIndex = 0
+                }
+                let rate = PetProgressInfo.dailyXPRate(currentLevel: currentLevel, dayIndex: dayIndex)
+
+                let newCapture = DailyXPCapture(
+                    day: today,
+                    effectiveXPAtDayStart: effectiveXPSoFar,
+                    allTimeTokensAtDayStart: currentAllTimeTokens,
+                    rate: rate
+                )
+                dailyXPCapture = newCapture
+                capture = newCapture
+                didChange = true
+
+                debugLog.log(
+                    "pet-pace",
+                    "day-rollover dayIndex=\(dayIndex) level=\(currentLevel) "
+                    + "expected=\(PetProgressInfo.expectedLevel(forDayIndex: dayIndex)) "
+                    + "rate=\(String(format: "%.0f%%", rate * 100)) effectiveXP=\(effectiveXPSoFar)"
+                )
+            }
+
+            // Apply the day's rate to today's raw token gain.
+            let rawDailyGain = max(0, currentAllTimeTokens - capture.allTimeTokensAtDayStart)
+            nextXP = capture.effectiveXPAtDayStart + Int(Double(rawDailyGain) * capture.rate)
         }
+
         if currentHatchTokens != nextHatchTokens {
             currentHatchTokens = nextHatchTokens
             didChange = true
@@ -295,12 +376,30 @@ final class PetStore {
         if growthBaselineAllTimeTokens == nil,
            currentHatchTokens >= PetProgressInfo.hatchThreshold,
            let baselineAllTimeTokens {
-            growthBaselineAllTimeTokens = baselineAllTimeTokens + PetProgressInfo.hatchThreshold
+            // Derive the best-effort growth baseline from persisted XP.
+            // The old migration used `baselineAllTimeTokens + hatchThreshold`,
+            // which under-estimates the baseline when the user had already
+            // accumulated tokens before hatching — making XP appear much
+            // larger than it actually is (e.g. reaching Lv57 the day after
+            // hatching). Using the persisted XP to back-calculate gives the
+            // correct baseline even after an app restart.
+            let persisted = currentExperienceTokens
+            if persisted > 0 {
+                // Back-calculate: baseline = currentAllTimeTokens at hatch time
+                // We don't know that value, but we do know:
+                //   XP = allTimeAtHatch - growthBaseline → baseline = allTimeAtHatch - XP
+                // Best proxy for allTimeAtHatch = baselineAllTimeTokens + hatchThreshold
+                let estimatedAllTimeAtHatch = baselineAllTimeTokens + PetProgressInfo.hatchThreshold
+                growthBaselineAllTimeTokens = max(0, estimatedAllTimeAtHatch - persisted)
+            } else {
+                growthBaselineAllTimeTokens = baselineAllTimeTokens + PetProgressInfo.hatchThreshold
+            }
         }
         currentStats = resolvedState.currentStats ?? .neutral
         statsUpdatedDay = resolvedState.statsUpdatedDay
         lockedEvoPath = resolvedState.lockedEvoPath
         legacy = resolvedState.legacy ?? []
+        dailyXPCapture = resolvedState.dailyXPCapture
     }
 
     private func save() {
@@ -315,7 +414,8 @@ final class PetStore {
             currentStats: currentStats,
             statsUpdatedDay: statsUpdatedDay,
             lockedEvoPath: lockedEvoPath,
-            legacy: legacy
+            legacy: legacy,
+            dailyXPCapture: dailyXPCapture
         )
         saveStateFile(state)
     }
@@ -386,4 +486,5 @@ private struct PersistedPetState: Codable, Equatable {
     var statsUpdatedDay: Date?
     var lockedEvoPath: PetEvoPath?
     var legacy: [PetLegacyRecord]?
+    var dailyXPCapture: PetStore.DailyXPCapture?
 }

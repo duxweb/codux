@@ -24,6 +24,7 @@ let package = Package(
             name: "DmuxWorkspace",
             dependencies: [
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
+                .product(name: "GhosttyTheme", package: "libghostty-spm"),
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "Logging", package: "swift-log"),
             ],
