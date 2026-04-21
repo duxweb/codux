@@ -371,10 +371,7 @@ private final class TopPaneSplitController: NSViewController, NSSplitViewDelegat
             paneHosts[sessionID]?.view.layoutSubtreeIfNeeded()
             paneHosts[sessionID]?.view.needsDisplay = true
         }
-        DmuxTerminalBackend.shared.registry.reconcileGeometry(
-            for: currentSessionIDs,
-            reason: needsEqualDistribution ? "top-pane-equalize" : "top-pane-apply-ratios"
-        )
+        DmuxTerminalBackend.shared.registry.reconcileGeometry(for: currentSessionIDs)
         paneSplitView.needsDisplay = true
         if needsEqualDistribution {
             model.updateTopPaneRatios(ratios)
@@ -396,10 +393,7 @@ private final class TopPaneSplitController: NSViewController, NSSplitViewDelegat
         let total = widths.reduce(0, +)
         guard total > 0 else { return }
         model.updateTopPaneRatios(widths.map { $0 / total })
-        DmuxTerminalBackend.shared.registry.reconcileGeometry(
-            for: currentSessionIDs,
-            reason: "top-pane-divider-resized"
-        )
+        DmuxTerminalBackend.shared.registry.reconcileGeometry(for: currentSessionIDs)
     }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {

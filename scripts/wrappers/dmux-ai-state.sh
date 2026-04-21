@@ -450,9 +450,19 @@ case "${action}" in
     exit 0
     ;;
   codex-pre-tool-use)
+    write_ai_hook_event \
+      "promptSubmitted" \
+      "$(extract_hook_session_id)" \
+      "$(resolved_hook_model)" \
+      "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
     exit 0
     ;;
   codex-post-tool-use)
+    write_ai_hook_event \
+      "promptSubmitted" \
+      "$(extract_hook_session_id)" \
+      "$(resolved_hook_model)" \
+      "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
     exit 0
     ;;
   codex-stop)

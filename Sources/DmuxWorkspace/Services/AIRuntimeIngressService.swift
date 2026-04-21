@@ -48,10 +48,6 @@ final class AIRuntimeIngressService {
         toolDriverFactory.isRealtimeTool(tool)
     }
 
-    func clearResponseState(sessionID: UUID) {
-        _ = sessionID
-    }
-
     func clearLiveState(sessionID: UUID) {
         aiSessionStore.removeTerminal(sessionID)
     }

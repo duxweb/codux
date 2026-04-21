@@ -1122,6 +1122,7 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
         var onDidMoveToWindow: (() -> Void)?
         var onGeometryChanged: (() -> Void)?
         private var lastGeometrySignature: String = ""
+        private var geometryNotificationScheduled = false
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -1155,7 +1156,17 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
                 return
             }
             lastGeometrySignature = signature
-            onGeometryChanged?()
+            guard geometryNotificationScheduled == false else {
+                return
+            }
+            geometryNotificationScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.geometryNotificationScheduled = false
+                self.onGeometryChanged?()
+            }
         }
     }
 
@@ -1443,8 +1454,7 @@ private final class GhosttyWindowPortal {
             entry.hostedView.removeFromSuperview()
             entry.mountedView.addSubview(entry.hostedView)
         }
-        let frameChanged = entry.mountedView.frame != frameInHost
-        if frameChanged {
+        if entry.mountedView.frame != frameInHost {
             entry.mountedView.frame = frameInHost
         }
         entry.mountedView.needsLayout = true
@@ -1452,9 +1462,6 @@ private final class GhosttyWindowPortal {
         entry.mountedView.isHidden = false
         entry.hostedView.isHidden = false
         entry.hostedView.layoutSubtreeIfNeeded()
-        if frameChanged {
-            entry.hostedView.reconcileGeometry(reason: "portal-sync", passCount: 2)
-        }
     }
 }
 
@@ -1735,10 +1742,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         if isVisible {
             scheduleProcessStartIfPossible(reason: isFocused ? "update-focused" : "update-visible")
             if focusChanged || visibilityChanged {
-                scheduleGeometryReconcile(
-                    reason: isFocused ? "session-update-focused" : "session-update-visible",
-                    passCount: 2
-                )
+                scheduleGeometryReconcile()
             }
         }
 
@@ -1774,7 +1778,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             return
         }
 
-        scheduleGeometryReconcile(reason: "theme-preset-changed", passCount: 1)
+        scheduleGeometryReconcile()
     }
 
     func focusTerminal() {
@@ -1814,17 +1818,16 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             self.terminalView.layoutSubtreeIfNeeded()
             self.terminalView.fitToSize()
             self.processBridge.endStructuralResizeTransition()
-            self.scheduleGeometryReconcile(reason: "structural-resize", passCount: 3)
         }
         structuralResizeRestoreWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: workItem)
     }
 
-    func reconcileGeometry(reason: String, passCount: Int = 3) {
+    func reconcileGeometry() {
         guard bounds.width > 0, bounds.height > 0 else {
             return
         }
-        scheduleGeometryReconcile(reason: reason, passCount: max(1, passCount))
+        scheduleGeometryReconcile()
     }
 
     var terminalShellPID: Int32? {
@@ -1844,6 +1847,10 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     }
 
     func prepareForPermanentRemoval() {
+        logger.log(
+            "ghostty-lifecycle",
+            "prepare-remove session=\(configuredSession.id.uuidString) instance=\(processBridge.processInstanceID)"
+        )
         cancelDeferredLifecycleWork()
         processBridge.terminateProcessTree()
         tearDownTerminalView()
@@ -1884,7 +1891,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             return
         }
         scheduleProcessStartIfPossible(reason: "window-attached")
-        scheduleGeometryReconcile(reason: "window-attached", passCount: 2)
+        scheduleGeometryReconcile()
     }
 
     override func viewDidMoveToSuperview() {
@@ -1892,7 +1899,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         guard superview != nil, window != nil else {
             return
         }
-        scheduleGeometryReconcile(reason: "superview-attached", passCount: 3)
+        scheduleGeometryReconcile()
     }
 
     func sendText(_ text: String) {
@@ -2206,27 +2213,15 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         focusTerminal()
     }
 
-    private func scheduleGeometryReconcile(reason: String, passCount: Int) {
-        guard passCount > 0 else {
+    private func scheduleGeometryReconcile(passCount: Int = 1) {
+        pendingGeometryReconcilePasses = max(pendingGeometryReconcilePasses, max(1, passCount))
+        guard geometryReconcileScheduled == false else {
             return
         }
 
         geometryReconcileGeneration &+= 1
         let generation = geometryReconcileGeneration
-        pendingGeometryReconcilePasses = max(pendingGeometryReconcilePasses, passCount)
-        guard geometryReconcileScheduled == false else {
-            logger.log(
-                "ghostty-geometry",
-                "coalesce session=\(configuredSession.id.uuidString) reason=\(reason) generation=\(generation) passes=\(pendingGeometryReconcilePasses)"
-            )
-            return
-        }
-
         geometryReconcileScheduled = true
-        logger.log(
-            "ghostty-geometry",
-            "schedule session=\(configuredSession.id.uuidString) reason=\(reason) generation=\(generation) passes=\(pendingGeometryReconcilePasses)"
-        )
         DispatchQueue.main.async { [weak self] in
             self?.runGeometryReconcilePass(generation: generation)
         }
@@ -2243,7 +2238,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
         guard window != nil, bounds.width > 0, bounds.height > 0 else {
             if remainingPasses > 1 {
-                pendingGeometryReconcilePasses = remainingPasses - 1
+                pendingGeometryReconcilePasses = max(pendingGeometryReconcilePasses, remainingPasses - 1)
                 DispatchQueue.main.async { [weak self] in
                     self?.runGeometryReconcilePass(generation: generation)
                 }
@@ -2259,13 +2254,9 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         alignTerminalSurfaceGeometry()
         terminalView.fitToSize()
 
-        logger.log(
-            "ghostty-geometry",
-            "pass session=\(configuredSession.id.uuidString) generation=\(generation) remaining=\(remainingPasses - 1) size=\(Int(bounds.width))x\(Int(bounds.height)) term=\(Int(terminalView.bounds.width))x\(Int(terminalView.bounds.height))"
-        )
-
-        if remainingPasses > 1 {
-            pendingGeometryReconcilePasses = remainingPasses - 1
+        let nextPendingPasses = max(pendingGeometryReconcilePasses, remainingPasses - 1)
+        if nextPendingPasses > 0 {
+            pendingGeometryReconcilePasses = nextPendingPasses
             DispatchQueue.main.async { [weak self] in
                 self?.runGeometryReconcilePass(generation: generation)
             }
@@ -2492,8 +2483,16 @@ final class GhosttyTerminalRegistry {
 
     func release(sessionID: UUID) {
         guard let container = containers.removeValue(forKey: sessionID) else {
+            AppDebugLog.shared.log(
+                "ghostty-lifecycle",
+                "release-miss session=\(sessionID.uuidString)"
+            )
             return
         }
+        AppDebugLog.shared.log(
+            "ghostty-lifecycle",
+            "release session=\(sessionID.uuidString) remaining=\(containers.count)"
+        )
         GhosttyTerminalPortalRegistry.detach(hostedView: container)
         container.prepareForPermanentRemoval()
         DmuxTerminalOutputEventEmitter.shared.clear(sessionID: sessionID)
@@ -2510,9 +2509,9 @@ final class GhosttyTerminalRegistry {
         }
     }
 
-    func reconcileGeometry(for sessionIDs: [UUID], reason: String) {
+    func reconcileGeometry(for sessionIDs: [UUID]) {
         for sessionID in sessionIDs {
-            containers[sessionID]?.reconcileGeometry(reason: reason)
+            containers[sessionID]?.reconcileGeometry()
         }
     }
 

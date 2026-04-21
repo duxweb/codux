@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class AISessionStore {
     static let shared = AISessionStore()
+    private let completedPhaseLifetime: TimeInterval = 6
 
     enum State: String, Codable, Equatable, Sendable {
         case idle
@@ -49,7 +50,6 @@ final class AISessionStore {
         var wasInterrupted: Bool
         var hasCompletedTurn: Bool
         var transcriptPath: String?
-        var turnSequence: UInt64
         var notificationType: String?
         var targetToolName: String?
         var interactionMessage: String?
@@ -75,26 +75,18 @@ final class AISessionStore {
         var isLive: Bool {
             !tool.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-    }
 
-    struct CodexPollingTarget: Equatable, Sendable {
-        var terminalID: UUID
-        var projectPath: String
-        var aiSessionID: String
-        var transcriptPath: String?
-        var turnSequence: UInt64
-        var updatedAt: Double
-    }
-
-    struct RuntimeResolution: Equatable, Sendable {
-        var terminalID: UUID
-        var turnSequence: UInt64
-        var updatedAt: Double
-        var model: String?
-        var totalTokens: Int?
-        var transcriptPath: String?
-        var wasInterrupted: Bool
-        var hasCompletedTurn: Bool
+        var isLivePanelEligible: Bool {
+            guard isLive else {
+                return false
+            }
+            switch state {
+            case .responding, .needsInput:
+                return true
+            case .idle:
+                return hasCompletedTurn == false && wasInterrupted == false
+            }
+        }
     }
 
     private let logger = AppDebugLog.shared
@@ -152,53 +144,30 @@ final class AISessionStore {
             return false
         }
 
-        var session = terminalSessionsByID[event.terminalID] ?? TerminalSessionState(
-            terminalID: event.terminalID,
-            terminalInstanceID: normalizedInstanceID,
-            projectID: event.projectID,
-            projectName: event.projectName,
-            projectPath: normalizedNonEmptyString(event.projectPath),
-            sessionTitle: event.sessionTitle,
+        let previousLogicalKey = terminalSessionsByID[event.terminalID]?.logicalSessionKey
+        let previousState = terminalSessionsByID[event.terminalID]
+
+        var session = terminalSessionsByID[event.terminalID] ?? makeFreshSessionState(
+            event: event,
             tool: normalizedTool,
             aiSessionID: normalizedAISessionID,
-            state: .idle,
             model: normalizedModel,
-            baselineTotalTokens: 0,
-            committedTotalTokens: 0,
-            updatedAt: event.updatedAt,
-            startedAt: event.updatedAt,
-            wasInterrupted: false,
-            hasCompletedTurn: false,
-            transcriptPath: normalizedNonEmptyString(event.metadata?.transcriptPath),
-            turnSequence: 0,
-            notificationType: event.metadata?.notificationType,
-            targetToolName: event.metadata?.targetToolName,
-            interactionMessage: event.metadata?.message
+            terminalInstanceID: normalizedInstanceID
         )
 
-        if normalizedInstanceID != nil, session.terminalInstanceID != normalizedInstanceID {
-            session = TerminalSessionState(
-                terminalID: event.terminalID,
-                terminalInstanceID: normalizedInstanceID,
-                projectID: event.projectID,
-                projectName: event.projectName,
-                projectPath: normalizedNonEmptyString(event.projectPath),
-                sessionTitle: event.sessionTitle,
+        if let existing = previousState,
+           shouldResetSessionState(
+               existing: existing,
+               incomingTool: normalizedTool,
+               incomingAISessionID: normalizedAISessionID,
+               incomingTerminalInstanceID: normalizedInstanceID
+           ) {
+            session = makeFreshSessionState(
+                event: event,
                 tool: normalizedTool,
                 aiSessionID: normalizedAISessionID,
-                state: .idle,
                 model: normalizedModel,
-                baselineTotalTokens: 0,
-                committedTotalTokens: 0,
-                updatedAt: event.updatedAt,
-                startedAt: event.updatedAt,
-                wasInterrupted: false,
-                hasCompletedTurn: false,
-                transcriptPath: normalizedNonEmptyString(event.metadata?.transcriptPath),
-                turnSequence: 0,
-                notificationType: event.metadata?.notificationType,
-                targetToolName: event.metadata?.targetToolName,
-                interactionMessage: event.metadata?.message
+                terminalInstanceID: normalizedInstanceID
             )
         }
 
@@ -227,9 +196,6 @@ final class AISessionStore {
             session.aiSessionID = normalizedAISessionID
         }
 
-        let previousLogicalKey = terminalSessionsByID[event.terminalID]?.logicalSessionKey
-        let previousState = terminalSessionsByID[event.terminalID]
-
         switch event.kind {
         case .sessionStarted:
             seedSessionOnStart(&session, event: event)
@@ -241,10 +207,18 @@ final class AISessionStore {
         case .turnCompleted:
             applyTurnCompleted(&session, event: event)
         case .sessionEnded:
-            session.state = .idle
-            session.notificationType = nil
-            session.targetToolName = nil
-            session.interactionMessage = nil
+            terminalSessionsByID[event.terminalID] = nil
+            expectedLogicalSessionsByTerminalID[event.terminalID] = nil
+            pruneLogicalSessionIfUnused(previousLogicalKey ?? session.logicalSessionKey)
+            let didChange = previousState != nil
+            if didChange {
+                renderVersion &+= 1
+                logger.log(
+                    "ai-session-store",
+                    "end terminal=\(event.terminalID.uuidString) tool=\(normalizedTool) external=\(normalizedAISessionID ?? "nil")"
+                )
+            }
+            return didChange
         }
 
         terminalSessionsByID[event.terminalID] = session
@@ -310,45 +284,6 @@ final class AISessionStore {
         return true
     }
 
-    func applyRuntimeResolution(_ resolution: RuntimeResolution, source: String = "polling") -> Bool {
-        guard var session = terminalSessionsByID[resolution.terminalID],
-              canonicalToolName(session.tool) == "codex",
-              session.state == .responding,
-              session.turnSequence == resolution.turnSequence else {
-            return false
-        }
-
-        let previousLogicalKey = session.logicalSessionKey
-        let previousState = session
-        session.state = .idle
-        session.wasInterrupted = resolution.wasInterrupted
-        session.hasCompletedTurn = resolution.hasCompletedTurn
-        session.updatedAt = max(session.updatedAt, resolution.updatedAt)
-        session.model = normalizedNonEmptyString(resolution.model) ?? session.model
-        if let transcriptPath = normalizedNonEmptyString(resolution.transcriptPath) {
-            session.transcriptPath = transcriptPath
-        }
-        session.notificationType = nil
-        session.targetToolName = nil
-        session.interactionMessage = nil
-        session.committedTotalTokens = resolvedCommittedTotalTokens(
-            for: session,
-            incomingTotalTokens: resolution.totalTokens
-        )
-
-        terminalSessionsByID[resolution.terminalID] = session
-        reconcileLogicalSession(for: session, previousLogicalKey: previousLogicalKey)
-        let didChange = previousState != session
-        if didChange {
-            renderVersion &+= 1
-            logger.log(
-                "ai-session-store",
-                "resolve source=\(source) terminal=\(resolution.terminalID.uuidString) tool=\(session.tool) interrupted=\(session.wasInterrupted) completed=\(session.hasCompletedTurn) total=\(session.committedTotalTokens) turn=\(session.turnSequence)"
-            )
-        }
-        return didChange
-    }
-
     func removeTerminal(_ terminalID: UUID) {
         let previousLogicalKey = terminalSessionsByID[terminalID]?.logicalSessionKey
         terminalSessionsByID[terminalID] = nil
@@ -370,57 +305,13 @@ final class AISessionStore {
         terminalSessionsByID[terminalID]?.aiSessionID
     }
 
-    func runtimeContext(for terminalID: UUID) -> AIRuntimeContextSnapshot? {
-        guard let session = terminalSessionsByID[terminalID] else {
-            return nil
-        }
-        return AIRuntimeContextSnapshot(
-            tool: session.tool,
-            externalSessionID: session.aiSessionID,
-            model: session.model,
-            inputTokens: session.committedTotalTokens,
-            outputTokens: 0,
-            totalTokens: session.committedTotalTokens,
-            updatedAt: session.updatedAt,
-            responseState: session.state == .responding ? .responding : .idle,
-            wasInterrupted: session.wasInterrupted,
-            hasCompletedTurn: session.hasCompletedTurn,
-            source: .hook
-        )
-    }
-
     func isRunning(terminalID: UUID) -> Bool {
         terminalSessionsByID[terminalID]?.state == .responding
     }
 
-    func codexPollingTargets() -> [CodexPollingTarget] {
-        terminalSessionsByID.values
-            .filter {
-                canonicalToolName($0.tool) == "codex"
-                    && $0.state == .responding
-                    && normalizedNonEmptyString($0.aiSessionID) != nil
-                    && normalizedNonEmptyString($0.projectPath) != nil
-            }
-            .sorted { $0.updatedAt > $1.updatedAt }
-            .compactMap { session in
-                guard let projectPath = normalizedNonEmptyString(session.projectPath),
-                      let aiSessionID = normalizedNonEmptyString(session.aiSessionID) else {
-                    return nil
-                }
-                return CodexPollingTarget(
-                    terminalID: session.terminalID,
-                    projectPath: projectPath,
-                    aiSessionID: aiSessionID,
-                    transcriptPath: normalizedNonEmptyString(session.transcriptPath),
-                    turnSequence: session.turnSequence,
-                    updatedAt: session.updatedAt
-                )
-            }
-    }
-
     func liveSnapshots(projectID: UUID) -> [AITerminalSessionSnapshot] {
         terminalSessionsByID.values
-            .filter { $0.projectID == projectID && $0.isLive }
+            .filter { $0.projectID == projectID && $0.isLivePanelEligible }
             .sorted { $0.updatedAt > $1.updatedAt }
             .map(snapshot(from:))
     }
@@ -461,17 +352,28 @@ final class AISessionStore {
     }
 
     func projectPhase(projectID: UUID) -> ProjectActivityPhase {
-        if let responding = terminalSessionsByID.values
-            .filter({ $0.projectID == projectID && $0.isLive })
+        let trackedSessions = terminalSessionsByID.values
+            .filter { $0.projectID == projectID && $0.isLive }
             .sorted(by: { $0.updatedAt > $1.updatedAt })
-            .first(where: { $0.state == .responding }) {
+
+        if let responding = trackedSessions.first(where: { $0.state == .responding }) {
             return .running(tool: responding.tool)
         }
-        if let needsInput = terminalSessionsByID.values
-            .filter({ $0.projectID == projectID && $0.isLive })
-            .sorted(by: { $0.updatedAt > $1.updatedAt })
-            .first(where: { $0.state == .needsInput }) {
+        if let needsInput = trackedSessions.first(where: { $0.state == .needsInput }) {
             return .waitingInput(tool: needsInput.tool)
+        }
+        let now = Date().timeIntervalSince1970
+        if let completed = trackedSessions.first(where: {
+            $0.state == .idle
+                && $0.wasInterrupted == false
+                && $0.hasCompletedTurn
+                && now - $0.updatedAt <= completedPhaseLifetime
+        }) {
+            return .completed(
+                tool: completed.tool,
+                finishedAt: Date(timeIntervalSince1970: completed.updatedAt),
+                exitCode: nil
+            )
         }
         return .idle
     }
@@ -519,7 +421,12 @@ final class AISessionStore {
             session.committedTotalTokens = max(session.committedTotalTokens, totalTokens)
             session.baselineTotalTokens = min(session.baselineTotalTokens, session.committedTotalTokens)
         }
+        session.state = .idle
         session.wasInterrupted = false
+        session.hasCompletedTurn = false
+        session.notificationType = nil
+        session.targetToolName = nil
+        session.interactionMessage = nil
     }
 
     private func applyPromptSubmitted(_ session: inout TerminalSessionState, event: AIHookEvent) {
@@ -527,9 +434,6 @@ final class AISessionStore {
         session.state = .responding
         session.wasInterrupted = false
         session.hasCompletedTurn = false
-        if canonicalToolName(event.tool) == "codex" {
-            session.turnSequence &+= 1
-        }
         session.notificationType = nil
         session.targetToolName = nil
         session.interactionMessage = nil
@@ -644,6 +548,62 @@ final class AISessionStore {
             wasInterrupted: session.wasInterrupted,
             hasCompletedTurn: session.hasCompletedTurn
         )
+    }
+
+    private func makeFreshSessionState(
+        event: AIHookEvent,
+        tool: String,
+        aiSessionID: String?,
+        model: String?,
+        terminalInstanceID: String?
+    ) -> TerminalSessionState {
+        TerminalSessionState(
+            terminalID: event.terminalID,
+            terminalInstanceID: terminalInstanceID,
+            projectID: event.projectID,
+            projectName: event.projectName,
+            projectPath: normalizedNonEmptyString(event.projectPath),
+            sessionTitle: event.sessionTitle,
+            tool: tool,
+            aiSessionID: aiSessionID,
+            state: .idle,
+            model: model,
+            baselineTotalTokens: 0,
+            committedTotalTokens: 0,
+            updatedAt: event.updatedAt,
+            startedAt: event.updatedAt,
+            wasInterrupted: false,
+            hasCompletedTurn: false,
+            transcriptPath: normalizedNonEmptyString(event.metadata?.transcriptPath),
+            notificationType: event.metadata?.notificationType,
+            targetToolName: event.metadata?.targetToolName,
+            interactionMessage: event.metadata?.message
+        )
+    }
+
+    private func shouldResetSessionState(
+        existing: TerminalSessionState,
+        incomingTool: String,
+        incomingAISessionID: String?,
+        incomingTerminalInstanceID: String?
+    ) -> Bool {
+        if let incomingTerminalInstanceID,
+           let existingTerminalInstanceID = existing.terminalInstanceID,
+           existingTerminalInstanceID != incomingTerminalInstanceID {
+            return true
+        }
+
+        if existing.tool != incomingTool {
+            return true
+        }
+
+        if let existingSessionID = normalizedNonEmptyString(existing.aiSessionID),
+           let incomingAISessionID,
+           existingSessionID != incomingAISessionID {
+            return true
+        }
+
+        return false
     }
 
     private func canonicalToolName(_ tool: String) -> String {

@@ -1608,7 +1608,6 @@ final class AppModel {
                 workspace.removeSession(sessionID)
             }
             runtimeIngressService.clearLiveState(sessionID: sessionID)
-            runtimeIngressService.clearResponseState(sessionID: sessionID)
             aiStatsStore.handleTerminalSessionClosed(
                 sessionID: sessionID,
                 project: selectedProject,
@@ -1631,7 +1630,6 @@ final class AppModel {
 
             workspace.removeSession(sessionID)
             runtimeIngressService.clearLiveState(sessionID: sessionID)
-            runtimeIngressService.clearResponseState(sessionID: sessionID)
             aiStatsStore.handleTerminalSessionClosed(
                 sessionID: sessionID,
                 project: selectedProject,

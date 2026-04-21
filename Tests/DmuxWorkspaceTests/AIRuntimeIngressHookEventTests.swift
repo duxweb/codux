@@ -41,18 +41,9 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         XCTAssertEqual(snapshot?.outputTokens, 228)
     }
 
-    func testClaudeDriverUsesSnapshotTotalWhenHookPayloadOmitsTokens() async throws {
+    func testClaudeTurnCompletedUsesCurrentSessionFallbackWithoutSnapshotScan() async throws {
         let projectPath = "/tmp/dmux-claude-driver-\(UUID().uuidString)"
         let sessionID = UUID().uuidString.lowercased()
-        let logURL = AIRuntimeSourceLocator.claudeSessionLogURL(projectPath: projectPath, externalSessionID: sessionID)
-        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
-
-        let row = """
-        {"cwd":"\(projectPath)","sessionId":"\(sessionID)","timestamp":"2026-04-21T03:10:47.562Z","type":"assistant","uuid":"row-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"cache_creation_input_tokens":20,"cache_read_input_tokens":30,"output_tokens":40},"stop_reason":"end_turn"}}
-        """
-        try "\(row)\n".write(to: logURL, atomically: true, encoding: .utf8)
-
         let resolved = await ClaudeToolDriver().resolveHookEvent(
             AIHookEvent(
                 kind: .turnCompleted,
@@ -79,15 +70,14 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
                 tool: "claude",
                 aiSessionID: sessionID,
                 state: .responding,
-                model: nil,
+                model: "claude-sonnet-4-6",
                 baselineTotalTokens: 0,
-                committedTotalTokens: 0,
+                committedTotalTokens: 321,
                 updatedAt: 199,
                 startedAt: 198,
                 wasInterrupted: false,
                 hasCompletedTurn: false,
                 transcriptPath: nil,
-                turnSequence: 0,
                 notificationType: nil,
                 targetToolName: nil,
                 interactionMessage: nil
@@ -95,7 +85,63 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         )
 
         XCTAssertEqual(resolved.model, "claude-sonnet-4-6")
-        XCTAssertEqual(resolved.totalTokens, 100)
+        XCTAssertEqual(resolved.totalTokens, 321)
+    }
+
+    func testClaudePromptSubmittedDoesNotWaitForSnapshotTotals() async throws {
+        let projectPath = "/tmp/dmux-claude-driver-fast-\(UUID().uuidString)"
+        let sessionID = UUID().uuidString.lowercased()
+        let logURL = AIRuntimeSourceLocator.claudeSessionLogURL(projectPath: projectPath, externalSessionID: sessionID)
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+
+        let row = """
+        {"cwd":"\(projectPath)","sessionId":"\(sessionID)","timestamp":"2026-04-21T03:10:47.562Z","type":"assistant","uuid":"row-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"cache_creation_input_tokens":20,"cache_read_input_tokens":30,"output_tokens":40},"stop_reason":"end_turn"}}
+        """
+        try "\(row)\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        let resolved = await ClaudeToolDriver().resolveHookEvent(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: UUID(),
+                terminalInstanceID: "instance-1",
+                projectID: UUID(),
+                projectName: "Codux",
+                projectPath: projectPath,
+                sessionTitle: "Claude",
+                tool: "claude",
+                aiSessionID: sessionID,
+                model: nil,
+                totalTokens: nil,
+                updatedAt: 200,
+                metadata: nil
+            ),
+            currentSession: AISessionStore.TerminalSessionState(
+                terminalID: UUID(),
+                terminalInstanceID: "instance-1",
+                projectID: UUID(),
+                projectName: "Codux",
+                projectPath: projectPath,
+                sessionTitle: "Claude",
+                tool: "claude",
+                aiSessionID: sessionID,
+                state: .idle,
+                model: "claude-sonnet-4-6",
+                baselineTotalTokens: 0,
+                committedTotalTokens: 321,
+                updatedAt: 199,
+                startedAt: 198,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                transcriptPath: nil,
+                notificationType: nil,
+                targetToolName: nil,
+                interactionMessage: nil
+            )
+        )
+
+        XCTAssertEqual(resolved.model, "claude-sonnet-4-6")
+        XCTAssertEqual(resolved.totalTokens, 321)
     }
 
     func testAIHookPromptSubmittedUpdatesSessionStore() async throws {

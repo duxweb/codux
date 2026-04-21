@@ -21,24 +21,9 @@ struct ClaudeToolDriver: AIToolDriver {
         let fallbackTotalTokens = currentSession?.committedTotalTokens
         resolvedEvent.model = resolvedEvent.model ?? currentSession?.model
 
-        guard let projectPath = normalizedPath(event.projectPath),
-              let externalSessionID = normalizedString(event.aiSessionID ?? currentSession?.aiSessionID),
-              let snapshot = await ClaudeRuntimeLogCache.shared.snapshot(
-                  projectPath: projectPath,
-                  externalSessionID: externalSessionID
-              ) else {
-            if resolvedEvent.totalTokens == nil {
-                resolvedEvent.totalTokens = fallbackTotalTokens
-            }
-            return resolvedEvent
+        if resolvedEvent.totalTokens == nil {
+            resolvedEvent.totalTokens = fallbackTotalTokens
         }
-
-        resolvedEvent.model = resolvedEvent.model ?? snapshot.model
-        resolvedEvent.totalTokens = max(
-            resolvedEvent.totalTokens ?? 0,
-            fallbackTotalTokens ?? 0,
-            snapshot.totalTokens
-        )
         return resolvedEvent
     }
 
@@ -85,10 +70,6 @@ struct ClaudeToolDriver: AIToolDriver {
             return nil
         }
         return value
-    }
-
-    private func normalizedPath(_ value: String?) -> String? {
-        normalizedString(value)
     }
 
 }

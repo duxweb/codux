@@ -59,12 +59,140 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
         XCTAssertEqual(session.baselineTotalTokens, 12)
         XCTAssertEqual(session.committedTotalTokens, 42)
-        XCTAssertEqual(session.turnSequence, 1)
         XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+        XCTAssertNil(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID))
+    }
 
-        let snapshot = try XCTUnwrap(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID))
-        XCTAssertEqual(snapshot.currentTotalTokens, 42)
-        XCTAssertEqual(snapshot.baselineTotalTokens, 12)
+    func testProjectPhaseReturnsCompletedBrieflyAfterSuccessfulTurn() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: 12,
+                updatedAt: Date().timeIntervalSince1970 - 1,
+                metadata: nil
+            )
+        )
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: 42,
+                updatedAt: Date().timeIntervalSince1970,
+                metadata: .init(wasInterrupted: false, hasCompletedTurn: true)
+            )
+        )
+
+        guard case .completed(let tool, _, let exitCode) = store.projectPhase(projectID: projectID) else {
+            return XCTFail("expected completed project phase")
+        }
+        XCTAssertEqual(tool, "claude")
+        XCTAssertNil(exitCode)
+    }
+
+    func testCompletedTurnIsNotExposedAsLiveSnapshot() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        let now = Date().timeIntervalSince1970
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 12,
+                updatedAt: now - 1,
+                metadata: nil
+            )
+        )
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 42,
+                updatedAt: now,
+                metadata: .init(wasInterrupted: false, hasCompletedTurn: true)
+            )
+        )
+
+        XCTAssertTrue(store.liveSnapshots(projectID: projectID).isEmpty)
+        guard case .completed(let tool, _, _) = store.projectPhase(projectID: projectID) else {
+            return XCTFail("expected completed project phase")
+        }
+        XCTAssertEqual(tool, "codex")
+    }
+
+    func testProjectPhaseDoesNotReturnCompletedForInterruptedTurn() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 12,
+                updatedAt: Date().timeIntervalSince1970 - 1,
+                metadata: nil
+            )
+        )
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 12,
+                updatedAt: Date().timeIntervalSince1970,
+                metadata: .init(wasInterrupted: true, hasCompletedTurn: false)
+            )
+        )
+
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
     }
 
     func testNeedsInputProducesWaitingPhase() throws {
@@ -195,115 +323,6 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertTrue(session.wasInterrupted)
     }
 
-    func testRuntimeResolutionIgnoresStaleTurnSequence() throws {
-        let terminalID = UUID()
-        let projectID = UUID()
-
-        _ = store.apply(
-            AIHookEvent(
-                kind: .promptSubmitted,
-                terminalID: terminalID,
-                terminalInstanceID: "instance-1",
-                projectID: projectID,
-                projectName: "Codux",
-                projectPath: "/tmp/codex-project",
-                sessionTitle: "Terminal",
-                tool: "codex",
-                aiSessionID: "codex-session",
-                model: "gpt-5.4",
-                totalTokens: 8,
-                updatedAt: 100,
-                metadata: nil
-            )
-        )
-        let firstTurn = try XCTUnwrap(store.session(for: terminalID)).turnSequence
-
-        _ = store.apply(
-            AIHookEvent(
-                kind: .promptSubmitted,
-                terminalID: terminalID,
-                terminalInstanceID: "instance-1",
-                projectID: projectID,
-                projectName: "Codux",
-                projectPath: "/tmp/codex-project",
-                sessionTitle: "Terminal",
-                tool: "codex",
-                aiSessionID: "codex-session",
-                model: "gpt-5.4",
-                totalTokens: 9,
-                updatedAt: 101,
-                metadata: nil
-            )
-        )
-
-        XCTAssertFalse(
-            store.applyRuntimeResolution(
-                .init(
-                    terminalID: terminalID,
-                    turnSequence: firstTurn,
-                    updatedAt: 102,
-                    model: "gpt-5.4",
-                    totalTokens: 25,
-                    transcriptPath: "/tmp/old.jsonl",
-                    wasInterrupted: true,
-                    hasCompletedTurn: false
-                )
-            )
-        )
-
-        let session = try XCTUnwrap(store.session(for: terminalID))
-        XCTAssertEqual(session.state, .responding)
-        XCTAssertFalse(session.wasInterrupted)
-        XCTAssertEqual(session.turnSequence, firstTurn + 1)
-    }
-
-    func testRuntimeResolutionCompletesCurrentCodexTurn() throws {
-        let terminalID = UUID()
-        let projectID = UUID()
-
-        _ = store.apply(
-            AIHookEvent(
-                kind: .promptSubmitted,
-                terminalID: terminalID,
-                terminalInstanceID: "instance-1",
-                projectID: projectID,
-                projectName: "Codux",
-                projectPath: "/tmp/codex-project",
-                sessionTitle: "Terminal",
-                tool: "codex",
-                aiSessionID: "codex-session",
-                model: "gpt-5.4",
-                totalTokens: 8,
-                updatedAt: 100,
-                metadata: nil
-            )
-        )
-        let turnSequence = try XCTUnwrap(store.session(for: terminalID)).turnSequence
-
-        XCTAssertTrue(
-            store.applyRuntimeResolution(
-                .init(
-                    terminalID: terminalID,
-                    turnSequence: turnSequence,
-                    updatedAt: 102,
-                    model: "gpt-5.4-mini",
-                    totalTokens: 25,
-                    transcriptPath: "/tmp/codex.jsonl",
-                    wasInterrupted: true,
-                    hasCompletedTurn: false
-                )
-            )
-        )
-
-        let session = try XCTUnwrap(store.session(for: terminalID))
-        XCTAssertEqual(session.state, .idle)
-        XCTAssertTrue(session.wasInterrupted)
-        XCTAssertFalse(session.hasCompletedTurn)
-        XCTAssertEqual(session.committedTotalTokens, 25)
-        XCTAssertEqual(session.transcriptPath, "/tmp/codex.jsonl")
-        XCTAssertEqual(session.model, "gpt-5.4-mini")
-    }
-
     func testStaleTerminalInstanceEventIsIgnored() throws {
         let terminalID = UUID()
         let projectID = UUID()
@@ -349,5 +368,161 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertEqual(session.aiSessionID, "session-new")
         XCTAssertEqual(session.committedTotalTokens, 20)
         XCTAssertEqual(session.state, .responding)
+    }
+
+    func testSwitchingToolOnSameTerminalResetsBaselineAndCommittedTokens() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 14_659,
+                updatedAt: 100,
+                metadata: nil
+            )
+        )
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .sessionStarted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: nil,
+                updatedAt: 101,
+                metadata: nil
+            )
+        )
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: 0,
+                updatedAt: 102,
+                metadata: nil
+            )
+        )
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.tool, "claude")
+        XCTAssertEqual(session.aiSessionID, "claude-session")
+        XCTAssertEqual(session.committedTotalTokens, 0)
+        XCTAssertEqual(session.baselineTotalTokens, 0)
+        XCTAssertEqual(session.state, .responding)
+    }
+
+    func testStartingNewToolOnSameTerminalDoesNotLeakCompletedPreviousToolIntoLiveSnapshots() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 14_659,
+                updatedAt: 100,
+                metadata: .init(wasInterrupted: false, hasCompletedTurn: true)
+            )
+        )
+
+        XCTAssertTrue(store.liveSnapshots(projectID: projectID).isEmpty)
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .sessionStarted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: nil,
+                updatedAt: 101,
+                metadata: nil
+            )
+        )
+
+        let snapshot = try XCTUnwrap(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID))
+        XCTAssertEqual(snapshot.tool, "claude")
+        XCTAssertEqual(snapshot.currentTotalTokens, 0)
+        XCTAssertEqual(snapshot.baselineTotalTokens, 0)
+    }
+
+    func testSessionEndedRemovesLiveTerminalBinding() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Claude",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: 12,
+                updatedAt: 100,
+                metadata: nil
+            )
+        )
+
+        XCTAssertEqual(store.liveSnapshots(projectID: projectID).count, 1)
+
+        XCTAssertTrue(
+            store.apply(
+                AIHookEvent(
+                    kind: .sessionEnded,
+                    terminalID: terminalID,
+                    terminalInstanceID: "instance-1",
+                    projectID: projectID,
+                    projectName: "Codux",
+                    sessionTitle: "Claude",
+                    tool: "claude",
+                    aiSessionID: "claude-session",
+                    model: "claude-sonnet-4-6",
+                    totalTokens: 12,
+                    updatedAt: 101,
+                    metadata: nil
+                )
+            )
+        )
+
+        XCTAssertNil(store.session(for: terminalID))
+        XCTAssertTrue(store.liveSnapshots(projectID: projectID).isEmpty)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
     }
 }

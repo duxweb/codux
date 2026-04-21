@@ -36,7 +36,7 @@ enum TerminalEditingShortcut: CaseIterable {
 protocol DmuxTerminalBackendRegistry: AnyObject {
     func release(sessionID: UUID)
     func beginStructuralResizeTransition(for sessionIDs: [UUID])
-    func reconcileGeometry(for sessionIDs: [UUID], reason: String)
+    func reconcileGeometry(for sessionIDs: [UUID])
     func terminateAll()
     func shellPID(for sessionID: UUID) -> Int32?
     func projectID(for sessionID: UUID) -> UUID?
