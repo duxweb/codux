@@ -6,15 +6,11 @@ struct CodexToolDriver: AIToolDriver {
     let aliases: Set<String> = ["codex"]
     let isRealtimeTool = true
 
-    func matches(tool: String) -> Bool {
-        aliases.contains(tool)
-    }
-
     func resolveHookEvent(
         _ event: AIHookEvent,
         currentSession: AISessionStore.TerminalSessionState?
     ) async -> AIHookEvent {
-        guard canonicalTool(event.tool) == id else {
+        guard canonicalToolName(event.tool) == id else {
             return event
         }
 
@@ -50,6 +46,48 @@ struct CodexToolDriver: AIToolDriver {
             resolvedEvent.updatedAt = max(resolvedEvent.updatedAt, completedAt)
         }
         return resolvedEvent
+    }
+
+    func runtimeSnapshot(
+        for session: AISessionStore.TerminalSessionState
+    ) async -> AIRuntimeContextSnapshot? {
+        guard let projectPath = normalizedNonEmptyString(session.projectPath) else {
+            return nil
+        }
+
+        let fileURL: URL?
+        if let transcriptPath = normalizedNonEmptyString(session.transcriptPath) {
+            fileURL = URL(fileURLWithPath: transcriptPath)
+        } else if let externalSessionID = normalizedNonEmptyString(session.aiSessionID) {
+            fileURL = AIRuntimeSourceLocator.codexRolloutPath(
+                projectPath: projectPath,
+                externalSessionID: externalSessionID
+            )
+        } else {
+            fileURL = nil
+        }
+
+        guard let parsedState = parseCodexSessionRuntimeState(
+            fileURL: fileURL,
+            projectPath: projectPath
+        ) else {
+            return nil
+        }
+
+            return AIRuntimeContextSnapshot(
+            tool: id,
+            externalSessionID: normalizedNonEmptyString(session.aiSessionID),
+            model: parsedState.model ?? session.model,
+            inputTokens: parsedState.totalTokens ?? 0,
+            outputTokens: 0,
+            totalTokens: parsedState.totalTokens ?? 0,
+            updatedAt: parsedState.updatedAt ?? session.updatedAt,
+            responseState: parsedState.responseState,
+            wasInterrupted: parsedState.wasInterrupted,
+            hasCompletedTurn: parsedState.hasCompletedTurn,
+            sessionOrigin: .unknown,
+            source: .probe
+        )
     }
 
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities {
@@ -100,10 +138,6 @@ struct CodexToolDriver: AIToolDriver {
                 throw AIToolSessionControlError.sessionNotFound
             }
         }
-    }
-
-    private func canonicalTool(_ tool: String) -> String {
-        aliases.contains(tool) ? id : tool
     }
 
 }

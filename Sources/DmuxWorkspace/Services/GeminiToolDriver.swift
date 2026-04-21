@@ -5,15 +5,11 @@ struct GeminiToolDriver: AIToolDriver {
     let aliases: Set<String> = ["gemini"]
     let isRealtimeTool = true
 
-    func matches(tool: String) -> Bool {
-        aliases.contains(tool)
-    }
-
     func resolveHookEvent(
         _ event: AIHookEvent,
         currentSession: AISessionStore.TerminalSessionState?
     ) async -> AIHookEvent {
-        guard canonicalTool(event.tool) == id else {
+        guard canonicalToolName(event.tool) == id else {
             return event
         }
 
@@ -21,12 +17,12 @@ struct GeminiToolDriver: AIToolDriver {
         let fallbackTotalTokens = currentSession?.committedTotalTokens
         resolvedEvent.model = resolvedEvent.model ?? currentSession?.model
 
-        guard let projectPath = normalizedSessionID(event.projectPath),
+        guard let projectPath = normalizedNonEmptyString(event.projectPath),
               let parsedState = parseGeminiSessionRuntimeState(
                   projectPath: projectPath,
                   startedAt: currentSession?.startedAt ?? event.updatedAt,
-                  preferredSessionID: normalizedSessionID(event.aiSessionID ?? currentSession?.aiSessionID),
-                  preferredSessionIsAuthoritative: normalizedSessionID(event.aiSessionID ?? currentSession?.aiSessionID) != nil
+                  preferredSessionID: normalizedNonEmptyString(event.aiSessionID ?? currentSession?.aiSessionID),
+                  preferredSessionIsAuthoritative: normalizedNonEmptyString(event.aiSessionID ?? currentSession?.aiSessionID) != nil
               ) else {
             if resolvedEvent.totalTokens == nil {
                 resolvedEvent.totalTokens = fallbackTotalTokens
@@ -34,7 +30,7 @@ struct GeminiToolDriver: AIToolDriver {
             return resolvedEvent
         }
 
-        resolvedEvent.aiSessionID = normalizedSessionID(resolvedEvent.aiSessionID) ?? parsedState.externalSessionID
+        resolvedEvent.aiSessionID = normalizedNonEmptyString(resolvedEvent.aiSessionID) ?? parsedState.externalSessionID
         resolvedEvent.model = resolvedEvent.model ?? parsedState.model
         resolvedEvent.totalTokens = max(
             resolvedEvent.totalTokens ?? 0,
@@ -51,6 +47,35 @@ struct GeminiToolDriver: AIToolDriver {
         return resolvedEvent
     }
 
+    func runtimeSnapshot(
+        for session: AISessionStore.TerminalSessionState
+    ) async -> AIRuntimeContextSnapshot? {
+        guard let projectPath = normalizedNonEmptyString(session.projectPath) else {
+            return nil
+        }
+        guard let parsedState = parseGeminiSessionRuntimeState(
+            projectPath: projectPath,
+            startedAt: session.startedAt,
+            preferredSessionID: normalizedNonEmptyString(session.aiSessionID),
+            preferredSessionIsAuthoritative: normalizedNonEmptyString(session.aiSessionID) != nil
+        ) else {
+            return nil
+        }
+
+        return AIRuntimeContextSnapshot(
+            tool: id,
+            externalSessionID: parsedState.externalSessionID,
+            model: parsedState.model,
+            inputTokens: parsedState.inputTokens,
+            outputTokens: parsedState.outputTokens,
+            totalTokens: parsedState.totalTokens,
+            updatedAt: parsedState.updatedAt,
+            responseState: parsedState.responseState,
+            sessionOrigin: parsedState.origin,
+            source: .probe
+        )
+    }
+
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities {
         let canOpen = !(session.externalSessionID?.isEmpty ?? true)
         return AIToolSessionCapabilities(canOpen: canOpen, canRename: false, canRemove: false)
@@ -61,18 +86,6 @@ struct GeminiToolDriver: AIToolDriver {
             return nil
         }
         return "gemini --resume \(shellQuoted(sessionID))"
-    }
-
-    private func canonicalTool(_ tool: String) -> String {
-        aliases.contains(tool) ? id : tool
-    }
-
-    private func normalizedSessionID(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
     }
 
 }

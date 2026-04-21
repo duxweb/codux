@@ -1,6 +1,15 @@
 import Foundation
 
 struct AIRuntimeBridgeService {
+    private struct ManagedHookSpec {
+        var eventKey: String
+        var action: String
+        var command: String
+        var statusMessage: String
+        var timeout: Int
+        var async: Bool = false
+    }
+
     struct EnvironmentResolution {
         let pairs: [(String, String)]
         let isCacheHit: Bool
@@ -78,12 +87,34 @@ struct AIRuntimeBridgeService {
 
     private static let managedHookBootstrapCoordinator = ManagedHookBootstrapCoordinator()
     private static let environmentCacheCoordinator = EnvironmentCacheCoordinator()
+    private static let passthroughEnvironmentKeys = [
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "TMPDIR",
+        "PWD",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LC_MESSAGES",
+        "LC_COLLATE",
+        "LC_NUMERIC",
+        "LC_TIME",
+        "LC_MONETARY",
+        "LC_MEASUREMENT",
+        "LC_IDENTIFICATION",
+        "LC_PAPER",
+        "LC_NAME",
+        "LC_ADDRESS",
+        "LC_TELEPHONE",
+        "LC_RESPONSETIME",
+        "SSH_AUTH_SOCK",
+        "__CF_USER_TEXT_ENCODING",
+    ]
 
     private let fileManager = FileManager.default
     private let debugLog = AppDebugLog.shared
-    private let claudeManagedHookStatusMessage = "dmux claude live"
-    private let codexManagedHookStatusMessage = "dmux codex live"
-    private let geminiManagedHookStatusMessage = "dmux gemini live"
 
     func runtimeSupportRootURL(createIfNeeded: Bool = true) -> URL {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -107,23 +138,11 @@ struct AIRuntimeBridgeService {
         clearJSONFiles(in: claudeSessionMapDirectoryURL())
     }
 
-    func clearLegacyLiveRuntimeState() {
-        let rootURL = runtimeSupportRootURL(createIfNeeded: false)
-        clearJSONFiles(in: rootURL.appendingPathComponent("ai-usage-live", isDirectory: true))
-        clearJSONFiles(in: rootURL.appendingPathComponent("ai-response-live", isDirectory: true))
-        clearJSONFiles(in: rootURL.appendingPathComponent("ai-usage-inbox", isDirectory: true))
-        clearJSONFiles(in: rootURL.appendingPathComponent("ai-response-inbox", isDirectory: true))
-    }
-
     func runtimeEventSocketURL() -> URL {
         URL(
             fileURLWithPath: "/tmp/\(runtimeSocketFileName())",
             isDirectory: false
         )
-    }
-
-    func environment(for session: TerminalSession) -> [(String, String)] {
-        environmentResolution(for: session).pairs
     }
 
     func environmentResolution(for session: TerminalSession) -> EnvironmentResolution {
@@ -157,34 +176,8 @@ struct AIRuntimeBridgeService {
         debugLog.log("startup-ui", "terminal-env step=session-wrapper session=\(session.id.uuidString)")
         debugLog.log("startup-ui", "terminal-env step=process-environment session=\(session.id.uuidString) count=\(processEnvironment.count)")
 
-        let passthroughKeys = [
-            "HOME",
-            "USER",
-            "LOGNAME",
-            "SHELL",
-            "TMPDIR",
-            "PWD",
-            "LANG",
-            "LC_ALL",
-            "LC_CTYPE",
-            "LC_MESSAGES",
-            "LC_COLLATE",
-            "LC_NUMERIC",
-            "LC_TIME",
-            "LC_MONETARY",
-            "LC_MEASUREMENT",
-            "LC_IDENTIFICATION",
-            "LC_PAPER",
-            "LC_NAME",
-            "LC_ADDRESS",
-            "LC_TELEPHONE",
-            "LC_RESPONSETIME",
-            "SSH_AUTH_SOCK",
-            "__CF_USER_TEXT_ENCODING",
-        ]
-
         var merged: [String: String] = [:]
-        for key in passthroughKeys {
+        for key in Self.passthroughEnvironmentKeys {
             if let value = processEnvironment[key], !value.isEmpty {
                 merged[key] = value
             }
@@ -259,11 +252,28 @@ struct AIRuntimeBridgeService {
             service.debugLog.log("runtime-hooks", "bootstrap step=managed-helper")
             _ = service.managedRuntimeHookHelperURL()
             service.debugLog.log("runtime-hooks", "bootstrap step=claude-hooks")
-            service.ensureClaudeHooksInstalled()
+            service.ensureManagedHookConfig(
+                at: service.claudeSettingsFileURL(),
+                category: "claude-hook-config",
+                invalidDescription: "settings",
+                install: service.installClaudeHooks
+            )
             service.debugLog.log("runtime-hooks", "bootstrap step=codex-hooks")
-            service.ensureCodexHooksInstalled()
+            service.ensureManagedHookConfig(
+                at: service.codexHooksFileURL(),
+                category: "codex-hook-config",
+                invalidDescription: "hooks.json",
+                install: service.installCodexHooks
+            )
+            service.debugLog.log("runtime-hooks", "bootstrap step=codex-config")
+            service.ensureCodexConfigInstalled()
             service.debugLog.log("runtime-hooks", "bootstrap step=gemini-hooks")
-            service.ensureGeminiHooksInstalled()
+            service.ensureManagedHookConfig(
+                at: service.geminiSettingsFileURL(),
+                category: "gemini-hook-config",
+                invalidDescription: "settings",
+                install: service.installGeminiHooks
+            )
             service.debugLog.log("runtime-hooks", "bootstrap complete")
         }) else {
             return
@@ -273,21 +283,19 @@ struct AIRuntimeBridgeService {
     }
 
     private func codexHooksFileURL() -> URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".codex", isDirectory: true)
-            .appendingPathComponent("hooks.json", isDirectory: false)
+        toolConfigFileURL(directoryName: ".codex", filename: "hooks.json")
+    }
+
+    private func codexConfigFileURL() -> URL {
+        toolConfigFileURL(directoryName: ".codex", filename: "config.toml")
     }
 
     private func claudeSettingsFileURL() -> URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".claude", isDirectory: true)
-            .appendingPathComponent("settings.json", isDirectory: false)
+        toolConfigFileURL(directoryName: ".claude", filename: "settings.json")
     }
 
     private func geminiSettingsFileURL() -> URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".gemini", isDirectory: true)
-            .appendingPathComponent("settings.json", isDirectory: false)
+        toolConfigFileURL(directoryName: ".gemini", filename: "settings.json")
     }
 
     func statusDirectoryURL() -> URL {
@@ -295,16 +303,6 @@ struct AIRuntimeBridgeService {
             .appendingPathComponent("agent-status", isDirectory: true)
         try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         return url
-    }
-
-    private func shellHookZshDirectoryURL() -> URL {
-        ensureShellHooksStaged()
-        return stagedShellHooksRootURL().appendingPathComponent("zsh", isDirectory: true)
-    }
-
-    private func shellHookZshScriptURL() -> URL {
-        ensureShellHooksStaged()
-        return stagedShellHooksRootURL().appendingPathComponent("dmux-ai-hook.zsh", isDirectory: false)
     }
 
     private func managedHooksDirectoryURL() -> URL {
@@ -315,7 +313,12 @@ struct AIRuntimeBridgeService {
 
     private func managedRuntimeHookHelperURL() -> URL {
         let destinationURL = managedHooksDirectoryURL().appendingPathComponent("dmux-ai-state.sh", isDirectory: false)
-        stageRuntimeHookResource("scripts/wrappers/dmux-ai-state.sh", to: destinationURL)
+        stageResource(
+            "scripts/wrappers/dmux-ai-state.sh",
+            to: destinationURL,
+            logLabel: "runtime-hook",
+            executable: true
+        )
         return destinationURL
     }
 
@@ -330,11 +333,11 @@ struct AIRuntimeBridgeService {
         try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
         try? fileManager.createDirectory(at: zshDirectoryURL, withIntermediateDirectories: true)
 
-        stageShellHookResource("scripts/shell-hooks/zsh/.zshenv", to: zshDirectoryURL.appendingPathComponent(".zshenv"))
-        stageShellHookResource("scripts/shell-hooks/zsh/.zprofile", to: zshDirectoryURL.appendingPathComponent(".zprofile"))
-        stageShellHookResource("scripts/shell-hooks/zsh/.zshrc", to: zshDirectoryURL.appendingPathComponent(".zshrc"))
-        stageShellHookResource("scripts/shell-hooks/zsh/.zlogin", to: zshDirectoryURL.appendingPathComponent(".zlogin"))
-        stageShellHookResource("scripts/shell-hooks/dmux-ai-hook.zsh", to: rootURL.appendingPathComponent("dmux-ai-hook.zsh"))
+        stageResource("scripts/shell-hooks/zsh/.zshenv", to: zshDirectoryURL.appendingPathComponent(".zshenv"), logLabel: "shell-hook")
+        stageResource("scripts/shell-hooks/zsh/.zprofile", to: zshDirectoryURL.appendingPathComponent(".zprofile"), logLabel: "shell-hook")
+        stageResource("scripts/shell-hooks/zsh/.zshrc", to: zshDirectoryURL.appendingPathComponent(".zshrc"), logLabel: "shell-hook")
+        stageResource("scripts/shell-hooks/zsh/.zlogin", to: zshDirectoryURL.appendingPathComponent(".zlogin"), logLabel: "shell-hook")
+        stageResource("scripts/shell-hooks/dmux-ai-hook.zsh", to: rootURL.appendingPathComponent("dmux-ai-hook.zsh"), logLabel: "shell-hook")
     }
 
     private func preparedShellHookPaths() -> (zdotdirPath: String, scriptPath: String)? {
@@ -348,14 +351,14 @@ struct AIRuntimeBridgeService {
     }
 
     private func preparedStatusDirectoryPath() -> String? {
-        let url = runtimeSupportRootURL(createIfNeeded: false)
-            .appendingPathComponent("agent-status", isDirectory: true)
-        return fileManager.fileExists(atPath: url.path) ? url.path : nil
+        optionalExistingDirectoryPath(
+            runtimeSupportRootURL(createIfNeeded: false)
+                .appendingPathComponent("agent-status", isDirectory: true)
+        )
     }
 
     private func preparedClaudeSessionMapDirectoryPath() -> String? {
-        let url = claudeSessionMapDirectoryURL(createIfNeeded: false)
-        return fileManager.fileExists(atPath: url.path) ? url.path : nil
+        optionalExistingDirectoryPath(claudeSessionMapDirectoryURL(createIfNeeded: false))
     }
 
     private func runtimeSupportDirectoryName() -> String {
@@ -410,33 +413,7 @@ struct AIRuntimeBridgeService {
         shellHookPaths: (zdotdirPath: String, scriptPath: String)?,
         logFilePath: String
     ) -> String {
-        let passthroughKeys = [
-            "HOME",
-            "USER",
-            "LOGNAME",
-            "SHELL",
-            "TMPDIR",
-            "PWD",
-            "LANG",
-            "LC_ALL",
-            "LC_CTYPE",
-            "LC_MESSAGES",
-            "LC_COLLATE",
-            "LC_NUMERIC",
-            "LC_TIME",
-            "LC_MONETARY",
-            "LC_MEASUREMENT",
-            "LC_IDENTIFICATION",
-            "LC_PAPER",
-            "LC_NAME",
-            "LC_ADDRESS",
-            "LC_TELEPHONE",
-            "LC_RESPONSETIME",
-            "SSH_AUTH_SOCK",
-            "__CF_USER_TEXT_ENCODING",
-        ]
-
-        let processSignature = passthroughKeys
+        let processSignature = Self.passthroughEnvironmentKeys
             .map { key in "\(key)=\(processEnvironment[key] ?? "")" }
             .joined(separator: "|")
 
@@ -459,579 +436,363 @@ struct AIRuntimeBridgeService {
         ].joined(separator: "\u{1F}")
     }
 
-    private func ensureCodexHooksInstalled() {
-        let hooksFileURL = codexHooksFileURL()
-        let hooksDirectoryURL = hooksFileURL.deletingLastPathComponent()
+    private func ensureCodexConfigInstalled() {
+        let configFileURL = codexConfigFileURL()
+        let configDirectoryURL = configFileURL.deletingLastPathComponent()
+        try? fileManager.createDirectory(at: configDirectoryURL, withIntermediateDirectories: true)
 
-        try? fileManager.createDirectory(at: hooksDirectoryURL, withIntermediateDirectories: true)
+        let existingText = (try? String(contentsOf: configFileURL, encoding: .utf8)) ?? ""
+        let targetLine = "suppress_unstable_features_warning = true"
+        let updatedText: String
 
-        var rootObject: [String: Any] = [:]
-        if let existingData = try? Data(contentsOf: hooksFileURL),
-           !existingData.isEmpty {
-            guard let jsonObject = try? JSONSerialization.jsonObject(with: existingData),
-                  let dictionary = jsonObject as? [String: Any] else {
-                let backupURL = backupInvalidJSONFile(at: hooksFileURL)
-                debugLog.log(
-                    "codex-hook-config",
-                    "recovered invalid hooks.json path=\(hooksFileURL.path) backup=\(backupURL?.lastPathComponent ?? "nil")"
-                )
-                rootObject = [:]
-                installCodexHooks(&rootObject)
-                return
-            }
-            rootObject = dictionary
+        if existingText.range(
+            of: #"(?m)^\s*suppress_unstable_features_warning\s*=\s*.+$"#,
+            options: .regularExpression
+        ) != nil {
+            updatedText = existingText.replacingOccurrences(
+                of: #"(?m)^\s*suppress_unstable_features_warning\s*=\s*.+$"#,
+                with: targetLine,
+                options: .regularExpression
+            )
+        } else if existingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            updatedText = "\(targetLine)\n"
+        } else {
+            let suffix = existingText.hasSuffix("\n") ? "" : "\n"
+            updatedText = "\(existingText)\(suffix)\(targetLine)\n"
         }
 
-        installCodexHooks(&rootObject)
-    }
-
-    private func ensureClaudeHooksInstalled() {
-        let settingsFileURL = claudeSettingsFileURL()
-        let settingsDirectoryURL = settingsFileURL.deletingLastPathComponent()
-
-        try? fileManager.createDirectory(at: settingsDirectoryURL, withIntermediateDirectories: true)
-
-        var rootObject: [String: Any] = [:]
-        if let existingData = try? Data(contentsOf: settingsFileURL),
-           !existingData.isEmpty {
-            guard let jsonObject = try? JSONSerialization.jsonObject(with: existingData),
-                  let dictionary = jsonObject as? [String: Any] else {
-                let backupURL = backupInvalidJSONFile(at: settingsFileURL)
-                debugLog.log(
-                    "claude-hook-config",
-                    "recovered invalid settings path=\(settingsFileURL.path) backup=\(backupURL?.lastPathComponent ?? "nil")"
-                )
-                rootObject = [:]
-                installClaudeHooks(&rootObject)
-                return
-            }
-            rootObject = dictionary
+        guard updatedText != existingText else {
+            return
         }
 
-        installClaudeHooks(&rootObject)
+        do {
+            try updatedText.write(to: configFileURL, atomically: true, encoding: .utf8)
+            debugLog.log("codex-hook-config", "updated config path=\(configFileURL.path)")
+        } catch {
+            debugLog.log("codex-hook-config", "config write failed path=\(configFileURL.path) error=\(error.localizedDescription)")
+        }
     }
 
     private func installClaudeHooks(_ rootObject: inout [String: Any]) {
-        let settingsFileURL = claudeSettingsFileURL()
-        let helperScriptURL = managedRuntimeHookHelperURL()
-
-        var hooksObject = rootObject["hooks"] as? [String: Any] ?? [:]
-        hooksObject["SessionStart"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["SessionStart"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "session-start"),
-            action: "session-start",
-            helperScriptURL: helperScriptURL,
-            timeout: 10
+        installManagedHooks(
+            &rootObject,
+            fileURL: claudeSettingsFileURL(),
+            tool: "claude",
+            category: "claude-hook-config",
+            description: "settings",
+            definitions: [
+                ("SessionStart", "session-start", 10, false),
+                ("UserPromptSubmit", "prompt-submit", 10, false),
+                ("Stop", "stop", 10, false),
+                ("StopFailure", "stop-failure", 10, false),
+                ("SessionEnd", "session-end", 1, false),
+                ("PreToolUse", "pre-tool-use", 5, true),
+                ("PostToolUse", "post-tool-use", 5, true),
+                ("PostToolUseFailure", "post-tool-use-failure", 5, true),
+                ("PermissionRequest", "permission-request", 5, true),
+                ("PermissionDenied", "permission-denied", 5, true),
+                ("Elicitation", "elicitation", 10, false),
+                ("ElicitationResult", "elicitation-result", 10, false),
+            ],
+            notificationActionToStrip: "notification"
         )
-        hooksObject["UserPromptSubmit"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["UserPromptSubmit"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "prompt-submit"),
-            action: "prompt-submit",
-            helperScriptURL: helperScriptURL,
-            timeout: 10
-        )
-        hooksObject["Stop"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["Stop"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "stop"),
-            action: "stop",
-            helperScriptURL: helperScriptURL,
-            timeout: 10
-        )
-        hooksObject["StopFailure"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["StopFailure"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "stop-failure"),
-            action: "stop-failure",
-            helperScriptURL: helperScriptURL,
-            timeout: 10
-        )
-        hooksObject["SessionEnd"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["SessionEnd"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "session-end"),
-            action: "session-end",
-            helperScriptURL: helperScriptURL,
-            timeout: 1
-        )
-        hooksObject["PreToolUse"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["PreToolUse"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "pre-tool-use"),
-            action: "pre-tool-use",
-            helperScriptURL: helperScriptURL,
-            timeout: 5,
-            async: true
-        )
-        hooksObject["PostToolUse"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["PostToolUse"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "post-tool-use"),
-            action: "post-tool-use",
-            helperScriptURL: helperScriptURL,
-            timeout: 5,
-            async: true
-        )
-        hooksObject["PostToolUseFailure"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["PostToolUseFailure"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "post-tool-use-failure"),
-            action: "post-tool-use-failure",
-            helperScriptURL: helperScriptURL,
-            timeout: 5,
-            async: true
-        )
-        hooksObject["PermissionRequest"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["PermissionRequest"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "permission-request"),
-            action: "permission-request",
-            helperScriptURL: helperScriptURL,
-            timeout: 5,
-            async: true
-        )
-        hooksObject["PermissionDenied"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["PermissionDenied"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "permission-denied"),
-            action: "permission-denied",
-            helperScriptURL: helperScriptURL,
-            timeout: 5,
-            async: true
-        )
-        hooksObject["Notification"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["Notification"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "notification"),
-            action: "notification",
-            helperScriptURL: helperScriptURL,
-            timeout: 10
-        )
-        hooksObject["Elicitation"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["Elicitation"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "elicitation"),
-            action: "elicitation",
-            helperScriptURL: helperScriptURL,
-            timeout: 10
-        )
-        hooksObject["ElicitationResult"] = mergedClaudeHookGroups(
-            existingValue: hooksObject["ElicitationResult"],
-            command: claudeHookCommand(helperScriptURL: helperScriptURL, action: "elicitation-result"),
-            action: "elicitation-result",
-            helperScriptURL: helperScriptURL,
-            timeout: 10
-        )
-        rootObject["hooks"] = hooksObject
-
-        guard JSONSerialization.isValidJSONObject(rootObject),
-              let data = try? JSONSerialization.data(withJSONObject: rootObject, options: [.prettyPrinted, .sortedKeys]) else {
-            debugLog.log("claude-hook-config", "failed to encode settings path=\(settingsFileURL.path)")
-            return
-        }
-
-        if let existingData = try? Data(contentsOf: settingsFileURL),
-           existingData == data {
-            return
-        }
-
-        do {
-            try data.write(to: settingsFileURL, options: .atomic)
-            debugLog.log("claude-hook-config", "installed hooks path=\(settingsFileURL.path)")
-        } catch {
-            debugLog.log("claude-hook-config", "write failed path=\(settingsFileURL.path) error=\(error.localizedDescription)")
-        }
     }
 
     private func installCodexHooks(_ rootObject: inout [String: Any]) {
-        let hooksFileURL = codexHooksFileURL()
-        let helperScriptURL = managedRuntimeHookHelperURL()
-        let sessionStartCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-session-start")
-        let promptSubmitCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-prompt-submit")
-        let preToolUseCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-pre-tool-use")
-        let postToolUseCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-post-tool-use")
-        let stopCommand = codexHookCommand(helperScriptURL: helperScriptURL, action: "codex-stop")
-
-        var hooksObject = rootObject["hooks"] as? [String: Any] ?? [:]
-        hooksObject["SessionStart"] = mergedCodexHookGroups(
-            existingValue: hooksObject["SessionStart"],
-            command: sessionStartCommand,
-            action: "codex-session-start",
-            helperScriptURL: helperScriptURL
+        installManagedHooks(
+            &rootObject,
+            fileURL: codexHooksFileURL(),
+            tool: "codex",
+            category: "codex-hook-config",
+            description: "hooks.json",
+            definitions: [
+                ("SessionStart", "codex-session-start", 1000, false),
+                ("UserPromptSubmit", "codex-prompt-submit", 1000, false),
+                ("PreToolUse", "codex-pre-tool-use", 1000, false),
+                ("PostToolUse", "codex-post-tool-use", 1000, false),
+                ("Stop", "codex-stop", 1000, false),
+            ]
         )
-        hooksObject["UserPromptSubmit"] = mergedCodexHookGroups(
-            existingValue: hooksObject["UserPromptSubmit"],
-            command: promptSubmitCommand,
-            action: "codex-prompt-submit",
-            helperScriptURL: helperScriptURL
-        )
-        hooksObject["PreToolUse"] = mergedCodexHookGroups(
-            existingValue: hooksObject["PreToolUse"],
-            command: preToolUseCommand,
-            action: "codex-pre-tool-use",
-            helperScriptURL: helperScriptURL
-        )
-        hooksObject["PostToolUse"] = mergedCodexHookGroups(
-            existingValue: hooksObject["PostToolUse"],
-            command: postToolUseCommand,
-            action: "codex-post-tool-use",
-            helperScriptURL: helperScriptURL
-        )
-        hooksObject["Stop"] = mergedCodexHookGroups(
-            existingValue: hooksObject["Stop"],
-            command: stopCommand,
-            action: "codex-stop",
-            helperScriptURL: helperScriptURL
-        )
-        rootObject["hooks"] = hooksObject
-
-        guard JSONSerialization.isValidJSONObject(rootObject),
-              let data = try? JSONSerialization.data(withJSONObject: rootObject, options: [.prettyPrinted, .sortedKeys]) else {
-            debugLog.log("codex-hook-config", "failed to encode hooks.json path=\(hooksFileURL.path)")
-            return
-        }
-
-        if let existingData = try? Data(contentsOf: hooksFileURL),
-           existingData == data {
-            return
-        }
-
-        do {
-            try data.write(to: hooksFileURL, options: .atomic)
-            debugLog.log("codex-hook-config", "installed hooks path=\(hooksFileURL.path)")
-        } catch {
-            debugLog.log("codex-hook-config", "write failed path=\(hooksFileURL.path) error=\(error.localizedDescription)")
-        }
     }
 
-    private func ensureGeminiHooksInstalled() {
-        let settingsFileURL = geminiSettingsFileURL()
-        let settingsDirectoryURL = settingsFileURL.deletingLastPathComponent()
-
-        try? fileManager.createDirectory(at: settingsDirectoryURL, withIntermediateDirectories: true)
-
-        var rootObject: [String: Any] = [:]
-        if let existingData = try? Data(contentsOf: settingsFileURL),
-           !existingData.isEmpty {
-            guard let jsonObject = try? JSONSerialization.jsonObject(with: existingData),
-                  let dictionary = jsonObject as? [String: Any] else {
-                let backupURL = backupInvalidJSONFile(at: settingsFileURL)
-                debugLog.log(
-                    "gemini-hook-config",
-                    "recovered invalid settings path=\(settingsFileURL.path) backup=\(backupURL?.lastPathComponent ?? "nil")"
-                )
-                rootObject = [:]
-                installGeminiHooks(&rootObject)
-                return
-            }
-            rootObject = dictionary
-        }
-
-        installGeminiHooks(&rootObject)
+    private func ensureManagedHookConfig(
+        at fileURL: URL,
+        category: String,
+        invalidDescription: String,
+        install: (inout [String: Any]) -> Void
+    ) {
+        try? fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var rootObject = loadJSONObjectConfig(
+            at: fileURL,
+            category: category,
+            invalidDescription: invalidDescription
+        )
+        install(&rootObject)
     }
 
     private func installGeminiHooks(_ rootObject: inout [String: Any]) {
-        let settingsFileURL = geminiSettingsFileURL()
+        installManagedHooks(
+            &rootObject,
+            fileURL: geminiSettingsFileURL(),
+            tool: "gemini",
+            category: "gemini-hook-config",
+            description: "settings",
+            definitions: [
+                ("SessionStart", "session-start", 5000, false),
+                ("BeforeAgent", "before-agent", 5000, false),
+                ("AfterAgent", "after-agent", 5000, false),
+                ("Notification", "notification", 5000, false),
+                ("SessionEnd", "session-end", 5000, false),
+            ]
+        )
+    }
+
+    private func installManagedHooks(
+        _ rootObject: inout [String: Any],
+        fileURL: URL,
+        tool: String,
+        category: String,
+        description: String,
+        definitions: [(eventKey: String, action: String, timeout: Int, async: Bool)],
+        notificationActionToStrip: String? = nil
+    ) {
         let helperScriptURL = managedRuntimeHookHelperURL()
-        let sessionStartCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "session-start")
-        let beforeAgentCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "before-agent")
-        let afterAgentCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "after-agent")
-        let notificationCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "notification")
-        let sessionEndCommand = geminiHookCommand(helperScriptURL: helperScriptURL, action: "session-end")
-
+        let statusMessage = "dmux \(tool) live"
         var hooksObject = rootObject["hooks"] as? [String: Any] ?? [:]
-        hooksObject["SessionStart"] = mergedGeminiHookGroups(
-            existingValue: hooksObject["SessionStart"],
-            command: sessionStartCommand,
-            action: "session-start",
-            helperScriptURL: helperScriptURL
+        let specs = managedHookSpecs(
+            tool: tool,
+            statusMessage: statusMessage,
+            helperScriptURL: helperScriptURL,
+            definitions: definitions
         )
-        hooksObject["BeforeAgent"] = mergedGeminiHookGroups(
-            existingValue: hooksObject["BeforeAgent"],
-            command: beforeAgentCommand,
-            action: "before-agent",
-            helperScriptURL: helperScriptURL
-        )
-        hooksObject["AfterAgent"] = mergedGeminiHookGroups(
-            existingValue: hooksObject["AfterAgent"],
-            command: afterAgentCommand,
-            action: "after-agent",
-            helperScriptURL: helperScriptURL
-        )
-        hooksObject["Notification"] = mergedGeminiHookGroups(
-            existingValue: hooksObject["Notification"],
-            command: notificationCommand,
-            action: "notification",
-            helperScriptURL: helperScriptURL
-        )
-        hooksObject["SessionEnd"] = mergedGeminiHookGroups(
-            existingValue: hooksObject["SessionEnd"],
-            command: sessionEndCommand,
-            action: "session-end",
-            helperScriptURL: helperScriptURL
-        )
-        rootObject["hooks"] = hooksObject
+        applyManagedHookSpecs(specs, to: &hooksObject, helperScriptURL: helperScriptURL)
 
+        if let notificationActionToStrip {
+            let notificationHookGroups = strippedManagedHookGroups(
+                existingValue: hooksObject["Notification"],
+                action: notificationActionToStrip,
+                helperScriptURL: helperScriptURL,
+                statusMessage: statusMessage
+            )
+            if notificationHookGroups.isEmpty {
+                hooksObject.removeValue(forKey: "Notification")
+            } else {
+                hooksObject["Notification"] = notificationHookGroups
+            }
+        }
+
+        rootObject["hooks"] = hooksObject
+        writeJSONObjectConfig(rootObject, to: fileURL, category: category, description: description)
+    }
+
+    private func applyManagedHookSpecs(
+        _ specs: [ManagedHookSpec],
+        to hooksObject: inout [String: Any],
+        helperScriptURL: URL
+    ) {
+        for spec in specs {
+            hooksObject[spec.eventKey] = mergedManagedHookGroups(
+                existingValue: hooksObject[spec.eventKey],
+                spec: spec,
+                helperScriptURL: helperScriptURL
+            )
+        }
+    }
+
+    private func managedHookSpecs(
+        tool: String,
+        statusMessage: String,
+        helperScriptURL: URL,
+        definitions: [(eventKey: String, action: String, timeout: Int, async: Bool)]
+    ) -> [ManagedHookSpec] {
+        definitions.map { definition in
+            ManagedHookSpec(
+                eventKey: definition.eventKey,
+                action: definition.action,
+                command: hookCommand(
+                    helperScriptURL: helperScriptURL,
+                    action: definition.action,
+                    tool: tool
+                ),
+                statusMessage: statusMessage,
+                timeout: definition.timeout,
+                async: definition.async
+            )
+        }
+    }
+
+    private func mergedManagedHookGroups(
+        existingValue: Any?,
+        spec: ManagedHookSpec,
+        helperScriptURL: URL
+    ) -> [[String: Any]] {
+        let nextGroups = strippedManagedHookGroups(
+            existingValue: existingValue,
+            action: spec.action,
+            helperScriptURL: helperScriptURL,
+            statusMessage: spec.statusMessage
+        )
+
+        var hook: [String: Any] = [
+            "type": "command",
+            "command": spec.command,
+            "timeout": spec.timeout,
+            "statusMessage": spec.statusMessage,
+        ]
+        if spec.async {
+            hook["async"] = true
+        }
+
+        return nextGroups + [[
+            "matcher": "",
+            "hooks": [hook],
+        ]]
+    }
+
+    private func strippedManagedHookGroups(
+        existingValue: Any?,
+        action: String,
+        helperScriptURL: URL,
+        statusMessage: String
+    ) -> [[String: Any]] {
+        let existingGroups = existingValue as? [[String: Any]] ?? []
+        return existingGroups.compactMap { group in
+            let hooks = group["hooks"] as? [[String: Any]] ?? []
+            let filteredHooks = hooks.filter { hook in
+                !isManagedHook(
+                    hook,
+                    action: action,
+                    helperScriptURL: helperScriptURL,
+                    statusMessage: statusMessage
+                )
+            }
+
+            guard !filteredHooks.isEmpty else {
+                return nil
+            }
+
+            var nextGroup = group
+            nextGroup["hooks"] = filteredHooks
+            return nextGroup
+        }
+    }
+
+    private func isManagedHook(
+        _ hook: [String: Any],
+        action: String,
+        helperScriptURL: URL,
+        statusMessage expectedStatusMessage: String
+    ) -> Bool {
+        if let statusMessage = hook["statusMessage"] as? String,
+           statusMessage == expectedStatusMessage {
+            return true
+        }
+
+        guard let type = hook["type"] as? String,
+              type == "command",
+              let command = hook["command"] as? String else {
+            return false
+        }
+
+        return command.contains(helperScriptURL.path) && command.contains(action)
+    }
+
+    private func hookCommand(helperScriptURL: URL, action: String, tool: String) -> String {
+        [
+            shellQuoted(helperScriptURL.path),
+            shellQuoted(action),
+            shellQuoted(tool),
+        ].joined(separator: " ")
+    }
+
+    private func toolConfigFileURL(directoryName: String, filename: String) -> URL {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(directoryName, isDirectory: true)
+            .appendingPathComponent(filename, isDirectory: false)
+    }
+
+    private func loadJSONObjectConfig(
+        at fileURL: URL,
+        category: String,
+        invalidDescription: String
+    ) -> [String: Any] {
+        guard let existingData = try? Data(contentsOf: fileURL),
+              !existingData.isEmpty else {
+            return [:]
+        }
+
+        guard let jsonObject = try? JSONSerialization.jsonObject(with: existingData),
+              let dictionary = jsonObject as? [String: Any] else {
+            let backupURL = backupInvalidJSONFile(at: fileURL)
+            debugLog.log(
+                category,
+                "recovered invalid \(invalidDescription) path=\(fileURL.path) backup=\(backupURL?.lastPathComponent ?? "nil")"
+            )
+            return [:]
+        }
+
+        return dictionary
+    }
+
+    private func writeJSONObjectConfig(
+        _ rootObject: [String: Any],
+        to fileURL: URL,
+        category: String,
+        description: String
+    ) {
         guard JSONSerialization.isValidJSONObject(rootObject),
               let data = try? JSONSerialization.data(withJSONObject: rootObject, options: [.prettyPrinted, .sortedKeys]) else {
-            debugLog.log("gemini-hook-config", "failed to encode settings path=\(settingsFileURL.path)")
+            debugLog.log(category, "failed to encode \(description) path=\(fileURL.path)")
             return
         }
 
-        if let existingData = try? Data(contentsOf: settingsFileURL),
+        if let existingData = try? Data(contentsOf: fileURL),
            existingData == data {
             return
         }
 
         do {
-            try data.write(to: settingsFileURL, options: .atomic)
-            debugLog.log("gemini-hook-config", "installed hooks path=\(settingsFileURL.path)")
+            try data.write(to: fileURL, options: .atomic)
+            debugLog.log(category, "installed hooks path=\(fileURL.path)")
         } catch {
-            debugLog.log("gemini-hook-config", "write failed path=\(settingsFileURL.path) error=\(error.localizedDescription)")
+            debugLog.log(category, "write failed path=\(fileURL.path) error=\(error.localizedDescription)")
         }
-    }
-
-    private func mergedCodexHookGroups(
-        existingValue: Any?,
-        command: String,
-        action: String,
-        helperScriptURL: URL
-    ) -> [[String: Any]] {
-        let existingGroups = existingValue as? [[String: Any]] ?? []
-        var nextGroups: [[String: Any]] = []
-
-        for group in existingGroups {
-            var nextGroup = group
-            let hooks = group["hooks"] as? [[String: Any]] ?? []
-            let filteredHooks = hooks.filter { hook in
-                !isManagedCodexHook(
-                    hook,
-                    action: action,
-                    helperScriptURL: helperScriptURL
-                )
-            }
-
-            guard !filteredHooks.isEmpty else {
-                continue
-            }
-
-            nextGroup["hooks"] = filteredHooks
-            nextGroups.append(nextGroup)
-        }
-
-        nextGroups.append([
-            "matcher": "",
-            "hooks": [[
-                "type": "command",
-                "command": command,
-                "timeout": 1000,
-                "statusMessage": codexManagedHookStatusMessage,
-            ]],
-        ])
-
-        return nextGroups
-    }
-
-    private func isManagedCodexHook(
-        _ hook: [String: Any],
-        action: String,
-        helperScriptURL: URL
-    ) -> Bool {
-        if let statusMessage = hook["statusMessage"] as? String,
-           statusMessage == codexManagedHookStatusMessage {
-            return true
-        }
-
-        guard let type = hook["type"] as? String,
-              type == "command",
-              let command = hook["command"] as? String else {
-            return false
-        }
-
-        return command.contains(helperScriptURL.path) && command.contains(action)
-    }
-
-    private func mergedClaudeHookGroups(
-        existingValue: Any?,
-        command: String,
-        action: String,
-        helperScriptURL: URL,
-        timeout: Int,
-        async: Bool = false
-    ) -> [[String: Any]] {
-        let existingGroups = existingValue as? [[String: Any]] ?? []
-        var nextGroups: [[String: Any]] = []
-
-        for group in existingGroups {
-            var nextGroup = group
-            let hooks = group["hooks"] as? [[String: Any]] ?? []
-            let filteredHooks = hooks.filter { hook in
-                !isManagedClaudeHook(
-                    hook,
-                    action: action,
-                    helperScriptURL: helperScriptURL
-                )
-            }
-
-            guard !filteredHooks.isEmpty else {
-                continue
-            }
-
-            nextGroup["hooks"] = filteredHooks
-            nextGroups.append(nextGroup)
-        }
-
-        var hook: [String: Any] = [
-            "type": "command",
-            "command": command,
-            "timeout": timeout,
-            "statusMessage": claudeManagedHookStatusMessage,
-        ]
-        if async {
-            hook["async"] = true
-        }
-
-        nextGroups.append([
-            "matcher": "",
-            "hooks": [hook],
-        ])
-
-        return nextGroups
-    }
-
-    private func isManagedClaudeHook(
-        _ hook: [String: Any],
-        action: String,
-        helperScriptURL: URL
-    ) -> Bool {
-        if let statusMessage = hook["statusMessage"] as? String,
-           statusMessage == claudeManagedHookStatusMessage {
-            return true
-        }
-
-        guard let type = hook["type"] as? String,
-              type == "command",
-              let command = hook["command"] as? String else {
-            return false
-        }
-
-        return command.contains(helperScriptURL.path) && command.contains(action)
-    }
-
-    private func mergedGeminiHookGroups(
-        existingValue: Any?,
-        command: String,
-        action: String,
-        helperScriptURL: URL
-    ) -> [[String: Any]] {
-        let existingGroups = existingValue as? [[String: Any]] ?? []
-        var nextGroups: [[String: Any]] = []
-
-        for group in existingGroups {
-            var nextGroup = group
-            let hooks = group["hooks"] as? [[String: Any]] ?? []
-            let filteredHooks = hooks.filter { hook in
-                !isManagedGeminiHook(
-                    hook,
-                    action: action,
-                    helperScriptURL: helperScriptURL
-                )
-            }
-
-            guard !filteredHooks.isEmpty else {
-                continue
-            }
-
-            nextGroup["hooks"] = filteredHooks
-            nextGroups.append(nextGroup)
-        }
-
-        nextGroups.append([
-            "matcher": "",
-            "hooks": [[
-                "type": "command",
-                "command": command,
-                "timeout": 5000,
-                "statusMessage": geminiManagedHookStatusMessage,
-            ]],
-        ])
-
-        return nextGroups
-    }
-
-    private func isManagedGeminiHook(
-        _ hook: [String: Any],
-        action: String,
-        helperScriptURL: URL
-    ) -> Bool {
-        if let statusMessage = hook["statusMessage"] as? String,
-           statusMessage == geminiManagedHookStatusMessage {
-            return true
-        }
-
-        guard let type = hook["type"] as? String,
-              type == "command",
-              let command = hook["command"] as? String else {
-            return false
-        }
-
-        return command.contains(helperScriptURL.path) && command.contains(action)
-    }
-
-    private func codexHookCommand(helperScriptURL: URL, action: String) -> String {
-        [
-            shellQuoted(helperScriptURL.path),
-            shellQuoted(action),
-            shellQuoted("codex"),
-        ].joined(separator: " ")
-    }
-
-    private func geminiHookCommand(helperScriptURL: URL, action: String) -> String {
-        [
-            shellQuoted(helperScriptURL.path),
-            shellQuoted(action),
-            shellQuoted("gemini"),
-        ].joined(separator: " ")
-    }
-
-    private func claudeHookCommand(helperScriptURL: URL, action: String) -> String {
-        [
-            shellQuoted(helperScriptURL.path),
-            shellQuoted(action),
-            shellQuoted("claude"),
-        ].joined(separator: " ")
     }
 
     private func shellQuoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    private func stageShellHookResource(_ relativePath: String, to destinationURL: URL) {
-        let sourceURL = WorkspacePaths.repositoryResourceURL(relativePath)
-        debugLog.log("runtime-hooks", "stage-shell-hook source=\(relativePath)")
-        guard let contentData = try? Data(contentsOf: sourceURL) else {
-            debugLog.log("runtime-hooks", "stage-shell-hook missing source=\(relativePath)")
-            return
-        }
-        if let existingData = try? Data(contentsOf: destinationURL),
-           existingData == contentData {
-            debugLog.log("runtime-hooks", "stage-shell-hook unchanged source=\(relativePath)")
-            return
-        }
-        try? fileManager.removeItem(at: destinationURL)
-        try? contentData.write(to: destinationURL, options: .atomic)
-        debugLog.log("runtime-hooks", "stage-shell-hook wrote source=\(relativePath)")
+    private func optionalExistingDirectoryPath(_ url: URL) -> String? {
+        fileManager.fileExists(atPath: url.path) ? url.path : nil
     }
 
-    private func stageRuntimeHookResource(_ relativePath: String, to destinationURL: URL) {
+    private func stageResource(
+        _ relativePath: String,
+        to destinationURL: URL,
+        logLabel: String,
+        executable: Bool = false
+    ) {
         let sourceURL = WorkspacePaths.repositoryResourceURL(relativePath)
-        debugLog.log("runtime-hooks", "stage-runtime-hook source=\(relativePath)")
+        debugLog.log("runtime-hooks", "stage-\(logLabel) source=\(relativePath)")
         guard let contentData = try? Data(contentsOf: sourceURL) else {
-            debugLog.log("runtime-hooks", "stage-runtime-hook missing source=\(relativePath)")
+            debugLog.log("runtime-hooks", "stage-\(logLabel) missing source=\(relativePath)")
             return
         }
         if let existingData = try? Data(contentsOf: destinationURL),
            existingData == contentData {
-            if fileManager.isExecutableFile(atPath: destinationURL.path) == false {
+            if executable, fileManager.isExecutableFile(atPath: destinationURL.path) == false {
                 try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destinationURL.path)
             }
-            debugLog.log("runtime-hooks", "stage-runtime-hook unchanged source=\(relativePath)")
+            debugLog.log("runtime-hooks", "stage-\(logLabel) unchanged source=\(relativePath)")
             return
         }
         try? fileManager.removeItem(at: destinationURL)
         try? contentData.write(to: destinationURL, options: .atomic)
-        try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destinationURL.path)
-        debugLog.log("runtime-hooks", "stage-runtime-hook wrote source=\(relativePath)")
+        if executable {
+            try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destinationURL.path)
+        }
+        debugLog.log("runtime-hooks", "stage-\(logLabel) wrote source=\(relativePath)")
     }
 
     private func clearJSONFiles(in directory: URL) {

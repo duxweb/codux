@@ -9,17 +9,16 @@ enum ProjectActivityPhase: Equatable {
 }
 
 struct ProjectActivityPayload: Codable, Equatable {
-    var projectId: String
-    var projectName: String
     var tool: String
     var phase: String
     var updatedAt: Double
-    var startedAt: Double?
     var finishedAt: Double?
     var exitCode: Int?
 }
 
 struct ProjectActivityService: @unchecked Sendable {
+    private let runningPhaseLifetime: TimeInterval = 15
+    private let completedPhaseLifetime: TimeInterval = 20
     private let fileManager = FileManager.default
     private let runtimeBridgeService = AIRuntimeBridgeService()
     private let externalNotificationService = AppExternalNotificationService.shared
@@ -33,12 +32,9 @@ struct ProjectActivityService: @unchecked Sendable {
     }
 
     func loadStatuses(projects: [Project]) -> [UUID: ProjectActivityPayload] {
-        let directory = statusDirectoryURL()
         var result: [UUID: ProjectActivityPayload] = [:]
         for project in projects {
-            let fileURL = directory.appendingPathComponent("\(project.id.uuidString).json")
-            guard let data = try? Data(contentsOf: fileURL),
-                  let payload = try? JSONDecoder().decode(ProjectActivityPayload.self, from: data) else {
+            guard let payload = loadStatus(projectID: project.id) else {
                 continue
             }
             result[project.id] = payload
@@ -46,18 +42,27 @@ struct ProjectActivityService: @unchecked Sendable {
         return result
     }
 
+    func loadStatus(projectID: UUID) -> ProjectActivityPayload? {
+        let fileURL = statusFileURL(for: projectID)
+        guard let data = try? Data(contentsOf: fileURL),
+              let payload = try? JSONDecoder().decode(ProjectActivityPayload.self, from: data) else {
+            return nil
+        }
+        return payload
+    }
+
     func phase(for payload: ProjectActivityPayload?) -> ProjectActivityPhase {
         guard let payload else { return .idle }
         switch payload.phase {
         case "running":
             let age = Date().timeIntervalSince1970 - payload.updatedAt
-            if age > 15 {
+            if age > runningPhaseLifetime {
                 return .idle
             }
             return .running(tool: payload.tool)
         case "completed":
             let age = Date().timeIntervalSince1970 - payload.updatedAt
-            if age > 20 {
+            if age > completedPhaseLifetime {
                 return .idle
             }
             return .completed(
@@ -101,33 +106,11 @@ struct ProjectActivityService: @unchecked Sendable {
             return
         }
 
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            AppDebugLog.shared.log(
-                "notifications",
-                "enqueue completion project=\(projectName) tool=\(tool) status=\(settings.authorizationStatus.rawValue)"
-            )
-
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                enqueueNotification(projectName: projectName, tool: tool, exitCode: exitCode)
-            case .notDetermined:
-                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                    if let error {
-                        AppDebugLog.shared.log("notifications", "authorization-on-send error=\(error.localizedDescription)")
-                        return
-                    }
-                    AppDebugLog.shared.log("notifications", "authorization-on-send granted=\(granted)")
-                    guard granted else {
-                        AppDebugLog.shared.log("notifications", "authorization-on-send denied")
-                        return
-                    }
-                    enqueueNotification(projectName: projectName, tool: tool, exitCode: exitCode)
-                }
-            case .denied:
-                AppDebugLog.shared.log("notifications", "enqueue skipped status=denied")
-            @unknown default:
-                AppDebugLog.shared.log("notifications", "enqueue skipped status=unknown")
-            }
+        withAuthorizedSystemNotifications(
+            statusLogMessage: "enqueue completion project=\(projectName) tool=\(tool)",
+            requestLogPrefix: "authorization-on-send"
+        ) {
+            enqueueNotification(projectName: projectName, tool: tool, exitCode: exitCode)
         }
     }
 
@@ -142,58 +125,52 @@ struct ProjectActivityService: @unchecked Sendable {
             return
         }
 
+        withAuthorizedSystemNotifications(
+            statusLogMessage: "enqueue waiting-input project=\(projectName) tool=\(tool)",
+            requestLogPrefix: "waiting-input authorization"
+        ) {
+            enqueueNeedsInputNotification(
+                projectName: projectName,
+                tool: tool,
+                notificationType: notificationType,
+                targetToolName: targetToolName,
+                message: message
+            )
+        }
+    }
+
+    private func withAuthorizedSystemNotifications(
+        statusLogMessage: String,
+        requestLogPrefix: String,
+        onAuthorized: @escaping @Sendable () -> Void
+    ) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             AppDebugLog.shared.log(
                 "notifications",
-                "enqueue waiting-input project=\(projectName) tool=\(tool) status=\(settings.authorizationStatus.rawValue)"
+                "\(statusLogMessage) status=\(settings.authorizationStatus.rawValue)"
             )
 
             switch settings.authorizationStatus {
             case .authorized, .provisional, .ephemeral:
-                enqueueNeedsInputNotification(
-                    projectName: projectName,
-                    tool: tool,
-                    notificationType: notificationType,
-                    targetToolName: targetToolName,
-                    message: message
-                )
+                onAuthorized()
             case .notDetermined:
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error {
-                        AppDebugLog.shared.log("notifications", "waiting-input authorization error=\(error.localizedDescription)")
+                        AppDebugLog.shared.log("notifications", "\(requestLogPrefix) error=\(error.localizedDescription)")
                         return
                     }
+                    AppDebugLog.shared.log("notifications", "\(requestLogPrefix) granted=\(granted)")
                     guard granted else {
-                        AppDebugLog.shared.log("notifications", "waiting-input authorization denied")
+                        AppDebugLog.shared.log("notifications", "\(requestLogPrefix) denied")
                         return
                     }
-                    enqueueNeedsInputNotification(
-                        projectName: projectName,
-                        tool: tool,
-                        notificationType: notificationType,
-                        targetToolName: targetToolName,
-                        message: message
-                    )
+                    onAuthorized()
                 }
             case .denied:
-                AppDebugLog.shared.log("notifications", "waiting-input skipped status=denied")
+                AppDebugLog.shared.log("notifications", "\(statusLogMessage) skipped status=denied")
             @unknown default:
-                AppDebugLog.shared.log("notifications", "waiting-input skipped status=unknown")
+                AppDebugLog.shared.log("notifications", "\(statusLogMessage) skipped status=unknown")
             }
-        }
-    }
-
-    func notifyTest(projectName: String, tool: String, exitCode: Int?, settings: AppNotificationSettings) {
-        Task.detached(priority: .utility) {
-            await externalNotificationService.sendCompletion(
-                settings: settings,
-                projectName: projectName,
-                tool: tool,
-                exitCode: exitCode
-            )
-        }
-        if supportsSystemNotifications {
-            enqueueNotification(projectName: projectName, tool: tool, exitCode: exitCode)
         }
     }
 
@@ -287,37 +264,8 @@ struct ProjectActivityService: @unchecked Sendable {
         }
     }
 
-    func writeTestStatus(project: Project, tool: String, phase: String, exitCode: Int? = nil) {
-        let fileURL = statusDirectoryURL().appendingPathComponent("\(project.id.uuidString).json")
-        let now = Date().timeIntervalSince1970
-
-        var payload = ProjectActivityPayload(
-            projectId: project.id.uuidString,
-            projectName: project.name,
-            tool: tool,
-            phase: phase,
-            updatedAt: now,
-            startedAt: nil,
-            finishedAt: nil,
-            exitCode: exitCode
-        )
-
-        if phase == "running" {
-            payload.startedAt = now
-        }
-        if phase == "completed" {
-            payload.finishedAt = now
-        }
-
-        guard let data = try? JSONEncoder().encode(payload) else {
-            return
-        }
-        try? data.write(to: fileURL, options: .atomic)
-    }
-
     func clearStatus(for projectID: UUID) {
-        let fileURL = statusDirectoryURL().appendingPathComponent("\(projectID.uuidString).json")
-        try? fileManager.removeItem(at: fileURL)
+        try? fileManager.removeItem(at: statusFileURL(for: projectID))
     }
 
     func clearAllStatuses() {
@@ -328,6 +276,10 @@ struct ProjectActivityService: @unchecked Sendable {
         for fileURL in fileURLs where fileURL.pathExtension == "json" {
             try? fileManager.removeItem(at: fileURL)
         }
+    }
+
+    private func statusFileURL(for projectID: UUID) -> URL {
+        statusDirectoryURL().appendingPathComponent("\(projectID.uuidString).json")
     }
 }
 

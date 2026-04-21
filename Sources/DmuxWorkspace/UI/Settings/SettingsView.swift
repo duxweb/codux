@@ -39,7 +39,7 @@ private enum SettingsSectionTab: String, CaseIterable, Identifiable {
         case .shortcuts:
             return 320
         case .developer:
-            return 280
+            return 220
         }
     }
 }
@@ -864,16 +864,6 @@ private struct DeveloperSettingsPane: View {
 
     var body: some View {
         Form {
-            Toggle(String(localized: "settings.developer.notification_test", defaultValue: "Notification Test Button", bundle: .module), isOn: Binding(
-                get: { model.appSettings.developer.showsNotificationTestButton },
-                set: { model.updateDeveloperNotificationTestButtonEnabled($0) }
-            ))
-
-            Toggle(String(localized: "settings.developer.debug_log", defaultValue: "Debug Log Button", bundle: .module), isOn: Binding(
-                get: { model.appSettings.developer.showsDebugLogButton },
-                set: { model.updateDeveloperDebugLogButtonEnabled($0) }
-            ))
-
             Toggle(String(localized: "settings.developer.performance_monitor", defaultValue: "Performance Monitor HUD", bundle: .module), isOn: Binding(
                 get: { model.appSettings.developer.showsPerformanceMonitor },
                 set: { model.updateDeveloperPerformanceMonitorEnabled($0) }

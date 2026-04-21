@@ -1355,14 +1355,33 @@ private final class GhosttyWindowPortal {
             NotificationCenter.default.removeObserver(closeObserver)
             self.closeObserver = nil
         }
+
+        // Wrap all view-hierarchy mutations in a single disabled-animation
+        // CATransaction. Removing a Metal-backed view while a drawFrame
+        // is in flight (under an open CATransaction) corrupts the
+        // os_unfair_lock that Ghostty uses to guard the renderer, causing
+        // _os_unfair_lock_corruption_abort. Disabling actions prevents
+        // implicit animations from opening nested transactions.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
         for (hostedId, entry) in entries {
             if retainedHostedIds.contains(hostedId) {
+                // This hosted view is about to be rebound to a new window.
+                // Do NOT touch it here — the new window's bind() call will
+                // reparent it. Hiding or removing it would detach the Metal
+                // surface and trigger the lock-corruption crash.
+            } else {
+                // Truly discarded: hide and remove from the hierarchy.
                 entry.hostedView.isHidden = true
                 entry.hostedView.removeFromSuperview()
             }
             entry.mountedView.isHidden = true
             entry.mountedView.removeFromSuperview()
         }
+
+        CATransaction.commit()
+
         entries.removeAll()
         overlayView.removeFromSuperview()
     }
@@ -1447,6 +1466,12 @@ private final class GhosttyWindowPortal {
             return
         }
 
+        // Guard all view-hierarchy mutations and frame changes inside a
+        // disabled-action CATransaction so they land atomically between
+        // Metal drawFrame calls, avoiding os_unfair_lock corruption.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
         if entry.mountedView.superview !== overlayView {
             overlayView.addSubview(entry.mountedView)
         }
@@ -1462,6 +1487,8 @@ private final class GhosttyWindowPortal {
         entry.mountedView.isHidden = false
         entry.hostedView.isHidden = false
         entry.hostedView.layoutSubtreeIfNeeded()
+
+        CATransaction.commit()
     }
 }
 
@@ -1626,6 +1653,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     private var pendingStartWorkItem: DispatchWorkItem?
     private var startupWatchdogWorkItem: DispatchWorkItem?
     private var structuralResizeRestoreWorkItem: DispatchWorkItem?
+    private var pendingPermanentTearDown = false
     private var geometryReconcileGeneration: UInt64 = 0
     private var geometryReconcileScheduled = false
     private var pendingGeometryReconcilePasses = 0
@@ -1738,6 +1766,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         let visibilityChanged = lastAppliedVisibleState != isVisible
         lastAppliedFocusedState = isFocused
         lastAppliedVisibleState = isVisible
+        terminalView.setSurfaceVisible(isVisible)
 
         if isVisible {
             scheduleProcessStartIfPossible(reason: isFocused ? "update-focused" : "update-visible")
@@ -1853,7 +1882,8 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         )
         cancelDeferredLifecycleWork()
         processBridge.terminateProcessTree()
-        tearDownTerminalView()
+        pendingPermanentTearDown = true
+        finalizePermanentTearDownWhenDetached()
     }
 
     var isTerminalFocused: Bool {
@@ -1888,6 +1918,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         super.viewDidMoveToWindow()
         if window == nil {
             cancelDeferredLifecycleWork()
+            finalizePermanentTearDownWhenDetached()
             return
         }
         scheduleProcessStartIfPossible(reason: "window-attached")
@@ -2018,6 +2049,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         inactiveOverlayView.isHidden = true
 
         configureTerminalView(terminalView)
+        terminalView.setSurfaceVisible(false)
         addSubview(terminalView)
         addSubview(loadingShieldView)
         addSubview(inactiveOverlayView)
@@ -2197,11 +2229,30 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     }
 
     private func tearDownTerminalView() {
+        geometryReconcileGeneration &+= 1
+        geometryReconcileScheduled = false
+        pendingGeometryReconcilePasses = 0
         if window?.firstResponder === terminalView {
             window?.makeFirstResponder(nil)
         }
         terminalView.delegate = nil
         terminalView.controller = nil
+    }
+
+    private func finalizePermanentTearDownWhenDetached() {
+        guard pendingPermanentTearDown else {
+            return
+        }
+
+        guard window == nil else {
+            DispatchQueue.main.async { [weak self] in
+                self?.finalizePermanentTearDownWhenDetached()
+            }
+            return
+        }
+
+        pendingPermanentTearDown = false
+        tearDownTerminalView()
     }
 
     func prepareForPointerInteraction() {
@@ -2494,9 +2545,12 @@ final class GhosttyTerminalRegistry {
             "release session=\(sessionID.uuidString) remaining=\(containers.count)"
         )
         GhosttyTerminalPortalRegistry.detach(hostedView: container)
-        container.prepareForPermanentRemoval()
         DmuxTerminalOutputEventEmitter.shared.clear(sessionID: sessionID)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         container.removeFromSuperviewWithoutNeedingDisplay()
+        CATransaction.commit()
+        container.prepareForPermanentRemoval()
         if explicitFocusedSessionID == sessionID {
             explicitFocusedSessionID = nil
             NotificationCenter.default.post(name: .dmuxTerminalFocusDidChange, object: sessionID)

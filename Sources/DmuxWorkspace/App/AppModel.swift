@@ -27,12 +27,6 @@ enum RightPanelKind: String, Codable, Equatable {
 @MainActor
 @Observable
 final class AppModel {
-    struct RealtimeCompletionState {
-        var tool: String
-        var finishedAt: Date
-        var wasInterrupted: Bool
-    }
-
     struct TerminalRecoveryIssue: Equatable {
         var message: String
         var detail: String
@@ -40,7 +34,16 @@ final class AppModel {
 
     var projects: [Project]
     var workspaces: [ProjectWorkspace]
-    var selectedProjectID: UUID?
+    var selectedProjectID: UUID? {
+        didSet {
+            guard oldValue != selectedProjectID else { return }
+            debugLog.log(
+                "project-selection",
+                "change source=\(selectedProjectIDChangeSource) old=\(oldValue?.uuidString ?? "nil") new=\(selectedProjectID?.uuidString ?? "nil")"
+            )
+            selectedProjectIDChangeSource = "unspecified"
+        }
+    }
     var appSettings: AppSettings
     var activeTerminalBackgroundPreset: AppTerminalBackgroundPreset
     var activeBackgroundColorPreset: AppBackgroundColorPreset
@@ -69,8 +72,10 @@ final class AppModel {
     private let appUpdaterService = AppUpdaterService(isEnabled: AppUpdaterService.isSupportedConfiguration)
     private let runtimeBridgeService = AIRuntimeBridgeService()
     private let runtimeIngressService = AIRuntimeIngressService.shared
+    private let runtimePollingService = AIRuntimePollingService.shared
     private let toolDriverFactory = AIToolDriverFactory.shared
     private let debugLog = AppDebugLog.shared
+    private var selectedProjectIDChangeSource = "init"
     private var activityStatusWatcher: DispatchSourceFileSystemObject?
     private var appActivationObservers: [NSObjectProtocol] = []
     private var terminalFocusObserver: NSObjectProtocol?
@@ -85,9 +90,6 @@ final class AppModel {
     private var lastCompletionTokenByProjectID: [UUID: String] = [:]
     private var clearedCompletionTokenByProjectID: [UUID: String] = [:]
     private var lastWaitingInputTokenByProjectID: [UUID: String] = [:]
-    private var realtimeCompletionByProjectID: [UUID: RealtimeCompletionState] = [:]
-    private var lastRealtimeRunningBySessionID: [UUID: Bool] = [:]
-    private var realtimeProjectIDBySessionID: [UUID: UUID] = [:]
     private var isSystemUIReady = false
     private var isTerminalStartupUnlocked = false
     private var hasLoggedRootViewAppearance = false
@@ -128,6 +130,7 @@ final class AppModel {
         activityService.clearAllStatuses()
         runtimeIngressService.resetEphemeralState()
         runtimeBridgeService.prepareManagedRuntimeSupportIfNeeded()
+        runtimePollingService.start()
         refreshProjectActivity(sendNotifications: false)
         activityService.requestNotificationPermission()
         observeApplicationActivation()
@@ -190,9 +193,6 @@ final class AppModel {
         lastCompletionTokenByProjectID.removeAll()
         clearedCompletionTokenByProjectID.removeAll()
         lastWaitingInputTokenByProjectID.removeAll()
-        realtimeCompletionByProjectID.removeAll()
-        lastRealtimeRunningBySessionID.removeAll()
-        realtimeProjectIDBySessionID.removeAll()
     }
 
     var allowsDeferredTerminalStartup: Bool {
@@ -301,6 +301,10 @@ final class AppModel {
                 "failed session=\(sessionID.uuidString) detail=\(detail)"
             )
         }
+        debugLog.log(
+            "terminal-lifecycle",
+            "release-request session=\(sessionID.uuidString) reason=startup-failure"
+        )
         DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
 
         if selectedSessionID == sessionID {
@@ -318,6 +322,10 @@ final class AppModel {
     func retryTerminalRecovery(_ sessionID: UUID) {
         terminalRecoveryIssueBySessionID[sessionID] = nil
         terminalRecoveryRetryTokenBySessionID[sessionID, default: 0] += 1
+        debugLog.log(
+            "terminal-lifecycle",
+            "release-request session=\(sessionID.uuidString) reason=recovery-retry token=\(terminalRecoveryRetryTokenBySessionID[sessionID] ?? 0)"
+        )
         DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
         terminalFocusRequestID = sessionID
         debugLog.log(
@@ -580,18 +588,14 @@ final class AppModel {
     }
 
     func selectProject(_ projectID: UUID) {
-        selectedProjectID = projectID
+        updateSelectedProjectID(projectID, source: "selectProject")
         restoreSelectedTerminalFocusIfNeeded()
         restoreCachedGitPanelIfAvailable(for: projectID)
         clearCompletedActivityIfNeeded(for: projectID)
         persist()
         refreshGitState()
         updateGitRemoteSyncPolling()
-        if rightPanel == .aiStats {
-            aiStatsStore.syncSelection(project: selectedProject, projects: projects, selectedSessionID: selectedSessionID)
-        } else {
-            refreshAIStatsIfNeeded()
-        }
+        refreshAIStatsIfNeeded()
     }
 
     func selectProject(atSidebarIndex index: Int) {
@@ -599,10 +603,6 @@ final class AppModel {
             return
         }
         selectProject(projects[index].id)
-    }
-
-    func openDebugLog() {
-        openRuntimeLog()
     }
 
     func openRuntimeLog() {
@@ -910,7 +910,7 @@ final class AppModel {
             self.projects.removeAll { $0.id == projectID }
             self.workspaces.removeAll { $0.projectID == projectID }
             if self.selectedProjectID == projectID {
-                self.selectedProjectID = self.projects.first?.id
+                self.updateSelectedProjectID(self.projects.first?.id, source: "removeProject")
             }
             self.statusMessage = String(
                 format: String(localized: "project.remove.success_format", defaultValue: "Removed project %@.", bundle: .module),
@@ -930,7 +930,7 @@ final class AppModel {
 
         projects.removeAll { $0.id == project.id }
         workspaces.removeAll { $0.projectID == project.id }
-        selectedProjectID = projects.first?.id
+        updateSelectedProjectID(projects.first?.id, source: "closeCurrentProject")
         statusMessage = String(
             format: String(localized: "project.close.success_format", defaultValue: "Closed project %@.", bundle: .module),
             project.name
@@ -964,7 +964,7 @@ final class AppModel {
             guard let self, result == .primary else { return }
             self.projects.removeAll()
             self.workspaces.removeAll()
-            self.selectedProjectID = nil
+            self.updateSelectedProjectID(nil, source: "closeAllProjects")
             self.rightPanel = nil
             self.statusMessage = String(localized: "workspace.close_all_projects.success", defaultValue: "Closed all projects.", bundle: .module)
             self.persist()
@@ -1429,19 +1429,10 @@ final class AppModel {
             logActivityPhaseResolution(projectID: projectID, source: "runtime", phase: runtimePhase)
             return runtimePhase
         }
-        if let phase = activityByProjectID[projectID], phase != .idle {
-            switch phase {
-            case .running(let tool) where isRealtimeAITool(tool):
-                logActivityPhaseResolution(projectID: projectID, source: "cached-realtime->idle", phase: .idle)
-                return .idle
-            case .waitingInput(let tool) where isRealtimeAITool(tool):
-                logActivityPhaseResolution(projectID: projectID, source: "cached-realtime->idle", phase: .idle)
-                return .idle
-            default:
-                break
-            }
-            logActivityPhaseResolution(projectID: projectID, source: "cached", phase: phase)
-            return phase
+        let cachedPhase = cachedActivityPhase(for: projectID)
+        if cachedPhase != .idle {
+            logActivityPhaseResolution(projectID: projectID, source: "cached", phase: cachedPhase)
+            return cachedPhase
         }
         logActivityPhaseResolution(projectID: projectID, source: "default", phase: .idle)
         return .idle
@@ -1604,6 +1595,10 @@ final class AppModel {
 
     func closeSession(_ sessionID: UUID) {
         if let placement = detachedTerminalPlacementBySessionID.removeValue(forKey: sessionID) {
+            debugLog.log(
+                "terminal-lifecycle",
+                "release-request session=\(sessionID.uuidString) reason=close-detached project=\(placement.projectID.uuidString)"
+            )
             mutateWorkspace(projectID: placement.projectID) { workspace in
                 workspace.removeSession(sessionID)
             }
@@ -1621,6 +1616,10 @@ final class AppModel {
             return
         }
 
+        debugLog.log(
+            "terminal-lifecycle",
+            "release-request session=\(sessionID.uuidString) reason=close-workspace selected=\(selectedSessionID?.uuidString ?? "nil")"
+        )
         mutateSelectedWorkspace { workspace, _ in
             let totalCount = workspace.sessions.count
             guard totalCount > 1 else {
@@ -2643,9 +2642,6 @@ final class AppModel {
             return
         }
         aiStatsStore.invalidateProjectCaches(project: project)
-        Task {
-            await AIProjectSummaryCache.shared.invalidate(projectPath: project.path)
-        }
         refreshCurrentAIIndexing()
     }
 
@@ -2795,38 +2791,20 @@ final class AppModel {
 
         activityStatusWatcher = makeDirectoryWatcher(for: activityService.statusDirectoryURL())
         runtimeIngressService.startWatching()
-        if let runtimeBridgeObserver {
-            NotificationCenter.default.removeObserver(runtimeBridgeObserver)
-        }
-        if let runtimeActivityObserver {
-            NotificationCenter.default.removeObserver(runtimeActivityObserver)
-        }
-        runtimeBridgeObserver = NotificationCenter.default.addObserver(
-            forName: .dmuxAIRuntimeBridgeDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.scheduleProjectActivityRefresh(
-                    sendNotifications: true,
-                    refreshAIStats: true,
-                    requiresFullRefresh: true
-                )
-            }
-        }
-        runtimeActivityObserver = NotificationCenter.default.addObserver(
-            forName: .dmuxAIRuntimeActivityPulse,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.scheduleProjectActivityRefresh(
-                    sendNotifications: false,
-                    refreshAIStats: false,
-                    requiresFullRefresh: false
-                )
-            }
-        }
+        runtimeBridgeObserver = replaceActivityObserver(
+            runtimeBridgeObserver,
+            name: .dmuxAIRuntimeBridgeDidChange,
+            sendNotifications: true,
+            refreshAIStats: true,
+            requiresFullRefresh: true
+        )
+        runtimeActivityObserver = replaceActivityObserver(
+            runtimeActivityObserver,
+            name: .dmuxAIRuntimeActivityPulse,
+            sendNotifications: false,
+            refreshAIStats: false,
+            requiresFullRefresh: false
+        )
     }
 
     private func makeDirectoryWatcher(for directoryURL: URL) -> DispatchSourceFileSystemObject? {
@@ -2841,19 +2819,55 @@ final class AppModel {
             queue: .main
         )
         watcher.setEventHandler { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.scheduleProjectActivityRefresh(
-                    sendNotifications: true,
-                    refreshAIStats: true,
-                    requiresFullRefresh: true
-                )
-            }
+            self?.queueProjectActivityRefresh(
+                sendNotifications: true,
+                refreshAIStats: true,
+                requiresFullRefresh: true
+            )
         }
         watcher.setCancelHandler {
             close(fd)
         }
         watcher.resume()
         return watcher
+    }
+
+    private func replaceActivityObserver(
+        _ existingObserver: NSObjectProtocol?,
+        name: Notification.Name,
+        sendNotifications: Bool,
+        refreshAIStats: Bool,
+        requiresFullRefresh: Bool
+    ) -> NSObjectProtocol {
+        if let existingObserver {
+            NotificationCenter.default.removeObserver(existingObserver)
+        }
+
+        return NotificationCenter.default.addObserver(
+            forName: name,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.queueProjectActivityRefresh(
+                sendNotifications: sendNotifications,
+                refreshAIStats: refreshAIStats,
+                requiresFullRefresh: requiresFullRefresh
+            )
+        }
+    }
+
+    nonisolated private func queueProjectActivityRefresh(
+        sendNotifications: Bool,
+        refreshAIStats: Bool,
+        requiresFullRefresh: Bool
+    ) {
+        Task { @MainActor [weak self] in
+            self?.scheduleProjectActivityRefresh(
+                sendNotifications: sendNotifications,
+                refreshAIStats: refreshAIStats,
+                requiresFullRefresh: requiresFullRefresh
+            )
+        }
     }
 
     private func scheduleProjectActivityRefresh(
@@ -2876,19 +2890,14 @@ final class AppModel {
                     return
                 }
 
-                let shouldNotify = self.pendingActivityRefreshShouldNotify
-                let shouldRefreshAIStats = self.pendingActivityRefreshShouldRefreshAIStats
-                let requiresFullRefresh = self.pendingActivityRefreshRequiresFullRefresh
+                let pendingRequest = self.drainPendingActivityRefreshRequest()
                 self.pendingActivityRefreshTask = nil
-                self.pendingActivityRefreshShouldNotify = false
-                self.pendingActivityRefreshShouldRefreshAIStats = false
-                self.pendingActivityRefreshRequiresFullRefresh = false
 
                 self.refreshProjectActivity(
-                    sendNotifications: shouldNotify,
-                    useCachedStatusesOnly: !requiresFullRefresh
+                    sendNotifications: pendingRequest.sendNotifications,
+                    useCachedStatusesOnly: !pendingRequest.requiresFullRefresh
                 )
-                if shouldRefreshAIStats, self.rightPanel == .aiStats {
+                if pendingRequest.refreshAIStats, self.rightPanel == .aiStats {
                     self.refreshAIStatsIfNeeded()
                 }
             }
@@ -2904,16 +2913,12 @@ final class AppModel {
         useCachedStatusesOnly: Bool = false
     ) {
         let currentProjects = projects
-        let payloads: [UUID: ProjectActivityPayload]
-        if useCachedStatusesOnly {
-            payloads = cachedActivityPayloadByProjectID
-        } else {
-            let latestPayloads = activityService.loadStatuses(projects: currentProjects)
-            cachedActivityPayloadByProjectID = latestPayloads
-            payloads = latestPayloads
-
-            let liveEnvelopes = runtimeIngressService.importRuntime(projects: currentProjects)
-            runtimeIngressService.refreshRuntimeSources(projects: currentProjects, liveEnvelopes: liveEnvelopes)
+        let payloads = projectActivityPayloads(
+            useCachedStatusesOnly: useCachedStatusesOnly,
+            projects: currentProjects
+        )
+        if useCachedStatusesOnly == false {
+            runtimeIngressService.importRuntime(projects: currentProjects)
         }
 
         var phases: [UUID: ProjectActivityPhase] = [:]
@@ -2921,93 +2926,94 @@ final class AppModel {
 
         for project in projects {
             let payload = payloads[project.id]
-            var phase = activityService.phase(for: payload)
-            let runtimeSnapshots = aiSessionStore.liveSnapshots(projectID: project.id)
-            updateRealtimeCompletionTracking(project: project, runtimeSnapshots: runtimeSnapshots)
-
-            if let payload, isRealtimeAITool(payload.tool) {
-                activityService.clearStatus(for: project.id)
-                cachedActivityPayloadByProjectID[project.id] = nil
-                phase = .idle
-            }
-
-            switch phase {
-            case .running(let tool) where isRealtimeAITool(tool):
-                phase = .idle
-            case .waitingInput(let tool) where isRealtimeAITool(tool):
-                phase = .idle
-            default:
-                break
-            }
-
-            if let payload,
-               case .completed = phase,
-               clearedCompletionTokenByProjectID[project.id] == activityService.completionToken(for: payload) {
-                phase = .idle
-            }
-
-            let runtimePhase = aiSessionStore.projectPhase(projectID: project.id)
-            if runtimePhase != .idle {
-                phase = runtimePhase
-            } else if let completion = recentRealtimeCompletion(for: project.id) {
-                phase = .completed(tool: completion.tool, finishedAt: completion.finishedAt, exitCode: nil)
-            }
+            let phase = resolvedProjectActivityPhase(projectID: project.id, payload: payload)
 
             phases[project.id] = phase
 
-            if previousPhases[project.id] != phase {
-                debugLog.log(
-                    "activity",
-                    "project=\(project.name) phase=\(debugActivityDescription(phase))"
-                )
-            }
+            logProjectActivityTransitionIfNeeded(
+                projectName: project.name,
+                previousPhase: previousPhases[project.id],
+                nextPhase: phase
+            )
 
-            if sendNotifications,
-               case .waitingInput(let tool) = phase,
-               let context = aiSessionStore.waitingInputContext(projectID: project.id) {
-                let token = waitingInputNotificationToken(tool: tool, context: context)
-                if lastWaitingInputTokenByProjectID[project.id] != token {
-                    lastWaitingInputTokenByProjectID[project.id] = token
-                    activityService.notifyNeedsInput(
-                        projectName: project.name,
-                        tool: tool,
-                        notificationType: context.notificationType,
-                        targetToolName: context.targetToolName,
-                        message: context.message
-                    )
-                }
-            } else {
-                lastWaitingInputTokenByProjectID[project.id] = nil
-            }
-
-            guard sendNotifications,
-                  case .completed(let tool, let finishedAt, let exitCode) = phase else {
-                continue
-            }
-
-            let token: String
-            if let payload {
-                token = activityService.completionToken(for: payload)
-            } else {
-                token = "realtime-\(tool)-\(Int(finishedAt.timeIntervalSince1970 * 1000))"
-            }
-            if lastCompletionTokenByProjectID[project.id] != token {
-                lastCompletionTokenByProjectID[project.id] = token
-                clearedCompletionTokenByProjectID[project.id] = nil
-                activityService.notifyCompletion(
-                    projectName: project.name,
-                    tool: tool,
-                    exitCode: exitCode,
-                    settings: appSettings.notifications
-                )
+            if sendNotifications {
+                handleWaitingInputNotificationIfNeeded(project: project, phase: phase)
+                handleCompletionNotificationIfNeeded(project: project, phase: phase, payload: payload)
             }
         }
 
         if activityByProjectID != phases {
             activityByProjectID = phases
-            activityRenderVersion &+= 1
-            updateDockBadge()
+            markActivityStateChanged()
         }
+    }
+
+    private func drainPendingActivityRefreshRequest() -> (
+        sendNotifications: Bool,
+        refreshAIStats: Bool,
+        requiresFullRefresh: Bool
+    ) {
+        defer {
+            pendingActivityRefreshShouldNotify = false
+            pendingActivityRefreshShouldRefreshAIStats = false
+            pendingActivityRefreshRequiresFullRefresh = false
+        }
+
+        return (
+            sendNotifications: pendingActivityRefreshShouldNotify,
+            refreshAIStats: pendingActivityRefreshShouldRefreshAIStats,
+            requiresFullRefresh: pendingActivityRefreshRequiresFullRefresh
+        )
+    }
+
+    private func projectActivityPayloads(
+        useCachedStatusesOnly: Bool,
+        projects: [Project]
+    ) -> [UUID: ProjectActivityPayload] {
+        if useCachedStatusesOnly {
+            return cachedActivityPayloadByProjectID
+        }
+
+        let latestPayloads = activityService.loadStatuses(projects: projects)
+        cachedActivityPayloadByProjectID = latestPayloads
+        return latestPayloads
+    }
+
+    private func resolvedCachedProjectActivityPhase(
+        payload: ProjectActivityPayload?,
+        projectID: UUID
+    ) -> ProjectActivityPhase {
+        guard let payload else {
+            return .idle
+        }
+
+        guard isRealtimeAITool(payload.tool) == false else {
+            activityService.clearStatus(for: projectID)
+            cachedActivityPayloadByProjectID[projectID] = nil
+            return .idle
+        }
+
+        return sanitizedCachedActivityPhase(activityService.phase(for: payload))
+    }
+
+    private func resolvedProjectActivityPhase(
+        projectID: UUID,
+        payload: ProjectActivityPayload?
+    ) -> ProjectActivityPhase {
+        var phase = resolvedCachedProjectActivityPhase(payload: payload, projectID: projectID)
+
+        if let payload,
+           case .completed = phase,
+           clearedCompletionTokenByProjectID[projectID] == activityService.completionToken(for: payload) {
+            phase = .idle
+        }
+
+        let runtimePhase = aiSessionStore.projectPhase(projectID: projectID)
+        if runtimePhase != .idle {
+            phase = runtimePhase
+        }
+
+        return phase
     }
 
     private func debugActivityDescription(_ phase: ProjectActivityPhase) -> String {
@@ -3023,13 +3029,34 @@ final class AppModel {
         }
     }
 
+    private func cachedActivityPhase(for projectID: UUID) -> ProjectActivityPhase {
+        sanitizedCachedActivityPhase(activityByProjectID[projectID])
+    }
+
+    private func cachedActivityDescription(for projectID: UUID) -> String {
+        activityByProjectID[projectID].map(debugActivityDescription) ?? "nil"
+    }
+
+    private func logProjectActivityTransitionIfNeeded(
+        projectName: String,
+        previousPhase: ProjectActivityPhase?,
+        nextPhase: ProjectActivityPhase
+    ) {
+        guard previousPhase != nextPhase else {
+            return
+        }
+        debugLog.log(
+            "activity",
+            "project=\(projectName) phase=\(debugActivityDescription(nextPhase))"
+        )
+    }
+
     private func logActivityPhaseResolution(projectID: UUID, source: String, phase: ProjectActivityPhase) {
         let projectName = projects.first(where: { $0.id == projectID })?.name ?? projectID.uuidString
-        let cachedPhase = activityByProjectID[projectID].map(debugActivityDescription) ?? "nil"
         let runtimeSummary = aiSessionStore.debugSummary(projectID: projectID)
         debugLog.log(
             "activity-phase",
-            "project=\(projectName) source=\(source) phase=\(debugActivityDescription(phase)) cached=\(cachedPhase) runtime=\(runtimeSummary)"
+            "project=\(projectName) source=\(source) phase=\(debugActivityDescription(phase)) cached=\(cachedActivityDescription(for: projectID)) runtime=\(runtimeSummary)"
         )
     }
 
@@ -3040,11 +3067,10 @@ final class AppModel {
         }
 
         let runtimePhase = aiSessionStore.projectPhase(projectID: project.id)
-        let cachedPhase = activityByProjectID[project.id].map(debugActivityDescription) ?? "nil"
         let runtimeSummary = aiSessionStore.debugSummary(projectID: project.id)
         debugLog.log(
             "app-activation",
-            "project=\(project.name) runtimePhase=\(debugActivityDescription(runtimePhase)) cached=\(cachedPhase) runtime=\(runtimeSummary)"
+            "project=\(project.name) runtimePhase=\(debugActivityDescription(runtimePhase)) cached=\(cachedActivityDescription(for: project.id)) runtime=\(runtimeSummary)"
         )
     }
 
@@ -3052,63 +3078,19 @@ final class AppModel {
         runtimeIngressService.isRealtimeTool(tool)
     }
 
-    private func updateRealtimeCompletionTracking(project: Project, runtimeSnapshots: [AITerminalSessionSnapshot]) {
-        let liveSessionIDs = Set(runtimeSnapshots.map(\.sessionID))
-
-        for snapshot in runtimeSnapshots {
-            guard let tool = snapshot.tool, isRealtimeAITool(tool) else {
-                continue
-            }
-
-            realtimeProjectIDBySessionID[snapshot.sessionID] = project.id
-            let previousRunning = lastRealtimeRunningBySessionID[snapshot.sessionID] ?? false
-            let currentRunning = snapshot.isRunning
-
-            if previousRunning, currentRunning == false, snapshot.status == "running" {
-                if snapshot.wasInterrupted || snapshot.hasCompletedTurn == false {
-                    realtimeCompletionByProjectID[project.id] = nil
-                } else {
-                    realtimeCompletionByProjectID[project.id] = RealtimeCompletionState(
-                        tool: tool,
-                        finishedAt: snapshot.updatedAt,
-                        wasInterrupted: false
-                    )
-                }
-            } else if currentRunning {
-                realtimeCompletionByProjectID[project.id] = nil
-            }
-
-            lastRealtimeRunningBySessionID[snapshot.sessionID] = currentRunning
+    private func sanitizedCachedActivityPhase(_ phase: ProjectActivityPhase?) -> ProjectActivityPhase {
+        guard let phase else {
+            return .idle
         }
 
-        for sessionID in Array(lastRealtimeRunningBySessionID.keys) {
-            guard realtimeProjectIDBySessionID[sessionID] == project.id,
-                  !liveSessionIDs.contains(sessionID) else {
-                continue
-            }
-            lastRealtimeRunningBySessionID[sessionID] = nil
-            realtimeProjectIDBySessionID[sessionID] = nil
+        switch phase {
+        case .running(let tool) where isRealtimeAITool(tool):
+            return .idle
+        case .waitingInput(let tool) where isRealtimeAITool(tool):
+            return .idle
+        default:
+            return phase
         }
-
-        if let completion = realtimeCompletionByProjectID[project.id],
-           Date().timeIntervalSince(completion.finishedAt) > 6 {
-            realtimeCompletionByProjectID[project.id] = nil
-        }
-    }
-
-    private func recentRealtimeCompletion(for projectID: UUID) -> RealtimeCompletionState? {
-        guard let completion = realtimeCompletionByProjectID[projectID] else {
-            return nil
-        }
-        guard completion.wasInterrupted == false else {
-            realtimeCompletionByProjectID[projectID] = nil
-            return nil
-        }
-        guard Date().timeIntervalSince(completion.finishedAt) <= 6 else {
-            realtimeCompletionByProjectID[projectID] = nil
-            return nil
-        }
-        return completion
     }
 
     private func clearCompletedActivityIfNeeded(for projectID: UUID) {
@@ -3116,17 +3098,12 @@ final class AppModel {
 
         lastWaitingInputTokenByProjectID[projectID] = nil
 
-        if realtimeCompletionByProjectID[projectID] != nil {
-            realtimeCompletionByProjectID[projectID] = nil
-            didClear = true
-        }
-
         if case .completed = activityByProjectID[projectID] {
             activityByProjectID[projectID] = .idle
             didClear = true
         }
 
-        if let payload = activityService.loadStatuses(projects: projects)[projectID],
+        if let payload = activityService.loadStatus(projectID: projectID),
            case .completed = activityService.phase(for: payload) {
             let token = activityService.completionToken(for: payload)
             clearedCompletionTokenByProjectID[projectID] = token
@@ -3137,36 +3114,13 @@ final class AppModel {
         }
 
         if didClear {
-            activityRenderVersion &+= 1
-            updateDockBadge()
+            markActivityStateChanged()
         }
     }
 
-    func triggerActivityTest() {
-        guard let project = selectedProject else {
-            return
-        }
-
-        let tool = "dmux-test"
-        activityService.writeTestStatus(project: project, tool: tool, phase: "running")
-        refreshProjectActivity(sendNotifications: false)
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            activityService.writeTestStatus(project: project, tool: tool, phase: "completed", exitCode: 0)
-            if let payload = activityService.loadStatuses(projects: [project])[project.id] {
-                let token = activityService.completionToken(for: payload)
-                lastCompletionTokenByProjectID[project.id] = token
-                clearedCompletionTokenByProjectID[project.id] = nil
-            }
-            activityService.notifyTest(
-                projectName: project.name,
-                tool: tool,
-                exitCode: 0,
-                settings: appSettings.notifications
-            )
-            refreshProjectActivity(sendNotifications: false)
-        }
+    private func markActivityStateChanged() {
+        activityRenderVersion &+= 1
+        updateDockBadge()
     }
 
     private func waitingInputNotificationToken(
@@ -3181,6 +3135,72 @@ final class AppModel {
             context.targetToolName ?? "",
             context.message ?? ""
         ].joined(separator: "|")
+    }
+
+    private func shouldNotifyForWaitingInput(
+        _ context: AISessionStore.WaitingInputContext
+    ) -> Bool {
+        context.notificationType == "permission-request"
+    }
+
+    private func handleWaitingInputNotificationIfNeeded(project: Project, phase: ProjectActivityPhase) {
+        guard case .waitingInput(let tool) = phase,
+              let context = aiSessionStore.waitingInputContext(projectID: project.id),
+              shouldNotifyForWaitingInput(context) else {
+            lastWaitingInputTokenByProjectID[project.id] = nil
+            return
+        }
+
+        let token = waitingInputNotificationToken(tool: tool, context: context)
+        guard lastWaitingInputTokenByProjectID[project.id] != token else {
+            return
+        }
+
+        lastWaitingInputTokenByProjectID[project.id] = token
+        activityService.notifyNeedsInput(
+            projectName: project.name,
+            tool: tool,
+            notificationType: context.notificationType,
+            targetToolName: context.targetToolName,
+            message: context.message
+        )
+    }
+
+    private func handleCompletionNotificationIfNeeded(
+        project: Project,
+        phase: ProjectActivityPhase,
+        payload: ProjectActivityPayload?
+    ) {
+        guard case .completed(let tool, let finishedAt, let exitCode) = phase else {
+            return
+        }
+
+        let token = completionActivityToken(payload: payload, tool: tool, finishedAt: finishedAt)
+
+        guard lastCompletionTokenByProjectID[project.id] != token else {
+            return
+        }
+
+        lastCompletionTokenByProjectID[project.id] = token
+        clearedCompletionTokenByProjectID[project.id] = nil
+        activityService.notifyCompletion(
+            projectName: project.name,
+            tool: tool,
+            exitCode: exitCode,
+            settings: appSettings.notifications
+        )
+    }
+
+    private func completionActivityToken(
+        payload: ProjectActivityPayload?,
+        tool: String,
+        finishedAt: Date
+    ) -> String {
+        if let payload {
+            return activityService.completionToken(for: payload)
+        }
+
+        return "realtime-\(tool)-\(Int(finishedAt.timeIntervalSince1970 * 1000))"
     }
 
     func updateLanguage(_ language: AppLanguage) {
@@ -3387,20 +3407,6 @@ final class AppModel {
             automatic: appSettings.aiAutoRefreshInterval,
             background: interval
         )
-        persist()
-    }
-
-    func updateDeveloperNotificationTestButtonEnabled(_ enabled: Bool) {
-        var settings = appSettings
-        settings.developer.showsNotificationTestButton = enabled
-        appSettings = settings
-        persist()
-    }
-
-    func updateDeveloperDebugLogButtonEnabled(_ enabled: Bool) {
-        var settings = appSettings
-        settings.developer.showsDebugLogButton = enabled
-        appSettings = settings
         persist()
     }
 
@@ -3822,7 +3828,7 @@ final class AppModel {
         }
 
         if let existing = projects.first(where: { URL(fileURLWithPath: $0.path).standardizedFileURL.path == normalizedPath }) {
-            selectedProjectID = existing.id
+            updateSelectedProjectID(existing.id, source: "importProject.existing")
             statusMessage = String(localized: "project.exists.switched", defaultValue: "Project already exists. Switched to it.", bundle: .module)
             debugLog.log("project-create", "switched-to-existing projectID=\(existing.id.uuidString) path=\(normalizedPath)")
             refreshGitState()
@@ -3845,7 +3851,7 @@ final class AppModel {
         debugLog.log("project-create", "project-created id=\(project.id.uuidString) name=\(project.name) path=\(project.path)")
         projects.append(project)
         workspaces.append(ProjectWorkspace.sample(projectID: project.id, path: project.path))
-        selectedProjectID = project.id
+        updateSelectedProjectID(project.id, source: "importProject.created")
         statusMessage = String(
             format: String(localized: "project.add.success_format", defaultValue: "Added project %@.", bundle: .module),
             project.name
@@ -3858,6 +3864,14 @@ final class AppModel {
         updateGitRemoteSyncPolling()
         refreshAIStatsIfNeeded()
         debugLog.log("project-create", "import complete projectID=\(project.id.uuidString)")
+    }
+
+    private func updateSelectedProjectID(_ projectID: UUID?, source: String) {
+        selectedProjectIDChangeSource = source
+        selectedProjectID = projectID
+        if selectedProjectID == projectID {
+            selectedProjectIDChangeSource = "unspecified"
+        }
     }
 
 }

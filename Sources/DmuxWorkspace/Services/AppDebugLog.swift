@@ -186,13 +186,7 @@ private final class AppDebugLogBackend: @unchecked Sendable {
             return message.contains("phase=running:")
                 || message.contains("phase=completed:")
                 || message.contains("phase=failed:")
-                || message.contains("source=cached-realtime->idle")
                 || message.contains("source=runtime")
-        case "ai-panel-bridge":
-            if message.hasPrefix("phase=quick") || message.hasPrefix("phase=indexed") {
-                return false
-            }
-            return !message.contains("snapshotTool=nil snapshotModel=nil snapshotTotal=0 summaryTool=nil summaryModel=nil summaryTotal=0")
         case "claude-runtime":
             return !message.hasPrefix("suppress phase ")
         case "runtime-refresh":

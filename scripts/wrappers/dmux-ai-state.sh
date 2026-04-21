@@ -549,35 +549,6 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
           "$(resolved_claude_external_session_id)" \
           "$(resolved_hook_model)" \
           "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
-      elif [[ "${action}" == "notification" ]]; then
-        ai_notification_type="$(extract_hook_notification_type)"
-        if [[ "${ai_notification_type:-}" == "idle_prompt" ]]; then
-          claude_stop_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
-          [[ -z "${claude_stop_tokens}" ]] && claude_stop_tokens="null"
-          write_ai_hook_event \
-            "turnCompleted" \
-            "$(resolved_claude_external_session_id)" \
-            "$(resolved_hook_model)" \
-            "${claude_stop_tokens}" \
-            "" \
-            "${ai_notification_type}" \
-            "" \
-            "" \
-            "" \
-            "$(extract_first_hook_field message)"
-        elif [[ -n "${ai_notification_type:-}" ]]; then
-          write_ai_hook_event \
-            "needsInput" \
-            "$(resolved_claude_external_session_id)" \
-            "$(resolved_hook_model)" \
-            "null" \
-            "" \
-            "${ai_notification_type}" \
-            "" \
-            "${ai_notification_type}" \
-            "" \
-            "$(extract_first_hook_field message)"
-        fi
       fi
       if [[ "${action}" == "notification" ]]; then
         log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} notificationType=${notification_type:-unknown}"

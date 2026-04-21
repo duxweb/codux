@@ -6,13 +6,24 @@ struct OpenCodeToolDriver: AIToolDriver {
     let aliases: Set<String> = ["opencode"]
     let isRealtimeTool = true
 
-    func matches(tool: String) -> Bool {
-        aliases.contains(tool)
-    }
-
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities {
         _ = session
         return AIToolSessionCapabilities(canOpen: true, canRename: true, canRemove: true)
+    }
+
+    func runtimeSnapshot(
+        for session: AISessionStore.TerminalSessionState
+    ) async -> AIRuntimeContextSnapshot? {
+        guard let projectPath = normalizedNonEmptyString(session.projectPath) else {
+            return nil
+        }
+        guard let externalSessionID = normalizedNonEmptyString(session.aiSessionID) else {
+            return nil
+        }
+        return resolvedExternalSessionSnapshot(
+            projectPath: projectPath,
+            externalSessionID: externalSessionID
+        )
     }
 
     func resumeCommand(for session: AISessionSummary) -> String? {
@@ -65,46 +76,10 @@ struct OpenCodeToolDriver: AIToolDriver {
         }
     }
 
-    private func canonicalTool(_ tool: String) -> String {
-        aliases.contains(tool) ? id : tool
-    }
-
-    private func normalizedSessionID(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
-    }
-
-    private func shouldReuseExistingTotals(
-        externalSessionID: String?,
-        liveEnvelope: AIToolUsageEnvelope?,
-        existingSnapshot: AIRuntimeContextSnapshot?
-    ) -> Bool {
-        guard let externalSessionID, !externalSessionID.isEmpty else {
-            return false
-        }
-        if normalizedSessionID(liveEnvelope?.externalSessionID) == externalSessionID {
-            return true
-        }
-        if existingSnapshot?.externalSessionID == externalSessionID {
-            return true
-        }
-        return false
-    }
-
     private func resolvedExternalSessionSnapshot(
-        projectPath: String?,
-        externalSessionID: String?,
-        shouldResolve: Bool
+        projectPath: String,
+        externalSessionID: String
     ) -> AIRuntimeContextSnapshot? {
-        guard shouldResolve,
-              let projectPath,
-              let externalSessionID else {
-            return nil
-        }
-
         let databaseURL = AIRuntimeSourceLocator.opencodeDatabaseURL()
         guard FileManager.default.fileExists(atPath: databaseURL.path) else {
             return nil

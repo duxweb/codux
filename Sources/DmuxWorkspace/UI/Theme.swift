@@ -40,6 +40,7 @@ enum AppTheme {
     static let sidebar = Color.clear
     static let panel = Color(nsColor: .controlBackgroundColor)
     static let card = Color(nsColor: .underPageBackgroundColor)
+    static let aiPanelCardBackground = windowBackground.adjustingBrightness(-0.045)
     static let terminalSurface = Color.clear
     static let terminalChrome = Color(nsColor: .dmuxTerminalBackground)
     static let terminalDivider = Color(nsColor: .dmuxTerminalDivider)

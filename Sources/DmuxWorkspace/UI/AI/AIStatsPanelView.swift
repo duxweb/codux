@@ -64,14 +64,16 @@ struct AIStatsPanelView: View {
                 AIStatsEmptyView(model: model)
             }
 
-            AIStatsIndexingBar(
-                model: model,
-                status: effectiveIndexingStatus,
-                isShowingCachedState: store.refreshState.isShowingCached,
-                isAutomaticRefreshInProgress: isAutomaticRefreshInProgress,
-                onRefresh: onRefresh,
-                onCancel: onCancel
-            )
+            if shouldShowIndexingBar {
+                AIStatsIndexingBar(
+                    model: model,
+                    status: effectiveIndexingStatus,
+                    isShowingCachedState: store.refreshState.isShowingCached,
+                    isAutomaticRefreshInProgress: isAutomaticRefreshInProgress,
+                    onRefresh: onRefresh,
+                    onCancel: onCancel
+                )
+            }
         }
         .background(Color.clear)
         .task(id: currentProject?.id) {
@@ -96,6 +98,10 @@ struct AIStatsPanelView: View {
         }
         return .indexing(progress: 0.0, detail: String(localized: "ai.state.switching_current_project", defaultValue: "Switching to Current Project", bundle: .module))
     }
+
+    private var shouldShowIndexingBar: Bool {
+        true
+    }
 }
 
 private struct AIStatsDeferredSectionsPlaceholder: View {
@@ -119,7 +125,7 @@ private struct AIStatsDeferredSectionsPlaceholder: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.aiPanelCardBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -220,7 +226,7 @@ private struct AIStatsSummaryCards: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.aiPanelCardBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(alignment: .top) {
             UnevenRoundedRectangle(
                 cornerRadii: .init(topLeading: 10, bottomLeading: 0, bottomTrailing: 0, topTrailing: 10),
@@ -287,7 +293,7 @@ private struct AIStatsLiveSessionsCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.aiPanelCardBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func displayTokens(for snapshot: AITerminalSessionSnapshot) -> Int {
@@ -316,7 +322,7 @@ private struct AIStatsHeatmapCard: View {
             AIRecentDaysHeatmapGrid(days: days, hoveredDay: $hoveredDay, hoveredAnchor: $hoveredDayAnchor)
         }
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.aiPanelCardBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(alignment: .topLeading) {
             GeometryReader { proxy in
                 if let hoveredDay {
@@ -599,7 +605,7 @@ private struct AIStatsTodayUsageBarChart: View {
             .frame(height: 96)
         }
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.aiPanelCardBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(alignment: .topLeading) {
             GeometryReader { proxy in
                 if let hoveredBucket {
@@ -626,8 +632,7 @@ private struct AIStatsTodayUsageBarChart: View {
     private var currentBucketIndex: Int {
         let now = Date()
         let hour = Calendar.autoupdatingCurrent.component(.hour, from: now)
-        let minute = Calendar.autoupdatingCurrent.component(.minute, from: now)
-        return min(((hour * 60) + minute) / 30, max(buckets.count - 1, 0))
+        return min(hour, max(buckets.count - 1, 0))
     }
 
     private func axisLabels(totalWidth: CGFloat) -> [(label: String, width: CGFloat)] {
@@ -641,7 +646,7 @@ private struct AIStatsTodayUsageBarChart: View {
     }
 
     private func gridLineColor(for index: Int) -> Color {
-        index % 12 == 0 ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear
+        index % 6 == 0 ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear
     }
 
     private func hoveredBucketIndexAt(
@@ -858,7 +863,7 @@ private struct AIStatsBreakdownCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.aiPanelCardBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -986,7 +991,7 @@ private struct AIStatsSessionsCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.aiPanelCardBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func sessionTimeLabel(_ date: Date) -> String {
@@ -1054,15 +1059,15 @@ private struct AIStatsIndexingBar: View {
             case let .cancelled(detail):
                 return detail
             case .idle, .indexing:
-                return String(localized: "ai.status.ready", defaultValue: "AI Stats Ready", bundle: .module)
+                return completedStatusText
             }
         }
         if isShowingCachedState, case .indexing = status {
-            return String(localized: "ai.status.cached_refreshing", defaultValue: "Showing recent results, updating in background", bundle: .module)
+            return completedStatusText
         }
         switch status {
         case .idle:
-            return String(localized: "ai.status.ready", defaultValue: "AI Stats Ready", bundle: .module)
+            return completedStatusText
         case let .indexing(_, detail):
             return detail
         case let .completed(detail):
@@ -1072,6 +1077,10 @@ private struct AIStatsIndexingBar: View {
         case let .failed(detail):
             return detail
         }
+    }
+
+    private var completedStatusText: String {
+        String(localized: "ai.indexing.complete", defaultValue: "Index complete.", bundle: .module)
     }
 
     private var progressValue: Double? {

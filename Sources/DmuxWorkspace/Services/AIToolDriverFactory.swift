@@ -38,6 +38,9 @@ protocol AIToolDriver: Sendable {
         _ event: AIHookEvent,
         currentSession: AISessionStore.TerminalSessionState?
     ) async -> AIHookEvent
+    func runtimeSnapshot(
+        for session: AISessionStore.TerminalSessionState
+    ) async -> AIRuntimeContextSnapshot?
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities
     func resumeCommand(for session: AISessionSummary) -> String?
     func renameSession(_ session: AISessionSummary, to title: String) throws
@@ -45,12 +48,35 @@ protocol AIToolDriver: Sendable {
 }
 
 extension AIToolDriver {
+    func matches(tool: String) -> Bool {
+        aliases.contains(tool)
+    }
+
+    func canonicalToolName(_ tool: String) -> String {
+        aliases.contains(tool) ? id : tool
+    }
+
+    func normalizedNonEmptyString(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
     func resolveHookEvent(
         _ event: AIHookEvent,
         currentSession: AISessionStore.TerminalSessionState?
     ) async -> AIHookEvent {
         _ = currentSession
         return event
+    }
+
+    func runtimeSnapshot(
+        for session: AISessionStore.TerminalSessionState
+    ) async -> AIRuntimeContextSnapshot? {
+        _ = session
+        return nil
     }
 
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities {
@@ -78,12 +104,16 @@ extension AIToolDriver {
 struct AIToolDriverFactory: Sendable {
     static let shared = AIToolDriverFactory()
 
-    private let drivers: [AIToolDriver] = [
+    private let drivers: [any AIToolDriver]
+
+    init(drivers: [any AIToolDriver] = [
         ClaudeToolDriver(),
         CodexToolDriver(),
         OpenCodeToolDriver(),
         GeminiToolDriver(),
-    ]
+    ]) {
+        self.drivers = drivers
+    }
 
     func driver(for tool: String?) -> AIToolDriver? {
         guard let tool, !tool.isEmpty else {

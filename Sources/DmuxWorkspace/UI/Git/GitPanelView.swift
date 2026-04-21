@@ -1088,8 +1088,8 @@ private struct GitListSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 34)
             .background {
-                AppPinnedHeaderBackground()
-                    .overlay(Color(nsColor: .shadowColor).opacity(0.06))
+                RoundedRectangle(cornerRadius: 0, style: .continuous)
+                    .fill(AppTheme.aiPanelCardBackground.opacity(0.6))
             }
             .overlay(alignment: .bottom) {
                 Rectangle()
@@ -1371,8 +1371,8 @@ private struct GitHistoryRegion: View {
             .padding(.horizontal, 16)
             .frame(height: 34)
             .background {
-                AppPinnedHeaderBackground()
-                    .overlay(Color(nsColor: .shadowColor).opacity(0.06))
+                RoundedRectangle(cornerRadius: 0, style: .continuous)
+                    .fill(AppTheme.aiPanelCardBackground.opacity(0.6))
             }
             .overlay(alignment: .bottom) {
                 Rectangle()

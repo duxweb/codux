@@ -76,17 +76,6 @@ final class AISessionStore {
             !tool.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
-        var isLivePanelEligible: Bool {
-            guard isLive else {
-                return false
-            }
-            switch state {
-            case .responding, .needsInput:
-                return true
-            case .idle:
-                return hasCompletedTurn == false && wasInterrupted == false
-            }
-        }
     }
 
     private let logger = AppDebugLog.shared
@@ -301,19 +290,21 @@ final class AISessionStore {
         terminalSessionsByID[terminalID]?.tool
     }
 
-    func externalSessionID(for terminalID: UUID) -> String? {
-        terminalSessionsByID[terminalID]?.aiSessionID
-    }
-
     func isRunning(terminalID: UUID) -> Bool {
         terminalSessionsByID[terminalID]?.state == .responding
     }
 
     func liveSnapshots(projectID: UUID) -> [AITerminalSessionSnapshot] {
         terminalSessionsByID.values
-            .filter { $0.projectID == projectID && $0.isLivePanelEligible }
+            .filter { $0.projectID == projectID && $0.isLive }
             .sorted { $0.updatedAt > $1.updatedAt }
             .map(snapshot(from:))
+    }
+
+    func runtimeTrackedSessions() -> [TerminalSessionState] {
+        terminalSessionsByID.values
+            .filter { isRuntimeTracked($0) }
+            .sorted { $0.updatedAt > $1.updatedAt }
     }
 
     func liveDisplaySnapshots(projectID: UUID) -> [AITerminalSessionSnapshot] {
@@ -416,6 +407,69 @@ final class AISessionStore {
         .joined(separator: " | ")
     }
 
+    func applyRuntimeSnapshot(
+        terminalID: UUID,
+        snapshot: AIRuntimeContextSnapshot
+    ) -> Bool {
+        guard let seedSession = terminalSessionsByID[terminalID] else {
+            return false
+        }
+
+        let normalizedSessionID = normalizedNonEmptyString(snapshot.externalSessionID)
+        let normalizedModel = normalizedNonEmptyString(snapshot.model)
+        let targetLogicalKey = normalizedSessionID.map {
+            LogicalSessionKey(tool: canonicalToolName(snapshot.tool), aiSessionID: $0)
+        }
+
+        let targetTerminalIDs: [UUID]
+        if let targetLogicalKey {
+            targetTerminalIDs = terminalSessionsByID.compactMap { terminalID, session in
+                if terminalID == seedSession.terminalID {
+                    return terminalID
+                }
+                return session.logicalSessionKey == targetLogicalKey ? terminalID : nil
+            }
+        } else {
+            targetTerminalIDs = [terminalID]
+        }
+
+        var didChange = false
+        for targetTerminalID in targetTerminalIDs {
+            guard var session = terminalSessionsByID[targetTerminalID] else {
+                continue
+            }
+
+            let previousLogicalKey = session.logicalSessionKey
+            let previousState = session
+
+            if let normalizedSessionID {
+                session.aiSessionID = normalizedSessionID
+            }
+            if let normalizedModel {
+                session.model = normalizedModel
+            }
+            session.updatedAt = max(session.updatedAt, snapshot.updatedAt)
+            session.committedTotalTokens = max(session.committedTotalTokens, snapshot.totalTokens)
+
+            terminalSessionsByID[targetTerminalID] = session
+            reconcileLogicalSession(for: session, previousLogicalKey: previousLogicalKey)
+            pruneLogicalSessionIfUnused(previousLogicalKey)
+
+            if previousState != session {
+                didChange = true
+            }
+        }
+
+        if didChange {
+            renderVersion &+= 1
+            logger.log(
+                "ai-session-store",
+                "runtime terminal=\(terminalID.uuidString) tool=\(snapshot.tool) external=\(snapshot.externalSessionID ?? "nil") total=\(snapshot.totalTokens)"
+            )
+        }
+        return didChange
+    }
+
     private func seedSessionOnStart(_ session: inout TerminalSessionState, event: AIHookEvent) {
         if let totalTokens = event.totalTokens {
             session.committedTotalTokens = max(session.committedTotalTokens, totalTokens)
@@ -451,6 +505,13 @@ final class AISessionStore {
         session.targetToolName = nil
         session.interactionMessage = nil
         session.committedTotalTokens = committedTotal
+        if session.hasCompletedTurn, !wasInterrupted {
+            let expiresAt = session.updatedAt + completedPhaseLifetime
+            logger.log(
+                "ai-session-store",
+                "completed terminal=\(session.terminalID.uuidString) tool=\(session.tool) display-hold-until=\(expiresAt)"
+            )
+        }
     }
 
     private func resolvedCommittedTotalTokens(for session: TerminalSessionState, incomingTotalTokens: Int?) -> Int {
@@ -521,6 +582,19 @@ final class AISessionStore {
             return false
         }
         return event.updatedAt < existing.updatedAt
+    }
+
+    private func isRuntimeTracked(_ session: TerminalSessionState) -> Bool {
+        guard session.isLive else {
+            return false
+        }
+
+        switch session.state {
+        case .responding, .needsInput:
+            return true
+        case .idle:
+            return session.wasInterrupted == false && session.hasCompletedTurn == false
+        }
     }
 
     private func snapshot(from session: TerminalSessionState) -> AITerminalSessionSnapshot {

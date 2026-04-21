@@ -41,6 +41,32 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         XCTAssertEqual(snapshot?.outputTokens, 228)
     }
 
+    func testClaudeSnapshotFindsUsageWhenProjectDirectoryNameIsSanitizedDifferently() async throws {
+        let homeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dmux-claude-runtime-fallback-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: homeURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: homeURL) }
+
+        let projectPath = "/Volumes/Web/未命名文件夹"
+        let sessionID = UUID().uuidString.lowercased()
+        let actualDirectory = homeURL
+            .appendingPathComponent(".claude/projects", isDirectory: true)
+            .appendingPathComponent("-Volumes-Web-------", isDirectory: true)
+        try FileManager.default.createDirectory(at: actualDirectory, withIntermediateDirectories: true)
+
+        let logURL = actualDirectory.appendingPathComponent("\(sessionID).jsonl", isDirectory: false)
+        let row = """
+        {"cwd":"\(projectPath)","sessionId":"\(sessionID)","timestamp":"2026-04-21T03:10:47.562Z","type":"assistant","uuid":"row-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"cache_creation_input_tokens":20,"cache_read_input_tokens":30,"output_tokens":40},"stop_reason":"end_turn"}}
+        """
+        try "\(row)\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        let urls = AIRuntimeSourceLocator.claudeProjectLogURLs(projectPath: projectPath, homeURL: homeURL)
+        XCTAssertEqual(
+            urls.map { $0.resolvingSymlinksInPath().standardizedFileURL },
+            [logURL.resolvingSymlinksInPath().standardizedFileURL]
+        )
+    }
+
     func testClaudeTurnCompletedUsesCurrentSessionFallbackWithoutSnapshotScan() async throws {
         let projectPath = "/tmp/dmux-claude-driver-\(UUID().uuidString)"
         let sessionID = UUID().uuidString.lowercased()
@@ -86,6 +112,65 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
 
         XCTAssertEqual(resolved.model, "claude-sonnet-4-6")
         XCTAssertEqual(resolved.totalTokens, 321)
+    }
+
+    func testClaudeTurnCompletedUsesRuntimeLogSnapshotWhenAvailable() async throws {
+        let projectPath = "/tmp/dmux-claude-driver-snapshot-\(UUID().uuidString)"
+        let sessionID = UUID().uuidString.lowercased()
+        let logURL = AIRuntimeSourceLocator.claudeSessionLogURL(projectPath: projectPath, externalSessionID: sessionID)
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+
+        let row = """
+        {"cwd":"\(projectPath)","sessionId":"\(sessionID)","timestamp":"2026-04-21T03:10:47.562Z","type":"assistant","uuid":"row-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"cache_creation_input_tokens":20,"cache_read_input_tokens":30,"output_tokens":40},"stop_reason":"end_turn"}}
+        """
+        let stopSummary = """
+        {"cwd":"\(projectPath)","sessionId":"\(sessionID)","timestamp":"2026-04-21T03:10:48.000Z","type":"system","subtype":"stop_hook_summary"}
+        """
+        try "\(row)\n\(stopSummary)\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        let resolved = await ClaudeToolDriver().resolveHookEvent(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: UUID(),
+                terminalInstanceID: "instance-1",
+                projectID: UUID(),
+                projectName: "Codux",
+                projectPath: projectPath,
+                sessionTitle: "Claude",
+                tool: "claude",
+                aiSessionID: sessionID,
+                model: nil,
+                totalTokens: nil,
+                updatedAt: 200,
+                metadata: .init(transcriptPath: nil, notificationType: nil, reason: nil)
+            ),
+            currentSession: AISessionStore.TerminalSessionState(
+                terminalID: UUID(),
+                terminalInstanceID: "instance-1",
+                projectID: UUID(),
+                projectName: "Codux",
+                projectPath: projectPath,
+                sessionTitle: "Claude",
+                tool: "claude",
+                aiSessionID: sessionID,
+                state: .responding,
+                model: "claude-sonnet-4-6",
+                baselineTotalTokens: 0,
+                committedTotalTokens: 0,
+                updatedAt: 199,
+                startedAt: 198,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                transcriptPath: nil,
+                notificationType: nil,
+                targetToolName: nil,
+                interactionMessage: nil
+            )
+        )
+
+        XCTAssertEqual(resolved.model, "claude-sonnet-4-6")
+        XCTAssertEqual(resolved.totalTokens, 100)
     }
 
     func testClaudePromptSubmittedDoesNotWaitForSnapshotTotals() async throws {

@@ -1,5 +1,5 @@
 {
-  "originHash" : "1b73a7924fa60bde49417192ec2700ac06b621710f78fe19b779639e55d283bc",
+  "originHash" : "1779b2d2318607badc8b5c944203810d2c54c16355fe3b06f21b86c1cc87f7ad",
   "pins" : [
     {
       "identity" : "libghostty-spm",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/duxphp/libghostty-spm.git",
       "state" : {
         "branch" : "pr/appkit-input-alignment",
-        "revision" : "c39cab687301d3299c271eaffe28e5db46a89f4c"
+        "revision" : "2f76e2ee4f2844a80a1ac141402cc5e2f36460b6"
       }
     },
     {

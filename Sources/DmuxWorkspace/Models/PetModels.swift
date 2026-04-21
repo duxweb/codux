@@ -193,7 +193,7 @@ enum PetClaimOption: String, CaseIterable, Identifiable, Sendable {
 
     func resolveSpecies(
         hiddenSpeciesChance: Double = 0.15,
-        randomValue: Double = Double.random(in: 0..<1)
+        randomValue: Double? = nil
     ) -> PetSpecies {
         switch self {
         case .voidcat:
@@ -203,11 +203,15 @@ enum PetClaimOption: String, CaseIterable, Identifiable, Sendable {
         case .goose:
             return .goose
         case .random:
-            let clamped = min(max(randomValue, 0), 0.999_999)
             let hiddenChance = min(max(hiddenSpeciesChance, 0), 0.50)
-            if clamped < hiddenChance {
+            let roll = min(max(randomValue ?? Double.random(in: 0..<1), 0), 0.999_999)
+            if roll < hiddenChance {
                 return .chaossprite
             }
+            guard let randomValue else {
+                return Self.randomPool.randomElement() ?? .voidcat
+            }
+            let clamped = min(max(randomValue, 0), 0.999_999)
             let normalized = (clamped - hiddenChance) / max(0.000_001, (1 - hiddenChance))
             let index = min(Int(normalized * Double(Self.randomPool.count)), Self.randomPool.count - 1)
             return Self.randomPool[index]

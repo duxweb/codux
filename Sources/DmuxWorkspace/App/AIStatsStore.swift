@@ -16,12 +16,6 @@ final class AIStatsStore {
         case background
     }
 
-    private struct CachedAIStatsPanelEntry {
-        var projectID: UUID
-        var state: AIStatsPanelState
-        var updatedAt: Date
-    }
-
     var state = AIStatsPanelState.empty
     var refreshState: PanelRefreshState = .idle
     var isAutomaticRefreshInProgress = false
@@ -39,14 +33,14 @@ final class AIStatsStore {
     private var automaticRefreshInProgressByProjectID: [UUID: Bool] = [:]
     private var manualRefreshInProgressByProjectID: [UUID: Bool] = [:]
     private var lastCompletedRefreshAtByProjectID: [UUID: Date] = [:]
-    private var cachedPanels = RecentProjectCache<CachedAIStatsPanelEntry>()
+    private var openedProjectIDsThisLaunch: Set<UUID> = []
+    private var cachedPanels = RecentProjectCache<AIStatsPanelState>()
     private var refreshTimer: Timer?
     private var backgroundRefreshTimer: Timer?
     private var runtimeBridgeObserver: NSObjectProtocol?
     private var terminalFocusObserver: NSObjectProtocol?
     private var terminalOutputObserver: NSObjectProtocol?
     private var pendingRuntimeBridgeRefreshTask: Task<Void, Never>?
-    private var pendingRuntimeBridgeRefreshShouldForce = false
     private var currentProjectID: UUID?
     private var currentSelectedSessionID: UUID?
     private var currentProjects: [Project] = []
@@ -57,6 +51,12 @@ final class AIStatsStore {
     private var automaticRefreshInterval: TimeInterval = 180
     private var backgroundRefreshInterval: TimeInterval = 600
     private let debugAIFocus = ProcessInfo.processInfo.environment["DMUX_DEBUG_AI_FOCUS"] == "1"
+
+    private typealias LiveSnapshotContext = (
+        display: [AITerminalSessionSnapshot],
+        summary: [AITerminalSessionSnapshot],
+        current: AITerminalSessionSnapshot?
+    )
 
     private func effectiveSessionID(_ selectedSessionID: UUID?) -> UUID? {
         let focusedSessionID = DmuxTerminalBackend.shared.registry.focusedSessionID()
@@ -86,14 +86,13 @@ final class AIStatsStore {
                     return
                 }
                 let sessionID = self.effectiveSessionID(selectedSessionID())
-                self.automaticRefreshInProgressByProjectID[project.id] = true
-                self.manualRefreshInProgressByProjectID[project.id] = false
+                self.setRefreshFlags(projectID: project.id, automatic: true, manual: false)
                 self.syncCurrentAutomaticRefreshFlag()
                 self.refresh(
                     project: project,
                     projects: projects(),
                     selectedSessionID: sessionID,
-                    force: true,
+                    force: false,
                     trigger: .automatic
                 )
             }
@@ -113,27 +112,18 @@ final class AIStatsStore {
                 )
             }
         }
-        logger.log("history-refresh", "background-worker start interval=\(Int(backgroundRefreshInterval))s")
-
-        startRuntimeBridgeObserver(
-            isPanelVisible: isPanelVisible,
-            selectedProject: selectedProject,
-            selectedSessionID: selectedSessionID,
-            projects: projects
-        )
+        startRuntimeBridgeObserver()
 
         startTerminalFocusObserver(
             isPanelVisible: isPanelVisible,
             selectedProject: selectedProject,
-            selectedSessionID: selectedSessionID,
-            projects: projects
+            selectedSessionID: selectedSessionID
         )
 
         startTerminalOutputObserver(
             isPanelVisible: isPanelVisible,
             selectedProject: selectedProject,
-            selectedSessionID: selectedSessionID,
-            projects: projects
+            selectedSessionID: selectedSessionID
         )
 
     }
@@ -170,59 +160,79 @@ final class AIStatsStore {
 
     func refreshIfNeeded(project: Project?, projects: [Project], selectedSessionID: UUID?) {
         let selectedSessionID = effectiveSessionID(selectedSessionID)
-        currentProjects = projects
-        currentProjectID = project?.id
-        currentSelectedSessionID = selectedSessionID
+        updateSelectionContext(project: project, projects: projects, selectedSessionID: selectedSessionID)
         syncCurrentAutomaticRefreshFlag()
         guard let project else {
-            state = .empty
-            refreshState = .idle
-            isAutomaticRefreshInProgress = false
+            clearCurrentState()
             return
         }
 
-        _ = ingestRuntime(project: project, projects: projects)
-        let displayLiveSnapshots = aiSessionStore.liveDisplaySnapshots(projectID: project.id)
-        let summaryLiveSnapshots = aiSessionStore.liveAggregationSnapshots(projectID: project.id)
-        let currentSnapshot = aiSessionStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
-        let cachedState = cachedState(for: project.id)
+        _ = ingestRuntime(project: project, projects: projects, selectedSessionID: currentSelectedSessionID)
+        let liveContext = liveSnapshotContext(projectID: project.id, selectedSessionID: selectedSessionID)
+        let persistedIndexedSnapshot = aiUsageStore.indexedProjectSnapshot(projectID: project.id)
+        if cachedState(for: project.id) == nil, let persistedIndexedSnapshot {
+            logger.log(
+                "history-refresh",
+                "hydrate persisted project=\(project.id.uuidString) indexedAt=\(persistedIndexedSnapshot.indexedAt.timeIntervalSince1970) projectTotal=\(persistedIndexedSnapshot.projectSummary.projectTotalTokens) todayTotal=\(persistedIndexedSnapshot.projectSummary.todayTotalTokens) sessions=\(persistedIndexedSnapshot.sessions.count)"
+            )
+        }
+        let cachedState = cachedState(for: project.id) ?? persistedIndexedSnapshot.map { _ in
+            aiUsageService.snapshotBackedPanelState(
+                project: project,
+                liveSnapshots: liveContext.summary,
+                currentSnapshot: liveContext.current,
+                status: .completed(detail: String(localized: "ai.indexing.complete", defaultValue: "Index complete.", bundle: .module))
+            )
+        }
+        let isFirstOpenThisLaunch = openedProjectIDsThisLaunch.insert(project.id).inserted
         let refreshDecision = automaticRefreshDecision(
             projectID: project.id,
             state: cachedState,
-            interval: automaticRefreshInterval
+            interval: automaticRefreshInterval,
+            forceOnFirstOpen: isFirstOpenThisLaunch
         )
         let shouldRefresh = refreshDecision.shouldRefresh
+        let trigger: RefreshTrigger? = if shouldRefresh {
+            if isFirstOpenThisLaunch || persistedIndexedSnapshot == nil && cachedState == nil {
+                .initial
+            } else {
+                .automatic
+            }
+        } else {
+            nil
+        }
+
         let projectRefreshState: PanelRefreshState
         if refreshTasks[project.id] != nil {
-            projectRefreshState = automaticRefreshInProgressByProjectID[project.id] == true ? .showingCached : .refreshing
+            projectRefreshState = isAutomaticRefreshInProgress(projectID: project.id) ? .showingCached : .refreshing
         } else if shouldRefresh {
-            projectRefreshState = cachedState == nil ? .refreshing : .showingCached
+            projectRefreshState = trigger == .automatic && cachedState != nil ? .showingCached : .refreshing
         } else {
-            projectRefreshState = normalizedRestingRefreshState(refreshStateByProjectID[project.id])
+            projectRefreshState = restingRefreshState(projectID: project.id)
         }
         if let cachedState {
-            let status = indexingStatusByProjectID[project.id] ?? cachedState.indexingStatus
+            let status = projectIndexingStatus(projectID: project.id, fallback: cachedState.indexingStatus)
             var nextState = aiUsageService.snapshotBackedPanelState(
                 project: project,
-                liveSnapshots: summaryLiveSnapshots,
-                currentSnapshot: currentSnapshot,
+                liveSnapshots: liveContext.summary,
+                currentSnapshot: liveContext.current,
                 status: status
             )
-            nextState.liveSnapshots = displayLiveSnapshots
+            nextState.liveSnapshots = liveContext.display
             nextState.indexingStatus = status
             storeState(nextState, refreshState: projectRefreshState, for: project.id, updateCurrent: true)
         } else {
             var emptyState = aiUsageService.fastPanelState(
                 project: project,
-                liveSnapshots: summaryLiveSnapshots,
-                currentSnapshot: currentSnapshot
+                liveSnapshots: liveContext.summary,
+                currentSnapshot: liveContext.current
             )
-            emptyState.liveSnapshots = displayLiveSnapshots
+            emptyState.liveSnapshots = liveContext.display
             storeState(emptyState, refreshState: .refreshing, for: project.id, updateCurrent: true)
         }
 
         if shouldRefresh {
-            let trigger: RefreshTrigger = cachedState == nil ? .initial : .automatic
+            guard let trigger else { return }
             if trigger == .automatic {
                 automaticRefreshInProgressByProjectID[project.id] = true
                 manualRefreshInProgressByProjectID[project.id] = false
@@ -239,66 +249,11 @@ final class AIStatsStore {
 
     }
 
-    func syncSelection(project: Project?, projects: [Project], selectedSessionID: UUID?) {
-        let selectedSessionID = effectiveSessionID(selectedSessionID)
-        currentProjects = projects
-        currentProjectID = project?.id
-        currentSelectedSessionID = selectedSessionID
-        syncCurrentAutomaticRefreshFlag()
-
-        guard let project else {
-            state = .empty
-            refreshState = .idle
-            isAutomaticRefreshInProgress = false
-            return
-        }
-
-        _ = ingestRuntime(project: project, projects: projects)
-        let displayLiveSnapshots = aiSessionStore.liveDisplaySnapshots(projectID: project.id)
-        let summaryLiveSnapshots = aiSessionStore.liveAggregationSnapshots(projectID: project.id)
-        let currentSnapshot = aiSessionStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
-        let status = indexingStatusByProjectID[project.id]
-            ?? cachedState(for: project.id)?.indexingStatus
-            ?? .completed(detail: String(localized: "ai.indexing.complete", defaultValue: "Index complete.", bundle: .module))
-
-        let hasCachedState = cachedState(for: project.id) != nil
-
-        if hasCachedState {
-            var nextState = aiUsageService.snapshotBackedPanelState(
-                project: project,
-                liveSnapshots: summaryLiveSnapshots,
-                currentSnapshot: currentSnapshot,
-                status: status
-            )
-            nextState.liveSnapshots = displayLiveSnapshots
-            nextState.indexingStatus = status
-            storeState(nextState, refreshState: normalizedRestingRefreshState(refreshStateByProjectID[project.id]), for: project.id, updateCurrent: true)
-        } else {
-            var nextState = aiUsageService.fastPanelState(
-                project: project,
-                liveSnapshots: summaryLiveSnapshots,
-                currentSnapshot: currentSnapshot
-            )
-            nextState.liveSnapshots = displayLiveSnapshots
-            nextState.indexingStatus = status
-            storeState(nextState, refreshState: .idle, for: project.id, updateCurrent: true)
-        }
-
-        logger.log(
-            "ai-panel-bridge",
-            "phase=selection-sync project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") cached=\(hasCachedState) live=\(displayLiveSnapshots.count)"
-        )
-
-    }
-
     func refreshCurrent(project: Project?, projects: [Project], selectedSessionID: UUID?) {
         guard let project else { return }
         let selectedSessionID = effectiveSessionID(selectedSessionID)
-        currentProjects = projects
-        currentProjectID = project.id
-        currentSelectedSessionID = selectedSessionID
-        automaticRefreshInProgressByProjectID[project.id] = false
-        manualRefreshInProgressByProjectID[project.id] = true
+        updateSelectionContext(project: project, projects: projects, selectedSessionID: selectedSessionID)
+        setRefreshFlags(projectID: project.id, automatic: false, manual: true)
         syncCurrentAutomaticRefreshFlag()
         refresh(
             project: project,
@@ -499,20 +454,17 @@ final class AIStatsStore {
         refreshTasks[project.id] = nil
         let cancelledStatus = AIIndexingStatus.cancelled(detail: String(localized: "ai.indexing.stopped", defaultValue: "Indexing stopped.", bundle: .module))
         indexingStatusByProjectID[project.id] = cancelledStatus
-        _ = ingestRuntime(project: project, projects: projects)
-        let displayLiveSnapshots = aiSessionStore.liveDisplaySnapshots(projectID: project.id)
-        let summaryLiveSnapshots = aiSessionStore.liveAggregationSnapshots(projectID: project.id)
-        let currentSnapshot = aiSessionStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: currentSelectedSessionID)
+        _ = ingestRuntime(project: project, projects: projects, selectedSessionID: currentSelectedSessionID)
+        let liveContext = liveSnapshotContext(projectID: project.id, selectedSessionID: currentSelectedSessionID)
         var nextState = aiUsageService.snapshotBackedPanelState(
             project: project,
-            liveSnapshots: summaryLiveSnapshots,
-            currentSnapshot: currentSnapshot,
+            liveSnapshots: liveContext.summary,
+            currentSnapshot: liveContext.current,
             status: cancelledStatus
         )
-        nextState.liveSnapshots = displayLiveSnapshots
+        nextState.liveSnapshots = liveContext.display
         storeState(nextState, refreshState: .idle, for: project.id, updateCurrent: true)
-        automaticRefreshInProgressByProjectID[project.id] = false
-        manualRefreshInProgressByProjectID[project.id] = false
+        setRefreshFlags(projectID: project.id, automatic: false, manual: false)
         syncCurrentAutomaticRefreshFlag()
     }
 
@@ -553,7 +505,7 @@ final class AIStatsStore {
     }
 
     func invalidateProjectCaches(project: Project) {
-        aiUsageStore.deleteIndexedProjectSnapshot(projectID: project.id)
+        aiUsageStore.deleteProjectIndexState(projectID: project.id)
         aiUsageStore.deleteExternalSummaries(projectPath: project.path)
         panelStateByProjectID[project.id] = nil
         refreshStateByProjectID[project.id] = .idle
@@ -576,12 +528,7 @@ final class AIStatsStore {
             currentProjectID = project.id
             currentSelectedSessionID = selectedSessionID
         }
-        let rawLiveEnvelopes = ingestRuntime(project: project, projects: projects)
-        let liveEnvelopes = resolveProjectLiveEnvelopes(
-            from: rawLiveEnvelopes,
-            project: project,
-            selectedSessionID: selectedSessionID
-        )
+        let liveSnapshots = ingestRuntime(project: project, projects: projects, selectedSessionID: selectedSessionID)
 
         if force, let task = refreshTasks[project.id] {
             task.cancel()
@@ -596,12 +543,15 @@ final class AIStatsStore {
             return
         }
 
-        automaticRefreshInProgressByProjectID[project.id] = isAutomaticTrigger(trigger)
-        manualRefreshInProgressByProjectID[project.id] = trigger == .manual || trigger == .initial
+        setRefreshFlags(
+            projectID: project.id,
+            automatic: isAutomaticTrigger(trigger),
+            manual: trigger == .manual || trigger == .initial
+        )
         syncCurrentAutomaticRefreshFlag()
         logger.log(
             "history-refresh",
-            "start trigger=\(refreshTriggerName(trigger)) project=\(project.id.uuidString) name=\(project.name) force=\(force) live=\(liveEnvelopes.count) selectedSession=\(selectedSessionID?.uuidString ?? "nil")"
+            "start trigger=\(refreshTriggerName(trigger)) project=\(project.id.uuidString) name=\(project.name) force=\(force) live=\(liveSnapshots.count) selectedSession=\(selectedSessionID?.uuidString ?? "nil")"
         )
 
         let runningStatus = AIIndexingStatus.indexing(progress: 0.0, detail: String(localized: "ai.indexing.starting", defaultValue: "Starting index.", bundle: .module))
@@ -621,27 +571,14 @@ final class AIStatsStore {
             }
 
             let service = AIUsageService()
-            let liveSnapshots = await MainActor.run {
-                self.aiSessionStore.liveSnapshots(projectID: project.id)
-            }
-            let displayLiveSnapshots = await MainActor.run {
-                self.aiSessionStore.liveDisplaySnapshots(projectID: project.id)
-            }
-            let summaryLiveSnapshots = await MainActor.run {
-                self.aiSessionStore.liveAggregationSnapshots(projectID: project.id)
-            }
-            let currentSnapshot = await MainActor.run {
-                self.aiSessionStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
+            let liveContext = await MainActor.run {
+                self.liveSnapshotContext(projectID: project.id, selectedSessionID: selectedSessionID)
             }
             var quickState = await Task.detached(priority: .userInitiated) {
-                service.fastPanelState(project: project, liveSnapshots: summaryLiveSnapshots, currentSnapshot: currentSnapshot)
+                service.fastPanelState(project: project, liveSnapshots: liveContext.summary, currentSnapshot: liveContext.current)
             }.value
-            quickState.liveSnapshots = displayLiveSnapshots
+            quickState.liveSnapshots = liveContext.display
             await MainActor.run {
-                self.logger.log(
-                    "ai-panel-bridge",
-                    "phase=quick project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") live=\(liveSnapshots.count) liveUnique=\(self.uniqueLiveSnapshotCount(liveSnapshots)) snapshotSession=\(currentSnapshot?.sessionID.uuidString ?? "nil") snapshotTool=\(currentSnapshot?.tool ?? "nil") snapshotModel=\(currentSnapshot?.model ?? "nil") snapshotTotal=\(currentSnapshot?.currentTotalTokens ?? 0) summaryTool=\(quickState.projectSummary?.currentTool ?? "nil") summaryModel=\(quickState.projectSummary?.currentModel ?? "nil") summaryTotal=\(quickState.projectSummary?.currentSessionTokens ?? 0)"
-                )
                 self.indexingStatusByProjectID[project.id] = quickState.indexingStatus
                 self.panelStateByProjectID[project.id] = quickState
                 self.refreshStateByProjectID[project.id] = self.inFlightRefreshState(for: trigger, current: self.refreshStateByProjectID[project.id])
@@ -652,7 +589,11 @@ final class AIStatsStore {
                 }
             }
 
-            let resultState = await service.panelState(project: project, liveEnvelopes: liveEnvelopes, selectedSessionID: selectedSessionID) { status in
+            let resultState = await service.panelState(
+                project: project,
+                liveSnapshots: liveContext.summary,
+                currentSnapshot: liveContext.current
+            ) { status in
                 await MainActor.run {
                     self.indexingStatusByProjectID[project.id] = status
                     guard var nextState = self.panelStateByProjectID[project.id] else {
@@ -667,8 +608,7 @@ final class AIStatsStore {
             await MainActor.run {
                 let finalStatus = resultState.indexingStatus
                 self.indexingStatusByProjectID[project.id] = finalStatus
-                self.automaticRefreshInProgressByProjectID[project.id] = false
-                self.manualRefreshInProgressByProjectID[project.id] = false
+                self.setRefreshFlags(projectID: project.id, automatic: false, manual: false)
                 self.syncCurrentAutomaticRefreshFlag()
                 let nextRefreshState: PanelRefreshState
                 if case .failed(let detail) = finalStatus {
@@ -677,35 +617,29 @@ final class AIStatsStore {
                     self.lastCompletedRefreshAtByProjectID[project.id] = Date()
                     nextRefreshState = .idle
                 }
-                let displayLiveSnapshots = self.aiSessionStore.liveDisplaySnapshots(projectID: project.id)
-                let summaryLiveSnapshots = self.aiSessionStore.liveAggregationSnapshots(projectID: project.id)
-                let currentSnapshot = self.aiSessionStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
+                let liveContext = self.liveSnapshotContext(projectID: project.id, selectedSessionID: selectedSessionID)
                 var nextState = service.snapshotBackedPanelState(
                     project: project,
-                    liveSnapshots: summaryLiveSnapshots,
-                    currentSnapshot: currentSnapshot,
+                    liveSnapshots: liveContext.summary,
+                    currentSnapshot: liveContext.current,
                     status: finalStatus
                 )
-                nextState.liveSnapshots = displayLiveSnapshots
-                self.logger.log(
-                    "ai-panel-bridge",
-                    "phase=indexed project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") live=\(nextState.liveSnapshots.count) indexedSessions=\(nextState.sessions.count) summaryTool=\(nextState.projectSummary?.currentTool ?? "nil") summaryModel=\(nextState.projectSummary?.currentModel ?? "nil") summaryTotal=\(nextState.projectSummary?.currentSessionTokens ?? 0)"
-                )
+                nextState.liveSnapshots = liveContext.display
                 self.storeState(nextState, refreshState: nextRefreshState, for: project.id, updateCurrent: self.currentProjectID == project.id)
                 let durationMS = Int(Date().timeIntervalSince(startedAt) * 1000)
                 self.logger.log(
                     "history-refresh",
-                    "finish trigger=\(self.refreshTriggerName(trigger)) project=\(project.id.uuidString) result=\(self.refreshResultName(finalStatus)) sessions=\(nextState.sessions.count) live=\(nextState.liveSnapshots.count) indexed=\(nextState.indexedAt != nil) durationMs=\(durationMS)"
+                    "finish trigger=\(self.refreshTriggerName(trigger)) project=\(project.id.uuidString) result=\(self.refreshResultName(finalStatus)) projectTotal=\(nextState.projectSummary?.projectTotalTokens ?? 0) todayTotal=\(nextState.projectSummary?.todayTotalTokens ?? 0) sessions=\(nextState.sessions.count) live=\(nextState.liveSnapshots.count) indexed=\(nextState.indexedAt != nil) durationMs=\(durationMS)"
                 )
                 if self.currentProjectID == project.id {
-                    self.refreshLiveState(project: project, projects: projects, selectedSessionID: selectedSessionID)
+                    self.refreshLiveState(project: project, selectedSessionID: selectedSessionID)
                 }
             }
         }
     }
 
     private func cacheState(_ state: AIStatsPanelState, for projectID: UUID) {
-        cachedPanels.set(CachedAIStatsPanelEntry(projectID: projectID, state: state, updatedAt: Date()), for: projectID)
+        cachedPanels.set(state, for: projectID)
     }
 
     private func storeState(_ newState: AIStatsPanelState, refreshState newRefreshState: PanelRefreshState, for projectID: UUID, updateCurrent: Bool) {
@@ -720,7 +654,7 @@ final class AIStatsStore {
     }
 
     private func updatePanelState(projectID: UUID, transform: (inout AIStatsPanelState) -> Void) {
-        guard var nextState = panelStateByProjectID[projectID] ?? cachedPanels.value(for: projectID)?.state else {
+        guard var nextState = panelStateByProjectID[projectID] ?? cachedPanels.value(for: projectID) else {
             if currentProjectID == projectID {
                 var currentState = state
                 transform(&currentState)
@@ -739,7 +673,7 @@ final class AIStatsStore {
         if let state = panelStateByProjectID[projectID] {
             return state
         }
-        return cachedPanels.value(for: projectID)?.state
+        return cachedPanels.value(for: projectID)
     }
 
     private func relocalizedStatus(_ status: AIIndexingStatus) -> AIIndexingStatus {
@@ -781,17 +715,62 @@ final class AIStatsStore {
         return max(0, summary)
     }
 
+    private func clearCurrentState() {
+        state = .empty
+        refreshState = .idle
+        isAutomaticRefreshInProgress = false
+    }
+
+    private func updateSelectionContext(project: Project?, projects: [Project], selectedSessionID: UUID?) {
+        currentProjects = projects
+        currentProjectID = project?.id
+        currentSelectedSessionID = selectedSessionID
+    }
+
+    private func liveSnapshotContext(projectID: UUID, selectedSessionID: UUID?) -> LiveSnapshotContext {
+        (
+            display: aiSessionStore.liveDisplaySnapshots(projectID: projectID),
+            summary: aiSessionStore.liveAggregationSnapshots(projectID: projectID),
+            current: aiSessionStore.currentDisplaySnapshot(projectID: projectID, selectedSessionID: selectedSessionID)
+        )
+    }
+
     private func syncCurrentAutomaticRefreshFlag() {
         guard let currentProjectID else {
             isAutomaticRefreshInProgress = false
             return
         }
-        isAutomaticRefreshInProgress = automaticRefreshInProgressByProjectID[currentProjectID] ?? false
+        isAutomaticRefreshInProgress = isAutomaticRefreshInProgress(projectID: currentProjectID)
     }
 
-    private func automaticRefreshDecision(projectID: UUID, state: AIStatsPanelState?, interval: TimeInterval) -> (shouldRefresh: Bool, reason: String) {
+    private func setRefreshFlags(projectID: UUID, automatic: Bool, manual: Bool) {
+        automaticRefreshInProgressByProjectID[projectID] = automatic
+        manualRefreshInProgressByProjectID[projectID] = manual
+    }
+
+    private func isAutomaticRefreshInProgress(projectID: UUID) -> Bool {
+        automaticRefreshInProgressByProjectID[projectID] ?? false
+    }
+
+    private func projectIndexingStatus(projectID: UUID, fallback: AIIndexingStatus) -> AIIndexingStatus {
+        indexingStatusByProjectID[projectID] ?? fallback
+    }
+
+    private func restingRefreshState(projectID: UUID) -> PanelRefreshState {
+        normalizedRestingRefreshState(refreshStateByProjectID[projectID])
+    }
+
+    private func automaticRefreshDecision(
+        projectID: UUID,
+        state: AIStatsPanelState?,
+        interval: TimeInterval,
+        forceOnFirstOpen: Bool
+    ) -> (shouldRefresh: Bool, reason: String) {
         if refreshTasks[projectID] != nil {
             return (false, "in-flight")
+        }
+        if forceOnFirstOpen {
+            return (true, "first-open-this-launch")
         }
         if let lastCompleted = lastCompletedRefreshAtByProjectID[projectID] {
             let age = Date().timeIntervalSince(lastCompleted)
@@ -878,12 +857,10 @@ final class AIStatsStore {
         projects: @escaping @MainActor () -> [Project]
     ) {
         if isPanelVisible() {
-            logger.log("history-refresh", "skip trigger=background reason=panel-visible")
             return
         }
 
         guard let project = selectedProject() else {
-            logger.log("history-refresh", "skip trigger=background reason=no-selected-project")
             return
         }
 
@@ -892,7 +869,8 @@ final class AIStatsStore {
         let decision = automaticRefreshDecision(
             projectID: project.id,
             state: cachedState(for: project.id),
-            interval: backgroundRefreshInterval
+            interval: backgroundRefreshInterval,
+            forceOnFirstOpen: false
         )
         guard decision.shouldRefresh else {
             logger.log(
@@ -916,12 +894,7 @@ final class AIStatsStore {
         )
     }
 
-    private func startRuntimeBridgeObserver(
-        isPanelVisible: @escaping @MainActor () -> Bool,
-        selectedProject: @escaping @MainActor () -> Project?,
-        selectedSessionID: @escaping @MainActor () -> UUID?,
-        projects: @escaping @MainActor () -> [Project]
-    ) {
+    private func startRuntimeBridgeObserver() {
         if let runtimeBridgeObserver {
             NotificationCenter.default.removeObserver(runtimeBridgeObserver)
         }
@@ -933,16 +906,14 @@ final class AIStatsStore {
             guard let self else {
                 return
             }
-            let shouldForce = notification.userInfo?["kind"] != nil
+            _ = notification.userInfo?["kind"]
             Task { @MainActor [weak self] in
-                self?.scheduleRuntimeBridgeRefresh(force: shouldForce)
+                self?.scheduleRuntimeBridgeRefresh()
             }
         }
     }
 
-    private func scheduleRuntimeBridgeRefresh(force: Bool) {
-        pendingRuntimeBridgeRefreshShouldForce = pendingRuntimeBridgeRefreshShouldForce || force
-
+    private func scheduleRuntimeBridgeRefresh() {
         guard pendingRuntimeBridgeRefreshTask == nil else {
             return
         }
@@ -952,9 +923,6 @@ final class AIStatsStore {
             guard let self else {
                 return
             }
-
-            _ = self.pendingRuntimeBridgeRefreshShouldForce
-            self.pendingRuntimeBridgeRefreshShouldForce = false
             self.pendingRuntimeBridgeRefreshTask = nil
 
             guard let isPanelVisible = self.panelVisibilityProvider,
@@ -968,16 +936,15 @@ final class AIStatsStore {
 
             let currentProjects = projects()
             let sessionID = self.effectiveSessionID(selectedSessionID())
-            _ = self.ingestRuntime(project: project, projects: currentProjects)
-            self.refreshLiveState(project: project, projects: currentProjects, selectedSessionID: sessionID)
+            _ = self.ingestRuntime(project: project, projects: currentProjects, selectedSessionID: sessionID)
+            self.refreshLiveState(project: project, selectedSessionID: sessionID)
         }
     }
 
     private func startTerminalFocusObserver(
         isPanelVisible: @escaping @MainActor () -> Bool,
         selectedProject: @escaping @MainActor () -> Project?,
-        selectedSessionID: @escaping @MainActor () -> UUID?,
-        projects: @escaping @MainActor () -> [Project]
+        selectedSessionID: @escaping @MainActor () -> UUID?
     ) {
         if let terminalFocusObserver {
             NotificationCenter.default.removeObserver(terminalFocusObserver)
@@ -996,8 +963,7 @@ final class AIStatsStore {
                     return
                 }
                 let sessionID = self.effectiveSessionID(selectedSessionID())
-                let currentProjects = projects()
-                self.refreshLiveState(project: project, projects: currentProjects, selectedSessionID: sessionID)
+                self.refreshLiveState(project: project, selectedSessionID: sessionID)
             }
         }
     }
@@ -1005,8 +971,7 @@ final class AIStatsStore {
     private func startTerminalOutputObserver(
         isPanelVisible: @escaping @MainActor () -> Bool,
         selectedProject: @escaping @MainActor () -> Project?,
-        selectedSessionID: @escaping @MainActor () -> UUID?,
-        projects: @escaping @MainActor () -> [Project]
+        selectedSessionID: @escaping @MainActor () -> UUID?
     ) {
         if let terminalOutputObserver {
             NotificationCenter.default.removeObserver(terminalOutputObserver)
@@ -1028,7 +993,6 @@ final class AIStatsStore {
                     return
                 }
 
-                let currentProjects = projects()
                 let effectiveSelectedSessionID = self.effectiveSessionID(selectedSessionID())
                 guard effectiveSelectedSessionID == sessionID else {
                     return
@@ -1040,87 +1004,38 @@ final class AIStatsStore {
                 guard liveSnapshot != nil else {
                     return
                 }
-                self.refreshLiveState(project: project, projects: currentProjects, selectedSessionID: effectiveSelectedSessionID)
+                self.refreshLiveState(project: project, selectedSessionID: effectiveSelectedSessionID)
             }
         }
     }
 
-    private func refreshLiveState(project: Project, projects: [Project], selectedSessionID: UUID?) {
-        let liveSnapshots = aiSessionStore.liveSnapshots(projectID: project.id)
-        let displayLiveSnapshots = aiSessionStore.liveDisplaySnapshots(projectID: project.id)
-        let summaryLiveSnapshots = aiSessionStore.liveAggregationSnapshots(projectID: project.id)
-        let currentSnapshot = aiSessionStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID)
-        let status = indexingStatusByProjectID[project.id] ?? .completed(detail: String(localized: "ai.indexing.complete", defaultValue: "Index complete.", bundle: .module))
+    private func refreshLiveState(project: Project, selectedSessionID: UUID?) {
+        let liveContext = liveSnapshotContext(projectID: project.id, selectedSessionID: selectedSessionID)
+        let status = projectIndexingStatus(
+            projectID: project.id,
+            fallback: .completed(detail: String(localized: "ai.indexing.complete", defaultValue: "Index complete.", bundle: .module))
+        )
         let currentState = panelStateByProjectID[project.id] ?? cachedState(for: project.id) ?? .empty
         var nextState = aiUsageService.lightweightLivePanelState(
             from: currentState,
             project: project,
-            liveSnapshots: summaryLiveSnapshots,
-            currentSnapshot: currentSnapshot,
+            liveSnapshots: liveContext.summary,
+            currentSnapshot: liveContext.current,
             status: status
         )
-        nextState.liveSnapshots = displayLiveSnapshots
+        nextState.liveSnapshots = liveContext.display
         if nextState == currentState,
-           normalizedRestingRefreshState(refreshStateByProjectID[project.id]) == .idle {
+           restingRefreshState(projectID: project.id) == .idle {
             return
         }
 
-        logger.log(
-            "ai-panel-bridge",
-            "phase=live project=\(project.id.uuidString) selected=\(selectedSessionID?.uuidString ?? "nil") live=\(liveSnapshots.count) liveUnique=\(uniqueLiveSnapshotCount(liveSnapshots)) snapshotSession=\(currentSnapshot?.sessionID.uuidString ?? "nil") snapshotTool=\(currentSnapshot?.tool ?? "nil") snapshotModel=\(currentSnapshot?.model ?? "nil") snapshotTotal=\(currentSnapshot?.currentTotalTokens ?? 0) summaryTool=\(nextState.projectSummary?.currentTool ?? "nil") summaryModel=\(nextState.projectSummary?.currentModel ?? "nil") summaryTotal=\(nextState.projectSummary?.currentSessionTokens ?? 0)"
-        )
         storeState(nextState, refreshState: .idle, for: project.id, updateCurrent: true)
         syncCurrentAutomaticRefreshFlag()
     }
 
-    private func uniqueLiveSnapshotCount(_ snapshots: [AITerminalSessionSnapshot]) -> Int {
-        var keys = Set<String>()
-        var fallbackCount = 0
-
-        for snapshot in snapshots {
-            guard let tool = snapshot.tool?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !tool.isEmpty,
-                  let externalSessionID = snapshot.externalSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !externalSessionID.isEmpty else {
-                fallbackCount += 1
-                continue
-            }
-            keys.insert("\(tool.lowercased()):\(externalSessionID.lowercased())")
-        }
-
-        return keys.count + fallbackCount
-    }
-
-    private func scheduleRuntimeRefreshesForLiveSessions(
-        project: Project,
-        projects: [Project],
-        force: Bool
-    ) {
-        _ = project
-        _ = projects
-        _ = force
-    }
-
-    private func scheduleRuntimeTailRefreshesForLiveSessions(
-        project: Project,
-        projects: [Project],
-        selectedSessionID: UUID?
-    ) {
-        _ = project
-        _ = projects
-        _ = selectedSessionID
-    }
-
-    private func ingestRuntime(project: Project, projects: [Project]) -> [AIToolUsageEnvelope] {
-        _ = runtimeIngressService.importRuntime(
-            projects: projects,
-            projectID: project.id
-        )
-        return resolveProjectLiveEnvelopes(
-            from: [],
-            project: project,
-            selectedSessionID: currentSelectedSessionID
-        )
+    private func ingestRuntime(project: Project, projects: [Project], selectedSessionID: UUID?) -> [AITerminalSessionSnapshot] {
+        runtimeIngressService.importRuntime(projects: projects)
+        return resolveProjectLiveSnapshots(project: project, selectedSessionID: selectedSessionID)
     }
 
     func handleTerminalSessionClosed(sessionID: UUID, project: Project?, projects: [Project], selectedSessionID: UUID?) {
@@ -1128,86 +1043,23 @@ final class AIStatsStore {
         guard let project else {
             return
         }
-        refreshLiveState(project: project, projects: projects, selectedSessionID: effectiveSessionID(selectedSessionID))
+        refreshLiveState(project: project, selectedSessionID: effectiveSessionID(selectedSessionID))
     }
 
-    private func resolveProjectLiveEnvelopes(
-        from envelopes: [AIToolUsageEnvelope],
+    private func resolveProjectLiveSnapshots(
         project: Project,
         selectedSessionID: UUID?
-    ) -> [AIToolUsageEnvelope] {
-        _ = envelopes
-
-        var resolved = aiSessionStore.liveSnapshots(projectID: project.id).map { snapshot in
-            AIToolUsageEnvelope(
-                sessionId: snapshot.sessionID.uuidString,
-                sessionInstanceId: nil,
-                invocationId: nil,
-                externalSessionID: snapshot.externalSessionID,
-                projectId: project.id.uuidString,
-                projectName: project.name,
-                projectPath: project.path,
-                sessionTitle: snapshot.sessionTitle,
-                tool: snapshot.tool ?? "",
-                model: snapshot.model,
-                status: snapshot.status,
-                responseState: snapshot.isRunning ? .responding : .idle,
-                updatedAt: snapshot.updatedAt.timeIntervalSince1970,
-                startedAt: snapshot.startedAt?.timeIntervalSince1970,
-                finishedAt: snapshot.isRunning ? nil : snapshot.updatedAt.timeIntervalSince1970,
-                inputTokens: snapshot.currentInputTokens,
-                outputTokens: snapshot.currentOutputTokens,
-                totalTokens: snapshot.currentTotalTokens,
-                baselineInputTokens: snapshot.baselineInputTokens,
-                baselineOutputTokens: snapshot.baselineOutputTokens,
-                baselineTotalTokens: snapshot.baselineTotalTokens,
-                contextWindow: snapshot.currentContextWindow,
-                contextUsedTokens: snapshot.currentContextUsedTokens,
-                contextUsagePercent: snapshot.currentContextUsagePercent,
-                source: .hook
-            )
-        }
+    ) -> [AITerminalSessionSnapshot] {
+        var resolved = aiSessionStore.liveSnapshots(projectID: project.id)
 
         if let selectedSessionID,
-           resolved.contains(where: { $0.sessionId == selectedSessionID.uuidString }) == false,
+           resolved.contains(where: { $0.sessionID == selectedSessionID }) == false,
            let snapshot = aiSessionStore.currentDisplaySnapshot(projectID: project.id, selectedSessionID: selectedSessionID) {
-            resolved.append(
-                AIToolUsageEnvelope(
-                    sessionId: snapshot.sessionID.uuidString,
-                    sessionInstanceId: nil,
-                    invocationId: nil,
-                    externalSessionID: snapshot.externalSessionID,
-                    projectId: project.id.uuidString,
-                    projectName: project.name,
-                    projectPath: project.path,
-                    sessionTitle: snapshot.sessionTitle,
-                    tool: snapshot.tool ?? "",
-                    model: snapshot.model,
-                    status: snapshot.status,
-                    responseState: snapshot.isRunning ? .responding : .idle,
-                    updatedAt: snapshot.updatedAt.timeIntervalSince1970,
-                    startedAt: snapshot.startedAt?.timeIntervalSince1970,
-                    finishedAt: snapshot.isRunning ? nil : snapshot.updatedAt.timeIntervalSince1970,
-                    inputTokens: snapshot.currentInputTokens,
-                    outputTokens: snapshot.currentOutputTokens,
-                    totalTokens: snapshot.currentTotalTokens,
-                    baselineInputTokens: snapshot.baselineInputTokens,
-                    baselineOutputTokens: snapshot.baselineOutputTokens,
-                    baselineTotalTokens: snapshot.baselineTotalTokens,
-                    contextWindow: snapshot.currentContextWindow,
-                    contextUsedTokens: snapshot.currentContextUsedTokens,
-                    contextUsagePercent: snapshot.currentContextUsagePercent,
-                    source: .hook
-                )
-            )
+            resolved.append(snapshot)
         }
 
         return resolved
-            .filter(isMeaningfulLiveEnvelope)
+            .filter { $0.status == "running" }
             .sorted { $0.updatedAt > $1.updatedAt }
-    }
-
-    private func isMeaningfulLiveEnvelope(_ envelope: AIToolUsageEnvelope) -> Bool {
-        envelope.status == "running"
     }
 }

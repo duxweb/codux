@@ -71,40 +71,20 @@ actor ClaudeRuntimeInterruptWatchCache {
         startingAt offset: UInt64,
         lastInterruptAtBySessionID: [String: Double]
     ) -> [InterruptEvent] {
-        guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
-            return []
-        }
-        defer {
-            try? handle.close()
-        }
-
-        do {
-            try handle.seek(toOffset: offset)
-        } catch {
-            return []
-        }
-
-        let data = handle.readDataToEndOfFile()
-        guard !data.isEmpty,
-              let text = String(data: data, encoding: .utf8) else {
-            return []
-        }
-
         var events: [InterruptEvent] = []
-        for line in text.split(separator: "\n") {
-            guard let lineData = line.data(using: .utf8),
-                  let row = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+        JSONLLineReader.forEachLine(in: fileURL, startingAt: offset) { lineData in
+            guard let row = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                   let cwd = row["cwd"] as? String,
                   projectPath == nil || cwd == projectPath,
                   let sessionID = row["sessionId"] as? String,
                   isClaudeInterruptedRow(row) else {
-                continue
+                return true
             }
 
             let timestamp = (row["timestamp"] as? String).flatMap(parseClaudeISO8601Date)?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
             if let lastInterruptAt = lastInterruptAtBySessionID[sessionID],
                timestamp <= lastInterruptAt {
-                continue
+                return true
             }
             events.append(
                 InterruptEvent(
@@ -112,6 +92,7 @@ actor ClaudeRuntimeInterruptWatchCache {
                     updatedAt: timestamp
                 )
             )
+            return true
         }
         return events
     }
@@ -186,14 +167,14 @@ actor ClaudeRuntimeLogCache {
     }
 
     private func updateAndMergeSessions(projectPath: String) -> [String: SessionAggregate] {
-        let fileURLs = AIRuntimeSourceLocator.claudeProjectLogURLs()
+        let fileURLs = AIRuntimeSourceLocator.claudeProjectLogURLs(projectPath: projectPath)
         guard !fileURLs.isEmpty else {
             fileStatesByProjectPath[projectPath] = [:]
             return [:]
         }
 
         var fileStates = fileStatesByProjectPath[projectPath] ?? [:]
-        let visiblePaths = Set(fileURLs.map(\.path))
+        let visiblePaths = Set(fileURLs.map { $0.path })
         fileStates = fileStates.filter { visiblePaths.contains($0.key) }
 
         for fileURL in fileURLs {
@@ -297,34 +278,14 @@ actor ClaudeRuntimeLogCache {
         startingAt offset: UInt64,
         existingUsageTotalsByKey: [CountedUsageKey: UsageTotals]
     ) -> (sessions: [String: SessionAggregate], usageTotalsByKey: [CountedUsageKey: UsageTotals]) {
-        guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
-            return ([:], existingUsageTotalsByKey)
-        }
-        defer {
-            try? handle.close()
-        }
-
-        do {
-            try handle.seek(toOffset: offset)
-        } catch {
-            return ([:], existingUsageTotalsByKey)
-        }
-
-        let data = handle.readDataToEndOfFile()
-        guard !data.isEmpty,
-              let text = String(data: data, encoding: .utf8) else {
-            return ([:], existingUsageTotalsByKey)
-        }
-
         var sessions: [String: SessionAggregate] = [:]
         var usageTotalsByKey = existingUsageTotalsByKey
-        for line in text.split(separator: "\n") {
-            guard let lineData = line.data(using: .utf8),
-                  let row = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+        JSONLLineReader.forEachLine(in: fileURL, startingAt: offset) { lineData in
+            guard let row = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                   let cwd = row["cwd"] as? String,
                   let sessionID = row["sessionId"] as? String,
                   cwd == projectPath else {
-                continue
+                return true
             }
 
             let timestamp = (row["timestamp"] as? String).flatMap(parseClaudeISO8601Date)?.timeIntervalSince1970 ?? 0
@@ -383,6 +344,7 @@ actor ClaudeRuntimeLogCache {
             }
             aggregate.updatedAt = max(aggregate.updatedAt, timestamp)
             sessions[sessionID] = aggregate
+            return true
         }
         return (sessions, usageTotalsByKey)
     }

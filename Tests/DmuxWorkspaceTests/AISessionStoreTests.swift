@@ -60,7 +60,7 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertEqual(session.baselineTotalTokens, 12)
         XCTAssertEqual(session.committedTotalTokens, 42)
         XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
-        XCTAssertNil(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID))
+        XCTAssertEqual(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID)?.sessionID, terminalID)
     }
 
     func testProjectPhaseReturnsCompletedBrieflyAfterSuccessfulTurn() throws {
@@ -108,7 +108,7 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertNil(exitCode)
     }
 
-    func testCompletedTurnIsNotExposedAsLiveSnapshot() throws {
+    func testCompletedTurnRemainsVisibleAsLiveSnapshotDuringCompletionWindow() throws {
         let terminalID = UUID()
         let projectID = UUID()
         let now = Date().timeIntervalSince1970
@@ -147,11 +147,44 @@ final class AISessionStoreTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(store.liveSnapshots(projectID: projectID).isEmpty)
+        let snapshots = store.liveSnapshots(projectID: projectID)
+        XCTAssertEqual(snapshots.count, 1)
+        XCTAssertEqual(snapshots.first?.sessionID, terminalID)
+        XCTAssertEqual(snapshots.first?.tool, "codex")
+        XCTAssertEqual(snapshots.first?.model, "gpt-5.4")
+        XCTAssertEqual(snapshots.first?.currentTotalTokens, 42)
+        XCTAssertEqual(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID)?.sessionID, terminalID)
         guard case .completed(let tool, _, _) = store.projectPhase(projectID: projectID) else {
             return XCTFail("expected completed project phase")
         }
         XCTAssertEqual(tool, "codex")
+    }
+
+    func testCompletedTurnFallsOutOfLiveSnapshotsAfterCompletionWindowExpires() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        let now = Date().timeIntervalSince1970
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: 42,
+                updatedAt: now - 10,
+                metadata: .init(wasInterrupted: false, hasCompletedTurn: true)
+            )
+        )
+
+        XCTAssertEqual(store.liveSnapshots(projectID: projectID).count, 1)
+        XCTAssertEqual(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID)?.sessionID, terminalID)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
     }
 
     func testProjectPhaseDoesNotReturnCompletedForInterruptedTurn() throws {
@@ -321,6 +354,8 @@ final class AISessionStoreTests: XCTestCase {
         let session = try XCTUnwrap(store.session(for: terminalID))
         XCTAssertEqual(session.state, .idle)
         XCTAssertTrue(session.wasInterrupted)
+        XCTAssertEqual(store.liveSnapshots(projectID: projectID).count, 1)
+        XCTAssertEqual(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID)?.sessionID, terminalID)
     }
 
     func testStaleTerminalInstanceEventIsIgnored() throws {
@@ -454,7 +489,8 @@ final class AISessionStoreTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(store.liveSnapshots(projectID: projectID).isEmpty)
+        XCTAssertEqual(store.liveSnapshots(projectID: projectID).count, 1)
+        XCTAssertEqual(store.liveSnapshots(projectID: projectID).first?.tool, "codex")
 
         _ = store.apply(
             AIHookEvent(

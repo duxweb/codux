@@ -30,6 +30,10 @@
 		21A2B3C4D5E6F708192A3B54 /* CodexToolDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B55 /* CodexToolDriver.swift */; };
 		21A2B3C4D5E6F708192A3B56 /* OpenCodeToolDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B57 /* OpenCodeToolDriver.swift */; };
 		21A2B3C4D5E6F708192A3B58 /* GeminiToolDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B59 /* GeminiToolDriver.swift */; };
+		A13F1B0C9D8E7F6051423344 /* AIHistoryAggregationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13F1B0C9D8E7F6051423341 /* AIHistoryAggregationService.swift */; };
+		A13F1B0C9D8E7F6051423345 /* AIProjectHistoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13F1B0C9D8E7F6051423342 /* AIProjectHistoryService.swift */; };
+		A13F1B0C9D8E7F6051423346 /* AIRuntimePollingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13F1B0C9D8E7F6051423343 /* AIRuntimePollingService.swift */; };
+		A13F1B0C9D8E7F6051423348 /* JSONLLineReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13F1B0C9D8E7F6051423347 /* JSONLLineReader.swift */; };
 		1FAA135C58E6AB5DD9A23ED3 /* FloatingTooltip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42E01A9B97E740A3EBF3C68 /* FloatingTooltip.swift */; };
 		27017F50D1E8D2D2E53E4CA1 /* GitPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26171F8711B1E3EA99875C1C /* GitPanelView.swift */; };
 		2CD0F523B4EB37800317D6CD /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDDBF2B08A1049FDB3CF220 /* AppSettings.swift */; };
@@ -100,6 +104,10 @@
 		056F014BAA1925DD45EE5698 /* AboutWindows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutWindows.swift; sourceTree = "<group>"; };
 		0598FB11F350F43D5A39628A /* AIUsageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageService.swift; sourceTree = "<group>"; };
 		05A1E21E85563C5A7F362C00 /* AIStatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIStatsStore.swift; sourceTree = "<group>"; };
+		A13F1B0C9D8E7F6051423341 /* AIHistoryAggregationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIHistoryAggregationService.swift; sourceTree = "<group>"; };
+		A13F1B0C9D8E7F6051423342 /* AIProjectHistoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProjectHistoryService.swift; sourceTree = "<group>"; };
+		A13F1B0C9D8E7F6051423343 /* AIRuntimePollingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRuntimePollingService.swift; sourceTree = "<group>"; };
+		A13F1B0C9D8E7F6051423347 /* JSONLLineReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONLLineReader.swift; sourceTree = "<group>"; };
 		0716C74164A92ABC63BDE25A /* DmuxWorkspaceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmuxWorkspaceApp.swift; sourceTree = "<group>"; };
 		074C18D4269F6F5CD51744B9 /* AIRuntimeIngressService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRuntimeIngressService.swift; sourceTree = "<group>"; };
 		1D05D834FCB2D530F185C773 /* AIUsageModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageModels.swift; sourceTree = "<group>"; };
@@ -379,7 +387,11 @@
 			isa = PBXGroup;
 			children = (
 				8F6676C32385770B36A6B87D /* AIRuntimeBridgeService.swift */,
+				A13F1B0C9D8E7F6051423341 /* AIHistoryAggregationService.swift */,
 				074C18D4269F6F5CD51744B9 /* AIRuntimeIngressService.swift */,
+				A13F1B0C9D8E7F6051423343 /* AIRuntimePollingService.swift */,
+				A13F1B0C9D8E7F6051423342 /* AIProjectHistoryService.swift */,
+				A13F1B0C9D8E7F6051423347 /* JSONLLineReader.swift */,
 				320478127BE80D1F255F229E /* AIToolDriverFactory.swift */,
 				21A2B3C4D5E6F708192A3B4F /* AIToolDriverSupport.swift */,
 				21A2B3C4D5E6F708192A3B53 /* ClaudeToolDriver.swift */,
@@ -519,7 +531,10 @@
 				3FFACAC9B71F2D2D84378A53 /* AIRuntimeBridgeService.swift in Sources */,
 				A4B5C6D7E8F90123456789AB /* AIRuntimeSharedTypes.swift in Sources */,
 				B7C8D9E0F1A2233445566778 /* TerminalProcessInspector.swift in Sources */,
+				A13F1B0C9D8E7F6051423344 /* AIHistoryAggregationService.swift in Sources */,
 				D71B7C36CF6CD2AEF49FE619 /* AIRuntimeIngressService.swift in Sources */,
+				A13F1B0C9D8E7F6051423346 /* AIRuntimePollingService.swift in Sources */,
+				A13F1B0C9D8E7F6051423348 /* JSONLLineReader.swift in Sources */,
 				A91F0A7E1B2C3D4E5F607183 /* AISessionStore.swift in Sources */,
 				6FE3BAABA1DF148107499517 /* AIStatsPanelView.swift in Sources */,
 				DF6B0826DCE2CFF91D90BF0D /* AIStatsStore.swift in Sources */,
@@ -531,6 +546,7 @@
 				21A2B3C4D5E6F708192A3B56 /* OpenCodeToolDriver.swift in Sources */,
 				21A2B3C4D5E6F708192A3B4C /* AIToolPermissionSettingsService.swift in Sources */,
 				A91F0A7E1B2C3D4E5F607181 /* AIHookEvent.swift in Sources */,
+				A13F1B0C9D8E7F6051423345 /* AIProjectHistoryService.swift in Sources */,
 				B681B0D405B974DC389EE8AC /* AIUsageModels.swift in Sources */,
 				5F0A9C1D7E2B4A5C8D9E0F21 /* PetModels.swift in Sources */,
 				A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */,

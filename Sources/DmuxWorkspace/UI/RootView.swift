@@ -80,12 +80,6 @@ private struct TitlebarOverlayView: View {
                         model.toggleSidebarExpansion()
                     }
 
-                    if model.appSettings.developer.showsNotificationTestButton {
-                        TitlebarGlyphButton(symbol: "waveform.badge.magnifyingglass", help: String(localized: "titlebar.notification_test", defaultValue: "Notification Test", bundle: .module)) {
-                            model.triggerActivityTest()
-                        }
-                    }
-
                     TitlebarGlyphButton(symbol: "rectangle.split.2x1", help: String(localized: "titlebar.split", defaultValue: "Split", bundle: .module)) {
                         model.splitSelectedPane(axis: .horizontal)
                     }
@@ -137,12 +131,6 @@ private struct TitlebarOverlayView: View {
                         openInGhostty: { model.openSelectedProjectInGhostty() },
                         openInXcode: { model.openSelectedProjectInXcode() }
                     )
-
-                    if model.appSettings.developer.showsDebugLogButton {
-                        TitlebarGlyphButton(symbol: "scroll", help: String(localized: "titlebar.debug_log", defaultValue: "Debug Log", bundle: .module)) {
-                            model.openDebugLog()
-                        }
-                    }
 
                     TitlebarGlyphButton(symbol: "terminal", help: String(localized: "titlebar.tab", defaultValue: "Tab", bundle: .module)) {
                         model.createBottomTab()

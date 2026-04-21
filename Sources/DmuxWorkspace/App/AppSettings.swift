@@ -361,24 +361,18 @@ enum AppSupportedAITool: CaseIterable, Identifiable {
 }
 
 struct AppDeveloperSettings: Codable, Equatable {
-    var showsNotificationTestButton = false
-    var showsDebugLogButton = false
     var showsPerformanceMonitor = false
     var performanceMonitorSamplingInterval: TimeInterval = 3
 
     init() {}
 
     enum CodingKeys: String, CodingKey {
-        case showsNotificationTestButton
-        case showsDebugLogButton
         case showsPerformanceMonitor
         case performanceMonitorSamplingInterval
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        showsNotificationTestButton = try container.decodeIfPresent(Bool.self, forKey: .showsNotificationTestButton) ?? false
-        showsDebugLogButton = try container.decodeIfPresent(Bool.self, forKey: .showsDebugLogButton) ?? false
         showsPerformanceMonitor = try container.decodeIfPresent(Bool.self, forKey: .showsPerformanceMonitor) ?? false
         performanceMonitorSamplingInterval = max(
             1,

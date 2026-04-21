@@ -80,19 +80,7 @@ If the terminal was already open before the latest hook script change, reload it
 
 - `source "$DMUX_ZSH_HOOK_SCRIPT"`
 
-Use these commands to test the dmux app hook chain:
-
-- `codex.notice.test`
-- `codex.notice.test type=idle_prompt "Task finished"`
-
-They exercise:
-- terminal command
-- runtime socket
-- `AIRuntimeIngressService`
-- `AISessionStore`
-- UI activity / live state
-
-They do not try to reproduce vendor raw hook payloads. The only built-in manual trigger kept here is the unified Codex notification test path.
+This skill describes the real hook-driven runtime path only. It does not keep extra built-in manual trigger commands.
 
 For the current manual test note, read:
 

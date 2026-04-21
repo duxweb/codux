@@ -24,19 +24,11 @@ final class AIRuntimeIngressService {
     func resetEphemeralState() {
         aiSessionStore.reset()
         bridgeService.clearAllClaudeSessionMappings()
-        bridgeService.clearLegacyLiveRuntimeState()
+        recentRuntimeEventAtByKey.removeAll()
     }
 
-    func importRuntime(projects: [Project], projectID: UUID? = nil, liveSessionCutoff: Double? = nil) -> [AIToolUsageEnvelope] {
-        _ = projectID
-        _ = liveSessionCutoff
+    func importRuntime(projects: [Project]) {
         ensureSocketListening()
-        latestProjects = projects
-        return []
-    }
-
-    func refreshRuntimeSources(projects: [Project], liveEnvelopes: [AIToolUsageEnvelope]) {
-        _ = liveEnvelopes
         latestProjects = projects
     }
 
@@ -50,6 +42,7 @@ final class AIRuntimeIngressService {
 
     func clearLiveState(sessionID: UUID) {
         aiSessionStore.removeTerminal(sessionID)
+        AIRuntimePollingService.shared.sync(reason: "terminal-removed")
     }
 
     func ingestManagedRuntimeSocketEventForTesting(kind: String, payloadData: Data) async {
@@ -262,6 +255,10 @@ final class AIRuntimeIngressService {
             return
         }
 
+        AIRuntimePollingService.shared.noteHookApplied(
+            for: resolvedEvent.terminalID,
+            reason: resolvedEvent.kind.rawValue
+        )
         postRuntimeBridgeDidChange(kind: "ai-hook")
     }
 
@@ -271,6 +268,12 @@ final class AIRuntimeIngressService {
             return
         }
 
+        if let terminalID = UUID(uuidString: envelope.sessionId) {
+            AIRuntimePollingService.shared.noteHookApplied(
+                for: terminalID,
+                reason: "opencode-runtime"
+            )
+        }
         postRuntimeBridgeDidChange(kind: "opencode-runtime")
     }
 

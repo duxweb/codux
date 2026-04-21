@@ -5,15 +5,11 @@ struct ClaudeToolDriver: AIToolDriver {
     let aliases: Set<String> = ["claude", "claude-code"]
     let isRealtimeTool = true
 
-    func matches(tool: String) -> Bool {
-        aliases.contains(tool)
-    }
-
     func resolveHookEvent(
         _ event: AIHookEvent,
         currentSession: AISessionStore.TerminalSessionState?
     ) async -> AIHookEvent {
-        guard canonicalTool(event.tool) == id else {
+        guard canonicalToolName(event.tool) == id else {
             return event
         }
 
@@ -21,10 +17,39 @@ struct ClaudeToolDriver: AIToolDriver {
         let fallbackTotalTokens = currentSession?.committedTotalTokens
         resolvedEvent.model = resolvedEvent.model ?? currentSession?.model
 
+        if resolvedEvent.kind == .turnCompleted,
+           let projectPath = normalizedNonEmptyString(resolvedEvent.projectPath ?? currentSession?.projectPath),
+           let externalSessionID = normalizedNonEmptyString(resolvedEvent.aiSessionID ?? currentSession?.aiSessionID),
+           let snapshot = await ClaudeRuntimeLogCache.shared.snapshot(
+               projectPath: projectPath,
+               externalSessionID: externalSessionID
+           ) {
+            resolvedEvent.model = resolvedEvent.model ?? snapshot.model ?? currentSession?.model
+            resolvedEvent.totalTokens = max(
+                resolvedEvent.totalTokens ?? 0,
+                fallbackTotalTokens ?? 0,
+                snapshot.totalTokens
+            )
+            return resolvedEvent
+        }
+
         if resolvedEvent.totalTokens == nil {
             resolvedEvent.totalTokens = fallbackTotalTokens
         }
         return resolvedEvent
+    }
+
+    func runtimeSnapshot(
+        for session: AISessionStore.TerminalSessionState
+    ) async -> AIRuntimeContextSnapshot? {
+        guard let projectPath = normalizedNonEmptyString(session.projectPath),
+              let externalSessionID = normalizedNonEmptyString(session.aiSessionID) else {
+            return nil
+        }
+        return await ClaudeRuntimeLogCache.shared.snapshot(
+            projectPath: projectPath,
+            externalSessionID: externalSessionID
+        )
     }
 
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities {
@@ -45,10 +70,16 @@ struct ClaudeToolDriver: AIToolDriver {
             if fileURL.lastPathComponent == "\(targetSessionID).jsonl" {
                 return true
             }
-            guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else {
+            var matchesSession = false
+            JSONLLineReader.forEachLine(in: fileURL) { lineData in
+                guard let row = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                      let sessionID = row["sessionId"] as? String else {
+                    return true
+                }
+                matchesSession = (sessionID == targetSessionID)
                 return false
             }
-            return text.contains("\"sessionId\":\"\(targetSessionID)\"")
+            return matchesSession
         }
         guard !candidates.isEmpty else {
             throw AIToolSessionControlError.sessionNotFound
@@ -58,18 +89,6 @@ struct ClaudeToolDriver: AIToolDriver {
         for fileURL in candidates {
             try fileManager.removeItem(at: fileURL)
         }
-    }
-
-    private func canonicalTool(_ tool: String) -> String {
-        aliases.contains(tool) ? id : tool
-    }
-
-    private func normalizedString(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
     }
 
 }

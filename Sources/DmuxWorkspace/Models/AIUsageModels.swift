@@ -9,8 +9,6 @@ enum AIRuntimeUpdateSource: String, Codable, Equatable, Sendable {
     case socket
     case hook
     case probe
-    case watcher
-    case globalStream = "global-stream"
 }
 
 struct AIStatsPanelState: Equatable {
@@ -136,7 +134,6 @@ struct AIUsageBreakdownItem: Codable, Equatable, Identifiable, Sendable {
 }
 
 struct AIProjectDirectorySourceSummary {
-    var snapshot: AITerminalSessionSnapshot?
     var sessions: [AISessionSummary]
     var heatmap: [AIHeatmapDay]
     var todayTimeBuckets: [AITimeBucket]
@@ -155,11 +152,9 @@ struct AITimeBucket: Codable, Equatable, Identifiable, Sendable {
 struct AIToolUsageEnvelope: Codable, Sendable {
     var sessionId: String
     var sessionInstanceId: String?
-    var invocationId: String?
     var externalSessionID: String?
     var projectId: String
     var projectName: String
-    var projectPath: String?
     var sessionTitle: String
     var tool: String
     var model: String?
@@ -167,7 +162,6 @@ struct AIToolUsageEnvelope: Codable, Sendable {
     var responseState: AIResponseState?
     var updatedAt: Double
     var startedAt: Double?
-    var finishedAt: Double?
     var inputTokens: Int?
     var outputTokens: Int?
     var totalTokens: Int?
@@ -177,45 +171,9 @@ struct AIToolUsageEnvelope: Codable, Sendable {
     var contextWindow: Int?
     var contextUsedTokens: Int?
     var contextUsagePercent: Double?
-    var source: AIRuntimeUpdateSource? = nil
 }
 
-struct AIManagedRealtimeSessionRecord: Codable, Equatable, Sendable {
-    var recordID: String
-    var invocationID: String?
-    var runtimeSessionID: String
-    var externalSessionID: String?
-    var projectID: UUID
-    var projectPath: String
-    var projectName: String
-    var sessionTitle: String
-    var tool: String
-    var model: String?
-    var startedAt: Date
-    var updatedAt: Date
-    var finishedAt: Date?
-    var status: String
-    var responseState: AIResponseState?
-    var totalInputTokens: Int
-    var totalOutputTokens: Int
-    var totalTokens: Int
-    var maxContextUsagePercent: Double?
-}
-
-struct AICodexIncrementalState: Codable, Sendable {
-    var processedOffset: UInt64
-    var pendingData: Data
-    var sessionID: UUID?
-    var sessionTitle: String?
-    var model: String?
-    var firstSeenAt: Date?
-    var lastSeenAt: Date?
-    var totalTokens: Int
-    var lastTokenTotal: Int
-    var matchedProject: Bool
-}
-
-struct AIExternalFileSummary: Codable, Sendable {
+struct AIExternalFileSummary: Codable, Equatable, Sendable {
     var source: String
     var filePath: String
     var fileModifiedAt: Double
@@ -223,34 +181,34 @@ struct AIExternalFileSummary: Codable, Sendable {
     var sessions: [AISessionSummary]
     var dayUsage: [AIHeatmapDay]
     var timeBuckets: [AITimeBucket]
-    var codexState: AICodexIncrementalState?
 }
 
-struct AICachedProjectSummary {
+struct AIExternalFileCheckpointPayload: Codable, Equatable, Sendable {
+    var sessionKey: String?
+    var externalSessionID: String?
+    var sessionTitle: String?
+    var lastModel: String?
+    var modelTotalTokensByName: [String: Int]
+    var firstSeenAt: Date?
+    var lastSeenAt: Date?
+    var requestCount: Int
+    var totalInputTokens: Int
+    var totalOutputTokens: Int
+    var totalTokens: Int
+    var todayTokens: Int
+    var activeDurationSeconds: Int
+    var waitingForFirstResponse: Bool
+    var pendingTurnStartAt: Date?
+    var pendingTurnEndAt: Date?
+}
+
+struct AIExternalFileCheckpoint: Codable, Equatable, Sendable {
+    var source: String
+    var filePath: String
     var projectPath: String
-    var createdAt: Date
-    var summary: AIProjectDirectorySourceSummary
-}
-
-actor AIProjectSummaryCache {
-    static let shared = AIProjectSummaryCache()
-
-    private var storage: [String: AICachedProjectSummary] = [:]
-    private let ttl: TimeInterval = 8
-
-    func get(projectPath: String) -> AIProjectDirectorySourceSummary? {
-        guard let entry = storage[projectPath], Date().timeIntervalSince(entry.createdAt) < ttl else {
-            storage[projectPath] = nil
-            return nil
-        }
-        return entry.summary
-    }
-
-    func set(projectPath: String, summary: AIProjectDirectorySourceSummary) {
-        storage[projectPath] = AICachedProjectSummary(projectPath: projectPath, createdAt: Date(), summary: summary)
-    }
-
-    func invalidate(projectPath: String) {
-        storage[projectPath] = nil
-    }
+    var fileModifiedAt: Double
+    var fileSize: UInt64
+    var lastOffset: UInt64
+    var lastIndexedAt: Date
+    var payload: AIExternalFileCheckpointPayload?
 }

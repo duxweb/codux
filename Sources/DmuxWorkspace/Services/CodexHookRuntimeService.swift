@@ -50,7 +50,7 @@ private func parseCodexRuntimeState(fileURL: URL?, projectPath: String?) -> Code
         return nil
     }
 
-    let lines = tailJSONLinesFromFile(at: fileURL)
+    let lines = JSONLLineReader.tailLines(in: fileURL)
     guard !lines.isEmpty else {
         return nil
     }
@@ -64,8 +64,7 @@ private func parseCodexRuntimeState(fileURL: URL?, projectPath: String?) -> Code
     var latestTurnCompleted = false
 
     for line in lines {
-        guard let data = line.data(using: .utf8),
-              let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let row = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else {
             continue
         }
 
@@ -170,27 +169,4 @@ private func parseCodexRuntimeState(fileURL: URL?, projectPath: String?) -> Code
         wasInterrupted: latestTurnWasInterrupted,
         hasCompletedTurn: latestTurnCompleted
     )
-}
-
-private func tailJSONLinesFromFile(at fileURL: URL, maxBytes: Int = 262_144) -> [String] {
-    guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
-        return []
-    }
-    defer {
-        try? handle.close()
-    }
-
-    let fileSize = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-    let offset = max(0, fileSize - maxBytes)
-    try? handle.seek(toOffset: UInt64(offset))
-    let data = handle.readDataToEndOfFile()
-    guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
-        return []
-    }
-
-    let lines = text.split(separator: "\n").map(String.init)
-    if offset == 0 {
-        return lines
-    }
-    return Array(lines.dropFirst())
 }
