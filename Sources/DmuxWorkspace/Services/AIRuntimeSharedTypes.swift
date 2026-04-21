@@ -1,4 +1,7 @@
 import Foundation
+import SQLite3
+
+private let AIRuntimeSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 struct AIRuntimeSourceLocator {
     static func claudeProjectLogURLs() -> [URL] {
@@ -30,6 +33,41 @@ struct AIRuntimeSourceLocator {
 
     static func codexDatabaseURL() -> URL {
         URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/state_5.sqlite", isDirectory: false)
+    }
+
+    static func codexRolloutPath(projectPath: String, externalSessionID: String) -> URL? {
+        let databaseURL = codexDatabaseURL()
+        guard FileManager.default.fileExists(atPath: databaseURL.path) else {
+            return nil
+        }
+
+        var db: OpaquePointer?
+        guard sqlite3_open(databaseURL.path, &db) == SQLITE_OK,
+              let db else {
+            if db != nil {
+                sqlite3_close(db)
+            }
+            return nil
+        }
+        defer { sqlite3_close(db) }
+
+        let sql = "SELECT rollout_path FROM threads WHERE cwd = ? AND id = ? LIMIT 1;"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else {
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_text(statement, 1, projectPath, -1, AIRuntimeSQLiteTransient)
+        sqlite3_bind_text(statement, 2, externalSessionID, -1, AIRuntimeSQLiteTransient)
+
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let rawPath = sqlite3_column_text(statement, 0) else {
+            return nil
+        }
+
+        return URL(fileURLWithPath: String(cString: rawPath)).standardizedFileURL
     }
 
     static func opencodeDatabaseURL() -> URL {

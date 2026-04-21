@@ -36,6 +36,7 @@ final class AISessionStore {
         var terminalInstanceID: String?
         var projectID: UUID
         var projectName: String
+        var projectPath: String?
         var sessionTitle: String
         var tool: String
         var aiSessionID: String?
@@ -47,6 +48,8 @@ final class AISessionStore {
         var startedAt: Double?
         var wasInterrupted: Bool
         var hasCompletedTurn: Bool
+        var transcriptPath: String?
+        var turnSequence: UInt64
         var notificationType: String?
         var targetToolName: String?
         var interactionMessage: String?
@@ -72,6 +75,26 @@ final class AISessionStore {
         var isLive: Bool {
             !tool.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    struct CodexPollingTarget: Equatable, Sendable {
+        var terminalID: UUID
+        var projectPath: String
+        var aiSessionID: String
+        var transcriptPath: String?
+        var turnSequence: UInt64
+        var updatedAt: Double
+    }
+
+    struct RuntimeResolution: Equatable, Sendable {
+        var terminalID: UUID
+        var turnSequence: UInt64
+        var updatedAt: Double
+        var model: String?
+        var totalTokens: Int?
+        var transcriptPath: String?
+        var wasInterrupted: Bool
+        var hasCompletedTurn: Bool
     }
 
     private let logger = AppDebugLog.shared
@@ -134,6 +157,7 @@ final class AISessionStore {
             terminalInstanceID: normalizedInstanceID,
             projectID: event.projectID,
             projectName: event.projectName,
+            projectPath: normalizedNonEmptyString(event.projectPath),
             sessionTitle: event.sessionTitle,
             tool: normalizedTool,
             aiSessionID: normalizedAISessionID,
@@ -145,6 +169,8 @@ final class AISessionStore {
             startedAt: event.updatedAt,
             wasInterrupted: false,
             hasCompletedTurn: false,
+            transcriptPath: normalizedNonEmptyString(event.metadata?.transcriptPath),
+            turnSequence: 0,
             notificationType: event.metadata?.notificationType,
             targetToolName: event.metadata?.targetToolName,
             interactionMessage: event.metadata?.message
@@ -156,6 +182,7 @@ final class AISessionStore {
                 terminalInstanceID: normalizedInstanceID,
                 projectID: event.projectID,
                 projectName: event.projectName,
+                projectPath: normalizedNonEmptyString(event.projectPath),
                 sessionTitle: event.sessionTitle,
                 tool: normalizedTool,
                 aiSessionID: normalizedAISessionID,
@@ -167,6 +194,8 @@ final class AISessionStore {
                 startedAt: event.updatedAt,
                 wasInterrupted: false,
                 hasCompletedTurn: false,
+                transcriptPath: normalizedNonEmptyString(event.metadata?.transcriptPath),
+                turnSequence: 0,
                 notificationType: event.metadata?.notificationType,
                 targetToolName: event.metadata?.targetToolName,
                 interactionMessage: event.metadata?.message
@@ -176,11 +205,15 @@ final class AISessionStore {
         session.terminalInstanceID = normalizedInstanceID ?? session.terminalInstanceID
         session.projectID = event.projectID
         session.projectName = event.projectName
+        session.projectPath = normalizedNonEmptyString(event.projectPath) ?? session.projectPath
         session.sessionTitle = event.sessionTitle
         session.tool = normalizedTool
         session.updatedAt = max(session.updatedAt, event.updatedAt)
         session.startedAt = min(session.startedAt ?? event.updatedAt, event.updatedAt)
         session.model = normalizedModel ?? session.model
+        if let transcriptPath = normalizedNonEmptyString(event.metadata?.transcriptPath) {
+            session.transcriptPath = transcriptPath
+        }
         if let notificationType = normalizedNonEmptyString(event.metadata?.notificationType) {
             session.notificationType = notificationType
         }
@@ -277,6 +310,45 @@ final class AISessionStore {
         return true
     }
 
+    func applyRuntimeResolution(_ resolution: RuntimeResolution, source: String = "polling") -> Bool {
+        guard var session = terminalSessionsByID[resolution.terminalID],
+              canonicalToolName(session.tool) == "codex",
+              session.state == .responding,
+              session.turnSequence == resolution.turnSequence else {
+            return false
+        }
+
+        let previousLogicalKey = session.logicalSessionKey
+        let previousState = session
+        session.state = .idle
+        session.wasInterrupted = resolution.wasInterrupted
+        session.hasCompletedTurn = resolution.hasCompletedTurn
+        session.updatedAt = max(session.updatedAt, resolution.updatedAt)
+        session.model = normalizedNonEmptyString(resolution.model) ?? session.model
+        if let transcriptPath = normalizedNonEmptyString(resolution.transcriptPath) {
+            session.transcriptPath = transcriptPath
+        }
+        session.notificationType = nil
+        session.targetToolName = nil
+        session.interactionMessage = nil
+        session.committedTotalTokens = resolvedCommittedTotalTokens(
+            for: session,
+            incomingTotalTokens: resolution.totalTokens
+        )
+
+        terminalSessionsByID[resolution.terminalID] = session
+        reconcileLogicalSession(for: session, previousLogicalKey: previousLogicalKey)
+        let didChange = previousState != session
+        if didChange {
+            renderVersion &+= 1
+            logger.log(
+                "ai-session-store",
+                "resolve source=\(source) terminal=\(resolution.terminalID.uuidString) tool=\(session.tool) interrupted=\(session.wasInterrupted) completed=\(session.hasCompletedTurn) total=\(session.committedTotalTokens) turn=\(session.turnSequence)"
+            )
+        }
+        return didChange
+    }
+
     func removeTerminal(_ terminalID: UUID) {
         let previousLogicalKey = terminalSessionsByID[terminalID]?.logicalSessionKey
         terminalSessionsByID[terminalID] = nil
@@ -319,6 +391,31 @@ final class AISessionStore {
 
     func isRunning(terminalID: UUID) -> Bool {
         terminalSessionsByID[terminalID]?.state == .responding
+    }
+
+    func codexPollingTargets() -> [CodexPollingTarget] {
+        terminalSessionsByID.values
+            .filter {
+                canonicalToolName($0.tool) == "codex"
+                    && $0.state == .responding
+                    && normalizedNonEmptyString($0.aiSessionID) != nil
+                    && normalizedNonEmptyString($0.projectPath) != nil
+            }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .compactMap { session in
+                guard let projectPath = normalizedNonEmptyString(session.projectPath),
+                      let aiSessionID = normalizedNonEmptyString(session.aiSessionID) else {
+                    return nil
+                }
+                return CodexPollingTarget(
+                    terminalID: session.terminalID,
+                    projectPath: projectPath,
+                    aiSessionID: aiSessionID,
+                    transcriptPath: normalizedNonEmptyString(session.transcriptPath),
+                    turnSequence: session.turnSequence,
+                    updatedAt: session.updatedAt
+                )
+            }
     }
 
     func liveSnapshots(projectID: UUID) -> [AITerminalSessionSnapshot] {
@@ -430,6 +527,9 @@ final class AISessionStore {
         session.state = .responding
         session.wasInterrupted = false
         session.hasCompletedTurn = false
+        if canonicalToolName(event.tool) == "codex" {
+            session.turnSequence &+= 1
+        }
         session.notificationType = nil
         session.targetToolName = nil
         session.interactionMessage = nil
@@ -439,9 +539,10 @@ final class AISessionStore {
 
     private func applyTurnCompleted(_ session: inout TerminalSessionState, event: AIHookEvent) {
         let committedTotal = resolvedCommittedTotalTokens(for: session, incomingTotalTokens: event.totalTokens)
+        let wasInterrupted = event.metadata?.wasInterrupted == true
         session.state = .idle
-        session.wasInterrupted = false
-        session.hasCompletedTurn = true
+        session.wasInterrupted = wasInterrupted
+        session.hasCompletedTurn = event.metadata?.hasCompletedTurn ?? !wasInterrupted
         session.notificationType = nil
         session.targetToolName = nil
         session.interactionMessage = nil

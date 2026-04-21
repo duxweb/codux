@@ -2797,6 +2797,7 @@ final class AppModel {
 
         activityStatusWatcher = makeDirectoryWatcher(for: activityService.statusDirectoryURL())
         runtimeIngressService.startWatching()
+        CodexRuntimePollingService.shared.start()
         if let runtimeBridgeObserver {
             NotificationCenter.default.removeObserver(runtimeBridgeObserver)
         }

@@ -15,6 +15,8 @@ struct AIHookEventMetadata: Codable, Equatable, Sendable {
     var reason: String? = nil
     var targetToolName: String? = nil
     var message: String? = nil
+    var wasInterrupted: Bool? = nil
+    var hasCompletedTurn: Bool? = nil
 }
 
 struct AIHookEvent: Codable, Equatable, Sendable {

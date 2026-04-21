@@ -42,6 +42,13 @@ struct CodexToolDriver: AIToolDriver {
         } else if resolvedEvent.totalTokens == nil {
             resolvedEvent.totalTokens = fallbackTotalTokens
         }
+        var metadata = resolvedEvent.metadata ?? AIHookEventMetadata()
+        metadata.wasInterrupted = parsedState.wasInterrupted
+        metadata.hasCompletedTurn = parsedState.hasCompletedTurn || parsedState.wasInterrupted == false
+        resolvedEvent.metadata = metadata
+        if let completedAt = parsedState.completedAt ?? parsedState.updatedAt {
+            resolvedEvent.updatedAt = max(resolvedEvent.updatedAt, completedAt)
+        }
         return resolvedEvent
     }
 

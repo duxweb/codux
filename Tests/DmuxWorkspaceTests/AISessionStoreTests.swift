@@ -59,6 +59,7 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
         XCTAssertEqual(session.baselineTotalTokens, 12)
         XCTAssertEqual(session.committedTotalTokens, 42)
+        XCTAssertEqual(session.turnSequence, 1)
         XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
 
         let snapshot = try XCTUnwrap(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID))
@@ -192,6 +193,115 @@ final class AISessionStoreTests: XCTestCase {
         let session = try XCTUnwrap(store.session(for: terminalID))
         XCTAssertEqual(session.state, .idle)
         XCTAssertTrue(session.wasInterrupted)
+    }
+
+    func testRuntimeResolutionIgnoresStaleTurnSequence() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                projectPath: "/tmp/codex-project",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 8,
+                updatedAt: 100,
+                metadata: nil
+            )
+        )
+        let firstTurn = try XCTUnwrap(store.session(for: terminalID)).turnSequence
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                projectPath: "/tmp/codex-project",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 9,
+                updatedAt: 101,
+                metadata: nil
+            )
+        )
+
+        XCTAssertFalse(
+            store.applyRuntimeResolution(
+                .init(
+                    terminalID: terminalID,
+                    turnSequence: firstTurn,
+                    updatedAt: 102,
+                    model: "gpt-5.4",
+                    totalTokens: 25,
+                    transcriptPath: "/tmp/old.jsonl",
+                    wasInterrupted: true,
+                    hasCompletedTurn: false
+                )
+            )
+        )
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.state, .responding)
+        XCTAssertFalse(session.wasInterrupted)
+        XCTAssertEqual(session.turnSequence, firstTurn + 1)
+    }
+
+    func testRuntimeResolutionCompletesCurrentCodexTurn() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                projectPath: "/tmp/codex-project",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 8,
+                updatedAt: 100,
+                metadata: nil
+            )
+        )
+        let turnSequence = try XCTUnwrap(store.session(for: terminalID)).turnSequence
+
+        XCTAssertTrue(
+            store.applyRuntimeResolution(
+                .init(
+                    terminalID: terminalID,
+                    turnSequence: turnSequence,
+                    updatedAt: 102,
+                    model: "gpt-5.4-mini",
+                    totalTokens: 25,
+                    transcriptPath: "/tmp/codex.jsonl",
+                    wasInterrupted: true,
+                    hasCompletedTurn: false
+                )
+            )
+        )
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(session.wasInterrupted)
+        XCTAssertFalse(session.hasCompletedTurn)
+        XCTAssertEqual(session.committedTotalTokens, 25)
+        XCTAssertEqual(session.transcriptPath, "/tmp/codex.jsonl")
+        XCTAssertEqual(session.model, "gpt-5.4-mini")
     }
 
     func testStaleTerminalInstanceEventIsIgnored() throws {

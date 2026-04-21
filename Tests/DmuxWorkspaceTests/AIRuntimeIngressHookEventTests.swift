@@ -74,6 +74,7 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
                 terminalInstanceID: "instance-1",
                 projectID: UUID(),
                 projectName: "Codux",
+                projectPath: projectPath,
                 sessionTitle: "Claude",
                 tool: "claude",
                 aiSessionID: sessionID,
@@ -85,6 +86,8 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
                 startedAt: 198,
                 wasInterrupted: false,
                 hasCompletedTurn: false,
+                transcriptPath: nil,
+                turnSequence: 0,
                 notificationType: nil,
                 targetToolName: nil,
                 interactionMessage: nil
@@ -168,6 +171,67 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
         XCTAssertEqual(session.committedTotalTokens, 44)
         XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+    }
+
+    func testCodexStopHookUsesTranscriptInterruptedState() async throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        let transcriptURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("dmux-codex-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: transcriptURL) }
+
+        let rows = [
+            #"{"timestamp":"2026-04-21T03:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4","cwd":"/tmp/codex-project"}}"#,
+            #"{"timestamp":"2026-04-21T03:00:01Z","type":"event_msg","payload":{"type":"task_started","started_at":1713668401}}"#,
+            #"{"timestamp":"2026-04-21T03:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":77}}}}"#,
+            #"{"timestamp":"2026-04-21T03:00:03Z","type":"event_msg","payload":{"type":"turn_aborted","completed_at":1713668403}}"#
+        ]
+        try rows.joined(separator: "\n").appending("\n").write(to: transcriptURL, atomically: true, encoding: .utf8)
+
+        let promptPayload = try JSONEncoder().encode(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-codex",
+                projectID: projectID,
+                projectName: "Codux",
+                projectPath: "/tmp/codex-project",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-thread",
+                model: "gpt-5.4",
+                totalTokens: 12,
+                updatedAt: 100,
+                metadata: nil
+            )
+        )
+        await ingress.ingestManagedRuntimeSocketEventForTesting(kind: "ai-hook", payloadData: promptPayload)
+
+        let stopPayload = try JSONEncoder().encode(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-codex",
+                projectID: projectID,
+                projectName: "Codux",
+                projectPath: "/tmp/codex-project",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-thread",
+                model: nil,
+                totalTokens: nil,
+                updatedAt: 101,
+                metadata: .init(transcriptPath: transcriptURL.path)
+            )
+        )
+        await ingress.ingestManagedRuntimeSocketEventForTesting(kind: "ai-hook", payloadData: stopPayload)
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(session.wasInterrupted)
+        XCTAssertFalse(session.hasCompletedTurn)
+        XCTAssertEqual(session.committedTotalTokens, 77)
+        XCTAssertEqual(session.model, "gpt-5.4")
     }
 
     func testAIHookNeedsInputPreservesInteractionMetadata() async throws {
