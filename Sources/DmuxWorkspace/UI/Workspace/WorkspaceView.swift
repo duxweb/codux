@@ -958,6 +958,7 @@ private final class DetachedTerminalWindowDelegate: NSObject, NSWindowDelegate {
     weak var model: AppModel?
     let sessionID: UUID
     var shouldRestoreOnClose = true
+    private var hasScheduledRestore = false
 
     init(model: AppModel, sessionID: UUID) {
         self.model = model
@@ -969,11 +970,20 @@ private final class DetachedTerminalWindowDelegate: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        guard hasScheduledRestore == false else {
+            return
+        }
+        hasScheduledRestore = true
+        let model = self.model
+        let sessionID = self.sessionID
+        let shouldRestoreOnClose = self.shouldRestoreOnClose
         DetachedTerminalWindowPresenter.clear(sessionID: sessionID)
         guard shouldRestoreOnClose else {
             return
         }
-        model?.restoreDetachedSession(sessionID)
+        DispatchQueue.main.async {
+            model?.restoreDetachedSession(sessionID)
+        }
     }
 }
 

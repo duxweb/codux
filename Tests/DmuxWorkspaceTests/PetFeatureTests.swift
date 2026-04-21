@@ -444,4 +444,31 @@ final class PetStoreLifecycleTests: XCTestCase {
             1
         )
     }
+
+    func testFirstHatchDiscardsOverflowXPAndStartsAtLevelOne() {
+        let store = PetStore(storage: .inMemory)
+        store.claim(totalTokens: 0, option: .voidcat, customName: "")
+
+        let overflow = PetProgressInfo.xpForLevel(1) * 2
+        store.refreshDerivedState(
+            currentAllTimeTokens: PetProgressInfo.hatchThreshold + overflow,
+            computedStats: .neutral,
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        XCTAssertEqual(store.currentHatchTokens, PetProgressInfo.hatchThreshold)
+        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(
+            PetProgressInfo(totalXP: store.currentExperienceTokens, hatchTokens: store.currentHatchTokens, evoPath: .pathA).level,
+            1
+        )
+
+        store.refreshDerivedState(
+            currentAllTimeTokens: PetProgressInfo.hatchThreshold + overflow + 123,
+            computedStats: .neutral,
+            now: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+
+        XCTAssertEqual(store.currentExperienceTokens, 123)
+    }
 }

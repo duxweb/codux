@@ -604,12 +604,16 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
         coordinator.bindGeneration &+= 1
         let generation = coordinator.bindGeneration
         let bindVisibility = isVisible
+        coordinator.boundAnchorId = ObjectIdentifier(nsView)
 
         let bindHostedView: (Bool) -> Void = { [weak nsView, weak view, weak coordinator] synchronizeAnchor in
             guard let nsView, let view, let coordinator else { return }
             guard coordinator.bindGeneration == generation else { return }
             guard nsView.window != nil else {
-                GhosttyTerminalPortalRegistry.detach(hostedView: view)
+                GhosttyTerminalPortalRegistry.detach(
+                    hostedView: view,
+                    ifOwnedByAnchorId: coordinator.boundAnchorId
+                )
                 return
             }
             GhosttyTerminalPortalRegistry.bind(hostedView: view, to: nsView, visibleInUI: bindVisibility)
@@ -632,16 +636,19 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
             GhosttyTerminalPortalRegistry.updateEntryVisibility(for: view, visibleInUI: isVisible)
         }
 
-        if shouldFocus {
+        if shouldFocus, coordinator.lastShouldFocus == false {
             DispatchQueue.main.async {
                 view.focusTerminal()
             }
         }
+        coordinator.lastShouldFocus = shouldFocus
     }
 
     final class Coordinator {
         weak var containerView: GhosttyTerminalContainerView?
         var bindGeneration: UInt64 = 0
+        var lastShouldFocus = false
+        var boundAnchorId: ObjectIdentifier?
     }
 
     final class HostContainerView: NSView {
@@ -690,9 +697,13 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
         nsView.onDidMoveToWindow = nil
         nsView.onGeometryChanged = nil
         if let containerView = coordinator.containerView {
-            GhosttyTerminalPortalRegistry.detach(hostedView: containerView)
+            GhosttyTerminalPortalRegistry.detach(
+                hostedView: containerView,
+                ifOwnedByAnchorId: coordinator.boundAnchorId
+            )
         }
         coordinator.containerView = nil
+        coordinator.boundAnchorId = nil
     }
 }
 
@@ -861,15 +872,17 @@ private final class GhosttyWindowPortal {
         }
     }
 
-    func tearDown() {
+    func tearDown(retainedHostedIds: Set<ObjectIdentifier>) {
         if let closeObserver {
             NotificationCenter.default.removeObserver(closeObserver)
             self.closeObserver = nil
         }
-        for (_, entry) in entries {
-            entry.hostedView.isHidden = true
+        for (hostedId, entry) in entries {
+            if retainedHostedIds.contains(hostedId) {
+                entry.hostedView.isHidden = true
+                entry.hostedView.removeFromSuperview()
+            }
             entry.mountedView.isHidden = true
-            entry.hostedView.removeFromSuperview()
             entry.mountedView.removeFromSuperview()
         }
         entries.removeAll()
@@ -908,7 +921,8 @@ private final class GhosttyWindowPortal {
         guard var entry = entries[hostedId] else { return }
         entry.anchorView = nil
         entry.visibleInUI = false
-        entry.hostedView.isHidden = true
+        // Do NOT hide hostedView — it will be rebound by the next bind() call.
+        // Only hide mountedView so the overlay stops showing a stale frame.
         entry.mountedView.isHidden = true
         entries[hostedId] = entry
     }
@@ -978,6 +992,7 @@ private final class GhosttyWindowPortal {
 private enum GhosttyTerminalPortalRegistry {
     private static var portalsByWindowId: [ObjectIdentifier: GhosttyWindowPortal] = [:]
     private static var hostedToWindowId: [ObjectIdentifier: ObjectIdentifier] = [:]
+    private static var hostedToAnchorId: [ObjectIdentifier: ObjectIdentifier] = [:]
 
     static func bind(
         hostedView: GhosttyTerminalContainerView,
@@ -999,6 +1014,7 @@ private enum GhosttyTerminalPortalRegistry {
         let portal = portal(for: window)
         portal.bind(hostedView: hostedView, to: anchorView, visibleInUI: visibleInUI)
         hostedToWindowId[hostedId] = windowId
+        hostedToAnchorId[hostedId] = ObjectIdentifier(anchorView)
     }
 
     static func detach(hostedView: GhosttyTerminalContainerView) {
@@ -1006,6 +1022,23 @@ private enum GhosttyTerminalPortalRegistry {
         if let windowId = hostedToWindowId[hostedId] {
             portalsByWindowId[windowId]?.detachHostedView(withId: hostedId)
         }
+    }
+
+    static func detach(
+        hostedView: GhosttyTerminalContainerView,
+        ifOwnedByAnchorId ownerAnchorId: ObjectIdentifier?
+    ) {
+        guard let ownerAnchorId else {
+            return
+        }
+        let hostedId = ObjectIdentifier(hostedView)
+        guard hostedToAnchorId[hostedId] == ownerAnchorId else {
+            return
+        }
+        guard let windowId = hostedToWindowId[hostedId] else {
+            return
+        }
+        portalsByWindowId[windowId]?.detachHostedView(withId: hostedId)
     }
 
     static func updateEntryVisibility(for hostedView: GhosttyTerminalContainerView, visibleInUI: Bool) {
@@ -1024,8 +1057,16 @@ private enum GhosttyTerminalPortalRegistry {
 
     static func removePortal(for window: NSWindow) {
         let windowId = ObjectIdentifier(window)
-        portalsByWindowId.removeValue(forKey: windowId)?.tearDown()
+        let retainedHostedIds = Set(
+            hostedToWindowId.compactMap { hostedId, mappedWindowId in
+                mappedWindowId == windowId ? hostedId : nil
+            }
+        )
+        portalsByWindowId.removeValue(forKey: windowId)?.tearDown(retainedHostedIds: retainedHostedIds)
         hostedToWindowId = hostedToWindowId.filter { $0.value != windowId }
+        hostedToAnchorId = hostedToAnchorId.filter { hostedId, _ in
+            hostedToWindowId[hostedId] != nil
+        }
     }
 
     private static func portal(for window: NSWindow) -> GhosttyWindowPortal {
@@ -1035,7 +1076,12 @@ private enum GhosttyTerminalPortalRegistry {
         }
         if let existing = portalsByWindowId[windowId] {
             if existing.hostView !== hostView {
-                existing.tearDown()
+                let retainedHostedIds = Set(
+                    hostedToWindowId.compactMap { hostedId, mappedWindowId in
+                        mappedWindowId == windowId ? hostedId : nil
+                    }
+                )
+                existing.tearDown(retainedHostedIds: retainedHostedIds)
                 let replacement = GhosttyWindowPortal(window: window, hostView: hostView)
                 portalsByWindowId[windowId] = replacement
                 return replacement
@@ -1105,6 +1151,8 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     private var geometryReconcileGeneration: UInt64 = 0
     private var geometryReconcileScheduled = false
     private var pendingGeometryReconcilePasses = 0
+    private var lastAppliedFocusedState: Bool?
+    private var lastAppliedVisibleState: Bool?
     private let startupDelay: TimeInterval = 0.18
     private let startupWatchdogDelay: TimeInterval = 3.5
     private let logger = AppDebugLog.shared
@@ -1201,18 +1249,27 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             hasReceivedInitialOutput = false
             hasReportedStartupFailure = false
             pendingFocusRequest = false
+            lastAppliedFocusedState = nil
+            lastAppliedVisibleState = nil
             updateLoadingShieldVisibility()
             terminalView.configuration = surfaceOptions()
         } else {
             configuredSession = session
         }
 
+        let focusChanged = lastAppliedFocusedState != isFocused
+        let visibilityChanged = lastAppliedVisibleState != isVisible
+        lastAppliedFocusedState = isFocused
+        lastAppliedVisibleState = isVisible
+
         if isVisible {
             scheduleProcessStartIfPossible(reason: isFocused ? "update-focused" : "update-visible")
-            scheduleGeometryReconcile(
-                reason: isFocused ? "session-update-focused" : "session-update-visible",
-                passCount: 2
-            )
+            if focusChanged || visibilityChanged {
+                scheduleGeometryReconcile(
+                    reason: isFocused ? "session-update-focused" : "session-update-visible",
+                    passCount: 2
+                )
+            }
         }
 
         let showsDimOverlay = showsInactiveOverlay && isVisible && !isFocused
@@ -1223,7 +1280,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             showsInactiveOverlay: showsInactiveOverlay
         )
 
-        if isFocused {
+        if isFocused && focusChanged {
             focusTerminal()
         }
     }
@@ -1292,6 +1349,12 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
     func terminateProcessTree() {
         processBridge.terminateProcessTree()
+    }
+
+    func prepareForPermanentRemoval() {
+        cancelDeferredLifecycleWork()
+        processBridge.terminateProcessTree()
+        tearDownTerminalView()
     }
 
     var isTerminalFocused: Bool {
@@ -1469,11 +1532,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         processBridge.onFirstOutput = nil
         processBridge.onProcessTerminated = nil
 
-        if window?.firstResponder === terminalView {
-            window?.makeFirstResponder(nil)
-        }
-        terminalView.delegate = nil
-        terminalView.controller = nil
+        tearDownTerminalView()
 
         return GhosttyTerminalSessionResources(
             processBridge: processBridge,
@@ -1632,6 +1691,14 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
     private func notifyInteraction() {
         onInteraction?()
+    }
+
+    private func tearDownTerminalView() {
+        if window?.firstResponder === terminalView {
+            window?.makeFirstResponder(nil)
+        }
+        terminalView.delegate = nil
+        terminalView.controller = nil
     }
 
     func prepareForPointerInteraction() {
@@ -1986,7 +2053,7 @@ final class GhosttyTerminalRegistry {
             return
         }
         GhosttyTerminalPortalRegistry.detach(hostedView: container)
-        container.terminateProcessTree()
+        container.prepareForPermanentRemoval()
         DmuxTerminalOutputEventEmitter.shared.clear(sessionID: sessionID)
         container.removeFromSuperviewWithoutNeedingDisplay()
         if explicitFocusedSessionID == sessionID {

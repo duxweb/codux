@@ -37,6 +37,7 @@ final class PetStore {
 
     private(set) var claimedAt: Date?
     private(set) var baselineAllTimeTokens: Int?
+    private(set) var growthBaselineAllTimeTokens: Int?
     private(set) var species: PetSpecies = .voidcat
     private(set) var customName: String = ""
     private(set) var currentHatchTokens: Int = 0
@@ -75,6 +76,7 @@ final class PetStore {
         }
         claimedAt = Date()
         baselineAllTimeTokens = max(0, totalTokens)
+        growthBaselineAllTimeTokens = nil
         species = option.resolveSpecies(hiddenSpeciesChance: hiddenSpeciesChance)
         self.customName = customName.trimmingCharacters(in: .whitespacesAndNewlines)
         currentHatchTokens = 0
@@ -101,7 +103,10 @@ final class PetStore {
     }
 
     func experienceTokens(currentAllTimeTokens: Int) -> Int {
-        max(0, claimedTokens(currentAllTimeTokens: currentAllTimeTokens) - PetProgressInfo.hatchThreshold)
+        guard let growthBaselineAllTimeTokens else {
+            return 0
+        }
+        return max(0, currentAllTimeTokens - growthBaselineAllTimeTokens)
     }
 
     func currentEvoPath() -> PetEvoPath {
@@ -130,6 +135,7 @@ final class PetStore {
 
         claimedAt = nil
         baselineAllTimeTokens = nil
+        growthBaselineAllTimeTokens = nil
         species = .voidcat
         customName = ""
         currentHatchTokens = 0
@@ -161,7 +167,20 @@ final class PetStore {
         var didChange = false
         let claimed = claimedTokens(currentAllTimeTokens: currentAllTimeTokens)
         let nextHatchTokens = min(claimed, PetProgressInfo.hatchThreshold)
-        let nextXP = max(0, claimed - PetProgressInfo.hatchThreshold)
+        let nextXP: Int
+        if nextHatchTokens < PetProgressInfo.hatchThreshold {
+            if growthBaselineAllTimeTokens != nil {
+                growthBaselineAllTimeTokens = nil
+                didChange = true
+            }
+            nextXP = 0
+        } else {
+            if growthBaselineAllTimeTokens == nil {
+                growthBaselineAllTimeTokens = max(0, currentAllTimeTokens)
+                didChange = true
+            }
+            nextXP = experienceTokens(currentAllTimeTokens: currentAllTimeTokens)
+        }
         if currentHatchTokens != nextHatchTokens {
             currentHatchTokens = nextHatchTokens
             didChange = true
@@ -203,6 +222,7 @@ final class PetStore {
         }
         let clampedXP = max(0, experienceTokens)
         baselineAllTimeTokens = max(0, currentAllTimeTokens - PetProgressInfo.hatchThreshold - clampedXP)
+        growthBaselineAllTimeTokens = max(0, currentAllTimeTokens - clampedXP)
         currentHatchTokens = PetProgressInfo.hatchThreshold
         currentExperienceTokens = clampedXP
         if statsUpdatedDay == nil {
@@ -221,6 +241,7 @@ final class PetStore {
             return
         }
         baselineAllTimeTokens = max(0, currentAllTimeTokens - PetProgressInfo.hatchThreshold)
+        growthBaselineAllTimeTokens = max(0, currentAllTimeTokens)
         currentHatchTokens = PetProgressInfo.hatchThreshold
         currentExperienceTokens = 0
         if statsUpdatedDay == nil {
@@ -234,10 +255,13 @@ final class PetStore {
         if !isClaimed {
             claimedAt = now
             baselineAllTimeTokens = max(0, currentAllTimeTokens)
+            growthBaselineAllTimeTokens = nil
             currentHatchTokens = 0
             currentExperienceTokens = 0
             currentStats = .neutral
             statsUpdatedDay = now
+        } else if currentHatchTokens >= PetProgressInfo.hatchThreshold {
+            growthBaselineAllTimeTokens = max(0, currentAllTimeTokens - currentExperienceTokens)
         }
         species = nextSpecies
         customName = ""
@@ -257,6 +281,7 @@ final class PetStore {
         }
         claimedAt = resolvedState.claimedAt
         baselineAllTimeTokens = resolvedState.baselineAllTimeTokens
+        growthBaselineAllTimeTokens = resolvedState.growthBaselineAllTimeTokens
         species = resolvedState.species ?? .voidcat
         customName = resolvedState.customName ?? ""
         let migratedXP = resolvedState.currentExperienceTokens ?? 0
@@ -266,6 +291,11 @@ final class PetStore {
         } else {
             currentHatchTokens = min(migratedXP, PetProgressInfo.hatchThreshold)
             currentExperienceTokens = max(0, migratedXP - PetProgressInfo.hatchThreshold)
+        }
+        if growthBaselineAllTimeTokens == nil,
+           currentHatchTokens >= PetProgressInfo.hatchThreshold,
+           let baselineAllTimeTokens {
+            growthBaselineAllTimeTokens = baselineAllTimeTokens + PetProgressInfo.hatchThreshold
         }
         currentStats = resolvedState.currentStats ?? .neutral
         statsUpdatedDay = resolvedState.statsUpdatedDay
@@ -277,6 +307,7 @@ final class PetStore {
         let state = PersistedPetState(
             claimedAt: claimedAt,
             baselineAllTimeTokens: baselineAllTimeTokens,
+            growthBaselineAllTimeTokens: growthBaselineAllTimeTokens,
             species: species,
             customName: customName,
             currentHatchTokens: currentHatchTokens,
@@ -346,6 +377,7 @@ final class PetStore {
 private struct PersistedPetState: Codable, Equatable {
     var claimedAt: Date?
     var baselineAllTimeTokens: Int?
+    var growthBaselineAllTimeTokens: Int?
     var species: PetSpecies?
     var customName: String?
     var currentHatchTokens: Int?
