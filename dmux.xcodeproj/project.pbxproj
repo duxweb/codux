@@ -82,6 +82,11 @@
 		B10000000000000000000013 /* AppModel+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000013 /* AppModel+Git.swift */; };
 		B10000000000000000000014 /* AppModel+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000014 /* AppModel+Settings.swift */; };
 		B10000000000000000000015 /* AppModel+Activity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000015 /* AppModel+Activity.swift */; };
+		B10000000000000000000016 /* GitPanelBranchMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000016 /* GitPanelBranchMenu.swift */; };
+		B10000000000000000000017 /* GitPanelFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000017 /* GitPanelFilesView.swift */; };
+		B10000000000000000000018 /* GitPanelHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000018 /* GitPanelHistoryView.swift */; };
+		B10000000000000000000019 /* GitPanelContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000019 /* GitPanelContextMenu.swift */; };
+		B10000000000000000000020 /* GitPanelStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000020 /* GitPanelStyles.swift */; };
 		A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0598FB11F350F43D5A39628A /* AIUsageService.swift */; };
 		A8B33C70370354EC1B39A24A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB59CA2E305DD7DBA2C167 /* main.swift */; };
 		A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E565A0971373275B0012B0 /* WorkspacePaths.swift */; };
@@ -171,6 +176,11 @@
 		C10000000000000000000013 /* AppModel+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Git.swift"; sourceTree = "<group>"; };
 		C10000000000000000000014 /* AppModel+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Settings.swift"; sourceTree = "<group>"; };
 		C10000000000000000000015 /* AppModel+Activity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Activity.swift"; sourceTree = "<group>"; };
+		C10000000000000000000016 /* GitPanelBranchMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPanelBranchMenu.swift; sourceTree = "<group>"; };
+		C10000000000000000000017 /* GitPanelFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPanelFilesView.swift; sourceTree = "<group>"; };
+		C10000000000000000000018 /* GitPanelHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPanelHistoryView.swift; sourceTree = "<group>"; };
+		C10000000000000000000019 /* GitPanelContextMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPanelContextMenu.swift; sourceTree = "<group>"; };
+		C10000000000000000000020 /* GitPanelStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPanelStyles.swift; sourceTree = "<group>"; };
 		8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiRuntimeProbeService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRuntimeProbeService.swift; sourceTree = "<group>"; };
 		A2EEF0E8297855B7EA05302D /* GitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStore.swift; sourceTree = "<group>"; };
@@ -370,6 +380,11 @@
 			isa = PBXGroup;
 			children = (
 				26171F8711B1E3EA99875C1C /* GitPanelView.swift */,
+				C10000000000000000000016 /* GitPanelBranchMenu.swift */,
+				C10000000000000000000017 /* GitPanelFilesView.swift */,
+				C10000000000000000000018 /* GitPanelHistoryView.swift */,
+				C10000000000000000000019 /* GitPanelContextMenu.swift */,
+				C10000000000000000000020 /* GitPanelStyles.swift */,
 			);
 			path = Git;
 			sourceTree = "<group>";
@@ -623,6 +638,11 @@
 				1C5B30CE30B31B4F9F74FB92 /* GitCredentialStore.swift in Sources */,
 				E6A0336BD0C96355E49037CC /* GitInputDialog.swift in Sources */,
 				27017F50D1E8D2D2E53E4CA1 /* GitPanelView.swift in Sources */,
+				B10000000000000000000016 /* GitPanelBranchMenu.swift in Sources */,
+				B10000000000000000000017 /* GitPanelFilesView.swift in Sources */,
+				B10000000000000000000018 /* GitPanelHistoryView.swift in Sources */,
+				B10000000000000000000019 /* GitPanelContextMenu.swift in Sources */,
+				B10000000000000000000020 /* GitPanelStyles.swift in Sources */,
 				71BFF4A14483F673CAE0510F /* GitService.swift in Sources */,
 				C9C006044B9B560E30181FAB /* GitStore.swift in Sources */,
 				BCB26675EA2CC890F29674A0 /* PersistenceService.swift in Sources */,
