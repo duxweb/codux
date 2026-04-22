@@ -38,6 +38,7 @@ struct AIProjectHistoryService: Sendable {
 
     func loadProjectSummary(
         project: Project,
+        indexingProfile: AIProjectHistoryIndexingProfile = .foreground,
         onProgress: @Sendable @escaping (AIIndexingStatus) async -> Void
     ) async throws -> AIProjectDirectorySourceSummary {
         let startedAt = Date()
@@ -47,42 +48,57 @@ struct AIProjectHistoryService: Sendable {
             "project-sources start project=\(project.name) path=\(project.path)"
         )
 
-        async let claudeTask = loadClaudeFileSummaries(project: project)
-        async let codexTask = loadCodexFileSummaries(project: project)
-        async let geminiTask = loadGeminiFileSummaries(project: project)
-        async let opencodeTask = loadOpenCodeFileSummaries(project: project)
+        let claude: [AIExternalFileSummary]
+        let codex: [AIExternalFileSummary]
+        let gemini: [AIExternalFileSummary]
+        let opencode: [AIExternalFileSummary]
 
-        let claude = await claudeTask
-        logger.log(
-            "history-refresh",
-            "project-sources source=claude summary files=\(claude.count) requests=\(totalRequestCount(in: claude)) sessions=\(totalSessionCount(in: claude)) tokens=\(totalTokenCount(in: claude)) elapsedMs=\(elapsedMilliseconds(since: startedAt))"
-        )
-        await onProgress(.indexing(progress: 0.38, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
-        try Task.checkCancellation()
+        if indexingProfile.sourceConcurrency <= 1 {
+            claude = await loadClaudeFileSummaries(project: project, indexingProfile: indexingProfile)
+            logger.log("history-refresh", "project-sources source=claude summary files=\(claude.count) requests=\(totalRequestCount(in: claude)) sessions=\(totalSessionCount(in: claude)) tokens=\(totalTokenCount(in: claude)) elapsedMs=\(elapsedMilliseconds(since: startedAt))")
+            await onProgress(.indexing(progress: 0.38, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
+            try Task.checkCancellation()
 
-        let codex = await codexTask
-        logger.log(
-            "history-refresh",
-            "project-sources source=codex summary files=\(codex.count) requests=\(totalRequestCount(in: codex)) sessions=\(totalSessionCount(in: codex)) tokens=\(totalTokenCount(in: codex)) elapsedMs=\(elapsedMilliseconds(since: startedAt))"
-        )
-        await onProgress(.indexing(progress: 0.58, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
-        try Task.checkCancellation()
+            codex = await loadCodexFileSummaries(project: project, indexingProfile: indexingProfile)
+            logger.log("history-refresh", "project-sources source=codex summary files=\(codex.count) requests=\(totalRequestCount(in: codex)) sessions=\(totalSessionCount(in: codex)) tokens=\(totalTokenCount(in: codex)) elapsedMs=\(elapsedMilliseconds(since: startedAt))")
+            await onProgress(.indexing(progress: 0.58, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
+            try Task.checkCancellation()
 
-        let gemini = await geminiTask
-        logger.log(
-            "history-refresh",
-            "project-sources source=gemini summary files=\(gemini.count) requests=\(totalRequestCount(in: gemini)) sessions=\(totalSessionCount(in: gemini)) tokens=\(totalTokenCount(in: gemini)) elapsedMs=\(elapsedMilliseconds(since: startedAt))"
-        )
-        await onProgress(.indexing(progress: 0.74, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
-        try Task.checkCancellation()
+            gemini = await loadGeminiFileSummaries(project: project, indexingProfile: indexingProfile)
+            logger.log("history-refresh", "project-sources source=gemini summary files=\(gemini.count) requests=\(totalRequestCount(in: gemini)) sessions=\(totalSessionCount(in: gemini)) tokens=\(totalTokenCount(in: gemini)) elapsedMs=\(elapsedMilliseconds(since: startedAt))")
+            await onProgress(.indexing(progress: 0.74, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
+            try Task.checkCancellation()
 
-        let opencode = await opencodeTask
-        logger.log(
-            "history-refresh",
-            "project-sources source=opencode summary files=\(opencode.count) requests=\(totalRequestCount(in: opencode)) sessions=\(totalSessionCount(in: opencode)) tokens=\(totalTokenCount(in: opencode)) elapsedMs=\(elapsedMilliseconds(since: startedAt))"
-        )
-        await onProgress(.indexing(progress: 0.88, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
-        try Task.checkCancellation()
+            opencode = await loadOpenCodeFileSummaries(project: project, indexingProfile: indexingProfile)
+            logger.log("history-refresh", "project-sources source=opencode summary files=\(opencode.count) requests=\(totalRequestCount(in: opencode)) sessions=\(totalSessionCount(in: opencode)) tokens=\(totalTokenCount(in: opencode)) elapsedMs=\(elapsedMilliseconds(since: startedAt))")
+            await onProgress(.indexing(progress: 0.88, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
+            try Task.checkCancellation()
+        } else {
+            async let claudeTask = loadClaudeFileSummaries(project: project, indexingProfile: indexingProfile)
+            async let codexTask = loadCodexFileSummaries(project: project, indexingProfile: indexingProfile)
+            async let geminiTask = loadGeminiFileSummaries(project: project, indexingProfile: indexingProfile)
+            async let opencodeTask = loadOpenCodeFileSummaries(project: project, indexingProfile: indexingProfile)
+
+            claude = await claudeTask
+            logger.log("history-refresh", "project-sources source=claude summary files=\(claude.count) requests=\(totalRequestCount(in: claude)) sessions=\(totalSessionCount(in: claude)) tokens=\(totalTokenCount(in: claude)) elapsedMs=\(elapsedMilliseconds(since: startedAt))")
+            await onProgress(.indexing(progress: 0.38, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
+            try Task.checkCancellation()
+
+            codex = await codexTask
+            logger.log("history-refresh", "project-sources source=codex summary files=\(codex.count) requests=\(totalRequestCount(in: codex)) sessions=\(totalSessionCount(in: codex)) tokens=\(totalTokenCount(in: codex)) elapsedMs=\(elapsedMilliseconds(since: startedAt))")
+            await onProgress(.indexing(progress: 0.58, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
+            try Task.checkCancellation()
+
+            gemini = await geminiTask
+            logger.log("history-refresh", "project-sources source=gemini summary files=\(gemini.count) requests=\(totalRequestCount(in: gemini)) sessions=\(totalSessionCount(in: gemini)) tokens=\(totalTokenCount(in: gemini)) elapsedMs=\(elapsedMilliseconds(since: startedAt))")
+            await onProgress(.indexing(progress: 0.74, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
+            try Task.checkCancellation()
+
+            opencode = await opencodeTask
+            logger.log("history-refresh", "project-sources source=opencode summary files=\(opencode.count) requests=\(totalRequestCount(in: opencode)) sessions=\(totalSessionCount(in: opencode)) tokens=\(totalTokenCount(in: opencode)) elapsedMs=\(elapsedMilliseconds(since: startedAt))")
+            await onProgress(.indexing(progress: 0.88, detail: String(localized: "ai.indexing.reading_sources", defaultValue: "Reading index.", bundle: .module)))
+            try Task.checkCancellation()
+        }
 
         let summary = aggregator.buildProjectSummary(
             project: project,
@@ -99,9 +115,10 @@ struct AIProjectHistoryService: Sendable {
         source: String,
         fileURLs: [URL],
         project: Project,
-        fullParser: (URL, Project) -> JSONLParseSnapshot,
-        appendParser: (URL, Project, AIExternalFileCheckpoint) -> JSONLParseSnapshot
-    ) -> [AIExternalFileSummary] {
+        indexingProfile: AIProjectHistoryIndexingProfile = .foreground,
+        fullParser: @Sendable @escaping (URL, Project) -> JSONLParseSnapshot,
+        appendParser: @Sendable @escaping (URL, Project, AIExternalFileCheckpoint) -> JSONLParseSnapshot
+    ) async -> [AIExternalFileSummary] {
         guard !fileURLs.isEmpty else {
             logger.log(
                 "history-refresh",
@@ -120,20 +137,11 @@ struct AIProjectHistoryService: Sendable {
             "source=\(source) files start project=\(project.name) totalFiles=\(fileURLs.count)"
         )
 
-        var summaries: [AIExternalFileSummary] = []
-        summaries.reserveCapacity(fileURLs.count)
-        var cachedCount = 0
-        var appendedCount = 0
-        var rebuiltCount = 0
-        var totalRequests = 0
-        var totalSessions = 0
-        var totalTokens = 0
-
-        for fileURL in fileURLs {
-            guard !Task.isCancelled else {
-                return []
-            }
-
+        let results: [(summary: AIExternalFileSummary?, cached: Int, appended: Int, rebuilt: Int, requests: Int, sessions: Int, tokens: Int)] = await limitedConcurrentMap(
+            fileURLs,
+            maxConcurrency: indexingProfile.fileConcurrency,
+            priority: indexingProfile.taskPriority
+        ) { _, fileURL in
             let normalizedURL = fileURL.standardizedFileURL
             let filePath = normalizedURL.path
             let modifiedAt = fileModifiedAt(normalizedURL)
@@ -163,13 +171,13 @@ struct AIProjectHistoryService: Sendable {
                     "history-refresh",
                     "source=\(source) file mode=unchanged project=\(project.name) name=\(normalizedURL.lastPathComponent) size=\(fileSize) modifiedAt=\(modifiedAt) hasSummary=\(storedSummary != nil) checkpointOffset=\(checkpoint?.lastOffset ?? 0) checkpointSize=\(checkpoint?.fileSize ?? 0)"
                 )
-                if let storedSummary {
-                    summaries.append(storedSummary)
-                    cachedCount += 1
-                    totalRequests += totalRequestCount(in: storedSummary)
-                    totalSessions += storedSummary.sessions.count
-                    totalTokens += totalTokenCount(in: storedSummary)
+                if indexingProfile.interFileDelayMilliseconds > 0 {
+                    try? await Task.sleep(nanoseconds: indexingProfile.interFileDelayMilliseconds * 1_000_000)
                 }
+                if let storedSummary {
+                    return (storedSummary, 1, 0, 0, totalRequestCount(in: storedSummary), storedSummary.sessions.count, totalTokenCount(in: storedSummary))
+                }
+                return (nil, 0, 0, 0, 0, 0, 0)
 
             case .append:
                 logger.log(
@@ -197,16 +205,14 @@ struct AIProjectHistoryService: Sendable {
                             project: project
                         )
                     )
-                    summaries.append(summary)
                     logger.log(
                         "history-refresh",
                         "source=\(source) file append-promoted-to-rebuild project=\(project.name) name=\(normalizedURL.lastPathComponent) sessions=\(summary.sessions.count) requests=\(totalRequestCount(in: summary)) tokens=\(totalTokenCount(in: summary)) lastOffset=\(snapshot.lastProcessedOffset)"
                     )
-                    rebuiltCount += 1
-                    totalRequests += totalRequestCount(in: summary)
-                    totalSessions += summary.sessions.count
-                    totalTokens += totalTokenCount(in: summary)
-                    continue
+                    if indexingProfile.interFileDelayMilliseconds > 0 {
+                        try? await Task.sleep(nanoseconds: indexingProfile.interFileDelayMilliseconds * 1_000_000)
+                    }
+                    return (summary, 0, 0, 1, totalRequestCount(in: summary), summary.sessions.count, totalTokenCount(in: summary))
                 }
 
                 let snapshot = appendParser(normalizedURL, project, checkpoint)
@@ -231,15 +237,14 @@ struct AIProjectHistoryService: Sendable {
                         seed: checkpoint.payload
                     )
                 )
-                summaries.append(summary)
                 logger.log(
                     "history-refresh",
                     "source=\(source) file append-complete project=\(project.name) name=\(normalizedURL.lastPathComponent) sessions=\(summary.sessions.count) requests=\(totalRequestCount(in: summary)) tokens=\(totalTokenCount(in: summary)) lastOffset=\(snapshot.lastProcessedOffset)"
                 )
-                appendedCount += 1
-                totalRequests += totalRequestCount(in: summary)
-                totalSessions += summary.sessions.count
-                totalTokens += totalTokenCount(in: summary)
+                if indexingProfile.interFileDelayMilliseconds > 0 {
+                    try? await Task.sleep(nanoseconds: indexingProfile.interFileDelayMilliseconds * 1_000_000)
+                }
+                return (summary, 0, 1, 0, totalRequestCount(in: summary), summary.sessions.count, totalTokenCount(in: summary))
 
             case .rebuild:
                 logger.log(
@@ -266,17 +271,28 @@ struct AIProjectHistoryService: Sendable {
                         project: project
                     )
                 )
-                summaries.append(summary)
                 logger.log(
                     "history-refresh",
                     "source=\(source) file rebuild-complete project=\(project.name) name=\(normalizedURL.lastPathComponent) sessions=\(summary.sessions.count) requests=\(totalRequestCount(in: summary)) tokens=\(totalTokenCount(in: summary)) lastOffset=\(snapshot.lastProcessedOffset)"
                 )
-                rebuiltCount += 1
-                totalRequests += totalRequestCount(in: summary)
-                totalSessions += summary.sessions.count
-                totalTokens += totalTokenCount(in: summary)
+                if indexingProfile.interFileDelayMilliseconds > 0 {
+                    try? await Task.sleep(nanoseconds: indexingProfile.interFileDelayMilliseconds * 1_000_000)
+                }
+                return (summary, 0, 0, 1, totalRequestCount(in: summary), summary.sessions.count, totalTokenCount(in: summary))
             }
         }
+
+        guard !Task.isCancelled else {
+            return []
+        }
+
+        let summaries = results.compactMap(\.summary)
+        let cachedCount = results.reduce(0) { $0 + $1.cached }
+        let appendedCount = results.reduce(0) { $0 + $1.appended }
+        let rebuiltCount = results.reduce(0) { $0 + $1.rebuilt }
+        let totalRequests = results.reduce(0) { $0 + $1.requests }
+        let totalSessions = results.reduce(0) { $0 + $1.sessions }
+        let totalTokens = results.reduce(0) { $0 + $1.tokens }
 
         logger.log(
             "history-refresh",
@@ -610,8 +626,9 @@ struct AIProjectHistoryService: Sendable {
         source: String,
         fileURLs: [URL],
         project: Project,
-        parser: (URL, Project) -> AIHistoryParseResult
-    ) -> [AIExternalFileSummary] {
+        indexingProfile: AIProjectHistoryIndexingProfile = .foreground,
+        parser: @Sendable @escaping (URL, Project) -> AIHistoryParseResult
+    ) async -> [AIExternalFileSummary] {
         guard !fileURLs.isEmpty else {
             logger.log(
                 "history-refresh",
@@ -630,19 +647,11 @@ struct AIProjectHistoryService: Sendable {
             "source=\(source) files start project=\(project.name) totalFiles=\(fileURLs.count)"
         )
 
-        var summaries: [AIExternalFileSummary] = []
-        summaries.reserveCapacity(fileURLs.count)
-        var cachedCount = 0
-        var parsedCount = 0
-        var totalRequests = 0
-        var totalSessions = 0
-        var totalTokens = 0
-
-        for fileURL in fileURLs {
-            guard !Task.isCancelled else {
-                return []
-            }
-
+        let results: [(summary: AIExternalFileSummary, cached: Int, parsed: Int, requests: Int, sessions: Int, tokens: Int)] = await limitedConcurrentMap(
+            fileURLs,
+            maxConcurrency: indexingProfile.fileConcurrency,
+            priority: indexingProfile.taskPriority
+        ) { _, fileURL in
             let normalizedURL = fileURL.standardizedFileURL
             let filePath = normalizedURL.path
             let modifiedAt = fileModifiedAt(normalizedURL)
@@ -653,12 +662,10 @@ struct AIProjectHistoryService: Sendable {
                 projectPath: project.path,
                 modifiedAt: modifiedAt
             ) {
-                summaries.append(stored)
-                cachedCount += 1
-                totalRequests += totalRequestCount(in: stored)
-                totalSessions += stored.sessions.count
-                totalTokens += totalTokenCount(in: stored)
-                continue
+                if indexingProfile.interFileDelayMilliseconds > 0 {
+                    try? await Task.sleep(nanoseconds: indexingProfile.interFileDelayMilliseconds * 1_000_000)
+                }
+                return (stored, 1, 0, totalRequestCount(in: stored), stored.sessions.count, totalTokenCount(in: stored))
             }
 
             let parseResult = parser(normalizedURL, project)
@@ -670,12 +677,22 @@ struct AIProjectHistoryService: Sendable {
                 parseResult: parseResult
             )
             usageStore.saveExternalSummary(summary)
-            summaries.append(summary)
-            parsedCount += 1
-            totalRequests += totalRequestCount(in: summary)
-            totalSessions += summary.sessions.count
-            totalTokens += totalTokenCount(in: summary)
+            if indexingProfile.interFileDelayMilliseconds > 0 {
+                try? await Task.sleep(nanoseconds: indexingProfile.interFileDelayMilliseconds * 1_000_000)
+            }
+            return (summary, 0, 1, totalRequestCount(in: summary), summary.sessions.count, totalTokenCount(in: summary))
         }
+
+        guard !Task.isCancelled else {
+            return []
+        }
+
+        let summaries = results.map(\.summary)
+        let cachedCount = results.reduce(0) { $0 + $1.cached }
+        let parsedCount = results.reduce(0) { $0 + $1.parsed }
+        let totalRequests = results.reduce(0) { $0 + $1.requests }
+        let totalSessions = results.reduce(0) { $0 + $1.sessions }
+        let totalTokens = results.reduce(0) { $0 + $1.tokens }
 
         logger.log(
             "history-refresh",

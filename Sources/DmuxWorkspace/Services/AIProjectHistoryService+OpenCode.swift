@@ -2,17 +2,21 @@ import Foundation
 import SQLite3
 
 extension AIProjectHistoryService {
-    func loadOpenCodeFileSummaries(project: Project) async -> [AIExternalFileSummary] {
+    func loadOpenCodeFileSummaries(
+        project: Project,
+        indexingProfile: AIProjectHistoryIndexingProfile = .foreground
+    ) async -> [AIExternalFileSummary] {
         let databaseURL = AIRuntimeSourceLocator.opencodeDatabaseURL(homeURL: runtimeHomeURL)
         if FileManager.default.fileExists(atPath: databaseURL.path) {
             logger.log(
                 "history-refresh",
                 "source=opencode locator=sqlite project=\(project.name) totalFiles=1 dbPath=\(databaseURL.path)"
             )
-            return loadFileSummaries(
+            return await loadFileSummaries(
                 source: "opencode",
                 fileURLs: [databaseURL],
                 project: project,
+                indexingProfile: indexingProfile,
                 parser: parseOpenCodeDatabase
             )
         }
@@ -22,10 +26,11 @@ extension AIProjectHistoryService {
             "history-refresh",
             "source=opencode locator=legacy-json project=\(project.name) totalFiles=\(legacyMessageFiles.count)"
         )
-        return loadFileSummaries(
+        return await loadFileSummaries(
             source: "opencode",
             fileURLs: legacyMessageFiles,
             project: project,
+            indexingProfile: indexingProfile,
             parser: parseOpenCodeLegacyMessageFile
         )
     }

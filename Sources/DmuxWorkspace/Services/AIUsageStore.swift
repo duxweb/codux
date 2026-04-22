@@ -25,6 +25,7 @@ struct AIUsageStore: Sendable {
             throw NSError(domain: "AIUsageStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to open AI usage database"])
         }
         defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 3000)
         try initializeIfNeeded(db)
         return try body(db)
     }

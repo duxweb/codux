@@ -115,6 +115,10 @@ extension AIStatsStore {
             "start trigger=\(refreshTriggerName(trigger)) project=\(project.id.uuidString) name=\(project.name) force=\(force) live=\(liveSnapshots.count) selectedSession=\(selectedSessionID?.uuidString ?? "nil")"
         )
 
+        let indexingProfile: AIProjectHistoryIndexingProfile = trigger == .background
+            ? .background
+            : .foreground
+
         let runningStatus = AIIndexingStatus.indexing(progress: 0.0, detail: String(localized: "ai.indexing.starting", defaultValue: "Starting index.", bundle: .module))
         indexingStatusByProjectID[project.id] = runningStatus
         if var runningState = panelStateByProjectID[project.id] {
@@ -123,7 +127,7 @@ extension AIStatsStore {
             storeState(runningState, refreshState: runningRefreshState, for: project.id, updateCurrent: true)
         }
 
-        refreshTasks[project.id] = Task(priority: .utility) {
+        refreshTasks[project.id] = Task(priority: indexingProfile.taskPriority) {
             let startedAt = Date()
             defer {
                 Task { @MainActor in
@@ -153,7 +157,8 @@ extension AIStatsStore {
             let resultState = await service.panelState(
                 project: project,
                 liveSnapshots: liveContext.summary,
-                currentSnapshot: liveContext.current
+                currentSnapshot: liveContext.current,
+                indexingProfile: indexingProfile
             ) { status in
                 await MainActor.run {
                     self.indexingStatusByProjectID[project.id] = status

@@ -116,12 +116,17 @@ struct AIUsageService: Sendable {
         project: Project,
         liveSnapshots: [AITerminalSessionSnapshot],
         currentSnapshot: AITerminalSessionSnapshot?,
+        indexingProfile: AIProjectHistoryIndexingProfile = .foreground,
         onProgress: @Sendable @escaping (AIIndexingStatus) async -> Void
     ) async -> AIStatsPanelState {
         do {
             try Task.checkCancellation()
             await onProgress(.indexing(progress: 0.05, detail: String(localized: "ai.indexing.preparing", defaultValue: "Preparing usage data.", bundle: .module)))
-            let directorySummary = try await historyService.loadProjectSummary(project: project, onProgress: onProgress)
+            let directorySummary = try await historyService.loadProjectSummary(
+                project: project,
+                indexingProfile: indexingProfile,
+                onProgress: onProgress
+            )
             try Task.checkCancellation()
             let todayTotal = todayTotalTokens(
                 timeBuckets: directorySummary.todayTimeBuckets,

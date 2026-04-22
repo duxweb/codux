@@ -2,16 +2,20 @@ import Foundation
 import SQLite3
 
 extension AIProjectHistoryService {
-    func loadClaudeFileSummaries(project: Project) async -> [AIExternalFileSummary] {
+    func loadClaudeFileSummaries(
+        project: Project,
+        indexingProfile: AIProjectHistoryIndexingProfile = .foreground
+    ) async -> [AIExternalFileSummary] {
         let files = AIRuntimeSourceLocator.claudeProjectLogURLs(projectPath: project.path)
         logger.log(
             "history-refresh",
             "source=claude locator=projects project=\(project.name) totalFiles=\(files.count)"
         )
-        return loadIncrementalJSONLFileSummaries(
+        return await loadIncrementalJSONLFileSummaries(
             source: "claude",
             fileURLs: files,
             project: project,
+            indexingProfile: indexingProfile,
             fullParser: { fileURL, project in
                 parseClaudeFile(fileURL: fileURL, project: project)
             },
@@ -155,7 +159,10 @@ extension AIProjectHistoryService {
         )
     }
 
-    func loadCodexFileSummaries(project: Project) async -> [AIExternalFileSummary] {
+    func loadCodexFileSummaries(
+        project: Project,
+        indexingProfile: AIProjectHistoryIndexingProfile = .foreground
+    ) async -> [AIExternalFileSummary] {
         let databaseURL = AIRuntimeSourceLocator.codexDatabaseURL(homeURL: runtimeHomeURL)
         let databaseFiles = AIRuntimeSourceLocator.codexSessionFileURLsFromDatabase(
             projectPath: project.path,
@@ -168,10 +175,11 @@ extension AIProjectHistoryService {
             "history-refresh",
             "source=codex locator=\(databaseFiles.isEmpty ? "sessions-scan" : "state-db") project=\(project.name) totalFiles=\(files.count) dbExists=\(FileManager.default.fileExists(atPath: databaseURL.path))"
         )
-        return loadIncrementalJSONLFileSummaries(
+        return await loadIncrementalJSONLFileSummaries(
             source: "codex",
             fileURLs: files,
             project: project,
+            indexingProfile: indexingProfile,
             fullParser: { fileURL, project in
                 parseCodexFile(fileURL: fileURL, project: project)
             },
@@ -352,7 +360,10 @@ extension AIProjectHistoryService {
         )
     }
 
-    func loadGeminiFileSummaries(project: Project) async -> [AIExternalFileSummary] {
+    func loadGeminiFileSummaries(
+        project: Project,
+        indexingProfile: AIProjectHistoryIndexingProfile = .foreground
+    ) async -> [AIExternalFileSummary] {
         let fileURLs = AIRuntimeSourceLocator.geminiSessionFileURLs(projectPath: project.path, homeURL: runtimeHomeURL)
         let projectsURL = AIRuntimeSourceLocator.geminiProjectsURL(homeURL: runtimeHomeURL)
         let tempURL = AIRuntimeSourceLocator.geminiTempDirectoryURL(homeURL: runtimeHomeURL)
@@ -360,10 +371,11 @@ extension AIProjectHistoryService {
             "history-refresh",
             "source=gemini locator=projects-or-root-marker project=\(project.name) totalFiles=\(fileURLs.count) projectsExists=\(FileManager.default.fileExists(atPath: projectsURL.path)) tmpExists=\(FileManager.default.fileExists(atPath: tempURL.path))"
         )
-        return loadFileSummaries(
+        return await loadFileSummaries(
             source: "gemini",
             fileURLs: fileURLs,
             project: project,
+            indexingProfile: indexingProfile,
             parser: parseGeminiFile
         )
     }

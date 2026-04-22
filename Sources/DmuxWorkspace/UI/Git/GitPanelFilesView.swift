@@ -260,11 +260,7 @@ private struct GitFileRow: View {
                 Color.clear
                     .frame(width: 12, height: 1)
 
-                Text(entry.path)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                GitFilePathLabel(path: entry.path)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .help(entry.path)
 
@@ -337,6 +333,42 @@ private struct GitFileRow: View {
                     GitStatusBadge(entry: entry, accent: accent)
                 }
             }
+    }
+}
+
+private struct GitFilePathLabel: View {
+    let path: String
+
+    private var nsPath: NSString {
+        path as NSString
+    }
+
+    private var fileName: String {
+        nsPath.lastPathComponent
+    }
+
+    private var parentPath: String {
+        let parent = nsPath.deletingLastPathComponent
+        return parent == "." ? "" : parent
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if parentPath.isEmpty == false {
+                Text("\(parentPath)/")
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(AppTheme.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+
+            Text(fileName)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+        }
     }
 }
 

@@ -341,6 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        AppDebugLog.shared.log("ghostty-lifecycle", "application-will-terminate")
         DmuxTerminalBackend.shared.registry.terminateAll()
     }
 

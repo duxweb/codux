@@ -211,7 +211,7 @@ enum GhosttyEmbeddedConfig {
 
                 if key == "theme",
                    let themeName = Self.unquoted(rawValue) as String? {
-                    if let themeAppearance = Self.themeAppearance(
+                    if let themeAppearance = Self.bundledThemeAppearance(
                         named: themeName,
                         fileManager: fileManager,
                         homeDirectoryURL: homeDirectoryURL
@@ -294,7 +294,7 @@ enum GhosttyEmbeddedConfig {
         )
     }
 
-    private static func themeAppearance(
+    static func bundledThemeAppearance(
         named name: String,
         fileManager: FileManager = .default,
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -557,4 +557,3 @@ enum GhosttyEmbeddedConfig {
         }
     }
 }
-

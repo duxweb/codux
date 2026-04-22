@@ -93,6 +93,10 @@ final class GhosttyTerminalRegistry {
 
     func terminateAll() {
         let sessionIDs = Array(containers.keys)
+        AppDebugLog.shared.log(
+            "ghostty-lifecycle",
+            "terminate-all count=\(sessionIDs.count)"
+        )
         for sessionID in sessionIDs {
             release(sessionID: sessionID)
         }

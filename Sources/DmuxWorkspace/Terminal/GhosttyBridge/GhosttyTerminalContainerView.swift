@@ -74,7 +74,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     ) {
         configuredSession = session
         configuredEnvironment = environment
-        terminalBackgroundPreset = .flexokiDark
+        terminalBackgroundPreset = .tokyoNightStorm
         backgroundColorPreset = .automatic
         self.terminalFontSize = terminalFontSize
         self.onInteraction = onInteraction
@@ -91,7 +91,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         } else {
             processBridge = GhosttyPTYProcessBridge(sessionID: session.id)
             controller = Self.makeController(
-                backgroundPreset: .flexokiDark,
+                backgroundPreset: .tokyoNightStorm,
                 backgroundColorPreset: .automatic,
                 logger: AppDebugLog.shared
             )
