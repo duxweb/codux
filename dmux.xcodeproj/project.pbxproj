@@ -100,6 +100,9 @@
 		B10000000000000000000031 /* SettingsNotificationsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000031 /* SettingsNotificationsPane.swift */; };
 		B10000000000000000000032 /* SettingsShortcutsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000032 /* SettingsShortcutsPane.swift */; };
 		B10000000000000000000033 /* SettingsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000033 /* SettingsSupport.swift */; };
+		B10000000000000000000034 /* RootWindowSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000034 /* RootWindowSupport.swift */; };
+		B10000000000000000000035 /* RootSplitContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000035 /* RootSplitContainer.swift */; };
+		B10000000000000000000036 /* RootTitlebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000036 /* RootTitlebarView.swift */; };
 		A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0598FB11F350F43D5A39628A /* AIUsageService.swift */; };
 		A8B33C70370354EC1B39A24A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB59CA2E305DD7DBA2C167 /* main.swift */; };
 		A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E565A0971373275B0012B0 /* WorkspacePaths.swift */; };
@@ -207,6 +210,9 @@
 		C10000000000000000000031 /* SettingsNotificationsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotificationsPane.swift; sourceTree = "<group>"; };
 		C10000000000000000000032 /* SettingsShortcutsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsShortcutsPane.swift; sourceTree = "<group>"; };
 		C10000000000000000000033 /* SettingsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSupport.swift; sourceTree = "<group>"; };
+		C10000000000000000000034 /* RootWindowSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootWindowSupport.swift; sourceTree = "<group>"; };
+		C10000000000000000000035 /* RootSplitContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootSplitContainer.swift; sourceTree = "<group>"; };
+		C10000000000000000000036 /* RootTitlebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTitlebarView.swift; sourceTree = "<group>"; };
 		8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiRuntimeProbeService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRuntimeProbeService.swift; sourceTree = "<group>"; };
 		A2EEF0E8297855B7EA05302D /* GitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStore.swift; sourceTree = "<group>"; };
@@ -289,6 +295,9 @@
 				AA206539AB817E9585D21649 /* DockBadgeView.swift */,
 				C42E01A9B97E740A3EBF3C68 /* FloatingTooltip.swift */,
 				C328274D91C96E2AF3C1CFD4 /* RootView.swift */,
+				C10000000000000000000034 /* RootWindowSupport.swift */,
+				C10000000000000000000035 /* RootSplitContainer.swift */,
+				C10000000000000000000036 /* RootTitlebarView.swift */,
 				C7E1EC9BC74648163A178985 /* Theme.swift */,
 			);
 			path = UI;
@@ -699,6 +708,9 @@
 				5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */,
 				5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */,
 				577F3384BE4EDD492C520037 /* RootView.swift in Sources */,
+				B10000000000000000000034 /* RootWindowSupport.swift in Sources */,
+				B10000000000000000000035 /* RootSplitContainer.swift in Sources */,
+				B10000000000000000000036 /* RootTitlebarView.swift in Sources */,
 				1144DC09253CDEA30AC56B0E /* SettingsView.swift in Sources */,
 				B10000000000000000000029 /* SettingsBasicPanes.swift in Sources */,
 				B10000000000000000000030 /* SettingsAppearancePane.swift in Sources */,
