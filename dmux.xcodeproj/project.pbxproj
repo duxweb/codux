@@ -95,6 +95,11 @@
 		B10000000000000000000026 /* AIStatsStore+Metrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000026 /* AIStatsStore+Metrics.swift */; };
 		B10000000000000000000027 /* AIStatsStore+Refresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000027 /* AIStatsStore+Refresh.swift */; };
 		B10000000000000000000028 /* AIStatsStore+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000028 /* AIStatsStore+Live.swift */; };
+		B10000000000000000000029 /* SettingsBasicPanes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000029 /* SettingsBasicPanes.swift */; };
+		B10000000000000000000030 /* SettingsAppearancePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000030 /* SettingsAppearancePane.swift */; };
+		B10000000000000000000031 /* SettingsNotificationsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000031 /* SettingsNotificationsPane.swift */; };
+		B10000000000000000000032 /* SettingsShortcutsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000032 /* SettingsShortcutsPane.swift */; };
+		B10000000000000000000033 /* SettingsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000033 /* SettingsSupport.swift */; };
 		A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0598FB11F350F43D5A39628A /* AIUsageService.swift */; };
 		A8B33C70370354EC1B39A24A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB59CA2E305DD7DBA2C167 /* main.swift */; };
 		A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E565A0971373275B0012B0 /* WorkspacePaths.swift */; };
@@ -197,6 +202,11 @@
 		C10000000000000000000026 /* AIStatsStore+Metrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIStatsStore+Metrics.swift"; sourceTree = "<group>"; };
 		C10000000000000000000027 /* AIStatsStore+Refresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIStatsStore+Refresh.swift"; sourceTree = "<group>"; };
 		C10000000000000000000028 /* AIStatsStore+Live.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIStatsStore+Live.swift"; sourceTree = "<group>"; };
+		C10000000000000000000029 /* SettingsBasicPanes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsBasicPanes.swift; sourceTree = "<group>"; };
+		C10000000000000000000030 /* SettingsAppearancePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAppearancePane.swift; sourceTree = "<group>"; };
+		C10000000000000000000031 /* SettingsNotificationsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotificationsPane.swift; sourceTree = "<group>"; };
+		C10000000000000000000032 /* SettingsShortcutsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsShortcutsPane.swift; sourceTree = "<group>"; };
+		C10000000000000000000033 /* SettingsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSupport.swift; sourceTree = "<group>"; };
 		8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiRuntimeProbeService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRuntimeProbeService.swift; sourceTree = "<group>"; };
 		A2EEF0E8297855B7EA05302D /* GitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStore.swift; sourceTree = "<group>"; };
@@ -458,6 +468,11 @@
 			isa = PBXGroup;
 			children = (
 				CF3062F44A5DB544744A8CAD /* SettingsView.swift */,
+				C10000000000000000000029 /* SettingsBasicPanes.swift */,
+				C10000000000000000000030 /* SettingsAppearancePane.swift */,
+				C10000000000000000000031 /* SettingsNotificationsPane.swift */,
+				C10000000000000000000032 /* SettingsShortcutsPane.swift */,
+				C10000000000000000000033 /* SettingsSupport.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -685,6 +700,11 @@
 				5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */,
 				577F3384BE4EDD492C520037 /* RootView.swift in Sources */,
 				1144DC09253CDEA30AC56B0E /* SettingsView.swift in Sources */,
+				B10000000000000000000029 /* SettingsBasicPanes.swift in Sources */,
+				B10000000000000000000030 /* SettingsAppearancePane.swift in Sources */,
+				B10000000000000000000031 /* SettingsNotificationsPane.swift in Sources */,
+				B10000000000000000000032 /* SettingsShortcutsPane.swift in Sources */,
+				B10000000000000000000033 /* SettingsSupport.swift in Sources */,
 				5369A85B6A7302F464349BC0 /* SidebarView.swift in Sources */,
 				A7B8C9D0E1F2031425364762 /* DmuxTerminalBackend.swift in Sources */,
 				B10000000000000000000003 /* GhosttyEmbeddedConfig.swift in Sources */,
