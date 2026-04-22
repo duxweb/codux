@@ -110,6 +110,7 @@
 		B10000000000000000000041 /* AppTerminalAppearance+Options.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000041 /* AppTerminalAppearance+Options.swift */; };
 		B10000000000000000000042 /* AppModel+GitRemote.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000042 /* AppModel+GitRemote.swift */; };
 		B10000000000000000000043 /* AIUsageStore+Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000043 /* AIUsageStore+Persistence.swift */; };
+		B10000000000000000000044 /* AIRuntimeBridgeService+HookConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000044 /* AIRuntimeBridgeService+HookConfig.swift */; };
 		A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0598FB11F350F43D5A39628A /* AIUsageService.swift */; };
 		A8B33C70370354EC1B39A24A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB59CA2E305DD7DBA2C167 /* main.swift */; };
 		A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E565A0971373275B0012B0 /* WorkspacePaths.swift */; };
@@ -227,6 +228,7 @@
 		C10000000000000000000041 /* AppTerminalAppearance+Options.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppTerminalAppearance+Options.swift"; sourceTree = "<group>"; };
 		C10000000000000000000042 /* AppModel+GitRemote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+GitRemote.swift"; sourceTree = "<group>"; };
 		C10000000000000000000043 /* AIUsageStore+Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIUsageStore+Persistence.swift"; sourceTree = "<group>"; };
+		C10000000000000000000044 /* AIRuntimeBridgeService+HookConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIRuntimeBridgeService+HookConfig.swift"; sourceTree = "<group>"; };
 		8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiRuntimeProbeService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRuntimeProbeService.swift; sourceTree = "<group>"; };
 		A2EEF0E8297855B7EA05302D /* GitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStore.swift; sourceTree = "<group>"; };
@@ -510,6 +512,7 @@
 			isa = PBXGroup;
 			children = (
 				8F6676C32385770B36A6B87D /* AIRuntimeBridgeService.swift */,
+				C10000000000000000000044 /* AIRuntimeBridgeService+HookConfig.swift */,
 				A13F1B0C9D8E7F6051423341 /* AIHistoryAggregationService.swift */,
 				074C18D4269F6F5CD51744B9 /* AIRuntimeIngressService.swift */,
 				A13F1B0C9D8E7F6051423343 /* AIRuntimePollingService.swift */,
@@ -655,6 +658,7 @@
 				7A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift in Sources */,
 				7B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift in Sources */,
 				3FFACAC9B71F2D2D84378A53 /* AIRuntimeBridgeService.swift in Sources */,
+				B10000000000000000000044 /* AIRuntimeBridgeService+HookConfig.swift in Sources */,
 				A4B5C6D7E8F90123456789AB /* AIRuntimeSharedTypes.swift in Sources */,
 				B7C8D9E0F1A2233445566778 /* TerminalProcessInspector.swift in Sources */,
 				A13F1B0C9D8E7F6051423344 /* AIHistoryAggregationService.swift in Sources */,
