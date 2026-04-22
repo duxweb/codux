@@ -112,6 +112,8 @@
 		B10000000000000000000043 /* AIUsageStore+Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000043 /* AIUsageStore+Persistence.swift */; };
 		B10000000000000000000044 /* AIRuntimeBridgeService+HookConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000044 /* AIRuntimeBridgeService+HookConfig.swift */; };
 		B10000000000000000000045 /* AIProjectHistoryService+Sources.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000045 /* AIProjectHistoryService+Sources.swift */; };
+		B10000000000000000000046 /* PetProgression.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000046 /* PetProgression.swift */; };
+		B10000000000000000000047 /* PetPopoverViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000047 /* PetPopoverViews.swift */; };
 		A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0598FB11F350F43D5A39628A /* AIUsageService.swift */; };
 		A8B33C70370354EC1B39A24A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB59CA2E305DD7DBA2C167 /* main.swift */; };
 		A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E565A0971373275B0012B0 /* WorkspacePaths.swift */; };
@@ -231,6 +233,8 @@
 		C10000000000000000000043 /* AIUsageStore+Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIUsageStore+Persistence.swift"; sourceTree = "<group>"; };
 		C10000000000000000000044 /* AIRuntimeBridgeService+HookConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIRuntimeBridgeService+HookConfig.swift"; sourceTree = "<group>"; };
 		C10000000000000000000045 /* AIProjectHistoryService+Sources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIProjectHistoryService+Sources.swift"; sourceTree = "<group>"; };
+		C10000000000000000000046 /* PetProgression.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetProgression.swift; sourceTree = "<group>"; };
+		C10000000000000000000047 /* PetPopoverViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetPopoverViews.swift; sourceTree = "<group>"; };
 		8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiRuntimeProbeService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRuntimeProbeService.swift; sourceTree = "<group>"; };
 		A2EEF0E8297855B7EA05302D /* GitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStore.swift; sourceTree = "<group>"; };
@@ -321,13 +325,15 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		5F0A9C1D7E2B4A5C8D9E0F14 /* Pet */ = {
-			isa = PBXGroup;
-			children = (
-				5F0A9C1D7E2B4A5C8D9E0F10 /* PetPanelView.swift */,
-				5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */,
-				5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */,
-			);
+			5F0A9C1D7E2B4A5C8D9E0F14 /* Pet */ = {
+				isa = PBXGroup;
+				children = (
+					5F0A9C1D7E2B4A5C8D9E0F10 /* PetPanelView.swift */,
+					C10000000000000000000046 /* PetProgression.swift */,
+					C10000000000000000000047 /* PetPopoverViews.swift */,
+					5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */,
+					5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */,
+				);
 			path = Pet;
 			sourceTree = "<group>";
 		};
@@ -739,10 +745,12 @@
 				B10000000000000000000024 /* GitStore+Remote.swift in Sources */,
 				BCB26675EA2CC890F29674A0 /* PersistenceService.swift in Sources */,
 				151B69EF643EA9CF5E6975C2 /* ProjectActivityService.swift in Sources */,
-				3BE284778A63A397792D1E4E /* ProjectEditorDialog.swift in Sources */,
-				5F0A9C1D7E2B4A5C8D9E0F11 /* PetPanelView.swift in Sources */,
-				5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */,
-				5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */,
+					3BE284778A63A397792D1E4E /* ProjectEditorDialog.swift in Sources */,
+					5F0A9C1D7E2B4A5C8D9E0F11 /* PetPanelView.swift in Sources */,
+					B10000000000000000000046 /* PetProgression.swift in Sources */,
+					B10000000000000000000047 /* PetPopoverViews.swift in Sources */,
+					5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */,
+					5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */,
 				577F3384BE4EDD492C520037 /* RootView.swift in Sources */,
 				B10000000000000000000034 /* RootWindowSupport.swift in Sources */,
 				B10000000000000000000035 /* RootSplitContainer.swift in Sources */,
