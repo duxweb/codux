@@ -1463,7 +1463,7 @@ enum AppTerminalBackgroundPreset: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-private extension NSColor {
+extension NSColor {
     var dmuxPerceivedBrightness: CGFloat {
         let resolved = usingColorSpace(.deviceRGB) ?? self
         return (resolved.redComponent * 0.299) + (resolved.greenComponent * 0.587) + (resolved.blueComponent * 0.114)

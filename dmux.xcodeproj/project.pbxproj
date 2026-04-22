@@ -55,7 +55,6 @@
 		5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F12 /* Pets in Resources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F13 /* Pets */; };
-		A7B8C9D0E1F2031425364760 /* GhosttyBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2031425364761 /* GhosttyBridge.swift */; };
 		A7B8C9D0E1F2031425364762 /* DmuxTerminalBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2031425364763 /* DmuxTerminalBackend.swift */; };
 		6FE3BAABA1DF148107499517 /* AIStatsPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE6C21DB9D84B024B4A9FC4 /* AIStatsPanelView.swift */; };
 		71BFF4A14483F673CAE0510F /* GitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF246B9127D41605A990516 /* GitService.swift */; };
@@ -68,6 +67,13 @@
 		832966AE5D44C7932DAF4305 /* XcodeBundleModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFFC0183E1E7E02211891AD /* XcodeBundleModule.swift */; };
 		94E74A9C02052D31600A15A8 /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8257AFB3A285E940A6A4A3DD /* UniformTypeIdentifiers.framework */; };
 		9893EF570C98097E5D246808 /* AppDialogTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75C0F73DC8B618C9F40F85B /* AppDialogTypes.swift */; };
+		B10000000000000000000001 /* WorkspacePaneLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000001 /* WorkspacePaneLayout.swift */; };
+		B10000000000000000000002 /* WorkspaceTerminalPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000002 /* WorkspaceTerminalPaneView.swift */; };
+		B10000000000000000000003 /* GhosttyEmbeddedConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* GhosttyEmbeddedConfig.swift */; };
+		B10000000000000000000004 /* GhosttyPTYProcessBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000004 /* GhosttyPTYProcessBridge.swift */; };
+		B10000000000000000000005 /* GhosttyTerminalHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* GhosttyTerminalHostView.swift */; };
+		B10000000000000000000006 /* GhosttyTerminalContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000006 /* GhosttyTerminalContainerView.swift */; };
+		B10000000000000000000007 /* GhosttyTerminalRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000007 /* GhosttyTerminalRegistry.swift */; };
 		A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0598FB11F350F43D5A39628A /* AIUsageService.swift */; };
 		A8B33C70370354EC1B39A24A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB59CA2E305DD7DBA2C167 /* main.swift */; };
 		A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E565A0971373275B0012B0 /* WorkspacePaths.swift */; };
@@ -141,8 +147,14 @@
 		8F6676C32385770B36A6B87D /* AIRuntimeBridgeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRuntimeBridgeService.swift; sourceTree = "<group>"; };
 		A4B5C6D7E8F90123456789AC /* AIRuntimeSharedTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRuntimeSharedTypes.swift; sourceTree = "<group>"; };
 		B7C8D9E0F1A2233445566779 /* TerminalProcessInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalProcessInspector.swift; sourceTree = "<group>"; };
-		A7B8C9D0E1F2031425364761 /* GhosttyBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyBridge.swift; sourceTree = "<group>"; };
 		A7B8C9D0E1F2031425364763 /* DmuxTerminalBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmuxTerminalBackend.swift; sourceTree = "<group>"; };
+		C10000000000000000000001 /* WorkspacePaneLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePaneLayout.swift; sourceTree = "<group>"; };
+		C10000000000000000000002 /* WorkspaceTerminalPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceTerminalPaneView.swift; sourceTree = "<group>"; };
+		C10000000000000000000003 /* GhosttyEmbeddedConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyEmbeddedConfig.swift; sourceTree = "<group>"; };
+		C10000000000000000000004 /* GhosttyPTYProcessBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyPTYProcessBridge.swift; sourceTree = "<group>"; };
+		C10000000000000000000005 /* GhosttyTerminalHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyTerminalHostView.swift; sourceTree = "<group>"; };
+		C10000000000000000000006 /* GhosttyTerminalContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyTerminalContainerView.swift; sourceTree = "<group>"; };
+		C10000000000000000000007 /* GhosttyTerminalRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyTerminalRegistry.swift; sourceTree = "<group>"; };
 		8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiRuntimeProbeService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRuntimeProbeService.swift; sourceTree = "<group>"; };
 		A2EEF0E8297855B7EA05302D /* GitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStore.swift; sourceTree = "<group>"; };
@@ -251,7 +263,11 @@
 		A7B8C9D0E1F2031425364764 /* GhosttyBridge */ = {
 			isa = PBXGroup;
 			children = (
-				A7B8C9D0E1F2031425364761 /* GhosttyBridge.swift */,
+				C10000000000000000000003 /* GhosttyEmbeddedConfig.swift */,
+				C10000000000000000000004 /* GhosttyPTYProcessBridge.swift */,
+				C10000000000000000000005 /* GhosttyTerminalHostView.swift */,
+				C10000000000000000000006 /* GhosttyTerminalContainerView.swift */,
+				C10000000000000000000007 /* GhosttyTerminalRegistry.swift */,
 			);
 			path = GhosttyBridge;
 			sourceTree = "<group>";
@@ -422,6 +438,8 @@
 			isa = PBXGroup;
 			children = (
 				6917745C50EBB08B715DD786 /* WorkspaceEmptyStateView.swift */,
+				C10000000000000000000001 /* WorkspacePaneLayout.swift */,
+				C10000000000000000000002 /* WorkspaceTerminalPaneView.swift */,
 				6BB0B4E1F0E64E4B5CB5DA52 /* WorkspaceView.swift */,
 			);
 			path = Workspace;
@@ -585,9 +603,15 @@
 				1144DC09253CDEA30AC56B0E /* SettingsView.swift in Sources */,
 				5369A85B6A7302F464349BC0 /* SidebarView.swift in Sources */,
 				A7B8C9D0E1F2031425364762 /* DmuxTerminalBackend.swift in Sources */,
-				A7B8C9D0E1F2031425364760 /* GhosttyBridge.swift in Sources */,
+				B10000000000000000000003 /* GhosttyEmbeddedConfig.swift in Sources */,
+				B10000000000000000000004 /* GhosttyPTYProcessBridge.swift in Sources */,
+				B10000000000000000000005 /* GhosttyTerminalHostView.swift in Sources */,
+				B10000000000000000000006 /* GhosttyTerminalContainerView.swift in Sources */,
+				B10000000000000000000007 /* GhosttyTerminalRegistry.swift in Sources */,
 				0FA3288DB5DECC9BDA2E1291 /* Theme.swift in Sources */,
 				72E1A73CB8485C9CA45589B7 /* WorkspaceEmptyStateView.swift in Sources */,
+				B10000000000000000000001 /* WorkspacePaneLayout.swift in Sources */,
+				B10000000000000000000002 /* WorkspaceTerminalPaneView.swift in Sources */,
 				A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */,
 				C8461EAEE2D7232AE6C7E131 /* WorkspaceView.swift in Sources */,
 				832966AE5D44C7932DAF4305 /* XcodeBundleModule.swift in Sources */,
