@@ -91,6 +91,10 @@
 		B10000000000000000000022 /* GitStore+Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000022 /* GitStore+Selection.swift */; };
 		B10000000000000000000023 /* GitStore+Operations.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000023 /* GitStore+Operations.swift */; };
 		B10000000000000000000024 /* GitStore+Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000024 /* GitStore+Remote.swift */; };
+		B10000000000000000000025 /* AIStatsStore+Timers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000025 /* AIStatsStore+Timers.swift */; };
+		B10000000000000000000026 /* AIStatsStore+Metrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000026 /* AIStatsStore+Metrics.swift */; };
+		B10000000000000000000027 /* AIStatsStore+Refresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000027 /* AIStatsStore+Refresh.swift */; };
+		B10000000000000000000028 /* AIStatsStore+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000028 /* AIStatsStore+Live.swift */; };
 		A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0598FB11F350F43D5A39628A /* AIUsageService.swift */; };
 		A8B33C70370354EC1B39A24A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB59CA2E305DD7DBA2C167 /* main.swift */; };
 		A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E565A0971373275B0012B0 /* WorkspacePaths.swift */; };
@@ -189,6 +193,10 @@
 		C10000000000000000000022 /* GitStore+Selection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitStore+Selection.swift"; sourceTree = "<group>"; };
 		C10000000000000000000023 /* GitStore+Operations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitStore+Operations.swift"; sourceTree = "<group>"; };
 		C10000000000000000000024 /* GitStore+Remote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitStore+Remote.swift"; sourceTree = "<group>"; };
+		C10000000000000000000025 /* AIStatsStore+Timers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIStatsStore+Timers.swift"; sourceTree = "<group>"; };
+		C10000000000000000000026 /* AIStatsStore+Metrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIStatsStore+Metrics.swift"; sourceTree = "<group>"; };
+		C10000000000000000000027 /* AIStatsStore+Refresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIStatsStore+Refresh.swift"; sourceTree = "<group>"; };
+		C10000000000000000000028 /* AIStatsStore+Live.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIStatsStore+Live.swift"; sourceTree = "<group>"; };
 		8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiRuntimeProbeService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRuntimeProbeService.swift; sourceTree = "<group>"; };
 		A2EEF0E8297855B7EA05302D /* GitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStore.swift; sourceTree = "<group>"; };
@@ -420,6 +428,10 @@
 				530699DFD0CCFEA6F73708C6 /* Dialogs */,
 				A91F0A7E1B2C3D4E5F607184 /* AISessionStore.swift */,
 				05A1E21E85563C5A7F362C00 /* AIStatsStore.swift */,
+				C10000000000000000000025 /* AIStatsStore+Timers.swift */,
+				C10000000000000000000026 /* AIStatsStore+Metrics.swift */,
+				C10000000000000000000027 /* AIStatsStore+Refresh.swift */,
+				C10000000000000000000028 /* AIStatsStore+Live.swift */,
 				B57CE529E3ABCD870DDA44AA /* AppModel.swift */,
 				C10000000000000000000011 /* AppModel+Projects.swift */,
 				C10000000000000000000012 /* AppModel+Terminal.swift */,
@@ -607,6 +619,10 @@
 				A91F0A7E1B2C3D4E5F607183 /* AISessionStore.swift in Sources */,
 				6FE3BAABA1DF148107499517 /* AIStatsPanelView.swift in Sources */,
 				DF6B0826DCE2CFF91D90BF0D /* AIStatsStore.swift in Sources */,
+				B10000000000000000000025 /* AIStatsStore+Timers.swift in Sources */,
+				B10000000000000000000026 /* AIStatsStore+Metrics.swift in Sources */,
+				B10000000000000000000027 /* AIStatsStore+Refresh.swift in Sources */,
+				B10000000000000000000028 /* AIStatsStore+Live.swift in Sources */,
 				D49FDC9CAB55B3DAD5FE45C5 /* AIToolDriverFactory.swift in Sources */,
 				21A2B3C4D5E6F708192A3B4E /* AIToolDriverSupport.swift in Sources */,
 				21A2B3C4D5E6F708192A3B52 /* ClaudeToolDriver.swift in Sources */,
