@@ -440,18 +440,18 @@ enum GhosttyEmbeddedConfig {
     }
 
     private static func appearance(from definition: GhosttyThemeDefinition) -> AppEffectiveTerminalAppearance {
-        let backgroundColor = parseColor(from: definition.background) ?? .black
-        let foregroundColor = parseColor(from: definition.foreground)
+        let backgroundColor = parseThemeDefinitionColor(definition.background) ?? .black
+        let foregroundColor = parseThemeDefinitionColor(definition.foreground)
             ?? (backgroundColor.dmuxPerceivedBrightness >= 0.72 ? .black : .white)
-        let selectionBackgroundColor = parseColor(from: definition.selectionBackground)
+        let selectionBackgroundColor = parseThemeDefinitionColor(definition.selectionBackground)
             ?? (backgroundColor.blended(withFraction: 0.2, of: foregroundColor) ?? backgroundColor)
-        let selectionForegroundColor = parseColor(from: definition.selectionForeground)
+        let selectionForegroundColor = parseThemeDefinitionColor(definition.selectionForeground)
             ?? foregroundColor
-        let cursorColor = parseColor(from: definition.cursorColor) ?? foregroundColor
-        let cursorTextColor = parseColor(from: definition.cursorText) ?? backgroundColor
+        let cursorColor = parseThemeDefinitionColor(definition.cursorColor) ?? foregroundColor
+        let cursorTextColor = parseThemeDefinitionColor(definition.cursorText) ?? backgroundColor
         let isLight = backgroundColor.dmuxPerceivedBrightness >= 0.72
         let paletteHexStrings = (0..<16).map { index in
-            definition.palette[index]?.uppercased() ?? backgroundColor.ghosttyHexString
+            normalizedHexColorString(definition.palette[index]) ?? backgroundColor.ghosttyHexString
         }
 
         return AppEffectiveTerminalAppearance(
@@ -525,6 +525,43 @@ enum GhosttyEmbeddedConfig {
             return "#\(value.dropFirst().prefix(6))"
         }
         return value.uppercased()
+    }
+
+    private static func parseThemeDefinitionColor(_ rawValue: String?) -> NSColor? {
+        guard let normalized = normalizedHexColorString(rawValue),
+              let rgb = UInt(normalized.dropFirst(), radix: 16) else {
+            return nil
+        }
+        return NSColor(
+            calibratedRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+
+    private static func normalizedHexColorString(_ rawValue: String?) -> String? {
+        guard let rawValue else {
+            return nil
+        }
+
+        if let hashed = parseHexColorString(from: rawValue) {
+            return hashed
+        }
+
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let match = trimmed.range(
+            of: #"^([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"#,
+            options: .regularExpression
+        ) else {
+            return nil
+        }
+
+        let value = String(trimmed[match]).uppercased()
+        if value.count == 8 {
+            return "#\(value.prefix(6))"
+        }
+        return "#\(value)"
     }
 
     private static func unquoted<S: StringProtocol>(_ value: S) -> String {
