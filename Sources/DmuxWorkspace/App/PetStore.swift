@@ -155,7 +155,7 @@ final class PetStore {
 
     func refreshDerivedState(
         realtimeSessionTotals nextRealtimeSessionTotals: [String: Int],
-        computedStats: PetStats,
+        computedStats: PetStats?,
         now: Date = .init()
     ) {
         guard isClaimed else {
@@ -200,20 +200,22 @@ final class PetStore {
             )
         }
 
-        if statsUpdatedDay == nil {
-            currentStats = computedStats.maxValue > 0 ? computedStats : .neutral
-            statsUpdatedDay = now
-            didChange = true
-        } else if currentStats == .neutral, computedStats.maxValue > 0 {
-            currentStats = computedStats
-            statsUpdatedDay = now
-            didChange = true
-        } else if let lastUpdatedAt = statsUpdatedDay,
-                  now.timeIntervalSince(lastUpdatedAt) >= Self.statsRefreshInterval,
-                  currentStats != computedStats {
-            currentStats = currentStats.applyingDamping(toward: computedStats)
-            statsUpdatedDay = now
-            didChange = true
+        if let computedStats {
+            if statsUpdatedDay == nil {
+                currentStats = computedStats.maxValue > 0 ? computedStats : .neutral
+                statsUpdatedDay = now
+                didChange = true
+            } else if currentStats == .neutral, computedStats.maxValue > 0 {
+                currentStats = computedStats
+                statsUpdatedDay = now
+                didChange = true
+            } else if let lastUpdatedAt = statsUpdatedDay,
+                      now.timeIntervalSince(lastUpdatedAt) >= Self.statsRefreshInterval,
+                      currentStats != computedStats {
+                currentStats = currentStats.applyingDamping(toward: computedStats)
+                statsUpdatedDay = now
+                didChange = true
+            }
         }
 
         if lockedEvoPath == nil,

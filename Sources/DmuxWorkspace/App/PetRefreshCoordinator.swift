@@ -74,7 +74,7 @@ final class PetRefreshCoordinator {
         )
         let computedStats = petStore.shouldRefreshStats(now: now)
             ? computedStatsProvider()
-            : petStore.currentStats
+            : nil
 
         petStore.refreshDerivedState(
             realtimeSessionTotals: realtimeSessionTotals,

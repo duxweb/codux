@@ -117,7 +117,7 @@ extension AIStatsStore {
         let adjustmentLoopCount = sessions.filter { s in
             guard s.requestCount >= 3, s.totalTokens > 0 else { return false }
             let avgPerTurn = Double(s.totalTokens) / Double(s.requestCount)
-            return avgPerTurn >= 120 && avgPerTurn <= 3_600
+            return s.activeDurationSeconds < 360 && avgPerTurn >= 120 && avgPerTurn <= 3_600
         }.count
 
         func logPts(_ value: Double, divisor: Double, weight: Double, cap: Double) -> Double {

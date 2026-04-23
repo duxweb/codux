@@ -51,6 +51,13 @@ final class PetFeatureTests: XCTestCase {
         XCTAssertEqual(PetProgressInfo(totalXP: megaXP, hatchTokens: PetProgressInfo.hatchThreshold, evoPath: .pathB).stage, .megaB)
     }
 
+    func testPetProgressInfoLevelCurveReachesConfiguredLevel100Target() {
+        XCTAssertEqual(
+            PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.maxLevel),
+            PetProgressInfo.targetXPToReachLevel100
+        )
+    }
+
     func testPetStageSpeciesNameFollowsEvolutionPath() {
         XCTAssertTrue(["书卷猫", "Tomecat"].contains(PetStage.evoA.speciesName(for: .voidcat, evoPath: .pathA)))
         XCTAssertTrue(["暗影猫", "Shadecat"].contains(PetStage.evoB.speciesName(for: .voidcat, evoPath: .pathB)))
@@ -451,6 +458,29 @@ final class PetStoreLifecycleTests: XCTestCase {
             now: claimTime.addingTimeInterval(3660)
         )
         XCTAssertNotEqual(store.currentStats, initial)
+    }
+
+    func testRefreshDerivedStateCanSkipTraitRefreshWhileStillApplyingTokenDelta() {
+        let store = PetStore(storage: .inMemory)
+        let claimTime = Date(timeIntervalSince1970: 1_700_000_000)
+        store.claim(option: .voidcat, customName: "")
+
+        let initial = PetStats(wisdom: 80, chaos: 10, night: 20, stamina: 5, empathy: 3)
+        store.refreshDerivedState(
+            realtimeSessionTotals: [:],
+            computedStats: initial,
+            now: claimTime
+        )
+
+        store.refreshDerivedState(
+            realtimeSessionTotals: ["session": 123_456],
+            computedStats: nil,
+            now: claimTime.addingTimeInterval(120)
+        )
+
+        XCTAssertEqual(store.currentStats, initial)
+        XCTAssertEqual(store.currentHatchTokens, 123_456)
+        XCTAssertEqual(store.currentExperienceTokens, 0)
     }
 
     func testEncryptedDatStorageRoundTripsWithoutKeychain() {

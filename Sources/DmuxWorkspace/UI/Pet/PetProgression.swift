@@ -129,16 +129,11 @@ struct PetProgressInfo {
         var requirements = scaled.map { Int($0.rounded(.down)) }
         let remainder = targetXPToReachLevel100 - requirements.reduce(0, +)
         if remainder > 0 {
-            let fractions = scaled.enumerated()
-                .map { ($0.offset, $0.element - Double(requirements[$0.offset])) }
-                .sorted { lhs, rhs in
-                    if lhs.1 == rhs.1 {
-                        return lhs.0 < rhs.0
-                    }
-                    return lhs.1 > rhs.1
-                }
-            for offset in 0 ..< min(remainder, fractions.count) {
-                requirements[fractions[offset].0] += 1
+            for offset in 0 ..< min(remainder, count) {
+                let centeredIndex = Int(
+                    ((Double(offset) + 0.5) * Double(count) / Double(remainder)).rounded(.down)
+                )
+                requirements[min(count - 1, centeredIndex)] += 1
             }
         }
         return requirements
