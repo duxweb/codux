@@ -98,6 +98,7 @@ final class AppModel {
     var completionPresentationByProjectID: [UUID: ProjectCompletionPresentation] = [:]
     var lastCompletionTokenByProjectID: [UUID: String] = [:]
     var lastWaitingInputTokenByProjectID: [UUID: String] = [:]
+    var lastActivityResolutionLogTokenByProjectID: [UUID: String] = [:]
     var isSystemUIReady = false
     private var isTerminalStartupUnlocked = false
     private var hasLoggedRootViewAppearance = false
@@ -226,6 +227,7 @@ final class AppModel {
         completionPresentationByProjectID.removeAll()
         lastCompletionTokenByProjectID.removeAll()
         lastWaitingInputTokenByProjectID.removeAll()
+        lastActivityResolutionLogTokenByProjectID.removeAll()
     }
 
     var allowsDeferredTerminalStartup: Bool {

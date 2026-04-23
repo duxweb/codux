@@ -168,6 +168,10 @@ private final class AppDebugLogBackend: @unchecked Sendable {
             return false
         case "app":
             return message != "open runtime log" && message != "open live log"
+        case "history-refresh":
+            return !message.contains(" file mode=unchanged ")
+        case "runtime-socket":
+            return !message.hasPrefix("received kind=")
         case "activity":
             return message.contains("phase=running:")
                 || message.contains("phase=completed:")
@@ -177,6 +181,15 @@ private final class AppDebugLogBackend: @unchecked Sendable {
                 || message.contains("phase=completed:")
                 || message.contains("phase=failed:")
                 || message.contains("source=runtime")
+        case "runtime-ingress":
+            return !message.hasPrefix("receive ai-hook ")
+                && !message.hasPrefix("skip ai-hook ")
+        case "notifications":
+            return message.contains("failed")
+                || message.contains("error=")
+                || message.contains("denied")
+                || message.hasPrefix("external dispatch")
+                || message.hasPrefix("external failed")
         case "claude-runtime":
             return !message.hasPrefix("suppress phase ")
         case "runtime-refresh":

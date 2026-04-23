@@ -462,6 +462,12 @@ extension AppModel {
     }
 
     private func logActivityPhaseResolution(projectID: UUID, source: String, phase: ProjectActivityPhase) {
+        let token = "\(source)|\(debugActivityDescription(phase))"
+        guard lastActivityResolutionLogTokenByProjectID[projectID] != token else {
+            return
+        }
+        lastActivityResolutionLogTokenByProjectID[projectID] = token
+
         let projectName = projects.first(where: { $0.id == projectID })?.name ?? projectID.uuidString
         let runtimeSummary = aiSessionStore.debugSummary(projectID: projectID)
         debugLog.log(
