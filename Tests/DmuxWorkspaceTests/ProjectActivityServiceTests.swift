@@ -15,7 +15,7 @@ final class ProjectActivityServiceTests: XCTestCase {
         XCTAssertEqual(service.phase(for: payload), .idle)
     }
 
-    func testCompletedPayloadExpiresToIdleAfterLifetime() {
+    func testCompletedPayloadPersistsUntilExplicitlyCleared() {
         let service = ProjectActivityService()
         let payload = ProjectActivityPayload(
             tool: "codex",
@@ -25,7 +25,11 @@ final class ProjectActivityServiceTests: XCTestCase {
             exitCode: 0
         )
 
-        XCTAssertEqual(service.phase(for: payload), .idle)
+        guard case .completed(let tool, _, let exitCode) = service.phase(for: payload) else {
+            return XCTFail("expected completed phase")
+        }
+        XCTAssertEqual(tool, "codex")
+        XCTAssertEqual(exitCode, 0)
     }
 
     func testFreshCompletedPayloadPreservesToolAndExitCode() {

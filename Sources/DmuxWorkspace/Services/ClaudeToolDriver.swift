@@ -16,17 +16,33 @@ struct ClaudeToolDriver: AIToolDriver {
         var resolvedEvent = event
         let fallbackSession = matchingFallbackSession(for: event, currentSession: currentSession)
         let fallbackTotalTokens = fallbackSession?.committedTotalTokens
+        let snapshot: AIRuntimeContextSnapshot?
+        if resolvedEvent.kind == .turnCompleted,
+           let projectPath = normalizedNonEmptyString(resolvedEvent.projectPath),
+           let externalSessionID = normalizedNonEmptyString(resolvedEvent.aiSessionID ?? fallbackSession?.aiSessionID) {
+            snapshot = await ClaudeRuntimeLogCache.shared.snapshot(
+                projectPath: projectPath,
+                externalSessionID: externalSessionID
+            )
+            resolvedEvent.aiSessionID = normalizedNonEmptyString(resolvedEvent.aiSessionID) ?? externalSessionID
+        } else {
+            snapshot = nil
+        }
         resolvedEvent.model = resolvedEvent.model ?? fallbackSession?.model
+        resolvedEvent.model = resolvedEvent.model ?? snapshot?.model
         if resolvedEvent.kind == .turnCompleted {
             var metadata = resolvedEvent.metadata ?? AIHookEventMetadata()
-            let wasInterrupted = metadata.wasInterrupted == true
+            let wasInterrupted = metadata.wasInterrupted ?? snapshot?.wasInterrupted ?? false
             metadata.wasInterrupted = wasInterrupted
-            metadata.hasCompletedTurn = metadata.hasCompletedTurn ?? !wasInterrupted
+            metadata.hasCompletedTurn = metadata.hasCompletedTurn ?? snapshot?.hasCompletedTurn ?? !wasInterrupted
             resolvedEvent.metadata = metadata
         }
 
+        resolvedEvent.inputTokens = resolvedEvent.inputTokens ?? snapshot?.inputTokens
+        resolvedEvent.outputTokens = resolvedEvent.outputTokens ?? snapshot?.outputTokens
+        resolvedEvent.cachedInputTokens = resolvedEvent.cachedInputTokens ?? snapshot?.cachedInputTokens
         if resolvedEvent.totalTokens == nil {
-            resolvedEvent.totalTokens = fallbackTotalTokens
+            resolvedEvent.totalTokens = max(snapshot?.totalTokens ?? 0, fallbackTotalTokens ?? 0)
         }
         return resolvedEvent
     }

@@ -9,6 +9,7 @@ final class PetStore {
     private static let statsModelVersion = 3
     private static let statsRefreshInterval: TimeInterval = 3600
     static let realtimeSessionRetentionInterval: TimeInterval = 7 * 86_400
+    private static let ledgerLogCategory = "pet-ledger"
 
     struct Storage: Sendable {
         var fileURL: URL?
@@ -17,8 +18,14 @@ final class PetStore {
         static let live = Self.makeLive(bundleIdentifier: Bundle.main.bundleIdentifier ?? "")
 
         static func makeLive(bundleIdentifier: String) -> Storage {
-            let rootURL = AppRuntimePaths.appSupportRootURL()
-            let cryptoNamespace = AppRuntimePaths.isDeveloperVariant() ? "dev" : "prod"
+            let normalizedBundleIdentifier = bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let isDeveloperVariant = normalizedBundleIdentifier.hasSuffix(".dev")
+                || normalizedBundleIdentifier.hasSuffix(".debug")
+            let rootURL = FileManager.default
+                .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+                .first?
+                .appendingPathComponent(isDeveloperVariant ? "dmux-dev" : "dmux", isDirectory: true)
+            let cryptoNamespace = isDeveloperVariant ? "dev" : "prod"
 
             return Storage(
                 fileURL: rootURL?.appendingPathComponent("pet-state.dat"),
@@ -181,7 +188,7 @@ final class PetStore {
             }
             didChange = true
             debugLog.log(
-                "pet-ledger",
+                Self.ledgerLogCategory,
                 "bootstrap-watermarks sessions=\(sanitizedTotals.count) hatch=\(currentHatchTokens) xp=\(currentExperienceTokens)"
             )
         }
@@ -209,7 +216,7 @@ final class PetStore {
             currentExperienceTokens += experienceDelta
             didChange = true
             debugLog.log(
-                "pet-ledger",
+                Self.ledgerLogCategory,
                 "apply-delta delta=\(deltaTokens) hatchDelta=\(hatchDelta) xpDelta=\(experienceDelta) hatch=\(currentHatchTokens) xp=\(currentExperienceTokens)"
             )
         }
@@ -328,7 +335,7 @@ final class PetStore {
                 currentStats = .neutral
                 statsUpdatedDay = nil
                 debugLog.log(
-                    "pet-ledger",
+                    Self.ledgerLogCategory,
                     "invalidate-stats-cache from=\(resolvedState.statsModelVersion ?? 0) to=\(Self.statsModelVersion)"
                 )
                 save()
@@ -343,7 +350,7 @@ final class PetStore {
             statsUpdatedDay = nil
             lockedEvoPath = nil
             debugLog.log(
-                "pet-ledger",
+                Self.ledgerLogCategory,
                 "migrate-reset-stats version=\(resolvedState.stateVersion ?? 0) preservedLedger=true resetClaimedAt=true hatch=\(currentHatchTokens) xp=\(currentExperienceTokens)"
             )
             save()
@@ -360,7 +367,7 @@ final class PetStore {
         realtimeSessionTotals = [:]
         realtimeSessionObservedAt = [:]
         debugLog.log(
-            "pet-ledger",
+            Self.ledgerLogCategory,
             "migrate-reset version=\(resolvedState.stateVersion ?? 0) hatched=\(legacyWasHatched) resetClaimedAt=true hatch=\(currentHatchTokens) xp=\(currentExperienceTokens)"
         )
         save()
@@ -441,7 +448,7 @@ final class PetStore {
             realtimeSessionObservedAt.removeValue(forKey: key)
         }
         didChange = true
-        debugLog.log("pet-ledger", "prune-watermarks removed=\(staleKeys.count)")
+        debugLog.log(Self.ledgerLogCategory, "prune-watermarks removed=\(staleKeys.count)")
     }
 
     private func loadStateFile() -> PersistedPetState? {

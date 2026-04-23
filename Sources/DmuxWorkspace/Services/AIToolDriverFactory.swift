@@ -56,14 +56,6 @@ extension AIToolDriver {
         aliases.contains(tool) ? id : tool
     }
 
-    func normalizedNonEmptyString(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
-    }
-
     func matchingFallbackSession(
         for event: AIHookEvent,
         currentSession: AISessionStore.TerminalSessionState?

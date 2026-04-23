@@ -113,7 +113,7 @@ final class GhosttyEmbeddedConfigTests: XCTestCase {
     }
 
     func testAutomaticAppearanceUsesKnownGhosttyThemeName() {
-        let fallback = AppTerminalBackgroundPreset.flexokiDark
+        let fallback = AppTerminalBackgroundPreset.tokyoNightStorm
             .effectiveAppearance(backgroundColorPreset: .automatic)
 
         let appearance = GhosttyEmbeddedConfig.automaticTerminalAppearance(
@@ -124,12 +124,12 @@ final class GhosttyEmbeddedConfigTests: XCTestCase {
         XCTAssertFalse(appearance.isLight)
         XCTAssertGreaterThan(
             colorDistance(appearance.backgroundColor, fallback.backgroundColor),
-            0.1
+            0.02
         )
     }
 
     func testAutomaticAppearanceAppliesExplicitGhosttyColorOverrides() {
-        let fallback = AppTerminalBackgroundPreset.flexokiDark
+        let fallback = AppTerminalBackgroundPreset.tokyoNightStorm
             .effectiveAppearance(backgroundColorPreset: .automatic)
 
         let config = """

@@ -2,13 +2,129 @@ import Foundation
 import SQLite3
 
 struct AIUsageStore: Sendable {
-    private final class InitializationState: @unchecked Sendable {
-        let lock = NSLock()
-        var databasePaths: Set<String> = []
+    // Database initialization is coordinated process-wide so concurrent
+    // readers do not all rerun schema setup against the same sqlite file.
+    private final class InitializationRegistry: @unchecked Sendable {
+        enum AccessDisposition {
+            case ready
+            case initialize
+        }
+
+        let condition = NSCondition()
+        var initializedDatabasePaths: Set<String> = []
+        var initializingDatabasePaths: Set<String> = []
+
+        func accessDisposition(for databasePath: String) -> AccessDisposition {
+            condition.lock()
+            defer { condition.unlock() }
+
+            while initializingDatabasePaths.contains(databasePath) {
+                condition.wait()
+            }
+            if initializedDatabasePaths.contains(databasePath) {
+                return .ready
+            }
+
+            initializingDatabasePaths.insert(databasePath)
+            return .initialize
+        }
+
+        func finishInitialization(for databasePath: String, succeeded: Bool) {
+            condition.lock()
+            initializingDatabasePaths.remove(databasePath)
+            if succeeded {
+                initializedDatabasePaths.insert(databasePath)
+            }
+            condition.broadcast()
+            condition.unlock()
+        }
     }
 
     private static let normalizedHistorySchemaVersion = 6
-    private static let initializationState = InitializationState()
+    private static let initializationRegistry = InitializationRegistry()
+    private static let connectionPragmas = [
+        "PRAGMA journal_mode=WAL;",
+        "PRAGMA synchronous=NORMAL;",
+        "PRAGMA temp_store=MEMORY;"
+    ]
+    private static let normalizedSchemaStatements = [
+        """
+        CREATE TABLE IF NOT EXISTS ai_history_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_history_file_state (
+            source TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            project_path TEXT NOT NULL,
+            file_modified_at REAL NOT NULL,
+            PRIMARY KEY (source, file_path, project_path)
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_history_file_session_link (
+            source TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            project_path TEXT NOT NULL,
+            session_key TEXT NOT NULL,
+            external_session_id TEXT,
+            project_id TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            session_title TEXT NOT NULL,
+            first_seen_at REAL NOT NULL,
+            last_seen_at REAL NOT NULL,
+            last_model TEXT,
+            active_duration_seconds INTEGER NOT NULL,
+            PRIMARY KEY (source, file_path, project_path, session_key)
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_history_file_usage_bucket (
+            source TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            project_path TEXT NOT NULL,
+            session_key TEXT NOT NULL,
+            model TEXT NOT NULL,
+            bucket_start REAL NOT NULL,
+            bucket_end REAL NOT NULL,
+            input_tokens INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            total_tokens INTEGER NOT NULL,
+            cached_input_tokens INTEGER NOT NULL,
+            request_count INTEGER NOT NULL,
+            PRIMARY KEY (source, file_path, project_path, session_key, model, bucket_start)
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_history_project_index_state (
+            project_id TEXT PRIMARY KEY,
+            project_name TEXT NOT NULL,
+            project_path TEXT NOT NULL,
+            indexed_at REAL NOT NULL
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_history_file_checkpoint (
+            source TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            project_path TEXT NOT NULL,
+            file_modified_at REAL NOT NULL,
+            file_size INTEGER NOT NULL,
+            last_offset INTEGER NOT NULL,
+            last_indexed_at REAL NOT NULL,
+            payload_json TEXT,
+            PRIMARY KEY (source, file_path, project_path)
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_ai_history_file_state_project_path ON ai_history_file_state(project_path);",
+        "CREATE INDEX IF NOT EXISTS idx_ai_history_file_checkpoint_project_path ON ai_history_file_checkpoint(project_path);",
+        "CREATE INDEX IF NOT EXISTS idx_ai_history_file_session_link_project_path ON ai_history_file_session_link(project_path);",
+        "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_bucket_project_path ON ai_history_file_usage_bucket(project_path, bucket_start);",
+        "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_bucket_bucket_start ON ai_history_file_usage_bucket(bucket_start);",
+        "CREATE INDEX IF NOT EXISTS idx_ai_history_project_index_state_indexed_at ON ai_history_project_index_state(indexed_at DESC);"
+    ]
     let aggregator = AIHistoryAggregationService()
     private let databaseFileURL: URL
 
@@ -40,118 +156,32 @@ struct AIUsageStore: Sendable {
         try configureConnection(db)
 
         let databasePath = databaseFileURL.standardizedFileURL.path
-        Self.initializationState.lock.lock()
-        defer { Self.initializationState.lock.unlock() }
-
-        if Self.initializationState.databasePaths.contains(databasePath) {
+        switch Self.initializationRegistry.accessDisposition(for: databasePath) {
+        case .ready:
             return
-        }
+        case .initialize:
+            do {
+                for statement in Self.normalizedSchemaStatements {
+                    guard sqlite3_exec(db, statement, nil, nil, nil) == SQLITE_OK else {
+                        throw NSError(domain: "AIUsageStore", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize AI usage database"])
+                    }
+                }
 
-        let statements = normalizedSchemaStatements()
-
-        for statement in statements {
-            guard sqlite3_exec(db, statement, nil, nil, nil) == SQLITE_OK else {
-                throw NSError(domain: "AIUsageStore", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize AI usage database"])
+                try migrateNormalizedHistoryIfNeeded(db)
+                Self.initializationRegistry.finishInitialization(for: databasePath, succeeded: true)
+            } catch {
+                Self.initializationRegistry.finishInitialization(for: databasePath, succeeded: false)
+                throw error
             }
         }
-
-        try migrateNormalizedHistoryIfNeeded(db)
-        Self.initializationState.databasePaths.insert(databasePath)
     }
 
     private func configureConnection(_ db: OpaquePointer) throws {
-        let pragmas = [
-            "PRAGMA journal_mode=WAL;",
-            "PRAGMA synchronous=NORMAL;",
-            "PRAGMA temp_store=MEMORY;"
-        ]
-
-        for pragma in pragmas {
+        for pragma in Self.connectionPragmas {
             guard sqlite3_exec(db, pragma, nil, nil, nil) == SQLITE_OK else {
                 throw NSError(domain: "AIUsageStore", code: 5, userInfo: [NSLocalizedDescriptionKey: "Failed to configure AI usage database"])
             }
         }
-    }
-
-    private func normalizedSchemaStatements() -> [String] {
-        [
-            """
-            CREATE TABLE IF NOT EXISTS ai_history_meta (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS ai_history_file_state (
-                source TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                project_path TEXT NOT NULL,
-                file_modified_at REAL NOT NULL,
-                PRIMARY KEY (source, file_path, project_path)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS ai_history_file_session_link (
-                source TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                project_path TEXT NOT NULL,
-                session_key TEXT NOT NULL,
-                external_session_id TEXT,
-                project_id TEXT NOT NULL,
-                project_name TEXT NOT NULL,
-                session_title TEXT NOT NULL,
-                first_seen_at REAL NOT NULL,
-                last_seen_at REAL NOT NULL,
-                last_model TEXT,
-                active_duration_seconds INTEGER NOT NULL,
-                PRIMARY KEY (source, file_path, project_path, session_key)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS ai_history_file_usage_bucket (
-                source TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                project_path TEXT NOT NULL,
-                session_key TEXT NOT NULL,
-                model TEXT NOT NULL,
-                bucket_start REAL NOT NULL,
-                bucket_end REAL NOT NULL,
-                input_tokens INTEGER NOT NULL,
-                output_tokens INTEGER NOT NULL,
-                total_tokens INTEGER NOT NULL,
-                cached_input_tokens INTEGER NOT NULL,
-                request_count INTEGER NOT NULL,
-                PRIMARY KEY (source, file_path, project_path, session_key, model, bucket_start)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS ai_history_project_index_state (
-                project_id TEXT PRIMARY KEY,
-                project_name TEXT NOT NULL,
-                project_path TEXT NOT NULL,
-                indexed_at REAL NOT NULL
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS ai_history_file_checkpoint (
-                source TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                project_path TEXT NOT NULL,
-                file_modified_at REAL NOT NULL,
-                file_size INTEGER NOT NULL,
-                last_offset INTEGER NOT NULL,
-                last_indexed_at REAL NOT NULL,
-                payload_json TEXT,
-                PRIMARY KEY (source, file_path, project_path)
-            );
-            """,
-            "CREATE INDEX IF NOT EXISTS idx_ai_history_file_state_project_path ON ai_history_file_state(project_path);",
-            "CREATE INDEX IF NOT EXISTS idx_ai_history_file_checkpoint_project_path ON ai_history_file_checkpoint(project_path);",
-            "CREATE INDEX IF NOT EXISTS idx_ai_history_file_session_link_project_path ON ai_history_file_session_link(project_path);",
-            "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_bucket_project_path ON ai_history_file_usage_bucket(project_path, bucket_start);",
-            "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_bucket_bucket_start ON ai_history_file_usage_bucket(bucket_start);",
-            "CREATE INDEX IF NOT EXISTS idx_ai_history_project_index_state_indexed_at ON ai_history_project_index_state(indexed_at DESC);"
-        ]
     }
 
     private func migrateNormalizedHistoryIfNeeded(_ db: OpaquePointer) throws {
@@ -177,7 +207,7 @@ struct AIUsageStore: Sendable {
             }
         }
 
-        for statement in normalizedSchemaStatements() where !statement.contains("CREATE TABLE IF NOT EXISTS ai_history_meta") {
+        for statement in Self.normalizedSchemaStatements where !statement.contains("CREATE TABLE IF NOT EXISTS ai_history_meta") {
             guard sqlite3_exec(db, statement, nil, nil, nil) == SQLITE_OK else {
                 throw NSError(domain: "AIUsageStore", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to rebuild normalized AI history tables"])
             }
@@ -611,16 +641,9 @@ struct AIUsageStore: Sendable {
         }
     }
 
-    private func normalizedNonEmptyString(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
-    }
 }
 
-private struct NormalizedSessionLinkRow {
+struct NormalizedSessionLinkRow {
     var sessionKey: String
     var externalSessionID: String?
     var projectID: UUID
@@ -632,7 +655,7 @@ private struct NormalizedSessionLinkRow {
     var activeDurationSeconds: Int
 }
 
-private struct NormalizedUsageBucketRow {
+struct NormalizedUsageBucketRow {
     var sessionKey: String
     var model: String?
     var bucketStart: Date

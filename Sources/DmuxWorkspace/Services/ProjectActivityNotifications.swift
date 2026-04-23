@@ -226,10 +226,10 @@ private struct NtfyNotificationDriver: AppExternalNotificationDriver {
 
 private struct WxPusherNotificationDriver: AppExternalNotificationDriver {
     let channel: AppNotificationChannel = .wxpusher
+    private let allowedTargetCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
 
     func makeRequest(configuration: AppNotificationChannelConfiguration, event: AppExternalNotificationEvent) throws -> URLRequest {
-        let target = configuration.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !target.isEmpty else {
+        guard let target = normalizedNonEmptyString(configuration.endpoint) else {
             throw AppExternalNotificationDriverError.invalidConfiguration("missing wxpusher target")
         }
 
@@ -237,10 +237,20 @@ private struct WxPusherNotificationDriver: AppExternalNotificationDriver {
             throw AppExternalNotificationDriverError.invalidConfiguration("wxpusher only supports SPT mode")
         }
 
-        let encodedMessage = event.plainText.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? event.plainText
-        guard let url = URL(string: "https://wxpusher.zjiecode.com/api/send/message/\(target)/\(encodedMessage)") else {
+        guard target.unicodeScalars.allSatisfy(allowedTargetCharacters.contains) else {
             throw AppExternalNotificationDriverError.invalidConfiguration("invalid wxpusher spt target")
         }
+
+        let url = URL(string: "https://wxpusher.zjiecode.com")?
+            .appendingPathComponent("api", isDirectory: false)
+            .appendingPathComponent("send", isDirectory: false)
+            .appendingPathComponent("message", isDirectory: false)
+            .appendingPathComponent(target, isDirectory: false)
+            .appendingPathComponent(event.plainText, isDirectory: false)
+        guard let url else {
+            throw AppExternalNotificationDriverError.invalidConfiguration("invalid wxpusher request")
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         return preparedNotificationRequest(request)

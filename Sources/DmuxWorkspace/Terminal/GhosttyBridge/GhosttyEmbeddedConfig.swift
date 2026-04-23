@@ -62,9 +62,7 @@ enum GhosttyEmbeddedConfig {
         var seenPaths = Set<String>()
         for relativePath in candidateRelativePaths {
             let url = homeDirectoryURL.appendingPathComponent(relativePath, isDirectory: false)
-            var isDirectory = ObjCBool(false)
-            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
-                  isDirectory.boolValue == false,
+            guard existingNonDirectoryURL(url, fileManager: fileManager) != nil,
                   seenPaths.insert(url.path).inserted else {
                 continue
             }
@@ -121,28 +119,25 @@ enum GhosttyEmbeddedConfig {
     }
 
     private static func sanitizedEmbeddedUserConfigContents(_ contents: String) -> String {
-        contents
-            .components(separatedBy: .newlines)
-            .filter { rawLine in
-                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard line.isEmpty == false, line.hasPrefix("#") == false else {
-                    return true
-                }
+        let lines = contents.components(separatedBy: .newlines)
+        var keptLines: [String] = []
+        keptLines.reserveCapacity(lines.count)
 
-                guard let separatorIndex = line.firstIndex(of: "=") else {
-                    return true
-                }
-
-                let key = line[..<separatorIndex]
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .lowercased()
-
-                // Embedded Ghostty uses a different host/composition path than the
-                // standalone app. Cursor thickness amplification is visually unstable
-                // here, so keep the cursor style/opacity but ignore explicit thickness.
-                return key != "adjust-cursor-thickness"
+        for rawLine in lines {
+            guard let assignment = parseConfigAssignment(from: rawLine) else {
+                keptLines.append(rawLine)
+                continue
             }
-            .joined(separator: "\n")
+
+            // Embedded Ghostty uses a different host/composition path than the
+            // standalone app. Cursor thickness amplification is visually unstable
+            // here, so keep the cursor style/opacity but ignore explicit thickness.
+            if assignment.key != "adjust-cursor-thickness" {
+                keptLines.append(rawLine)
+            }
+        }
+
+        return keptLines.joined(separator: "\n")
     }
 
     static func resolvedAutomaticTerminalAppearance(
@@ -194,20 +189,11 @@ enum GhosttyEmbeddedConfig {
 
         for (_, contents) in userConfigEntries {
             for rawLine in contents.components(separatedBy: .newlines) {
-                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard line.isEmpty == false, line.hasPrefix("#") == false,
-                      let separatorIndex = line.firstIndex(of: "=") else {
+                guard let assignment = parseConfigAssignment(from: rawLine) else {
                     continue
                 }
-
-                let key = line[..<separatorIndex]
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .lowercased()
-                let rawValue = line[line.index(after: separatorIndex)...]
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                guard rawValue.isEmpty == false else {
-                    continue
-                }
+                let key = assignment.key
+                let rawValue = assignment.value
 
                 if key == "theme",
                    let themeName = Self.unquoted(rawValue) as String? {
@@ -364,14 +350,47 @@ enum GhosttyEmbeddedConfig {
             let directory = homeDirectoryURL.appendingPathComponent(relativePath, isDirectory: true)
             for candidate in candidates {
                 let url = directory.appendingPathComponent(candidate, isDirectory: false)
-                var isDirectory = ObjCBool(false)
-                if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
-                   isDirectory.boolValue == false {
+                if existingNonDirectoryURL(url, fileManager: fileManager) != nil {
                     return url
                 }
             }
         }
         return nil
+    }
+
+    private static func existingNonDirectoryURL(
+        _ url: URL,
+        fileManager: FileManager
+    ) -> URL? {
+        var isDirectory = ObjCBool(false)
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue == false else {
+            return nil
+        }
+        return url
+    }
+
+    private static func parseConfigAssignment(
+        from rawLine: String
+    ) -> (key: String, value: String)? {
+        let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard line.isEmpty == false,
+              line.hasPrefix("#") == false,
+              let separatorIndex = line.firstIndex(of: "=") else {
+            return nil
+        }
+
+        let key = line[..<separatorIndex]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let value = String(
+            line[line.index(after: separatorIndex)...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        guard value.isEmpty == false else {
+            return nil
+        }
+        return (key, value)
     }
 
     private static func parseUserThemeDefinition(
@@ -387,18 +406,11 @@ enum GhosttyEmbeddedConfig {
         var palette: [Int: String] = [:]
 
         for rawLine in contents.components(separatedBy: .newlines) {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard line.isEmpty == false,
-                  line.hasPrefix("#") == false,
-                  let separatorIndex = line.firstIndex(of: "=") else {
+            guard let assignment = parseConfigAssignment(from: rawLine) else {
                 continue
             }
-
-            let key = line[..<separatorIndex]
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            let rawValue = line[line.index(after: separatorIndex)...]
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = assignment.key
+            let rawValue = assignment.value
 
             switch key {
             case "background":

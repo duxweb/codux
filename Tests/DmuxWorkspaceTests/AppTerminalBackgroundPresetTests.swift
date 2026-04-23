@@ -12,50 +12,50 @@ final class AppTerminalBackgroundPresetTests: XCTestCase {
     }
 
     func testCuratedThemesAreExposedInSettings() {
-        XCTAssertEqual(AppTerminalBackgroundPreset.allCases.count, 28)
+        XCTAssertEqual(AppTerminalBackgroundPreset.allCases.count, 31)
         XCTAssertEqual(AppTerminalBackgroundPreset.allCases.first, .automatic)
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.catppuccinMocha))
-        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.dracula))
-        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.flexokiDark))
-        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.flexokiLight))
-        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.githubDark))
-        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.rosePine))
+        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.tokyoNightStorm))
+        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.tokyoNightNight))
+        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.tokyoNightDay))
+        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.nord))
+        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.rosePineMoon))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.nightOwl))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.kanagawaLotus))
-        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.githubLight))
+        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.githubLightDefault))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.ayuLight))
-        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.draculaPlus))
+        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.poimandres))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.rosePineMoon))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.tokyoNightStorm))
-        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.materialOcean))
+        XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.oxocarbon))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.gruvboxMaterialLight))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.atomOneLight))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.nordLight))
         XCTAssertTrue(AppTerminalBackgroundPreset.allCases.contains(.ayuMirage))
     }
 
-    func testFlexokiPresetsKeepExpectedLightDarkSemantics() {
-        XCTAssertFalse(AppTerminalBackgroundPreset.flexokiDark.isLight)
-        XCTAssertTrue(AppTerminalBackgroundPreset.flexokiLight.isLight)
+    func testTokyoNightPresetsKeepExpectedLightDarkSemantics() {
+        XCTAssertFalse(AppTerminalBackgroundPreset.tokyoNightStorm.isLight)
+        XCTAssertTrue(AppTerminalBackgroundPreset.tokyoNightDay.isLight)
 
         XCTAssertLessThan(
-            AppTerminalBackgroundPreset.flexokiDark.backgroundColor.perceivedBrightness,
-            AppTerminalBackgroundPreset.flexokiLight.backgroundColor.perceivedBrightness
+            AppTerminalBackgroundPreset.tokyoNightStorm.backgroundColor.perceivedBrightness,
+            AppTerminalBackgroundPreset.tokyoNightDay.backgroundColor.perceivedBrightness
         )
         XCTAssertLessThan(
-            AppTerminalBackgroundPreset.flexokiDark.backgroundColor.perceivedBrightness,
-            0.15
+            AppTerminalBackgroundPreset.tokyoNightStorm.backgroundColor.perceivedBrightness,
+            0.25
         )
         XCTAssertGreaterThan(
-            AppTerminalBackgroundPreset.flexokiLight.backgroundColor.perceivedBrightness,
-            0.95
+            AppTerminalBackgroundPreset.tokyoNightDay.backgroundColor.perceivedBrightness,
+            0.8
         )
     }
 
     func testLegacyPresetNamesMigrateToCuratedThemes() throws {
         XCTAssertEqual(try decodePreset("auto"), .automatic)
-        XCTAssertEqual(try decodePreset("obsidian"), .flexokiDark)
-        XCTAssertEqual(try decodePreset("midnight"), .tokyoNight)
+        XCTAssertEqual(try decodePreset("obsidian"), .tokyoNightStorm)
+        XCTAssertEqual(try decodePreset("midnight"), .tokyoNightNight)
         XCTAssertEqual(try decodePreset("sand"), .gruvboxLight)
         XCTAssertEqual(try decodePreset("mist"), .catppuccinLatte)
     }
@@ -72,19 +72,31 @@ final class AppTerminalBackgroundPresetTests: XCTestCase {
         XCTAssertTrue(lightThemes.contains(.nordLight))
         XCTAssertTrue(darkThemes.contains(.nightOwl))
         XCTAssertTrue(darkThemes.contains(.everforestDarkHard))
-        XCTAssertTrue(darkThemes.contains(.draculaPlus))
-        XCTAssertTrue(darkThemes.contains(.materialOcean))
+        XCTAssertTrue(darkThemes.contains(.poimandres))
+        XCTAssertTrue(darkThemes.contains(.oxocarbon))
         XCTAssertTrue(darkThemes.contains(.ayuMirage))
     }
 
     func testAutomaticBackgroundOverridePreservesThemeBackground() {
-        let automatic = AppTerminalBackgroundPreset.flexokiDark
+        let automatic = AppTerminalBackgroundPreset.tokyoNightStorm
             .effectiveAppearance(backgroundColorPreset: .automatic)
-        let overridden = AppTerminalBackgroundPreset.flexokiDark
+        let overridden = AppTerminalBackgroundPreset.tokyoNightStorm
             .effectiveAppearance(backgroundColorPreset: .paper)
+        let automaticRGB = automatic.backgroundColor.rgbComponents255
+        let overriddenRGB = overridden.backgroundColor.rgbComponents255
 
-        XCTAssertColor(automatic.backgroundColor, approximatelyHex: 0x100F0F, tolerance: 6)
-        XCTAssertColor(overridden.backgroundColor, approximatelyHex: 0xFFFCF0, tolerance: 6)
+        XCTAssertTrue(
+            automaticRGB.red != overriddenRGB.red ||
+            automaticRGB.green != overriddenRGB.green ||
+            automaticRGB.blue != overriddenRGB.blue
+        )
+        if let paper = AppBackgroundColorPreset.paper.swatchColor {
+            XCTAssertColor(overridden.backgroundColor, approximatelyHex: 0xFFFCF0, tolerance: 6)
+            let paperRGB = paper.rgbComponents255
+            XCTAssertEqual(overriddenRGB.red, paperRGB.red)
+            XCTAssertEqual(overriddenRGB.green, paperRGB.green)
+            XCTAssertEqual(overriddenRGB.blue, paperRGB.blue)
+        }
         XCTAssertTrue(overridden.isLight)
     }
 

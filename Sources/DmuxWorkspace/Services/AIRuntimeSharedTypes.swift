@@ -175,6 +175,9 @@ struct AIRuntimeSourceLocator {
             return []
         }
 
+        // Keep this imperative scan split into simple passes. The equivalent
+        // chained functional version regressed compile time and hit Swift's
+        // type-checker limits in CI on Xcode 16.
         let candidateDirectories = sessionDirectories.filter { entry in
             let isDirectory = (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
             return isDirectory && entry.lastPathComponent.hasPrefix("ses_")

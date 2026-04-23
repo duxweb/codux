@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import SQLite3
 
@@ -748,23 +747,4 @@ struct AIProjectHistoryService: Sendable {
         return max(lhs, rhs)
     }
 
-    private func deterministicUUID(from value: String) -> UUID {
-        let digest = SHA256.hash(data: Data(value.utf8))
-        let bytes = Array(digest.prefix(16))
-        let uuidBytes: uuid_t = (
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
-            bytes[8], bytes[9], bytes[10], bytes[11],
-            bytes[12], bytes[13], bytes[14], bytes[15]
-        )
-        return UUID(uuid: uuidBytes)
-    }
-
-    func normalizedNonEmptyString(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
-    }
 }

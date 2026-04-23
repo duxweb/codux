@@ -59,7 +59,11 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
         XCTAssertEqual(session.baselineTotalTokens, 42)
         XCTAssertEqual(session.committedTotalTokens, 42)
-        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+        guard case .completed(let tool, _, let exitCode) = store.projectPhase(projectID: projectID) else {
+            return XCTFail("expected completed project phase")
+        }
+        XCTAssertEqual(tool, "codex")
+        XCTAssertNil(exitCode)
         XCTAssertEqual(store.currentDisplaySnapshot(projectID: projectID, selectedSessionID: terminalID)?.sessionID, terminalID)
     }
 
@@ -691,5 +695,74 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertNil(store.session(for: terminalID))
         XCTAssertTrue(store.liveSnapshots(projectID: projectID).isEmpty)
         XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+    }
+
+    func testSessionEndedRetainsCompletedProjectPhase() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Claude",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: 12,
+                updatedAt: 100,
+                metadata: nil
+            )
+        )
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Claude",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                totalTokens: 42,
+                updatedAt: 101,
+                metadata: .init(wasInterrupted: false, hasCompletedTurn: true)
+            )
+        )
+
+        XCTAssertTrue(
+            store.apply(
+                AIHookEvent(
+                    kind: .sessionEnded,
+                    terminalID: terminalID,
+                    terminalInstanceID: "instance-1",
+                    projectID: projectID,
+                    projectName: "Codux",
+                    sessionTitle: "Claude",
+                    tool: "claude",
+                    aiSessionID: "claude-session",
+                    model: "claude-sonnet-4-6",
+                    totalTokens: 42,
+                    updatedAt: 102,
+                    metadata: nil
+                )
+            )
+        )
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(session.hasCompletedTurn)
+        XCTAssertFalse(session.wasInterrupted)
+        XCTAssertEqual(store.liveSnapshots(projectID: projectID).count, 1)
+        guard case .completed(let tool, _, let exitCode) = store.projectPhase(projectID: projectID) else {
+            return XCTFail("expected completed project phase")
+        }
+        XCTAssertEqual(tool, "claude")
+        XCTAssertNil(exitCode)
     }
 }

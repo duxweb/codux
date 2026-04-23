@@ -394,8 +394,8 @@ final class AIRuntimeIngressService {
 
     private func scheduleClaudeTurnCompletedBackfill(for event: AIHookEvent) {
         let terminalID = event.terminalID
-        let expectedExternalSessionID = AIRuntimeIngressService.normalizedNonEmptyString(event.aiSessionID)
-        let expectedInstanceID = AIRuntimeIngressService.normalizedNonEmptyString(event.terminalInstanceID)
+        let expectedExternalSessionID = normalizedNonEmptyString(event.aiSessionID)
+        let expectedInstanceID = normalizedNonEmptyString(event.terminalInstanceID)
         logger.log(
             "runtime-ingress",
             "schedule ai-hook-backfill terminal=\(terminalID.uuidString) tool=claude external=\(expectedExternalSessionID ?? "nil")"
@@ -408,14 +408,6 @@ final class AIRuntimeIngressService {
                 expectedInstanceID: expectedInstanceID
             )
         }
-    }
-
-    private static func normalizedNonEmptyString(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
     }
 
     private func runClaudeTurnCompletedBackfill(
@@ -446,7 +438,7 @@ final class AIRuntimeIngressService {
             }
 
             if let expectedExternalSessionID,
-               AIRuntimeIngressService.normalizedNonEmptyString(session.aiSessionID) != expectedExternalSessionID {
+               normalizedNonEmptyString(session.aiSessionID) != expectedExternalSessionID {
                 logger.log(
                     "runtime-ingress",
                     "cancel ai-hook-backfill terminal=\(terminalID.uuidString) reason=session-mismatch"
@@ -454,7 +446,7 @@ final class AIRuntimeIngressService {
                 return
             }
             if let expectedInstanceID,
-               AIRuntimeIngressService.normalizedNonEmptyString(session.terminalInstanceID) != expectedInstanceID {
+               normalizedNonEmptyString(session.terminalInstanceID) != expectedInstanceID {
                 logger.log(
                     "runtime-ingress",
                     "cancel ai-hook-backfill terminal=\(terminalID.uuidString) reason=instance-mismatch"

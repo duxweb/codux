@@ -265,6 +265,21 @@ final class AISessionStore {
         case .turnCompleted:
             applyTurnCompleted(&session, event: event)
         case .sessionEnded:
+            if shouldRetainCompletedSessionOnEnd(session) {
+                terminalSessionsByID[event.terminalID] = session
+                expectedLogicalSessionsByTerminalID[event.terminalID] = nil
+                reconcileLogicalSession(for: session, previousLogicalKey: previousLogicalKey)
+                pruneLogicalSessionIfUnused(previousLogicalKey)
+                let didChange = previousState != session
+                if didChange {
+                    renderVersion &+= 1
+                    logger.log(
+                        "ai-session-store",
+                        "retain-completed-on-end terminal=\(event.terminalID.uuidString) tool=\(normalizedTool) external=\(normalizedAISessionID ?? "nil")"
+                    )
+                }
+                return didChange
+            }
             terminalSessionsByID[event.terminalID] = nil
             expectedLogicalSessionsByTerminalID[event.terminalID] = nil
             pruneLogicalSessionIfUnused(previousLogicalKey ?? session.logicalSessionKey)
@@ -352,6 +367,10 @@ final class AISessionStore {
         pruneLogicalSessionIfUnused(previousLogicalKey)
         renderVersion &+= 1
         logger.log("ai-session-store", "remove terminal=\(terminalID.uuidString)")
+    }
+
+    private func shouldRetainCompletedSessionOnEnd(_ session: TerminalSessionState) -> Bool {
+        session.state == .idle && session.wasInterrupted == false && session.hasCompletedTurn
     }
 
     func session(for terminalID: UUID) -> TerminalSessionState? {
@@ -707,11 +726,4 @@ final class AISessionStore {
         toolDriverFactory.canonicalToolName(tool.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    func normalizedNonEmptyString(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
-    }
 }

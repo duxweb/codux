@@ -69,13 +69,16 @@ struct AIUsageService: Sendable {
         let nextLiveOverlayCachedInputTokens = adjustedLiveSnapshots.reduce(0) { $0 + $1.currentCachedInputTokens }
         let shouldPreserveCompletedOverlay = adjustedLiveSnapshots.contains { $0.hasCompletedTurn } &&
             currentState.liveOverlayTokens > nextLiveOverlayTokens
-        let preservedCompletedOverlayTokens = shouldPreserveCompletedOverlay
-            ? currentState.liveOverlayTokens - nextLiveOverlayTokens
-            : 0
-        let preservedCompletedOverlayCachedInputTokens = shouldPreserveCompletedOverlay &&
-            currentState.liveOverlayCachedInputTokens > nextLiveOverlayCachedInputTokens
-            ? currentState.liveOverlayCachedInputTokens - nextLiveOverlayCachedInputTokens
-            : 0
+        let preservedCompletedOverlayTokens = preservedOverlayAmount(
+            shouldPreserve: shouldPreserveCompletedOverlay,
+            current: currentState.liveOverlayTokens,
+            next: nextLiveOverlayTokens
+        )
+        let preservedCompletedOverlayCachedInputTokens = preservedOverlayAmount(
+            shouldPreserve: shouldPreserveCompletedOverlay,
+            current: currentState.liveOverlayCachedInputTokens,
+            next: nextLiveOverlayCachedInputTokens
+        )
 
         var nextState = currentState
         nextState.currentSnapshot = adjustedCurrentSnapshot
@@ -329,6 +332,17 @@ struct AIUsageService: Sendable {
             currentContextWindow: liveSnapshot?.currentContextWindow,
             currentSessionUpdatedAt: liveSnapshot?.updatedAt
         )
+    }
+
+    private func preservedOverlayAmount(
+        shouldPreserve: Bool,
+        current: Int,
+        next: Int
+    ) -> Int {
+        guard shouldPreserve, current > next else {
+            return 0
+        }
+        return current - next
     }
 
     private func todayTotalTokens(timeBuckets: [AITimeBucket], heatmap: [AIHeatmapDay]) -> Int {

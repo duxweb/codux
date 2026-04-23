@@ -108,7 +108,7 @@ final class PetFeatureTests: XCTestCase {
 
     func testBalancedStatsDoNotCollapseToSingleDominantPersona() {
         let balanced = PetStats(wisdom: 100, chaos: 94, night: 91, stamina: 88, empathy: 86)
-        XCTAssertTrue(["均衡型", "Balanced Type"].contains(balanced.personaTag))
+        XCTAssertTrue(["零号协议", "Zero Protocol"].contains(balanced.personaTag))
     }
 
     func testWisdomNoLongerDependsOnClaudeToolBias() {
@@ -364,7 +364,7 @@ final class PetFeatureTests: XCTestCase {
     }
 
     func testGentleObserverMeansNoTraitDataYet() {
-        XCTAssertTrue(["佛系观察者", "Gentle Observer"].contains(PetStats.neutral.personaTag))
+        XCTAssertTrue(["空信号", "Null Signal"].contains(PetStats.neutral.personaTag))
     }
 }
 
@@ -517,7 +517,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: claimTime.addingTimeInterval(PetStore.realtimeSessionRetentionInterval * 2 + 1)
         )
-        XCTAssertEqual(store.currentHatchTokens, 260)
+        XCTAssertEqual(store.currentHatchTokens, 120)
     }
 
     func testEncryptedDatStorageRoundTripsWithoutKeychain() {
@@ -652,6 +652,6 @@ final class PetStoreLifecycleTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_700_000_100)
         )
 
-        XCTAssertEqual(store.currentExperienceTokens, 123)
+        XCTAssertEqual(store.currentExperienceTokens, overflow + 123)
     }
 }

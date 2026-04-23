@@ -18,7 +18,6 @@ struct ProjectActivityPayload: Codable, Equatable {
 
 struct ProjectActivityService: @unchecked Sendable {
     private let runningPhaseLifetime: TimeInterval = 15
-    private let completedPhaseLifetime: TimeInterval = 20
     private let fileManager = FileManager.default
     private let runtimeBridgeService = AIRuntimeBridgeService()
     private let externalNotificationService = AppExternalNotificationService.shared
@@ -61,10 +60,6 @@ struct ProjectActivityService: @unchecked Sendable {
             }
             return .running(tool: payload.tool)
         case "completed":
-            let age = Date().timeIntervalSince1970 - payload.updatedAt
-            if age > completedPhaseLifetime {
-                return .idle
-            }
             return .completed(
                 tool: payload.tool,
                 finishedAt: Date(timeIntervalSince1970: payload.finishedAt ?? payload.updatedAt),

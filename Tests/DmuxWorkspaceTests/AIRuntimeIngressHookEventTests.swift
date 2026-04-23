@@ -305,7 +305,11 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         let session = try XCTUnwrap(store.session(for: terminalID))
         XCTAssertEqual(session.state, .idle)
         XCTAssertEqual(session.committedTotalTokens, 44)
-        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+        guard case .completed(let tool, _, let exitCode) = store.projectPhase(projectID: projectID) else {
+            return XCTFail("expected completed project phase")
+        }
+        XCTAssertEqual(tool, "codex")
+        XCTAssertNil(exitCode)
     }
 
     func testCodexStopHookUsesTranscriptInterruptedState() async throws {
