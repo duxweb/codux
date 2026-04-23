@@ -5,6 +5,11 @@ struct OpenCodeToolDriver: AIToolDriver {
     let id = "opencode"
     let aliases: Set<String> = ["opencode"]
     let isRealtimeTool = true
+    private let databaseURL: URL?
+
+    init(databaseURL: URL? = nil) {
+        self.databaseURL = databaseURL
+    }
 
     func sessionCapabilities(for session: AISessionSummary) -> AIToolSessionCapabilities {
         _ = session
@@ -80,7 +85,7 @@ struct OpenCodeToolDriver: AIToolDriver {
         projectPath: String,
         externalSessionID: String
     ) -> AIRuntimeContextSnapshot? {
-        let databaseURL = AIRuntimeSourceLocator.opencodeDatabaseURL()
+        let databaseURL = databaseURL ?? AIRuntimeSourceLocator.opencodeDatabaseURL()
         guard FileManager.default.fileExists(atPath: databaseURL.path) else {
             return nil
         }
@@ -110,11 +115,14 @@ private func fetchOpenCodeSessionSnapshot(
 ) throws -> AIRuntimeContextSnapshot? {
     let sql = """
     SELECT json_extract(m.data, '$.modelID') AS model,
+           json_extract(m.data, '$.role') AS role,
+           COALESCE(json_extract(m.data, '$.time.created'), '') AS created_at_text,
            COALESCE(json_extract(m.data, '$.tokens.input'), 0) AS input_tokens,
            COALESCE(json_extract(m.data, '$.tokens.output'), 0) AS output_tokens,
            COALESCE(json_extract(m.data, '$.tokens.cache.read'), 0) AS cache_read_tokens,
            COALESCE(json_extract(m.data, '$.tokens.reasoning'), 0) AS reasoning_tokens,
-           COALESCE(json_extract(m.data, '$.time.completed'), json_extract(m.data, '$.time.created'), 0) AS completed_at,
+           COALESCE(json_extract(m.data, '$.time.completed'), '') AS completed_at_text,
+           m.time_created AS message_created_at,
            s.time_updated AS session_updated_at
     FROM session s
     LEFT JOIN message m ON m.session_id = s.id
@@ -140,6 +148,8 @@ private func fetchOpenCodeSessionSnapshot(
     var cachedInputTokens = 0
     var totalTokens = 0
     var updatedAt = 0.0
+    var lastUserAt = 0.0
+    var lastCompletionAt = 0.0
     var hadRow = false
 
     while sqlite3_step(statement) == SQLITE_ROW {
@@ -150,21 +160,47 @@ private func fetchOpenCodeSessionSnapshot(
                 latestModel = model
             }
         }
-        let input = Int(sqlite3_column_int64(statement, 1))
-        let output = Int(sqlite3_column_int64(statement, 2))
-        let cacheRead = Int(sqlite3_column_int64(statement, 3))
-        let reasoning = Int(sqlite3_column_int64(statement, 4))
+        let role = sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? ""
+        let createdAtText = sqlite3_column_text(statement, 2).map { String(cString: $0) }
+        let input = Int(sqlite3_column_int64(statement, 3))
+        let output = Int(sqlite3_column_int64(statement, 4))
+        let cacheRead = Int(sqlite3_column_int64(statement, 5))
+        let reasoning = Int(sqlite3_column_int64(statement, 6))
         inputTokens += input
         outputTokens += output
         cachedInputTokens += cacheRead
         totalTokens += input + output + reasoning
-        updatedAt = max(updatedAt, sqlite3_column_double(statement, 5) / 1000)
-        updatedAt = max(updatedAt, sqlite3_column_double(statement, 6) / 1000)
+        let completedAtText = sqlite3_column_text(statement, 7).map { String(cString: $0) }
+        let messageCreatedAt = sqlite3_column_double(statement, 8) / 1000
+        let sessionUpdatedAt = sqlite3_column_double(statement, 9) / 1000
+        let createdAt = parseOpenCodeRuntimeTimestamp(createdAtText) ?? messageCreatedAt
+        let completedAt = parseOpenCodeRuntimeTimestamp(completedAtText)
+        if role == "user" {
+            lastUserAt = max(lastUserAt, createdAt)
+        } else if role == "assistant" {
+            lastCompletionAt = max(lastCompletionAt, completedAt ?? createdAt)
+        }
+        updatedAt = max(updatedAt, createdAt)
+        updatedAt = max(updatedAt, completedAt ?? 0)
+        updatedAt = max(updatedAt, sessionUpdatedAt)
     }
 
     guard hadRow else {
         return nil
     }
+
+    let responseState: AIResponseState? = {
+        if lastUserAt > 0 {
+            return lastUserAt > lastCompletionAt ? .responding : .idle
+        }
+        if totalTokens > 0 {
+            return .idle
+        }
+        return nil
+    }()
+    let hasCompletedTurn = lastCompletionAt > 0 && lastCompletionAt >= lastUserAt
+    let completedAt = hasCompletedTurn ? lastCompletionAt : nil
+    let startedAt = lastUserAt > 0 ? lastUserAt : nil
 
     return AIRuntimeContextSnapshot(
         tool: "opencode",
@@ -175,8 +211,21 @@ private func fetchOpenCodeSessionSnapshot(
         cachedInputTokens: cachedInputTokens,
         totalTokens: totalTokens,
         updatedAt: updatedAt,
-        responseState: totalTokens > 0 ? .idle : nil,
+        startedAt: startedAt,
+        completedAt: completedAt,
+        responseState: responseState,
+        hasCompletedTurn: hasCompletedTurn,
         sessionOrigin: totalTokens > 0 ? .restored : .fresh,
         source: .probe
     )
+}
+
+private func parseOpenCodeRuntimeTimestamp(_ value: String?) -> Double? {
+    guard let value = normalizedNonEmptyString(value) else {
+        return nil
+    }
+    if let milliseconds = Double(value) {
+        return milliseconds / 1000
+    }
+    return parseCodexISO8601Date(value)?.timeIntervalSince1970
 }

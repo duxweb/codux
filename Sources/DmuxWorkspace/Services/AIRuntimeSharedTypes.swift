@@ -377,6 +377,8 @@ struct AIRuntimeContextSnapshot: Sendable {
     var cachedInputTokens: Int = 0
     var totalTokens: Int
     var updatedAt: Double
+    var startedAt: Double?
+    var completedAt: Double?
     var responseState: AIResponseState?
     var wasInterrupted: Bool = false
     var hasCompletedTurn: Bool = false

@@ -58,6 +58,10 @@ extension AISessionStore {
             .filter { $0.projectID == projectID && $0.isLive }
             .sorted(by: { $0.updatedAt > $1.updatedAt })
 
+        guard trackedSessions.contains(where: { $0.state == .responding || $0.state == .needsInput }) == false else {
+            return nil
+        }
+
         guard let completed = trackedSessions.first(where: {
             $0.state == .idle
                 && $0.wasInterrupted == false
@@ -78,7 +82,7 @@ extension AISessionStore {
             .filter { $0.projectID == projectID && $0.isLive }
             .filter { $0.state == .responding || $0.state == .needsInput }
             .compactMap { session in
-                let timestamp = session.startedAt ?? session.updatedAt
+                let timestamp = session.activeTurnStartedAt ?? session.startedAt ?? session.updatedAt
                 return Date(timeIntervalSince1970: timestamp)
             }
             .max()
@@ -109,7 +113,9 @@ extension AISessionStore {
             return "none"
         }
         return sessions.map { session in
-            "terminal=\(session.terminalID.uuidString) tool=\(session.tool) state=\(session.state.rawValue) external=\(session.aiSessionID ?? "nil") total=\(session.committedTotalTokens)"
+            let activeTurn = session.activeTurnStartedAt.map { String($0) } ?? "nil"
+            let runtimeTurn = session.runtimeTurnStartedAt.map { String($0) } ?? "nil"
+            return "terminal=\(session.terminalID.uuidString) tool=\(session.tool) state=\(session.state.rawValue) external=\(session.aiSessionID ?? "nil") total=\(session.committedTotalTokens) activeTurn=\(activeTurn) runtimeTurn=\(runtimeTurn)"
         }
         .joined(separator: " | ")
     }

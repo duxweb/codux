@@ -5,7 +5,7 @@ import Observation
 @Observable
 final class AISessionStore {
     static let shared = AISessionStore()
-    let runningPhaseLifetime: TimeInterval = 180
+    let runningPhaseLifetime: TimeInterval = 30
 
     private enum PromptSubmittedSource {
         case userInput
@@ -70,6 +70,8 @@ final class AISessionStore {
         var updatedAt: Double
         var attachedAt: Double
         var startedAt: Double?
+        var activeTurnStartedAt: Double?
+        var runtimeTurnStartedAt: Double?
         var needsCachedBaseline: Bool
         var wasInterrupted: Bool
         var hasCompletedTurn: Bool
@@ -123,6 +125,8 @@ final class AISessionStore {
             updatedAt: Double,
             attachedAt: Double? = nil,
             startedAt: Double? = nil,
+            activeTurnStartedAt: Double? = nil,
+            runtimeTurnStartedAt: Double? = nil,
             needsCachedBaseline: Bool = false,
             wasInterrupted: Bool,
             hasCompletedTurn: Bool,
@@ -153,6 +157,8 @@ final class AISessionStore {
             self.updatedAt = updatedAt
             self.attachedAt = attachedAt ?? updatedAt
             self.startedAt = startedAt
+            self.activeTurnStartedAt = activeTurnStartedAt
+            self.runtimeTurnStartedAt = runtimeTurnStartedAt
             self.needsCachedBaseline = needsCachedBaseline
             self.wasInterrupted = wasInterrupted
             self.hasCompletedTurn = hasCompletedTurn
@@ -228,7 +234,15 @@ final class AISessionStore {
         let previousLogicalKey = terminalSessionsByID[event.terminalID]?.logicalSessionKey
         let previousState = terminalSessionsByID[event.terminalID]
 
-        if shouldIgnorePromptSubmitted(event: event, existing: previousState) {
+        if shouldIgnoreInternalCodexEvent(event: event) {
+            logger.log(
+                "ai-session-store",
+                "ignore terminal=\(event.terminalID.uuidString) tool=\(normalizedTool) kind=\(event.kind.rawValue) reason=internal-codex-memory-session"
+            )
+            return false
+        }
+
+        if shouldIgnoreToolActivityEvent(event: event) {
             logger.log(
                 "ai-session-store",
                 "ignore terminal=\(event.terminalID.uuidString) tool=\(normalizedTool) kind=\(event.kind.rawValue) reason=tool-activity-without-loading"
@@ -516,6 +530,7 @@ final class AISessionStore {
                 session.model = normalizedModel
             }
             resolveBaselineIfNeeded(&session, snapshot: snapshot)
+            applyRuntimeLifecycle(&session, snapshot: snapshot, previousState: previousState)
             session.committedInputTokens = max(session.committedInputTokens, snapshot.inputTokens)
             session.committedOutputTokens = max(session.committedOutputTokens, snapshot.outputTokens)
             session.committedCachedInputTokens = max(session.committedCachedInputTokens, snapshot.cachedInputTokens)
@@ -543,6 +558,8 @@ final class AISessionStore {
 
     private func applySessionStarted(_ session: inout TerminalSessionState) {
         session.state = .idle
+        session.activeTurnStartedAt = nil
+        session.runtimeTurnStartedAt = nil
         session.wasInterrupted = false
         session.hasCompletedTurn = false
         session.notificationType = nil
@@ -551,29 +568,142 @@ final class AISessionStore {
     }
 
     private func applyPromptSubmitted(_ session: inout TerminalSessionState, event: AIHookEvent) {
-        switch promptSubmittedSource(for: event) {
-        case .userInput:
-            session.state = .responding
-            session.wasInterrupted = false
-            session.hasCompletedTurn = false
-            session.notificationType = nil
-            session.targetToolName = nil
-            session.interactionMessage = nil
-        case .toolUse:
-            guard session.state == .responding else {
-                return
-            }
-        }
+        session.state = .responding
+        session.activeTurnStartedAt = event.updatedAt
+        session.runtimeTurnStartedAt = nil
+        session.wasInterrupted = false
+        session.hasCompletedTurn = false
+        session.notificationType = nil
+        session.targetToolName = nil
+        session.interactionMessage = nil
     }
 
     private func applyTurnCompleted(_ session: inout TerminalSessionState, event: AIHookEvent) {
         let wasInterrupted = event.metadata?.wasInterrupted == true
         session.state = .idle
+        session.activeTurnStartedAt = nil
+        session.runtimeTurnStartedAt = nil
         session.wasInterrupted = wasInterrupted
         session.hasCompletedTurn = event.metadata?.hasCompletedTurn ?? !wasInterrupted
         session.notificationType = nil
         session.targetToolName = nil
         session.interactionMessage = nil
+    }
+
+    private func applyRuntimeLifecycle(
+        _ session: inout TerminalSessionState,
+        snapshot: AIRuntimeContextSnapshot,
+        previousState: TerminalSessionState
+    ) {
+        guard let responseState = snapshot.responseState else {
+            return
+        }
+
+        let snapshotIsNewer = snapshot.updatedAt > previousState.updatedAt
+        let promptTurnStartedAt = previousState.activeTurnStartedAt ?? previousState.updatedAt
+        let runtimeTurnStartedAt = snapshot.startedAt ?? (responseState == .responding ? snapshot.updatedAt : nil)
+        let turnCompletedAt = snapshot.completedAt ?? (
+            snapshot.wasInterrupted || snapshot.hasCompletedTurn ? snapshot.updatedAt : nil
+        )
+
+        switch responseState {
+        case .responding:
+            if let runtimeTurnStartedAt,
+               runtimeTurnStartedAt < promptTurnStartedAt {
+                return
+            }
+
+            let canPromoteToResponding =
+                previousState.state == .responding
+                || (
+                    previousState.hasCompletedTurn == false
+                    && previousState.wasInterrupted == false
+                    && (snapshotIsNewer || previousState.state == .idle)
+                )
+
+            guard canPromoteToResponding else {
+                return
+            }
+
+            if snapshotIsNewer {
+                session.updatedAt = snapshot.updatedAt
+            }
+            if let runtimeTurnStartedAt {
+                session.runtimeTurnStartedAt = runtimeTurnStartedAt
+            } else if session.runtimeTurnStartedAt == nil {
+                session.runtimeTurnStartedAt = promptTurnStartedAt
+            }
+            if previousState.state != .responding || previousState.wasInterrupted || previousState.hasCompletedTurn {
+                session.state = .responding
+                session.startedAt = runtimeTurnStartedAt ?? snapshot.updatedAt
+                session.activeTurnStartedAt = runtimeTurnStartedAt ?? snapshot.updatedAt
+                if let runtimeTurnStartedAt {
+                    session.startedAt = runtimeTurnStartedAt
+                }
+                session.wasInterrupted = false
+                session.hasCompletedTurn = false
+                session.notificationType = nil
+                session.targetToolName = nil
+                session.interactionMessage = nil
+            }
+
+        case .idle:
+            let idleSnapshotCanResolveTurn =
+                if snapshot.wasInterrupted || snapshot.hasCompletedTurn {
+                    if let turnCompletedAt {
+                        turnCompletedAt >= promptTurnStartedAt
+                    } else {
+                        false
+                    }
+                } else if previousState.state == .needsInput {
+                    true
+                } else if let observedTurnStartedAt = previousState.runtimeTurnStartedAt {
+                    observedTurnStartedAt >= promptTurnStartedAt && snapshot.updatedAt >= observedTurnStartedAt
+                } else {
+                    false
+                }
+
+            let shouldResolveToIdle =
+                idleSnapshotCanResolveTurn
+                && (
+                    previousState.state == .responding
+                    || previousState.state == .needsInput
+                    || snapshot.wasInterrupted
+                    || snapshot.hasCompletedTurn
+                )
+
+            guard shouldResolveToIdle else {
+                return
+            }
+
+            if snapshotIsNewer {
+                session.updatedAt = snapshot.updatedAt
+            }
+
+            if snapshot.wasInterrupted {
+                session.state = .idle
+                session.activeTurnStartedAt = nil
+                session.runtimeTurnStartedAt = nil
+                session.wasInterrupted = true
+                session.hasCompletedTurn = false
+            } else if snapshot.hasCompletedTurn {
+                session.state = .idle
+                session.activeTurnStartedAt = nil
+                session.runtimeTurnStartedAt = nil
+                session.wasInterrupted = false
+                session.hasCompletedTurn = true
+            } else if previousState.state == .responding || previousState.state == .needsInput {
+                session.state = .idle
+                session.activeTurnStartedAt = nil
+                session.runtimeTurnStartedAt = nil
+                session.wasInterrupted = false
+                session.hasCompletedTurn = false
+            }
+
+            session.notificationType = nil
+            session.targetToolName = nil
+            session.interactionMessage = nil
+        }
     }
 
     private func resolveBaselineIfNeeded(
@@ -722,18 +852,21 @@ final class AISessionStore {
         return event.updatedAt < existing.updatedAt
     }
 
-    private func shouldIgnorePromptSubmitted(
-        event: AIHookEvent,
-        existing: TerminalSessionState?
-    ) -> Bool {
-        guard event.kind == .promptSubmitted,
-              promptSubmittedSource(for: event) == .toolUse else {
+    private func shouldIgnoreToolActivityEvent(event: AIHookEvent) -> Bool {
+        guard promptSubmittedSource(for: event) == .toolUse else {
             return false
         }
-        guard let existing else {
-            return true
+        return true
+    }
+
+    private func shouldIgnoreInternalCodexEvent(event: AIHookEvent) -> Bool {
+        guard normalizedNonEmptyString(event.tool)?.lowercased() == "codex",
+              let projectPath = normalizedProjectPath(event.projectPath) else {
+            return false
         }
-        return existing.state != .responding
+
+        let memoriesPath = codexMemoriesRootPath
+        return projectPath == memoriesPath || projectPath.hasPrefix(memoriesPath + "/")
     }
 
     private func promptSubmittedSource(for event: AIHookEvent) -> PromptSubmittedSource {
@@ -776,6 +909,8 @@ final class AISessionStore {
             updatedAt: event.updatedAt,
             attachedAt: event.updatedAt,
             startedAt: event.updatedAt,
+            activeTurnStartedAt: nil,
+            runtimeTurnStartedAt: nil,
             needsCachedBaseline: needsCachedBaseline,
             wasInterrupted: false,
             hasCompletedTurn: false,
@@ -784,6 +919,22 @@ final class AISessionStore {
             targetToolName: event.metadata?.targetToolName,
             interactionMessage: event.metadata?.message
         )
+    }
+
+    private var codexMemoriesRootPath: String {
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            .appendingPathComponent(".codex/memories", isDirectory: true)
+            .standardizedFileURL
+            .path
+    }
+
+    private func normalizedProjectPath(_ path: String?) -> String? {
+        guard let value = normalizedNonEmptyString(path) else {
+            return nil
+        }
+        return URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)
+            .standardizedFileURL
+            .path
     }
 
     private func shouldResetSessionState(

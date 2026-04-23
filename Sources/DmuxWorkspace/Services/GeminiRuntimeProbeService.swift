@@ -10,6 +10,7 @@ struct GeminiParsedRuntimeState {
     var totalTokens: Int
     var startedAt: Double
     var updatedAt: Double
+    var completedAt: Double?
     var responseState: AIResponseState?
     var origin: AIRuntimeSessionOrigin
 }
@@ -63,6 +64,8 @@ actor GeminiRuntimeProbeService {
             cachedInputTokens: parsedState.cachedInputTokens,
             totalTokens: parsedState.totalTokens,
             updatedAt: parsedState.updatedAt,
+            startedAt: parsedState.startedAt,
+            completedAt: parsedState.completedAt,
             responseState: parsedState.responseState,
             sessionOrigin: parsedState.origin
         )
@@ -216,6 +219,13 @@ func parseGeminiSessionRuntimeState(fileURL: URL) -> GeminiParsedRuntimeState? {
         }
     }()
 
+    let completedAt: Double? = {
+        guard responseState == .idle else {
+            return nil
+        }
+        return updatedAtDate.timeIntervalSince1970
+    }()
+
     return GeminiParsedRuntimeState(
         externalSessionID: externalSessionID,
         title: title,
@@ -226,6 +236,7 @@ func parseGeminiSessionRuntimeState(fileURL: URL) -> GeminiParsedRuntimeState? {
         totalTokens: totalTokens,
         startedAt: startedAtDate.timeIntervalSince1970,
         updatedAt: updatedAtDate.timeIntervalSince1970,
+        completedAt: completedAt,
         responseState: responseState,
         origin: .unknown
     )

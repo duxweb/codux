@@ -404,14 +404,16 @@ extension AppModel {
         }
 
         completionPresentationByProjectID[projectID] = nil
+        let payload = cachedActivityPayloadByProjectID[projectID]
+        activityByProjectID[projectID] = resolvedProjectActivityPhase(
+            projectID: projectID,
+            payload: payload
+        )
         debugLog.log(
             "activity-ui",
             "clear-completed project=\(projectID.uuidString) reason=\(reason)"
         )
-        refreshProjectActivity(
-            sendNotifications: false,
-            useCachedStatusesOnly: true
-        )
+        markActivityStateChanged()
         return true
     }
 

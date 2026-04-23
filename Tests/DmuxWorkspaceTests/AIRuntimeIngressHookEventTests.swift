@@ -42,6 +42,32 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         XCTAssertEqual(snapshot?.outputTokens, 228)
     }
 
+    func testClaudeSnapshotExposesTurnBoundaryTimes() async throws {
+        let projectPath = "/tmp/dmux-claude-boundary-\(UUID().uuidString)"
+        let sessionID = UUID().uuidString.lowercased()
+        let logURL = AIRuntimeSourceLocator.claudeSessionLogURL(projectPath: projectPath, externalSessionID: sessionID)
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+
+        let userRow = """
+        {"cwd":"\(projectPath)","sessionId":"\(sessionID)","timestamp":"2026-04-21T03:10:40.000Z","type":"user","uuid":"row-user","message":{"content":"hello"}}
+        """
+        let assistantRow = """
+        {"cwd":"\(projectPath)","sessionId":"\(sessionID)","timestamp":"2026-04-21T03:10:47.562Z","type":"assistant","uuid":"row-assistant","message":{"id":"msg-1","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"cache_creation_input_tokens":20,"cache_read_input_tokens":30,"output_tokens":40},"stop_reason":"end_turn"}}
+        """
+        try "\(userRow)\n\(assistantRow)\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        let snapshot = await ClaudeRuntimeLogCache.shared.snapshot(
+            projectPath: projectPath,
+            externalSessionID: sessionID
+        )
+
+        XCTAssertEqual(snapshot?.startedAt, parseCodexISO8601Date("2026-04-21T03:10:40.000Z")?.timeIntervalSince1970)
+        XCTAssertEqual(snapshot?.completedAt, parseCodexISO8601Date("2026-04-21T03:10:47.562Z")?.timeIntervalSince1970)
+        XCTAssertEqual(snapshot?.responseState, .idle)
+        XCTAssertTrue(snapshot?.hasCompletedTurn ?? false)
+    }
+
     func testClaudeSnapshotFindsUsageWhenProjectDirectoryNameIsSanitizedDifferently() async throws {
         let homeURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("dmux-claude-runtime-fallback-\(UUID().uuidString)", isDirectory: true)
@@ -281,6 +307,45 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         XCTAssertNil(resolved.totalTokens)
     }
 
+    func testGeminiParsedRuntimeStateExposesTurnBoundaryTimes() throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dmux-gemini-runtime-\(UUID().uuidString).json", isDirectory: false)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let payload = """
+        {
+          "sessionId": "gemini-session",
+          "startTime": "2026-04-21T09:00:00Z",
+          "lastUpdated": "2026-04-21T09:00:06Z",
+          "messages": [
+            {
+              "type": "user",
+              "timestamp": "2026-04-21T09:00:00Z",
+              "content": "hello"
+            },
+            {
+              "type": "gemini",
+              "timestamp": "2026-04-21T09:00:06Z",
+              "model": "gemini-2.5-pro",
+              "tokens": {
+                "input": 140,
+                "output": 60,
+                "thoughts": 15,
+                "cached": 25,
+                "total": 240
+              }
+            }
+          ]
+        }
+        """
+        try payload.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let state = try XCTUnwrap(parseGeminiSessionRuntimeState(fileURL: fileURL))
+        XCTAssertEqual(state.startedAt, parseCodexISO8601Date("2026-04-21T09:00:00Z")?.timeIntervalSince1970)
+        XCTAssertEqual(state.completedAt, parseCodexISO8601Date("2026-04-21T09:00:06Z")?.timeIntervalSince1970)
+        XCTAssertEqual(state.responseState, .idle)
+    }
+
     func testAIHookPromptSubmittedUpdatesSessionStore() async throws {
         let terminalID = UUID()
         let projectID = UUID()
@@ -353,7 +418,7 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         let session = try XCTUnwrap(store.session(for: terminalID))
         XCTAssertEqual(session.state, .idle)
         XCTAssertEqual(session.committedTotalTokens, 0)
-        guard case .completed(let tool, _, let exitCode) = store.projectPhase(projectID: projectID) else {
+        guard case .completed(let tool, _, let exitCode) = store.completedPhase(projectID: projectID) else {
             return XCTFail("expected completed project phase")
         }
         XCTAssertEqual(tool, "codex")
@@ -525,7 +590,7 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         XCTAssertEqual(immediateSession.state, .idle)
         XCTAssertEqual(immediateSession.committedTotalTokens, 0)
         XCTAssertTrue(immediateSession.hasCompletedTurn)
-        guard case .completed(let tool, _, _) = store.projectPhase(projectID: projectID) else {
+        guard case .completed(let tool, _, _) = store.completedPhase(projectID: projectID) else {
             return XCTFail("expected completed project phase")
         }
         XCTAssertEqual(tool, "claude")

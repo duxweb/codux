@@ -75,6 +75,8 @@ struct GeminiToolDriver: AIToolDriver {
             cachedInputTokens: parsedState.cachedInputTokens,
             totalTokens: parsedState.totalTokens,
             updatedAt: parsedState.updatedAt,
+            startedAt: parsedState.startedAt,
+            completedAt: parsedState.completedAt,
             responseState: parsedState.responseState,
             sessionOrigin: parsedState.origin,
             source: .probe

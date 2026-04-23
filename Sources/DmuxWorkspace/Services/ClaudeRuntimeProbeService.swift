@@ -164,6 +164,8 @@ actor ClaudeRuntimeLogCache {
             cachedInputTokens: session.cachedInputTokens,
             totalTokens: session.totalTokens,
             updatedAt: session.updatedAt,
+            startedAt: startedAt(for: session),
+            completedAt: completedAt(for: session),
             responseState: responseState(for: session),
             wasInterrupted: wasInterrupted(for: session),
             hasCompletedTurn: hasCompletedTurn(for: session)
@@ -269,6 +271,15 @@ actor ClaudeRuntimeLogCache {
         }
         let latestConflictingAt = max(aggregate.lastUserAt, aggregate.lastInterruptedAt)
         return aggregate.lastCompletedTurnAt >= latestConflictingAt
+    }
+
+    private func startedAt(for aggregate: SessionAggregate) -> Double? {
+        aggregate.lastUserAt > 0 ? aggregate.lastUserAt : nil
+    }
+
+    private func completedAt(for aggregate: SessionAggregate) -> Double? {
+        let completion = max(aggregate.lastCompletedTurnAt, aggregate.lastInterruptedAt)
+        return completion > 0 ? completion : nil
     }
 
     private func currentFileSize(for fileURL: URL) -> UInt64 {
@@ -638,6 +649,8 @@ actor ClaudeRuntimeProbeService {
             cachedInputTokens: snapshot.cachedInputTokens,
             totalTokens: snapshot.totalTokens,
             updatedAt: snapshot.updatedAt,
+            startedAt: snapshot.startedAt,
+            completedAt: snapshot.completedAt,
             responseState: normalizedResponseState,
             wasInterrupted: snapshot.wasInterrupted,
             hasCompletedTurn: snapshot.hasCompletedTurn

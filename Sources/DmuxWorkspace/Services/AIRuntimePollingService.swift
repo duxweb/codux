@@ -198,11 +198,11 @@ final class AIRuntimePollingService {
         if isSuppressed(terminalID: session.terminalID, now: now) {
             return true
         }
-        if session.state == .responding {
+        if session.state == .responding || session.state == .needsInput {
             return true
         }
-        if session.state == .idle && session.hasCompletedTurn {
-            return false
+        if session.state == .idle {
+            return session.hasCompletedTurn == false
         }
         let silence = max(0, now - session.updatedAt)
         return silence >= sessionSilenceThreshold

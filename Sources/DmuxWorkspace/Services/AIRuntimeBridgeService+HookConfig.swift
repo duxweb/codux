@@ -117,13 +117,15 @@ extension AIRuntimeBridgeService {
                 ("Stop", "stop", 10, false),
                 ("StopFailure", "stop-failure", 10, false),
                 ("SessionEnd", "session-end", 1, false),
-                ("PreToolUse", "pre-tool-use", 5, true),
-                ("PostToolUse", "post-tool-use", 5, true),
-                ("PostToolUseFailure", "post-tool-use-failure", 5, true),
                 ("PermissionRequest", "permission-request", 5, true),
                 ("PermissionDenied", "permission-denied", 5, true),
                 ("Elicitation", "elicitation", 10, false),
                 ("ElicitationResult", "elicitation-result", 10, false),
+            ],
+            removedDefinitions: [
+                ("PreToolUse", "pre-tool-use"),
+                ("PostToolUse", "post-tool-use"),
+                ("PostToolUseFailure", "post-tool-use-failure"),
             ],
             notificationActionToStrip: "notification"
         )
@@ -139,9 +141,11 @@ extension AIRuntimeBridgeService {
             definitions: [
                 ("SessionStart", "codex-session-start", 1000, false),
                 ("UserPromptSubmit", "codex-prompt-submit", 1000, false),
-                ("PreToolUse", "codex-pre-tool-use", 1000, false),
-                ("PostToolUse", "codex-post-tool-use", 1000, false),
                 ("Stop", "codex-stop", 1000, false),
+            ],
+            removedDefinitions: [
+                ("PreToolUse", "codex-pre-tool-use"),
+                ("PostToolUse", "codex-post-tool-use"),
             ]
         )
     }
@@ -185,11 +189,19 @@ extension AIRuntimeBridgeService {
         category: String,
         description: String,
         definitions: [(eventKey: String, action: String, timeout: Int, async: Bool)],
+        removedDefinitions: [(eventKey: String, action: String)] = [],
         notificationActionToStrip: String? = nil
     ) {
         let helperScriptURL = managedRuntimeHookHelperURL()
         let statusMessage = "dmux \(tool) live"
         var hooksObject = rootObject["hooks"] as? [String: Any] ?? [:]
+        stripManagedHookDefinitions(
+            removedDefinitions,
+            from: &hooksObject,
+            owner: AppRuntimePaths.runtimeOwnerID(),
+            helperScriptURL: helperScriptURL,
+            statusMessage: statusMessage
+        )
         let specs = managedHookSpecs(
             tool: tool,
             statusMessage: statusMessage,
@@ -215,6 +227,30 @@ extension AIRuntimeBridgeService {
 
         rootObject["hooks"] = hooksObject
         writeJSONObjectConfig(rootObject, to: fileURL, category: category, description: description)
+    }
+
+    func stripManagedHookDefinitions(
+        _ definitions: [(eventKey: String, action: String)],
+        from hooksObject: inout [String: Any],
+        owner: String,
+        helperScriptURL: URL,
+        statusMessage: String
+    ) {
+        for definition in definitions {
+            let strippedGroups = strippedManagedHookGroups(
+                existingValue: hooksObject[definition.eventKey],
+                action: definition.action,
+                owner: owner,
+                helperScriptURL: helperScriptURL,
+                statusMessage: statusMessage
+            )
+
+            if strippedGroups.isEmpty {
+                hooksObject.removeValue(forKey: definition.eventKey)
+            } else {
+                hooksObject[definition.eventKey] = strippedGroups
+            }
+        }
     }
 
     func applyManagedHookSpecs(

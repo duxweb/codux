@@ -81,6 +81,8 @@ struct CodexToolDriver: AIToolDriver {
             cachedInputTokens: max(session.committedCachedInputTokens, parsedState.cachedInputTokens ?? 0),
             totalTokens: max(session.committedTotalTokens, parsedState.totalTokens ?? 0),
             updatedAt: [session.updatedAt, parsedState.updatedAt].compactMap({ $0 }).max() ?? session.updatedAt,
+            startedAt: parsedState.startedAt,
+            completedAt: parsedState.completedAt,
             responseState: parsedState.responseState ?? responseState(for: session.state),
             wasInterrupted: parsedState.wasInterrupted,
             hasCompletedTurn: parsedState.hasCompletedTurn || session.hasCompletedTurn,

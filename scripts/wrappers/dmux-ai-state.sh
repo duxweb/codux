@@ -594,28 +594,6 @@ case "${action}" in
       "user-input"
     exit 0
     ;;
-  codex-pre-tool-use)
-    write_ai_hook_event \
-      "promptSubmitted" \
-      "$(extract_hook_session_id)" \
-      "$(resolved_hook_model)" \
-      "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
-      "" \
-      "" \
-      "tool-use"
-    exit 0
-    ;;
-  codex-post-tool-use)
-    write_ai_hook_event \
-      "promptSubmitted" \
-      "$(extract_hook_session_id)" \
-      "$(resolved_hook_model)" \
-      "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
-      "" \
-      "" \
-      "tool-use"
-    exit 0
-    ;;
   codex-stop)
     log_codex_hook_diagnostics
     codex_total_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
@@ -649,9 +627,9 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
       write_claude_session_map
       log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} externalSession=$(resolved_claude_external_session_id || print -r -- nil)"
       ;;
-    prompt-submit|pre-tool-use|post-tool-use|post-tool-use-failure|permission-request|permission-denied|notification|elicitation|elicitation-result)
+    prompt-submit|permission-request|permission-denied|notification|elicitation|elicitation-result)
       write_claude_session_map
-      if [[ "${action}" == "prompt-submit" || "${action}" == "pre-tool-use" ]]; then
+      if [[ "${action}" == "prompt-submit" ]]; then
         claude_prompt_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
         [[ -z "${claude_prompt_tokens}" ]] && claude_prompt_tokens="null"
         write_ai_hook_event \
@@ -661,7 +639,7 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
           "${claude_prompt_tokens}" \
           "" \
           "" \
-          "$([[ "${action}" == "prompt-submit" ]] && print -r -- "user-input" || print -r -- "tool-use")"
+          "user-input"
       elif [[ "${action}" == "permission-request" ]]; then
         write_ai_hook_event \
           "needsInput" \
