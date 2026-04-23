@@ -645,6 +645,7 @@ struct PetAttributeRow: View {
     let maxValue: Int
     let color: Color
     let widestValueText: String
+    var helpText: String? = nil
 
     private var ratio: CGFloat {
         guard maxValue > 0 else {
@@ -692,6 +693,8 @@ struct PetAttributeRow: View {
                     .contentTransition(.numericText())
             }
         }
+        .contentShape(Rectangle())
+        .floatingTooltip(helpText ?? "", enabled: !(helpText ?? "").isEmpty, placement: .right)
     }
 }
 

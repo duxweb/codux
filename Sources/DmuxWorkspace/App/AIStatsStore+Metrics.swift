@@ -95,8 +95,14 @@ extension AIStatsStore {
             return h >= 22 || h < 6
         }.count
         let nightRatio   = Double(nightCount) / Double(sessionCount)
-        let maxSecs      = sessions.map { $0.activeDurationSeconds }.max() ?? 0
-        let avgSecs      = totalSecs / sessions.count
+        let sustainedSessionSeconds = sessions.map { session -> Int in
+            let activeSeconds = max(0, session.activeDurationSeconds)
+            let wallClockSeconds = max(0, Int(session.lastSeenAt.timeIntervalSince(session.firstSeenAt).rounded()))
+            return max(activeSeconds, wallClockSeconds)
+        }
+        let maxSecs      = sustainedSessionSeconds.max() ?? 0
+        let avgSecs      = sustainedSessionSeconds.reduce(0, +) / sessions.count
+        let totalSustainedSecs = sustainedSessionSeconds.reduce(0, +)
         let multiTurnSessions = sessions.filter { $0.requestCount >= 4 }
         let multiTurnRatio    = Double(multiTurnSessions.count) / Double(sessionCount)
 
@@ -146,7 +152,8 @@ extension AIStatsStore {
         let staminaScore =
             logPts(Double(maxSecs),  divisor: 1_400, weight: 58, cap: 88) +
             logPts(Double(avgSecs),  divisor: 900,   weight: 52, cap: 72) +
-            logPts(Double(totalSecs),divisor: 28_800, weight: 18, cap: 28) +
+            logPts(Double(totalSustainedSecs), divisor: 28_800, weight: 18, cap: 28) +
+            logPts(Double(totalRequests), divisor: 18, weight: 14, cap: 20) +
             shared * 0.5
 
         let empathyScore =

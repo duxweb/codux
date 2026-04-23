@@ -6,7 +6,7 @@ import Observation
 @Observable
 final class PetStore {
     private static let stateVersion = 7
-    private static let statsModelVersion = 2
+    private static let statsModelVersion = 3
     private static let statsRefreshInterval: TimeInterval = 3600
 
     struct Storage: Sendable {
@@ -209,7 +209,8 @@ final class PetStore {
             statsUpdatedDay = now
             didChange = true
         } else if let lastUpdatedAt = statsUpdatedDay,
-                  now.timeIntervalSince(lastUpdatedAt) >= Self.statsRefreshInterval {
+                  now.timeIntervalSince(lastUpdatedAt) >= Self.statsRefreshInterval,
+                  currentStats != computedStats {
             currentStats = currentStats.applyingDamping(toward: computedStats)
             statsUpdatedDay = now
             didChange = true
@@ -227,7 +228,7 @@ final class PetStore {
         }
     }
 
-    func debugForceExperienceTokens(_ experienceTokens: Int, currentAllTimeTokens: Int, now: Date = .init()) {
+    func debugForceExperienceTokens(_ experienceTokens: Int, now: Date = .init()) {
         guard isClaimed else {
             return
         }
@@ -245,7 +246,7 @@ final class PetStore {
         save()
     }
 
-    func debugCompleteHatch(currentAllTimeTokens: Int, now: Date = .init()) {
+    func debugCompleteHatch(now: Date = .init()) {
         guard isClaimed else {
             return
         }
@@ -259,7 +260,7 @@ final class PetStore {
         save()
     }
 
-    func debugSwitchSpecies(_ nextSpecies: PetSpecies, currentAllTimeTokens: Int, now: Date = .init()) {
+    func debugSwitchSpecies(_ nextSpecies: PetSpecies, now: Date = .init()) {
         if !isClaimed {
             claimedAt = now
             currentHatchTokens = 0

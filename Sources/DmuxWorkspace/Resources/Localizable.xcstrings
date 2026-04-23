@@ -32892,6 +32892,121 @@
         }
       }
     },
+    "pet.attribute.empathy.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reflects patient repair work, iterative debugging, and careful refinement."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近是否更偏向耐心修补、反复调试和细致打磨。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近是否更偏向耐心修補、反覆除錯和細緻打磨。"
+          }
+        }
+      }
+    },
+    "pet.attribute.chaos.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reflects fast, jumpy, high-tempo sessions with frequent bursts."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近是否更偏向短促、高频、节奏快的使用方式。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近是否更偏向短促、高頻、節奏快的使用方式。"
+          }
+        }
+      }
+    },
+    "pet.attribute.night.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reflects how much of your recent activity leans into late-night hours."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近的活跃时间有多少更偏向深夜时段。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近的活躍時間有多少更偏向深夜時段。"
+          }
+        }
+      }
+    },
+    "pet.attribute.stamina.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reflects steadier sessions that hold focus across more sustained back-and-forth."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近是否更偏向持续、稳一点、来回多轮的会话。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近是否更偏向持續、穩一點、來回多輪的會話。"
+          }
+        }
+      }
+    },
+    "pet.attribute.wisdom.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reflects deeper, denser sessions with more substantial exchanges."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近是否更偏向深度更高、内容更密的对话。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反映你最近是否更偏向深度更高、內容更密的對話。"
+          }
+        }
+      }
+    },
     "pet.persona.observer": {
       "extractionState": "manual",
       "localizations": {
@@ -36194,6 +36309,75 @@
           "stringUnit": {
             "state": "translated",
             "value": "通用"
+          }
+        }
+      }
+    },
+    "settings.ai_statistics_mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Statistics Mode"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 统计显示方式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 統計顯示方式"
+          }
+        }
+      }
+    },
+    "settings.ai_statistics_mode.including_cache": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Include Cache"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "包含缓存"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "包含快取"
+          }
+        }
+      }
+    },
+    "settings.ai_statistics_mode.normalized": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exclude Cache"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不含缓存"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不含快取"
           }
         }
       }

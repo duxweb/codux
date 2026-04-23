@@ -104,25 +104,36 @@ private final class FloatingTooltipPanel: NSPanel {
 
 private struct FloatingTooltipBubbleView: View {
     let text: String
+    private static let maxWidth: CGFloat = 240
 
     static func size(for text: String) -> NSSize {
         let font = NSFont.systemFont(ofSize: 12, weight: .medium)
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
-        let width = ceil((text as NSString).size(withAttributes: attributes).width) + 20
-        return NSSize(width: width, height: 30)
+        let constraint = NSSize(width: maxWidth - 20, height: .greatestFiniteMagnitude)
+        let rect = (text as NSString).boundingRect(
+            with: constraint,
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes
+        )
+        let width = min(maxWidth, ceil(rect.width) + 20)
+        let height = ceil(rect.height) + 16
+        return NSSize(width: width, height: height)
     }
 
     var body: some View {
         Text(text)
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(AppTheme.textPrimary)
+            .multilineTextAlignment(.leading)
+            .lineLimit(nil)
+            .frame(maxWidth: Self.maxWidth - 20, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(AppTheme.panel.opacity(0.98))
             )
-            .fixedSize()
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -152,33 +152,6 @@ struct PetProgressInfo {
         }
     }
 
-    // MARK: - Daily pace limiter
-
-    /// Number of calendar days from `hatchDate` to `now` (0-based: hatch day itself = 0).
-    static func dayIndex(from hatchDate: Date, to now: Date = Date()) -> Int {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: hatchDate)
-        let today = calendar.startOfDay(for: now)
-        return max(0, calendar.dateComponents([.day], from: start, to: today).day ?? 0)
-    }
-
-    /// Expected level on day `dayIndex` based on a sustained daily XP target.
-    static func expectedLevel(forDayIndex dayIndex: Int) -> Int {
-        let expectedXP = max(0, dayIndex) * dailyTargetXP
-        return levelFromXP(expectedXP)
-    }
-
-    /// XP rate multiplier for today.
-    /// Returns 1.0 if the pet is at or below the daily pace.
-    /// Rate curve: on-pace = 100%, +1 level ahead = 50%, each further level
-    /// -10 pp (min 5%). This gives an immediate meaningful brake the moment
-    /// the pet outpaces the daily target pace, without a harsh cliff.
-    static func dailyXPRate(currentLevel: Int, dayIndex: Int) -> Double {
-        let expected = expectedLevel(forDayIndex: dayIndex)
-        let levelsAhead = max(0, currentLevel - expected)
-        guard levelsAhead > 0 else { return 1.0 }
-        return max(0.05, 0.50 - Double(levelsAhead - 1) * 0.10)
-    }
 }
 
 enum PetEvoPath: String, Codable {

@@ -266,6 +266,51 @@ final class PetFeatureTests: XCTestCase {
         XCTAssertGreaterThan(stats.wisdom, stats.stamina)
     }
 
+    func testStaminaBackfillsFromSessionSpanAndTurnCountWhenActiveDurationIsSparse() {
+        let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let sustainedSession = AISessionSummary(
+            sessionID: UUID(),
+            externalSessionID: nil,
+            projectID: UUID(),
+            projectName: "codux",
+            sessionTitle: "sustained",
+            firstSeenAt: baseDate,
+            lastSeenAt: baseDate.addingTimeInterval(360),
+            lastTool: "codex",
+            lastModel: "gpt-5.4-mini",
+            requestCount: 4,
+            totalInputTokens: 8_000,
+            totalOutputTokens: 22_000,
+            totalTokens: 30_000,
+            maxContextUsagePercent: nil,
+            activeDurationSeconds: 2,
+            todayTokens: 30_000
+        )
+        let burstSession = AISessionSummary(
+            sessionID: UUID(),
+            externalSessionID: nil,
+            projectID: UUID(),
+            projectName: "codux",
+            sessionTitle: "burst",
+            firstSeenAt: baseDate,
+            lastSeenAt: baseDate.addingTimeInterval(3),
+            lastTool: "codex",
+            lastModel: "gpt-5.4-mini",
+            requestCount: 1,
+            totalInputTokens: 8_000,
+            totalOutputTokens: 22_000,
+            totalTokens: 30_000,
+            maxContextUsagePercent: nil,
+            activeDurationSeconds: 2,
+            todayTokens: 30_000
+        )
+
+        XCTAssertGreaterThan(
+            AIStatsStore.computePetStats(from: [sustainedSession]).stamina,
+            AIStatsStore.computePetStats(from: [burstSession]).stamina
+        )
+    }
+
     func testPetStatsComputedFromClaimedSessionsOnly() {
         let claimDate = Date(timeIntervalSince1970: 1_700_000_000)
         let historicalSession = AISessionSummary(
@@ -321,25 +366,25 @@ final class PetStoreLifecycleTests: XCTestCase {
     func testClaimUsesBaselineAndOptionalCustomName() {
         let store = PetStore(storage: .inMemory)
 
-        store.claim(totalTokens: 123, option: .voidcat, customName: "  奶盖  ")
+        store.claim(option: .voidcat, customName: "  奶盖  ")
 
         XCTAssertTrue(store.isClaimed)
         XCTAssertEqual(store.species, .voidcat)
         XCTAssertEqual(store.customName, "奶盖")
-        XCTAssertEqual(store.claimedTokens(currentAllTimeTokens: 200), 77)
         XCTAssertEqual(store.currentExperienceTokens, 0)
         XCTAssertEqual(store.currentHatchTokens, 0)
     }
 
     func testRefreshDerivedStateLocksEvolutionPathOnceUnlocked() {
         let store = PetStore(storage: .inMemory)
-        store.claim(totalTokens: 0, option: .rusthound, customName: "")
+        store.claim(option: .rusthound, customName: "")
 
         let unlockXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.evoUnlockLevel)
         let targetStats = PetStats(wisdom: 5, chaos: 90, night: 10, stamina: 20, empathy: 3)
-        store.debugCompleteHatch(currentAllTimeTokens: PetProgressInfo.hatchThreshold)
+        store.debugCompleteHatch()
+        store.debugForceExperienceTokens(unlockXP)
         store.refreshDerivedState(
-            currentAllTimeTokens: PetProgressInfo.hatchThreshold + unlockXP,
+            realtimeSessionTotals: [:],
             computedStats: targetStats,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -348,7 +393,7 @@ final class PetStoreLifecycleTests: XCTestCase {
 
         let oppositeStats = PetStats(wisdom: 5, chaos: 10, night: 10, stamina: 95, empathy: 3)
         store.refreshDerivedState(
-            currentAllTimeTokens: PetProgressInfo.hatchThreshold + unlockXP + 10_000_000,
+            realtimeSessionTotals: [:],
             computedStats: oppositeStats,
             now: Date(timeIntervalSince1970: 1_700_086_400)
         )
@@ -359,11 +404,11 @@ final class PetStoreLifecycleTests: XCTestCase {
     func testRefreshDerivedStateAppliesInitialTraitDataOnSameDay() {
         let store = PetStore(storage: .inMemory)
         let claimTime = Date(timeIntervalSince1970: 1_700_000_000)
-        store.claim(totalTokens: 0, option: .voidcat, customName: "")
+        store.claim(option: .voidcat, customName: "")
 
         let traits = PetStats(wisdom: 88, chaos: 12, night: 44, stamina: 10, empathy: 9)
         store.refreshDerivedState(
-            currentAllTimeTokens: PetProgressInfo.hatchThreshold + 100,
+            realtimeSessionTotals: [:],
             computedStats: traits,
             now: claimTime
         )
@@ -374,7 +419,7 @@ final class PetStoreLifecycleTests: XCTestCase {
 
     func testClaimStartsTraitsAtZeroBeforeAnyAccumulation() {
         let store = PetStore(storage: .inMemory)
-        store.claim(totalTokens: 0, option: .voidcat, customName: "")
+        store.claim(option: .voidcat, customName: "")
 
         XCTAssertEqual(store.currentStats, .neutral)
     }
@@ -382,11 +427,11 @@ final class PetStoreLifecycleTests: XCTestCase {
     func testRefreshDerivedStateUpdatesTraitsHourlyAfterClaim() {
         let store = PetStore(storage: .inMemory)
         let claimTime = Date(timeIntervalSince1970: 1_700_000_000)
-        store.claim(totalTokens: 0, option: .voidcat, customName: "")
+        store.claim(option: .voidcat, customName: "")
 
         let initial = PetStats(wisdom: 80, chaos: 10, night: 20, stamina: 5, empathy: 3)
         store.refreshDerivedState(
-            currentAllTimeTokens: 10,
+            realtimeSessionTotals: [:],
             computedStats: initial,
             now: claimTime.addingTimeInterval(60)
         )
@@ -394,14 +439,14 @@ final class PetStoreLifecycleTests: XCTestCase {
 
         let next = PetStats(wisdom: 20, chaos: 90, night: 10, stamina: 15, empathy: 8)
         store.refreshDerivedState(
-            currentAllTimeTokens: 20,
+            realtimeSessionTotals: [:],
             computedStats: next,
             now: claimTime.addingTimeInterval(1800)
         )
         XCTAssertEqual(store.currentStats, initial)
 
         store.refreshDerivedState(
-            currentAllTimeTokens: 30,
+            realtimeSessionTotals: [:],
             computedStats: next,
             now: claimTime.addingTimeInterval(3660)
         )
@@ -419,13 +464,12 @@ final class PetStoreLifecycleTests: XCTestCase {
 
         do {
             let store = PetStore(storage: storage)
-            store.claim(totalTokens: 321, option: .rusthound, customName: "火花")
+            store.claim(option: .rusthound, customName: "火花")
 
             let reloaded = PetStore(storage: storage)
             XCTAssertTrue(reloaded.isClaimed)
             XCTAssertEqual(reloaded.species, .rusthound)
             XCTAssertEqual(reloaded.customName, "火花")
-            XCTAssertEqual(reloaded.claimedTokens(currentAllTimeTokens: 500), 179)
 
             let raw = try Data(contentsOf: fileURL)
             let text = String(data: raw, encoding: .utf8) ?? ""
@@ -449,13 +493,14 @@ final class PetStoreLifecycleTests: XCTestCase {
 
     func testInheritArchivesCurrentPetAndResetsClaimState() {
         let store = PetStore(storage: .inMemory)
-        store.claim(totalTokens: 0, option: .goose, customName: "阿呆")
+        store.claim(option: .goose, customName: "阿呆")
 
         let maxXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.maxLevel)
         let stats = PetStats(wisdom: 8, chaos: 25, night: 12, stamina: 20, empathy: 80)
-        store.debugCompleteHatch(currentAllTimeTokens: PetProgressInfo.hatchThreshold)
+        store.debugCompleteHatch()
+        store.debugForceExperienceTokens(maxXP)
         store.refreshDerivedState(
-            currentAllTimeTokens: PetProgressInfo.hatchThreshold + maxXP,
+            realtimeSessionTotals: [:],
             computedStats: stats,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -476,21 +521,20 @@ final class PetStoreLifecycleTests: XCTestCase {
 
     func testDebugForceExperienceTokensMovesPetToRequestedXP() {
         let store = PetStore(storage: .inMemory)
-        store.claim(totalTokens: 500_000_000, option: .voidcat, customName: "")
+        store.claim(option: .voidcat, customName: "")
 
-        store.debugForceExperienceTokens(0, currentAllTimeTokens: 500_000_000)
+        store.debugForceExperienceTokens(0)
 
         XCTAssertEqual(store.currentHatchTokens, PetProgressInfo.hatchThreshold)
         XCTAssertEqual(store.currentExperienceTokens, 0)
-        XCTAssertEqual(store.experienceTokens(currentAllTimeTokens: 500_000_000), 0)
     }
 
     func testDebugSwitchSpeciesPreservesClaimAndResetsName() {
         let store = PetStore(storage: .inMemory)
-        store.claim(totalTokens: 500_000_000, option: .voidcat, customName: "旧名字")
-        store.debugForceExperienceTokens(PetProgressInfo.totalXPRequired(toReach: 70), currentAllTimeTokens: 500_000_000)
+        store.claim(option: .voidcat, customName: "旧名字")
+        store.debugForceExperienceTokens(PetProgressInfo.totalXPRequired(toReach: 70))
 
-        store.debugSwitchSpecies(.chaossprite, currentAllTimeTokens: 500_000_000)
+        store.debugSwitchSpecies(.chaossprite)
 
         XCTAssertTrue(store.isClaimed)
         XCTAssertEqual(store.species, .chaossprite)
@@ -501,10 +545,10 @@ final class PetStoreLifecycleTests: XCTestCase {
 
     func testHatchThresholdDoesNotCountTowardGrowthXP() {
         let store = PetStore(storage: .inMemory)
-        store.claim(totalTokens: 0, option: .voidcat, customName: "")
+        store.claim(option: .voidcat, customName: "")
 
         store.refreshDerivedState(
-            currentAllTimeTokens: PetProgressInfo.hatchThreshold,
+            realtimeSessionTotals: ["session": PetProgressInfo.hatchThreshold],
             computedStats: .neutral,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -517,26 +561,26 @@ final class PetStoreLifecycleTests: XCTestCase {
         )
     }
 
-    func testFirstHatchDiscardsOverflowXPAndStartsAtLevelOne() {
+    func testFirstHatchCarriesOverflowIntoGrowthXP() {
         let store = PetStore(storage: .inMemory)
-        store.claim(totalTokens: 0, option: .voidcat, customName: "")
+        store.claim(option: .voidcat, customName: "")
 
         let overflow = PetProgressInfo.xpForLevel(1) * 2
         store.refreshDerivedState(
-            currentAllTimeTokens: PetProgressInfo.hatchThreshold + overflow,
+            realtimeSessionTotals: ["session": PetProgressInfo.hatchThreshold + overflow],
             computedStats: .neutral,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
         XCTAssertEqual(store.currentHatchTokens, PetProgressInfo.hatchThreshold)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, overflow)
         XCTAssertEqual(
             PetProgressInfo(totalXP: store.currentExperienceTokens, hatchTokens: store.currentHatchTokens, evoPath: .pathA).level,
-            1
+            2
         )
 
         store.refreshDerivedState(
-            currentAllTimeTokens: PetProgressInfo.hatchThreshold + overflow + 123,
+            realtimeSessionTotals: ["session": PetProgressInfo.hatchThreshold + overflow + 123],
             computedStats: .neutral,
             now: Date(timeIntervalSince1970: 1_700_000_100)
         )

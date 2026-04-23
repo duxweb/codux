@@ -241,11 +241,51 @@ struct PetPopoverView: View {
                         Text(petL("pet.stats.title", "Traits"))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
-                        PetAttributeRow(emoji: "🧠", name: petL("pet.attribute.wisdom", "Wisdom"), value: petStore.currentStats.wisdom, maxValue: maxStatValue, color: info.stage.accentColor, widestValueText: widestStatText)
-                        PetAttributeRow(emoji: "🔥", name: petL("pet.attribute.chaos", "Chaos"), value: petStore.currentStats.chaos, maxValue: maxStatValue, color: Color(hex: 0xFF6030), widestValueText: widestStatText)
-                        PetAttributeRow(emoji: "🌙", name: petL("pet.attribute.night", "Night"), value: petStore.currentStats.night, maxValue: maxStatValue, color: Color(hex: 0x6060CC), widestValueText: widestStatText)
-                        PetAttributeRow(emoji: "💪", name: petL("pet.attribute.stamina", "Stamina"), value: petStore.currentStats.stamina, maxValue: maxStatValue, color: Color(hex: 0x20A060), widestValueText: widestStatText)
-                        PetAttributeRow(emoji: "🩹", name: petL("pet.attribute.empathy", "Empathy"), value: petStore.currentStats.empathy, maxValue: maxStatValue, color: Color(hex: 0xE060A0), widestValueText: widestStatText)
+                        PetAttributeRow(
+                            emoji: "🧠",
+                            name: petL("pet.attribute.wisdom", "Wisdom"),
+                            value: petStore.currentStats.wisdom,
+                            maxValue: maxStatValue,
+                            color: info.stage.accentColor,
+                            widestValueText: widestStatText,
+                            helpText: petL("pet.attribute.wisdom.help", "Reflects deeper, denser sessions with more substantial exchanges.")
+                        )
+                        PetAttributeRow(
+                            emoji: "🔥",
+                            name: petL("pet.attribute.chaos", "Chaos"),
+                            value: petStore.currentStats.chaos,
+                            maxValue: maxStatValue,
+                            color: Color(hex: 0xFF6030),
+                            widestValueText: widestStatText,
+                            helpText: petL("pet.attribute.chaos.help", "Reflects fast, jumpy, high-tempo sessions with frequent bursts.")
+                        )
+                        PetAttributeRow(
+                            emoji: "🌙",
+                            name: petL("pet.attribute.night", "Night"),
+                            value: petStore.currentStats.night,
+                            maxValue: maxStatValue,
+                            color: Color(hex: 0x6060CC),
+                            widestValueText: widestStatText,
+                            helpText: petL("pet.attribute.night.help", "Reflects how much of your recent activity leans into late-night hours.")
+                        )
+                        PetAttributeRow(
+                            emoji: "💪",
+                            name: petL("pet.attribute.stamina", "Stamina"),
+                            value: petStore.currentStats.stamina,
+                            maxValue: maxStatValue,
+                            color: Color(hex: 0x20A060),
+                            widestValueText: widestStatText,
+                            helpText: petL("pet.attribute.stamina.help", "Reflects steadier sessions that hold focus across more sustained back-and-forth.")
+                        )
+                        PetAttributeRow(
+                            emoji: "🩹",
+                            name: petL("pet.attribute.empathy", "Empathy"),
+                            value: petStore.currentStats.empathy,
+                            maxValue: maxStatValue,
+                            color: Color(hex: 0xE060A0),
+                            widestValueText: widestStatText,
+                            helpText: petL("pet.attribute.empathy.help", "Reflects patient repair work, iterative debugging, and careful refinement.")
+                        )
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
