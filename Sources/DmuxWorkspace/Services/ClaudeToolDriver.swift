@@ -14,8 +14,9 @@ struct ClaudeToolDriver: AIToolDriver {
         }
 
         var resolvedEvent = event
-        let fallbackTotalTokens = currentSession?.committedTotalTokens
-        resolvedEvent.model = resolvedEvent.model ?? currentSession?.model
+        let fallbackSession = matchingFallbackSession(for: event, currentSession: currentSession)
+        let fallbackTotalTokens = fallbackSession?.committedTotalTokens
+        resolvedEvent.model = resolvedEvent.model ?? fallbackSession?.model
         if resolvedEvent.kind == .turnCompleted {
             var metadata = resolvedEvent.metadata ?? AIHookEventMetadata()
             let wasInterrupted = metadata.wasInterrupted == true

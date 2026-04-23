@@ -15,8 +15,9 @@ struct CodexToolDriver: AIToolDriver {
         }
 
         var resolvedEvent = event
-        let fallbackTotalTokens = currentSession?.committedTotalTokens
-        resolvedEvent.model = resolvedEvent.model ?? currentSession?.model
+        let fallbackSession = matchingFallbackSession(for: event, currentSession: currentSession)
+        let fallbackTotalTokens = fallbackSession?.committedTotalTokens
+        resolvedEvent.model = resolvedEvent.model ?? fallbackSession?.model
 
         guard event.kind == .turnCompleted,
               let transcriptPath = event.metadata?.transcriptPath,

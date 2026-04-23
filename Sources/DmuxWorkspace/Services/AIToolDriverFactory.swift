@@ -64,6 +64,32 @@ extension AIToolDriver {
         return value
     }
 
+    func matchingFallbackSession(
+        for event: AIHookEvent,
+        currentSession: AISessionStore.TerminalSessionState?
+    ) -> AISessionStore.TerminalSessionState? {
+        guard let currentSession else {
+            return nil
+        }
+
+        let incomingTool = canonicalToolName(event.tool)
+        guard canonicalToolName(currentSession.tool) == incomingTool else {
+            return nil
+        }
+
+        let incomingSessionID = normalizedNonEmptyString(event.aiSessionID)
+        let currentSessionID = normalizedNonEmptyString(currentSession.aiSessionID)
+        if let incomingSessionID, currentSessionID != incomingSessionID {
+            return nil
+        }
+
+        if event.kind == .sessionStarted, incomingSessionID == nil {
+            return nil
+        }
+
+        return currentSession
+    }
+
     func resolveHookEvent(
         _ event: AIHookEvent,
         currentSession: AISessionStore.TerminalSessionState?

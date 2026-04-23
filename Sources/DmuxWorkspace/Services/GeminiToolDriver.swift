@@ -14,15 +14,16 @@ struct GeminiToolDriver: AIToolDriver {
         }
 
         var resolvedEvent = event
-        let fallbackTotalTokens = currentSession?.committedTotalTokens
-        resolvedEvent.model = resolvedEvent.model ?? currentSession?.model
+        let fallbackSession = matchingFallbackSession(for: event, currentSession: currentSession)
+        let fallbackTotalTokens = fallbackSession?.committedTotalTokens
+        resolvedEvent.model = resolvedEvent.model ?? fallbackSession?.model
 
         guard let projectPath = normalizedNonEmptyString(event.projectPath),
               let parsedState = parseGeminiSessionRuntimeState(
                   projectPath: projectPath,
-                  startedAt: currentSession?.startedAt ?? event.updatedAt,
-                  preferredSessionID: normalizedNonEmptyString(event.aiSessionID ?? currentSession?.aiSessionID),
-                  preferredSessionIsAuthoritative: normalizedNonEmptyString(event.aiSessionID ?? currentSession?.aiSessionID) != nil
+                  startedAt: fallbackSession?.startedAt ?? event.updatedAt,
+                  preferredSessionID: normalizedNonEmptyString(event.aiSessionID ?? fallbackSession?.aiSessionID),
+                  preferredSessionIsAuthoritative: normalizedNonEmptyString(event.aiSessionID ?? fallbackSession?.aiSessionID) != nil
               ) else {
             if resolvedEvent.totalTokens == nil {
                 resolvedEvent.totalTokens = fallbackTotalTokens
