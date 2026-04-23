@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-04-24
+
+### Changed
+
+- Updated the bundled Ghostty package to the latest AppKit input-fix revision so Codux inherits the upstream terminal input handling fixes without carrying local compatibility shims.
+- Reduced runtime log noise by suppressing repetitive activity-resolution, unchanged history-index, socket receive, and no-op hook ingress entries while keeping state transitions, failures, and actionable notification diagnostics visible.
+
+### Fixed
+
+- Fixed project AI activity state handling so left-sidebar loading and completed indicators now stay driven by real hook/runtime session state instead of being revived by tool-use hook noise, stale project activation recalculation, or unrelated realtime session probes.
+- Fixed Codex and Claude hook ingestion so queued turns, interrupted turns, and runtime backfill edge cases resolve more consistently across prompt submission, completion, and follow-up turn start boundaries.
+- Fixed managed hook installation cleanup so obsolete Codex and Claude tool-use hook registrations are stripped from app-managed config, preventing redundant hook traffic from older generated entries after runtime support refresh.
+
 ## [0.4.4] - 2026-04-23
 
 ### Fixed

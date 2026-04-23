@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-04-24
+
+### Changed
+
+- 更新内置的 Ghostty 依赖到最新的 AppKit 输入修正版本，让 Codux 直接继承上游终端输入链路修复，不再继续依赖本地兼容性补丁。
+- 压缩运行时日志噪音，屏蔽重复的活动状态解析、未变化历史索引、socket 收包以及无变化 hook ingress 明细，只保留状态切换、失败和真正有排障价值的通知诊断日志。
+
+### Fixed
+
+- 修复项目级 AI 活动状态链路，左侧 loading 与 completed 标记现在只由真实的 hook / runtime 会话状态驱动，不会再被 tool-use hook 噪音、项目激活时的陈旧重算或无关的实时会话探测重新带起。
+- 修复 Codex 与 Claude 的 hook 事件收敛逻辑，让排队消息、中断后的会话以及 runtime 回填边界在 prompt 提交、完成态和后续新一轮开始之间保持更稳定一致。
+- 修复应用托管的 hook 配置清理逻辑，旧的 Codex / Claude tool-use hook 注册现在会从应用自身管理的配置中移除，避免 runtime support 刷新后旧生成项继续带来冗余 hook 流量。
+
 ## [0.4.4] - 2026-04-23
 
 ### Fixed
