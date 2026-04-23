@@ -175,20 +175,29 @@ struct AIRuntimeSourceLocator {
             return []
         }
 
-        return sessionDirectories
-            .filter { entry in
-                ((try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false)
-                    && entry.lastPathComponent.hasPrefix("ses_")
+        let candidateDirectories = sessionDirectories.filter { entry in
+            let isDirectory = (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+            return isDirectory && entry.lastPathComponent.hasPrefix("ses_")
+        }
+
+        var messageFiles: [URL] = []
+        messageFiles.reserveCapacity(candidateDirectories.count)
+
+        for directory in candidateDirectories {
+            guard let entries = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
             }
-            .flatMap { directory in
-                (try? FileManager.default.contentsOfDirectory(
-                    at: directory,
-                    includingPropertiesForKeys: [.contentModificationDateKey],
-                    options: [.skipsHiddenFiles]
-                )) ?? []
+
+            for entry in entries where entry.pathExtension == "json" {
+                messageFiles.append(entry)
             }
-            .filter { $0.pathExtension == "json" }
-            .sorted { $0.path < $1.path }
+        }
+
+        return messageFiles.sorted { $0.path < $1.path }
     }
 
     static func geminiProjectsURL(homeURL: URL? = nil) -> URL {
