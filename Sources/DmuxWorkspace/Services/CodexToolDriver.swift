@@ -47,8 +47,11 @@ struct CodexToolDriver: AIToolDriver {
         }
         var metadata = resolvedEvent.metadata ?? AIHookEventMetadata()
         metadata.wasInterrupted = parsedState.wasInterrupted
-        metadata.hasCompletedTurn = parsedState.hasCompletedTurn || parsedState.wasInterrupted == false
+        metadata.hasCompletedTurn = parsedState.hasCompletedTurn || (parsedState.responseState == .idle && parsedState.wasInterrupted == false)
         resolvedEvent.metadata = metadata
+        if parsedState.responseState == .responding {
+            resolvedEvent.kind = .promptSubmitted
+        }
         if let latestRuntimeUpdate = [parsedState.completedAt, parsedState.updatedAt].compactMap({ $0 }).max() {
             resolvedEvent.updatedAt = max(resolvedEvent.updatedAt, latestRuntimeUpdate)
         }

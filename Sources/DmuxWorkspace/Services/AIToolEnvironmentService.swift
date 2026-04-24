@@ -48,10 +48,30 @@ struct AIToolEnvironmentService {
         for (key, value) in configuredEnvironment() where environment[key]?.isEmpty ?? true {
             environment[key] = value
         }
+        environment["PATH"] = mergedExecutablePath(environment["PATH"])
         if includeGeminiPlaceholder, environment["GEMINI_API_KEY"]?.isEmpty ?? true {
             environment["GEMINI_API_KEY"] = "codux-placeholder-key"
         }
         return environment
+    }
+
+    private func mergedExecutablePath(_ currentPath: String?) -> String {
+        let bundledWrapperPath = WorkspacePaths.repositoryResourceURL("scripts/wrappers/bin").path
+        let defaultPath = currentPath.flatMap(normalizedNonEmptyString) ?? "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin"
+        let extraPaths = [
+            bundledWrapperPath,
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            homeDirectory.appendingPathComponent(".local/bin", isDirectory: true).path,
+            homeDirectory.appendingPathComponent(".bun/bin", isDirectory: true).path,
+            homeDirectory.appendingPathComponent(".cargo/bin", isDirectory: true).path,
+            homeDirectory.appendingPathComponent(".opencode/bin", isDirectory: true).path,
+        ]
+        var seen = Set<String>()
+        return (extraPaths + defaultPath.components(separatedBy: ":"))
+            .compactMap(normalizedNonEmptyString)
+            .filter { seen.insert($0).inserted }
+            .joined(separator: ":")
     }
 
     private func dotenvURLs() -> [URL] {

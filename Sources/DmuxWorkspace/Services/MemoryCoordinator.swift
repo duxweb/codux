@@ -124,7 +124,7 @@ actor MemoryCoordinator {
                     continue
                 }
 
-                let extractionProvider = providerSelectionService.preferredMemoryExtractionProvider(in: settings)
+                let extractionProvider = providerSelectionService.preferredMemoryExtractionProvider(in: settings, tool: task.tool)
                 guard let extractionProvider else {
                     try store.markExtractionTaskFailed(task.id, error: AIProviderError.unavailableProvider.localizedDescription)
                     debugLog.log("memory-extraction", "failed task=\(task.id.uuidString) reason=no-provider", level: .error)

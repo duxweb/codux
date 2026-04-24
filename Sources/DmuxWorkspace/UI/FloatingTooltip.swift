@@ -50,9 +50,6 @@ final class FloatingTooltipManager {
             placement: placement
         )
 
-        hostingController.rootView = FloatingTooltipBubbleView(text: text)
-        panel.setFrame(NSRect(origin: origin, size: contentSize), display: false)
-
         if parentWindow !== window {
             if let parentWindow {
                 parentWindow.removeChildWindow(panel)
@@ -60,6 +57,9 @@ final class FloatingTooltipManager {
             window.addChildWindow(panel, ordered: .above)
             self.parentWindow = window
         }
+
+        hostingController.rootView = FloatingTooltipBubbleView(text: text)
+        panel.setFrame(NSRect(origin: origin, size: contentSize), display: false)
 
         if !panel.isVisible {
             panel.orderFront(nil)

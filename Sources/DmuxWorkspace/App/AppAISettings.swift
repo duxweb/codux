@@ -126,11 +126,13 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
 }
 
 struct AppMemorySettings: Codable, Equatable, Sendable {
+    static let automaticExtractorProviderID = "automatic"
+
     var enabled = true
     var automaticInjectionEnabled = true
     var automaticExtractionEnabled = true
     var allowCrossProjectUserRecall = true
-    var defaultExtractorProviderID = AppAIProviderKind.claude.builtInProviderID
+    var defaultExtractorProviderID = Self.automaticExtractorProviderID
     var maxInjectedUserWorkingMemories = 8
     var maxInjectedProjectWorkingMemories = 12
     var maxActiveWorkingEntries = 50
@@ -158,7 +160,7 @@ struct AppMemorySettings: Codable, Equatable, Sendable {
         automaticInjectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .automaticInjectionEnabled) ?? true
         automaticExtractionEnabled = try container.decodeIfPresent(Bool.self, forKey: .automaticExtractionEnabled) ?? true
         allowCrossProjectUserRecall = try container.decodeIfPresent(Bool.self, forKey: .allowCrossProjectUserRecall) ?? true
-        defaultExtractorProviderID = try container.decodeIfPresent(String.self, forKey: .defaultExtractorProviderID) ?? AppAIProviderKind.claude.builtInProviderID
+        defaultExtractorProviderID = try container.decodeIfPresent(String.self, forKey: .defaultExtractorProviderID) ?? Self.automaticExtractorProviderID
         maxInjectedUserWorkingMemories = max(0, min(24, try container.decodeIfPresent(Int.self, forKey: .maxInjectedUserWorkingMemories) ?? 8))
         maxInjectedProjectWorkingMemories = max(0, min(32, try container.decodeIfPresent(Int.self, forKey: .maxInjectedProjectWorkingMemories) ?? 12))
         maxActiveWorkingEntries = max(5, min(200, try container.decodeIfPresent(Int.self, forKey: .maxActiveWorkingEntries) ?? 50))
@@ -204,8 +206,9 @@ struct AppAISettings: Codable, Equatable, Sendable {
             }
             return $0.priority < $1.priority
         }
-        if providers.contains(where: { $0.id == memory.defaultExtractorProviderID && $0.useForMemoryExtraction && $0.isEnabled }) == false {
-            memory.defaultExtractorProviderID = preferredExtractionProviderID() ?? AppAIProviderKind.claude.builtInProviderID
+        if memory.defaultExtractorProviderID != AppMemorySettings.automaticExtractorProviderID,
+           providers.contains(where: { $0.id == memory.defaultExtractorProviderID && $0.useForMemoryExtraction && $0.isEnabled }) == false {
+            memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
         }
     }
 
@@ -224,5 +227,40 @@ struct AppAISettings: Codable, Equatable, Sendable {
             }
             .first?
             .id
+    }
+
+    func preferredExtractionProvider(forTool tool: String?) -> AppAIProviderConfiguration? {
+        if let tool,
+           let kind = AppAIProviderKind(rawValue: Self.canonicalProviderToolName(tool)),
+           let provider = provider(withID: kind.builtInProviderID),
+           provider.isEnabled,
+           provider.useForMemoryExtraction {
+            return provider
+        }
+
+        return providers
+            .filter { $0.isEnabled && $0.useForMemoryExtraction }
+            .sorted { lhs, rhs in
+                if lhs.priority == rhs.priority {
+                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+                }
+                return lhs.priority < rhs.priority
+            }
+            .first
+    }
+
+    private static func canonicalProviderToolName(_ tool: String) -> String {
+        switch tool.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "claude", "claude-code":
+            return AppAIProviderKind.claude.rawValue
+        case "codex":
+            return AppAIProviderKind.codex.rawValue
+        case "gemini":
+            return AppAIProviderKind.gemini.rawValue
+        case "opencode":
+            return AppAIProviderKind.opencode.rawValue
+        default:
+            return tool.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
     }
 }

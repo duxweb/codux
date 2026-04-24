@@ -187,8 +187,9 @@ extension AppModel {
         }
         transform(&settings.ai.providers[index])
         settings.ai.migrateMissingDefaultProviders()
-        if settings.ai.providers.contains(where: { $0.id == settings.ai.memory.defaultExtractorProviderID && $0.isEnabled && $0.useForMemoryExtraction }) == false {
-            settings.ai.memory.defaultExtractorProviderID = settings.ai.preferredExtractionProviderID() ?? AppAIProviderKind.claude.builtInProviderID
+        if settings.ai.memory.defaultExtractorProviderID != AppMemorySettings.automaticExtractorProviderID,
+           settings.ai.providers.contains(where: { $0.id == settings.ai.memory.defaultExtractorProviderID && $0.isEnabled && $0.useForMemoryExtraction }) == false {
+            settings.ai.memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
         }
         appSettings = settings
         persist()

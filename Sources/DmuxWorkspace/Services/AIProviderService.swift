@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 struct AIProviderCompletionRequest: Sendable {
@@ -47,21 +48,17 @@ protocol AIProviderClient: Sendable {
 }
 
 struct AIProviderSelectionService: Sendable {
-    func preferredMemoryExtractionProvider(in settings: AppAISettings) -> AppAIProviderConfiguration? {
+    func preferredMemoryExtractionProvider(in settings: AppAISettings, tool: String?) -> AppAIProviderConfiguration? {
+        if settings.memory.defaultExtractorProviderID == AppMemorySettings.automaticExtractorProviderID {
+            return settings.preferredExtractionProvider(forTool: tool)
+        }
+
         if let selected = settings.provider(withID: settings.memory.defaultExtractorProviderID),
            selected.isEnabled,
            selected.useForMemoryExtraction {
             return selected
         }
-        return settings.providers
-            .filter { $0.isEnabled && $0.useForMemoryExtraction }
-            .sorted { lhs, rhs in
-                if lhs.priority == rhs.priority {
-                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
-                }
-                return lhs.priority < rhs.priority
-            }
-            .first
+        return settings.preferredExtractionProvider(forTool: tool)
     }
 }
 
@@ -205,8 +202,7 @@ private struct HeadlessToolProviderClient: AIProviderClient {
             }
             try process.run()
             if let stdin = invocation.stdin {
-                stdinPipe.fileHandleForWriting.write(Data(stdin.utf8))
-                try? stdinPipe.fileHandleForWriting.close()
+                try Self.writeStdin(stdin, to: stdinPipe, binaryName: binaryName)
             }
             let stdoutHandle = stdoutPipe.fileHandleForReading
             let stderrHandle = stderrPipe.fileHandleForReading
@@ -239,7 +235,14 @@ private struct HeadlessToolProviderClient: AIProviderClient {
                 throw AIProviderError.processFailure("\(binaryName) timed out after \(Int(Self.timeoutSeconds)) seconds.\(suffix)")
             }
             guard process.terminationStatus == 0 else {
-                throw AIProviderError.processFailure(stderrPreview.isEmpty ? "\(binaryName) exited with code \(process.terminationStatus). stdout=\(stdoutPreview)" : stderrPreview)
+                throw AIProviderError.processFailure(
+                    processFailureMessage(
+                        binaryName: binaryName,
+                        terminationStatus: process.terminationStatus,
+                        stderrPreview: stderrPreview,
+                        stdoutPreview: stdoutPreview
+                    )
+                )
             }
 
             let outputData: Data
@@ -267,6 +270,68 @@ private struct HeadlessToolProviderClient: AIProviderClient {
             return output
         }
         return "\(output.prefix(600))..."
+    }
+
+    private func processFailureMessage(
+        binaryName: String,
+        terminationStatus: Int32,
+        stderrPreview: String,
+        stdoutPreview: String
+    ) -> String {
+        if stderrPreview.contains("env: \(binaryName): No such file or directory") {
+            return "\(displayName(for: binaryName)) CLI was not found in the application environment PATH."
+        }
+        if stderrPreview.contains("No such file or directory") && stderrPreview.contains(binaryName) {
+            return "\(displayName(for: binaryName)) CLI was not found in the application environment PATH."
+        }
+        if stderrPreview.isEmpty {
+            return "\(displayName(for: binaryName)) exited with code \(terminationStatus). stdout=\(stdoutPreview)"
+        }
+        return stderrPreview
+    }
+
+    private func displayName(for binaryName: String) -> String {
+        switch binaryName {
+        case "claude":
+            return "Claude"
+        case "codex":
+            return "Codex"
+        case "gemini":
+            return "Gemini"
+        case "opencode":
+            return "OpenCode"
+        default:
+            return binaryName
+        }
+    }
+
+    private static func writeStdin(_ stdin: String, to pipe: Pipe, binaryName: String) throws {
+        let data = Data(stdin.utf8)
+        let fileDescriptor = pipe.fileHandleForWriting.fileDescriptor
+        defer {
+            try? pipe.fileHandleForWriting.close()
+        }
+
+        try data.withUnsafeBytes { buffer in
+            guard let baseAddress = buffer.baseAddress else {
+                return
+            }
+            var offset = 0
+            while offset < data.count {
+                let written = Darwin.write(fileDescriptor, baseAddress.advanced(by: offset), data.count - offset)
+                if written > 0 {
+                    offset += written
+                    continue
+                }
+                if written == 0 || errno == EPIPE {
+                    throw AIProviderError.processFailure("\(binaryName) closed stdin before reading input.")
+                }
+                if errno == EINTR {
+                    continue
+                }
+                throw AIProviderError.processFailure("Failed to write stdin to \(binaryName): \(String(cString: strerror(errno))).")
+            }
+        }
     }
 }
 

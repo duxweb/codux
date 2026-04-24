@@ -216,10 +216,15 @@ struct AISettingsPane: View {
                             set: { model.updateMemoryDefaultExtractorProviderID($0) }
                         )
                     ) {
+                        Text(String(localized: "settings.ai.memory.extraction_provider.automatic", defaultValue: "Automatic", bundle: .module))
+                            .tag(AppMemorySettings.automaticExtractorProviderID)
                         ForEach(model.appSettings.ai.providers.filter { $0.isEnabled && $0.useForMemoryExtraction }) { provider in
                             Text(provider.displayName).tag(provider.id)
                         }
                     }
+                    Text(String(localized: "settings.ai.memory.extraction_provider.automatic_help", defaultValue: "Automatic uses the current terminal tool first, then falls back to provider priority.", bundle: .module))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
 
                     Picker(
                         String(localized: "settings.ai.memory.user_working_recall", defaultValue: "User Working Recall", bundle: .module),

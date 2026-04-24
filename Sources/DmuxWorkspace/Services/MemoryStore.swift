@@ -621,6 +621,28 @@ struct MemoryStore: Sendable {
                 sql: "SELECT COUNT(*) FROM memory_extraction_queue WHERE status = 'running';",
                 bindings: []
             ) ?? 0
+            let latestTerminalStatus = try fetchScalarText(
+                db: db,
+                sql: """
+                SELECT status
+                FROM memory_extraction_queue
+                WHERE status IN ('done', 'failed')
+                ORDER BY enqueued_at DESC
+                LIMIT 1;
+                """,
+                bindings: []
+            )
+            let latestTerminalError = try fetchScalarText(
+                db: db,
+                sql: """
+                SELECT error
+                FROM memory_extraction_queue
+                WHERE status IN ('done', 'failed')
+                ORDER BY enqueued_at DESC
+                LIMIT 1;
+                """,
+                bindings: []
+            )
             let status: MemoryExtractionStatus
             let lastError: String?
             if runningCount > 0 {
@@ -629,6 +651,9 @@ struct MemoryStore: Sendable {
             } else if pendingCount > 0 {
                 status = .queued
                 lastError = nil
+            } else if latestTerminalStatus == "failed" {
+                status = .failed
+                lastError = normalizedNonEmptyString(latestTerminalError) ?? "Memory extraction failed."
             } else {
                 status = .idle
                 lastError = nil

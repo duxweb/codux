@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-04-24
+
+### Added
+
+- Added an Automatic memory extraction provider mode that uses the current terminal tool first, then falls back to provider priority.
+
+### Fixed
+
+- Fixed release-build floating tooltips so title-bar hover labels stay anchored to their buttons instead of rendering lower in the window.
+- Fixed AI memory extraction in release builds by giving background provider workers the same CLI search paths used by managed terminals.
+- Fixed memory extraction failures so the title-bar memory indicator stays red and shows the latest concrete failure reason instead of falling back to idle.
+- Fixed a crash when Codex exits before reading memory-extraction stdin by converting the broken pipe into a recoverable extraction failure.
+- Fixed Codex interrupted-turn activity handling so a stale stop hook no longer clears the left-sidebar loading indicator while a follow-up response is already running.
+- Clarified missing CLI errors so memory extraction reports that the Claude/Codex/Gemini/OpenCode CLI is missing from the application PATH instead of surfacing raw `/usr/bin/env` output.
+
 ## [0.5.0] - 2026-04-24
 
 ### Added
