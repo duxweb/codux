@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-04-24
+
+### 修复
+
+- 将浮动 tooltip 改为基于无边框 AppKit panel 并锚定到当前悬停控件，修复正式版 hover 位置错乱、SwiftUI overlay 裁剪以及系统 popover 外壳样式问题。
+
 ## [0.5.7] - 2026-04-24
 
 ### 修复

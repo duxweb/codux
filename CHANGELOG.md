@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-04-24
+
+### Fixed
+
+- Rebuilt floating tooltips on a borderless AppKit panel anchored to each hovered control, keeping release-build hover labels positioned correctly without SwiftUI overlay clipping or system popover chrome.
+
 ## [0.5.7] - 2026-04-24
 
 ### Fixed

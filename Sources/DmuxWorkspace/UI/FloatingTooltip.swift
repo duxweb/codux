@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum FloatingTooltipPlacement {
@@ -15,8 +16,7 @@ private struct FloatingTooltipBubbleView: View {
             .foregroundStyle(AppTheme.textPrimary)
             .multilineTextAlignment(.leading)
             .lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(width: Self.maxWidth - 20, alignment: .leading)
+            .frame(maxWidth: Self.maxWidth - 20, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
@@ -29,50 +29,159 @@ private struct FloatingTooltipBubbleView: View {
     }
 }
 
-struct FloatingTooltipModifier: ViewModifier {
+private struct FloatingTooltipAnchorReader: NSViewRepresentable {
+    @Binding var anchorView: NSView?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            anchorView = view
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            anchorView = nsView
+        }
+    }
+}
+
+@MainActor
+private final class FloatingTooltipPresenter {
+    private var panel: NSPanel?
+    private var hostingController: NSHostingController<AnyView>?
+    private var showWorkItem: DispatchWorkItem?
+
+    func scheduleShow(text: String, placement: FloatingTooltipPlacement, anchorView: NSView?) {
+        showWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                self?.show(text: text, placement: placement, anchorView: anchorView)
+            }
+        }
+        showWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
+    }
+
+    func show(text: String, placement: FloatingTooltipPlacement, anchorView: NSView?) {
+        guard let anchorView,
+              let anchorWindow = anchorView.window,
+              !text.isEmpty else {
+            hide()
+            return
+        }
+
+        let content = AnyView(
+            FloatingTooltipBubbleView(text: text)
+                .padding(4)
+                .background(Color.clear)
+        )
+        let hostingController = self.hostingController ?? NSHostingController(rootView: content)
+        hostingController.rootView = content
+        hostingController.view.frame = NSRect(origin: .zero, size: CGSize(width: 260, height: 80))
+        hostingController.view.layoutSubtreeIfNeeded()
+        let fittingSize = hostingController.view.fittingSize
+        let contentSize = CGSize(width: max(1, fittingSize.width), height: max(1, fittingSize.height))
+        hostingController.view.frame = NSRect(origin: .zero, size: contentSize)
+
+        let panel = self.panel ?? makePanel()
+        hostingController.view.wantsLayer = true
+        hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
+        panel.contentView = hostingController.view
+        panel.contentView?.wantsLayer = true
+        panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
+        panel.setContentSize(contentSize)
+        self.hostingController = hostingController
+        self.panel = panel
+
+        let anchorRectInWindow = anchorView.convert(anchorView.bounds, to: nil)
+        let anchorRect = anchorWindow.convertToScreen(anchorRectInWindow)
+        panel.setFrameOrigin(origin(for: placement, anchorRect: anchorRect, tooltipSize: contentSize, screen: anchorWindow.screen))
+        panel.orderFront(nil)
+    }
+
+    func hide() {
+        showWorkItem?.cancel()
+        showWorkItem = nil
+        panel?.orderOut(nil)
+    }
+
+    private func makePanel() -> NSPanel {
+        let panel = NSPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.hidesOnDeactivate = false
+        panel.level = .floating
+        panel.collectionBehavior = [.transient, .ignoresCycle]
+        return panel
+    }
+
+    private func origin(
+        for placement: FloatingTooltipPlacement,
+        anchorRect: CGRect,
+        tooltipSize: CGSize,
+        screen: NSScreen?
+    ) -> CGPoint {
+        let gap: CGFloat = 8
+        var point: CGPoint
+        switch placement {
+        case .below:
+            point = CGPoint(x: anchorRect.midX - tooltipSize.width / 2, y: anchorRect.minY - tooltipSize.height - gap)
+        case .right:
+            point = CGPoint(x: anchorRect.maxX + gap, y: anchorRect.midY - tooltipSize.height / 2)
+        }
+
+        guard let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame else {
+            return point
+        }
+        let padding: CGFloat = 6
+        point.x = min(max(point.x, visibleFrame.minX + padding), visibleFrame.maxX - tooltipSize.width - padding)
+        point.y = min(max(point.y, visibleFrame.minY + padding), visibleFrame.maxY - tooltipSize.height - padding)
+        return point
+    }
+}
+
+private struct FloatingTooltipModifier: ViewModifier {
     let text: String
     let enabled: Bool
     let placement: FloatingTooltipPlacement
 
+    @State private var anchorView: NSView?
     @State private var isHovered = false
+    @State private var presenter = FloatingTooltipPresenter()
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: overlayAlignment) {
-                if enabled, isHovered, !text.isEmpty {
-                    FloatingTooltipBubbleView(text: text)
-                        .offset(tooltipOffset)
-                        .zIndex(1_000)
+            .overlay {
+                GeometryReader { proxy in
+                    FloatingTooltipAnchorReader(anchorView: $anchorView)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .allowsHitTesting(false)
                 }
             }
             .onHover { hovering in
-                isHovered = hovering && enabled
+                isHovered = hovering
+                updateTooltip()
             }
-            .onChange(of: enabled) { _, newValue in
-                if !newValue {
-                    isHovered = false
-                }
-            }
-            .onDisappear {
-                isHovered = false
-            }
+            .onChange(of: enabled) { _, _ in updateTooltip() }
+            .onChange(of: text) { _, _ in updateTooltip() }
+            .onDisappear { presenter.hide() }
     }
 
-    private var overlayAlignment: Alignment {
-        switch placement {
-        case .below:
-            return .bottom
-        case .right:
-            return .trailing
-        }
-    }
-
-    private var tooltipOffset: CGSize {
-        switch placement {
-        case .below:
-            return CGSize(width: 0, height: 28)
-        case .right:
-            return CGSize(width: 18, height: 0)
+    private func updateTooltip() {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if enabled, isHovered, !trimmedText.isEmpty {
+            presenter.scheduleShow(text: trimmedText, placement: placement, anchorView: anchorView)
+        } else {
+            presenter.hide()
         }
     }
 }
