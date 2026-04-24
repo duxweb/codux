@@ -14,6 +14,7 @@ Use this skill before making non-trivial dmux changes that cross subsystem bound
 - multi-project workspace management
 - split terminal sessions
 - AI runtime/live usage aggregation
+- SQLite-backed AI memory extraction and launch-context injection
 - Git panel and remote actions
 - app-level persistence and settings
 - a pet UI layer bound to AI usage/activity
@@ -41,6 +42,10 @@ Use this skill before making non-trivial dmux changes that cross subsystem bound
   AI panel state, timers, cached/indexed snapshots, live overlay merging.
 - `AISessionStore`
   In-memory hook-driven live runtime/session binding model for AI tools.
+- `MemoryCoordinator`
+  Queues and runs memory extraction from completed AI sessions.
+- `MemoryStore`
+  SQLite-backed user, project, summary, and extraction-task memory storage.
 - `GitStore`
   Git panel state and refresh/remote action orchestration.
 - `PetStore`
@@ -66,7 +71,9 @@ Use this skill before making non-trivial dmux changes that cross subsystem bound
 - `AppSnapshot` in `AppModels.swift`
   Persisted top-level app snapshot for projects, workspaces, selected project, app settings.
 - `PetStore.swift`
-  Separately persists pet state to `pet-state.json` and mirrors it into Keychain (`dmux.pet/state`).
+  Separately persists encrypted pet state to `pet-state.dat` under the current Codux application support folder, with legacy dmux namespace migration.
+- `MemoryStore.swift`
+  Stores AI memory in `memory.sqlite3` under the current Codux application support folder.
 
 ## Terminal/workspace model
 
@@ -82,6 +89,7 @@ Use this skill before making non-trivial dmux changes that cross subsystem bound
 ## AI architecture
 
 Read `skills/dmux-ai-runtime-architecture/SKILL.md` for detailed runtime rules.
+Read `skills/dmux-ai-memory/SKILL.md` before changing memory extraction, memory storage, provider selection, or launch prompt injection.
 
 Quick map:
 
@@ -98,6 +106,12 @@ Quick map:
   Tool-specific parsing/probe layers.
 - `AIUsageService.swift` / `AIUsageStore.swift`
   Indexed usage snapshots and breakdowns.
+- `MemoryCoordinator.swift`
+  Session snapshot filtering, extraction queue orchestration, and provider invocation.
+- `MemoryContextService.swift`
+  Runtime launch artifacts that inject global prompt and memory context into supported tools.
+- `MemoryStore.swift`
+  SQLite persistence for memories, summaries, FTS search, and extraction tasks.
 - `AIStatsPanelView.swift`
   AI panel UI.
 
@@ -115,13 +129,14 @@ Quick map:
 - `PetPanelView.swift`
   Current pet UI, claim flow, sprite view, popover, titlebar bubble behavior.
 - `PetStore.swift`
-  Claimed species, custom name, XP baseline, persisted/damped pet stats snapshot.
-- `AIStatsStore.petStatsAcrossProjects(_:)`
-  Raw computed pet stats source from recent AI usage.
+  Claimed species, custom name, project-scoped token watermarks, persisted/damped pet stats snapshot.
+- `AIStatsStore.normalizedTokenTotalsForPet(_:, claimedAt:)`
+  Per-project pet token source filtered by claim time and current projects.
 
 Current pet design in code:
 
-- XP starts from claim baseline, not from historical total tokens.
+- XP starts from claim-time per-project baselines, not from historical total tokens.
+- Removed/reopened projects must not replay historical usage into hatch or XP progress.
 - Pet stats are refreshed from AI usage but cached daily in `PetStore` with damping.
 - Sleep/bubble behavior currently lives in `TitlebarPetButton`.
 - Further pet work should continue extending this structure, not replace it with an unrelated parallel flow.
@@ -143,6 +158,7 @@ Current pet design in code:
 
 - `skills/dmux-project-conventions/SKILL.md`
 - `skills/dmux-ai-runtime-architecture/SKILL.md`
+- `skills/dmux-ai-memory/SKILL.md`
 - `skills/dmux-pet-system/SKILL.md`
 - `skills/pet-sprite-pipeline/SKILL.md`
 - `references/overview.md`

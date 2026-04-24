@@ -22,9 +22,9 @@ dmux publishes macOS updates through Sparkle backed by GitHub Releases.
 5. Release artifacts are built and uploaded:
    - `Codux-<version>-macos-universal.dmg`
    - `Codux-<version>-macos-universal.zip`
-   - `Codux-debug-<version>-debug-macos-universal.dmg`
    - `SHA256SUMS.txt`
    - `appcast.xml`
+   Debug DMGs are not part of the formal release asset workflow; use the manual test-build workflow when a debug package is needed.
 6. If `HOMEBREW_TAP_TOKEN` is valid, the workflow also updates the Homebrew cask repo.
 
 ## Release notes source

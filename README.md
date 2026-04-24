@@ -32,6 +32,7 @@ Tools like Claude Code, GitHub Copilot CLI, Cursor, and Aider are turning the te
 - **No project awareness** — no way to organize, switch, or get notifications per project
 - **Git needs a separate app** — you're constantly switching between terminal, GitKraken, or Tower
 - **AI usage is a black box** — you have no idea how many tokens you've burned today or which model is draining your quota
+- **AI tools forget project context** — useful decisions, conventions, and bug lessons get buried in terminal history
 - **Electron-based alternatives are resource hogs** — they eat RAM and battery for what should be a lightweight tool
 
 **Codux fixes all of this.** A native macOS terminal workspace purpose-built for AI CLI tools — multi-project, multi-pane, with built-in Git and real-time AI usage tracking. No Electron. No WebKit. Just pure SwiftUI + AppKit, fast and light.
@@ -43,6 +44,7 @@ Tools like Claude Code, GitHub Copilot CLI, Cursor, and Aider are turning the te
 | ![Codux Split Workspace](docs/images/screenshot.png) | Multi-Project Workspace | Organize all your projects in one place. Each project keeps its own terminal sessions, split layout, and state, with activity monitoring that helps you switch context without missing task completion. |
 | ![Codux Git Panel](docs/images/git.png) | Built-in Git Panel | Manage branches, staged changes, file diffs, commit history, and remote sync directly in the sidebar instead of jumping to a separate Git app. |
 | ![Codux AI Stats](docs/images/ai-stats.png) | AI Usage Dashboard | Track token usage, model usage, tool breakdowns, daily trends, and live sessions for AI coding tools running inside your terminal. |
+| ![Codux AI Stats](docs/images/ai-stats.png) | AI Memory | Extract durable user and project memory from completed AI sessions, then inject concise context and global prompts into supported tools when new terminal sessions start. |
 | ![Codux Daily Level](docs/images/level.png) | Daily Level Ladder | See your current daily AI usage rank at a glance with the live ladder: `Idle`, `Light`, `Active`, `Focus`, `Intense`, `Grind`, `Limit`, `Godlike`. |
 | ![Codux Pet System](docs/images/pet.png) | Coding Pet Companion | Claim an egg, grow a companion, unlock evolutions, fill the dex, and get contextual bubble reactions while you work. |
 
@@ -53,6 +55,19 @@ Crafted with attention to every pixel. Glass vibrancy backgrounds, smooth animat
 ### Native & Lightweight
 
 100% SwiftUI + AppKit. No Electron, no WebKit, no hidden browser eating your RAM. Launches instantly, idles at near-zero CPU, and respects your battery. This is what a macOS app should feel like.
+
+### AI Memory
+
+Codux can turn completed AI coding sessions into durable memory. It stores user preferences, project conventions, decisions, facts, and bug lessons locally in SQLite, then prepares concise launch context for supported tools. Memory is injected from Codux-managed runtime files, not written into your repository, and it is treated as guidance while the current repo remains the source of truth.
+
+Highlights:
+
+- Local `memory.sqlite3` storage for user and project memory
+- Automatic extraction from completed Claude, Codex, Gemini, and OpenCode sessions
+- Automatic extraction provider selection, with per-provider test buttons in **Settings > AI**
+- Global prompt support for all supported tools
+- App-private `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md` launch context generation
+- Title-bar memory status indicator for queued, running, and failed extraction states
 
 ## Getting Started
 

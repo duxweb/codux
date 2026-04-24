@@ -7,13 +7,14 @@
   - Name is optional; empty name falls back to the current stage species name.
   - Random egg resolves to one of `voidcat`, `rusthound`, `goose`, or hidden `chaossprite`.
 - Persistence:
-  - Main pet state is stored in `~/Library/Application Support/dmux/pet-state.json`.
-  - The same state is mirrored into Keychain under `service=dmux.pet`, `account=state`.
+  - Main pet state is stored as encrypted `pet-state.dat` under the current Codux application support folder.
+  - Legacy dmux namespaces are migrated on load when available.
 - XP:
-  - `baselineAllTimeTokens` is captured at claim time.
-  - `currentExperienceTokens = currentAllTimeTokens - baselineAllTimeTokens`.
+  - Per-project token watermarks are captured as projects first appear after claim.
+  - New or reopened project history seeds a watermark first and does not grant retroactive hatch or XP progress.
+  - Removed project watermarks are forgotten and stale watermarks are pruned on snapshot refresh.
 - Stats:
-  - Raw pet stats come from `AIStatsStore.petStatsAcrossProjects(_:)`.
+  - Pet token totals come from `AIStatsStore.normalizedTokenTotalsForPet(_:, claimedAt:)`.
   - `PetStore.refreshDerivedState` caches damped daily stats instead of replacing them continuously.
 - Evolution:
   - `lockedEvoPath` is set once the pet reaches `PetProgressInfo.evoUnlockLevel`.
@@ -63,5 +64,7 @@ These are ephemeral UI events, not persisted gameplay history.
 
 - Pure Swift tests:
   `Tests/DmuxWorkspaceTests/PetFeatureTests.swift`
+  `Tests/DmuxWorkspaceTests/PetRefreshCoordinatorTests.swift`
+  `Tests/DmuxWorkspaceTests/AIStatsStoreMetricsTests.swift`
 - Dev-only visual checks:
   open the pet popover in the dev app and use the debug buttons for bubble / evolution / max-level effects
