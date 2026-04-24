@@ -42,24 +42,24 @@ struct AIToolEnvironmentService {
 
     func mergedEnvironment(
         into base: [String: String] = ProcessInfo.processInfo.environment,
+        includeBundledWrappers: Bool = true,
         includeGeminiPlaceholder: Bool = false
     ) -> [String: String] {
         var environment = base
         for (key, value) in configuredEnvironment() where environment[key]?.isEmpty ?? true {
             environment[key] = value
         }
-        environment["PATH"] = mergedExecutablePath(environment["PATH"])
+        environment["PATH"] = mergedExecutablePath(environment["PATH"], includeBundledWrappers: includeBundledWrappers)
         if includeGeminiPlaceholder, environment["GEMINI_API_KEY"]?.isEmpty ?? true {
             environment["GEMINI_API_KEY"] = "codux-placeholder-key"
         }
         return environment
     }
 
-    private func mergedExecutablePath(_ currentPath: String?) -> String {
+    private func mergedExecutablePath(_ currentPath: String?, includeBundledWrappers: Bool) -> String {
         let bundledWrapperPath = WorkspacePaths.repositoryResourceURL("scripts/wrappers/bin").path
         let defaultPath = currentPath.flatMap(normalizedNonEmptyString) ?? "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin"
-        let extraPaths = [
-            bundledWrapperPath,
+        let userToolPaths = [
             "/opt/homebrew/bin",
             "/usr/local/bin",
             homeDirectory.appendingPathComponent(".local/bin", isDirectory: true).path,
@@ -67,6 +67,7 @@ struct AIToolEnvironmentService {
             homeDirectory.appendingPathComponent(".cargo/bin", isDirectory: true).path,
             homeDirectory.appendingPathComponent(".opencode/bin", isDirectory: true).path,
         ]
+        let extraPaths = includeBundledWrappers ? [bundledWrapperPath] + userToolPaths : userToolPaths
         var seen = Set<String>()
         return (extraPaths + defaultPath.components(separatedBy: ":"))
             .compactMap(normalizedNonEmptyString)

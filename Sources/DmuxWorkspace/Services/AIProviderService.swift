@@ -186,6 +186,7 @@ private struct HeadlessToolProviderClient: AIProviderClient {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = [binaryName] + invocation.arguments
             var environment = AIToolEnvironmentService().mergedEnvironment(
+                includeBundledWrappers: false,
                 includeGeminiPlaceholder: invocation.injectGeminiPlaceholderKey
             )
             for (key, value) in invocation.environmentOverrides where environment[key]?.isEmpty ?? true {

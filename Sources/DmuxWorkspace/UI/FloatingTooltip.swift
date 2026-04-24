@@ -54,7 +54,6 @@ final class FloatingTooltipManager {
             if let parentWindow {
                 parentWindow.removeChildWindow(panel)
             }
-            window.addChildWindow(panel, ordered: .above)
             self.parentWindow = window
         }
 
@@ -141,7 +140,7 @@ private struct FloatingTooltipAnchorView: NSViewRepresentable {
     @Binding var view: NSView?
 
     func makeNSView(context: Context) -> NSView {
-        let nsView = NSView(frame: .zero)
+        let nsView = FloatingTooltipAnchorNSView(frame: .zero)
         DispatchQueue.main.async {
             view = nsView
         }
@@ -155,6 +154,14 @@ private struct FloatingTooltipAnchorView: NSViewRepresentable {
     }
 }
 
+private final class FloatingTooltipAnchorNSView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
 struct FloatingTooltipModifier: ViewModifier {
     let text: String
     let enabled: Bool
@@ -164,7 +171,7 @@ struct FloatingTooltipModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(FloatingTooltipAnchorView(view: $anchorView))
+            .overlay(FloatingTooltipAnchorView(view: $anchorView).allowsHitTesting(false))
             .onHover { hovering in
                 guard enabled else {
                     FloatingTooltipManager.shared.hide(text: text)

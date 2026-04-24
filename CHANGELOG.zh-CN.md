@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-04-24
+
+### 调整
+
+- 正式 GitHub Release 产物不再单独发布 debug DMG；debug 包仍可通过手动 test-build workflow 生成。
+
+### 修复
+
+- 修复正式版浮动提示定位，将提示锚定到真实控件 overlay，并使用稳定的屏幕坐标显示。
+- 修复 AI 记忆提取后台 worker，使 Claude、Codex、Gemini、OpenCode 提供商运行时跳过 Codux 终端 wrapper，直接解析用户本机安装的真实 CLI。
+
 ## [0.5.1] - 2026-04-24
 
 ### 新增

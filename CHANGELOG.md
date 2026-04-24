@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-04-24
+
+### Changed
+
+- Removed the debug DMG from the formal GitHub Release asset workflow; debug packages remain available through the manual test-build workflow.
+
+### Fixed
+
+- Fixed release-build floating tooltips by anchoring them to the real control overlay and presenting them with stable screen coordinates.
+- Fixed AI memory extraction workers so Claude, Codex, Gemini, and OpenCode provider runs skip Codux terminal wrappers and resolve the real user-installed CLI instead.
+
 ## [0.5.1] - 2026-04-24
 
 ### Added
