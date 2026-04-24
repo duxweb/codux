@@ -30,13 +30,7 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var defaultModel: String {
         switch self {
-        case .claude:
-            return "sonnet"
-        case .codex:
-            return "gpt-5.3-codex"
-        case .gemini:
-            return "gemini-2.5-pro"
-        case .opencode:
+        case .claude, .codex, .gemini, .opencode:
             return ""
         case .openAICompatible:
             return "gpt-4.1-mini"

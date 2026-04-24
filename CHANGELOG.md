@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-04-24
+
+### Changed
+
+- Left built-in CLI memory extraction models blank by default for new settings, so Claude, Codex, Gemini, and OpenCode use their own CLI-configured default models unless the user explicitly enters one.
+
 ## [0.5.8] - 2026-04-24
 
 ### Fixed
