@@ -40,6 +40,22 @@ final class AppModelFocusSelectionTests: XCTestCase {
         )
     }
 
+
+    func testDisplayedFocusedSessionIgnoresRegistryFocusOutsideVisibleWorkspace() {
+        let staleRegistryFocused = UUID()
+        let selected = UUID()
+
+        XCTAssertEqual(
+            AppModel.resolveDisplayedFocusedTerminalSessionID(
+                focusRequestID: nil,
+                registryFocusedSessionID: staleRegistryFocused,
+                selectedSessionID: selected,
+                visibleSessionIDs: [selected]
+            ),
+            selected
+        )
+    }
+
     func testBottomTabSelectionRefreshesWhenRegistryFocusIsStale() {
         let requested = UUID()
         let staleFocused = UUID()

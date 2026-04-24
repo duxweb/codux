@@ -601,18 +601,22 @@ final class AISessionStore {
 
         let snapshotIsNewer = snapshot.updatedAt > previousState.updatedAt
         let promptTurnStartedAt = previousState.activeTurnStartedAt ?? previousState.updatedAt
-        let runtimeTurnStartedAt = snapshot.startedAt ?? (responseState == .responding ? snapshot.updatedAt : nil)
+        let runtimeTurnStartedAt = {
+            guard responseState == .responding else {
+                return snapshot.startedAt
+            }
+            if let startedAt = snapshot.startedAt,
+               startedAt >= promptTurnStartedAt {
+                return startedAt
+            }
+            return snapshot.updatedAt
+        }()
         let turnCompletedAt = snapshot.completedAt ?? (
             snapshot.wasInterrupted || snapshot.hasCompletedTurn ? snapshot.updatedAt : nil
         )
 
         switch responseState {
         case .responding:
-            if let runtimeTurnStartedAt,
-               runtimeTurnStartedAt < promptTurnStartedAt {
-                return
-            }
-
             let canPromoteToResponding =
                 previousState.state == .responding
                 || (
@@ -929,12 +933,7 @@ final class AISessionStore {
     }
 
     private func normalizedProjectPath(_ path: String?) -> String? {
-        guard let value = normalizedNonEmptyString(path) else {
-            return nil
-        }
-        return URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)
-            .standardizedFileURL
-            .path
+        normalizedComparablePath(path)
     }
 
     private func shouldResetSessionState(

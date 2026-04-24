@@ -178,7 +178,8 @@ extension AIRuntimeBridgeService {
                 ("AfterAgent", "after-agent", 5000, false),
                 ("Notification", "notification", 5000, false),
                 ("SessionEnd", "session-end", 5000, false),
-            ]
+            ],
+            stripAnyManagedHookForAction: true
         )
     }
 
@@ -190,7 +191,8 @@ extension AIRuntimeBridgeService {
         description: String,
         definitions: [(eventKey: String, action: String, timeout: Int, async: Bool)],
         removedDefinitions: [(eventKey: String, action: String)] = [],
-        notificationActionToStrip: String? = nil
+        notificationActionToStrip: String? = nil,
+        stripAnyManagedHookForAction: Bool = false
     ) {
         let helperScriptURL = managedRuntimeHookHelperURL()
         let statusMessage = "dmux \(tool) live"
@@ -208,7 +210,12 @@ extension AIRuntimeBridgeService {
             helperScriptURL: helperScriptURL,
             definitions: definitions
         )
-        applyManagedHookSpecs(specs, to: &hooksObject, helperScriptURL: helperScriptURL)
+        applyManagedHookSpecs(
+            specs,
+            to: &hooksObject,
+            helperScriptURL: helperScriptURL,
+            stripAnyManagedHookForAction: stripAnyManagedHookForAction
+        )
 
         if let notificationActionToStrip {
             let notificationHookGroups = strippedManagedHookGroups(
@@ -256,13 +263,15 @@ extension AIRuntimeBridgeService {
     func applyManagedHookSpecs(
         _ specs: [ManagedHookSpec],
         to hooksObject: inout [String: Any],
-        helperScriptURL: URL
+        helperScriptURL: URL,
+        stripAnyManagedHookForAction: Bool = false
     ) {
         for spec in specs {
             hooksObject[spec.eventKey] = mergedManagedHookGroups(
                 existingValue: hooksObject[spec.eventKey],
                 spec: spec,
-                helperScriptURL: helperScriptURL
+                helperScriptURL: helperScriptURL,
+                stripAnyManagedHookForAction: stripAnyManagedHookForAction
             )
         }
     }
@@ -294,7 +303,8 @@ extension AIRuntimeBridgeService {
     func mergedManagedHookGroups(
         existingValue: Any?,
         spec: ManagedHookSpec,
-        helperScriptURL: URL
+        helperScriptURL: URL,
+        stripAnyManagedHookForAction: Bool = false
     ) -> [[String: Any]] {
         let owner = AppRuntimePaths.runtimeOwnerID()
         let nextGroups = strippedManagedHookGroups(
@@ -302,7 +312,8 @@ extension AIRuntimeBridgeService {
             action: spec.action,
             owner: owner,
             helperScriptURL: helperScriptURL,
-            statusMessage: spec.statusMessage
+            statusMessage: spec.statusMessage,
+            stripAnyManagedHookForAction: stripAnyManagedHookForAction
         )
 
         var hook: [String: Any] = [
@@ -326,7 +337,8 @@ extension AIRuntimeBridgeService {
         action: String,
         owner: String,
         helperScriptURL: URL,
-        statusMessage: String
+        statusMessage: String,
+        stripAnyManagedHookForAction: Bool = false
     ) -> [[String: Any]] {
         let existingGroups = existingValue as? [[String: Any]] ?? []
         return existingGroups.compactMap { group in
@@ -337,7 +349,8 @@ extension AIRuntimeBridgeService {
                     action: action,
                     owner: owner,
                     helperScriptURL: helperScriptURL,
-                    statusMessage: statusMessage
+                    statusMessage: statusMessage,
+                    stripAnyManagedHookForAction: stripAnyManagedHookForAction
                 )
             }
 
@@ -356,9 +369,9 @@ extension AIRuntimeBridgeService {
         action: String,
         owner: String,
         helperScriptURL: URL,
-        statusMessage expectedStatusMessage: String
+        statusMessage expectedStatusMessage: String,
+        stripAnyManagedHookForAction: Bool = false
     ) -> Bool {
-        _ = expectedStatusMessage
         guard let type = hook["type"] as? String,
               type == "command",
               let command = hook["command"] as? String else {
@@ -367,6 +380,12 @@ extension AIRuntimeBridgeService {
 
         guard command.contains(action) else {
             return false
+        }
+
+        if stripAnyManagedHookForAction,
+           command.contains("dmux-ai-state.sh"),
+           hook["statusMessage"] as? String == expectedStatusMessage {
+            return true
         }
 
         let singleQuoteCount = command.reduce(into: 0) { count, character in

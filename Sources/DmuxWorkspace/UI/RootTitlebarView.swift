@@ -23,6 +23,8 @@ struct TitlebarOverlayView: View {
                     if model.appSettings.developer.showsPerformanceMonitor {
                         TitlebarPerformanceMonitorView(model: model)
                     }
+
+                    TitlebarMemoryStatusView(snapshot: model.memoryExtractionStatus)
                 }
                 .padding(.leading, 86)
                 .frame(height: TitlebarControlMetrics.rowHeight, alignment: .center)
@@ -198,6 +200,79 @@ private struct TitlebarPerformanceMonitorView: View {
             String(localized: "settings.developer.performance_monitor", defaultValue: "Performance Monitor HUD", bundle: .module),
             placement: .below
         )
+    }
+}
+
+private struct TitlebarMemoryStatusView: View {
+    let snapshot: MemoryExtractionStatusSnapshot
+
+    private var isActive: Bool {
+        snapshot.status == .queued || snapshot.status == .processing
+    }
+
+    private var statusColor: Color {
+        switch snapshot.status {
+        case .processing:
+            return AppTheme.focus
+        case .queued:
+            return AppTheme.warning
+        case .failed:
+            return Color(hex: 0xFF5E6C)
+        case .idle:
+            return AppTheme.textSecondary
+        }
+    }
+
+    private var statusText: String {
+        switch snapshot.status {
+        case .processing:
+            return String(localized: "memory.status.processing", defaultValue: "Remembering", bundle: .module)
+        case .queued:
+            return String(localized: "memory.status.queued", defaultValue: "Memory queued", bundle: .module)
+        case .failed:
+            return String(localized: "memory.status.failed", defaultValue: "Memory failed", bundle: .module)
+        case .idle:
+            return String(localized: "memory.status.idle", defaultValue: "Memory idle", bundle: .module)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Image(systemName: "brain.head.profile")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(statusColor)
+
+            if isActive {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.58)
+                    .frame(width: 22, height: 22)
+                    .offset(x: 9, y: -9)
+            }
+        }
+        .frame(width: TitlebarControlMetrics.pillHeight, height: TitlebarControlMetrics.pillHeight)
+        .frame(height: TitlebarControlMetrics.pillHeight)
+        .background(
+            RoundedRectangle(cornerRadius: TitlebarControlMetrics.pillCornerRadius, style: .continuous)
+                .fill(statusColor.opacity(isActive ? 0.12 : 0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: TitlebarControlMetrics.pillCornerRadius, style: .continuous)
+                .stroke(statusColor.opacity(isActive ? 0.28 : 0.14), lineWidth: 0.5)
+        )
+        .floatingTooltip(tooltipText, placement: .below)
+        .accessibilityLabel(statusText)
+    }
+
+    private var tooltipText: String {
+        if snapshot.status == .failed, let error = snapshot.lastError, !error.isEmpty {
+            return "\(statusText): \(error)"
+        }
+        if snapshot.pendingCount > 0 || snapshot.runningCount > 0 {
+            let format = String(localized: "memory.status.detail", defaultValue: "Memory queue: %lld pending, %lld running", bundle: .module)
+            return String(format: format, Int64(snapshot.pendingCount), Int64(snapshot.runningCount))
+        }
+        return statusText
     }
 }
 

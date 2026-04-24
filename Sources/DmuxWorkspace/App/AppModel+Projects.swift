@@ -8,7 +8,15 @@ extension AppModel {
             reason: "select-project"
         )
         updateSelectedProjectID(projectID, source: "selectProject")
+        clearTerminalFocusOutsideSelectedProject()
         restoreSelectedTerminalFocusIfNeeded()
+        DispatchQueue.main.async { [weak self] in
+            guard self?.selectedProjectID == projectID else {
+                return
+            }
+            self?.clearTerminalFocusOutsideSelectedProject()
+            self?.restoreSelectedTerminalFocusIfNeeded()
+        }
         restoreCachedGitPanelIfAvailable(for: projectID)
         persist()
         refreshGitState()

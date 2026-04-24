@@ -144,38 +144,182 @@ struct PetSettingsPane: View {
     }
 }
 
-struct ToolSettingsPane: View {
+// MARK: - AI Settings
+
+struct AISettingsPane: View {
     let model: AppModel
 
     var body: some View {
         Form {
             Section(String(localized: "settings.tools.permissions", defaultValue: "Tool Permissions", bundle: .module)) {
-                permissionRow(tool: .codex)
-                permissionRow(tool: .claudeCode)
-                permissionRow(tool: .gemini)
-                permissionRow(tool: .opencode)
+                ForEach([AppSupportedAITool.codex, .claudeCode, .gemini, .opencode], id: \.id) { tool in
+                    HStack {
+                        Text(tool.title)
+                        Spacer()
+                        Toggle(
+                            String(localized: "settings.ai.permission.full_access_toggle", defaultValue: "Full Access", bundle: .module),
+                            isOn: Binding(
+                                get: { tool.permissionMode(from: model.appSettings.toolPermissions) == .fullAccess },
+                                set: { isEnabled in
+                                    model.updateToolPermissionMode(isEnabled ? .fullAccess : .default, for: tool)
+                                }
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
+                }
+            }
+
+            Section(String(localized: "settings.ai.section.memory", defaultValue: "Memory", bundle: .module)) {
+                Toggle(
+                    String(localized: "settings.ai.memory.enabled", defaultValue: "Enable Memory", bundle: .module),
+                    isOn: Binding(
+                        get: { model.appSettings.ai.memory.enabled },
+                        set: { model.updateMemoryEnabled($0) }
+                    )
+                )
+            }
+
+            if model.appSettings.ai.memory.enabled {
+                Section(String(localized: "settings.ai.memory.automatic_injection", defaultValue: "Automatic Injection", bundle: .module)) {
+                    Toggle(
+                        String(localized: "settings.ai.memory.automatic_injection", defaultValue: "Automatic Injection", bundle: .module),
+                        isOn: Binding(
+                            get: { model.appSettings.ai.memory.automaticInjectionEnabled },
+                            set: { model.updateMemoryAutomaticInjectionEnabled($0) }
+                        )
+                    )
+
+                    Toggle(
+                        String(localized: "settings.ai.memory.automatic_extraction", defaultValue: "Automatic Extraction", bundle: .module),
+                        isOn: Binding(
+                            get: { model.appSettings.ai.memory.automaticExtractionEnabled },
+                            set: { model.updateMemoryAutomaticExtractionEnabled($0) }
+                        )
+                    )
+
+                    Toggle(
+                        String(localized: "settings.ai.memory.cross_project_user", defaultValue: "Cross-Project User Memory", bundle: .module),
+                        isOn: Binding(
+                            get: { model.appSettings.ai.memory.allowCrossProjectUserRecall },
+                            set: { model.updateMemoryAllowCrossProjectUserRecall($0) }
+                        )
+                    )
+                }
+
+                Section(String(localized: "settings.ai.memory.default_extraction_provider", defaultValue: "Default Extraction Provider", bundle: .module)) {
+                    Picker(
+                        String(localized: "settings.ai.memory.default_extraction_provider", defaultValue: "Default Extraction Provider", bundle: .module),
+                        selection: Binding(
+                            get: { model.appSettings.ai.memory.defaultExtractorProviderID },
+                            set: { model.updateMemoryDefaultExtractorProviderID($0) }
+                        )
+                    ) {
+                        ForEach(model.appSettings.ai.providers.filter { $0.isEnabled && $0.useForMemoryExtraction }) { provider in
+                            Text(provider.displayName).tag(provider.id)
+                        }
+                    }
+
+                    Picker(
+                        String(localized: "settings.ai.memory.user_working_recall", defaultValue: "User Working Recall", bundle: .module),
+                        selection: Binding(
+                            get: { model.appSettings.ai.memory.maxInjectedUserWorkingMemories },
+                            set: { model.updateMemoryUserWorkingLimit($0) }
+                        )
+                    ) {
+                        ForEach(0...24, id: \.self) { value in
+                            Text("\(value)").tag(value)
+                        }
+                    }
+
+                    Picker(
+                        String(localized: "settings.ai.memory.project_working_recall", defaultValue: "Project Working Recall", bundle: .module),
+                        selection: Binding(
+                            get: { model.appSettings.ai.memory.maxInjectedProjectWorkingMemories },
+                            set: { model.updateMemoryProjectWorkingLimit($0) }
+                        )
+                    ) {
+                        ForEach(0...32, id: \.self) { value in
+                            Text("\(value)").tag(value)
+                        }
+                    }
+                }
+            }
+
+            ForEach(model.appSettings.ai.providers) { provider in
+                Section(provider.displayName) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(provider.kind.title)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle(
+                            String(localized: "settings.ai.provider.enabled", defaultValue: "Enabled", bundle: .module),
+                            isOn: Binding(
+                                get: { model.appSettings.ai.provider(withID: provider.id)?.isEnabled ?? false },
+                                set: { model.updateAIProviderEnabled($0, providerID: provider.id) }
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
+
+                    if model.appSettings.ai.provider(withID: provider.id)?.isEnabled ?? false {
+                        TextField(
+                            String(localized: "settings.ai.provider.model", defaultValue: "Model", bundle: .module),
+                            text: Binding(
+                                get: { model.appSettings.ai.provider(withID: provider.id)?.model ?? "" },
+                                set: { model.updateAIProviderModel($0, providerID: provider.id) }
+                            )
+                        )
+
+                        if provider.kind == .openAICompatible {
+                            TextField(
+                                String(localized: "settings.ai.provider.base_url", defaultValue: "Base URL", bundle: .module),
+                                text: Binding(
+                                    get: { model.appSettings.ai.provider(withID: provider.id)?.baseURL ?? "" },
+                                    set: { model.updateAIProviderBaseURL($0, providerID: provider.id) }
+                                )
+                            )
+
+                            SecureField(
+                                String(localized: "settings.ai.provider.api_key", defaultValue: "API Key", bundle: .module),
+                                text: Binding(
+                                    get: { model.storedAIProviderAPIKey(providerID: provider.id) },
+                                    set: { model.updateAIProviderAPIKey($0, providerID: provider.id) }
+                                )
+                            )
+                        }
+
+                        Toggle(
+                            String(localized: "settings.ai.provider.use_for_memory_extraction", defaultValue: "Use For Memory Extraction", bundle: .module),
+                            isOn: Binding(
+                                get: { model.appSettings.ai.provider(withID: provider.id)?.useForMemoryExtraction ?? false },
+                                set: { model.updateAIProviderUseForMemoryExtraction($0, providerID: provider.id) }
+                            )
+                        )
+
+                        Picker(
+                            String(localized: "settings.ai.provider.priority", defaultValue: "Priority", bundle: .module),
+                            selection: Binding(
+                                get: { model.appSettings.ai.provider(withID: provider.id)?.priority ?? 0 },
+                                set: { model.updateAIProviderPriority($0, providerID: provider.id) }
+                            )
+                        ) {
+                            ForEach(0...32, id: \.self) { value in
+                                Text("\(value)").tag(value)
+                            }
+                        }
+                    }
+                }
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    @ViewBuilder
-    private func permissionRow(tool: AppSupportedAITool) -> some View {
-        LabeledContent(tool.title) {
-            Toggle(
-                "",
-                isOn: Binding(
-                    get: { tool.permissionMode(from: model.appSettings.toolPermissions) == .fullAccess },
-                    set: { isEnabled in
-                        model.updateToolPermissionMode(isEnabled ? .fullAccess : .default, for: tool)
-                    }
-                )
-            )
-            .labelsHidden()
-            .toggleStyle(.switch)
-        }
     }
 }
 

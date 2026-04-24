@@ -25,7 +25,7 @@ struct AppSettings: Codable, Equatable {
     var terminalFontSize = 14
     var iconStyle: AppIconStyle = .default
     var defaultTerminal: AppTerminalProfile = .zsh
-    var toolPermissions = AppAIToolPermissionSettings()
+    var ai = AppAISettings()
     var notifications = AppNotificationSettings()
     var showsDockBadge = true
     var gitAutoRefreshInterval: TimeInterval = 60
@@ -45,6 +45,7 @@ struct AppSettings: Codable, Equatable {
         case terminalFontSize
         case iconStyle
         case defaultTerminal
+        case ai
         case toolPermissions
         case notifications
         case showsDockBadge
@@ -65,7 +66,14 @@ struct AppSettings: Codable, Equatable {
         terminalFontSize = max(10, min(28, try container.decodeIfPresent(Int.self, forKey: .terminalFontSize) ?? 14))
         iconStyle = try container.decodeIfPresent(AppIconStyle.self, forKey: .iconStyle) ?? .default
         defaultTerminal = try container.decodeIfPresent(AppTerminalProfile.self, forKey: .defaultTerminal) ?? .zsh
-        toolPermissions = try container.decodeIfPresent(AppAIToolPermissionSettings.self, forKey: .toolPermissions) ?? .init()
+        if let decodedAI = try container.decodeIfPresent(AppAISettings.self, forKey: .ai) {
+            ai = decodedAI
+        } else {
+            var decodedAI = AppAISettings()
+            decodedAI.runtimeTools = try container.decodeIfPresent(AppAIToolPermissionSettings.self, forKey: .toolPermissions) ?? .init()
+            ai = decodedAI
+        }
+        ai.migrateMissingDefaultProviders()
         notifications = try container.decodeIfPresent(AppNotificationSettings.self, forKey: .notifications) ?? .init()
         showsDockBadge = try container.decodeIfPresent(Bool.self, forKey: .showsDockBadge) ?? true
         gitAutoRefreshInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .gitAutoRefreshInterval) ?? 60
@@ -76,6 +84,32 @@ struct AppSettings: Codable, Equatable {
         shortcuts = (try container.decodeIfPresent(AppShortcutConfiguration.self, forKey: .shortcuts) ?? .defaults)
             .migratedFromLegacyDefaultsIfNeeded()
         pet = try container.decodeIfPresent(AppPetSettings.self, forKey: .pet) ?? .init()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(language, forKey: .language)
+        try container.encode(terminalBackgroundPreset, forKey: .terminalBackgroundPreset)
+        try container.encode(backgroundColorPreset, forKey: .backgroundColorPreset)
+        try container.encode(terminalFontSize, forKey: .terminalFontSize)
+        try container.encode(iconStyle, forKey: .iconStyle)
+        try container.encode(defaultTerminal, forKey: .defaultTerminal)
+        try container.encode(ai, forKey: .ai)
+        try container.encode(ai.runtimeTools, forKey: .toolPermissions)
+        try container.encode(notifications, forKey: .notifications)
+        try container.encode(showsDockBadge, forKey: .showsDockBadge)
+        try container.encode(gitAutoRefreshInterval, forKey: .gitAutoRefreshInterval)
+        try container.encode(aiAutoRefreshInterval, forKey: .aiAutoRefreshInterval)
+        try container.encode(aiBackgroundRefreshInterval, forKey: .aiBackgroundRefreshInterval)
+        try container.encode(aiStatisticsDisplayMode, forKey: .aiStatisticsDisplayMode)
+        try container.encode(developer, forKey: .developer)
+        try container.encode(shortcuts, forKey: .shortcuts)
+        try container.encode(pet, forKey: .pet)
+    }
+
+    var toolPermissions: AppAIToolPermissionSettings {
+        get { ai.runtimeTools }
+        set { ai.runtimeTools = newValue }
     }
 }
 
@@ -114,4 +148,3 @@ struct AppPetSettings: Codable, Equatable {
         lateNightReminderInterval = max(300, try container.decodeIfPresent(TimeInterval.self, forKey: .lateNightReminderInterval) ?? 3600)
     }
 }
-

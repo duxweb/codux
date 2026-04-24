@@ -24,6 +24,15 @@
 		1F2A3B4C5D6E7F8091A2B3C4 /* AppDiagnosticsExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A3B4C5D6E7F8091A2B3C4D5 /* AppDiagnosticsExportService.swift */; };
 		21A2B3C4D5E6F708192A3B4C /* AIToolPermissionSettingsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B4D /* AIToolPermissionSettingsService.swift */; };
 		21A2B3C4D5E6F708192A3B4E /* AIToolDriverSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B4F /* AIToolDriverSupport.swift */; };
+		210000000000000000000101 /* AppAISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000001 /* AppAISettings.swift */; };
+		210000000000000000000102 /* MemoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000002 /* MemoryModels.swift */; };
+		210000000000000000000103 /* AICredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000003 /* AICredentialStore.swift */; };
+		210000000000000000000104 /* AIProviderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000004 /* AIProviderService.swift */; };
+		210000000000000000000109 /* AIToolEnvironmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000009 /* AIToolEnvironmentService.swift */; };
+		210000000000000000000105 /* MemoryContextService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000005 /* MemoryContextService.swift */; };
+		210000000000000000000106 /* MemoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000006 /* MemoryCoordinator.swift */; };
+		210000000000000000000107 /* MemoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000007 /* MemoryStore.swift */; };
+		210000000000000000000108 /* ProjectPathUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000008 /* ProjectPathUtilities.swift */; };
 		A91F0A7E1B2C3D4E5F607181 /* AIHookEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91F0A7E1B2C3D4E5F607182 /* AIHookEvent.swift */; };
 		A91F0A7E1B2C3D4E5F607183 /* AISessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91F0A7E1B2C3D4E5F607184 /* AISessionStore.swift */; };
 		21A2B3C4D5E6F708192A3B52 /* ClaudeToolDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B53 /* ClaudeToolDriver.swift */; };
@@ -163,6 +172,15 @@
 		0716C74164A92ABC63BDE25A /* DmuxWorkspaceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmuxWorkspaceApp.swift; sourceTree = "<group>"; };
 		074C18D4269F6F5CD51744B9 /* AIRuntimeIngressService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRuntimeIngressService.swift; sourceTree = "<group>"; };
 		1D05D834FCB2D530F185C773 /* AIUsageModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageModels.swift; sourceTree = "<group>"; };
+		210000000000000000000001 /* AppAISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAISettings.swift; sourceTree = "<group>"; };
+		210000000000000000000002 /* MemoryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryModels.swift; sourceTree = "<group>"; };
+		210000000000000000000003 /* AICredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICredentialStore.swift; sourceTree = "<group>"; };
+		210000000000000000000004 /* AIProviderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderService.swift; sourceTree = "<group>"; };
+		210000000000000000000009 /* AIToolEnvironmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolEnvironmentService.swift; sourceTree = "<group>"; };
+		210000000000000000000005 /* MemoryContextService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryContextService.swift; sourceTree = "<group>"; };
+		210000000000000000000006 /* MemoryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryCoordinator.swift; sourceTree = "<group>"; };
+		210000000000000000000007 /* MemoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryStore.swift; sourceTree = "<group>"; };
+		210000000000000000000008 /* ProjectPathUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectPathUtilities.swift; sourceTree = "<group>"; };
 		A91F0A7E1B2C3D4E5F607182 /* AIHookEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIHookEvent.swift; sourceTree = "<group>"; };
 		5F0A9C1D7E2B4A5C8D9E0F22 /* PetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetModels.swift; sourceTree = "<group>"; };
 		5F0A9C1D7E2B4A5C8D9E0F23 /* PetRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetRefreshCoordinator.swift; sourceTree = "<group>"; };
@@ -444,6 +462,7 @@
 			children = (
 				A91F0A7E1B2C3D4E5F607182 /* AIHookEvent.swift */,
 				1D05D834FCB2D530F185C773 /* AIUsageModels.swift */,
+				210000000000000000000002 /* MemoryModels.swift */,
 				5F0A9C1D7E2B4A5C8D9E0F22 /* PetModels.swift */,
 				AE95489EB51C81E7321103FD /* AppModels.swift */,
 			);
@@ -499,6 +518,7 @@
 				C10000000000000000000014 /* AppModel+Settings.swift */,
 				C10000000000000000000015 /* AppModel+Activity.swift */,
 				1E6B5C4D3A2F1E0D9C8B7A6E /* AppPerformanceMonitorStore.swift */,
+				210000000000000000000001 /* AppAISettings.swift */,
 				BBDDBF2B08A1049FDB3CF220 /* AppSettings.swift */,
 				C10000000000000000000008 /* AppSettingsSupport.swift */,
 				C10000000000000000000009 /* AppTerminalAppearance.swift */,
@@ -550,6 +570,13 @@
 				21A2B3C4D5E6F708192A3B55 /* CodexToolDriver.swift */,
 				21A2B3C4D5E6F708192A3B59 /* GeminiToolDriver.swift */,
 				21A2B3C4D5E6F708192A3B57 /* OpenCodeToolDriver.swift */,
+				210000000000000000000003 /* AICredentialStore.swift */,
+				210000000000000000000004 /* AIProviderService.swift */,
+				210000000000000000000009 /* AIToolEnvironmentService.swift */,
+				210000000000000000000005 /* MemoryContextService.swift */,
+				210000000000000000000006 /* MemoryCoordinator.swift */,
+				210000000000000000000007 /* MemoryStore.swift */,
+				210000000000000000000008 /* ProjectPathUtilities.swift */,
 				0598FB11F350F43D5A39628A /* AIUsageService.swift */,
 				C9E2A14549F6FB2DF8C4F7CF /* AIUsageStore.swift */,
 				C10000000000000000000043 /* AIUsageStore+Persistence.swift */,
@@ -710,6 +737,9 @@
 				D49FDC9CAB55B3DAD5FE45C5 /* AIToolDriverFactory.swift in Sources */,
 				B10000000000000000000043 /* AIUsageStore+Persistence.swift in Sources */,
 				21A2B3C4D5E6F708192A3B4E /* AIToolDriverSupport.swift in Sources */,
+				210000000000000000000103 /* AICredentialStore.swift in Sources */,
+				210000000000000000000104 /* AIProviderService.swift in Sources */,
+				210000000000000000000109 /* AIToolEnvironmentService.swift in Sources */,
 				21A2B3C4D5E6F708192A3B52 /* ClaudeToolDriver.swift in Sources */,
 				21A2B3C4D5E6F708192A3B54 /* CodexToolDriver.swift in Sources */,
 				21A2B3C4D5E6F708192A3B58 /* GeminiToolDriver.swift in Sources */,
@@ -718,6 +748,10 @@
 				A91F0A7E1B2C3D4E5F607181 /* AIHookEvent.swift in Sources */,
 				A13F1B0C9D8E7F6051423345 /* AIProjectHistoryService.swift in Sources */,
 				B681B0D405B974DC389EE8AC /* AIUsageModels.swift in Sources */,
+				210000000000000000000105 /* MemoryContextService.swift in Sources */,
+				210000000000000000000106 /* MemoryCoordinator.swift in Sources */,
+				210000000000000000000102 /* MemoryModels.swift in Sources */,
+				210000000000000000000107 /* MemoryStore.swift in Sources */,
 				5F0A9C1D7E2B4A5C8D9E0F21 /* PetModels.swift in Sources */,
 				A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */,
 				D4DD773949CEDDF9C154D306 /* AIUsageStore.swift in Sources */,
@@ -735,6 +769,7 @@
 				B10000000000000000000014 /* AppModel+Settings.swift in Sources */,
 				B10000000000000000000015 /* AppModel+Activity.swift in Sources */,
 				1E6B5C4D3A2F1E0D9C8B7A6F /* AppPerformanceMonitorStore.swift in Sources */,
+				210000000000000000000101 /* AppAISettings.swift in Sources */,
 				CF756E0559A097A4F15FF4E4 /* AppModels.swift in Sources */,
 				B10000000000000000000041 /* AppTerminalAppearance+Options.swift in Sources */,
 				B10000000000000000000050 /* AppTerminalGhosttyThemes.swift in Sources */,
@@ -766,6 +801,7 @@
 				B10000000000000000000022 /* GitStore+Selection.swift in Sources */,
 				B10000000000000000000023 /* GitStore+Operations.swift in Sources */,
 				B10000000000000000000024 /* GitStore+Remote.swift in Sources */,
+				210000000000000000000108 /* ProjectPathUtilities.swift in Sources */,
 					BCB26675EA2CC890F29674A0 /* PersistenceService.swift in Sources */,
 					151B69EF643EA9CF5E6975C2 /* ProjectActivityService.swift in Sources */,
 					B10000000000000000000048 /* ProjectActivityNotifications.swift in Sources */,

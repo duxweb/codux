@@ -115,6 +115,7 @@ struct AIRuntimeBridgeService {
 
     let fileManager = FileManager.default
     let debugLog = AppDebugLog.shared
+    private let aiToolEnvironmentService = AIToolEnvironmentService()
 
     func runtimeSupportRootURL(createIfNeeded: Bool = true) -> URL {
         let url = AppRuntimePaths.runtimeSupportRootURL(fileManager: fileManager)!
@@ -143,7 +144,7 @@ struct AIRuntimeBridgeService {
         return rootURL.appendingPathComponent("runtime-events.sock", isDirectory: false)
     }
 
-    func environmentResolution(for session: TerminalSession) -> EnvironmentResolution {
+    func environmentResolution(for session: TerminalSession, aiSettings: AppAISettings? = nil) -> EnvironmentResolution {
         scheduleManagedHookBootstrapIfNeeded()
         let wrapperPath = wrapperBinURL().path
         let processEnvironment = ProcessInfo.processInfo.environment
@@ -154,6 +155,14 @@ struct AIRuntimeBridgeService {
         let logFilePath = AppDebugLog.shared.logFileURL().path
         let runtimeOwner = runtimeOwnerID()
         let toolPermissionSettingsFilePath = toolPermissionSettingsFileURL().path
+        let memoryArtifacts = aiSettings.flatMap {
+            MemoryContextService().prepareLaunchArtifacts(
+                projectID: session.projectID,
+                projectName: session.projectName,
+                projectPath: session.cwd,
+                settings: $0
+            )
+        }
         let signature = environmentCacheSignature(
             session: session,
             processEnvironment: processEnvironment,
@@ -164,7 +173,10 @@ struct AIRuntimeBridgeService {
             shellHookPaths: shellHookPaths,
             logFilePath: logFilePath,
             runtimeOwner: runtimeOwner,
-            toolPermissionSettingsFilePath: toolPermissionSettingsFilePath
+            toolPermissionSettingsFilePath: toolPermissionSettingsFilePath,
+            memoryWorkspaceRootPath: memoryArtifacts?.workspaceRootURL.path,
+            memoryWorkspaceLinkPath: memoryArtifacts?.workspaceLinkURL.path,
+            memoryPromptFilePath: memoryArtifacts?.promptFileURL.path
         )
 
         if let cached = Self.environmentCacheCoordinator.value(for: session.id, signature: signature) {
@@ -183,6 +195,9 @@ struct AIRuntimeBridgeService {
             if let value = processEnvironment[key], !value.isEmpty {
                 merged[key] = value
             }
+        }
+        for (key, value) in aiToolEnvironmentService.configuredEnvironment() where merged[key]?.isEmpty ?? true {
+            merged[key] = value
         }
 
         merged["PATH"] = wrapperPath + ":" + originalPath
@@ -210,6 +225,11 @@ struct AIRuntimeBridgeService {
         if let shellHookPaths {
             merged["DMUX_ZSH_HOOK_SCRIPT"] = shellHookPaths.scriptPath
             merged["ZDOTDIR"] = shellHookPaths.zdotdirPath
+        }
+        if let memoryArtifacts {
+            merged["DMUX_AI_MEMORY_WORKSPACE_ROOT"] = memoryArtifacts.workspaceRootURL.path
+            merged["DMUX_AI_MEMORY_WORKSPACE_LINK"] = memoryArtifacts.workspaceLinkURL.path
+            merged["DMUX_AI_MEMORY_PROMPT_FILE"] = memoryArtifacts.promptFileURL.path
         }
         debugLog.log("startup-ui", "terminal-env step=hooks-ready session=\(session.id.uuidString) enabled=\(merged["ZDOTDIR"] != nil)")
         merged["TERM"] = "xterm-256color"
@@ -359,7 +379,10 @@ struct AIRuntimeBridgeService {
         shellHookPaths: (zdotdirPath: String, scriptPath: String)?,
         logFilePath: String,
         runtimeOwner: String,
-        toolPermissionSettingsFilePath: String
+        toolPermissionSettingsFilePath: String,
+        memoryWorkspaceRootPath: String?,
+        memoryWorkspaceLinkPath: String?,
+        memoryPromptFilePath: String?
     ) -> String {
         let processSignature = Self.passthroughEnvironmentKeys
             .map { key in "\(key)=\(processEnvironment[key] ?? "")" }
@@ -381,6 +404,9 @@ struct AIRuntimeBridgeService {
             logFilePath,
             runtimeOwner,
             toolPermissionSettingsFilePath,
+            memoryWorkspaceRootPath ?? "",
+            memoryWorkspaceLinkPath ?? "",
+            memoryPromptFilePath ?? "",
             runtimeEventSocketURL().path,
             processSignature,
         ].joined(separator: "\u{1F}")

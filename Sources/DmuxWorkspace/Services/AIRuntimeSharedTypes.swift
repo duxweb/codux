@@ -84,10 +84,9 @@ struct AIRuntimeSourceLocator {
         defer { sqlite3_close(db) }
 
         let sql = """
-        SELECT rollout_path
+        SELECT rollout_path, cwd
         FROM threads
-        WHERE cwd = ?
-          AND rollout_path IS NOT NULL
+        WHERE rollout_path IS NOT NULL
         ORDER BY updated_at DESC;
         """
         var statement: OpaquePointer?
@@ -97,12 +96,14 @@ struct AIRuntimeSourceLocator {
         }
         defer { sqlite3_finalize(statement) }
 
-        sqlite3_bind_text(statement, 1, projectPath, -1, AIRuntimeSQLiteTransient)
-
         var urls: [URL] = []
         var seen = Set<String>()
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let rawPath = sqlite3_column_text(statement, 0) else {
+                continue
+            }
+            let rawCWD = sqlite3_column_text(statement, 1).map { String(cString: $0) }
+            guard pathsEquivalent(rawCWD, projectPath) else {
                 continue
             }
             let path = String(cString: rawPath)
@@ -136,7 +137,7 @@ struct AIRuntimeSourceLocator {
         }
         defer { sqlite3_close(db) }
 
-        let sql = "SELECT rollout_path FROM threads WHERE cwd = ? AND id = ? LIMIT 1;"
+        let sql = "SELECT rollout_path, cwd FROM threads WHERE id = ? LIMIT 20;"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else {
@@ -144,15 +145,19 @@ struct AIRuntimeSourceLocator {
         }
         defer { sqlite3_finalize(statement) }
 
-        sqlite3_bind_text(statement, 1, projectPath, -1, AIRuntimeSQLiteTransient)
-        sqlite3_bind_text(statement, 2, externalSessionID, -1, AIRuntimeSQLiteTransient)
+        sqlite3_bind_text(statement, 1, externalSessionID, -1, AIRuntimeSQLiteTransient)
 
-        guard sqlite3_step(statement) == SQLITE_ROW,
-              let rawPath = sqlite3_column_text(statement, 0) else {
-            return nil
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let rawPath = sqlite3_column_text(statement, 0) else {
+                continue
+            }
+            let rawCWD = sqlite3_column_text(statement, 1).map { String(cString: $0) }
+            guard pathsEquivalent(rawCWD, projectPath) else {
+                continue
+            }
+            return URL(fileURLWithPath: String(cString: rawPath)).standardizedFileURL
         }
-
-        return URL(fileURLWithPath: String(cString: rawPath)).standardizedFileURL
+        return nil
     }
 
     static func opencodeDatabaseURL(homeURL: URL? = nil) -> URL {
@@ -217,10 +222,15 @@ struct AIRuntimeSourceLocator {
         let projectsURL = geminiProjectsURL(homeURL: homeURL)
         if let data = try? Data(contentsOf: projectsURL),
            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let projects = object["projects"] as? [String: Any],
-           let directoryName = projects[projectPath] as? String,
-           !directoryName.isEmpty {
-            return geminiTempDirectoryURL(homeURL: homeURL).appendingPathComponent(directoryName, isDirectory: true)
+           let projects = object["projects"] as? [String: Any] {
+            for (storedPath, value) in projects {
+                guard let directoryName = value as? String,
+                      !directoryName.isEmpty,
+                      pathsEquivalent(storedPath, projectPath) else {
+                    continue
+                }
+                return geminiTempDirectoryURL(homeURL: homeURL).appendingPathComponent(directoryName, isDirectory: true)
+            }
         }
 
         let tempURL = geminiTempDirectoryURL(homeURL: homeURL)
@@ -236,7 +246,7 @@ struct AIRuntimeSourceLocator {
             let rootMarker = entry.appendingPathComponent(".project_root", isDirectory: false)
             guard let value = try? String(contentsOf: rootMarker, encoding: .utf8)
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-                  value == projectPath else {
+                  pathsEquivalent(value, projectPath) else {
                 continue
             }
             return entry
@@ -285,7 +295,7 @@ struct AIRuntimeSourceLocator {
                 let markerURL = entry.appendingPathComponent(".project_root", isDirectory: false)
                 let markerValue = try? String(contentsOf: markerURL, encoding: .utf8)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                return markerValue == projectPath
+                return pathsEquivalent(markerValue, projectPath)
             }
             .flatMap { entry -> [URL] in
                 let chatsURL = entry.appendingPathComponent("chats", isDirectory: true)
@@ -324,7 +334,7 @@ struct AIRuntimeSourceLocator {
                 return lineCount < 12
             }
             if let cwd = row["cwd"] as? String {
-                matchesProject = (cwd == projectPath)
+                matchesProject = pathsEquivalent(cwd, projectPath)
                 return false
             }
             return lineCount < 12
@@ -344,7 +354,7 @@ struct AIRuntimeSourceLocator {
             let payload = row["payload"] as? [String: Any] ?? [:]
             if rowType == "session_meta" || rowType == "turn_context",
                let cwd = payload["cwd"] as? String {
-                matchesProject = (cwd == projectPath)
+                matchesProject = pathsEquivalent(cwd, projectPath)
                 return false
             }
             return lineCount < 20

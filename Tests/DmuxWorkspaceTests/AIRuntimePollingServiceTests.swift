@@ -335,6 +335,82 @@ final class AIRuntimePollingServiceTests: XCTestCase {
         XCTAssertEqual(session.committedTotalTokens, 150)
     }
 
+    func testRespondingRuntimePollRenewsLoadingWhenSnapshotTimestampIsStale() async throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        let now = Date().timeIntervalSince1970
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                projectPath: "/tmp/codux",
+                sessionTitle: "Codex",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.5",
+                totalTokens: 12,
+                updatedAt: now - 40,
+                metadata: nil
+            )
+        )
+
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+
+        let notificationCenter = NotificationCenter()
+        let driver = CountingRuntimeToolDriver(
+            id: "codex",
+            aliases: ["codex"],
+            snapshot: AIRuntimeContextSnapshot(
+                tool: "codex",
+                externalSessionID: "codex-session",
+                model: "gpt-5.5",
+                inputTokens: 120,
+                outputTokens: 30,
+                totalTokens: 150,
+                updatedAt: now - 35,
+                startedAt: now - 40,
+                responseState: .responding,
+                wasInterrupted: false,
+                hasCompletedTurn: false,
+                sessionOrigin: .unknown,
+                source: .probe
+            )
+        )
+        let service = AIRuntimePollingService(
+            aiSessionStore: store,
+            toolDriverFactory: AIToolDriverFactory(drivers: [driver]),
+            notificationCenter: notificationCenter,
+            interval: 60,
+            hookSuppressionWindow: 0.05,
+            sessionSilenceThreshold: 18
+        )
+        defer { service.stop() }
+
+        let expectation = expectation(description: "runtime poll notification")
+        let observer = notificationCenter.addObserver(
+            forName: .dmuxAIRuntimeBridgeDidChange,
+            object: nil,
+            queue: .main
+        ) { note in
+            if (note.userInfo?["kind"] as? String) == "runtime-poll" {
+                expectation.fulfill()
+            }
+        }
+        defer { notificationCenter.removeObserver(observer) }
+
+        service.sync(reason: "renew-loading")
+        await fulfillment(of: [expectation], timeout: 2)
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.state, .responding)
+        XCTAssertEqual(session.committedTotalTokens, 150)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .running(tool: "codex"))
+    }
+
     func testIdleIncompleteSessionStillPollsAndCanEnterLoadingFromRuntime() async throws {
         let terminalID = UUID()
         let projectID = UUID()

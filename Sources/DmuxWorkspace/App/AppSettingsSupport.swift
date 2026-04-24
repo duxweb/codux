@@ -226,7 +226,7 @@ enum AppSupportedAITool: CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    private var rawValue: String {
+    var rawValue: String {
         switch self {
         case .codex:
             return "codex"
@@ -249,6 +249,19 @@ enum AppSupportedAITool: CaseIterable, Identifiable {
             return "Gemini"
         case .opencode:
             return "OpenCode"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .codex:
+            return "terminal"
+        case .claudeCode:
+            return "sparkles"
+        case .gemini:
+            return "diamond"
+        case .opencode:
+            return "curlybraces"
         }
     }
 
@@ -469,4 +482,3 @@ enum AppThemeMode: String, Codable, CaseIterable, Identifiable {
         }
     }
 }
-

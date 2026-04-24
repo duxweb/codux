@@ -5,7 +5,7 @@ enum SettingsSectionTab: String, CaseIterable, Identifiable {
     case general
     case appearance
     case pet
-    case tools
+    case ai
     case notifications
     case shortcuts
     case developer
@@ -17,7 +17,7 @@ enum SettingsSectionTab: String, CaseIterable, Identifiable {
         case .general: return "gearshape"
         case .appearance: return "paintbrush"
         case .pet: return "pawprint"
-        case .tools: return "terminal"
+        case .ai: return "brain.head.profile"
         case .notifications: return "bell.badge"
         case .shortcuts: return "keyboard"
         case .developer: return "wrench.and.screwdriver"
@@ -32,8 +32,8 @@ enum SettingsSectionTab: String, CaseIterable, Identifiable {
             return 760
         case .pet:
             return 430
-        case .tools:
-            return 360
+        case .ai:
+            return 640
         case .notifications:
             return 620
         case .shortcuts:
@@ -68,11 +68,11 @@ struct SettingsView: View {
                 }
                 .tag(SettingsSectionTab.pet)
 
-            ToolSettingsPane(model: model)
+            AISettingsPane(model: model)
                 .tabItem {
-                    Label(String(localized: "settings.tab.tools", defaultValue: "Tools", bundle: .module), systemImage: SettingsSectionTab.tools.symbol)
+                    Label(String(localized: "settings.tab.ai", defaultValue: "AI", bundle: .module), systemImage: SettingsSectionTab.ai.symbol)
                 }
-                .tag(SettingsSectionTab.tools)
+                .tag(SettingsSectionTab.ai)
 
             NotificationSettingsPane(model: model)
                 .tabItem {

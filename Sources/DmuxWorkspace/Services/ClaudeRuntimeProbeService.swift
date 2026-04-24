@@ -75,7 +75,7 @@ actor ClaudeRuntimeInterruptWatchCache {
         JSONLLineReader.forEachLine(in: fileURL, startingAt: offset) { lineData in
             guard let row = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                   let cwd = row["cwd"] as? String,
-                  projectPath == nil || cwd == projectPath,
+                  projectPath == nil || pathsEquivalent(cwd, projectPath),
                   let sessionID = row["sessionId"] as? String,
                   isClaudeInterruptedRow(row) else {
                 return true
@@ -299,7 +299,7 @@ actor ClaudeRuntimeLogCache {
             guard let row = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                   let cwd = row["cwd"] as? String,
                   let sessionID = row["sessionId"] as? String,
-                  cwd == projectPath else {
+                  pathsEquivalent(cwd, projectPath) else {
                 return true
             }
 

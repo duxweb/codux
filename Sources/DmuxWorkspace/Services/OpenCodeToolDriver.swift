@@ -122,12 +122,12 @@ private func fetchOpenCodeSessionSnapshot(
            COALESCE(json_extract(m.data, '$.tokens.cache.read'), 0) AS cache_read_tokens,
            COALESCE(json_extract(m.data, '$.tokens.reasoning'), 0) AS reasoning_tokens,
            COALESCE(json_extract(m.data, '$.time.completed'), '') AS completed_at_text,
+           COALESCE(json_extract(m.data, '$.path.root'), s.directory, '') AS root_path,
            m.time_created AS message_created_at,
            s.time_updated AS session_updated_at
     FROM session s
     LEFT JOIN message m ON m.session_id = s.id
-    WHERE s.directory = ?
-      AND s.id = ?
+    WHERE s.id = ?
       AND s.time_archived IS NULL
     ORDER BY m.time_created DESC;
     """
@@ -139,8 +139,7 @@ private func fetchOpenCodeSessionSnapshot(
     }
     defer { sqlite3_finalize(statement) }
 
-    sqlite3_bind_text(statement, 1, projectPath, -1, SQLITE_TRANSIENT_SESSION)
-    sqlite3_bind_text(statement, 2, externalSessionID, -1, SQLITE_TRANSIENT_SESSION)
+    sqlite3_bind_text(statement, 1, externalSessionID, -1, SQLITE_TRANSIENT_SESSION)
 
     var latestModel: String?
     var inputTokens = 0
@@ -153,6 +152,10 @@ private func fetchOpenCodeSessionSnapshot(
     var hadRow = false
 
     while sqlite3_step(statement) == SQLITE_ROW {
+        let rootPath = sqlite3_column_text(statement, 8).map { String(cString: $0) }
+        guard pathsEquivalent(rootPath, projectPath) else {
+            continue
+        }
         hadRow = true
         if latestModel == nil, let rawModel = sqlite3_column_text(statement, 0) {
             let model = String(cString: rawModel)
@@ -171,8 +174,8 @@ private func fetchOpenCodeSessionSnapshot(
         cachedInputTokens += cacheRead
         totalTokens += input + output + reasoning
         let completedAtText = sqlite3_column_text(statement, 7).map { String(cString: $0) }
-        let messageCreatedAt = sqlite3_column_double(statement, 8) / 1000
-        let sessionUpdatedAt = sqlite3_column_double(statement, 9) / 1000
+        let messageCreatedAt = sqlite3_column_double(statement, 9) / 1000
+        let sessionUpdatedAt = sqlite3_column_double(statement, 10) / 1000
         let createdAt = parseOpenCodeRuntimeTimestamp(createdAtText) ?? messageCreatedAt
         let completedAt = parseOpenCodeRuntimeTimestamp(completedAtText)
         if role == "user" {

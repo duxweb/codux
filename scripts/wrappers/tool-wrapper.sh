@@ -118,6 +118,49 @@ log_line() {
   print -r -- "[$(/bin/date '+%Y-%m-%dT%H:%M:%S%z')] [wrapper] $1" >> "${DMUX_LOG_FILE}"
 }
 
+memory_workspace_root() {
+  [[ -n "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" && -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ]] || return 1
+  print -r -- "${DMUX_AI_MEMORY_WORKSPACE_ROOT}"
+}
+
+memory_workspace_link() {
+  [[ -n "${DMUX_AI_MEMORY_WORKSPACE_LINK:-}" && -d "${DMUX_AI_MEMORY_WORKSPACE_LINK}" ]] || return 1
+  print -r -- "${DMUX_AI_MEMORY_WORKSPACE_LINK}"
+}
+
+tool_memory_file_name() {
+  case "${tool_name}" in
+    claude|claude-code)
+      print -r -- "CLAUDE.md"
+      ;;
+    gemini)
+      print -r -- "GEMINI.md"
+      ;;
+    codex|opencode)
+      print -r -- "AGENTS.md"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+resolved_memory_launch_dir() {
+  local root link file_name candidate
+  root="$(memory_workspace_root || true)"
+  link="$(memory_workspace_link || true)"
+  file_name="$(tool_memory_file_name || true)"
+  [[ -n "${root}" && -n "${link}" && -n "${file_name}" ]] || return 1
+  candidate="${root}/${file_name}"
+  [[ -f "${candidate}" ]] || return 1
+  print -r -- "${link}"
+}
+
+memory_prompt_file() {
+  [[ -n "${DMUX_AI_MEMORY_PROMPT_FILE:-}" && -f "${DMUX_AI_MEMORY_PROMPT_FILE}" ]] || return 1
+  print -r -- "${DMUX_AI_MEMORY_PROMPT_FILE}"
+}
+
 tool_permission_settings_path() {
   [[ -n "${DMUX_TOOL_PERMISSION_SETTINGS_FILE:-}" ]] || return 0
   print -r -- "${DMUX_TOOL_PERMISSION_SETTINGS_FILE}"
@@ -262,9 +305,17 @@ send_usage_runtime_event() {
 run_wrapped_command() {
   local external_session_id="${1:-}"
   local model="${2:-}"
-  shift 2
+  local launch_dir="${3:-}"
+  shift 3
 
-  "$@"
+  if [[ -n "${launch_dir}" ]]; then
+    (
+      builtin cd "${launch_dir}" || exit 111
+      "$@"
+    )
+  else
+    "$@"
+  fi
   local exit_code=$?
   if [[ "${tool_name}" == "opencode" && -z "${external_session_id}" && -n "${DMUX_STATUS_DIR:-}" && -n "${DMUX_SESSION_ID:-}" ]]; then
     local opencode_state_path="${DMUX_STATUS_DIR}/opencode-session-${DMUX_SESSION_ID}.json"
@@ -379,13 +430,15 @@ write_claude_session_map() {
   /bin/mv -f -- "${tmp}" "${path}"
 }
 
-  if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" ]]; then
+if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" ]]; then
   helper_script="${wrapper_dir}/dmux-ai-state.sh"
   if [[ -x "$helper_script" && -n "${DMUX_SESSION_ID:-}" && -n "${DMUX_RUNTIME_SOCKET:-}" ]]; then
     local_permission_mode="$(configured_permission_mode || true)"
     claude_launch_path="${managed_system_first_path}"
     claude_maxproc="${DMUX_CLAUDE_MAXPROC:-2048}"
     apply_process_limit_cap "${claude_maxproc}"
+    claude_launch_dir="$(resolved_memory_launch_dir || true)"
+    claude_memory_prompt_file="$(memory_prompt_file || true)"
     launch_args=("$@")
     if [[ "${local_permission_mode}" == "fullAccess" ]] \
       && ! has_exact_arg "--dangerously-skip-permissions" "${launch_args[@]}" \
@@ -393,6 +446,14 @@ write_claude_session_map() {
       && ! has_exact_arg "--permission-mode" "${launch_args[@]}" \
       && ! has_prefix_arg "--permission-mode=" "${launch_args[@]}"; then
       launch_args=(--dangerously-skip-permissions "${launch_args[@]}")
+    fi
+    if [[ -n "${claude_memory_prompt_file}" ]] \
+      && ! has_exact_arg "--append-system-prompt" "${launch_args[@]}" \
+      && ! has_prefix_arg "--append-system-prompt=" "${launch_args[@]}"; then
+      claude_memory_prompt="$(<"${claude_memory_prompt_file}")"
+      if [[ -n "${claude_memory_prompt}" ]]; then
+        launch_args=(--append-system-prompt "${claude_memory_prompt}" "${launch_args[@]}")
+      fi
     fi
     skip_session_id=false
     launch_model="$(extract_model_target "${launch_args[@]}" || true)"
@@ -407,13 +468,13 @@ write_claude_session_map() {
 
     if [[ "$skip_session_id" == true ]]; then
       resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
-      run_wrapped_command "${resume_target}" "${launch_model}" env PATH="$claude_launch_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
+      run_wrapped_command "${resume_target}" "${launch_model}" "${claude_launch_dir}" env PATH="$claude_launch_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
       exit $?
     else
       claude_external_session_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
       write_claude_session_map "${claude_external_session_id}"
       log_line "launch claude session=${DMUX_SESSION_ID} externalSession=${claude_external_session_id}"
-      run_wrapped_command "${claude_external_session_id}" "${launch_model}" env PATH="$claude_launch_path" DMUX_EXTERNAL_SESSION_ID="${claude_external_session_id}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" --session-id "${claude_external_session_id}" "${launch_args[@]}"
+      run_wrapped_command "${claude_external_session_id}" "${launch_model}" "${claude_launch_dir}" env PATH="$claude_launch_path" DMUX_EXTERNAL_SESSION_ID="${claude_external_session_id}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" --session-id "${claude_external_session_id}" "${launch_args[@]}"
       exit $?
     fi
   fi
@@ -436,8 +497,9 @@ if [[ "$tool_name" == "codex" ]]; then
       launch_args=(--dangerously-bypass-approvals-and-sandbox "${launch_args[@]}")
     fi
     launch_model="$(extract_model_target "${launch_args[@]}" || true)"
+    launch_dir="$(resolved_memory_launch_dir || true)"
     log_line "launch codex managed session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} binary=${real_bin} hooks=enabled"
-    run_wrapped_command "" "${launch_model}" env PATH="$search_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" --enable codex_hooks "${launch_args[@]}"
+    run_wrapped_command "" "${launch_model}" "${launch_dir}" env PATH="$search_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" --enable codex_hooks "${launch_args[@]}"
     exit $?
   fi
 fi
@@ -455,8 +517,9 @@ if [[ "$tool_name" == "gemini" ]]; then
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
+  launch_dir="$(resolved_memory_launch_dir || true)"
   log_line "launch managed tool=${tool_name} session=${DMUX_SESSION_ID:-nil} project=${DMUX_PROJECT_ID:-nil} binary=${real_bin} invocation=${DMUX_ACTIVE_AI_INVOCATION_ID:-nil} resume=${resume_target:-nil}"
-  run_wrapped_command "${resume_target}" "${launch_model}" env PATH="$search_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
+  run_wrapped_command "${resume_target}" "${launch_model}" "${launch_dir}" env PATH="$search_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
 
@@ -465,8 +528,9 @@ if [[ "$tool_name" == "opencode" ]]; then
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
   opencode_config_dir="${wrapper_dir}/opencode-config"
+  launch_dir="$(resolved_memory_launch_dir || true)"
   log_line "launch managed tool=${tool_name} session=${DMUX_SESSION_ID:-nil} project=${DMUX_PROJECT_ID:-nil} binary=${real_bin} invocation=${DMUX_ACTIVE_AI_INVOCATION_ID:-nil} resume=${resume_target:-nil} configDir=${opencode_config_dir}"
-  run_wrapped_command "${resume_target}" "" env PATH="$search_path" OPENCODE_CONFIG_DIR="${opencode_config_dir}" DMUX_EXTERNAL_SESSION_ID="${resume_target}" "$real_bin" "${launch_args[@]}"
+  run_wrapped_command "${resume_target}" "" "${launch_dir}" env PATH="$search_path" OPENCODE_CONFIG_DIR="${opencode_config_dir}" DMUX_EXTERNAL_SESSION_ID="${resume_target}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
 

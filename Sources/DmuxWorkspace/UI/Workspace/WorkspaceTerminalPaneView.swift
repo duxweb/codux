@@ -129,7 +129,7 @@ struct TerminalPaneView: View {
     }
 
     private func terminalEnvironment() -> [(String, String)] {
-        terminalEnvironmentService.environmentResolution(for: session).pairs
+        terminalEnvironmentService.environmentResolution(for: session, aiSettings: model.appSettings.ai).pairs
     }
 }
 

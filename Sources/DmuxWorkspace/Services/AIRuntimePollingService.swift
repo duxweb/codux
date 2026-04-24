@@ -159,9 +159,13 @@ final class AIRuntimePollingService {
                 )
                 continue
             }
+            var observedSnapshot = snapshot
+            if observedSnapshot.responseState == .responding {
+                observedSnapshot.updatedAt = max(observedSnapshot.updatedAt, now)
+            }
             didChange = aiSessionStore.applyRuntimeSnapshot(
                 terminalID: terminalID,
-                snapshot: snapshot
+                snapshot: observedSnapshot
             ) || didChange
         }
 

@@ -55,7 +55,7 @@ extension AIProjectHistoryService {
             }
 
             if !cwdConfirmed, let cwd = row["cwd"] as? String {
-                if cwd == project.path {
+                if pathsEquivalent(cwd, project.path) {
                     cwdConfirmed = true
                 } else {
                     cwdDenied = true
@@ -237,7 +237,7 @@ extension AIProjectHistoryService {
 
             if rowType == "session_meta",
                let cwd = payload["cwd"] as? String,
-               cwd == project.path {
+               pathsEquivalent(cwd, project.path) {
                 matchedProject = true
                 if let sessionID = normalizedNonEmptyString(payload["id"] as? String) {
                     key = AIHistorySessionKey(source: "codex", sessionID: sessionID)
@@ -249,7 +249,7 @@ extension AIProjectHistoryService {
 
             if rowType == "turn_context",
                let cwd = payload["cwd"] as? String,
-               cwd == project.path {
+               pathsEquivalent(cwd, project.path) {
                 matchedProject = true
                 if let rawModel = normalizedNonEmptyString(payload["model"] as? String) {
                     model = rawModel

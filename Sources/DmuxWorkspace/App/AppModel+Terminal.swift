@@ -187,6 +187,11 @@ extension AppModel {
         terminalFocusRequestID = nil
     }
 
+    func clearTerminalFocusOutsideSelectedProject() {
+        let sessionIDs = Set(selectedWorkspace?.sessions.map(\.id) ?? [])
+        DmuxTerminalBackend.shared.registry.clearFocusedSessionIfOutside(sessionIDs, in: NSApp.keyWindow ?? NSApp.mainWindow)
+    }
+
     func restoreSelectedTerminalFocusIfNeeded() {
         guard let sessionID = selectedSessionID else {
             return
@@ -252,14 +257,20 @@ extension AppModel {
             "terminal-lifecycle",
             "release-request session=\(sessionID.uuidString) reason=close-workspace selected=\(selectedSessionID?.uuidString ?? "nil")"
         )
-        mutateSelectedWorkspace { workspace, _ in
-            let totalCount = workspace.sessions.count
-            guard totalCount > 1 else {
-                statusMessage = String(localized: "terminal.keep_one_open", defaultValue: "At least one terminal must remain open.", bundle: .module)
-                return
-            }
+        mutateSelectedWorkspace { workspace, project in
+            let shouldRebuildLastTerminal = workspace.visibleSessionCount <= 1
+            let replacementSession = shouldRebuildLastTerminal
+                ? TerminalSession.make(project: project, command: project.defaultCommand)
+                : nil
 
             workspace.removeSession(sessionID)
+            if let replacementSession {
+                workspace.sessions.append(replacementSession)
+                _ = workspace.addTopSession(replacementSession.id)
+                terminalFocusRequestID = replacementSession.id
+                terminalFocusRenderVersion &+= 1
+            }
+
             runtimeIngressService.clearLiveState(sessionID: sessionID)
             aiStatsStore.handleTerminalSessionClosed(
                 sessionID: sessionID,
@@ -269,7 +280,9 @@ extension AppModel {
             )
             DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
             clearTerminalRecoveryState(for: sessionID)
-            statusMessage = String(localized: "terminal.closed", defaultValue: "Closed terminal.", bundle: .module)
+            statusMessage = replacementSession == nil
+                ? String(localized: "terminal.closed", defaultValue: "Closed terminal.", bundle: .module)
+                : String(localized: "terminal.rebuilt", defaultValue: "Restarted terminal.", bundle: .module)
         }
     }
 
@@ -286,17 +299,20 @@ extension AppModel {
             statusMessage = String(localized: "workspace.not_found", defaultValue: "Current workspace not found.", bundle: .module)
             return
         }
-        guard workspace.sessions.count > 1 else {
-            statusMessage = String(localized: "terminal.keep_one_open", defaultValue: "At least one terminal must remain open.", bundle: .module)
-            return
-        }
+        let isLastTerminal = workspace.visibleSessionCount <= 1
 
         let dialog = ConfirmDialogState(
-            title: String(localized: "workspace.close_current_split.title", defaultValue: "Close Current Split", bundle: .module),
-            message: String(localized: "workspace.close_current_split.message", defaultValue: "Are you sure you want to close the current split or tab?", bundle: .module),
-            icon: "xmark.rectangle.portrait",
+            title: isLastTerminal
+                ? String(localized: "workspace.restart_current_terminal.title", defaultValue: "Restart Current Terminal", bundle: .module)
+                : String(localized: "workspace.close_current_split.title", defaultValue: "Close Current Split", bundle: .module),
+            message: isLastTerminal
+                ? String(localized: "workspace.restart_current_terminal.message", defaultValue: "This is the last terminal for the project. Close it and start a fresh terminal?", bundle: .module)
+                : String(localized: "workspace.close_current_split.message", defaultValue: "Are you sure you want to close the current split or tab?", bundle: .module),
+            icon: isLastTerminal ? "arrow.clockwise" : "xmark.rectangle.portrait",
             iconColor: AppTheme.warning,
-            primaryTitle: String(localized: "common.close", defaultValue: "Close", bundle: .module),
+            primaryTitle: isLastTerminal
+                ? String(localized: "common.restart_now", defaultValue: "Restart Now", bundle: .module)
+                : String(localized: "common.close", defaultValue: "Close", bundle: .module),
             primaryTint: AppTheme.warning,
             cancelTitle: String(localized: "common.cancel", defaultValue: "Cancel", bundle: .module)
         )

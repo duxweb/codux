@@ -226,14 +226,14 @@ brew upgrade --cask codux
 
 如果你需要手动提取，Codux 的运行日志默认保存在：
 
-- `~/Library/Application Support/dmux/logs/dmux-debug.log`
-- `~/Library/Application Support/dmux/logs/dmux-debug.previous.log`
-- `~/Library/Application Support/dmux/logs/performance-summary.json`
+- `~/Library/Application Support/Codux/logs/runtime.log`
+- `~/Library/Application Support/Codux/logs/runtime.previous.log`
+- `~/Library/Application Support/Codux/logs/performance-summary.json`
 
 说明：
 
 - Codux 每次启动都会清理上一轮应用会话的日志，然后从当前会话重新开始记录
-- `dmux-debug.previous.log` 只会在当前会话日志达到轮转大小后出现
+- `runtime.previous.log` 只会在当前会话日志达到轮转大小后出现
 - `performance-summary.json` 会记录当前会话最近的性能峰值 / 主线程卡顿摘要
 
 也可以在应用顶部栏点击 `Debug Log` 直接打开当前日志文件。
@@ -241,7 +241,7 @@ brew upgrade --cask codux
 或者直接在终端执行下面这条命令，打开日志目录：
 
 ```bash
-open ~/Library/Application\ Support/dmux/logs
+open ~/Library/Application\ Support/Codux/logs
 ```
 
 ### 崩溃日志
@@ -256,8 +256,8 @@ open ~/Library/Application\ Support/dmux/logs
 
 通常你需要找的就是下面这两类文件：
 
+- `Codux-YYYY-MM-DD-*.ips`
 - `dmux-YYYY-MM-DD-*.ips`
-- `dmux-bin-YYYY-MM-DD-*.ips`
 
 如果同一时间有多个文件，请优先提交时间最接近崩溃发生时刻的那个。
 
@@ -273,8 +273,8 @@ open ~/Library/Logs/DiagnosticReports
 
 1. 你的 macOS 版本和 Codux 版本
 2. 问题复现步骤
-3. `dmux-debug.log`
-4. 如果存在，也请附上 `dmux-debug.previous.log`
+3. `runtime.log`
+4. 如果存在，也请附上 `runtime.previous.log`
 5. 如果存在，也请附上 `performance-summary.json`
 6. 如果发生了崩溃，再附上 `~/Library/Logs/DiagnosticReports/` 中对应的崩溃日志
 

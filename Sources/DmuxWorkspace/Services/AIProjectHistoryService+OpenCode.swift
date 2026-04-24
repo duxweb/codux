@@ -56,8 +56,7 @@ extension AIProjectHistoryService {
                m.data
         FROM session s
         JOIN message m ON m.session_id = s.id
-        WHERE json_extract(m.data, '$.path.root') = ?
-          AND s.time_archived IS NULL
+        WHERE s.time_archived IS NULL
         ORDER BY m.time_created ASC;
         """
 
@@ -68,7 +67,6 @@ extension AIProjectHistoryService {
         }
         defer { sqlite3_finalize(statement) }
 
-        sqlite3_bind_text(statement, 1, project.path, -1, AIHistorySQLiteTransient)
         var result = AIHistoryParseResult.empty
 
         while sqlite3_step(statement) == SQLITE_ROW {
@@ -81,6 +79,11 @@ extension AIProjectHistoryService {
                   let rawPayload = sqlite3_column_text(statement, 6),
                   let payloadData = String(cString: rawPayload).data(using: .utf8),
                   let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+                continue
+            }
+
+            let rootPath = sqlite3_column_text(statement, 5).map { String(cString: $0) }
+            guard pathsEquivalent(rootPath, project.path) else {
                 continue
             }
 
@@ -141,7 +144,7 @@ extension AIProjectHistoryService {
         guard let data = try? Data(contentsOf: fileURL),
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rootPath = normalizedNonEmptyString((payload["path"] as? [String: Any])?["root"] as? String),
-              rootPath == project.path,
+              pathsEquivalent(rootPath, project.path),
               let createdValue = normalizedNonEmptyString((payload["time"] as? [String: Any])?["created"] as? String),
               let timestamp = parseOpenCodeTimestamp(createdValue) else {
             return .empty

@@ -80,6 +80,36 @@ extension AppModel {
         }
     }
 
+    func observeMemoryExtractionStatusChanges() {
+        if let memoryExtractionStatusObserver {
+            NotificationCenter.default.removeObserver(memoryExtractionStatusObserver)
+        }
+
+        memoryExtractionStatusObserver = NotificationCenter.default.addObserver(
+            forName: .dmuxMemoryExtractionStatusDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let snapshot = notification.userInfo?["snapshot"] as? MemoryExtractionStatusSnapshot
+            Task { @MainActor [weak self] in
+                guard let snapshot else {
+                    return
+                }
+                self?.memoryExtractionStatus = snapshot
+            }
+        }
+
+        Task { [weak self] in
+            guard let self else {
+                return
+            }
+            let snapshot = await self.memoryCoordinator.currentStatusSnapshot()
+            await MainActor.run {
+                self.memoryExtractionStatus = snapshot
+            }
+        }
+    }
+
     func performanceMonitorContextSnapshot() -> AppPerformanceMonitorStore.ContextSnapshot {
         let activityLabel: String
         if let project = selectedProject,

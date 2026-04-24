@@ -64,6 +64,13 @@ final class AppModel {
     var isGeneratingCommitMessage = false
     var terminalFocusRequestID: UUID?
     var terminalFocusRenderVersion: UInt64 = 0
+    var memoryExtractionStatus = MemoryExtractionStatusSnapshot(
+        status: .idle,
+        pendingCount: 0,
+        runningCount: 0,
+        lastError: nil,
+        updatedAt: Date()
+    )
     let aiSessionStore = AISessionStore.shared
     let aiStatsStore = AIStatsStore()
     let petStore = PetStore.shared
@@ -74,11 +81,13 @@ final class AppModel {
     private let persistenceService: PersistenceService
     let gitService = GitService()
     let gitCredentialStore = GitCredentialStore()
+    let aiCredentialStore = AICredentialStore()
     let activityService = ProjectActivityService()
     let diagnosticsExportService = AppDiagnosticsExportService()
     let toolPermissionSettingsService = AIToolPermissionSettingsService()
     let appUpdaterService = AppUpdaterService(isEnabled: AppUpdaterService.isSupportedConfiguration)
     private let runtimeBridgeService = AIRuntimeBridgeService()
+    let memoryCoordinator = MemoryCoordinator()
     let runtimeIngressService = AIRuntimeIngressService.shared
     private let runtimePollingService = AIRuntimePollingService.shared
     private let terminalProcessInspector = TerminalProcessInspector()
@@ -90,6 +99,7 @@ final class AppModel {
     var terminalFocusObserver: NSObjectProtocol?
     var runtimeBridgeObserver: NSObjectProtocol?
     var runtimeActivityObserver: NSObjectProtocol?
+    var memoryExtractionStatusObserver: NSObjectProtocol?
     var pendingActivityRefreshTask: Task<Void, Never>?
     var pendingActivityRefreshShouldNotify = false
     var pendingActivityRefreshShouldRefreshAIStats = false
@@ -145,6 +155,7 @@ final class AppModel {
         activityService.requestNotificationPermission()
         observeApplicationActivation()
         observeTerminalFocusChanges()
+        observeMemoryExtractionStatusChanges()
         startActivityWatchers()
         debugLog.log("app", "launch selectedProject=\(selectedProject?.name ?? "nil")")
         aiStatsStore.configureIntervals(
@@ -172,7 +183,20 @@ final class AppModel {
             }
         )
         aiSessionStore.onRenderVersionChange = { [weak self] in
-            self?.petRefreshCoordinator.scheduleRefresh(reason: .aiSession)
+            guard let self else {
+                return
+            }
+            self.petRefreshCoordinator.scheduleRefresh(reason: .aiSession)
+            let sessions = Array(self.aiSessionStore.terminalSessionsByID.values)
+            let projects = self.projects
+            let aiSettings = self.appSettings.ai
+            Task {
+                await self.memoryCoordinator.handleSessionSnapshots(
+                    sessions,
+                    settings: aiSettings,
+                    projects: projects
+                )
+            }
         }
         petRefreshCoordinator.start()
         aiStatsStore.startTimers(
@@ -196,6 +220,10 @@ final class AppModel {
             sampleInterval: appSettings.developer.performanceMonitorSamplingInterval
         )
         toolPermissionSettingsService.sync(appSettings.toolPermissions)
+        Task {
+            await self.memoryCoordinator.recoverInterruptedExtractions()
+            await self.memoryCoordinator.handleSessionSnapshots([], settings: self.appSettings.ai, projects: self.projects)
+        }
 
         pendingStartupRecoveryDialog = startupRecoveryDialog(for: startupIssues)
         if pendingStartupRecoveryDialog != nil {
@@ -423,19 +451,30 @@ final class AppModel {
     }
 
     var displayedFocusedTerminalSessionID: UUID? {
-        Self.resolveDisplayedFocusedTerminalSessionID(
+        let workspaceSessionIDs = Set(selectedWorkspace?.sessions.map(\.id) ?? [])
+        let registryFocusedSessionID = DmuxTerminalBackend.shared.registry.focusedSessionID()
+        return Self.resolveDisplayedFocusedTerminalSessionID(
             focusRequestID: terminalFocusRequestID,
-            registryFocusedSessionID: DmuxTerminalBackend.shared.registry.focusedSessionID(),
-            selectedSessionID: selectedSessionID
+            registryFocusedSessionID: registryFocusedSessionID,
+            selectedSessionID: selectedSessionID,
+            visibleSessionIDs: workspaceSessionIDs
         )
     }
 
     static func resolveDisplayedFocusedTerminalSessionID(
         focusRequestID: UUID?,
         registryFocusedSessionID: UUID?,
-        selectedSessionID: UUID?
+        selectedSessionID: UUID?,
+        visibleSessionIDs: Set<UUID>? = nil
     ) -> UUID? {
-        focusRequestID ?? registryFocusedSessionID ?? selectedSessionID
+        if let focusRequestID {
+            return focusRequestID
+        }
+        if let registryFocusedSessionID,
+           visibleSessionIDs?.contains(registryFocusedSessionID) ?? true {
+            return registryFocusedSessionID
+        }
+        return selectedSessionID
     }
 
     static func shouldRefreshSelectionFocus(

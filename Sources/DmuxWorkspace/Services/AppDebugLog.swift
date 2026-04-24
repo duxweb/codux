@@ -271,6 +271,7 @@ private final class AppDebugLogBackend: @unchecked Sendable {
         case "runtime-socket",
              "runtime-interrupt",
              "ai-session-store",
+             "memory-extraction",
              "runtime-ingress":
             return true
         default:

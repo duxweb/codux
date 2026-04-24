@@ -70,16 +70,127 @@ extension AppModel {
         var settings = appSettings
         switch tool {
         case .codex:
-            settings.toolPermissions.codex = mode
+            settings.ai.runtimeTools.codex = mode
         case .claudeCode:
-            settings.toolPermissions.claudeCode = mode
+            settings.ai.runtimeTools.claudeCode = mode
         case .gemini:
-            settings.toolPermissions.gemini = mode
+            settings.ai.runtimeTools.gemini = mode
         case .opencode:
-            settings.toolPermissions.opencode = mode
+            settings.ai.runtimeTools.opencode = mode
         }
         appSettings = settings
-        toolPermissionSettingsService.sync(settings.toolPermissions)
+        toolPermissionSettingsService.sync(settings.ai.runtimeTools)
+        persist()
+    }
+
+    func updateMemoryEnabled(_ enabled: Bool) {
+        var settings = appSettings
+        settings.ai.memory.enabled = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updateMemoryAutomaticInjectionEnabled(_ enabled: Bool) {
+        var settings = appSettings
+        settings.ai.memory.automaticInjectionEnabled = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updateMemoryAutomaticExtractionEnabled(_ enabled: Bool) {
+        var settings = appSettings
+        settings.ai.memory.automaticExtractionEnabled = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updateMemoryAllowCrossProjectUserRecall(_ enabled: Bool) {
+        var settings = appSettings
+        settings.ai.memory.allowCrossProjectUserRecall = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updateMemoryDefaultExtractorProviderID(_ providerID: String) {
+        var settings = appSettings
+        settings.ai.memory.defaultExtractorProviderID = providerID
+        appSettings = settings
+        persist()
+    }
+
+    func updateMemoryUserWorkingLimit(_ limit: Int) {
+        var settings = appSettings
+        settings.ai.memory.maxInjectedUserWorkingMemories = max(0, min(24, limit))
+        appSettings = settings
+        persist()
+    }
+
+    func updateMemoryProjectWorkingLimit(_ limit: Int) {
+        var settings = appSettings
+        settings.ai.memory.maxInjectedProjectWorkingMemories = max(0, min(32, limit))
+        appSettings = settings
+        persist()
+    }
+
+    func updateAIProviderEnabled(_ enabled: Bool, providerID: String) {
+        updateAIProvider(providerID: providerID) { provider in
+            provider.isEnabled = enabled
+            if provider.kind == .openAICompatible && enabled == false {
+                provider.useForMemoryExtraction = false
+            }
+        }
+    }
+
+    func updateAIProviderUseForMemoryExtraction(_ enabled: Bool, providerID: String) {
+        updateAIProvider(providerID: providerID) { provider in
+            provider.useForMemoryExtraction = enabled
+        }
+    }
+
+    func updateAIProviderModel(_ model: String, providerID: String) {
+        updateAIProvider(providerID: providerID) { provider in
+            provider.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    func updateAIProviderBaseURL(_ baseURL: String, providerID: String) {
+        updateAIProvider(providerID: providerID) { provider in
+            provider.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    func updateAIProviderPriority(_ priority: Int, providerID: String) {
+        updateAIProvider(providerID: providerID) { provider in
+            provider.priority = max(0, priority)
+        }
+    }
+
+    func updateAIProviderAPIKey(_ value: String, providerID: String) {
+        let reference = aiCredentialStore.defaultReference(for: providerID)
+        aiCredentialStore.saveAPIKey(value, for: reference)
+        updateAIProvider(providerID: providerID) { provider in
+            provider.apiKeyReference = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : reference
+        }
+    }
+
+    func storedAIProviderAPIKey(providerID: String) -> String {
+        guard let provider = appSettings.ai.provider(withID: providerID) else {
+            return ""
+        }
+        return aiCredentialStore.apiKey(for: provider.apiKeyReference) ?? ""
+    }
+
+    private func updateAIProvider(providerID: String, transform: (inout AppAIProviderConfiguration) -> Void) {
+        var settings = appSettings
+        guard let index = settings.ai.providers.firstIndex(where: { $0.id == providerID }) else {
+            return
+        }
+        transform(&settings.ai.providers[index])
+        settings.ai.migrateMissingDefaultProviders()
+        if settings.ai.providers.contains(where: { $0.id == settings.ai.memory.defaultExtractorProviderID && $0.isEnabled && $0.useForMemoryExtraction }) == false {
+            settings.ai.memory.defaultExtractorProviderID = settings.ai.preferredExtractionProviderID() ?? AppAIProviderKind.claude.builtInProviderID
+        }
+        appSettings = settings
         persist()
     }
 

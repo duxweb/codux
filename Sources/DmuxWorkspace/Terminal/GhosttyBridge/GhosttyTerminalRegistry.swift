@@ -229,6 +229,19 @@ final class GhosttyTerminalRegistry {
         NotificationCenter.default.post(name: .dmuxTerminalFocusDidChange, object: nil)
     }
 
+    func clearFocusedSessionIfOutside(_ sessionIDs: Set<UUID>, in window: NSWindow?) {
+        if let explicitFocusedSessionID,
+           sessionIDs.contains(explicitFocusedSessionID) == false {
+            clearFocusedSession()
+        }
+        guard let responder = window?.firstResponder,
+              let staleEntry = containers.first(where: { $0.value.ownsResponder(responder) }),
+              sessionIDs.contains(staleEntry.key) == false else {
+            return
+        }
+        window?.makeFirstResponder(nil)
+    }
+
     func ownsResponder(_ responder: NSResponder?) -> Bool {
         containers.values.contains { $0.ownsResponder(responder) }
     }
