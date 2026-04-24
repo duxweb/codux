@@ -174,6 +174,7 @@ struct AIRuntimeBridgeService {
             logFilePath: logFilePath,
             runtimeOwner: runtimeOwner,
             toolPermissionSettingsFilePath: toolPermissionSettingsFilePath,
+            globalPrompt: aiSettings?.globalPrompt,
             memoryWorkspaceRootPath: memoryArtifacts?.workspaceRootURL.path,
             memoryWorkspaceLinkPath: memoryArtifacts?.workspaceLinkURL.path,
             memoryPromptFilePath: memoryArtifacts?.promptFileURL.path
@@ -380,6 +381,7 @@ struct AIRuntimeBridgeService {
         logFilePath: String,
         runtimeOwner: String,
         toolPermissionSettingsFilePath: String,
+        globalPrompt: String?,
         memoryWorkspaceRootPath: String?,
         memoryWorkspaceLinkPath: String?,
         memoryPromptFilePath: String?
@@ -404,6 +406,7 @@ struct AIRuntimeBridgeService {
             logFilePath,
             runtimeOwner,
             toolPermissionSettingsFilePath,
+            globalPrompt ?? "",
             memoryWorkspaceRootPath ?? "",
             memoryWorkspaceLinkPath ?? "",
             memoryPromptFilePath ?? "",

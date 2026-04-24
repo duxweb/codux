@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-struct AICredentialStore {
+struct AICredentialStore: Sendable {
     private let service = "dmux.ai.providers"
 
     func apiKey(for reference: String?) -> String? {

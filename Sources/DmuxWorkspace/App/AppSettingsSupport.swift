@@ -18,11 +18,28 @@ enum AppAIToolPermissionMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-struct AppAIToolPermissionSettings: Codable, Equatable {
+struct AppAIToolPermissionSettings: Codable, Equatable, Sendable {
     var codex: AppAIToolPermissionMode = .default
     var claudeCode: AppAIToolPermissionMode = .default
     var gemini: AppAIToolPermissionMode = .default
     var opencode: AppAIToolPermissionMode = .default
+    var codexModel: String = ""
+    var claudeCodeModel: String = ""
+    var geminiModel: String = ""
+    var opencodeModel: String = ""
+
+    func model(for tool: AppSupportedAITool) -> String {
+        switch tool {
+        case .codex:
+            return codexModel
+        case .claudeCode:
+            return claudeCodeModel
+        case .gemini:
+            return geminiModel
+        case .opencode:
+            return opencodeModel
+        }
+    }
 }
 
 struct AppNotificationChannelConfiguration: Codable, Equatable, Sendable {

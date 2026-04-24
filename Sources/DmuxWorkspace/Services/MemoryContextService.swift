@@ -25,8 +25,9 @@ struct MemoryContextService: Sendable {
         settings: AppAISettings
     ) -> MemoryLaunchArtifacts? {
         let fileManager = FileManager.default
-        guard settings.memory.enabled,
-              settings.memory.automaticInjectionEnabled,
+        let globalPrompt = normalizedNonEmptyString(settings.globalPrompt)
+        let shouldInjectMemory = settings.memory.enabled && settings.memory.automaticInjectionEnabled
+        guard (globalPrompt != nil || shouldInjectMemory),
               let runtimeRoot = runtimeSupportRootURL ?? AppRuntimePaths.runtimeSupportRootURL(fileManager: fileManager) else {
             return nil
         }
@@ -114,6 +115,15 @@ struct MemoryContextService: Sendable {
         tool: String,
         settings: AppAISettings
     ) -> String {
+        let shouldInjectMemory = settings.memory.enabled && settings.memory.automaticInjectionEnabled
+        var sections: [String] = []
+        if let globalPrompt = normalizedNonEmptyString(settings.globalPrompt) {
+            sections.append(renderSummarySection(title: "Global user prompt", content: globalPrompt))
+        }
+        guard shouldInjectMemory else {
+            return sections.joined(separator: "\n\n")
+        }
+
         let userSummary = settings.memory.allowCrossProjectUserRecall
             ? try? store.currentSummary(scope: .user)
             : nil
@@ -139,14 +149,13 @@ struct MemoryContextService: Sendable {
 
         let uniqueEntries = uniqueOrderedEntries(userCoreFallback + userWorking + projectCoreFallback + projectWorking)
         guard userSummary != nil || projectSummary != nil || !uniqueEntries.isEmpty else {
-            return ""
+            return sections.joined(separator: "\n\n")
         }
         try? store.bumpAccess(for: uniqueEntries.map(\.id))
 
         let userWorkingUnique = uniqueOrderedEntries(userWorking)
         let projectWorkingUnique = uniqueOrderedEntries(projectWorking)
 
-        var sections: [String] = []
         sections.append("You are working inside project '\(projectName)'. Use the following persistent memory as operating guidance.")
         if let userSummary, let content = normalizedNonEmptyString(userSummary.content) {
             sections.append(renderSummarySection(title: "User summary memory", content: content))

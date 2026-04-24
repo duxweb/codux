@@ -53,6 +53,23 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+struct AIProviderTestState: Equatable, Sendable {
+    enum Status: Equatable, Sendable {
+        case idle
+        case testing
+        case succeeded
+        case failed
+    }
+
+    var status: Status = .idle
+    var message: String?
+    var updatedAt = Date()
+
+    var isTesting: Bool {
+        status == .testing
+    }
+}
+
 struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
     var id: String
     var kind: AppAIProviderKind
@@ -165,6 +182,7 @@ struct AppMemorySettings: Codable, Equatable, Sendable {
 
 struct AppAISettings: Codable, Equatable, Sendable {
     var runtimeTools = AppAIToolPermissionSettings()
+    var globalPrompt = ""
     var memory = AppMemorySettings()
     var providers = AppAIProviderConfiguration.defaultConfigurations
 
@@ -172,6 +190,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case runtimeTools
+        case globalPrompt
         case memory
         case providers
     }
@@ -179,6 +198,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         runtimeTools = try container.decodeIfPresent(AppAIToolPermissionSettings.self, forKey: .runtimeTools) ?? .init()
+        globalPrompt = try container.decodeIfPresent(String.self, forKey: .globalPrompt) ?? ""
         memory = try container.decodeIfPresent(AppMemorySettings.self, forKey: .memory) ?? .init()
         providers = try container.decodeIfPresent([AppAIProviderConfiguration].self, forKey: .providers) ?? AppAIProviderConfiguration.defaultConfigurations
         migrateMissingDefaultProviders()

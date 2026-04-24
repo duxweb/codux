@@ -25432,19 +25432,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tool Permissions"
+            "value": "Tool Configuration"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "工具权限"
+            "value": "工具配置"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "工具權限"
+            "value": "工具配置"
           }
         },
         "de": {
@@ -37151,41 +37151,116 @@
     "memory.status.detail": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Memory queue: %lld pending, %lld running" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "记忆队列：%lld 个等待，%lld 个运行中" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "記憶佇列：%lld 個等待，%lld 個執行中" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory queue: %lld pending, %lld running"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记忆队列：%lld 个等待，%lld 个运行中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶佇列：%lld 個等待，%lld 個執行中"
+          }
+        }
       }
     },
     "memory.status.failed": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Memory failed" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "记忆失败" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "記憶失敗" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记忆失败"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶失敗"
+          }
+        }
       }
     },
     "memory.status.idle": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Memory idle" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "记忆空闲" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "記憶空閒" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory idle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记忆空闲"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶空閒"
+          }
+        }
       }
     },
     "memory.status.processing": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Remembering" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "记忆中" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "記憶中" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remembering"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记忆中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶中"
+          }
+        }
       }
     },
     "memory.status.queued": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Memory queued" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "记忆排队" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "記憶排隊" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory queued"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记忆排队"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶排隊"
+          }
+        }
       }
     },
     "settings.ai.memory.automatic_extraction": {
@@ -38419,6 +38494,213 @@
           "stringUnit": {
             "state": "translated",
             "value": "Полный доступ"
+          }
+        }
+      }
+    },
+    "settings.ai.tool.configuration_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ Configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 配置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 配置"
+          }
+        }
+      }
+    },
+    "settings.ai.tool.default_model": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default Model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "預設模型"
+          }
+        }
+      }
+    },
+    "settings.ai.tool.default_model_help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave blank to use the CLI's own default model. Codux only adds a model argument when this field is set."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "留空则使用 CLI 自己的默认模型。只有填写后 Codux 才会添加模型参数。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "留空則使用 CLI 自己的預設模型。只有填寫後 Codux 才會加入模型參數。"
+          }
+        }
+      }
+    },
+    "settings.ai.global_prompt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global Prompt"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全局提示词"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全域提示詞"
+          }
+        }
+      }
+    },
+    "settings.ai.global_prompt_help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Injected when supported tools start. It is merged with memory context and written to each tool's launch context."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支持的工具启动时注入，会和记忆上下文合并并写入对应工具的启动上下文。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支援的工具啟動時注入，會和記憶上下文合併並寫入對應工具的啟動上下文。"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.test": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測試"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.test.running": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testing…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试中…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測試中…"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.test.succeeded_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test succeeded: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试成功：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測試成功：%@"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.test.failed_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test failed: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试失败：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測試失敗：%@"
           }
         }
       }

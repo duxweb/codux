@@ -71,6 +71,7 @@ final class AppModel {
         lastError: nil,
         updatedAt: Date()
     )
+    var aiProviderTestStates: [String: AIProviderTestState] = [:]
     let aiSessionStore = AISessionStore.shared
     let aiStatsStore = AIStatsStore()
     let petStore = PetStore.shared

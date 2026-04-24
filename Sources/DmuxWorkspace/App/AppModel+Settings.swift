@@ -83,6 +83,31 @@ extension AppModel {
         persist()
     }
 
+    func updateToolDefaultModel(_ model: String, for tool: AppSupportedAITool) {
+        var settings = appSettings
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch tool {
+        case .codex:
+            settings.ai.runtimeTools.codexModel = trimmedModel
+        case .claudeCode:
+            settings.ai.runtimeTools.claudeCodeModel = trimmedModel
+        case .gemini:
+            settings.ai.runtimeTools.geminiModel = trimmedModel
+        case .opencode:
+            settings.ai.runtimeTools.opencodeModel = trimmedModel
+        }
+        appSettings = settings
+        toolPermissionSettingsService.sync(settings.ai.runtimeTools)
+        persist()
+    }
+
+    func updateAIGlobalPrompt(_ prompt: String) {
+        var settings = appSettings
+        settings.ai.globalPrompt = prompt
+        appSettings = settings
+        persist()
+    }
+
     func updateMemoryEnabled(_ enabled: Bool) {
         var settings = appSettings
         settings.ai.memory.enabled = enabled
@@ -178,6 +203,54 @@ extension AppModel {
             return ""
         }
         return aiCredentialStore.apiKey(for: provider.apiKeyReference) ?? ""
+    }
+
+    func testAIProvider(providerID: String) {
+        guard let provider = appSettings.ai.provider(withID: providerID) else {
+            return
+        }
+        aiProviderTestStates[providerID] = AIProviderTestState(
+            status: .testing,
+            message: String(localized: "settings.ai.provider.test.running", defaultValue: "Testing…", bundle: .module),
+            updatedAt: Date()
+        )
+
+        Task { [provider, aiCredentialStore] in
+            do {
+                let response = try await AIProviderFactory(credentialStore: aiCredentialStore)
+                    .client(for: provider.kind)
+                    .complete(
+                        AIProviderCompletionRequest(
+                            prompt: "Reply with exactly: OK",
+                            systemPrompt: "This is a connection test. Reply with exactly: OK",
+                            workingDirectory: WorkspacePaths.repositoryRoot().path
+                        ),
+                        configuration: provider
+                    )
+                let preview = response.trimmingCharacters(in: .whitespacesAndNewlines)
+                await MainActor.run {
+                    self.aiProviderTestStates[providerID] = AIProviderTestState(
+                        status: .succeeded,
+                        message: String(
+                            format: String(localized: "settings.ai.provider.test.succeeded_format", defaultValue: "Test succeeded: %@", bundle: .module),
+                            preview.isEmpty ? "OK" : String(preview.prefix(120))
+                        ),
+                        updatedAt: Date()
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    self.aiProviderTestStates[providerID] = AIProviderTestState(
+                        status: .failed,
+                        message: String(
+                            format: String(localized: "settings.ai.provider.test.failed_format", defaultValue: "Test failed: %@", bundle: .module),
+                            error.localizedDescription
+                        ),
+                        updatedAt: Date()
+                    )
+                }
+            }
+        }
     }
 
     private func updateAIProvider(providerID: String, transform: (inout AppAIProviderConfiguration) -> Void) {

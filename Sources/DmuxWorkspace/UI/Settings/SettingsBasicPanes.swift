@@ -151,24 +151,47 @@ struct AISettingsPane: View {
 
     var body: some View {
         Form {
-            Section(String(localized: "settings.tools.permissions", defaultValue: "Tool Permissions", bundle: .module)) {
-                ForEach([AppSupportedAITool.codex, .claudeCode, .gemini, .opencode], id: \.id) { tool in
-                    HStack {
-                        Text(tool.title)
-                        Spacer()
-                        Toggle(
-                            String(localized: "settings.ai.permission.full_access_toggle", defaultValue: "Full Access", bundle: .module),
-                            isOn: Binding(
-                                get: { tool.permissionMode(from: model.appSettings.toolPermissions) == .fullAccess },
-                                set: { isEnabled in
-                                    model.updateToolPermissionMode(isEnabled ? .fullAccess : .default, for: tool)
-                                }
-                            )
+            ForEach([AppSupportedAITool.codex, .claudeCode, .gemini, .opencode], id: \.id) { tool in
+                Section(
+                    String(
+                        format: String(localized: "settings.ai.tool.configuration_format", defaultValue: "%@ Configuration", bundle: .module),
+                        tool.title
+                    )
+                ) {
+                    Toggle(
+                        String(localized: "settings.ai.permission.full_access_toggle", defaultValue: "Full Access", bundle: .module),
+                        isOn: Binding(
+                            get: { tool.permissionMode(from: model.appSettings.ai.runtimeTools) == .fullAccess },
+                            set: { isEnabled in
+                                model.updateToolPermissionMode(isEnabled ? .fullAccess : .default, for: tool)
+                            }
                         )
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                    }
+                    )
+
+                    TextField(
+                        String(localized: "settings.ai.tool.default_model", defaultValue: "Default Model", bundle: .module),
+                        text: Binding(
+                            get: { model.appSettings.ai.runtimeTools.model(for: tool) },
+                            set: { model.updateToolDefaultModel($0, for: tool) }
+                        )
+                    )
+                    Text(String(localized: "settings.ai.tool.default_model_help", defaultValue: "Leave blank to use the CLI's own default model. Codux only adds a model argument when this field is set.", bundle: .module))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                 }
+            }
+
+            Section(String(localized: "settings.ai.global_prompt", defaultValue: "Global Prompt", bundle: .module)) {
+                TextEditor(text: Binding(
+                    get: { model.appSettings.ai.globalPrompt },
+                    set: { model.updateAIGlobalPrompt($0) }
+                ))
+                .font(.system(size: 12))
+                .frame(minHeight: 90)
+
+                Text(String(localized: "settings.ai.global_prompt_help", defaultValue: "Injected when supported tools start. It is merged with memory context and written to each tool's launch context.", bundle: .module))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
 
             Section(String(localized: "settings.ai.section.memory", defaultValue: "Memory", bundle: .module)) {
@@ -316,6 +339,27 @@ struct AISettingsPane: View {
                         ) {
                             ForEach(0...32, id: \.self) { value in
                                 Text("\(value)").tag(value)
+                            }
+                        }
+
+                        let testState = model.aiProviderTestStates[provider.id]
+                        HStack(spacing: 8) {
+                            Button {
+                                model.testAIProvider(providerID: provider.id)
+                            } label: {
+                                if testState?.isTesting == true {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                Text(String(localized: "settings.ai.provider.test", defaultValue: "Test", bundle: .module))
+                            }
+                            .disabled(testState?.isTesting == true)
+
+                            if let message = testState?.message {
+                                Text(message)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(testState?.status == .failed ? .red : .secondary)
+                                    .lineLimit(2)
                             }
                         }
                     }

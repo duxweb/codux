@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-04-24
+
+### Added
+
+- Added per-provider test buttons in AI settings so configured memory extraction models and API credentials can be verified directly.
+- Added per-tool runtime configuration groups for full-access mode, terminal launch default models, and global prompt injection across supported tools.
+
+### Fixed
+
+- Restored legacy dmux project/workspace configuration by merging old project state into the new Codux app support storage without overwriting current settings.
+- Fixed terminal launch model overrides so Codex receives `--model=...`, Claude/Gemini/OpenCode receive `--model ...`, and blank model fields leave each CLI default untouched.
+
 ## [0.5.9] - 2026-04-24
 
 ### Changed

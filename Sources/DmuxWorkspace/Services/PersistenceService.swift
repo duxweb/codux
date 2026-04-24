@@ -63,7 +63,15 @@ struct PersistenceService {
             )
         }
 
-        let sanitized = sanitize(decodedSnapshot)
+        var sanitized = sanitize(decodedSnapshot)
+        let legacyMerge = mergeLegacySnapshotsIfNeeded(into: sanitized.snapshot, currentStateFileURL: fileURL)
+        if legacyMerge.didChange {
+            sanitized = SanitizedSnapshot(snapshot: legacyMerge.snapshot, didChange: true)
+            debugLog.log(
+                "persistence",
+                "merged legacy state path=\(fileURL.path) addedProjects=\(legacyMerge.addedProjects) projects=\(legacyMerge.snapshot.projects.count) workspaces=\(legacyMerge.snapshot.workspaces.count)"
+            )
+        }
         if sanitized.didChange {
             save(sanitized.snapshot)
             debugLog.log(
@@ -415,6 +423,81 @@ struct PersistenceService {
         return result
     }
 
+    private func mergeLegacySnapshotsIfNeeded(into currentSnapshot: AppSnapshot, currentStateFileURL: URL) -> LegacyMergeResult {
+        var merged = currentSnapshot
+        var existingPaths = Set(merged.projects.map { normalizePath($0.path) })
+        var existingIDs = Set(merged.projects.map(\.id))
+        var workspaceByProjectID = Dictionary(uniqueKeysWithValues: merged.workspaces.map { ($0.projectID, $0) })
+        var addedProjects = 0
+
+        for legacySnapshot in legacySnapshots(excluding: currentStateFileURL) {
+            let sanitizedLegacy = sanitize(legacySnapshot).snapshot
+            let legacyWorkspaceByProjectID = Dictionary(uniqueKeysWithValues: sanitizedLegacy.workspaces.map { ($0.projectID, $0) })
+            for project in sanitizedLegacy.projects {
+                let normalizedPath = normalizePath(project.path)
+                guard existingPaths.contains(normalizedPath) == false else {
+                    continue
+                }
+                guard existingIDs.contains(project.id) == false else {
+                    continue
+                }
+                existingPaths.insert(normalizedPath)
+                existingIDs.insert(project.id)
+                merged.projects.append(project)
+                if let workspace = legacyWorkspaceByProjectID[project.id] {
+                    workspaceByProjectID[project.id] = workspace
+                } else {
+                    workspaceByProjectID[project.id] = ProjectWorkspace.sample(projectID: project.id, path: project.path)
+                }
+                addedProjects += 1
+            }
+        }
+
+        guard addedProjects > 0 else {
+            return LegacyMergeResult(snapshot: currentSnapshot, didChange: false, addedProjects: 0)
+        }
+
+        merged.workspaces = merged.projects.map { project in
+            workspaceByProjectID[project.id] ?? ProjectWorkspace.sample(projectID: project.id, path: project.path)
+        }
+        if merged.selectedProjectID == nil {
+            merged.selectedProjectID = merged.projects.first?.id
+        }
+        return LegacyMergeResult(snapshot: merged, didChange: true, addedProjects: addedProjects)
+    }
+
+    private func legacySnapshots(excluding currentStateFileURL: URL) -> [AppSnapshot] {
+        legacyStateFileURLs(excluding: currentStateFileURL).compactMap { url in
+            guard let data = try? Data(contentsOf: url), !data.isEmpty else {
+                return nil
+            }
+            if let snapshot = try? JSONDecoder().decode(AppSnapshot.self, from: data) {
+                return snapshot
+            }
+            guard let projectSnapshot = try? JSONDecoder().decode(LegacyProjectSnapshot.self, from: data) else {
+                return nil
+            }
+            return AppSnapshot(
+                projects: projectSnapshot.projects,
+                workspaces: projectSnapshot.workspaces,
+                selectedProjectID: projectSnapshot.selectedProjectID,
+                appSettings: nil
+            )
+        }
+    }
+
+    private func legacyStateFileURLs(excluding currentStateFileURL: URL) -> [URL] {
+        guard let applicationSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return []
+        }
+        let currentPath = currentStateFileURL.standardizedFileURL.path
+        return ["dmux", "dmux-dev", "Codux-dev"]
+            .map { applicationSupportURL.appendingPathComponent($0, isDirectory: true).appendingPathComponent("state.json", isDirectory: false) }
+            .filter { url in
+                url.standardizedFileURL.path != currentPath && fileManager.fileExists(atPath: url.path)
+            }
+    }
+
     private func normalizePath(_ path: String) -> String {
         URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
             .standardizedFileURL
@@ -429,6 +512,18 @@ struct PersistenceService {
     private struct SanitizedWorkspace {
         let workspace: ProjectWorkspace
         let didChange: Bool
+    }
+
+    private struct LegacyMergeResult {
+        let snapshot: AppSnapshot
+        let didChange: Bool
+        let addedProjects: Int
+    }
+
+    private struct LegacyProjectSnapshot: Decodable {
+        var projects: [Project]
+        var workspaces: [ProjectWorkspace]
+        var selectedProjectID: UUID?
     }
 }
 
