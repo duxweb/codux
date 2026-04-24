@@ -157,6 +157,73 @@ final class CodexToolDriverTests: XCTestCase {
         XCTAssertEqual(snapshot.responseState, .responding)
     }
 
+    func testResolveHookEventDowngradesStaleCompletedTurnAfterNewPrompt() async throws {
+        let temporaryDirectoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectoryURL) }
+
+        let databaseURL = temporaryDirectoryURL.appendingPathComponent("state_5.sqlite", isDirectory: false)
+        let rolloutURL = temporaryDirectoryURL.appendingPathComponent("rollout.jsonl", isDirectory: false)
+        let projectPath = "/tmp/codex-runtime-project"
+        let sessionID = "thread-stale-stop"
+
+        try writeCodexRollout(
+            rows: [
+                #"{"timestamp":"2026-04-23T09:09:55.702Z","type":"session_meta","payload":{"id":"thread-stale-stop","cwd":"/tmp/codex-runtime-project"}}"#,
+                #"{"timestamp":"2026-04-23T09:09:55.703Z","type":"turn_context","payload":{"cwd":"/tmp/codex-runtime-project","model":"gpt-5.4"}}"#,
+                #"{"timestamp":"2026-04-23T09:09:55.703Z","type":"event_msg","payload":{"type":"task_started","started_at":1776935395}}"#,
+                #"{"timestamp":"2026-04-23T09:09:59.434Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":14391,"cached_input_tokens":3456,"output_tokens":12,"reasoning_output_tokens":0,"total_tokens":14403}}}}"#,
+                #"{"timestamp":"2026-04-23T09:09:59.624Z","type":"event_msg","payload":{"type":"task_complete","completed_at":1776935399}}"#
+            ],
+            to: rolloutURL
+        )
+        try seedCodexThreadDatabase(
+            databaseURL: databaseURL,
+            sessionID: sessionID,
+            projectPath: projectPath,
+            rolloutURL: rolloutURL,
+            model: "gpt-5.4"
+        )
+
+        let driver = CodexToolDriver(databaseURL: databaseURL)
+        let terminalID = UUID()
+        let projectID = UUID()
+        let currentSession = AISessionStore.TerminalSessionState(
+            terminalID: terminalID,
+            projectID: projectID,
+            projectName: "Codux",
+            projectPath: projectPath,
+            sessionTitle: "Codex",
+            tool: "codex",
+            aiSessionID: sessionID,
+            state: .responding,
+            model: "gpt-5.4",
+            updatedAt: 1_776_935_404,
+            activeTurnStartedAt: 1_776_935_404,
+            wasInterrupted: false,
+            hasCompletedTurn: false
+        )
+        let event = AIHookEvent(
+            kind: .turnCompleted,
+            terminalID: terminalID,
+            terminalInstanceID: "instance-1",
+            projectID: projectID,
+            projectName: "Codux",
+            projectPath: projectPath,
+            sessionTitle: "Codex",
+            tool: "codex",
+            aiSessionID: sessionID,
+            model: "gpt-5.4",
+            totalTokens: nil,
+            updatedAt: 1_776_935_410,
+            metadata: AIHookEventMetadata(transcriptPath: rolloutURL.path)
+        )
+
+        let resolved = await driver.resolveHookEvent(event, currentSession: currentSession)
+        XCTAssertEqual(resolved.kind, .promptSubmitted)
+        XCTAssertEqual(resolved.metadata?.hasCompletedTurn, false)
+        XCTAssertEqual(resolved.metadata?.wasInterrupted, false)
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("dmux-codex-driver-tests-\(UUID().uuidString)", isDirectory: true)

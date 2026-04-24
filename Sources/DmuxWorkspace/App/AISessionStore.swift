@@ -450,8 +450,7 @@ final class AISessionStore {
               session.state == .responding else {
             return false
         }
-        let now = Date().timeIntervalSince1970
-        return max(0, now - session.updatedAt) <= runningPhaseLifetime
+        return true
     }
 
     func clearCompleted(projectID: UUID) -> Bool {

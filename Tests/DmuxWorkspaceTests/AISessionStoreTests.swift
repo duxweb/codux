@@ -521,7 +521,7 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
     }
 
-    func testRespondingPhaseExpiresToIdleAfterRunningLifetime() throws {
+    func testRespondingPhaseRemainsRunningUntilExplicitCompletion() throws {
         let terminalID = UUID()
         let projectID = UUID()
 
@@ -542,11 +542,11 @@ final class AISessionStoreTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
-        XCTAssertFalse(store.isRunning(terminalID: terminalID))
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .running(tool: "codex"))
+        XCTAssertTrue(store.isRunning(terminalID: terminalID))
     }
 
-    func testExpiredRespondingSessionDoesNotReviveOlderCompletedPhase() throws {
+    func testStaleRespondingSessionStillSuppressesOlderCompletedPhase() throws {
         let completedTerminalID = UUID()
         let staleRespondingTerminalID = UUID()
         let projectID = UUID()
@@ -586,7 +586,7 @@ final class AISessionStoreTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .running(tool: "codex"))
         XCTAssertNil(store.completedPhase(projectID: projectID))
     }
 

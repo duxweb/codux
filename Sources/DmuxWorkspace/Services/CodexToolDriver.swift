@@ -49,6 +49,14 @@ struct CodexToolDriver: AIToolDriver {
         metadata.wasInterrupted = parsedState.wasInterrupted
         metadata.hasCompletedTurn = parsedState.hasCompletedTurn || (parsedState.responseState == .idle && parsedState.wasInterrupted == false)
         resolvedEvent.metadata = metadata
+        if let currentTurnStartedAt = currentSession?.activeTurnStartedAt,
+           let completedAt = parsedState.completedAt,
+           completedAt < currentTurnStartedAt {
+            resolvedEvent.kind = .promptSubmitted
+            metadata.wasInterrupted = false
+            metadata.hasCompletedTurn = false
+            resolvedEvent.metadata = metadata
+        }
         if parsedState.responseState == .responding {
             resolvedEvent.kind = .promptSubmitted
         }

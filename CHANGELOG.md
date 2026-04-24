@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-04-24
+
+### Fixed
+
+- Fixed project loading stability so active AI responses stay visible until an explicit completion, interruption, or runtime idle event instead of expiring from a timer.
+- Fixed Codex stale Stop hook handling so completion from an older interrupted turn cannot clear the loading state of a newer prompt.
+
 ## [0.5.5] - 2026-04-24
 
 ### Fixed
