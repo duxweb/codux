@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-28
+
+### Added
+
+- Added remote connection status in the title bar with an online/offline indicator and a device popover for paired mobile clients.
+- Added one-time QR pairing with mobile confirmation details, matching codes, rejection flow, and cached paired-device restoration after restart.
+- Added end-to-end encrypted remote payload transport between Codux macOS and Codux Mobile, including host/device key management and secure message forwarding.
+- Added mobile-side remote file rename/delete handling from the macOS host.
+
+### Changed
+
+- Remote terminal sessions created by mobile clients are now isolated from the visible macOS split workspace while still running on the Mac host.
+- Remote settings now hide device-management details until a relay server is configured and enabled.
+- Remote reconnect handling now uses localized status messages and backs off automatically when the relay disconnects.
+
+### Fixed
+
+- Fixed paired device removal and status refresh behavior so removed devices disappear from the list instead of staying as stale entries.
+- Fixed pairing dialog flow so closing or rejecting an active pairing cancels the mobile waiting state instead of leaving it pending.
+
 ## [0.5.11] - 2026-04-24
 
 ### Changed

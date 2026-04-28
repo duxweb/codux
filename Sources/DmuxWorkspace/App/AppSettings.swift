@@ -123,6 +123,68 @@ struct AppRemoteSettings: Codable, Equatable {
     var serverURL = "http://127.0.0.1:8088"
     var hostID = ""
     var hostToken = ""
+    var hostPrivateKey = ""
+    var hostPublicKey = ""
+    var cachedDevices: [RemoteHostDevice] = []
+
+    init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case serverURL
+        case hostID
+        case hostToken
+        case hostPrivateKey
+        case hostPublicKey
+        case cachedDevices
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        serverURL = try container.decodeIfPresent(String.self, forKey: .serverURL) ?? "http://127.0.0.1:8088"
+        hostID = try container.decodeIfPresent(String.self, forKey: .hostID) ?? ""
+        hostToken = try container.decodeIfPresent(String.self, forKey: .hostToken) ?? ""
+        hostPrivateKey = try container.decodeIfPresent(String.self, forKey: .hostPrivateKey) ?? ""
+        hostPublicKey = try container.decodeIfPresent(String.self, forKey: .hostPublicKey) ?? ""
+        cachedDevices = Self.normalizedCachedDevices(
+            try container.decodeIfPresent([RemoteHostDevice].self, forKey: .cachedDevices) ?? [],
+            hostID: hostID
+        )
+    }
+
+    var displayCachedDevices: [RemoteHostDevice] {
+        Self.normalizedCachedDevices(cachedDevices, hostID: hostID)
+    }
+
+    mutating func cacheDevices(_ devices: [RemoteHostDevice]) {
+        cachedDevices = Self.normalizedCachedDevices(devices, hostID: hostID)
+    }
+
+    mutating func removeCachedDevice(id deviceID: String) {
+        cachedDevices.removeAll { $0.id == deviceID }
+    }
+
+    private static func normalizedCachedDevices(
+        _ devices: [RemoteHostDevice],
+        hostID: String
+    ) -> [RemoteHostDevice] {
+        devices
+            .filter { device in
+                device.revokedAt == nil && (hostID.isEmpty || device.hostId == hostID)
+            }
+            .map { device in
+                var cached = device
+                cached.online = false
+                return cached
+            }
+            .sorted { lhs, rhs in
+                if lhs.lastSeen != rhs.lastSeen {
+                    return lhs.lastSeen > rhs.lastSeen
+                }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+    }
 }
 
 struct AppPetSettings: Codable, Equatable {

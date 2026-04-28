@@ -48,9 +48,59 @@ enum SettingsSectionTab: String, CaseIterable, Identifiable {
     }
 }
 
+extension Notification.Name {
+    static let coduxSettingsTabRequested = Notification.Name("coduxSettingsTabRequested")
+}
+
+@MainActor
+enum SettingsNavigationRequest {
+    private static var pendingTab: SettingsSectionTab?
+
+    static func request(_ tab: SettingsSectionTab) {
+        pendingTab = tab
+        NotificationCenter.default.post(name: .coduxSettingsTabRequested, object: tab.rawValue)
+    }
+
+    static func consume() -> SettingsSectionTab? {
+        defer { pendingTab = nil }
+        return pendingTab
+    }
+}
+
 struct SettingsView: View {
     let model: AppModel
-    @State private var selectedTab: SettingsSectionTab = .general
+    @State private var selectedTab: SettingsSectionTab
+    @ObservedObject private var remoteHostService: RemoteHostService
+
+    init(model: AppModel) {
+        self.model = model
+        self.remoteHostService = model.remoteHostService
+        self._selectedTab = State(initialValue: SettingsNavigationRequest.consume() ?? .general)
+    }
+
+    private var currentContentHeight: CGFloat {
+        if selectedTab == .remote {
+            let devicesCount = remoteHostService.snapshot.devices.count
+            let urlConfigured = !model.appSettings.remote.serverURL
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            // Server section + buttons row baseline.
+            var height: CGFloat = 280
+            if urlConfigured {
+                if devicesCount == 0 {
+                    // "no_devices" placeholder + section header.
+                    height += 100
+                } else {
+                    // Devices section header + each row ~50pt, capped so the window stays sensible.
+                    height += 60 + min(CGFloat(devicesCount), 6) * 52
+                }
+            } else {
+                // Configure-hint section.
+                height += 80
+            }
+            return height
+        }
+        return selectedTab.preferredContentHeight
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -102,13 +152,19 @@ struct SettingsView: View {
                 }
                 .tag(SettingsSectionTab.developer)
         }
-        .frame(width: 640, height: selectedTab.preferredContentHeight)
+        .frame(width: 640, height: currentContentHeight)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(
             SettingsWindowConfigurator(
                 title: String(localized: "menu.settings", defaultValue: "Settings", bundle: .module),
-                contentSize: NSSize(width: 640, height: selectedTab.preferredContentHeight)
+                contentSize: NSSize(width: 640, height: currentContentHeight)
             )
         )
+        .onReceive(NotificationCenter.default.publisher(for: .coduxSettingsTabRequested)) { notification in
+            guard let rawValue = notification.object as? String,
+                  let tab = SettingsSectionTab(rawValue: rawValue)
+            else { return }
+            selectedTab = tab
+        }
     }
 }

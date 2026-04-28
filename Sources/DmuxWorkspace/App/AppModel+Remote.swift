@@ -12,16 +12,7 @@ extension AppModel {
   }
 
   func remoteTerminals() -> [[String: String]] {
-    workspaces.flatMap { workspace in
-      workspace.sessions.map { session in
-        [
-          "id": session.id.uuidString,
-          "title": session.title,
-          "projectId": session.projectID.uuidString,
-          "projectName": session.projectName,
-        ]
-      }
-    }
+    []
   }
 
   func remoteCreateTerminal(projectID: String?, command: String) -> TerminalSession? {
@@ -36,25 +27,7 @@ extension AppModel {
     guard let project = resolvedProject else {
       return nil
     }
-    if workspaces.firstIndex(where: { $0.projectID == project.id }) == nil {
-      workspaces.append(ProjectWorkspace.sample(projectID: project.id, path: project.path))
-    }
-    guard let index = workspaces.firstIndex(where: { $0.projectID == project.id }) else {
-      return nil
-    }
-    var updatedWorkspaces = workspaces
-    let session = TerminalSession.make(
-      project: project, command: command.isEmpty ? project.defaultCommand : command)
-    updatedWorkspaces[index].sessions.append(session)
-    if updatedWorkspaces[index].addTopSession(session.id) == false {
-      updatedWorkspaces[index].addBottomTab(session.id)
-    }
-    selectedProjectID = project.id
-    terminalFocusRequestID = session.id
-    workspaces = updatedWorkspaces
-    persist()
-    refreshAIStatsIfNeeded()
-    return session
+    return TerminalSession.make(project: project, command: command)
   }
 
   func remoteAddProject(path: String, name: String?) -> Project? {

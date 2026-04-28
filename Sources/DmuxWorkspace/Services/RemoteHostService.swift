@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CryptoKit
 import Foundation
 
 extension Notification.Name {
@@ -22,12 +23,15 @@ struct RemoteHostDevice: Codable, Equatable, Identifiable {
   var createdAt: Date
   var lastSeen: Date
   var revokedAt: Date?
+  var online: Bool?
 }
 
 struct RemotePairingInfo: Codable, Equatable {
   var pairingId: String
   var code: String
   var secret: String
+  var hostPublicKey: String?
+  var cryptoVersion: Int?
   var expiresAt: Date
   var qrPayload: String
 }
@@ -38,31 +42,49 @@ final class RemoteHostService: ObservableObject {
     var id: String
     var deviceName: String
     var devicePublicKey: String
+    var code: String
   }
 
   struct Snapshot: Equatable {
     var status: RemoteHostStatus = .stopped
-    var message: String = "Remote Host stopped."
+    var message: String = String(
+      localized: "remote.status.stopped", defaultValue: "Remote Host stopped.", bundle: .module)
     var pairing: RemotePairingInfo?
     var devices: [RemoteHostDevice] = []
     var pendingPairings: [PendingPairing] = []
   }
 
   private weak var model: AppModel?
+  private let logger = AppDebugLog.shared
+  private let terminalEnvironmentService = AIRuntimeBridgeService()
   private var socket: URLSessionWebSocketTask?
   private var activeSocketURL: URL?
   private var isStarting = false
   private var outputObserver: NSObjectProtocol?
   private var pingTimer: Timer?
+  private var reconnectTimer: Timer?
+  private var reconnectAttempt = 0
+  private var pairingPollTask: Task<Void, Never>?
   private var terminalOutputBuffer: [String: String] = [:]
+  private var remoteSessions: [UUID: TerminalSession] = [:]
+  private var remoteSessionMetadata: [UUID: RemoteTerminalMetadata] = [:]
   private var remoteProcessBridges: [UUID: GhosttyPTYProcessBridge] = [:]
-  private let maxTerminalBufferCharacters = 120_000
+  private var sendSeqByDevice: [String: Int64] = [:]
+  private var receiveSeqByDevice: [String: Int64] = [:]
+  private var e2eKeyCache: [String: SymmetricKey] = [:]
+  private let maxTerminalBufferCharacters = 2_000_000
+  private let metadataDateFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+  }()
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
   @Published private(set) var snapshot = Snapshot()
 
   init(model: AppModel) {
     self.model = model
+    snapshot.devices = model.appSettings.remote.displayCachedDevices
     encoder.dateEncodingStrategy = .iso8601
     decoder.dateDecodingStrategy = .custom { decoder in
       let container = try decoder.singleValueContainer()
@@ -83,7 +105,8 @@ final class RemoteHostService: ObservableObject {
 
   func applySettings() {
     guard let model else { return }
-    if model.appSettings.remote.isEnabled {
+    let serverURL = model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    if model.appSettings.remote.isEnabled, serverURL.isEmpty == false {
       start()
     } else {
       stop()
@@ -99,10 +122,11 @@ final class RemoteHostService: ObservableObject {
     guard
       !model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else {
-      update(status: .failed, message: "Remote server URL is empty.")
+      stop()
       return
     }
     guard isStarting == false else { return }
+    stopReconnectTimer()
     if socket != nil, snapshot.status == .connected {
       return
     }
@@ -111,11 +135,22 @@ final class RemoteHostService: ObservableObject {
 
   func stop() {
     stopPingTimer()
+    stopReconnectTimer()
     socket?.cancel(with: .normalClosure, reason: nil)
     socket = nil
     activeSocketURL = nil
     isStarting = false
-    update(status: .stopped, message: "Remote Host stopped.")
+    stopPairingPoll()
+    snapshot.pairing = nil
+    snapshot.pendingPairings.removeAll()
+    sendSeqByDevice.removeAll()
+    receiveSeqByDevice.removeAll()
+    e2eKeyCache.removeAll()
+    update(
+      status: .stopped,
+      message: String(
+        localized: "remote.status.stopped", defaultValue: "Remote Host stopped.",
+        bundle: .module))
   }
 
   func createPairing() {
@@ -130,6 +165,14 @@ final class RemoteHostService: ObservableObject {
     Task { await confirm(pairingID: pairingID) }
   }
 
+  func rejectPairing(_ pairingID: String) {
+    Task { await reject(pairingID: pairingID) }
+  }
+
+  func cancelPairing() {
+    Task { await cancelActivePairing() }
+  }
+
   func revokeDevice(_ deviceID: String) {
     Task { await revoke(deviceID: deviceID) }
   }
@@ -138,13 +181,29 @@ final class RemoteHostService: ObservableObject {
     guard let model else { return }
     guard isStarting == false else { return }
     isStarting = true
-    update(status: .registering, message: "Registering Remote Host…")
+    update(
+      status: .registering,
+      message: String(
+        localized: "remote.status.registering", defaultValue: "Registering Remote Host…",
+        bundle: .module))
     var settings = model.appSettings.remote
     if settings.hostID.isEmpty { settings.hostID = UUID().uuidString }
     if settings.hostToken.isEmpty { settings.hostToken = randomToken() }
+    do {
+      let identity = try RemoteE2ECrypto.ensureHostIdentity(
+        privateKey: settings.hostPrivateKey,
+        publicKey: settings.hostPublicKey
+      )
+      settings.hostPrivateKey = identity.privateKey
+      settings.hostPublicKey = identity.publicKey
+    } catch {
+      update(status: .failed, message: remoteErrorMessage(error))
+      isStarting = false
+      return
+    }
     let body: [String: String] = [
       "hostId": settings.hostID, "name": Host.current().localizedName ?? "Codux Mac",
-      "token": settings.hostToken, "publicKey": "",
+      "token": settings.hostToken, "publicKey": settings.hostPublicKey,
     ]
     do {
       struct RegisterResponse: Decodable {
@@ -159,6 +218,9 @@ final class RemoteHostService: ObservableObject {
       await loadDevices()
     } catch {
       update(status: .failed, message: remoteErrorMessage(error))
+      isStarting = false
+      scheduleReconnect(reason: error.localizedDescription)
+      return
     }
     isStarting = false
   }
@@ -175,15 +237,23 @@ final class RemoteHostService: ObservableObject {
     if socket != nil, activeSocketURL == url, snapshot.status == .connected {
       return
     }
-    update(status: .connecting, message: "Connecting relay…")
+    update(
+      status: .connecting,
+      message: String(
+        localized: "remote.status.connecting", defaultValue: "Connecting relay…",
+        bundle: .module))
     socket?.cancel(with: .goingAway, reason: nil)
     activeSocketURL = url
     let task = URLSession.shared.webSocketTask(with: url)
     socket = task
     task.resume()
-    update(status: .connected, message: "Remote Host connected.")
+    update(
+      status: .connected,
+      message: String(
+        localized: "remote.status.connected", defaultValue: "Remote Host connected.",
+        bundle: .module))
+    reconnectAttempt = 0
     startPingTimer()
-    observeTerminalOutputIfNeeded()
     receiveLoop()
   }
 
@@ -201,6 +271,7 @@ final class RemoteHostService: ObservableObject {
             self.socket = nil
             self.activeSocketURL = nil
             self.update(status: .failed, message: error.localizedDescription)
+            self.scheduleReconnect(reason: error.localizedDescription)
           }
         }
       }
@@ -220,8 +291,14 @@ final class RemoteHostService: ObservableObject {
             self.socket = nil
             self.activeSocketURL = nil
             self.update(
-              status: .failed, message: "Remote ping failed: \(error.localizedDescription)")
+              status: .failed,
+              message: String(
+                format: String(
+                  localized: "remote.status.ping_failed_format",
+                  defaultValue: "Remote ping failed: %@", bundle: .module),
+                error.localizedDescription))
             socket.cancel(with: .goingAway, reason: nil)
+            self.scheduleReconnect(reason: error.localizedDescription)
           }
         }
       }
@@ -234,6 +311,40 @@ final class RemoteHostService: ObservableObject {
     pingTimer = nil
   }
 
+  private func scheduleReconnect(reason: String) {
+    guard let model else { return }
+    guard model.appSettings.remote.isEnabled else { return }
+    guard
+      !model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return }
+    guard reconnectTimer == nil, isStarting == false else { return }
+    reconnectAttempt += 1
+    let delay = min(30, max(1, 1 << min(reconnectAttempt - 1, 5)))
+    update(
+      status: .failed,
+      message: String(
+        format: String(
+          localized: "remote.status.reconnecting_format",
+          defaultValue: "Remote disconnected. Reconnecting in %d seconds… %@",
+          bundle: .module),
+        delay,
+        reason))
+    reconnectTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) {
+      [weak self] _ in
+      Task { @MainActor in
+        guard let self else { return }
+        self.reconnectTimer = nil
+        self.start()
+      }
+    }
+    if let reconnectTimer { RunLoop.main.add(reconnectTimer, forMode: .common) }
+  }
+
+  private func stopReconnectTimer() {
+    reconnectTimer?.invalidate()
+    reconnectTimer = nil
+  }
+
   private func handle(_ message: URLSessionWebSocketTask.Message) {
     let data: Data?
     switch message {
@@ -241,27 +352,37 @@ final class RemoteHostService: ObservableObject {
     case .string(let value): data = value.data(using: .utf8)
     @unknown default: data = nil
     }
-    guard let data, let envelope = try? decoder.decode(RemoteEnvelope.self, from: data) else {
+    guard let data, let rawEnvelope = try? decoder.decode(RemoteEnvelope.self, from: data) else {
       return
     }
+    let envelope = decryptEnvelopeIfNeeded(rawEnvelope) ?? rawEnvelope
     switch envelope.type {
     case "pairing.request":
       let pairingID = envelope.payload?["pairingId"] as? String ?? ""
+      let pairingCode =
+        envelope.payload?["code"] as? String
+        ?? (snapshot.pairing?.pairingId == pairingID ? snapshot.pairing?.code : nil) ?? ""
       let deviceName = envelope.payload?["deviceName"] as? String ?? "Mobile Device"
       let devicePublicKey = envelope.payload?["devicePublicKey"] as? String ?? ""
-      if !pairingID.isEmpty,
-        snapshot.pendingPairings.contains(where: { $0.id == pairingID }) == false
-      {
-        snapshot.pendingPairings.append(
-          PendingPairing(id: pairingID, deviceName: deviceName, devicePublicKey: devicePublicKey))
-        snapshot.message = "Pairing request from \(deviceName)."
-      }
+      let pairingSecret = snapshot.pairing?.pairingId == pairingID ? snapshot.pairing?.secret : nil
+      showPendingPairing(
+        pairingID: pairingID,
+        deviceName: deviceName,
+        devicePublicKey: devicePublicKey,
+        pairingCode: pairingCode,
+        pairingSecret: pairingSecret
+      )
     case "host.info":
       send(
         type: "host.info", deviceID: envelope.deviceID,
         payload: ["name": Host.current().localizedName ?? "Codux Mac"])
     case "device.info":
       refreshDevices()
+    case "device.connected":
+      updateDeviceOnline(envelope.deviceID ?? envelope.payload?["deviceId"] as? String, online: true)
+      refreshDevices()
+    case "device.disconnected":
+      updateDeviceOnline(envelope.deviceID ?? envelope.payload?["deviceId"] as? String, online: false)
     case "project.list":
       send(
         type: "project.list", deviceID: envelope.deviceID,
@@ -269,7 +390,7 @@ final class RemoteHostService: ObservableObject {
     case "terminal.list":
       send(
         type: "terminal.list", deviceID: envelope.deviceID,
-        payload: ["terminals": model?.remoteTerminals() ?? []])
+        payload: ["terminals": remoteTerminals()])
     case "file.list":
       let requestedPath = envelope.payload?["path"] as? String
       let purpose = envelope.payload?["purpose"] as? String
@@ -301,6 +422,32 @@ final class RemoteHostService: ObservableObject {
             payload: ["message": error.localizedDescription])
         }
       }
+    case "file.rename":
+      if let path = envelope.payload?["path"] as? String,
+        let newPath = envelope.payload?["newPath"] as? String
+      {
+        do {
+          try remoteFileRename(path: path, newPath: newPath)
+          send(
+            type: "file.renamed", deviceID: envelope.deviceID,
+            payload: ["path": path, "newPath": newPath])
+        } catch {
+          send(
+            type: "error", deviceID: envelope.deviceID,
+            payload: ["message": error.localizedDescription])
+        }
+      }
+    case "file.delete":
+      if let path = envelope.payload?["path"] as? String {
+        do {
+          try remoteFileDelete(path: path)
+          send(type: "file.deleted", deviceID: envelope.deviceID, payload: ["path": path])
+        } catch {
+          send(
+            type: "error", deviceID: envelope.deviceID,
+            payload: ["message": error.localizedDescription])
+        }
+      }
     case "project.add":
       if let path = envelope.payload?["path"] as? String,
         let project = model?.remoteAddProject(
@@ -314,7 +461,7 @@ final class RemoteHostService: ObservableObject {
           payload: ["projects": model?.remoteProjects() ?? []])
         send(
           type: "terminal.list", deviceID: envelope.deviceID,
-          payload: ["terminals": model?.remoteTerminals() ?? []])
+          payload: ["terminals": remoteTerminals()])
       } else {
         send(
           type: "error", deviceID: envelope.deviceID, payload: ["message": "Unable to add project"])
@@ -333,7 +480,7 @@ final class RemoteHostService: ObservableObject {
           payload: ["projects": model?.remoteProjects() ?? []])
         send(
           type: "terminal.list", deviceID: envelope.deviceID,
-          payload: ["terminals": model?.remoteTerminals() ?? []])
+          payload: ["terminals": remoteTerminals()])
       } else {
         send(
           type: "error", deviceID: envelope.deviceID, payload: ["message": "Unable to edit project"]
@@ -351,7 +498,7 @@ final class RemoteHostService: ObservableObject {
           payload: ["projects": model?.remoteProjects() ?? []])
         send(
           type: "terminal.list", deviceID: envelope.deviceID,
-          payload: ["terminals": model?.remoteTerminals() ?? []])
+          payload: ["terminals": remoteTerminals()])
       } else {
         send(
           type: "error", deviceID: envelope.deviceID,
@@ -375,12 +522,28 @@ final class RemoteHostService: ObservableObject {
       let projectID = envelope.payload?["projectId"] as? String
       let command = envelope.payload?["command"] as? String ?? ""
       if let session = model?.remoteCreateTerminal(projectID: projectID, command: command) {
+        remoteSessions[session.id] = session
         let sessionID = session.id.uuidString
+        let now = Date()
+        remoteSessionMetadata[session.id] = RemoteTerminalMetadata(
+          ownerDeviceID: envelope.deviceID,
+          ownerKind: "mobile",
+          kind: "remote-mobile",
+          resizeOwner: "mobile",
+          columns: nil,
+          rows: nil,
+          createdAt: now,
+          lastActiveAt: now,
+          status: "starting"
+        )
+        logger.log(
+          "remote-terminal",
+          "created session=\(sessionID) project=\(session.projectID.uuidString) shell=\(session.shell) command=\(session.command) cwd=\(session.cwd)"
+        )
         send(
           type: "terminal.created", deviceID: envelope.deviceID, sessionID: sessionID,
-          payload: [
-            "id": sessionID, "title": session.title, "projectId": session.projectID.uuidString,
-          ])
+          payload: remoteTerminalPayload(for: session)
+        )
         startRemoteProcessIfNeeded(for: session, deviceID: envelope.deviceID)
         sendTerminalBuffer(sessionID: sessionID, deviceID: envelope.deviceID)
       } else {
@@ -392,6 +555,16 @@ final class RemoteHostService: ObservableObject {
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)),
         let data = envelope.payload?["data"] as? String
       {
+        logger.log(
+          "remote-terminal",
+          "input session=\(sessionID.uuidString) bytes=\(data.utf8.count) bridge=\(remoteProcessBridges[sessionID] != nil)"
+        )
+        updateRemoteTerminalActivity(
+          sessionID: sessionID,
+          status: remoteProcessBridges[sessionID] == nil ? "starting" : "running",
+          ownerDeviceID: envelope.deviceID
+        )
+        ensureRemoteProcessBridge(for: sessionID, deviceID: envelope.deviceID)
         if let bridge = remoteProcessBridges[sessionID] {
           bridge.sendText(data)
         } else {
@@ -414,6 +587,17 @@ final class RemoteHostService: ObservableObject {
         let cols = UInt16(clamping: UInt((colsValue as? Int) ?? Int((colsValue as? Double) ?? 0)))
         let rows = UInt16(clamping: UInt((rowsValue as? Int) ?? Int((rowsValue as? Double) ?? 0)))
         if cols > 0, rows > 0 {
+          upsertRemoteTerminalMetadata(
+            sessionID: sessionID,
+            ownerDeviceID: envelope.deviceID,
+            columns: Int(cols),
+            rows: Int(rows)
+          )
+          logger.log(
+            "remote-terminal",
+            "resize session=\(sessionID.uuidString) cols=\(cols) rows=\(rows) bridge=\(remoteProcessBridges[sessionID] != nil)"
+          )
+          ensureRemoteProcessBridge(for: sessionID, deviceID: envelope.deviceID)
           if let bridge = remoteProcessBridges[sessionID] {
             bridge.resize(columns: cols, rows: rows)
           } else {
@@ -429,15 +613,15 @@ final class RemoteHostService: ObservableObject {
         if let bridge = remoteProcessBridges.removeValue(forKey: sessionID) {
           bridge.terminateProcessTree()
         }
-        if model?.remoteCloseTerminal(sessionID: sessionID) == true {
-          terminalOutputBuffer.removeValue(forKey: sessionID.uuidString)
-          send(
-            type: "terminal.closed", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
-            payload: ["id": sessionID.uuidString])
-          send(
-            type: "terminal.list", deviceID: envelope.deviceID,
-            payload: ["terminals": model?.remoteTerminals() ?? []])
-        }
+        remoteSessions.removeValue(forKey: sessionID)
+        remoteSessionMetadata.removeValue(forKey: sessionID)
+        terminalOutputBuffer.removeValue(forKey: sessionID.uuidString)
+        send(
+          type: "terminal.closed", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
+          payload: ["id": sessionID.uuidString])
+        send(
+          type: "terminal.list", deviceID: envelope.deviceID,
+          payload: ["terminals": remoteTerminals()])
       }
     case "terminal.signal":
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)) {
@@ -521,6 +705,28 @@ final class RemoteHostService: ObservableObject {
     try content.data(using: .utf8)?.write(to: url, options: .atomic)
   }
 
+  private func remoteFileRename(path: String, newPath: String) throws {
+    let sourceURL = URL(fileURLWithPath: path).standardizedFileURL
+    let destinationURL = URL(fileURLWithPath: newPath).standardizedFileURL
+    guard sourceURL.deletingLastPathComponent().path == destinationURL.deletingLastPathComponent().path
+    else {
+      throw NSError(
+        domain: "CoduxRemote", code: 400,
+        userInfo: [NSLocalizedDescriptionKey: "Rename must stay in the same directory"])
+    }
+    if FileManager.default.fileExists(atPath: destinationURL.path) {
+      throw NSError(
+        domain: "CoduxRemote", code: 409,
+        userInfo: [NSLocalizedDescriptionKey: "A file with this name already exists"])
+    }
+    try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+  }
+
+  private func remoteFileDelete(path: String) throws {
+    let url = URL(fileURLWithPath: path).standardizedFileURL
+    try FileManager.default.removeItem(at: url)
+  }
+
   private func handleTerminalUpload(_ envelope: RemoteEnvelope) {
     guard let sessionID = envelope.sessionID,
       let payload = envelope.payload,
@@ -560,6 +766,9 @@ final class RemoteHostService: ObservableObject {
     mode: String, tool: String?
   ) {
     let uuid = UUID(uuidString: sessionID)
+    if let uuid {
+      ensureRemoteProcessBridge(for: uuid, deviceID: nil)
+    }
     let tool = uuid.flatMap { activeAITool(for: $0) }
     if let uuid, let bridge = remoteProcessBridges[uuid], let tool,
       supportsClipboardImagePaste(tool)
@@ -583,7 +792,7 @@ final class RemoteHostService: ObservableObject {
     {
       return tool
     }
-    guard let command = model?.terminalSession(for: sessionID)?.command.lowercased() else {
+    guard let command = remoteSessions[sessionID]?.command.lowercased() else {
       return nil
     }
     if command.contains("claude") { return "claude" }
@@ -639,33 +848,29 @@ final class RemoteHostService: ObservableObject {
     return candidate
   }
 
-  private func observeTerminalOutputIfNeeded() {
-    guard outputObserver == nil else { return }
-    outputObserver = NotificationCenter.default.addObserver(
-      forName: .coduxTerminalOutputDidReceive, object: nil, queue: .main
-    ) { [weak self] notification in
-      guard let self,
-        let sessionID = notification.userInfo?["sessionID"] as? UUID,
-        let data = notification.userInfo?["data"] as? Data,
-        let text = String(data: data, encoding: .utf8)
-      else { return }
-      Task { @MainActor in
-        let key = sessionID.uuidString
-        self.appendBuffer(sessionID: key, text: text)
-        self.send(type: "terminal.output", sessionID: key, payload: ["data": text])
-      }
-    }
-  }
-
   private func startRemoteProcessIfNeeded(for session: TerminalSession, deviceID: String?) {
     guard remoteProcessBridges[session.id] == nil else { return }
     let bridge = GhosttyPTYProcessBridge(sessionID: session.id, suppressPromptEolMark: true)
     remoteProcessBridges[session.id] = bridge
+    updateRemoteTerminalActivity(
+      sessionID: session.id,
+      status: "running",
+      ownerDeviceID: deviceID
+    )
     let sessionID = session.id.uuidString
     bridge.onOutput = { [weak self] data in
       Task { @MainActor in
         guard let self, let text = String(data: data, encoding: .utf8) else { return }
         self.appendBuffer(sessionID: sessionID, text: text)
+        self.updateRemoteTerminalActivity(
+          sessionID: session.id,
+          status: "running",
+          ownerDeviceID: deviceID
+        )
+        self.logger.log(
+          "remote-terminal",
+          "output session=\(sessionID) bytes=\(data.count)"
+        )
         self.send(
           type: "terminal.output", deviceID: deviceID, sessionID: sessionID, payload: ["data": text]
         )
@@ -675,10 +880,17 @@ final class RemoteHostService: ObservableObject {
       Task { @MainActor in
         guard let self else { return }
         self.remoteProcessBridges[session.id] = nil
-        _ = exitCode
+        self.updateRemoteTerminalActivity(
+          sessionID: session.id,
+          status: "exited",
+          ownerDeviceID: deviceID
+        )
       }
     }
-    let environment = ProcessInfo.processInfo.environment.map { ($0.key, $0.value) }
+    guard let model else { return }
+    let environment = terminalEnvironmentService
+      .environmentResolution(for: session, aiSettings: model.appSettings.ai)
+      .pairs
     bridge.start(
       shell: session.shell,
       shellName: URL(fileURLWithPath: session.shell).lastPathComponent,
@@ -688,8 +900,112 @@ final class RemoteHostService: ObservableObject {
     )
   }
 
+  private func ensureRemoteProcessBridge(for sessionID: UUID, deviceID: String?) {
+    guard remoteProcessBridges[sessionID] == nil else { return }
+    guard let session = remoteSessions[sessionID] else { return }
+    logger.log(
+      "remote-terminal",
+      "restore bridge session=\(sessionID.uuidString) project=\(session.projectID.uuidString)"
+    )
+    startRemoteProcessIfNeeded(for: session, deviceID: deviceID)
+  }
+
+  private func remoteTerminals() -> [[String: Any]] {
+    remoteSessions.values.map { remoteTerminalPayload(for: $0) }
+  }
+
+  private func remoteTerminalPayload(for session: TerminalSession) -> [String: Any] {
+    let metadata = remoteSessionMetadata[session.id]
+    let ownerDeviceID = metadata?.ownerDeviceID ?? ""
+    return [
+      "id": session.id.uuidString,
+      "title": session.title,
+      "displayTitle": "\(session.projectName) · \(session.title)",
+      "projectId": session.projectID.uuidString,
+      "projectName": session.projectName,
+      "projectPath": session.cwd,
+      "cwd": session.cwd,
+      "shell": session.shell,
+      "command": session.command,
+      "kind": metadata?.kind ?? "remote-mobile",
+      "ownerKind": metadata?.ownerKind ?? "mobile",
+      "ownerDeviceId": ownerDeviceID,
+      "ownerDeviceName": remoteDeviceName(for: ownerDeviceID),
+      "resizeOwner": metadata?.resizeOwner ?? "mobile",
+      "cols": metadata?.columns ?? 0,
+      "rows": metadata?.rows ?? 0,
+      "gridSource": metadata?.resizeOwner ?? "mobile",
+      "status": metadata?.status ?? (remoteProcessBridges[session.id] == nil ? "idle" : "running"),
+      "isRunning": remoteProcessBridges[session.id] != nil,
+      "createdAt": formattedMetadataDate(metadata?.createdAt),
+      "lastActiveAt": formattedMetadataDate(metadata?.lastActiveAt),
+      "bufferCharacters": terminalOutputBuffer[session.id.uuidString]?.count ?? 0,
+      "hasBuffer": terminalOutputBuffer[session.id.uuidString]?.isEmpty == false,
+    ]
+  }
+
+  private func remoteDeviceName(for deviceID: String) -> String {
+    guard deviceID.isEmpty == false else { return "" }
+    return snapshot.devices.first { $0.id == deviceID }?.name ?? ""
+  }
+
+  private func formattedMetadataDate(_ date: Date?) -> String {
+    guard let date else { return "" }
+    return metadataDateFormatter.string(from: date)
+  }
+
+  private func updateDeviceOnline(_ deviceID: String?, online: Bool) {
+    guard let deviceID, deviceID.isEmpty == false,
+      let index = snapshot.devices.firstIndex(where: { $0.id == deviceID })
+    else { return }
+    snapshot.devices[index].online = online
+    if online {
+      snapshot.devices[index].lastSeen = Date()
+    }
+  }
+
+  private func upsertRemoteTerminalMetadata(
+    sessionID: UUID,
+    ownerDeviceID: String?,
+    columns: Int,
+    rows: Int
+  ) {
+    let current = remoteSessionMetadata[sessionID]
+    remoteSessionMetadata[sessionID] = RemoteTerminalMetadata(
+      ownerDeviceID: current?.ownerDeviceID ?? ownerDeviceID,
+      ownerKind: current?.ownerKind ?? "mobile",
+      kind: current?.kind ?? "remote-mobile",
+      resizeOwner: current?.resizeOwner ?? "mobile",
+      columns: columns,
+      rows: rows,
+      createdAt: current?.createdAt ?? Date(),
+      lastActiveAt: Date(),
+      status: current?.status ?? "running"
+    )
+  }
+
+  private func updateRemoteTerminalActivity(
+    sessionID: UUID,
+    status: String,
+    ownerDeviceID: String?
+  ) {
+    let current = remoteSessionMetadata[sessionID]
+    remoteSessionMetadata[sessionID] = RemoteTerminalMetadata(
+      ownerDeviceID: current?.ownerDeviceID ?? ownerDeviceID,
+      ownerKind: current?.ownerKind ?? "mobile",
+      kind: current?.kind ?? "remote-mobile",
+      resizeOwner: current?.resizeOwner ?? "mobile",
+      columns: current?.columns,
+      rows: current?.rows,
+      createdAt: current?.createdAt ?? Date(),
+      lastActiveAt: Date(),
+      status: status
+    )
+  }
+
   private func appendBuffer(sessionID: String, text: String) {
     guard text.isEmpty == false else { return }
+    guard isTerminalQueryResponse(text) == false else { return }
     var current = terminalOutputBuffer[sessionID] ?? ""
     current += text
     if current.count > maxTerminalBufferCharacters {
@@ -698,7 +1014,16 @@ final class RemoteHostService: ObservableObject {
     terminalOutputBuffer[sessionID] = current
   }
 
+  private func isTerminalQueryResponse(_ text: String) -> Bool {
+    guard text.count <= 64 else { return false }
+    let pattern = #"^(?:\u{001B}\[\??[0-9;]*[Rcn]|\u{001B}\][0-9;]*[^\u{0007}\u{001B}]*(?:\u{0007}|\u{001B}\\))+$"#
+    return text.range(of: pattern, options: .regularExpression) != nil
+  }
+
   private func sendTerminalBuffer(sessionID: String, deviceID: String?) {
+    if let uuid = UUID(uuidString: sessionID) {
+      ensureRemoteProcessBridge(for: uuid, deviceID: deviceID)
+    }
     let data = terminalOutputBuffer[sessionID] ?? ""
     send(
       type: "terminal.output", deviceID: deviceID, sessionID: sessionID,
@@ -713,8 +1038,14 @@ final class RemoteHostService: ObservableObject {
         body: [
           "hostId": model.appSettings.remote.hostID, "token": model.appSettings.remote.hostToken,
         ])
-      snapshot.pairing = response
-      snapshot.message = "Pairing code: \(response.code)"
+      let pairing = pairingInfoWithLocalQR(response)
+      snapshot.pairing = pairing
+      startPairingPoll(pairing)
+      snapshot.message = String(
+        format: String(
+          localized: "remote.status.pairing_code_format",
+          defaultValue: "Pairing code: %@", bundle: .module),
+        response.code)
     } catch {
       update(status: .failed, message: remoteErrorMessage(error))
     }
@@ -727,6 +1058,9 @@ final class RemoteHostService: ObservableObject {
       snapshot.devices = []
       return
     }
+    if snapshot.devices.isEmpty {
+      snapshot.devices = model.appSettings.remote.displayCachedDevices
+    }
     guard
       let url = remoteURL(
         path: "/api/hosts/\(model.appSettings.remote.hostID)/devices",
@@ -737,8 +1071,13 @@ final class RemoteHostService: ObservableObject {
       struct DeviceList: Decodable { var devices: [RemoteHostDevice] }
       let data = try await requestData(url: url)
       let list = try decoder.decode(DeviceList.self, from: data)
-      snapshot.devices = list.devices
+      let devices = list.devices.filter { $0.revokedAt == nil }
+      snapshot.devices = devices
+      cacheDevices(devices)
     } catch {
+      if snapshot.devices.isEmpty {
+        snapshot.devices = model.appSettings.remote.displayCachedDevices
+      }
       snapshot.message = remoteErrorMessage(error)
     }
   }
@@ -753,8 +1092,35 @@ final class RemoteHostService: ObservableObject {
           "pairingId": pairingID,
         ])
       snapshot.pendingPairings.removeAll { $0.id == pairingID }
-      snapshot.message = "Device paired."
+      if snapshot.pairing?.pairingId == pairingID {
+        snapshot.pairing = nil
+      }
+      stopPairingPoll()
+      snapshot.message = String(
+        localized: "remote.status.device_paired", defaultValue: "Device paired.", bundle: .module)
       await loadDevices()
+    } catch {
+      snapshot.message = remoteErrorMessage(error)
+    }
+  }
+
+  private func reject(pairingID: String) async {
+    guard let model else { return }
+    do {
+      let _: [String: Bool] = try await post(
+        path: "/api/pairings/reject",
+        body: [
+          "hostId": model.appSettings.remote.hostID, "token": model.appSettings.remote.hostToken,
+          "pairingId": pairingID,
+        ])
+      snapshot.pendingPairings.removeAll { $0.id == pairingID }
+      if snapshot.pairing?.pairingId == pairingID {
+        snapshot.pairing = nil
+      }
+      stopPairingPoll()
+      snapshot.message = String(
+        localized: "remote.status.pairing_rejected", defaultValue: "Pairing rejected.",
+        bundle: .module)
     } catch {
       snapshot.message = remoteErrorMessage(error)
     }
@@ -762,6 +1128,9 @@ final class RemoteHostService: ObservableObject {
 
   private func revoke(deviceID: String) async {
     guard let model else { return }
+    let previousDevices = snapshot.devices
+    snapshot.devices.removeAll { $0.id == deviceID }
+    removeCachedDevice(id: deviceID)
     do {
       let _: [String: Bool] = try await post(
         path: "/api/devices/revoke",
@@ -771,8 +1140,25 @@ final class RemoteHostService: ObservableObject {
         ])
       await loadDevices()
     } catch {
+      if snapshot.devices.isEmpty {
+        snapshot.devices = previousDevices.filter { $0.id != deviceID }
+      }
       snapshot.message = remoteErrorMessage(error)
     }
+  }
+
+  private func cacheDevices(_ devices: [RemoteHostDevice]) {
+    guard let model else { return }
+    var remote = model.appSettings.remote
+    remote.cacheDevices(devices)
+    model.updateRemoteSettings(remote, reconnect: false)
+  }
+
+  private func removeCachedDevice(id deviceID: String) {
+    guard let model else { return }
+    var remote = model.appSettings.remote
+    remote.removeCachedDevice(id: deviceID)
+    model.updateRemoteSettings(remote, reconnect: false)
   }
 
   private func post<T: Decodable>(path: String, body: Any) async throws -> T {
@@ -817,19 +1203,289 @@ final class RemoteHostService: ObservableObject {
     }
   }
 
+  private func cancelActivePairing() async {
+    guard let model, let pairing = snapshot.pairing else { return }
+    stopPairingPoll()
+    snapshot.pairing = nil
+    snapshot.pendingPairings.removeAll { $0.id == pairing.pairingId }
+    do {
+      let _: [String: Bool] = try await post(
+        path: "/api/pairings/reject",
+        body: [
+          "hostId": model.appSettings.remote.hostID,
+          "token": model.appSettings.remote.hostToken,
+          "pairingId": pairing.pairingId,
+        ])
+      snapshot.message = String(
+        localized: "remote.status.pairing_cancelled",
+        defaultValue: "Pairing cancelled.",
+        bundle: .module)
+    } catch {
+      snapshot.message = remoteErrorMessage(error)
+    }
+  }
+
+  private func startPairingPoll(_ pairing: RemotePairingInfo) {
+    stopPairingPoll()
+    pairingPollTask = Task { [weak self] in
+      while !Task.isCancelled {
+        guard let self else { return }
+        await self.pollPairingStatus(pairing)
+        guard self.snapshot.pairing?.pairingId == pairing.pairingId else { return }
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+      }
+    }
+  }
+
+  private func stopPairingPoll() {
+    pairingPollTask?.cancel()
+    pairingPollTask = nil
+  }
+
+  private func pollPairingStatus(_ pairing: RemotePairingInfo) async {
+    do {
+      let status: RemotePairingStatusResponse = try await post(
+        path: "/api/pairings/status",
+        body: ["code": pairing.code, "secret": pairing.secret])
+      switch status.status {
+      case "claimed":
+        showPendingPairing(
+          pairingID: status.pairingId ?? pairing.pairingId,
+          deviceName: status.deviceName ?? "Mobile Device",
+          devicePublicKey: status.devicePublicKey ?? "",
+          pairingCode: status.code ?? pairing.code,
+          pairingSecret: pairing.secret
+        )
+      case "rejected", "confirmed":
+        if snapshot.pairing?.pairingId == pairing.pairingId {
+          snapshot.pairing = nil
+        }
+        stopPairingPoll()
+      default:
+        break
+      }
+    } catch {
+      snapshot.message = remoteErrorMessage(error)
+      if snapshot.pairing?.pairingId == pairing.pairingId {
+        snapshot.pairing = nil
+      }
+      stopPairingPoll()
+    }
+  }
+
+  private func showPendingPairing(
+    pairingID: String,
+    deviceName: String,
+    devicePublicKey: String,
+    pairingCode: String,
+    pairingSecret: String?
+  ) {
+    guard !pairingID.isEmpty else { return }
+    let displayedCode = remotePairingMatchCode(
+      pairingCode: pairingCode,
+      pairingSecret: pairingSecret,
+      devicePublicKey: devicePublicKey
+    ) ?? pairingCode
+    if snapshot.pairing?.pairingId == pairingID {
+      snapshot.pairing = nil
+      stopPairingPoll()
+    }
+    if let index = snapshot.pendingPairings.firstIndex(where: { $0.id == pairingID }) {
+      snapshot.pendingPairings[index] = PendingPairing(
+        id: pairingID,
+        deviceName: deviceName,
+        devicePublicKey: devicePublicKey,
+        code: displayedCode)
+    } else {
+      snapshot.pendingPairings.append(
+        PendingPairing(
+          id: pairingID,
+          deviceName: deviceName,
+          devicePublicKey: devicePublicKey,
+          code: displayedCode))
+    }
+    snapshot.message = String(
+      format: String(
+        localized: "remote.status.pairing_request_format",
+        defaultValue: "Pairing request from %@.", bundle: .module),
+      deviceName)
+  }
+
   private func remoteErrorMessage(_ error: Error) -> String {
-    error.localizedDescription
+    let nsError = error as NSError
+    guard nsError.domain == NSURLErrorDomain else {
+      return error.localizedDescription
+    }
+    let code = URLError.Code(rawValue: nsError.code)
+    switch code {
+    case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+      return String(
+        localized: "remote.error.cannot_connect_server",
+        defaultValue: "Cannot connect to the relay server.",
+        bundle: .module)
+    case .networkConnectionLost:
+      return String(
+        localized: "remote.error.connection_lost",
+        defaultValue: "Relay connection lost.",
+        bundle: .module)
+    case .notConnectedToInternet:
+      return String(
+        localized: "remote.error.not_connected_internet",
+        defaultValue: "Network is offline.",
+        bundle: .module)
+    case .timedOut:
+      return String(
+        localized: "remote.error.timed_out",
+        defaultValue: "Relay request timed out.",
+        bundle: .module)
+    default:
+      return error.localizedDescription
+    }
+  }
+
+  private func decryptEnvelopeIfNeeded(_ envelope: RemoteEnvelope) -> RemoteEnvelope? {
+    guard envelope.type == "secure.message" else { return envelope }
+    guard let deviceID = envelope.deviceID, deviceID.isEmpty == false,
+      let encryptedPayload = envelope.payload,
+      let model
+    else { return nil }
+    guard let device = snapshot.devices.first(where: { $0.id == deviceID }),
+      device.publicKey.isEmpty == false
+    else {
+      logger.log("remote-e2e", "drop encrypted message device=\(deviceID) reason=missing_device_key")
+      refreshDevices()
+      return nil
+    }
+    do {
+      let key = try e2eSymmetricKey(for: device)
+      let plaintext = try RemoteE2ECrypto.decrypt(
+        encryptedPayload: encryptedPayload,
+        key: key,
+        hostID: model.appSettings.remote.hostID,
+        deviceID: deviceID
+      )
+      let inner = try decoder.decode(RemoteEnvelope.self, from: plaintext)
+      if let seq = inner.seq {
+        let previous = receiveSeqByDevice[deviceID] ?? 0
+        guard seq > previous else {
+          logger.log("remote-e2e", "drop replay device=\(deviceID) seq=\(seq) previous=\(previous)")
+          return nil
+        }
+        receiveSeqByDevice[deviceID] = seq
+      }
+      return inner.withDeviceID(deviceID)
+    } catch {
+      logger.log("remote-e2e", "decrypt failed device=\(deviceID) error=\(error.localizedDescription)")
+      return nil
+    }
+  }
+
+  private func encryptedOutgoingEnvelope(_ inner: RemoteOutgoingEnvelope) -> RemoteOutgoingEnvelope? {
+    guard let deviceID = inner.deviceID, deviceID.isEmpty == false else {
+      return inner
+    }
+    guard let model,
+      let device = snapshot.devices.first(where: { $0.id == deviceID }),
+      device.publicKey.isEmpty == false
+    else {
+      return nil
+    }
+    do {
+      let nextSeq = (sendSeqByDevice[deviceID] ?? 0) + 1
+      sendSeqByDevice[deviceID] = nextSeq
+      var securedInner = inner
+      securedInner.seq = nextSeq
+      let plaintext = try JSONSerialization.data(withJSONObject: securedInner.dictionary)
+      let key = try e2eSymmetricKey(for: device)
+      let encryptedPayload = try RemoteE2ECrypto.encrypt(
+        plaintext: plaintext,
+        key: key,
+        hostID: model.appSettings.remote.hostID,
+        deviceID: deviceID
+      )
+      return RemoteOutgoingEnvelope(
+        type: "secure.message",
+        deviceID: deviceID,
+        sessionID: inner.sessionID,
+        payload: encryptedPayload
+      )
+    } catch {
+      logger.log("remote-e2e", "encrypt failed device=\(deviceID) error=\(error.localizedDescription)")
+      return nil
+    }
   }
 
   private func send(
     type: String, deviceID: String? = nil, sessionID: String? = nil, payload: [String: Any]
   ) {
-    let envelope = RemoteOutgoingEnvelope(
+    let inner = RemoteOutgoingEnvelope(
       type: type, deviceID: deviceID, sessionID: sessionID, payload: payload)
+    let envelope = encryptedOutgoingEnvelope(inner) ?? RemoteOutgoingEnvelope(
+      type: "secure.required",
+      deviceID: deviceID,
+      sessionID: sessionID,
+      payload: ["message": "End-to-end encryption is required. Please pair this mobile device again."]
+    )
     guard let data = try? JSONSerialization.data(withJSONObject: envelope.dictionary),
       let text = String(data: data, encoding: .utf8)
     else { return }
     socket?.send(.string(text)) { _ in }
+  }
+
+  private func e2eSymmetricKey(for device: RemoteHostDevice) throws -> SymmetricKey {
+    guard let model else {
+      throw NSError(domain: "CoduxRemoteE2E", code: -10)
+    }
+    let cacheKey = RemoteE2ECrypto.cacheKey(
+      hostPrivateKey: model.appSettings.remote.hostPrivateKey,
+      remotePublicKey: device.publicKey,
+      hostID: model.appSettings.remote.hostID,
+      deviceID: device.id
+    )
+    if let cached = e2eKeyCache[cacheKey] {
+      return cached
+    }
+    let key = try RemoteE2ECrypto.symmetricKey(
+      hostPrivateKey: model.appSettings.remote.hostPrivateKey,
+      remotePublicKey: device.publicKey,
+      hostID: model.appSettings.remote.hostID,
+      deviceID: device.id
+    )
+    e2eKeyCache[cacheKey] = key
+    return key
+  }
+
+  private func pairingInfoWithLocalQR(_ response: RemotePairingInfo) -> RemotePairingInfo {
+    guard let model else { return response }
+    var next = response
+    next.hostPublicKey = model.appSettings.remote.hostPublicKey
+    next.cryptoVersion = 1
+    let payload: [String: Any] = [
+      "server": model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines),
+      "code": response.code,
+      "secret": response.secret,
+      "hostName": Host.current().localizedName ?? "Codux Mac",
+      "hostPublicKey": model.appSettings.remote.hostPublicKey,
+      "cryptoVersion": 1,
+    ]
+    if let data = try? JSONSerialization.data(withJSONObject: payload) {
+      next.qrPayload = RemoteE2ECrypto.base64URLEncode(data)
+    }
+    return next
+  }
+
+  private func remotePairingMatchCode(
+    pairingCode: String,
+    pairingSecret: String?,
+    devicePublicKey: String
+  ) -> String? {
+    guard let model, devicePublicKey.isEmpty == false else { return nil }
+    return RemoteE2ECrypto.matchCode(
+      hostPublicKey: model.appSettings.remote.hostPublicKey,
+      devicePublicKey: devicePublicKey,
+      pairingCode: pairingCode,
+      pairingSecret: pairingSecret ?? ""
+    )
   }
 
   private func remoteURL(path: String, queryItems: [URLQueryItem], websocket: Bool) -> URL? {
@@ -860,16 +1516,26 @@ private struct RemoteErrorResponse: Decodable {
   var error: String
 }
 
+private struct RemotePairingStatusResponse: Decodable {
+  var status: String
+  var pairingId: String?
+  var code: String?
+  var deviceName: String?
+  var devicePublicKey: String?
+}
+
 private struct RemoteEnvelope: Decodable {
   var type: String
   var deviceID: String?
   var sessionID: String?
+  var seq: Int64?
   var payload: [String: Any]?
 
   enum CodingKeys: String, CodingKey {
     case type
     case deviceID = "deviceId"
     case sessionID = "sessionId"
+    case seq
     case payload
   }
 
@@ -878,9 +1544,16 @@ private struct RemoteEnvelope: Decodable {
     type = try container.decode(String.self, forKey: .type)
     deviceID = try container.decodeIfPresent(String.self, forKey: .deviceID)
     sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID)
+    seq = try container.decodeIfPresent(Int64.self, forKey: .seq)
     if let data = try? container.decodeIfPresent(JSONValue.self, forKey: .payload) {
       payload = data.objectValue
     }
+  }
+
+  func withDeviceID(_ value: String) -> RemoteEnvelope {
+    var next = self
+    next.deviceID = value
+    return next
   }
 }
 
@@ -888,14 +1561,28 @@ private struct RemoteOutgoingEnvelope {
   var type: String
   var deviceID: String?
   var sessionID: String?
+  var seq: Int64?
   var payload: [String: Any]
 
   var dictionary: [String: Any] {
     var value: [String: Any] = ["type": type, "payload": payload]
     if let deviceID { value["deviceId"] = deviceID }
     if let sessionID { value["sessionId"] = sessionID }
+    if let seq { value["seq"] = seq }
     return value
   }
+}
+
+private struct RemoteTerminalMetadata {
+  var ownerDeviceID: String?
+  var ownerKind: String
+  var kind: String
+  var resizeOwner: String
+  var columns: Int?
+  var rows: Int?
+  var createdAt: Date
+  var lastActiveAt: Date
+  var status: String
 }
 
 private enum JSONValue: Decodable {
@@ -939,5 +1626,148 @@ private enum JSONValue: Decodable {
     case .array(let value): return value
     case .null: return NSNull()
     }
+  }
+}
+
+enum RemoteE2ECrypto {
+  private static let saltPrefix = "codux-e2e-v1"
+  private static let sharedInfo = Data("codux-remote-payload-v1".utf8)
+
+  static func ensureHostIdentity(privateKey: String, publicKey: String) throws -> (
+    privateKey: String, publicKey: String
+  ) {
+    if let privateData = base64URLDecode(privateKey),
+      let key = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: privateData)
+    {
+      let derivedPublicKey = base64URLEncode(key.publicKey.rawRepresentation)
+      if publicKey.isEmpty || publicKey == derivedPublicKey {
+        return (privateKey, derivedPublicKey)
+      }
+    }
+    let key = Curve25519.KeyAgreement.PrivateKey()
+    return (
+      base64URLEncode(key.rawRepresentation),
+      base64URLEncode(key.publicKey.rawRepresentation)
+    )
+  }
+
+  static func encrypt(
+    plaintext: Data,
+    key: SymmetricKey,
+    hostID: String,
+    deviceID: String
+  ) throws -> [String: Any] {
+    let nonceData = randomData(count: 12)
+    let nonce = try AES.GCM.Nonce(data: nonceData)
+    let sealed = try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: aad(hostID: hostID, deviceID: deviceID))
+    return [
+      "v": 1,
+      "alg": "X25519-HKDF-SHA256-AES-256-GCM",
+      "nonce": base64URLEncode(nonceData),
+      "ciphertext": base64URLEncode(sealed.ciphertext),
+      "tag": base64URLEncode(sealed.tag),
+    ]
+  }
+
+  static func decrypt(
+    encryptedPayload: [String: Any],
+    key: SymmetricKey,
+    hostID: String,
+    deviceID: String
+  ) throws -> Data {
+    guard (encryptedPayload["v"] as? Int ?? Int((encryptedPayload["v"] as? Double) ?? 0)) == 1,
+      let nonceText = encryptedPayload["nonce"] as? String,
+      let ciphertextText = encryptedPayload["ciphertext"] as? String,
+      let tagText = encryptedPayload["tag"] as? String,
+      let nonceData = base64URLDecode(nonceText),
+      let ciphertext = base64URLDecode(ciphertextText),
+      let tag = base64URLDecode(tagText)
+    else {
+      throw NSError(domain: "CoduxRemoteE2E", code: -1)
+    }
+    let box = try AES.GCM.SealedBox(
+      nonce: AES.GCM.Nonce(data: nonceData),
+      ciphertext: ciphertext,
+      tag: tag
+    )
+    return try AES.GCM.open(box, using: key, authenticating: aad(hostID: hostID, deviceID: deviceID))
+  }
+
+  static func matchCode(
+    hostPublicKey: String,
+    devicePublicKey: String,
+    pairingCode: String,
+    pairingSecret: String
+  ) -> String {
+    let material = "codux-e2e-match-v1|\(hostPublicKey)|\(devicePublicKey)|\(pairingCode)|\(pairingSecret)"
+    let digest = SHA256.hash(data: Data(material.utf8))
+    let prefix = digest.prefix(3).map { String(format: "%02X", $0) }.joined()
+    let split = prefix.index(prefix.startIndex, offsetBy: 3)
+    return "\(prefix[..<split])-\(prefix[split...])"
+  }
+
+  static func base64URLEncode(_ data: Data) -> String {
+    data.base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+  }
+
+  static func base64URLDecode(_ value: String) -> Data? {
+    var normalized = value.replacingOccurrences(of: "-", with: "+")
+      .replacingOccurrences(of: "_", with: "/")
+    let remainder = normalized.count % 4
+    if remainder > 0 {
+      normalized += String(repeating: "=", count: 4 - remainder)
+    }
+    return Data(base64Encoded: normalized)
+  }
+
+  static func symmetricKey(
+    hostPrivateKey: String,
+    remotePublicKey: String,
+    hostID: String,
+    deviceID: String
+  ) throws -> SymmetricKey {
+    guard let privateData = base64URLDecode(hostPrivateKey),
+      let publicData = base64URLDecode(remotePublicKey)
+    else {
+      throw NSError(domain: "CoduxRemoteE2E", code: -2)
+    }
+    let privateKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: privateData)
+    let publicKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: publicData)
+    let shared = try privateKey.sharedSecretFromKeyAgreement(with: publicKey)
+    return shared.hkdfDerivedSymmetricKey(
+      using: SHA256.self,
+      salt: salt(hostID: hostID, deviceID: deviceID),
+      sharedInfo: sharedInfo,
+      outputByteCount: 32
+    )
+  }
+
+  static func cacheKey(
+    hostPrivateKey: String,
+    remotePublicKey: String,
+    hostID: String,
+    deviceID: String
+  ) -> String {
+    let material = "codux-e2e-cache-v1|\(hostPrivateKey)|\(remotePublicKey)|\(hostID)|\(deviceID)"
+    return SHA256.hash(data: Data(material.utf8)).map { String(format: "%02x", $0) }.joined()
+  }
+
+  private static func salt(hostID: String, deviceID: String) -> Data {
+    Data("\(saltPrefix)|\(hostID)|\(deviceID)".utf8)
+  }
+
+  private static func aad(hostID: String, deviceID: String) -> Data {
+    Data("codux-e2e-aad-v1|\(hostID)|\(deviceID)".utf8)
+  }
+
+  private static func randomData(count: Int) -> Data {
+    var data = Data(count: count)
+    _ = data.withUnsafeMutableBytes { buffer in
+      SecRandomCopyBytes(kSecRandomDefault, count, buffer.baseAddress!)
+    }
+    return data
   }
 }

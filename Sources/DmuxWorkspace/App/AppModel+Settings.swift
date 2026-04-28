@@ -800,6 +800,13 @@ extension AppModel {
         updateRemoteSettings(remote)
     }
 
+    func updateRemoteConnection(serverURL: String, enabled: Bool) {
+        var remote = appSettings.remote
+        remote.serverURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        remote.isEnabled = enabled
+        updateRemoteSettings(remote)
+    }
+
     func updateRemoteServerURL(_ serverURL: String) {
         var remote = appSettings.remote
         remote.serverURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)

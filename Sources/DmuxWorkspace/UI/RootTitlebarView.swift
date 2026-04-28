@@ -5,6 +5,7 @@ struct TitlebarOverlayView: View {
     let model: AppModel
     @State private var isShowingLevelPopover = false
     @State private var isShowingPetPopover = false
+    @State private var isShowingRemotePopover = false
 
     var body: some View {
         ZStack {
@@ -25,6 +26,10 @@ struct TitlebarOverlayView: View {
                     }
 
                     TitlebarMemoryStatusView(snapshot: model.memoryExtractionStatus)
+                    TitlebarRemoteStatusButton(
+                        model: model,
+                        isShowingPopover: $isShowingRemotePopover
+                    )
                 }
                 .padding(.leading, 86)
                 .frame(height: TitlebarControlMetrics.rowHeight, alignment: .center)
@@ -273,6 +278,250 @@ private struct TitlebarMemoryStatusView: View {
             return String(format: format, Int64(snapshot.pendingCount), Int64(snapshot.runningCount))
         }
         return statusText
+    }
+}
+
+private struct TitlebarRemoteStatusButton: View {
+    let model: AppModel
+    @ObservedObject private var remoteHostService: RemoteHostService
+    @Binding var isShowingPopover: Bool
+    @State private var isHovered = false
+
+    init(model: AppModel, isShowingPopover: Binding<Bool>) {
+        self.model = model
+        self.remoteHostService = model.remoteHostService
+        self._isShowingPopover = isShowingPopover
+    }
+
+    private var statusColor: Color {
+        if model.appSettings.remote.isEnabled == false
+            || model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return AppTheme.textSecondary
+        }
+        switch remoteHostService.snapshot.status {
+        case .connected:
+            return Color(hex: 0x39D98A)
+        case .registering, .connecting:
+            return AppTheme.warning
+        case .failed:
+            return Color(hex: 0xFF5E6C)
+        case .stopped:
+            return AppTheme.textSecondary
+        }
+    }
+
+    private var statusText: String {
+        if model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return String(localized: "remote.status.not_configured", defaultValue: "Remote not configured", bundle: .module)
+        }
+        if model.appSettings.remote.isEnabled == false {
+            return String(localized: "remote.status.disabled", defaultValue: "Remote disabled", bundle: .module)
+        }
+        switch remoteHostService.snapshot.status {
+        case .connected:
+            return String(localized: "remote.status.connected_short", defaultValue: "Remote connected", bundle: .module)
+        case .registering, .connecting:
+            return String(localized: "remote.status.connecting_short", defaultValue: "Remote connecting", bundle: .module)
+        case .failed:
+            return String(localized: "remote.status.failed_short", defaultValue: "Remote failed", bundle: .module)
+        case .stopped:
+            return String(localized: "remote.status.stopped_short", defaultValue: "Remote stopped", bundle: .module)
+        }
+    }
+
+    private var compactStatusText: String {
+        if model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || model.appSettings.remote.isEnabled == false
+        {
+            return String(localized: "remote.status.off_label", defaultValue: "Off", bundle: .module)
+        }
+        switch remoteHostService.snapshot.status {
+        case .connected:
+            return String(localized: "remote.status.connected_label", defaultValue: "Connected", bundle: .module)
+        case .registering, .connecting:
+            return String(localized: "remote.status.connecting_label", defaultValue: "Connecting", bundle: .module)
+        case .failed:
+            return String(localized: "remote.status.failed_label", defaultValue: "Error", bundle: .module)
+        case .stopped:
+            return String(localized: "remote.status.off_label", defaultValue: "Off", bundle: .module)
+        }
+    }
+
+    private var onlineDeviceCount: Int {
+        remoteHostService.snapshot.devices.filter { $0.online == true }.count
+    }
+
+    private var hasMeaningfulStatus: Bool {
+        guard model.appSettings.remote.isEnabled,
+              !model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return false }
+        switch remoteHostService.snapshot.status {
+        case .connected, .registering, .connecting, .failed: return true
+        case .stopped: return false
+        }
+    }
+
+    private var iconColor: Color {
+        if hasMeaningfulStatus { return statusColor }
+        return isHovered || isShowingPopover ? AppTheme.textPrimary : AppTheme.textSecondary
+    }
+
+    var body: some View {
+        Button {
+            isShowingPopover.toggle()
+            if isShowingPopover {
+                remoteHostService.refreshDevices()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 14, height: TitlebarControlMetrics.pillHeight)
+
+                Text(compactStatusText)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(isHovered || isShowingPopover ? AppTheme.textPrimary : AppTheme.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.horizontal, 9)
+            .frame(height: TitlebarControlMetrics.pillHeight)
+            .background(
+                RoundedRectangle(cornerRadius: TitlebarControlMetrics.pillCornerRadius, style: .continuous)
+                    .fill(statusColor.opacity(isHovered || isShowingPopover ? 0.13 : 0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: TitlebarControlMetrics.pillCornerRadius, style: .continuous)
+                    .stroke(statusColor.opacity(isHovered || isShowingPopover ? 0.3 : 0.14), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .frame(height: TitlebarControlMetrics.rowHeight)
+        .floatingTooltip(tooltipText, enabled: !isShowingPopover, placement: .below)
+        .popover(isPresented: $isShowingPopover, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+            RemoteStatusPopover(model: model, service: remoteHostService)
+        }
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(statusText)
+    }
+
+    private var tooltipText: String {
+        if onlineDeviceCount > 0 {
+            let format = String(
+                localized: "remote.devices.online_count_format",
+                defaultValue: "%lld mobile device(s) online",
+                bundle: .module)
+            return "\(statusText) · \(String(format: format, Int64(onlineDeviceCount)))"
+        }
+        return statusText
+    }
+}
+
+private struct RemoteStatusPopover: View {
+    let model: AppModel
+    @ObservedObject var service: RemoteHostService
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Group {
+            if service.snapshot.devices.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(service.snapshot.devices) { device in
+                            RemoteDeviceStatusRow(device: device)
+                        }
+                    }
+                    .padding(10)
+                }
+                .frame(width: 280)
+                .frame(maxHeight: 280)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.focus.opacity(0.12))
+                    .frame(width: 56, height: 56)
+                Image(systemName: "iphone.gen3.radiowaves.left.and.right")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(AppTheme.focus)
+            }
+
+            VStack(spacing: 4) {
+                Text(String(localized: "remote.devices.empty", defaultValue: "No paired devices", bundle: .module))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text(String(localized: "remote.devices.empty_hint", defaultValue: "Pair a phone to control terminals on the go.", bundle: .module))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                SettingsNavigationRequest.request(.remote)
+                openSettings()
+            } label: {
+                Label(
+                    String(localized: "remote.devices.add", defaultValue: "Add Device", bundle: .module),
+                    systemImage: "qrcode.viewfinder"
+                )
+                .font(.system(size: 12.5, weight: .semibold))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 22)
+        .padding(.bottom, 18)
+        .frame(width: 280)
+    }
+}
+
+private struct RemoteDeviceStatusRow: View {
+    let device: RemoteHostDevice
+
+    private var isOnline: Bool {
+        device.online == true
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Circle()
+                .fill(isOnline ? Color(hex: 0x39D98A) : AppTheme.textSecondary.opacity(0.55))
+                .frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(device.name.isEmpty ? device.id : device.name)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(isOnline
+                        ? String(localized: "remote.devices.online", defaultValue: "Online", bundle: .module)
+                        : String(localized: "remote.devices.offline", defaultValue: "Offline", bundle: .module))
+                    Text("·")
+                    Text(String(localized: "remote.devices.last_seen", defaultValue: "Last seen", bundle: .module))
+                    Text(device.lastSeen, style: .relative)
+                }
+                .font(.system(size: 10.5))
+                .foregroundStyle(AppTheme.textSecondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(isOnline ? Color(hex: 0x39D98A).opacity(0.08) : Color(nsColor: .quaternarySystemFill).opacity(0.55))
+        )
     }
 }
 
