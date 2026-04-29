@@ -32,9 +32,9 @@ enum AIProviderError: LocalizedError {
             return "The selected AI provider has an invalid base URL."
         case .emptyResponse:
             return "The AI provider returned an empty response."
-        case let .processFailure(message):
+        case .processFailure(let message):
             return message
-        case let .requestFailure(message):
+        case .requestFailure(let message):
             return message
         }
     }
@@ -48,17 +48,47 @@ protocol AIProviderClient: Sendable {
 }
 
 struct AIProviderSelectionService: Sendable {
-    func preferredMemoryExtractionProvider(in settings: AppAISettings, tool: String?) -> AppAIProviderConfiguration? {
-        if settings.memory.defaultExtractorProviderID == AppMemorySettings.automaticExtractorProviderID {
-            return settings.preferredExtractionProvider(forTool: tool)
+    func preferredMemoryExtractionProvider(in settings: AppAISettings, tool: String?)
+        -> AppAIProviderConfiguration?
+    {
+        candidateMemoryExtractionProviders(in: settings, tool: tool).first
+    }
+
+    func candidateMemoryExtractionProviders(in settings: AppAISettings, tool: String?)
+        -> [AppAIProviderConfiguration]
+    {
+        let enabledProviders = settings.providers
+            .filter { $0.isEnabled && $0.useForMemoryExtraction }
+            .sorted { lhs, rhs in
+                if lhs.priority == rhs.priority {
+                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                        == .orderedAscending
+                }
+                return lhs.priority < rhs.priority
+            }
+
+        if settings.memory.defaultExtractorProviderID
+            != AppMemorySettings.automaticExtractorProviderID
+        {
+            if let selected = settings.provider(withID: settings.memory.defaultExtractorProviderID),
+                selected.isEnabled,
+                selected.useForMemoryExtraction
+            {
+                return [selected]
+            }
+            return enabledProviders
         }
 
-        if let selected = settings.provider(withID: settings.memory.defaultExtractorProviderID),
-           selected.isEnabled,
-           selected.useForMemoryExtraction {
-            return selected
+        guard let tool,
+            let kind = AppAIProviderKind(rawValue: AppAISettings.canonicalProviderToolName(tool)),
+            let toolProvider = settings.provider(withID: kind.builtInProviderID),
+            toolProvider.isEnabled,
+            toolProvider.useForMemoryExtraction
+        else {
+            return enabledProviders
         }
-        return settings.preferredExtractionProvider(forTool: tool)
+
+        return [toolProvider] + enabledProviders.filter { $0.id != toolProvider.id }
     }
 }
 
@@ -72,7 +102,8 @@ struct AIProviderFactory: Sendable {
                 binaryName: "claude",
                 argumentBuilder: { request, configuration in
                     var args = ["--print"]
-                    if !configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if !configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    {
                         args.append(contentsOf: ["--model", configuration.model])
                     }
                     if let systemPrompt = normalizedNonEmptyString(request.systemPrompt) {
@@ -109,8 +140,11 @@ struct AIProviderFactory: Sendable {
             return HeadlessToolProviderClient(
                 binaryName: "gemini",
                 argumentBuilder: { request, configuration in
-                    var args = ["--prompt", mergedPrompt(request: request), "--output-format", "text"]
-                    if !configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    var args = [
+                        "--prompt", mergedPrompt(request: request), "--output-format", "text",
+                    ]
+                    if !configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    {
                         args.append(contentsOf: ["--model", configuration.model])
                     }
                     return HeadlessToolInvocation(
@@ -126,7 +160,8 @@ struct AIProviderFactory: Sendable {
                 binaryName: "opencode",
                 argumentBuilder: { request, configuration in
                     var args = ["run", "--format", "default"]
-                    if !configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if !configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    {
                         args.append(contentsOf: ["--model", configuration.model])
                     }
                     if let workingDirectory = normalizedNonEmptyString(request.workingDirectory) {
@@ -144,12 +179,12 @@ struct AIProviderFactory: Sendable {
     private func mergedPrompt(request: AIProviderCompletionRequest) -> String {
         if let systemPrompt = normalizedNonEmptyString(request.systemPrompt) {
             return """
-            <system>
-            \(systemPrompt)
-            </system>
+                <system>
+                \(systemPrompt)
+                </system>
 
-            \(request.prompt)
-            """
+                \(request.prompt)
+                """
         }
         return request.prompt
     }
@@ -160,7 +195,9 @@ private struct HeadlessToolProviderClient: AIProviderClient {
     private static let timeoutSeconds: TimeInterval = 90
 
     let binaryName: String
-    let argumentBuilder: @Sendable (AIProviderCompletionRequest, AppAIProviderConfiguration) -> HeadlessToolInvocation
+    let argumentBuilder:
+        @Sendable (AIProviderCompletionRequest, AppAIProviderConfiguration) ->
+            HeadlessToolInvocation
 
     func complete(
         _ request: AIProviderCompletionRequest,
@@ -177,8 +214,10 @@ private struct HeadlessToolProviderClient: AIProviderClient {
                 let fileManager = FileManager.default
                 let directoryURL = fileManager.temporaryDirectory
                     .appendingPathComponent("codux-memory-provider", isDirectory: true)
-                try? fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-                let fileURL = directoryURL.appendingPathComponent("codex-output-\(UUID().uuidString).txt", isDirectory: false)
+                try? fileManager.createDirectory(
+                    at: directoryURL, withIntermediateDirectories: true)
+                let fileURL = directoryURL.appendingPathComponent(
+                    "codex-output-\(UUID().uuidString).txt", isDirectory: false)
                 invocation.arguments.append(contentsOf: ["--output-last-message", fileURL.path])
                 outputFileURL = fileURL
             } else {
@@ -190,12 +229,14 @@ private struct HeadlessToolProviderClient: AIProviderClient {
                 includeBundledWrappers: false,
                 includeGeminiPlaceholder: invocation.injectGeminiPlaceholderKey
             )
-            for (key, value) in invocation.environmentOverrides where environment[key]?.isEmpty ?? true {
+            for (key, value) in invocation.environmentOverrides
+            where environment[key]?.isEmpty ?? true {
                 environment[key] = value
             }
             process.environment = environment
             if let workingDirectory = normalizedNonEmptyString(request.workingDirectory) {
-                process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory, isDirectory: true)
+                process.currentDirectoryURL = URL(
+                    fileURLWithPath: workingDirectory, isDirectory: true)
             }
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
@@ -222,7 +263,8 @@ private struct HeadlessToolProviderClient: AIProviderClient {
                 timeoutState.set(true)
                 process.terminate()
             }
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.timeoutSeconds, execute: timeoutWorkItem)
+            DispatchQueue.global(qos: .utility).asyncAfter(
+                deadline: .now() + Self.timeoutSeconds, execute: timeoutWorkItem)
             process.waitUntilExit()
             timeoutWorkItem.cancel()
 
@@ -231,10 +273,12 @@ private struct HeadlessToolProviderClient: AIProviderClient {
             let stdoutPreview = outputPreview(stdoutData)
             let stderrPreview = outputPreview(stderrData)
             if timeoutState.value {
-                let suffix = stderrPreview.isEmpty && stdoutPreview.isEmpty
+                let suffix =
+                    stderrPreview.isEmpty && stdoutPreview.isEmpty
                     ? ""
                     : " stderr=\(stderrPreview) stdout=\(stdoutPreview)"
-                throw AIProviderError.processFailure("\(binaryName) timed out after \(Int(Self.timeoutSeconds)) seconds.\(suffix)")
+                throw AIProviderError.processFailure(
+                    "\(binaryName) timed out after \(Int(Self.timeoutSeconds)) seconds.\(suffix)")
             }
             let outputData: Data
             let outputFileData = outputFileURL.flatMap { try? Data(contentsOf: $0) }
@@ -246,7 +290,8 @@ private struct HeadlessToolProviderClient: AIProviderClient {
             } else {
                 outputData = stdoutData
             }
-            let output = String(data: outputData, encoding: .utf8)?
+            let output =
+                String(data: outputData, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if process.terminationStatus != 0 {
                 if Self.looksLikeJSONResponse(outputData), !output.isEmpty {
@@ -269,35 +314,36 @@ private struct HeadlessToolProviderClient: AIProviderClient {
     }
 
     private static func looksLikeJSONResponse(_ data: Data) -> Bool {
-        guard let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              text.hasPrefix("{") else {
+        guard
+            let text = String(data: data, encoding: .utf8)?.trimmingCharacters(
+                in: .whitespacesAndNewlines),
+            text.hasPrefix("{")
+        else {
             return false
         }
         guard let jsonData = text.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        else {
             return false
         }
-        return object["working_add"] != nil || object["user_summary"] != nil || object["project_summary"] != nil
+        return object["working_add"] != nil || object["user_summary"] != nil
+            || object["project_summary"] != nil
     }
 
     private static func conciseProcessOutput(_ output: String) -> String {
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return trimmed }
         if trimmed.contains("OpenAI Codex") && trimmed.contains("<system>") {
-            if let lastLine = trimmed.split(separator: "\n").last(where: { line in
-                let value = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                return value.isEmpty == false && value != "--------" && value != "user"
-            }) {
-                return "Codex CLI exited before returning a final JSON message. Last stderr line: \(lastLine)"
-            }
-            return "Codex CLI exited before returning a final JSON message."
+            return
+                "Codex CLI exited before returning memory extraction JSON. The stderr output looked like a prompt echo, so it was hidden."
         }
         guard trimmed.count > 600 else { return trimmed }
         return "\(trimmed.prefix(600))..."
     }
 
     private func outputPreview(_ data: Data) -> String {
-        let output = String(data: data, encoding: .utf8)?
+        let output =
+            String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard output.count > 600 else {
             return output
@@ -312,13 +358,17 @@ private struct HeadlessToolProviderClient: AIProviderClient {
         stdoutPreview: String
     ) -> String {
         if stderrPreview.contains("env: \(binaryName): No such file or directory") {
-            return "\(displayName(for: binaryName)) CLI was not found in the application environment PATH."
+            return
+                "\(displayName(for: binaryName)) CLI was not found in the application environment PATH."
         }
-        if stderrPreview.contains("No such file or directory") && stderrPreview.contains(binaryName) {
-            return "\(displayName(for: binaryName)) CLI was not found in the application environment PATH."
+        if stderrPreview.contains("No such file or directory") && stderrPreview.contains(binaryName)
+        {
+            return
+                "\(displayName(for: binaryName)) CLI was not found in the application environment PATH."
         }
         if stderrPreview.isEmpty {
-            return "\(displayName(for: binaryName)) exited with code \(terminationStatus). stdout=\(stdoutPreview)"
+            return
+                "\(displayName(for: binaryName)) exited with code \(terminationStatus). stdout=\(stdoutPreview)"
         }
         return stderrPreview
     }
@@ -351,18 +401,21 @@ private struct HeadlessToolProviderClient: AIProviderClient {
             }
             var offset = 0
             while offset < data.count {
-                let written = Darwin.write(fileDescriptor, baseAddress.advanced(by: offset), data.count - offset)
+                let written = Darwin.write(
+                    fileDescriptor, baseAddress.advanced(by: offset), data.count - offset)
                 if written > 0 {
                     offset += written
                     continue
                 }
                 if written == 0 || errno == EPIPE {
-                    throw AIProviderError.processFailure("\(binaryName) closed stdin before reading input.")
+                    throw AIProviderError.processFailure(
+                        "\(binaryName) closed stdin before reading input.")
                 }
                 if errno == EINTR {
                     continue
                 }
-                throw AIProviderError.processFailure("Failed to write stdin to \(binaryName): \(String(cString: strerror(errno))).")
+                throw AIProviderError.processFailure(
+                    "Failed to write stdin to \(binaryName): \(String(cString: strerror(errno))).")
             }
         }
     }
@@ -400,7 +453,12 @@ private struct OpenAICompatibleProviderClient: AIProviderClient {
             throw AIProviderError.missingAPIKey
         }
         let baseURLString = configuration.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: baseURLString.isEmpty ? "https://api.openai.com/v1/chat/completions" : normalizedEndpointURL(from: baseURLString)) else {
+        guard
+            let url = URL(
+                string: baseURLString.isEmpty
+                    ? "https://api.openai.com/v1/chat/completions"
+                    : normalizedEndpointURL(from: baseURLString))
+        else {
             throw AIProviderError.invalidBaseURL
         }
 
@@ -409,21 +467,29 @@ private struct OpenAICompatibleProviderClient: AIProviderClient {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         let payload = OpenAIChatCompletionRequest(
-            model: configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppAIProviderKind.openAICompatible.defaultModel : configuration.model,
+            model: configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? AppAIProviderKind.openAICompatible.defaultModel : configuration.model,
             messages: makeMessages(for: request)
         )
         urlRequest.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
         if let httpResponse = response as? HTTPURLResponse,
-           !(200..<300).contains(httpResponse.statusCode) {
-            let body = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw AIProviderError.requestFailure(body.isEmpty ? "Provider returned HTTP \(httpResponse.statusCode)." : body)
+            !(200..<300).contains(httpResponse.statusCode)
+        {
+            let body =
+                String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? ""
+            throw AIProviderError.requestFailure(
+                body.isEmpty ? "Provider returned HTTP \(httpResponse.statusCode)." : body)
         }
 
         let decoded = try JSONDecoder().decode(OpenAIChatCompletionResponse.self, from: data)
-        guard let content = decoded.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !content.isEmpty else {
+        guard
+            let content = decoded.choices.first?.message.content?.trimmingCharacters(
+                in: .whitespacesAndNewlines),
+            !content.isEmpty
+        else {
             throw AIProviderError.emptyResponse
         }
         return content
@@ -443,7 +509,9 @@ private struct OpenAICompatibleProviderClient: AIProviderClient {
         return "\(trimmed)/v1/chat/completions"
     }
 
-    private func makeMessages(for request: AIProviderCompletionRequest) -> [OpenAIChatCompletionMessage] {
+    private func makeMessages(for request: AIProviderCompletionRequest)
+        -> [OpenAIChatCompletionMessage]
+    {
         var messages: [OpenAIChatCompletionMessage] = []
         if let systemPrompt = normalizedNonEmptyString(request.systemPrompt) {
             messages.append(OpenAIChatCompletionMessage(role: "system", content: systemPrompt))

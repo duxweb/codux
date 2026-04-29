@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import DmuxWorkspace
 
 final class MemoryCoordinatorTests: XCTestCase {
@@ -7,9 +8,12 @@ final class MemoryCoordinatorTests: XCTestCase {
 
     override func setUpWithError() throws {
         temporaryDirectoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("dmux-memory-coordinator-tests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: temporaryDirectoryURL, withIntermediateDirectories: true)
-        databaseURL = temporaryDirectoryURL.appendingPathComponent("memory.sqlite3", isDirectory: false)
+            .appendingPathComponent(
+                "dmux-memory-coordinator-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: temporaryDirectoryURL, withIntermediateDirectories: true)
+        databaseURL = temporaryDirectoryURL.appendingPathComponent(
+            "memory.sqlite3", isDirectory: false)
     }
 
     override func tearDownWithError() throws {
@@ -93,5 +97,85 @@ final class MemoryCoordinatorTests: XCTestCase {
         XCTAssertEqual(recovered.pendingCount, 1)
         XCTAssertEqual(recovered.runningCount, 0)
         XCTAssertNil(recovered.lastError)
+    }
+
+    func testAutomaticProviderSelectionKeepsToolProviderFirstThenFallbacks() throws {
+        let service = AIProviderSelectionService()
+        let settings = AppAISettings()
+
+        let providers = service.candidateMemoryExtractionProviders(in: settings, tool: "codex")
+
+        XCTAssertEqual(
+            providers.map(\.id).prefix(3),
+            [
+                AppAIProviderKind.codex.builtInProviderID,
+                AppAIProviderKind.claude.builtInProviderID,
+                AppAIProviderKind.gemini.builtInProviderID,
+            ])
+    }
+
+    func testExplicitProviderSelectionDoesNotFallbackToOtherProviders() throws {
+        let service = AIProviderSelectionService()
+        var settings = AppAISettings()
+        settings.memory.defaultExtractorProviderID = AppAIProviderKind.gemini.builtInProviderID
+
+        let providers = service.candidateMemoryExtractionProviders(in: settings, tool: "codex")
+
+        XCTAssertEqual(providers.map(\.id), [AppAIProviderKind.gemini.builtInProviderID])
+    }
+
+    func testExtractionResponseDecoderAcceptsMarkdownFencedJSON() throws {
+        let candidates = MemoryExtractionResponseDecoder.jsonObjectCandidates(
+            from: """
+                Here is the memory update:
+
+                ```json
+                {
+                  "user_summary": "",
+                  "project_summary": "Use wiki-style memory layers.",
+                  "working_add": [],
+                  "working_archive": [],
+                  "merged_entry_ids": []
+                }
+                ```
+                """
+        )
+
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertTrue(candidates[0].contains("\"project_summary\""))
+    }
+
+    func testExtractionResponseDecoderFindsBalancedJSONInsidePromptEcho() throws {
+        let candidates = MemoryExtractionResponseDecoder.jsonObjectCandidates(
+            from: """
+                OpenAI Codex
+                --------
+                user
+                Treat this as a deterministic memory compaction job.
+                This sentence has braces that are not JSON: {not-json}
+                {
+                  "user_summary": "",
+                  "project_summary": "",
+                  "working_add": [
+                    {
+                      "scope": "project",
+                      "kind": "bug_lesson",
+                      "content": "Parser tolerates braces like {value} inside JSON strings.",
+                      "rationale": "CLI output can include prompt echoes"
+                    }
+                  ],
+                  "working_archive": [],
+                  "merged_entry_ids": []
+                }
+                trailing text
+                """
+        )
+
+        XCTAssertTrue(
+            candidates.contains { candidate in
+                candidate.contains("\"working_add\"")
+                    && candidate.contains(
+                        "Parser tolerates braces like {value} inside JSON strings.")
+            })
     }
 }

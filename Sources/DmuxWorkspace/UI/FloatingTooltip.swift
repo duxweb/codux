@@ -8,7 +8,24 @@ enum FloatingTooltipPlacement {
 
 private struct FloatingTooltipBubbleView: View {
     let text: String
-    private static let maxWidth: CGFloat = 240
+    let textWidth: CGFloat
+    static let maxWidth: CGFloat = 240
+    private static let horizontalPadding: CGFloat = 10
+    private static let textMaxWidth: CGFloat = maxWidth - horizontalPadding * 2
+    private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+
+    static func preferredTextWidth(for text: String) -> CGFloat {
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let naturalWidth =
+            text
+            .components(separatedBy: .newlines)
+            .map { line in
+                let measured = (line.isEmpty ? " " : line) as NSString
+                return ceil(measured.size(withAttributes: attributes).width)
+            }
+            .max() ?? 1
+        return max(1, min(textMaxWidth, naturalWidth))
+    }
 
     var body: some View {
         Text(text)
@@ -16,8 +33,8 @@ private struct FloatingTooltipBubbleView: View {
             .foregroundStyle(AppTheme.textPrimary)
             .multilineTextAlignment(.leading)
             .lineLimit(nil)
-            .frame(maxWidth: Self.maxWidth - 20, alignment: .leading)
-            .padding(.horizontal, 10)
+            .frame(width: textWidth, alignment: .leading)
+            .padding(.horizontal, Self.horizontalPadding)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -66,23 +83,30 @@ private final class FloatingTooltipPresenter {
 
     func show(text: String, placement: FloatingTooltipPlacement, anchorView: NSView?) {
         guard let anchorView,
-              let anchorWindow = anchorView.window,
-              !text.isEmpty else {
+            let anchorWindow = anchorView.window,
+            !text.isEmpty
+        else {
             hide()
             return
         }
 
+        let textWidth = FloatingTooltipBubbleView.preferredTextWidth(for: text)
         let content = AnyView(
-            FloatingTooltipBubbleView(text: text)
+            FloatingTooltipBubbleView(text: text, textWidth: textWidth)
                 .padding(4)
                 .background(Color.clear)
         )
         let hostingController = self.hostingController ?? NSHostingController(rootView: content)
         hostingController.rootView = content
-        hostingController.view.frame = NSRect(origin: .zero, size: CGSize(width: 260, height: 80))
+        let targetSize = CGSize(
+            width: FloatingTooltipBubbleView.maxWidth + 8, height: CGFloat.greatestFiniteMagnitude)
+        let fittingSize = hostingController.sizeThatFits(in: targetSize)
+        hostingController.view.frame = NSRect(origin: .zero, size: fittingSize)
         hostingController.view.layoutSubtreeIfNeeded()
-        let fittingSize = hostingController.view.fittingSize
-        let contentSize = CGSize(width: max(1, fittingSize.width), height: max(1, fittingSize.height))
+        let contentSize = CGSize(
+            width: max(1, min(targetSize.width, fittingSize.width)),
+            height: max(1, fittingSize.height)
+        )
         hostingController.view.frame = NSRect(origin: .zero, size: contentSize)
 
         let panel = self.panel ?? makePanel()
@@ -97,7 +121,10 @@ private final class FloatingTooltipPresenter {
 
         let anchorRectInWindow = anchorView.convert(anchorView.bounds, to: nil)
         let anchorRect = anchorWindow.convertToScreen(anchorRectInWindow)
-        panel.setFrameOrigin(origin(for: placement, anchorRect: anchorRect, tooltipSize: contentSize, screen: anchorWindow.screen))
+        panel.setFrameOrigin(
+            origin(
+                for: placement, anchorRect: anchorRect, tooltipSize: contentSize,
+                screen: anchorWindow.screen))
         panel.orderFront(nil)
     }
 
@@ -134,7 +161,9 @@ private final class FloatingTooltipPresenter {
         var point: CGPoint
         switch placement {
         case .below:
-            point = CGPoint(x: anchorRect.midX - tooltipSize.width / 2, y: anchorRect.minY - tooltipSize.height - gap)
+            point = CGPoint(
+                x: anchorRect.midX - tooltipSize.width / 2,
+                y: anchorRect.minY - tooltipSize.height - gap)
         case .right:
             point = CGPoint(x: anchorRect.maxX + gap, y: anchorRect.midY - tooltipSize.height / 2)
         }
@@ -143,8 +172,12 @@ private final class FloatingTooltipPresenter {
             return point
         }
         let padding: CGFloat = 6
-        point.x = min(max(point.x, visibleFrame.minX + padding), visibleFrame.maxX - tooltipSize.width - padding)
-        point.y = min(max(point.y, visibleFrame.minY + padding), visibleFrame.maxY - tooltipSize.height - padding)
+        point.x = min(
+            max(point.x, visibleFrame.minX + padding),
+            visibleFrame.maxX - tooltipSize.width - padding)
+        point.y = min(
+            max(point.y, visibleFrame.minY + padding),
+            visibleFrame.maxY - tooltipSize.height - padding)
         return point
     }
 }
@@ -187,7 +220,9 @@ private struct FloatingTooltipModifier: ViewModifier {
 }
 
 extension View {
-    func floatingTooltip(_ text: String, enabled: Bool = true, placement: FloatingTooltipPlacement) -> some View {
+    func floatingTooltip(_ text: String, enabled: Bool = true, placement: FloatingTooltipPlacement)
+        -> some View
+    {
         modifier(FloatingTooltipModifier(text: text, enabled: enabled, placement: placement))
     }
 }

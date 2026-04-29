@@ -168,15 +168,40 @@ struct AppMemorySettings: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-        automaticInjectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .automaticInjectionEnabled) ?? true
-        automaticExtractionEnabled = try container.decodeIfPresent(Bool.self, forKey: .automaticExtractionEnabled) ?? true
-        allowCrossProjectUserRecall = try container.decodeIfPresent(Bool.self, forKey: .allowCrossProjectUserRecall) ?? true
-        defaultExtractorProviderID = try container.decodeIfPresent(String.self, forKey: .defaultExtractorProviderID) ?? Self.automaticExtractorProviderID
-        maxInjectedUserWorkingMemories = max(0, min(24, try container.decodeIfPresent(Int.self, forKey: .maxInjectedUserWorkingMemories) ?? 8))
-        maxInjectedProjectWorkingMemories = max(0, min(32, try container.decodeIfPresent(Int.self, forKey: .maxInjectedProjectWorkingMemories) ?? 12))
-        maxActiveWorkingEntries = max(5, min(200, try container.decodeIfPresent(Int.self, forKey: .maxActiveWorkingEntries) ?? 50))
-        maxSummaryVersions = max(1, min(50, try container.decodeIfPresent(Int.self, forKey: .maxSummaryVersions) ?? 10))
-        summaryTargetTokenBudget = max(400, min(6000, try container.decodeIfPresent(Int.self, forKey: .summaryTargetTokenBudget) ?? 1800))
+        automaticInjectionEnabled =
+            try container.decodeIfPresent(Bool.self, forKey: .automaticInjectionEnabled) ?? true
+        automaticExtractionEnabled =
+            try container.decodeIfPresent(Bool.self, forKey: .automaticExtractionEnabled) ?? true
+        allowCrossProjectUserRecall =
+            try container.decodeIfPresent(Bool.self, forKey: .allowCrossProjectUserRecall) ?? true
+        defaultExtractorProviderID =
+            try container.decodeIfPresent(String.self, forKey: .defaultExtractorProviderID)
+            ?? Self.automaticExtractorProviderID
+        maxInjectedUserWorkingMemories = max(
+            0,
+            min(
+                24,
+                try container.decodeIfPresent(Int.self, forKey: .maxInjectedUserWorkingMemories)
+                    ?? 8)
+        )
+        maxInjectedProjectWorkingMemories = max(
+            0,
+            min(
+                32,
+                try container.decodeIfPresent(Int.self, forKey: .maxInjectedProjectWorkingMemories)
+                    ?? 12))
+        maxActiveWorkingEntries = max(
+            5,
+            min(
+                200, try container.decodeIfPresent(Int.self, forKey: .maxActiveWorkingEntries) ?? 50
+            ))
+        maxSummaryVersions = max(
+            1, min(50, try container.decodeIfPresent(Int.self, forKey: .maxSummaryVersions) ?? 10))
+        summaryTargetTokenBudget = max(
+            400,
+            min(
+                6000,
+                try container.decodeIfPresent(Int.self, forKey: .summaryTargetTokenBudget) ?? 1800))
     }
 }
 
@@ -197,10 +222,14 @@ struct AppAISettings: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        runtimeTools = try container.decodeIfPresent(AppAIToolPermissionSettings.self, forKey: .runtimeTools) ?? .init()
+        runtimeTools =
+            try container.decodeIfPresent(AppAIToolPermissionSettings.self, forKey: .runtimeTools)
+            ?? .init()
         globalPrompt = try container.decodeIfPresent(String.self, forKey: .globalPrompt) ?? ""
         memory = try container.decodeIfPresent(AppMemorySettings.self, forKey: .memory) ?? .init()
-        providers = try container.decodeIfPresent([AppAIProviderConfiguration].self, forKey: .providers) ?? AppAIProviderConfiguration.defaultConfigurations
+        providers =
+            try container.decodeIfPresent([AppAIProviderConfiguration].self, forKey: .providers)
+            ?? AppAIProviderConfiguration.defaultConfigurations
         migrateMissingDefaultProviders()
     }
 
@@ -209,19 +238,26 @@ struct AppAISettings: Codable, Equatable, Sendable {
         for (index, provider) in AppAIProviderConfiguration.defaultConfigurations.enumerated() {
             if existingByID[provider.id] == nil {
                 existingByID[provider.id] = provider
-            } else if existingByID[provider.id]?.priority == 0 && provider.priority != 0 && provider.id != AppAIProviderKind.claude.builtInProviderID {
+            } else if existingByID[provider.id]?.priority == 0 && provider.priority != 0
+                && provider.id != AppAIProviderKind.claude.builtInProviderID
+            {
                 existingByID[provider.id]?.priority = provider.priority
             }
             _ = index
         }
         providers = existingByID.values.sorted {
             if $0.priority == $1.priority {
-                return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                return $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
+                    == .orderedAscending
             }
             return $0.priority < $1.priority
         }
         if memory.defaultExtractorProviderID != AppMemorySettings.automaticExtractorProviderID,
-           providers.contains(where: { $0.id == memory.defaultExtractorProviderID && $0.useForMemoryExtraction && $0.isEnabled }) == false {
+            providers.contains(where: {
+                $0.id == memory.defaultExtractorProviderID && $0.useForMemoryExtraction
+                    && $0.isEnabled
+            }) == false
+        {
             memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
         }
     }
@@ -235,7 +271,8 @@ struct AppAISettings: Codable, Equatable, Sendable {
             .filter { $0.isEnabled && $0.useForMemoryExtraction }
             .sorted { lhs, rhs in
                 if lhs.priority == rhs.priority {
-                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                        == .orderedAscending
                 }
                 return lhs.priority < rhs.priority
             }
@@ -245,25 +282,28 @@ struct AppAISettings: Codable, Equatable, Sendable {
 
     func preferredExtractionProvider(forTool tool: String?) -> AppAIProviderConfiguration? {
         if let tool,
-           let kind = AppAIProviderKind(rawValue: Self.canonicalProviderToolName(tool)),
-           let provider = provider(withID: kind.builtInProviderID),
-           provider.isEnabled,
-           provider.useForMemoryExtraction {
+            let kind = AppAIProviderKind(rawValue: Self.canonicalProviderToolName(tool)),
+            let provider = provider(withID: kind.builtInProviderID),
+            provider.isEnabled,
+            provider.useForMemoryExtraction
+        {
             return provider
         }
 
-        return providers
+        return
+            providers
             .filter { $0.isEnabled && $0.useForMemoryExtraction }
             .sorted { lhs, rhs in
                 if lhs.priority == rhs.priority {
-                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                        == .orderedAscending
                 }
                 return lhs.priority < rhs.priority
             }
             .first
     }
 
-    private static func canonicalProviderToolName(_ tool: String) -> String {
+    static func canonicalProviderToolName(_ tool: String) -> String {
         switch tool.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "claude", "claude-code":
             return AppAIProviderKind.claude.rawValue

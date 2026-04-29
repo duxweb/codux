@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-04-29
+
+### Changed
+
+- Reworked AI memory launch context into layered workspace files so agents receive a compact index with separate user, project, recent, and search-oriented memory references instead of a bulky prompt dump.
+- Added provider fallback for automatic memory extraction so another configured provider can retry when the preferred provider fails.
+
+### Fixed
+
+- Hardened memory extraction response parsing for fenced JSON, prompt-echo output, and balanced JSON embedded in stderr/stdout noise.
+- Fixed misleading Codex extraction failures that reported echoed prompt text as the last useful error line.
+- Fixed floating tooltip sizing so short labels stay compact while long multi-line tooltips expand vertically within the maximum width.
+
 ## [0.6.0] - 2026-04-28
 
 ### Added
