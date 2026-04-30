@@ -24,6 +24,14 @@
 
 ![Codux](docs/images/screenshot.png)
 
+## 演示视频
+
+<div align="center">
+  <iframe src="https://player.bilibili.com/player.html?isOutside=true&aid=116493605935938&bvid=BV1mK9vBCEYD&cid=37979163134&p=1" width="100%" height="420" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>
+</div>
+
+如果内嵌播放器无法显示，可以前往 [Bilibili](https://www.bilibili.com/video/BV1mK9vBCEYD/) 观看。
+
 ## 为什么需要 Codux？
 
 Codux 面向主要使用 Claude Code、Codex、Gemini CLI、OpenCode 等终端 AI 编程工具的开发者。

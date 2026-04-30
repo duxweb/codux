@@ -24,6 +24,14 @@
 
 ![Codux](docs/images/screenshot.png)
 
+## Demo Video
+
+<div align="center">
+  <iframe src="https://player.bilibili.com/player.html?isOutside=true&aid=116493605935938&bvid=BV1mK9vBCEYD&cid=37979163134&p=1" width="100%" height="420" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>
+</div>
+
+If the embedded player is not available, watch it on [Bilibili](https://www.bilibili.com/video/BV1mK9vBCEYD/).
+
 ## Why Codux?
 
 Codux is for developers who spend most of their AI coding time in terminal tools such as Claude Code, Codex, Gemini CLI, and OpenCode.
