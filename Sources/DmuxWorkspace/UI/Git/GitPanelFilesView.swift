@@ -273,6 +273,11 @@ private struct GitFileRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                model.openGitDiffWindow(for: entry)
+            }
+        )
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(rowBackground)
         .overlay {
@@ -469,6 +474,265 @@ private struct HoverActionIcon: View {
         default:
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .semibold))
+        }
+    }
+}
+
+enum GitFileDiffWindowPresenter {
+    @MainActor private static var controllers: [String: NSWindowController] = [:]
+
+    @MainActor
+    static func show(entry: GitFileEntry, project: Project) {
+        let key = "\(project.id.uuidString):\(entry.id)"
+        if let controller = controllers[key] {
+            controller.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let contentView = GitFileDiffWindowView(entry: entry, project: project)
+        let hostingController = NSHostingController(rootView: contentView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = entry.path
+        window.setContentSize(NSSize(width: 1080, height: 680))
+        window.minSize = NSSize(width: 760, height: 420)
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.isReleasedWhenClosed = false
+        let controller = NSWindowController(window: window)
+        controllers[key] = controller
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                controllers[key] = nil
+            }
+        }
+        controller.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+private struct GitFileDiffWindowView: View {
+    let entry: GitFileEntry
+    let project: Project
+    @State private var preview: GitFileDiffPreview?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .task(id: entry.id) {
+            await loadDiff()
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let preview {
+            GitSideBySideDiffView(preview: preview)
+        } else if let errorMessage {
+            VStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(AppTheme.warning)
+                Text(errorMessage)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(24)
+        } else {
+            VStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(String(localized: "git.diff.loading", defaultValue: "Loading diff...", bundle: .module))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(AppTheme.textMuted)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func loadDiff() async {
+        let path = project.path
+        let entry = entry
+        do {
+            let loadedPreview = try await Task.detached {
+                try GitService().sideBySideDiff(for: entry, at: path)
+            }.value
+            preview = loadedPreview
+            errorMessage = nil
+        } catch {
+            preview = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct GitSideBySideDiffView: View {
+    let preview: GitFileDiffPreview
+
+    var body: some View {
+        GeometryReader { proxy in
+            let contentWidth = max(proxy.size.width, preferredContentWidth)
+            ScrollView(.horizontal) {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        GitDiffColumnHeader(title: preview.newTitle, symbol: "plus.square.fill", color: AppTheme.success, side: .new)
+                        Rectangle()
+                            .fill(AppTheme.separator.opacity(0.6))
+                            .frame(width: 1)
+                        GitDiffColumnHeader(title: preview.oldTitle, symbol: "minus.square.fill", color: AppTheme.warning, side: .old)
+                    }
+                    .frame(width: contentWidth, height: 32)
+
+                    GitPanelSeparator()
+
+                    ScrollView(.vertical) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(preview.rows) { row in
+                                GitDiffRowView(row: row)
+                            }
+                        }
+                        .frame(width: contentWidth, alignment: .leading)
+                        .padding(.vertical, 4)
+                    }
+                    .frame(width: contentWidth, height: max(0, proxy.size.height - 33))
+                }
+                .frame(width: contentWidth, height: proxy.size.height, alignment: .top)
+            }
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.4))
+        }
+    }
+
+    private var preferredContentWidth: CGFloat {
+        let maxLineLength = preview.rows.reduce(0) { partial, row in
+            max(partial, row.newLine?.text.count ?? 0, row.oldLine?.text.count ?? 0)
+        }
+        let estimatedTextWidth = CGFloat(min(maxLineLength, 260)) * 7.2
+        let columnWidth = max(360, 52 + 2 + 20 + estimatedTextWidth)
+        return columnWidth * 2 + 1
+    }
+}
+
+private struct GitDiffColumnHeader: View {
+    let title: String
+    let symbol: String
+    let color: Color
+    let side: GitDiffLineSide
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(color)
+            Text(title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(color.opacity(0.10))
+    }
+}
+
+private struct GitDiffRowView: View {
+    let row: GitFileDiffRow
+
+    var body: some View {
+        HStack(spacing: 0) {
+            GitDiffLinePane(line: row.newLine, kind: row.kind, side: .new)
+            Rectangle()
+                .fill(AppTheme.separator.opacity(0.5))
+                .frame(width: 1)
+            GitDiffLinePane(line: row.oldLine, kind: row.kind, side: .old)
+        }
+        .frame(minHeight: 20)
+    }
+}
+
+private enum GitDiffLineSide {
+    case new
+    case old
+}
+
+private struct GitDiffLinePane: View {
+    let line: GitFileDiffLine?
+    let kind: GitFileDiffRowKind
+    let side: GitDiffLineSide
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ZStack {
+                Color(nsColor: .controlBackgroundColor).opacity(0.5)
+                Text(lineNumberText)
+                    .font(.system(size: 10.5, weight: .regular, design: .monospaced))
+                    .foregroundStyle(AppTheme.textMuted.opacity(0.7))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 10)
+            }
+            .frame(width: 52)
+
+            Rectangle()
+                .fill(markerColor)
+                .frame(width: 2)
+
+            Text(line?.text ?? "")
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 7)
+                .padding(.trailing, 10)
+                .padding(.vertical, 1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
+        .background(backgroundColor)
+    }
+
+    private var lineNumberText: String {
+        guard let number = line?.number else {
+            return ""
+        }
+        return "\(number)"
+    }
+
+    private var backgroundColor: Color {
+        switch (kind, side) {
+        case (.added, .new):
+            return Color(nsColor: .systemGreen).opacity(0.18)
+        case (.removed, .old):
+            return Color(nsColor: .systemRed).opacity(0.18)
+        case (.modified, .new):
+            return Color(nsColor: .systemGreen).opacity(0.14)
+        case (.modified, .old):
+            return Color(nsColor: .systemOrange).opacity(0.18)
+        default:
+            return Color.clear
+        }
+    }
+
+    private var markerColor: Color {
+        switch (kind, side) {
+        case (.added, .new):
+            return Color(nsColor: .systemGreen).opacity(0.7)
+        case (.removed, .old):
+            return Color(nsColor: .systemRed).opacity(0.7)
+        case (.modified, .new):
+            return Color(nsColor: .systemGreen).opacity(0.5)
+        case (.modified, .old):
+            return Color(nsColor: .systemOrange).opacity(0.6)
+        default:
+            return Color.clear
         }
     }
 }

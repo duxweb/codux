@@ -18,6 +18,7 @@ final class PetSpeechCoordinator {
     private var periodicTimer: Timer?
     private var lastGlobalSpeechAt: Date?
     private var lastSpeechByEventKind: [PetSpeechEventKind: Date] = [:]
+    private var lastTurnFamilySpeechAt: Date?
     private var lastAnyActivityAt: Date?
     private var currentIdleStartedAt: Date?
     private var didEmitIdleEnteredForCurrentIdle = false
@@ -95,6 +96,9 @@ final class PetSpeechCoordinator {
         currentLine = line
         lastGlobalSpeechAt = normalizedEvent.occurredAt
         lastSpeechByEventKind[normalizedEvent.kind] = normalizedEvent.occurredAt
+        if normalizedEvent.kind.isTurnFamily {
+            lastTurnFamilySpeechAt = normalizedEvent.occurredAt
+        }
         scheduleExpiry(for: line)
         logger.log("pet-speech", "event=\(normalizedEvent.kind.rawValue) source=\(line.source.rawValue)")
         requestLLMReplacementIfNeeded(
@@ -156,6 +160,12 @@ final class PetSpeechCoordinator {
 
         if let lastEventSpeech = lastSpeechByEventKind[event.kind],
            event.occurredAt.timeIntervalSince(lastEventSpeech) < config.perEventCooldown {
+            return false
+        }
+
+        if event.kind.isTurnFamily,
+           let lastTurnFamilySpeechAt,
+           event.occurredAt.timeIntervalSince(lastTurnFamilySpeechAt) < config.perEventCooldown {
             return false
         }
 

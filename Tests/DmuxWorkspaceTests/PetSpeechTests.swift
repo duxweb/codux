@@ -118,6 +118,48 @@ final class PetSpeechCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.currentLine?.eventKind, .reminderHydration)
     }
 
+    func testTurnFamilyCooldownSuppressesRapidFollowUp() {
+        let coordinator = PetSpeechCoordinator()
+        var settings = AppAIPetSettings()
+        settings.speechMode = .encourage
+        settings.speechFrequency = .lively
+        settings.speechQuietDuringWork = false
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.notify(PetSpeechEvent(kind: .turnStarted, payload: ["tool": "codex"]))
+        let firstLine = coordinator.currentLine
+        XCTAssertNotNil(firstLine)
+        XCTAssertEqual(firstLine?.eventKind, .turnStarted)
+
+        coordinator.notify(PetSpeechEvent(kind: .turnCompletedFast, payload: ["tool": "codex", "durationSec": "12"]))
+        XCTAssertEqual(coordinator.currentLine?.id, firstLine?.id, "turn family cooldown should keep the previous line")
+    }
+
+    func testUsageDailyRecordDoesNotBypassCooldown() {
+        let coordinator = PetSpeechCoordinator()
+        var settings = AppAIPetSettings()
+        settings.speechMode = .roast
+        settings.speechFrequency = .chatterbox
+        settings.speechQuietDuringWork = false
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        coordinator.notify(PetSpeechEvent(kind: .usageDailyRecord, payload: ["tokensK": "20000K"], occurredAt: now))
+        let firstLine = coordinator.currentLine
+        coordinator.notify(PetSpeechEvent(kind: .usageDailyRecord, payload: ["tokensK": "20001K"], occurredAt: now.addingTimeInterval(10)))
+
+        XCTAssertFalse(PetSpeechEvent(kind: .usageDailyRecord).isHardOverride)
+        XCTAssertEqual(coordinator.currentLine, firstLine)
+    }
+
     func testLLMReplacementOnlyRunsForEligibleEvents() async {
         let coordinator = PetSpeechCoordinator()
         var aiSettings = AppAISettings()

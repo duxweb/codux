@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class PetRefreshCoordinator {
     static let liveDebounceDelay: Duration = .seconds(2)
+    private static let dailyRecordTokenStep = 10_000_000
 
     enum Reason: String {
         case bootstrap = "bootstrap"
@@ -20,6 +21,8 @@ final class PetRefreshCoordinator {
     private var pendingRefreshTask: Task<Void, Never>?
     private var periodicRefreshTimer: Timer?
     private var highestObservedDailyTokens = 0
+    private var highestObservedDailyRecordBucket = 0
+    private var observedDailyRecordDay: Date?
     var onSpeechEvent: (@MainActor (PetSpeechEvent) -> Void)?
 
     init(
@@ -95,23 +98,49 @@ final class PetRefreshCoordinator {
             now: now
         )
 
-        if let todayTokens = dailyTotalTokensProvider?(),
-           todayTokens > highestObservedDailyTokens {
-            if highestObservedDailyTokens > 0 {
-                onSpeechEvent?(
-                    PetSpeechEvent(
-                        kind: .usageDailyRecord,
-                        payload: ["tokensK": "\(max(1, todayTokens / 1000))K"],
-                        occurredAt: now
-                    )
-                )
-            }
-            highestObservedDailyTokens = todayTokens
-        }
+        emitDailyRecordIfNeeded(todayTokens: dailyTotalTokensProvider?(), now: now)
 
         logger.log(
             "pet-refresh",
             "reason=\(reason.rawValue) projects=\(totalNormalizedTokensByProject.count) total=\(totalNormalizedTokens) watermark=\(petStore.globalNormalizedTotalWatermark ?? 0) hatch=\(petStore.currentHatchTokens) xp=\(petStore.currentExperienceTokens)"
         )
+    }
+
+    private func emitDailyRecordIfNeeded(todayTokens rawTodayTokens: Int?, now: Date) {
+        guard let rawTodayTokens else {
+            return
+        }
+
+        let todayTokens = max(0, rawTodayTokens)
+        let day = Calendar.current.startOfDay(for: now)
+        if observedDailyRecordDay.map({ Calendar.current.isDate($0, inSameDayAs: day) }) != true {
+            observedDailyRecordDay = day
+            highestObservedDailyTokens = todayTokens
+            highestObservedDailyRecordBucket = dailyRecordBucket(for: todayTokens)
+            return
+        }
+
+        guard todayTokens > highestObservedDailyTokens else {
+            return
+        }
+
+        let bucket = dailyRecordBucket(for: todayTokens)
+        if bucket > highestObservedDailyRecordBucket,
+           highestObservedDailyTokens > 0 {
+            onSpeechEvent?(
+                PetSpeechEvent(
+                    kind: .usageDailyRecord,
+                    payload: ["tokensK": "\(max(1, todayTokens / 1000))K"],
+                    occurredAt: now
+                )
+            )
+        }
+
+        highestObservedDailyTokens = todayTokens
+        highestObservedDailyRecordBucket = max(highestObservedDailyRecordBucket, bucket)
+    }
+
+    private func dailyRecordBucket(for tokens: Int) -> Int {
+        max(0, tokens / Self.dailyRecordTokenStep)
     }
 }

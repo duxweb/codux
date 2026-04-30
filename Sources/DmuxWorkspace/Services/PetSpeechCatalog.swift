@@ -155,13 +155,13 @@ final class PetSpeechCatalog {
     private func defaultOpeners(mode: PetSpeechMode) -> String {
         switch mode {
         case .roast:
-            return "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            return "Tch. \nAgain? \nListen. \nFine. \nSure. \nWow. \nEyes on you. \nSame act. "
         case .encourage:
-            return "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            return "Saw it. \nYep. \nNice. \nTake your time. \nI'm here. \nEasy now. \nPretty good. \nRight with you. "
         case .flirty:
-            return "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            return "Hey. \nCaught you. \nMmm. \nNot bad. \nEyes on you. \nNoted. \nCloser now. \nAw. "
         case .chuunibyou:
-            return "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            return "Witnessed. \nBehold. \nHear me. \nThe pact stirs. \nBy fate's pen, \nThe seal trembles. \nMortal, \nBy the black flame, "
         case .off, .mixed:
             return defaultOpeners(mode: .encourage)
         }
@@ -178,13 +178,13 @@ final class PetSpeechCatalog {
     private func defaultFallbacks(mode: PetSpeechMode) -> String {
         switch mode {
         case .roast:
-            return "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            return "At it again, are we.\nLoud effort, mid result.\nBarely pulled that off.\nDon't go bragging yet.\nSaw that. Holding it in.\nWow, that worked? Bold.\nSame script as last time.\nPretending I didn't see? Saw.\nCreative move there.\nStop, I'll laugh.\nFine. Adding to your file.\nActing casual won't help."
         case .encourage:
-            return "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            return "I'm watching. No rush.\nThat step felt solid.\nSet your own pace.\nStuck is fine. Pause.\nOff course? Just adjust.\nTaking a break is fine.\nYou're moving. That's enough.\nGetting here already counts.\nGood enough is good.\nSmall steps still count.\nI'll sit with you.\nBreathe if you need to."
         case .flirty:
-            return "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            return "Stared a while, you didn't notice.\nThat move? Cute.\nDon't go, let me look.\nFocused you is the good you.\nMy heart did the thing.\nLogging that reaction.\nLook up. I'm waiting.\nYou set my mood, you know.\nThis vibe — I like it.\nKeep that up and I blush.\nThrow me a glance, please.\nSmooth rhythm. Show off."
         case .chuunibyou:
-            return "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            return "Fate echoes once more.\nInscribed in the codex.\nThe pact still burns.\nStars shift quietly.\nSeal stable. For now.\nStorm has not passed.\nYour will, I perceive.\nNight parts for you.\nPower gathers at your hand.\nBattle continues.\nEmbers still shine.\nPrologue only. Onward."
         case .off, .mixed:
             return defaultFallbacks(mode: .encourage)
         }
@@ -229,91 +229,91 @@ final class PetSpeechCatalog {
         switch mode {
         case .roast:
             return """
-            turn.started={tool} started. Do not wander off halfway.
-            turn.completed={tool} is done. Barely acceptable.
-            turn.completedFast={tool} finished in {durationSec}. Efficient, somehow.
-            turn.completedLong={tool} took {durationMin} minutes and finally produced it.
-            turn.needsInput={tool} is stuck. Your rescue scene is up.
-            turn.interrupted={tool} got interrupted. Awkward little scene.
-            tool.switched={prevTool} to {tool}. New flavor again.
-            idle.entered=Five quiet minutes. Even the keyboard cooled down.
-            tokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.
-            night.entered=Working at {hourLabel}. Your schedule is rebellious.
-            idle.returned=Gone for {minutesAway} minutes, finally back.
-            tool.multiStreak={toolList} all running. Busy little stage.
-            pet.levelUp=Lv.{level}. Do not pretend you missed it.
-            pet.statBreakthrough={stat} passed {value}. Slightly absurd.
-            pet.evolution={newStage} appeared. Dramatic entrance granted.
-            usage.dailyRecord={tokensK} today. Feeding the machine, are we?
-            reminder.hydration={durationMin} minutes in. That cup is decoration.
-            reminder.sedentary={durationMin} minutes seated. Reboot your legs.
-            reminder.lateNight={hourLabel} and still pushing. Do not crash first.
+            turn.started={tool} started. Don't ghost it.
+            turn.completed={tool} done. Barely passes.
+            turn.completedFast={tool} in {durationSec}? Lucky.
+            turn.completedLong={tool} took {durationMin}min. Slow.
+            turn.needsInput={tool} froze. Save it, hero.
+            turn.interrupted={tool} cut off. Awkward.
+            tool.switched={prevTool} out, {tool} in. Again.
+            idle.entered=Five quiet min. Keyboard's cold.
+            tokens.burst={tool} ate {tokensK}. Hungry.
+            night.entered={hourLabel} and still up.
+            idle.returned=Gone {minutesAway}min. Finally back.
+            tool.multiStreak={toolList} all open. Showoff.
+            pet.levelUp=Lv.{level}. Don't act surprised.
+            pet.statBreakthrough={stat} past {value}. Wild.
+            pet.evolution={newStage} with the entrance.
+            usage.dailyRecord={tokensK} today. Glutton.
+            reminder.hydration={durationMin}min in. Water? No?
+            reminder.sedentary=Sat {durationMin}min. Legs gone.
+            reminder.lateNight={hourLabel}. Sleep, drama queen.
             """
         case .encourage:
             return """
-            turn.started={tool} started processing. Stay steady.
-            turn.completed={tool} finished. This step moved forward.
-            turn.completedFast={tool} finished in {durationSec}. Sharp response.
-            turn.completedLong={durationMin} minutes held steady. Good rhythm.
-            turn.needsInput={tool} is waiting for you. One step will move it.
-            turn.interrupted={tool} stopped. Try another angle.
-            tool.switched=From {prevTool} to {tool}. Nice handoff.
-            idle.entered=A pause is fine. Leave room for thought.
-            tokens.burst={tool} pushed {tokensK}. Solid output.
-            night.entered=Still online at {hourLabel}. Keep some energy.
-            idle.returned=Back after {minutesAway} minutes. Good timing.
-            tool.multiStreak={toolList} in parallel. Stable scheduling.
-            pet.levelUp=Reached Lv.{level}. Growth is visible.
-            pet.statBreakthrough={stat} reached {value}. The work is adding up.
-            pet.evolution=Evolved into {newStage}. The effort echoed back.
-            usage.dailyRecord={tokensK} today, a new high. Solid work.
-            reminder.hydration={durationMin} minutes busy. Drink water, then continue.
-            reminder.sedentary={durationMin} minutes straight. Stand up for a bit.
-            reminder.lateNight=Still working at {hourLabel}. Wrap up when you can.
+            turn.started={tool} is going. I'm here.
+            turn.completed={tool} done. Solid step.
+            turn.completedFast={tool} took {durationSec}. Snappy.
+            turn.completedLong={tool} took {durationMin}min. Got there.
+            turn.needsInput={tool} is waiting on you.
+            turn.interrupted={tool} stopped. Breathe and retry.
+            tool.switched={prevTool} to {tool}. Smooth.
+            idle.entered=A pause is fine.
+            tokens.burst={tool} pushed {tokensK}. Big push.
+            night.entered={hourLabel} and still here.
+            idle.returned=Back after {minutesAway}min.
+            tool.multiStreak={toolList} all running.
+            pet.levelUp=Lv.{level} unlocked.
+            pet.statBreakthrough={stat} hit {value}.
+            pet.evolution=You became {newStage}.
+            usage.dailyRecord={tokensK} today. New high.
+            reminder.hydration={durationMin}min and no water.
+            reminder.sedentary=Sat for {durationMin}min. Stretch.
+            reminder.lateNight={hourLabel}. Wrap it up soon.
             """
         case .flirty:
             return """
-            turn.started={tool} started. I am watching.
-            turn.completed={tool} finished. That felt nice.
-            turn.completedFast={tool} finished in {durationSec}. Pretty charming.
-            turn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.
-            turn.needsInput={tool} is waiting for one word from you.
-            turn.interrupted={tool} got cut off. I paused too.
-            tool.switched={prevTool} to {tool}. Good taste.
-            idle.entered=Suddenly quiet. I almost thought you missed me.
-            tokens.burst={tool} rushed through {tokensK}. Warm hands.
-            night.entered=Still with me at {hourLabel}. That is sweet.
-            idle.returned=Away for {minutesAway} minutes. I waited.
-            tool.multiStreak={toolList} all here. Popular, aren't you?
-            pet.levelUp=Lv.{level}. Getting better and better.
-            pet.statBreakthrough={stat} passed {value}. Hard to hide now.
-            pet.evolution={newStage} arrived. Even the eyes changed.
-            usage.dailyRecord={tokensK} today, a new high. Smooth with machines.
-            reminder.hydration=I stayed {durationMin} minutes. Drink water.
-            reminder.sedentary=Too long seated. Stand up and let me see.
-            reminder.lateNight=Still awake at {hourLabel}. I might worry.
+            turn.started={tool} started. Eyes on you.
+            turn.completed={tool} done. That felt nice.
+            turn.completedFast={tool} in {durationSec}. Charming.
+            turn.completedLong={durationMin}min with you. Intense.
+            turn.needsInput={tool} wants a word from you.
+            turn.interrupted={tool} cut off. I paused too.
+            tool.switched={prevTool} to {tool}. Nice taste.
+            idle.entered=Quiet... missing me?
+            tokens.burst={tool} burned {tokensK}. Hot hands.
+            night.entered={hourLabel} and you stayed. Sweet.
+            idle.returned=Gone {minutesAway}min. I waited.
+            tool.multiStreak={toolList} all here. Popular.
+            pet.levelUp=Lv.{level}. Getting fancy.
+            pet.statBreakthrough={stat} past {value}. Wow.
+            pet.evolution={newStage}. Even your eyes changed.
+            usage.dailyRecord={tokensK} today. New high. Hot.
+            reminder.hydration={durationMin}min with me. Water?
+            reminder.sedentary=Sat too long. Stand for me.
+            reminder.lateNight={hourLabel}. Sleep, please?
             """
         case .chuunibyou:
             return """
-            turn.started={tool} ritual begins. The runes are lit.
-            turn.completed={tool} ritual complete. The afterglow remains.
+            turn.started={tool} ritual begins.
+            turn.completed={tool} rite complete.
             turn.completedFast={tool} cut the mist in {durationSec}.
-            turn.completedLong=The {durationMin}-minute trial has been crossed.
-            turn.needsInput={tool} summons your judgment.
-            turn.interrupted={tool} ritual broke. The ripple remains.
-            tool.switched={prevTool} exits. {tool} takes the blade.
-            idle.entered=Silence descends. The core sleeps.
-            tokens.burst={tool} consumed {tokensK}. Magic surges.
-            night.entered={hourLabel}. The night pact opens.
-            idle.returned=After {minutesAway} minutes of stillness, you return.
-            tool.multiStreak={toolList} resonate. The array unfolds.
-            pet.levelUp=Lv.{level} awakens. The seal loosens.
-            pet.statBreakthrough={stat} crossed the {value} boundary.
-            pet.evolution={newStage} manifests. The stars bear witness.
-            usage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.
-            reminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.
-            reminder.sedentary=The sitting seal has formed. Rise at once.
-            reminder.lateNight={hourLabel}. Deep night. Preserve your strength.
+            turn.completedLong={durationMin}min trial crossed.
+            turn.needsInput={tool} summons your verdict.
+            turn.interrupted={tool} ritual broken.
+            tool.switched={prevTool} falls. {tool} rises.
+            idle.entered=Silence falls. Core sleeps.
+            tokens.burst={tool} drank {tokensK}. Power surges.
+            night.entered={hourLabel}. Night pact opens.
+            idle.returned=After {minutesAway}min stillness, you return.
+            tool.multiStreak={toolList} resonate.
+            pet.levelUp=Lv.{level}. Seal weakens.
+            pet.statBreakthrough={stat} past {value}.
+            pet.evolution={newStage} manifests.
+            usage.dailyRecord=Today {tokensK}. Codex rewrites.
+            reminder.hydration={durationMin}min of ritual. Drink.
+            reminder.sedentary=The seated seal forms. Rise.
+            reminder.lateNight={hourLabel}. Night deep. Conserve.
             """
         case .off, .mixed:
             return defaultCores(mode: .encourage)

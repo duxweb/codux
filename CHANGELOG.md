@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-30
+
+### Added
+
+- Added a project file sidebar that can browse the current project directory, including hidden directories, with file actions for opening, editing, deleting, copying paths, revealing in Finder, and inserting paths into the active terminal.
+- Added a standalone file editor window with syntax highlighting, line numbers, edit mode, reload, copy path, reveal in Finder, and Save As actions.
+- Added side-by-side Git file diff windows from the Git panel, showing new and old file content with localized fixed column headers, compact rows, and adaptive 1:1 column widths.
+
+### Changed
+
+- Refined file editor toolbar layering, borders, and dark/light appearance so line-number rulers no longer bleed into the toolbar.
+- Improved Git diff preview layout by removing duplicate path headers, using solid column header colors, and keeping diff headers pinned while the file body scrolls.
+- Optimized file editor scrolling by caching line-number offsets, reducing ruler invalidation during scroll, and reusing existing highlighted text when possible.
+
+### Fixed
+
+- Fixed file editor windows so Command-W closes the editor window instead of triggering the workspace split-close confirmation.
+- Fixed desktop pet daily usage messages so Claude token-count changes no longer trigger repeated speech bubbles on every small token increase.
+- Fixed pet sleep presentation so titlebar and desktop pets enter sleep after 30 seconds of idle time, with a fallback sleep indicator for stages without sleep sprites.
+- Completed localization coverage for split-close confirmation text and Git diff new/old file labels.
+
 ## [0.7.0] - 2026-04-30
 
 ### Added

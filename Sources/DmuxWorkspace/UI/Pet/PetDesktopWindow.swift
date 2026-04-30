@@ -139,6 +139,9 @@ private extension DesktopPetBubbleCorner {
 private struct PetDesktopWidgetView: View {
     let model: AppModel
     @State private var bubbleCorner: DesktopPetBubbleCorner
+    @State private var appIsActive = NSApplication.shared.isActive
+    @State private var recentActivityTick = Date()
+    @State private var sleepClock = Date()
 
     private var petStore: PetStore { model.petStore }
     private var evoPath: PetEvoPath { petStore.currentEvoPath() }
@@ -162,6 +165,15 @@ private struct PetDesktopWidgetView: View {
             }
         }
     }
+    private var isSleeping: Bool {
+        if !appIsActive {
+            return true
+        }
+        if hasAnyRunningActivity {
+            return false
+        }
+        return sleepClock.timeIntervalSince(recentActivityTick) >= 30
+    }
 
     init(model: AppModel, initialBubbleCorner: DesktopPetBubbleCorner) {
         self.model = model
@@ -180,6 +192,32 @@ private struct PetDesktopWidgetView: View {
         }
         .frame(width: 330, height: 185)
         .background(Color.clear)
+        .onAppear {
+            recentActivityTick = Date()
+            sleepClock = recentActivityTick
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            appIsActive = true
+            recentActivityTick = Date()
+            sleepClock = recentActivityTick
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            appIsActive = false
+            recentActivityTick = Date()
+            sleepClock = recentActivityTick
+        }
+        .onChange(of: model.activityRenderVersion) { _, _ in
+            if hasAnyRunningActivity {
+                recentActivityTick = Date()
+                sleepClock = recentActivityTick
+            }
+        }
+        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { now in
+            sleepClock = now
+            if hasAnyRunningActivity {
+                recentActivityTick = now
+            }
+        }
         .overlay(
             DesktopPetDragSurface(
                 hideTitle: petL("pet.desktop.hide", "Hide Desktop Pet"),
@@ -240,7 +278,7 @@ private struct PetDesktopWidgetView: View {
         PetSpriteView(
             species: petStore.species,
             stage: info.stage,
-            sleeping: !hasAnyRunningActivity,
+            sleeping: isSleeping,
             staticMode: model.appSettings.pet.staticMode,
             displaySize: 128
         )

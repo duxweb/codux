@@ -9,6 +9,8 @@ struct RightPanelContainerView: View {
             switch model.rightPanel {
             case .git:
                 GitPanelView(model: model, gitStore: model.gitStore)
+            case .files:
+                FileBrowserPanelView(model: model)
             case .aiStats:
                 AIStatsPanelView(
                     model: model,

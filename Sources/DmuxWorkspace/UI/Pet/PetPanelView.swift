@@ -71,6 +71,9 @@ struct PetSpriteView: View {
                     .font(.system(size: displaySize * 0.34, weight: .semibold))
                     .foregroundStyle(stage.accentColor.opacity(0.7))
             }
+            if sleeping, stage.sleepSpriteName == nil {
+                sleepFallbackIndicator
+            }
         }
         .task(id: "\(spriteName)-\(staticMode)") {
             frame = 0
@@ -99,6 +102,14 @@ struct PetSpriteView: View {
         }
         return nil
     }
+
+    private var sleepFallbackIndicator: some View {
+        Text("Z")
+            .font(.system(size: max(14, displaySize * 0.18), weight: .heavy, design: .rounded))
+            .foregroundStyle(stage.accentColor)
+            .shadow(color: .black.opacity(0.18), radius: 1, y: 1)
+            .offset(x: displaySize * 0.32, y: -displaySize * 0.36)
+    }
 }
 
 // MARK: - Titlebar Button
@@ -111,6 +122,7 @@ struct TitlebarPetButton: View {
     @State private var isHovered = false
     @State private var appIsActive = NSApplication.shared.isActive
     @State private var recentActivityTick = Date()
+    @State private var sleepClock = Date()
     @State private var pendingEvoFrom: PetStage? = nil
     @State private var lastKnownStage: PetStage? = nil
     @State private var showMaxLevelEffect = false
@@ -151,7 +163,7 @@ struct TitlebarPetButton: View {
         if hasAnyRunningActivity {
             return false
         }
-        return true
+        return sleepClock.timeIntervalSince(recentActivityTick) >= 30
     }
 
     var body: some View {
@@ -226,16 +238,19 @@ struct TitlebarPetButton: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             appIsActive = true
             recentActivityTick = Date()
+            sleepClock = recentActivityTick
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             appIsActive = false
             recentActivityTick = Date()
+            sleepClock = recentActivityTick
         }
         .onAppear {
             if petStore.isClaimed, info.level > 0, lastLevel == 0 {
                 lastLevel = info.level
             }
             recentActivityTick = Date()
+            sleepClock = recentActivityTick
             lastKnownStage = info.stage
         }
         .onChange(of: info.stage) { oldStage, newStage in
@@ -256,13 +271,16 @@ struct TitlebarPetButton: View {
         }
         .onChange(of: currentPhase) { _, _ in
             recentActivityTick = Date()
+            sleepClock = recentActivityTick
         }
         .onChange(of: model.activityRenderVersion) { _, _ in
             if hasAnyRunningActivity {
                 recentActivityTick = Date()
+                sleepClock = recentActivityTick
             }
         }
-        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { now in
+        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { now in
+            sleepClock = now
             if hasAnyRunningActivity {
                 recentActivityTick = now
             }

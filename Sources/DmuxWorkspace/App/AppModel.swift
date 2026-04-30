@@ -22,6 +22,7 @@ enum GitRemoteOperation: Equatable {
 enum RightPanelKind: String, Codable, Equatable {
     case git
     case aiStats
+    case files
 }
 
 @MainActor

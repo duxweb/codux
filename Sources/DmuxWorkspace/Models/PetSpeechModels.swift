@@ -159,6 +159,15 @@ enum PetSpeechEventKind: String, Codable, CaseIterable, Sendable {
             return false
         }
     }
+
+    var isTurnFamily: Bool {
+        switch self {
+        case .turnStarted, .turnCompleted, .turnCompletedFast, .turnCompletedLong, .turnNeedsInput, .turnInterrupted, .toolSwitched:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 struct PetSpeechEvent: Equatable, Sendable {
@@ -177,7 +186,14 @@ struct PetSpeechEvent: Equatable, Sendable {
     }
 
     var tier: PetSpeechTier { kind.tier }
-    var isHardOverride: Bool { tier == .milestone }
+    var isHardOverride: Bool {
+        switch kind {
+        case .petLevelUp, .petStatBreakthrough, .petEvolution:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 enum PetSpeechLineSource: String, Codable, Sendable {

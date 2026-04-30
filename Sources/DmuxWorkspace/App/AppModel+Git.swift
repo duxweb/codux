@@ -42,6 +42,11 @@ extension AppModel {
         statusMessage = entries.count > 1 ? String(localized: "git.files.copy_selected_paths.success", defaultValue: "Copied selected file paths.", bundle: .module) : String(localized: "git.files.copy_path.success", defaultValue: "Copied file path.", bundle: .module)
     }
 
+    func openGitDiffWindow(for entry: GitFileEntry) {
+        guard let project = selectedProject else { return }
+        GitFileDiffWindowPresenter.show(entry: entry, project: project)
+    }
+
     func addGitEntriesToIgnore(_ entries: [GitFileEntry]) {
         guard let project = selectedProject else { return }
         let paths = Array(Set(entries.map(\.path))).sorted()

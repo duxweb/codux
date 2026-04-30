@@ -88,6 +88,10 @@ struct TitlebarOverlayView: View {
                     TitlebarGlyphButton(symbol: "point.3.filled.connected.trianglepath.dotted", help: String(localized: "titlebar.git", defaultValue: "Git", bundle: .module)) {
                         model.toggleRightPanel(.git)
                     }
+
+                    TitlebarGlyphButton(symbol: "folder", help: String(localized: "titlebar.files", defaultValue: "Files", bundle: .module)) {
+                        model.toggleRightPanel(.files)
+                    }
                 }
                 .padding(.trailing, 16)
                 .frame(height: TitlebarControlMetrics.rowHeight, alignment: .center)

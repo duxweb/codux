@@ -11,6 +11,10 @@
 		C0D0C0D0C0D0C0D0C0D00002 /* AppModel+Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10002 /* AppModel+Remote.swift */; };
 		C0D0C0D0C0D0C0D0C0D00003 /* SettingsRemotePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10003 /* SettingsRemotePane.swift */; };
 		C0D0C0D0C0D0C0D0C0D00004 /* SleepPreventionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */; };
+		F11000000000000000000001 /* ProjectFileModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000001 /* ProjectFileModels.swift */; };
+		F11000000000000000000002 /* ProjectFileBrowserService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000002 /* ProjectFileBrowserService.swift */; };
+		F11000000000000000000003 /* FileBrowserPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000003 /* FileBrowserPanelView.swift */; };
+		F11000000000000000000004 /* FilePreviewWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000004 /* FilePreviewWindow.swift */; };
 		011BED1E652A34A9642CEDEA /* Package.swift in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8AF9CB866BDB2AF3ECA35178 /* Package.swift */; };
 		0677DA593A0554DAC639D0A3 /* AppReleaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* AppUpdaterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */; };
@@ -329,6 +333,10 @@
 		C0D0C0D0C0D0C0D0C0D10002 /* AppModel+Remote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Remote.swift"; sourceTree = "<group>"; };
 		C0D0C0D0C0D0C0D0C0D10003 /* SettingsRemotePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRemotePane.swift; sourceTree = "<group>"; };
 		C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepPreventionService.swift; sourceTree = "<group>"; };
+		F12000000000000000000001 /* ProjectFileModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFileModels.swift; sourceTree = "<group>"; };
+		F12000000000000000000002 /* ProjectFileBrowserService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFileBrowserService.swift; sourceTree = "<group>"; };
+		F12000000000000000000003 /* FileBrowserPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserPanelView.swift; sourceTree = "<group>"; };
+		F12000000000000000000004 /* FilePreviewWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewWindow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -371,6 +379,7 @@
 			children = (
 				19760E06D49656E3D31AB5CB /* About */,
 				53630BEDF0D68812E68CC096 /* AI */,
+				F13000000000000000000001 /* FileBrowser */,
 				82AE56FA93228B3FAAFCE874 /* Git */,
 				230000000000000000000002 /* Memory */,
 				5F0A9C1D7E2B4A5C8D9E0F14 /* Pet */,
@@ -509,6 +518,7 @@
 				210000000000000000000002 /* MemoryModels.swift */,
 				5F0A9C1D7E2B4A5C8D9E0F22 /* PetModels.swift */,
 				D0D0C0DE0000000000000001 /* PetSpeechModels.swift */,
+				F12000000000000000000001 /* ProjectFileModels.swift */,
 				AE95489EB51C81E7321103FD /* AppModels.swift */,
 			);
 			path = Models;
@@ -637,6 +647,7 @@
 				2A3B4C5D6E7F8091A2B3C4D5 /* AppDiagnosticsExportService.swift */,
 				DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */,
 				A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */,
+				F12000000000000000000002 /* ProjectFileBrowserService.swift */,
 				A4B5C6D7E8F90123456789AC /* AIRuntimeSharedTypes.swift */,
 				B7C8D9E0F1A2233445566779 /* TerminalProcessInspector.swift */,
 				9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */,
@@ -665,6 +676,15 @@
 				6BB0B4E1F0E64E4B5CB5DA52 /* WorkspaceView.swift */,
 			);
 			path = Workspace;
+			sourceTree = "<group>";
+		};
+		F13000000000000000000001 /* FileBrowser */ = {
+			isa = PBXGroup;
+			children = (
+				F12000000000000000000003 /* FileBrowserPanelView.swift */,
+				F12000000000000000000004 /* FilePreviewWindow.swift */,
+			);
+			path = FileBrowser;
 			sourceTree = "<group>";
 		};
 		F4CFD2F6D01ECF17EEEE7186 /* Sources */ = {
@@ -809,6 +829,7 @@
 				A91F0A7E1B2C3D4E5F607181 /* AIHookEvent.swift in Sources */,
 				A13F1B0C9D8E7F6051423345 /* AIProjectHistoryService.swift in Sources */,
 				B681B0D405B974DC389EE8AC /* AIUsageModels.swift in Sources */,
+				F11000000000000000000001 /* ProjectFileModels.swift in Sources */,
 				210000000000000000000105 /* MemoryContextService.swift in Sources */,
 				210000000000000000000106 /* MemoryCoordinator.swift in Sources */,
 				210000000000000000000102 /* MemoryModels.swift in Sources */,
@@ -837,6 +858,7 @@
 				B10000000000000000000050 /* AppTerminalGhosttyThemes.swift in Sources */,
 				0677DA593A0554DAC639D0A3 /* AppReleaseService.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* AppUpdaterService.swift in Sources */,
+				F11000000000000000000002 /* ProjectFileBrowserService.swift in Sources */,
 				2CD0F523B4EB37800317D6CD /* AppSettings.swift in Sources */,
 				B10000000000000000000008 /* AppSettingsSupport.swift in Sources */,
 				B10000000000000000000009 /* AppTerminalAppearance.swift in Sources */,
@@ -878,6 +900,8 @@
 				D0D0C0DE0000000000000102 /* PetSpeechCatalog.swift in Sources */,
 				D0D0C0DE0000000000000103 /* PetSpeechCoordinator.swift in Sources */,
 				D0D0C0DE0000000000000104 /* PetSpeechLLMService.swift in Sources */,
+				F11000000000000000000003 /* FileBrowserPanelView.swift in Sources */,
+				F11000000000000000000004 /* FilePreviewWindow.swift in Sources */,
 				230000000000000000000101 /* MemoryManagerWindow.swift in Sources */,
 				577F3384BE4EDD492C520037 /* RootView.swift in Sources */,
 				B10000000000000000000034 /* RootWindowSupport.swift in Sources */,
@@ -948,7 +972,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -961,7 +985,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.7.0;
+				MARKETING_VERSION = 0.8.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1022,7 +1046,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1041,7 +1065,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.7.0;
+				MARKETING_VERSION = 0.8.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

@@ -50,7 +50,47 @@ struct GitFileEntry: Identifiable, Hashable {
     var kind: GitFileKind
 }
 
+enum GitFileDiffRowKind: Hashable {
+    case context
+    case added
+    case removed
+    case modified
+}
+
+struct GitFileDiffLine: Hashable {
+    var number: Int?
+    var text: String
+}
+
+struct GitFileDiffRow: Identifiable, Hashable {
+    var id: Int
+    var kind: GitFileDiffRowKind
+    var newLine: GitFileDiffLine?
+    var oldLine: GitFileDiffLine?
+}
+
+struct GitFileDiffPreview: Hashable {
+    var entry: GitFileEntry
+    var rows: [GitFileDiffRow]
+    var newTitle: String
+    var oldTitle: String
+}
+
 struct GitService {
+    private enum GitTextSide {
+        case new
+        case old
+    }
+
+    private enum GitRawDiffEdit: Hashable {
+        case context(newLine: GitFileDiffLine, oldLine: GitFileDiffLine)
+        case added(GitFileDiffLine)
+        case removed(GitFileDiffLine)
+    }
+
+    private let maxDiffPreviewBytes = 1_500_000
+    private let maxPreciseDiffCells = 1_200_000
+
     func originURL(at path: String) throws -> String {
         try runGit(["config", "--get", "remote.origin.url"], at: path, allowFailure: true, allowEmptyOutput: true)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -201,6 +241,17 @@ struct GitService {
         case .untracked:
             return "Untracked file: \(entry.path)\n\nStage the file to include it in the next commit."
         }
+    }
+
+    func sideBySideDiff(for entry: GitFileEntry, at path: String) throws -> GitFileDiffPreview {
+        let oldText = try fileText(for: entry, at: path, side: .old)
+        let newText = try fileText(for: entry, at: path, side: .new)
+        return GitFileDiffPreview(
+            entry: entry,
+            rows: diffRows(newText: newText, oldText: oldText),
+            newTitle: String(localized: "git.diff.new_file", defaultValue: "New File", bundle: .module),
+            oldTitle: String(localized: "git.diff.old_file", defaultValue: "Old File", bundle: .module)
+        )
     }
 
     func stage(_ filePath: String, at path: String) throws {
@@ -486,6 +537,204 @@ struct GitService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         return branch.isEmpty ? "detached HEAD" : branch
+    }
+
+    private func fileText(for entry: GitFileEntry, at path: String, side: GitTextSide) throws -> String {
+        switch (entry.kind, side) {
+        case (.untracked, .old):
+            return ""
+        case (.untracked, .new):
+            return try workingTreeText(relativePath: entry.path, at: path)
+        case (.staged, .old):
+            return try headContains(entry.path, at: path) ? gitObjectText("HEAD:\(entry.path)", at: path) : ""
+        case (.staged, .new):
+            return try indexContains(entry.path, at: path) ? gitObjectText(":\(entry.path)", at: path) : ""
+        case (.changed, .old):
+            if try indexContains(entry.path, at: path) {
+                return try gitObjectText(":\(entry.path)", at: path)
+            }
+            return try headContains(entry.path, at: path) ? gitObjectText("HEAD:\(entry.path)", at: path) : ""
+        case (.changed, .new):
+            let fileURL = URL(fileURLWithPath: path).appendingPathComponent(entry.path)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                return ""
+            }
+            return try workingTreeText(relativePath: entry.path, at: path)
+        }
+    }
+
+    private func workingTreeText(relativePath: String, at path: String) throws -> String {
+        let fileURL = URL(fileURLWithPath: path).appendingPathComponent(relativePath)
+        let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
+        guard values.isDirectory != true else {
+            return ""
+        }
+        let byteCount = UInt64(values.fileSize ?? 0)
+        guard byteCount <= maxDiffPreviewBytes else {
+            throw GitServiceError.commandFailed(
+                String(localized: "git.diff.too_large", defaultValue: "This file is too large to compare safely.", bundle: .module)
+            )
+        }
+        let data = try Data(contentsOf: fileURL)
+        guard data.contains(0) == false,
+              let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16) else {
+            throw GitServiceError.commandFailed(
+                String(localized: "git.diff.binary", defaultValue: "Binary files cannot be compared here.", bundle: .module)
+            )
+        }
+        return text
+    }
+
+    private func gitObjectText(_ object: String, at path: String) throws -> String {
+        try runGit(["show", object], at: path, allowEmptyOutput: true)
+    }
+
+    private func indexContains(_ filePath: String, at path: String) throws -> Bool {
+        let output = try runGit(["ls-files", "--stage", "--", filePath], at: path, allowEmptyOutput: true)
+        return output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func headContains(_ filePath: String, at path: String) throws -> Bool {
+        guard try hasResolvableHEAD(at: path) else {
+            return false
+        }
+        let output = try runGit(["ls-tree", "-r", "--name-only", "HEAD", "--", filePath], at: path, allowEmptyOutput: true)
+        return output.split(whereSeparator: \.isNewline).contains { $0 == filePath }
+    }
+
+    private func diffRows(newText: String, oldText: String) -> [GitFileDiffRow] {
+        let newLines = splitLines(newText)
+        let oldLines = splitLines(oldText)
+        let edits: [GitRawDiffEdit]
+        if newLines.count * oldLines.count > maxPreciseDiffCells {
+            edits = fallbackEdits(newLines: newLines, oldLines: oldLines)
+        } else {
+            edits = preciseEdits(newLines: newLines, oldLines: oldLines)
+        }
+        return coalescedRows(from: edits)
+    }
+
+    private func splitLines(_ text: String) -> [String] {
+        guard text.isEmpty == false else {
+            return []
+        }
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        if text.hasSuffix("\n") {
+            lines.removeLast()
+        }
+        return lines
+    }
+
+    private func preciseEdits(newLines: [String], oldLines: [String]) -> [GitRawDiffEdit] {
+        let newCount = newLines.count
+        let oldCount = oldLines.count
+        var table = Array(repeating: 0, count: (newCount + 1) * (oldCount + 1))
+
+        func index(_ newIndex: Int, _ oldIndex: Int) -> Int {
+            newIndex * (oldCount + 1) + oldIndex
+        }
+
+        if newCount > 0 && oldCount > 0 {
+            for newIndex in stride(from: newCount - 1, through: 0, by: -1) {
+                for oldIndex in stride(from: oldCount - 1, through: 0, by: -1) {
+                    if newLines[newIndex] == oldLines[oldIndex] {
+                        table[index(newIndex, oldIndex)] = table[index(newIndex + 1, oldIndex + 1)] + 1
+                    } else {
+                        table[index(newIndex, oldIndex)] = max(table[index(newIndex + 1, oldIndex)], table[index(newIndex, oldIndex + 1)])
+                    }
+                }
+            }
+        }
+
+        var edits: [GitRawDiffEdit] = []
+        var newIndex = 0
+        var oldIndex = 0
+        while newIndex < newCount || oldIndex < oldCount {
+            if newIndex < newCount, oldIndex < oldCount, newLines[newIndex] == oldLines[oldIndex] {
+                edits.append(.context(
+                    newLine: GitFileDiffLine(number: newIndex + 1, text: newLines[newIndex]),
+                    oldLine: GitFileDiffLine(number: oldIndex + 1, text: oldLines[oldIndex])
+                ))
+                newIndex += 1
+                oldIndex += 1
+            } else if newIndex < newCount, (oldIndex == oldCount || table[index(newIndex + 1, oldIndex)] >= table[index(newIndex, oldIndex + 1)]) {
+                edits.append(.added(GitFileDiffLine(number: newIndex + 1, text: newLines[newIndex])))
+                newIndex += 1
+            } else if oldIndex < oldCount {
+                edits.append(.removed(GitFileDiffLine(number: oldIndex + 1, text: oldLines[oldIndex])))
+                oldIndex += 1
+            }
+        }
+        return edits
+    }
+
+    private func fallbackEdits(newLines: [String], oldLines: [String]) -> [GitRawDiffEdit] {
+        let maxCount = max(newLines.count, oldLines.count)
+        return (0..<maxCount).flatMap { index -> [GitRawDiffEdit] in
+            let newLine = index < newLines.count ? GitFileDiffLine(number: index + 1, text: newLines[index]) : nil
+            let oldLine = index < oldLines.count ? GitFileDiffLine(number: index + 1, text: oldLines[index]) : nil
+            switch (newLine, oldLine) {
+            case let (.some(newLine), .some(oldLine)) where newLine.text == oldLine.text:
+                return [.context(newLine: newLine, oldLine: oldLine)]
+            case let (.some(newLine), .some(oldLine)):
+                return [.added(newLine), .removed(oldLine)]
+            case let (.some(newLine), .none):
+                return [.added(newLine)]
+            case let (.none, .some(oldLine)):
+                return [.removed(oldLine)]
+            case (.none, .none):
+                return []
+            }
+        }
+    }
+
+    private func coalescedRows(from edits: [GitRawDiffEdit]) -> [GitFileDiffRow] {
+        var rows: [GitFileDiffRow] = []
+        var rowID = 0
+        var index = 0
+
+        func append(kind: GitFileDiffRowKind, newLine: GitFileDiffLine?, oldLine: GitFileDiffLine?) {
+            rows.append(GitFileDiffRow(id: rowID, kind: kind, newLine: newLine, oldLine: oldLine))
+            rowID += 1
+        }
+
+        while index < edits.count {
+            switch edits[index] {
+            case let .context(newLine, oldLine):
+                append(kind: .context, newLine: newLine, oldLine: oldLine)
+                index += 1
+            case .added, .removed:
+                var added: [GitFileDiffLine] = []
+                var removed: [GitFileDiffLine] = []
+                while index < edits.count {
+                    switch edits[index] {
+                    case let .added(line):
+                        added.append(line)
+                    case let .removed(line):
+                        removed.append(line)
+                    case .context:
+                        break
+                    }
+                    if case .context = edits[index] {
+                        break
+                    }
+                    index += 1
+                }
+
+                let pairedCount = min(added.count, removed.count)
+                for pairIndex in 0..<pairedCount {
+                    append(kind: .modified, newLine: added[pairIndex], oldLine: removed[pairIndex])
+                }
+                for line in added.dropFirst(pairedCount) {
+                    append(kind: .added, newLine: line, oldLine: nil)
+                }
+                for line in removed.dropFirst(pairedCount) {
+                    append(kind: .removed, newLine: nil, oldLine: line)
+                }
+            }
+        }
+
+        return rows
     }
 
     private func hasResolvableHEAD(at path: String) throws -> Bool {

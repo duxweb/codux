@@ -226,6 +226,27 @@ extension AppModel {
         return didSend
     }
 
+    func insertPathIntoCurrentTerminal(_ url: URL) {
+        guard let sessionID = DmuxTerminalBackend.shared.registry.focusedSessionID() ?? selectedSessionID else {
+            statusMessage = String(localized: "files.panel.insert_path_terminal.failure", defaultValue: "No active terminal to insert the path.", bundle: .module)
+            return
+        }
+
+        let text = shellQuoted(url.standardizedFileURL.path) + " "
+        terminalFocusRequestID = sessionID
+        let didSend = DmuxTerminalBackend.shared.registry.sendText(text, to: sessionID)
+        if didSend {
+            _ = DmuxTerminalBackend.shared.registry.focus(sessionID: sessionID)
+            statusMessage = String(localized: "files.panel.insert_path_terminal.success", defaultValue: "Inserted path into terminal.", bundle: .module)
+        } else {
+            statusMessage = String(localized: "files.panel.insert_path_terminal.failure", defaultValue: "No active terminal to insert the path.", bundle: .module)
+        }
+        debugLog.log(
+            "terminal-command",
+            "insert-path session=\(sessionID.uuidString) sent=\(didSend) path=\(url.path)"
+        )
+    }
+
     func session(for sessionID: UUID) -> TerminalSession? {
         selectedWorkspace?.sessions.first(where: { $0.id == sessionID })
     }

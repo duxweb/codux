@@ -11,6 +11,14 @@ final class PetRefreshCoordinatorTests: XCTestCase {
         }
     }
 
+    private final class IntBox: @unchecked Sendable {
+        var value: Int
+
+        init(_ value: Int) {
+            self.value = value
+        }
+    }
+
     func testScheduleRefreshCoalescesIntoSingleDebouncedUpdate() async throws {
         let petStore = PetStore(storage: .inMemory)
         petStore.claim(option: .voidcat, customName: "")
@@ -71,5 +79,39 @@ final class PetRefreshCoordinatorTests: XCTestCase {
         XCTAssertNil(petStore.projectNormalizedTokenWatermarks[projectB])
         XCTAssertEqual(petStore.globalNormalizedTotalWatermark, 180)
         XCTAssertEqual(petStore.currentHatchTokens, 60)
+    }
+
+    func testDailyRecordOnlyEmitsWhenCrossingMajorTokenBucket() {
+        let petStore = PetStore(storage: .inMemory)
+        petStore.claim(option: .voidcat, customName: "")
+        let projectID = UUID()
+        let coordinator = PetRefreshCoordinator(petStore: petStore)
+        let totals = TotalsBox([projectID: 0])
+        let dailyTokens = IntBox(22_245_000)
+        var events: [PetSpeechEvent] = []
+
+        coordinator.configure(
+            totalNormalizedTokensByProject: { totals.value },
+            computedStats: { _ in .neutral },
+            dailyTotalTokens: { dailyTokens.value }
+        )
+        coordinator.onSpeechEvent = { events.append($0) }
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        coordinator.refreshNow(reason: .bootstrap, now: now)
+        dailyTokens.value = 22_246_000
+        coordinator.refreshNow(reason: .aiSession, now: now.addingTimeInterval(10))
+        dailyTokens.value = 29_999_999
+        coordinator.refreshNow(reason: .aiSession, now: now.addingTimeInterval(20))
+
+        XCTAssertTrue(events.isEmpty)
+
+        dailyTokens.value = 30_000_000
+        coordinator.refreshNow(reason: .aiSession, now: now.addingTimeInterval(30))
+        dailyTokens.value = 30_001_000
+        coordinator.refreshNow(reason: .aiSession, now: now.addingTimeInterval(40))
+
+        XCTAssertEqual(events.map(\.kind), [.usageDailyRecord])
+        XCTAssertEqual(events.first?.payload["tokensK"], "30000K")
     }
 }

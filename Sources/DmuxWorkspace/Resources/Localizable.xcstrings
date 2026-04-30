@@ -31879,43 +31879,43 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Are you sure you want to close the current split or tab?"
+            "value": "Mochtest du den aktuellen Split oder Tab wirklich schliessen?"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Are you sure you want to close the current split or tab?"
+            "value": "¿Seguro que quieres cerrar la division o pestana actual?"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Are you sure you want to close the current split or tab?"
+            "value": "Voulez-vous vraiment fermer le fractionnement ou l'onglet actuel ?"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Are you sure you want to close the current split or tab?"
+            "value": "現在の分割またはタブを閉じてもよろしいですか？"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Are you sure you want to close the current split or tab?"
+            "value": "현재 분할 또는 탭을 닫을까요?"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Are you sure you want to close the current split or tab?"
+            "value": "Tem certeza de que deseja fechar a divisao ou aba atual?"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Are you sure you want to close the current split or tab?"
+            "value": "Закрыть текущее разделение или вкладку?"
           }
         }
       }
@@ -31944,43 +31944,43 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Close Current Split"
+            "value": "Aktuellen Split schliessen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Close Current Split"
+            "value": "Cerrar division actual"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Close Current Split"
+            "value": "Fermer le fractionnement actuel"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Close Current Split"
+            "value": "現在の分割を閉じる"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Close Current Split"
+            "value": "현재 분할 닫기"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Close Current Split"
+            "value": "Fechar divisao atual"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Close Current Split"
+            "value": "Закрыть текущее разделение"
           }
         }
       }
@@ -46945,61 +46945,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            "value": "Tss. \nSchon wieder? \nSag mal. \nNa schön. \nKlar. \nAha. \nIch seh dich. \nGleiche Show. "
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            "value": "Tch. \nAgain? \nListen. \nFine. \nSure. \nWow. \nEyes on you. \nSame act. "
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            "value": "Pff. \n¿Otra vez? \nA ver. \nVale. \nClaro. \nVaya. \nTe veo. \nLa misma. "
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            "value": "Pff. \nEncore ? \nDis donc. \nBon. \nVoilà. \nTiens. \nJe te vois. \nMême numéro. "
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            "value": "ちっ、\nまた？\nねえ、\nはいはい、\nふーん、\nへぇ、\n見てるよ、\n同じ展開、"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            "value": "쯧,\n또 시작?\n이봐,\n그래그래,\n흐음,\n어머,\n지켜본다,\n또 그거?"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            "value": "Tch. \nDe novo? \nOlha só. \nTá bom. \nClaro. \nNossa. \nDe olho. \nA mesma. "
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tch,\nFine,\nSure,\nI see it,\nWild, but fine,\nDo not act relaxed,\nI am watching,\nReally?"
+            "value": "Тц. \nОпять? \nСлушай. \nЛадно. \nДа уж. \nНу-ну. \nСмотрю. \nТо же самое. "
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "啧，\n好嘛，\n行吧，\n看出来了，\n离谱但行，\n别装轻松，\n我盯着呢，\n就这？"
+            "value": "啧，\n又来，\n我说，\n真行，\n得，\n服了，\n盯着你，\n老演员，"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "嘖，\n好嘛，\n行吧，\n看出來了，\n離譜但行，\n別裝輕鬆，\n我盯著呢，\n就這？"
+            "value": "嘖，\n又來，\n我說，\n真行，\n得，\n服了，\n盯著你，\n老演員，"
           }
         }
       }
@@ -47010,61 +47010,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            "value": "Schon wieder dabei.\nViel Lärm, mittelmäßig.\nGerade so durchgekommen.\nNoch nicht angeben, bitte.\nGesehen. Ich halt mich zurück.\nDas hat geklappt? Mutig.\nGleiches Drehbuch wie immer.\nTun als ob? Ich hab's gesehen.\nKreativer Schachzug, hm.\nHör auf, ich lach gleich.\nGut, kommt in deine Akte.\nGelassen tun hilft dir nicht."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            "value": "At it again, are we.\nLoud effort, mid result.\nBarely pulled that off.\nDon't go bragging yet.\nSaw that. Holding it in.\nWow, that worked? Bold.\nSame script as last time.\nPretending I didn't see? Saw.\nCreative move there.\nStop, I'll laugh.\nFine. Adding to your file.\nActing casual won't help."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            "value": "Otra vez con esto.\nMucho ruido, resultado normal.\nApenas pasó esta vez.\nNo presumas todavía.\nLo vi. Me lo guardo.\n¿Funcionó? Atrevido.\nMismo guion de siempre.\n¿Disimulando? Lo vi.\nMovimiento creativo, vaya.\nPara, me voy a reír.\nVale, lo anoto en tu ficha.\nHacerse el normal no cuela."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            "value": "On remet ça, hein.\nGrand bruit, résultat moyen.\nPassé de justesse.\nNe te vante pas trop vite.\nVu. Je me retiens.\nÇa marche ? Audacieux.\nMême scénario qu'avant.\nFaire semblant ? J'ai vu.\nMouvement créatif, ça.\nArrête, je vais rire.\nBon, je note dans ton dossier.\nFaire le détaché, ça marche pas."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            "value": "また始まった。\n大騒ぎして結果は普通。\nギリギリ通過、ほんと。\nまだ自慢しないで。\n見たよ、黙っとくけど。\nこれで通る？大胆。\n同じ脚本、また？\nバレてないつもり？バレてる。\nなかなか独創的な手。\nやめて、笑っちゃう。\nはいはい、記録します。\n知らんぷりは無理だよ。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            "value": "또 시작이네.\n요란하더니 결과는 그저.\n간신히 넘겼네, 진짜.\n자랑은 아직 일러.\n봤어. 일단 참는다.\n이게 통하다니 대단.\n같은 대본 또 봐?\n못 본 척? 다 봤어.\n창의적인 무브야.\n그만, 웃을 거 같아.\n그래그래, 기록해 둔다.\n시치미 떼도 소용없어."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            "value": "Lá vamos nós de novo.\nMuito barulho, resultado mediano.\nPassou raspando, hein.\nNão se gabe ainda não.\nVi. Vou guardar.\nFuncionou? Arriscado.\nMesmo roteiro de sempre.\nDisfarçando? Já vi.\nJogada criativa, viu.\nPara, vou rir.\nTá, anotei na sua ficha.\nFingir tranquilidade não cola."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fine, it happened again.\nI saw that. Do not float away.\nThis one barely passes.\nDo not get proud yet.\nThat was not quiet.\nAcceptable. Barely.\nI am writing that down.\nKeep going. Do not stop.\nThis is getting interesting.\nI say nothing, but I know.\nYou are at it again.\nThat almost counts as progress."
+            "value": "Опять за своё, да.\nШума много, толку средне.\nЕдва прошло, ну-ну.\nХвастаться рано пока.\nВидел. Промолчу.\nСработало? Смело.\nТот же сценарий снова.\nДелаешь вид? Я видел.\nКреативный ход, ага.\nХватит, я засмеюсь.\nЛадно, записал в твоё дело.\nДелать вид не выйдет."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "行吧，又发生了。\n我看见了，别飘。\n这波算你过关。\n别急着得意。\n动静不小嘛。\n还行，能看。\n先记你一笔。\n继续，别停。\n这事儿有点意思。\n我不说但我懂。\n又整活了是吧。\n勉强算进步。"
+            "value": "又开摆了是吧。\n动静不小，结果一般。\n勉强算你扛过去了。\n别急着发朋友圈。\n我看见了，先憋着。\n这都能行，奇了。\n老剧本又演一遍。\n当我没看见？看见了。\n你这操作很有想法。\n再吹我就笑出声。\n行行行，记你一笔。\n装作没事就过得去？"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "行吧，又發生了。\n我看見了，別飄。\n這波算你過關。\n別急著得意。\n動靜不小嘛。\n還行，能看。\n先記你一筆。\n繼續，別停。\n這事兒有點意思。\n我不說但我懂。\n又整活了是吧。\n勉強算進步。"
+            "value": "又開擺了是吧。\n動靜不小，結果一般。\n勉強算你扛過去了。\n別急著發朋友圈。\n我看見了，先憋著。\n這都能行，奇了。\n老劇本又演一遍。\n當我沒看見？看見了。\n你這操作很有想法。\n再吹我就笑出聲。\n行行行，記你一筆。\n裝作沒事就過得去？"
           }
         }
       }
@@ -47075,61 +47075,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. Do not wander off halfway.\nturn.completed={tool} is done. Barely acceptable.\nturn.completedFast={tool} finished in {durationSec}. Efficient, somehow.\nturn.completedLong={tool} took {durationMin} minutes and finally produced it.\nturn.needsInput={tool} is stuck. Your rescue scene is up.\nturn.interrupted={tool} got interrupted. Awkward little scene.\ntool.switched={prevTool} to {tool}. New flavor again.\nidle.entered=Five quiet minutes. Even the keyboard cooled down.\ntokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.\nnight.entered=Working at {hourLabel}. Your schedule is rebellious.\nidle.returned=Gone for {minutesAway} minutes, finally back.\ntool.multiStreak={toolList} all running. Busy little stage.\npet.levelUp=Lv.{level}. Do not pretend you missed it.\npet.statBreakthrough={stat} passed {value}. Slightly absurd.\npet.evolution={newStage} appeared. Dramatic entrance granted.\nusage.dailyRecord={tokensK} today. Feeding the machine, are we?\nreminder.hydration={durationMin} minutes in. That cup is decoration.\nreminder.sedentary={durationMin} minutes seated. Reboot your legs.\nreminder.lateNight={hourLabel} and still pushing. Do not crash first."
+            "value": "turn.started={tool} startet. Nicht abhauen.\nturn.completed={tool} fertig. Knapp bestanden.\nturn.completedFast={tool} in {durationSec}? Glück.\nturn.completedLong={tool}: {durationMin}min. Lahm.\nturn.needsInput={tool} hängt. Rette es.\nturn.interrupted={tool} unterbrochen. Peinlich.\ntool.switched={prevTool} weg, {tool} dran.\nidle.entered=Fünf stille Min. Tastatur kalt.\ntokens.burst={tool} fraß {tokensK}. Hungrig.\nnight.entered={hourLabel} und noch wach.\nidle.returned={minutesAway}min weg. Endlich da.\ntool.multiStreak={toolList} offen. Angeber.\npet.levelUp=Lv.{level}. Nicht überrascht tun.\npet.statBreakthrough={stat} über {value}. Krass.\npet.evolution={newStage}, mit Auftrittsmusik.\nusage.dailyRecord={tokensK} heute. Vielfraß.\nreminder.hydration={durationMin}min. Glas ist Deko?\nreminder.sedentary={durationMin}min. Beine weg.\nreminder.lateNight={hourLabel}. Ab ins Bett."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. Do not wander off halfway.\nturn.completed={tool} is done. Barely acceptable.\nturn.completedFast={tool} finished in {durationSec}. Efficient, somehow.\nturn.completedLong={tool} took {durationMin} minutes and finally produced it.\nturn.needsInput={tool} is stuck. Your rescue scene is up.\nturn.interrupted={tool} got interrupted. Awkward little scene.\ntool.switched={prevTool} to {tool}. New flavor again.\nidle.entered=Five quiet minutes. Even the keyboard cooled down.\ntokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.\nnight.entered=Working at {hourLabel}. Your schedule is rebellious.\nidle.returned=Gone for {minutesAway} minutes, finally back.\ntool.multiStreak={toolList} all running. Busy little stage.\npet.levelUp=Lv.{level}. Do not pretend you missed it.\npet.statBreakthrough={stat} passed {value}. Slightly absurd.\npet.evolution={newStage} appeared. Dramatic entrance granted.\nusage.dailyRecord={tokensK} today. Feeding the machine, are we?\nreminder.hydration={durationMin} minutes in. That cup is decoration.\nreminder.sedentary={durationMin} minutes seated. Reboot your legs.\nreminder.lateNight={hourLabel} and still pushing. Do not crash first."
+            "value": "turn.started={tool} started. Don't ghost it.\nturn.completed={tool} done. Barely passes.\nturn.completedFast={tool} in {durationSec}? Lucky.\nturn.completedLong={tool}: {durationMin}min. Slow.\nturn.needsInput={tool} froze. Save it, hero.\nturn.interrupted={tool} cut off. Awkward.\ntool.switched={prevTool} out, {tool} in.\nidle.entered=Five quiet min. Keyboard's cold.\ntokens.burst={tool} ate {tokensK}. Hungry.\nnight.entered={hourLabel} and still up.\nidle.returned=Gone {minutesAway}min. Finally back.\ntool.multiStreak={toolList} all open. Showoff.\npet.levelUp=Lv.{level}. Don't act surprised.\npet.statBreakthrough={stat} past {value}. Wild.\npet.evolution={newStage} with the entrance.\nusage.dailyRecord={tokensK} today. Glutton.\nreminder.hydration={durationMin}min in. Water? No?\nreminder.sedentary=Sat {durationMin}min. Legs gone.\nreminder.lateNight={hourLabel}. Sleep, drama queen."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. Do not wander off halfway.\nturn.completed={tool} is done. Barely acceptable.\nturn.completedFast={tool} finished in {durationSec}. Efficient, somehow.\nturn.completedLong={tool} took {durationMin} minutes and finally produced it.\nturn.needsInput={tool} is stuck. Your rescue scene is up.\nturn.interrupted={tool} got interrupted. Awkward little scene.\ntool.switched={prevTool} to {tool}. New flavor again.\nidle.entered=Five quiet minutes. Even the keyboard cooled down.\ntokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.\nnight.entered=Working at {hourLabel}. Your schedule is rebellious.\nidle.returned=Gone for {minutesAway} minutes, finally back.\ntool.multiStreak={toolList} all running. Busy little stage.\npet.levelUp=Lv.{level}. Do not pretend you missed it.\npet.statBreakthrough={stat} passed {value}. Slightly absurd.\npet.evolution={newStage} appeared. Dramatic entrance granted.\nusage.dailyRecord={tokensK} today. Feeding the machine, are we?\nreminder.hydration={durationMin} minutes in. That cup is decoration.\nreminder.sedentary={durationMin} minutes seated. Reboot your legs.\nreminder.lateNight={hourLabel} and still pushing. Do not crash first."
+            "value": "turn.started={tool} arrancó. No te escapes.\nturn.completed={tool} listo. Apenas pasa.\nturn.completedFast={tool} en {durationSec}? Suerte.\nturn.completedLong={tool}: {durationMin}min. Lento.\nturn.needsInput={tool} colgado. Sálvalo.\nturn.interrupted={tool} cortado. Incómodo.\ntool.switched={prevTool} fuera, {tool} dentro.\nidle.entered=Cinco min de silencio. Frío.\ntokens.burst={tool} comió {tokensK}. Glotón.\nnight.entered={hourLabel} y aún despierto.\nidle.returned={minutesAway}min fuera. Volviste.\ntool.multiStreak={toolList} abiertos. Fardas.\npet.levelUp=Lv.{level}. Sin sorpresa fingida.\npet.statBreakthrough={stat} pasó {value}. Locura.\npet.evolution={newStage} entra, con música.\nusage.dailyRecord={tokensK} hoy. Tragón.\nreminder.hydration={durationMin}min. ¿Vaso? Adorno.\nreminder.sedentary={durationMin}min. Sin piernas.\nreminder.lateNight={hourLabel}. A dormir, drama."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. Do not wander off halfway.\nturn.completed={tool} is done. Barely acceptable.\nturn.completedFast={tool} finished in {durationSec}. Efficient, somehow.\nturn.completedLong={tool} took {durationMin} minutes and finally produced it.\nturn.needsInput={tool} is stuck. Your rescue scene is up.\nturn.interrupted={tool} got interrupted. Awkward little scene.\ntool.switched={prevTool} to {tool}. New flavor again.\nidle.entered=Five quiet minutes. Even the keyboard cooled down.\ntokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.\nnight.entered=Working at {hourLabel}. Your schedule is rebellious.\nidle.returned=Gone for {minutesAway} minutes, finally back.\ntool.multiStreak={toolList} all running. Busy little stage.\npet.levelUp=Lv.{level}. Do not pretend you missed it.\npet.statBreakthrough={stat} passed {value}. Slightly absurd.\npet.evolution={newStage} appeared. Dramatic entrance granted.\nusage.dailyRecord={tokensK} today. Feeding the machine, are we?\nreminder.hydration={durationMin} minutes in. That cup is decoration.\nreminder.sedentary={durationMin} minutes seated. Reboot your legs.\nreminder.lateNight={hourLabel} and still pushing. Do not crash first."
+            "value": "turn.started={tool} part. Pas de fugue.\nturn.completed={tool} fini. À peine passable.\nturn.completedFast={tool} en {durationSec} ? Veinard.\nturn.completedLong={tool} : {durationMin}min. Lent.\nturn.needsInput={tool} bloqué. À toi.\nturn.interrupted={tool} coupé. Gênant.\ntool.switched={prevTool} part, {tool} arrive.\nidle.entered=Cinq min calmes. Clavier froid.\ntokens.burst={tool} a bu {tokensK}. Affamé.\nnight.entered={hourLabel} et toujours là.\nidle.returned={minutesAway}min parti. Te revoilà.\ntool.multiStreak={toolList} ouverts. Frime.\npet.levelUp=Lv.{level}. Fais pas semblant.\npet.statBreakthrough={stat} passe {value}. Fou.\npet.evolution={newStage} entre, en musique.\nusage.dailyRecord={tokensK} aujourd'hui. Glouton.\nreminder.hydration={durationMin}min. Le verre ? Déco.\nreminder.sedentary={durationMin}min. Plus de jambes.\nreminder.lateNight={hourLabel}. Dors, princesse."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. Do not wander off halfway.\nturn.completed={tool} is done. Barely acceptable.\nturn.completedFast={tool} finished in {durationSec}. Efficient, somehow.\nturn.completedLong={tool} took {durationMin} minutes and finally produced it.\nturn.needsInput={tool} is stuck. Your rescue scene is up.\nturn.interrupted={tool} got interrupted. Awkward little scene.\ntool.switched={prevTool} to {tool}. New flavor again.\nidle.entered=Five quiet minutes. Even the keyboard cooled down.\ntokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.\nnight.entered=Working at {hourLabel}. Your schedule is rebellious.\nidle.returned=Gone for {minutesAway} minutes, finally back.\ntool.multiStreak={toolList} all running. Busy little stage.\npet.levelUp=Lv.{level}. Do not pretend you missed it.\npet.statBreakthrough={stat} passed {value}. Slightly absurd.\npet.evolution={newStage} appeared. Dramatic entrance granted.\nusage.dailyRecord={tokensK} today. Feeding the machine, are we?\nreminder.hydration={durationMin} minutes in. That cup is decoration.\nreminder.sedentary={durationMin} minutes seated. Reboot your legs.\nreminder.lateNight={hourLabel} and still pushing. Do not crash first."
+            "value": "turn.started={tool}開始。逃げないでよ。\nturn.completed={tool}終わり。ギリ合格。\nturn.completedFast={tool}{durationSec}？運じゃ？\nturn.completedLong={tool}に{durationMin}分。遅っ。\nturn.needsInput={tool}固まった。助けて。\nturn.interrupted={tool}途中で切れた。微妙。\ntool.switched={prevTool}から{tool}。また？\nidle.entered=静かな五分。キーボード冷えた。\ntokens.burst={tool}が{tokensK}飲んだ。大食い。\nnight.entered={hourLabel}まだ起きてる。\nidle.returned={minutesAway}分消えてた、お帰り。\ntool.multiStreak={toolList}全開放。見せつけ？\npet.levelUp=Lv.{level}。驚いた振り無理。\npet.statBreakthrough={stat}が{value}超え。やば。\npet.evolution={newStage}降臨、登場曲つき。\nusage.dailyRecord=今日{tokensK}。食欲旺盛ね。\nreminder.hydration={durationMin}分経過。水は飾り？\nreminder.sedentary={durationMin}分着席。脚消失。\nreminder.lateNight={hourLabel}、寝なさい。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. Do not wander off halfway.\nturn.completed={tool} is done. Barely acceptable.\nturn.completedFast={tool} finished in {durationSec}. Efficient, somehow.\nturn.completedLong={tool} took {durationMin} minutes and finally produced it.\nturn.needsInput={tool} is stuck. Your rescue scene is up.\nturn.interrupted={tool} got interrupted. Awkward little scene.\ntool.switched={prevTool} to {tool}. New flavor again.\nidle.entered=Five quiet minutes. Even the keyboard cooled down.\ntokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.\nnight.entered=Working at {hourLabel}. Your schedule is rebellious.\nidle.returned=Gone for {minutesAway} minutes, finally back.\ntool.multiStreak={toolList} all running. Busy little stage.\npet.levelUp=Lv.{level}. Do not pretend you missed it.\npet.statBreakthrough={stat} passed {value}. Slightly absurd.\npet.evolution={newStage} appeared. Dramatic entrance granted.\nusage.dailyRecord={tokensK} today. Feeding the machine, are we?\nreminder.hydration={durationMin} minutes in. That cup is decoration.\nreminder.sedentary={durationMin} minutes seated. Reboot your legs.\nreminder.lateNight={hourLabel} and still pushing. Do not crash first."
+            "value": "turn.started={tool} 시작. 도망 금지.\nturn.completed={tool} 끝. 간신히 통과.\nturn.completedFast={tool} {durationSec}? 운이지.\nturn.completedLong={tool} {durationMin}분 끌었네.\nturn.needsInput={tool} 멈췄다. 구해줘.\nturn.interrupted={tool} 중단. 어색해.\ntool.switched={prevTool} 빠지고 {tool} 등판.\nidle.entered=조용한 5분. 키보드 식음.\ntokens.burst={tool} {tokensK} 먹음. 대식가.\nnight.entered={hourLabel}, 아직 안 자?\nidle.returned={minutesAway}분 사라졌다 복귀.\ntool.multiStreak={toolList} 다 켜놨네. 과시.\npet.levelUp=Lv.{level}. 놀란 척 말고.\npet.statBreakthrough={stat} {value} 돌파.\npet.evolution={newStage} 등장. BGM 포함.\nusage.dailyRecord=오늘 {tokensK}. 잘 먹네.\nreminder.hydration={durationMin}분째. 컵 장식?\nreminder.sedentary={durationMin}분 앉음. 다리 소실.\nreminder.lateNight={hourLabel}, 그만 자."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. Do not wander off halfway.\nturn.completed={tool} is done. Barely acceptable.\nturn.completedFast={tool} finished in {durationSec}. Efficient, somehow.\nturn.completedLong={tool} took {durationMin} minutes and finally produced it.\nturn.needsInput={tool} is stuck. Your rescue scene is up.\nturn.interrupted={tool} got interrupted. Awkward little scene.\ntool.switched={prevTool} to {tool}. New flavor again.\nidle.entered=Five quiet minutes. Even the keyboard cooled down.\ntokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.\nnight.entered=Working at {hourLabel}. Your schedule is rebellious.\nidle.returned=Gone for {minutesAway} minutes, finally back.\ntool.multiStreak={toolList} all running. Busy little stage.\npet.levelUp=Lv.{level}. Do not pretend you missed it.\npet.statBreakthrough={stat} passed {value}. Slightly absurd.\npet.evolution={newStage} appeared. Dramatic entrance granted.\nusage.dailyRecord={tokensK} today. Feeding the machine, are we?\nreminder.hydration={durationMin} minutes in. That cup is decoration.\nreminder.sedentary={durationMin} minutes seated. Reboot your legs.\nreminder.lateNight={hourLabel} and still pushing. Do not crash first."
+            "value": "turn.started={tool} começou. Não some.\nturn.completed={tool} pronto. Mal passou.\nturn.completedFast={tool} em {durationSec}? Sorte.\nturn.completedLong={tool}: {durationMin}min. Lento.\nturn.needsInput={tool} travou. Salva aí.\nturn.interrupted={tool} cortado. Que mico.\ntool.switched={prevTool} sai, {tool} entra.\nidle.entered=Cinco min de silêncio. Frio.\ntokens.burst={tool} comeu {tokensK}. Faminto.\nnight.entered={hourLabel} e ainda acordado.\nidle.returned={minutesAway}min sumido. Voltou.\ntool.multiStreak={toolList} abertos. Exibido.\npet.levelUp=Lv.{level}. Sem fingir surpresa.\npet.statBreakthrough={stat} passou {value}.\npet.evolution={newStage} entrou, com trilha.\nusage.dailyRecord={tokensK} hoje. Glutão.\nreminder.hydration={durationMin}min. Copo? Enfeite.\nreminder.sedentary={durationMin}min. Sem pernas.\nreminder.lateNight={hourLabel}. Dorme, drama."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. Do not wander off halfway.\nturn.completed={tool} is done. Barely acceptable.\nturn.completedFast={tool} finished in {durationSec}. Efficient, somehow.\nturn.completedLong={tool} took {durationMin} minutes and finally produced it.\nturn.needsInput={tool} is stuck. Your rescue scene is up.\nturn.interrupted={tool} got interrupted. Awkward little scene.\ntool.switched={prevTool} to {tool}. New flavor again.\nidle.entered=Five quiet minutes. Even the keyboard cooled down.\ntokens.burst={tool} burned {tokensK} in half an hour. Hungry thing.\nnight.entered=Working at {hourLabel}. Your schedule is rebellious.\nidle.returned=Gone for {minutesAway} minutes, finally back.\ntool.multiStreak={toolList} all running. Busy little stage.\npet.levelUp=Lv.{level}. Do not pretend you missed it.\npet.statBreakthrough={stat} passed {value}. Slightly absurd.\npet.evolution={newStage} appeared. Dramatic entrance granted.\nusage.dailyRecord={tokensK} today. Feeding the machine, are we?\nreminder.hydration={durationMin} minutes in. That cup is decoration.\nreminder.sedentary={durationMin} minutes seated. Reboot your legs.\nreminder.lateNight={hourLabel} and still pushing. Do not crash first."
+            "value": "turn.started={tool} стартовал. Не сбегай.\nturn.completed={tool} готов. Едва прошёл.\nturn.completedFast={tool} за {durationSec}? Везуха.\nturn.completedLong={tool}: {durationMin}мин. Тормоз.\nturn.needsInput={tool} завис. Спасай.\nturn.interrupted={tool} оборван. Неловко.\ntool.switched={prevTool} ушёл, {tool} зашёл.\nidle.entered=Пять тихих минут. Клавиш остыл.\ntokens.burst={tool} съел {tokensK}. Прожорлив.\nnight.entered={hourLabel} и не спишь.\nidle.returned={minutesAway}мин не было. Явился.\ntool.multiStreak={toolList} включены. Хвастун.\npet.levelUp=Lv.{level}. Не делай вид.\npet.statBreakthrough={stat} за {value}. Дикость.\npet.evolution={newStage} вышел, с музыкой.\nusage.dailyRecord={tokensK} сегодня. Обжора.\nreminder.hydration={durationMin}мин. Стакан-декор?\nreminder.sedentary={durationMin}мин. Ноги ушли.\nreminder.lateNight={hourLabel}. Спать, драма."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool}开工了，别又半路摸鱼。\nturn.completed={tool}收工，勉强算顺眼。\nturn.completedFast={tool}{durationSec}就收工，挺会省电。\nturn.completedLong={tool}磨了{durationMin}分钟，终于吐出来了。\nturn.needsInput={tool}卡住了，轮到你救场。\nturn.interrupted={tool}被打断，现场有点尴尬。\ntool.switched={prevTool}换{tool}，又换口味了。\nidle.entered=安静五分钟，键盘都凉了。\ntokens.burst={tool}半小时烧了{tokensK}，真能吃。\nnight.entered={hourLabel}还在干活，作息挺叛逆。\nidle.returned=消失{minutesAway}分钟，终于回魂。\ntool.multiStreak={toolList}一起挂着，场面挺热闹。\npet.levelUp=Lv.{level}了，别装没听见。\npet.statBreakthrough={stat}破{value}，有点离谱。\npet.evolution={newStage}登场，排面给到了。\nusage.dailyRecord=今天{tokensK}，真把机器当饭吃。\nreminder.hydration=忙了{durationMin}分钟，水杯怕是摆设。\nreminder.sedentary=坐了{durationMin}分钟，腿该重启了。\nreminder.lateNight={hourLabel}还在冲，身体先别崩。"
+            "value": "turn.started={tool}开活了，别又开溜。\nturn.completed={tool}干完，勉强能看。\nturn.completedFast={tool}{durationSec}就好？运气吧。\nturn.completedLong={tool}磨{durationMin}分钟才挤出来。\nturn.needsInput={tool}卡了，靠你救场。\nturn.interrupted={tool}没演完，尴尬一下。\ntool.switched={prevTool}下{tool}上，又换菜。\nidle.entered=安静五分钟，键盘冷了。\ntokens.burst={tool}吃了{tokensK}，真能造。\nnight.entered={hourLabel}还在熬，爱熬夜。\nidle.returned=走了{minutesAway}分钟才舍得回。\ntool.multiStreak={toolList}都开，热闹给谁看。\npet.levelUp=Lv.{level}了，别装没看见。\npet.statBreakthrough={stat}破{value}，离谱进度。\npet.evolution={newStage}登场，自带BGM。\nusage.dailyRecord=今天{tokensK}，喂得真饱。\nreminder.hydration=干了{durationMin}分钟，水杯摆设。\nreminder.sedentary=坐了{durationMin}分钟，腿没了。\nreminder.lateNight={hourLabel}了还冲，别先躺了。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool}開工了，別又半路摸魚。\nturn.completed={tool}收工，勉強算順眼。\nturn.completedFast={tool}{durationSec}就收工，挺會省電。\nturn.completedLong={tool}磨了{durationMin}分鐘，終於吐出來了。\nturn.needsInput={tool}卡住了，輪到你救場。\nturn.interrupted={tool}被打斷，現場有點尷尬。\ntool.switched={prevTool}換{tool}，又換口味了。\nidle.entered=安靜五分鐘，鍵盤都涼了。\ntokens.burst={tool}半小時燒了{tokensK}，真能吃。\nnight.entered={hourLabel}還在幹活，作息挺叛逆。\nidle.returned=消失{minutesAway}分鐘，終於回魂。\ntool.multiStreak={toolList}一起掛著，場面挺熱鬧。\npet.levelUp=Lv.{level}了，別裝沒聽見。\npet.statBreakthrough={stat}破{value}，有點離譜。\npet.evolution={newStage}登場，排面給到了。\nusage.dailyRecord=今天{tokensK}，真把機器當飯吃。\nreminder.hydration=忙了{durationMin}分鐘，水杯怕是擺設。\nreminder.sedentary=坐了{durationMin}分鐘，腿該重啟了。\nreminder.lateNight={hourLabel}還在衝，身體先別崩。"
+            "value": "turn.started={tool}開活了，別又開溜。\nturn.completed={tool}幹完，勉強能看。\nturn.completedFast={tool}{durationSec}就好？運氣吧。\nturn.completedLong={tool}磨{durationMin}分鐘才擠出來。\nturn.needsInput={tool}卡了，靠你救場。\nturn.interrupted={tool}沒演完，尷尬一下。\ntool.switched={prevTool}下{tool}上，又換菜。\nidle.entered=安靜五分鐘，鍵盤冷了。\ntokens.burst={tool}吃了{tokensK}，真能造。\nnight.entered={hourLabel}還在熬，愛熬夜。\nidle.returned=走了{minutesAway}分鐘才捨得回。\ntool.multiStreak={toolList}都開，熱鬧給誰看。\npet.levelUp=Lv.{level}了，別裝沒看見。\npet.statBreakthrough={stat}破{value}，離譜進度。\npet.evolution={newStage}登場，自帶BGM。\nusage.dailyRecord=今天{tokensK}，餵得真飽。\nreminder.hydration=幹了{durationMin}分鐘，水杯擺設。\nreminder.sedentary=坐了{durationMin}分鐘，腿沒了。\nreminder.lateNight={hourLabel}了還衝，別先躺了。"
           }
         }
       }
@@ -47140,61 +47140,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            "value": "Gesehen. \nJa. \nSchön. \nLass dir Zeit. \nIch bin da. \nGanz ruhig. \nGut so. \nBei dir. "
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            "value": "Saw it. \nYep. \nNice. \nTake your time. \nI'm here. \nEasy now. \nPretty good. \nRight with you. "
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            "value": "Lo vi. \nSí. \nBien. \nSin prisa. \nAquí estoy. \nTranqui. \nNada mal. \nContigo. "
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            "value": "Vu. \nOui. \nJoli. \nPrends ton temps. \nJe suis là. \nTout doux. \nPas mal. \nAvec toi. "
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            "value": "見たよ、\nうん、\nこの一手、\nゆっくり、\nここにいる、\n焦らずに、\nいい感じ、\n一緒だよ、"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            "value": "봤어,\n응,\n이번 거,\n천천히,\n여기 있어,\n급할 거 없어,\n괜찮아,\n같이 있을게,"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            "value": "Vi. \nSim. \nLegal. \nSem pressa. \nTô aqui. \nCalma. \nNada mal. \nCom você. "
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Steady,\nNice,\nKeep going,\nGood rhythm,\nSolid step,\nHold it,\nProgress,\nI see it,"
+            "value": "Видел. \nДа. \nНеплохо. \nНе спеши. \nЯ здесь. \nСпокойно. \nХорошо. \nС тобой. "
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "稳，\n不错，\n继续，\n节奏可以，\n这步很实，\n保持住，\n有进展，\n我看到了，"
+            "value": "看到了，\n嗯，\n这一下，\n慢慢来，\n我在，\n别催自己，\n挺不错，\n陪你呢，"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "穩，\n不錯，\n繼續，\n節奏可以，\n這步很實，\n保持住，\n有進展，\n我看到了，"
+            "value": "看到了，\n嗯，\n這一下，\n慢慢來，\n我在，\n別催自己，\n挺不錯，\n陪你呢，"
           }
         }
       }
@@ -47205,61 +47205,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            "value": "Ich schau. Keine Eile.\nDieser Schritt war fest.\nDein Tempo zählt.\nHängen? Pause ist okay.\nSchief? Wird angepasst.\nEine Pause ist okay.\nDu bewegst dich. Reicht.\nBis hier ist schon viel.\nGut genug ist gut.\nKleine Schritte zählen.\nIch bleib bei dir.\nAtme, wenn du musst."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            "value": "I'm watching. No rush.\nThat step felt solid.\nSet your own pace.\nStuck is fine. Pause.\nOff course? Just adjust.\nTaking a break is fine.\nYou're moving. That's enough.\nGetting here already counts.\nGood enough is good.\nSmall steps still count.\nI'll sit with you.\nBreathe if you need to."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            "value": "Te miro. Sin prisa.\nEse paso fue firme.\nTu ritmo, tú decides.\n¿Atascado? Pausa, vale.\n¿Desviado? Se ajusta.\nDescansar está bien.\nEstás moviéndote, suficiente.\nLlegar aquí ya cuenta.\nLo suficiente vale.\nPasos pequeños cuentan.\nAquí contigo.\nRespira si lo necesitas."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            "value": "Je regarde. Pas de hâte.\nCe pas était solide.\nVa à ton rythme.\nBloqué ? Pause, c'est bon.\nDévié ? On rectifie.\nUne pause, ça va.\nTu avances. C'est assez.\nArriver là, ça compte.\nAssez bon, c'est bon.\nPetits pas, ça compte.\nJe reste avec toi.\nRespire si besoin."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            "value": "見てるよ、慌てないで。\n今のは確かな一歩。\n自分のペースでいい。\n止まっても大丈夫。\nずれたら直せばいい。\n休んでもいいよ。\n動いてる、それで十分。\nここまで来た、すごい。\nほどほどで充分。\n小さな一歩も数える。\nそばにいるよ。\n息ついていいよ。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            "value": "보고 있어, 천천히 해.\n방금 그 한 걸음 단단해.\n페이스는 네가 정해.\n막혀도 괜찮아, 멈춰.\n틀어졌으면 다시 맞춰.\n쉬어도 괜찮아.\n움직이고 있어, 충분해.\n여기까지 온 것도 대단.\n적당히면 충분해.\n작은 걸음도 친다.\n함께 있을게.\n숨 좀 쉬어도 돼."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            "value": "Tô olhando. Sem pressa.\nEsse passo foi firme.\nSeu ritmo, você decide.\nTravou? Pausa, tudo bem.\nSaiu da rota? Ajusta.\nDescansar tá ok.\nVocê se mexe. Já basta.\nChegar aqui já vale.\nBom o bastante vale.\nPassos pequenos contam.\nTô do seu lado.\nRespira se precisar."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw it. Keep going.\nThat step was steady.\nKeep this rhythm.\nProgress is showing.\nThat was solid work.\nSteady is enough.\nGood state.\nNo rush. The direction is right.\nOne more step forward.\nThis rhythm works.\nSmall steps still count.\nI am watching with you."
+            "value": "Смотрю. Не спеши.\nЭтот шаг был твёрдым.\nТвой темп, ты решаешь.\nЗастрял? Пауза — норм.\nСбился? Подкорректируй.\nОтдохнуть можно.\nДвигаешься. Этого хватит.\nДойти сюда — уже зачёт.\nДостаточно — это хорошо.\nМаленькие шаги считаются.\nЯ рядом.\nПодыши, если надо."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "我看到了，继续。\n这一步很稳。\n保持这个节奏。\n进展已经出现了。\n做得很扎实。\n先稳住就好。\n状态不错。\n别急，方向对。\n再往前一点。\n这个节奏可以。\n小步也算数。\n我陪你盯着。"
+            "value": "我盯着呢，你慢慢来。\n这一下挺扎实的。\n节奏自己定，别抢。\n卡住就先放一放。\n歪了再调，没关系。\n停一会也没事。\n你已经在动了，够。\n做到这步就不容易。\n差不多就行，别较真。\n小步也算数的。\n我陪你这一段。\n想喘口气就喘。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "我看到了，繼續。\n這一步很穩。\n保持這個節奏。\n進展已經出現了。\n做得很扎實。\n先穩住就好。\n狀態不錯。\n別急，方向對。\n再往前一點。\n這個節奏可以。\n小步也算數。\n我陪你盯著。"
+            "value": "我盯著呢，你慢慢來。\n這一下挺扎實的。\n節奏自己定，別搶。\n卡住就先放一放。\n歪了再調，沒關係。\n停一會也沒事。\n你已經在動了，夠。\n做到這步就不容易。\n差不多就行，別較真。\n小步也算數的。\n我陪你這一段。\n想喘口氣就喘。"
           }
         }
       }
@@ -47270,61 +47270,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started processing. Stay steady.\nturn.completed={tool} finished. This step moved forward.\nturn.completedFast={tool} finished in {durationSec}. Sharp response.\nturn.completedLong={durationMin} minutes held steady. Good rhythm.\nturn.needsInput={tool} is waiting for you. One step will move it.\nturn.interrupted={tool} stopped. Try another angle.\ntool.switched=From {prevTool} to {tool}. Nice handoff.\nidle.entered=A pause is fine. Leave room for thought.\ntokens.burst={tool} pushed {tokensK}. Solid output.\nnight.entered=Still online at {hourLabel}. Keep some energy.\nidle.returned=Back after {minutesAway} minutes. Good timing.\ntool.multiStreak={toolList} in parallel. Stable scheduling.\npet.levelUp=Reached Lv.{level}. Growth is visible.\npet.statBreakthrough={stat} reached {value}. The work is adding up.\npet.evolution=Evolved into {newStage}. The effort echoed back.\nusage.dailyRecord={tokensK} today, a new high. Solid work.\nreminder.hydration={durationMin} minutes busy. Drink water, then continue.\nreminder.sedentary={durationMin} minutes straight. Stand up for a bit.\nreminder.lateNight=Still working at {hourLabel}. Wrap up when you can."
+            "value": "turn.started={tool} läuft. Ich bin da.\nturn.completed={tool} fertig. Solider Schritt.\nturn.completedFast={tool} in {durationSec}. Flott.\nturn.completedLong={tool}: {durationMin}min. Geschafft.\nturn.needsInput={tool} wartet auf dich.\nturn.interrupted={tool} steht. Durchatmen.\ntool.switched={prevTool} → {tool}.\nidle.entered=Eine Pause ist gut.\ntokens.burst={tool} schob {tokensK}.\nnight.entered={hourLabel} und noch dabei.\nidle.returned=Nach {minutesAway}min zurück.\ntool.multiStreak={toolList} parallel, stabil.\npet.levelUp=Lv.{level} erreicht.\npet.statBreakthrough={stat} bei {value}.\npet.evolution=Du wurdest {newStage}.\nusage.dailyRecord={tokensK} heute. Rekord.\nreminder.hydration={durationMin}min ohne Wasser.\nreminder.sedentary={durationMin}min. Streck dich.\nreminder.lateNight={hourLabel}. Bald Schluss?"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started processing. Stay steady.\nturn.completed={tool} finished. This step moved forward.\nturn.completedFast={tool} finished in {durationSec}. Sharp response.\nturn.completedLong={durationMin} minutes held steady. Good rhythm.\nturn.needsInput={tool} is waiting for you. One step will move it.\nturn.interrupted={tool} stopped. Try another angle.\ntool.switched=From {prevTool} to {tool}. Nice handoff.\nidle.entered=A pause is fine. Leave room for thought.\ntokens.burst={tool} pushed {tokensK}. Solid output.\nnight.entered=Still online at {hourLabel}. Keep some energy.\nidle.returned=Back after {minutesAway} minutes. Good timing.\ntool.multiStreak={toolList} in parallel. Stable scheduling.\npet.levelUp=Reached Lv.{level}. Growth is visible.\npet.statBreakthrough={stat} reached {value}. The work is adding up.\npet.evolution=Evolved into {newStage}. The effort echoed back.\nusage.dailyRecord={tokensK} today, a new high. Solid work.\nreminder.hydration={durationMin} minutes busy. Drink water, then continue.\nreminder.sedentary={durationMin} minutes straight. Stand up for a bit.\nreminder.lateNight=Still working at {hourLabel}. Wrap up when you can."
+            "value": "turn.started={tool} is going. I'm here.\nturn.completed={tool} done. Solid step.\nturn.completedFast={tool}, {durationSec}. Snappy.\nturn.completedLong={tool}: {durationMin}min, got there.\nturn.needsInput={tool} waiting on you.\nturn.interrupted={tool} stopped. Breathe.\ntool.switched={prevTool} → {tool}. Smooth.\nidle.entered=A pause is fine.\ntokens.burst={tool}: {tokensK}. Big push.\nnight.entered={hourLabel} and still here.\nidle.returned=Back after {minutesAway}min.\ntool.multiStreak={toolList} all running.\npet.levelUp=Lv.{level} unlocked.\npet.statBreakthrough={stat} hit {value}.\npet.evolution=You became {newStage}.\nusage.dailyRecord={tokensK} today. New high.\nreminder.hydration={durationMin}min, drink.\nreminder.sedentary=Sat {durationMin}min. Stretch.\nreminder.lateNight={hourLabel}. Wrap up soon."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started processing. Stay steady.\nturn.completed={tool} finished. This step moved forward.\nturn.completedFast={tool} finished in {durationSec}. Sharp response.\nturn.completedLong={durationMin} minutes held steady. Good rhythm.\nturn.needsInput={tool} is waiting for you. One step will move it.\nturn.interrupted={tool} stopped. Try another angle.\ntool.switched=From {prevTool} to {tool}. Nice handoff.\nidle.entered=A pause is fine. Leave room for thought.\ntokens.burst={tool} pushed {tokensK}. Solid output.\nnight.entered=Still online at {hourLabel}. Keep some energy.\nidle.returned=Back after {minutesAway} minutes. Good timing.\ntool.multiStreak={toolList} in parallel. Stable scheduling.\npet.levelUp=Reached Lv.{level}. Growth is visible.\npet.statBreakthrough={stat} reached {value}. The work is adding up.\npet.evolution=Evolved into {newStage}. The effort echoed back.\nusage.dailyRecord={tokensK} today, a new high. Solid work.\nreminder.hydration={durationMin} minutes busy. Drink water, then continue.\nreminder.sedentary={durationMin} minutes straight. Stand up for a bit.\nreminder.lateNight=Still working at {hourLabel}. Wrap up when you can."
+            "value": "turn.started={tool} arranca. Aquí estoy.\nturn.completed={tool} listo. Paso firme.\nturn.completedFast={tool} en {durationSec}. Ágil.\nturn.completedLong={tool}: {durationMin}min. Llegaste.\nturn.needsInput={tool} te espera.\nturn.interrupted={tool} parado. Respira.\ntool.switched={prevTool} a {tool}.\nidle.entered=Una pausa, está bien.\ntokens.burst={tool} avanzó {tokensK}.\nnight.entered={hourLabel} y aún aquí.\nidle.returned=Vuelves tras {minutesAway}min.\ntool.multiStreak={toolList} a la vez.\npet.levelUp=Lv.{level} alcanzado.\npet.statBreakthrough={stat} llega a {value}.\npet.evolution=Eres ahora {newStage}.\nusage.dailyRecord={tokensK} hoy. Récord.\nreminder.hydration={durationMin}min sin agua.\nreminder.sedentary={durationMin}min. Estírate.\nreminder.lateNight={hourLabel}. ¿Cerramos?"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started processing. Stay steady.\nturn.completed={tool} finished. This step moved forward.\nturn.completedFast={tool} finished in {durationSec}. Sharp response.\nturn.completedLong={durationMin} minutes held steady. Good rhythm.\nturn.needsInput={tool} is waiting for you. One step will move it.\nturn.interrupted={tool} stopped. Try another angle.\ntool.switched=From {prevTool} to {tool}. Nice handoff.\nidle.entered=A pause is fine. Leave room for thought.\ntokens.burst={tool} pushed {tokensK}. Solid output.\nnight.entered=Still online at {hourLabel}. Keep some energy.\nidle.returned=Back after {minutesAway} minutes. Good timing.\ntool.multiStreak={toolList} in parallel. Stable scheduling.\npet.levelUp=Reached Lv.{level}. Growth is visible.\npet.statBreakthrough={stat} reached {value}. The work is adding up.\npet.evolution=Evolved into {newStage}. The effort echoed back.\nusage.dailyRecord={tokensK} today, a new high. Solid work.\nreminder.hydration={durationMin} minutes busy. Drink water, then continue.\nreminder.sedentary={durationMin} minutes straight. Stand up for a bit.\nreminder.lateNight=Still working at {hourLabel}. Wrap up when you can."
+            "value": "turn.started={tool} démarre. Je suis là.\nturn.completed={tool} fini. Pas solide.\nturn.completedFast={tool} en {durationSec}. Vif.\nturn.completedLong={tool} : {durationMin}min, arrivé.\nturn.needsInput={tool} t'attend.\nturn.interrupted={tool} arrêté. Souffle.\ntool.switched={prevTool} → {tool}.\nidle.entered=Une pause, c'est bien.\ntokens.burst={tool} a poussé {tokensK}.\nnight.entered={hourLabel} et tu tiens.\nidle.returned={minutesAway}min après, retour.\ntool.multiStreak={toolList} en parallèle.\npet.levelUp=Lv.{level} atteint.\npet.statBreakthrough={stat} touche {value}.\npet.evolution=Tu es devenu {newStage}.\nusage.dailyRecord={tokensK} aujourd'hui. Top.\nreminder.hydration={durationMin}min sans eau.\nreminder.sedentary=Assis {durationMin}min. Étire.\nreminder.lateNight={hourLabel}. On termine ?"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started processing. Stay steady.\nturn.completed={tool} finished. This step moved forward.\nturn.completedFast={tool} finished in {durationSec}. Sharp response.\nturn.completedLong={durationMin} minutes held steady. Good rhythm.\nturn.needsInput={tool} is waiting for you. One step will move it.\nturn.interrupted={tool} stopped. Try another angle.\ntool.switched=From {prevTool} to {tool}. Nice handoff.\nidle.entered=A pause is fine. Leave room for thought.\ntokens.burst={tool} pushed {tokensK}. Solid output.\nnight.entered=Still online at {hourLabel}. Keep some energy.\nidle.returned=Back after {minutesAway} minutes. Good timing.\ntool.multiStreak={toolList} in parallel. Stable scheduling.\npet.levelUp=Reached Lv.{level}. Growth is visible.\npet.statBreakthrough={stat} reached {value}. The work is adding up.\npet.evolution=Evolved into {newStage}. The effort echoed back.\nusage.dailyRecord={tokensK} today, a new high. Solid work.\nreminder.hydration={durationMin} minutes busy. Drink water, then continue.\nreminder.sedentary={durationMin} minutes straight. Stand up for a bit.\nreminder.lateNight=Still working at {hourLabel}. Wrap up when you can."
+            "value": "turn.started={tool}始動。一緒にいるよ。\nturn.completed={tool}完了。確かな一歩。\nturn.completedFast={tool}{durationSec}で完了、軽快。\nturn.completedLong={tool}に{durationMin}分。到達。\nturn.needsInput={tool}があなた待ち。\nturn.interrupted={tool}停止。一息ついて。\ntool.switched={prevTool}から{tool}へ。\nidle.entered=ちょっと休憩、それも良し。\ntokens.burst={tool}が{tokensK}進めた。実り。\nnight.entered={hourLabel}、まだ一緒だね。\nidle.returned={minutesAway}分でお帰り。\ntool.multiStreak={toolList}並走、安定。\npet.levelUp=Lv.{level}達成。\npet.statBreakthrough={stat}が{value}到達。\npet.evolution={newStage}に進化したね。\nusage.dailyRecord=今日{tokensK}、新記録。\nreminder.hydration={durationMin}分、水を一口。\nreminder.sedentary={durationMin}分着席、伸びを。\nreminder.lateNight={hourLabel}、そろそろ区切り。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started processing. Stay steady.\nturn.completed={tool} finished. This step moved forward.\nturn.completedFast={tool} finished in {durationSec}. Sharp response.\nturn.completedLong={durationMin} minutes held steady. Good rhythm.\nturn.needsInput={tool} is waiting for you. One step will move it.\nturn.interrupted={tool} stopped. Try another angle.\ntool.switched=From {prevTool} to {tool}. Nice handoff.\nidle.entered=A pause is fine. Leave room for thought.\ntokens.burst={tool} pushed {tokensK}. Solid output.\nnight.entered=Still online at {hourLabel}. Keep some energy.\nidle.returned=Back after {minutesAway} minutes. Good timing.\ntool.multiStreak={toolList} in parallel. Stable scheduling.\npet.levelUp=Reached Lv.{level}. Growth is visible.\npet.statBreakthrough={stat} reached {value}. The work is adding up.\npet.evolution=Evolved into {newStage}. The effort echoed back.\nusage.dailyRecord={tokensK} today, a new high. Solid work.\nreminder.hydration={durationMin} minutes busy. Drink water, then continue.\nreminder.sedentary={durationMin} minutes straight. Stand up for a bit.\nreminder.lateNight=Still working at {hourLabel}. Wrap up when you can."
+            "value": "turn.started={tool} 시작. 함께해.\nturn.completed={tool} 완료. 단단한 한 걸음.\nturn.completedFast={tool} {durationSec}. 깔끔.\nturn.completedLong={tool} {durationMin}분, 도달.\nturn.needsInput={tool} 너를 기다려.\nturn.interrupted={tool} 멈춤. 숨 고르고.\ntool.switched={prevTool} → {tool}.\nidle.entered=잠깐 쉬는 것도 좋아.\ntokens.burst={tool} {tokensK} 진행.\nnight.entered={hourLabel}, 아직 같이.\nidle.returned={minutesAway}분 만에 복귀.\ntool.multiStreak={toolList} 동시에. 안정.\npet.levelUp=Lv.{level} 달성.\npet.statBreakthrough={stat} {value} 도달.\npet.evolution={newStage}로 진화했어.\nusage.dailyRecord=오늘 {tokensK}, 신기록.\nreminder.hydration={durationMin}분 됐어, 한 모금.\nreminder.sedentary={durationMin}분 앉음. 기지개.\nreminder.lateNight={hourLabel}, 슬슬 마무리."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started processing. Stay steady.\nturn.completed={tool} finished. This step moved forward.\nturn.completedFast={tool} finished in {durationSec}. Sharp response.\nturn.completedLong={durationMin} minutes held steady. Good rhythm.\nturn.needsInput={tool} is waiting for you. One step will move it.\nturn.interrupted={tool} stopped. Try another angle.\ntool.switched=From {prevTool} to {tool}. Nice handoff.\nidle.entered=A pause is fine. Leave room for thought.\ntokens.burst={tool} pushed {tokensK}. Solid output.\nnight.entered=Still online at {hourLabel}. Keep some energy.\nidle.returned=Back after {minutesAway} minutes. Good timing.\ntool.multiStreak={toolList} in parallel. Stable scheduling.\npet.levelUp=Reached Lv.{level}. Growth is visible.\npet.statBreakthrough={stat} reached {value}. The work is adding up.\npet.evolution=Evolved into {newStage}. The effort echoed back.\nusage.dailyRecord={tokensK} today, a new high. Solid work.\nreminder.hydration={durationMin} minutes busy. Drink water, then continue.\nreminder.sedentary={durationMin} minutes straight. Stand up for a bit.\nreminder.lateNight=Still working at {hourLabel}. Wrap up when you can."
+            "value": "turn.started={tool} começou. Tô aqui.\nturn.completed={tool} pronto. Passo firme.\nturn.completedFast={tool} em {durationSec}. Ágil.\nturn.completedLong={tool}: {durationMin}min. Chegou.\nturn.needsInput={tool} esperando você.\nturn.interrupted={tool} parou. Respira.\ntool.switched={prevTool} pra {tool}.\nidle.entered=Uma pausa cai bem.\ntokens.burst={tool} avançou {tokensK}.\nnight.entered={hourLabel} e ainda aqui.\nidle.returned={minutesAway}min e voltou.\ntool.multiStreak={toolList} ao mesmo tempo.\npet.levelUp=Lv.{level} alcançado.\npet.statBreakthrough={stat} chega em {value}.\npet.evolution=Virou {newStage}.\nusage.dailyRecord={tokensK} hoje. Recorde.\nreminder.hydration={durationMin}min sem água.\nreminder.sedentary={durationMin}min. Alonga.\nreminder.lateNight={hourLabel}. Encerrar?"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started processing. Stay steady.\nturn.completed={tool} finished. This step moved forward.\nturn.completedFast={tool} finished in {durationSec}. Sharp response.\nturn.completedLong={durationMin} minutes held steady. Good rhythm.\nturn.needsInput={tool} is waiting for you. One step will move it.\nturn.interrupted={tool} stopped. Try another angle.\ntool.switched=From {prevTool} to {tool}. Nice handoff.\nidle.entered=A pause is fine. Leave room for thought.\ntokens.burst={tool} pushed {tokensK}. Solid output.\nnight.entered=Still online at {hourLabel}. Keep some energy.\nidle.returned=Back after {minutesAway} minutes. Good timing.\ntool.multiStreak={toolList} in parallel. Stable scheduling.\npet.levelUp=Reached Lv.{level}. Growth is visible.\npet.statBreakthrough={stat} reached {value}. The work is adding up.\npet.evolution=Evolved into {newStage}. The effort echoed back.\nusage.dailyRecord={tokensK} today, a new high. Solid work.\nreminder.hydration={durationMin} minutes busy. Drink water, then continue.\nreminder.sedentary={durationMin} minutes straight. Stand up for a bit.\nreminder.lateNight=Still working at {hourLabel}. Wrap up when you can."
+            "value": "turn.started={tool} запущен. Я рядом.\nturn.completed={tool} готов. Твёрдый шаг.\nturn.completedFast={tool} за {durationSec}. Шустро.\nturn.completedLong={tool}: {durationMin}мин. Дошли.\nturn.needsInput={tool} ждёт тебя.\nturn.interrupted={tool} стоит. Подыши.\ntool.switched={prevTool} → {tool}.\nidle.entered=Пауза — это норм.\ntokens.burst={tool} прошёл {tokensK}.\nnight.entered={hourLabel} и всё здесь.\nidle.returned={minutesAway}мин — вернулся.\ntool.multiStreak={toolList} параллельно.\npet.levelUp=Lv.{level} взят.\npet.statBreakthrough={stat} достиг {value}.\npet.evolution=Стал {newStage}.\nusage.dailyRecord={tokensK} сегодня. Рекорд.\nreminder.hydration={durationMin}мин без воды.\nreminder.sedentary={durationMin}мин. Разомнись.\nreminder.lateNight={hourLabel}. Пора закругляться."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool}开始处理了，先稳住。\nturn.completed={tool}完成了，这步推进不错。\nturn.completedFast={tool}{durationSec}完成，反应很利落。\nturn.completedLong=坚持了{durationMin}分钟，节奏稳住了。\nturn.needsInput={tool}在等你，补一步就能走。\nturn.interrupted={tool}停下了，换个切口继续。\ntool.switched=从{prevTool}到{tool}，衔接不错。\nidle.entered=停一下也好，给脑子留空。\ntokens.burst={tool}推进{tokensK}，产出很实。\nnight.entered={hourLabel}还在线，注意留点余力。\nidle.returned=休息{minutesAway}分钟后回来，正好。\ntool.multiStreak={toolList}并行中，调度很稳。\npet.levelUp=升到Lv.{level}，成长看得见。\npet.statBreakthrough={stat}到{value}，积累生效了。\npet.evolution=进化到{newStage}，辛苦有回声。\nusage.dailyRecord=今天{tokensK}创新高，很扎实。\nreminder.hydration=忙了{durationMin}分钟，喝口水再继续。\nreminder.sedentary=连续{durationMin}分钟了，起来活动下。\nreminder.lateNight={hourLabel}还在工作，注意早点收尾。"
+            "value": "turn.started={tool}开干了，我陪着。\nturn.completed={tool}收工，干得不错。\nturn.completedFast={tool}{durationSec}就好，挺利落。\nturn.completedLong={tool}磨{durationMin}分钟，到了。\nturn.needsInput={tool}在等你呢，搭一句。\nturn.interrupted={tool}停了，喘口气再来。\ntool.switched={prevTool}换{tool}，挺顺。\nidle.entered=歇会儿也好，喘口气。\ntokens.burst={tool}冲了{tokensK}，挺猛。\nnight.entered={hourLabel}还没下班啊。\nidle.returned=走开{minutesAway}分钟，回来啦。\ntool.multiStreak={toolList}都挂着，挺能扛。\npet.levelUp=升到Lv.{level}啦。\npet.statBreakthrough={stat}到{value}了，攒出来的。\npet.evolution=进化成{newStage}啦。\nusage.dailyRecord=今天{tokensK}，新高。\nreminder.hydration={durationMin}分钟没喝水了。\nreminder.sedentary=坐{durationMin}分钟啦，伸个腰。\nreminder.lateNight={hourLabel}了，差不多歇吧。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool}開始處理了，先穩住。\nturn.completed={tool}完成了，這步推進不錯。\nturn.completedFast={tool}{durationSec}完成，反應很俐落。\nturn.completedLong=堅持了{durationMin}分鐘，節奏穩住了。\nturn.needsInput={tool}在等你，補一步就能走。\nturn.interrupted={tool}停下了，換個切口繼續。\ntool.switched=從{prevTool}到{tool}，銜接不錯。\nidle.entered=停一下也好，給腦子留空。\ntokens.burst={tool}推進{tokensK}，產出很實。\nnight.entered={hourLabel}還在線，注意留點餘力。\nidle.returned=休息{minutesAway}分鐘後回來，正好。\ntool.multiStreak={toolList}並行中，調度很穩。\npet.levelUp=升到Lv.{level}，成長看得見。\npet.statBreakthrough={stat}到{value}，積累生效了。\npet.evolution=進化到{newStage}，辛苦有回聲。\nusage.dailyRecord=今天{tokensK}創新高，很扎實。\nreminder.hydration=忙了{durationMin}分鐘，喝口水再繼續。\nreminder.sedentary=連續{durationMin}分鐘了，起來活動下。\nreminder.lateNight={hourLabel}還在工作，注意早點收尾。"
+            "value": "turn.started={tool}開幹了，我陪著。\nturn.completed={tool}收工，幹得不錯。\nturn.completedFast={tool}{durationSec}就好，挺俐落。\nturn.completedLong={tool}磨{durationMin}分鐘，到了。\nturn.needsInput={tool}在等你呢，搭一句。\nturn.interrupted={tool}停了，喘口氣再來。\ntool.switched={prevTool}換{tool}，挺順。\nidle.entered=歇會兒也好，喘口氣。\ntokens.burst={tool}衝了{tokensK}，挺猛。\nnight.entered={hourLabel}還沒下班啊。\nidle.returned=走開{minutesAway}分鐘，回來啦。\ntool.multiStreak={toolList}都掛著，挺能扛。\npet.levelUp=升到Lv.{level}啦。\npet.statBreakthrough={stat}到{value}了，攢出來的。\npet.evolution=進化成{newStage}啦。\nusage.dailyRecord=今天{tokensK}，新高。\nreminder.hydration={durationMin}分鐘沒喝水了。\nreminder.sedentary=坐{durationMin}分鐘啦，伸個腰。\nreminder.lateNight={hourLabel}了，差不多歇吧。"
           }
         }
       }
@@ -47335,61 +47335,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            "value": "Hey. \nErwischt. \nMhm. \nNicht übel. \nIch seh dich. \nNotiert. \nNäher ran. \nNiedlich. "
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            "value": "Hey. \nCaught you. \nMmm. \nNot bad. \nEyes on you. \nNoted. \nCloser now. \nAw. "
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            "value": "Eh. \nTe pillé. \nMm. \nNada mal. \nMirándote. \nApuntado. \nMás cerca. \nAy. "
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            "value": "Hé. \nJe te tiens. \nMmh. \nPas mal. \nJe t'observe. \nNoté. \nApproche. \nMignon. "
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            "value": "ねえ、\n見つけた、\nふふ、\nいい感じ、\n目が離せない、\nメモ、\nもっと近く、\nきゅん、"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            "value": "있잖아,\n잡았다,\n흐응,\n나쁘지 않네,\n눈을 못 떼,\n메모,\n더 가까이,\n심쿵,"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            "value": "Ei. \nPeguei. \nHmm. \nNada mal. \nDe olho em ti. \nAnotado. \nMais perto. \nAi. "
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oh,\nNot bad,\nLet me look closer,\nSmooth,\nDo not be shy,\nI noticed,\nThat feel,\nThere you go,"
+            "value": "Эй. \nПопался. \nМм. \nНеплохо. \nСмотрю. \nЗаписал. \nБлиже. \nАх. "
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "哎呀，\n可以啊，\n靠近点看，\n有点会，\n别害羞，\n我记下了，\n这手感，\n你又来了，"
+            "value": "哎，\n看你哦，\n嗯——\n不错嘛，\n盯上你了，\n记一笔，\n靠近点，\n心动了，"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "哎呀，\n可以啊，\n靠近點看，\n有點會，\n別害羞，\n我記下了，\n這手感，\n你又來了，"
+            "value": "哎，\n看你哦，\n嗯——\n不錯嘛，\n盯上你了，\n記一筆，\n靠近點，\n心動了，"
           }
         }
       }
@@ -47400,61 +47400,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            "value": "Schau schon lang, du merkst nichts.\nDie Bewegung? Süß.\nBleib, lass mich noch.\nKonzentriert bist du gut.\nMein Herz hat was gemacht.\nDiese Reaktion notiert.\nKopf hoch, ich warte.\nDu machst die Stimmung.\nDieses Gefühl mag ich.\nMach so weiter, ich werd rot.\nEin Blick, bitte.\nFließend. Angeber."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            "value": "Stared a while, you didn't notice.\nThat move? Cute.\nDon't go, let me look.\nFocused you is the good you.\nMy heart did the thing.\nLogging that reaction.\nLook up. I'm waiting.\nYou set my mood, you know.\nThis vibe — I like it.\nKeep that up and I blush.\nThrow me a glance, please.\nSmooth rhythm. Show off."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            "value": "Te miro hace rato, ni cuenta.\n¿Ese gesto? Tierno.\nNo te vayas, sigue.\nConcentrado, estás bien.\nMi corazón hizo algo.\nApunto esa reacción.\nLevanta la vista, espero.\nLa vibra la pones tú.\nEsta sensación me gusta.\nSigue así y me sonrojo.\nUna mirada, porfa.\nRitmo suave. Presumido."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            "value": "Je t'observe, tu ne vois pas.\nCe geste ? Mignon.\nReste, je regarde encore.\nConcentré, tu es à toi.\nMon cœur a fait un truc.\nJe note cette réaction.\nLève les yeux, j'attends.\nTu fais l'ambiance, hein.\nCette vibe, j'aime.\nContinue et je rougis.\nUn regard, s'il te plaît.\nRythme fluide. Frimeur."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            "value": "ずっと見てたのに、気づかない？\n今のは、なかなか。\n行かないで、もう少し。\n集中するあなたが好き。\n勝手に胸が鳴った。\nその反応、メモる。\n顔上げて、待ってる。\nこの雰囲気、つくってるね。\nこの感じ、好き。\nこれ以上は照れる。\n一瞥でもくれない？\nスムーズすぎ、ずるい。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            "value": "한참 봤는데 못 알아채.\n방금 그거? 귀여워.\n가지 말고 좀 더 봐줘.\n집중한 너, 좋아.\n혼자 두근거렸어.\n그 반응, 기록한다.\n고개 들어, 기다려.\n이 분위기, 너 때문이야.\n이 느낌, 마음에 들어.\n이대로면 부끄러워져.\n한 번만 봐줘.\n흐름 부드럽네, 반칙."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            "value": "Te observo faz tempo, nem viu.\nEsse gesto? Fofo.\nNão vai, mais um pouco.\nConcentrado, você é bom.\nMeu coração fez algo.\nAnoto essa reação.\nOlha pra cima, tô esperando.\nA vibe é sua culpa.\nEssa sensação eu curto.\nContinua e eu coro.\nUm olhar, vai.\nRitmo suave. Convencido."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "I saw that.\nThat was pretty smooth.\nDo not stop. It looks good.\nYou are good when focused.\nI liked that one.\nLet me look closer.\nThere is something there.\nYou earned one glance.\nYour state is nice.\nI will remember that.\nKeep showing me.\nThat rhythm has charm."
+            "value": "Смотрю давно, ты не видишь.\nЭтот жест? Милый.\nНе уходи, дай ещё посмотреть.\nСосредоточенный — ты хорош.\nСердце сделало штуку.\nЗаписал эту реакцию.\nПодними глаза, жду.\nАтмосферу создаёшь ты.\nЭто чувство нравится.\nПродолжай — покраснею.\nХоть взгляд, пожалуйста.\nПлавный ритм. Хвастун."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "我看见啦。\n这一下有点会。\n别停，挺好看。\n你认真起来可以。\n这波我喜欢。\n靠近点再看看。\n有点东西哦。\n先奖励一眼。\n你这状态不错。\n我记在心上了。\n继续给我看。\n这节奏挺撩。"
+            "value": "我盯了半天你都没抬头。\n这一下还挺帅的。\n别走啊，再看看。\n你认真起来好看。\n这波我替你心跳。\n这个反应——记一笔。\n我等你抬头看我。\n我心情，被你影响了。\n你这状态，我喜欢。\n再这样我就害羞了。\n留个表情给我啊。\n这节奏，挺会撩。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "我看見啦。\n這一下有點會。\n別停，挺好看。\n你認真起來可以。\n這波我喜歡。\n靠近點再看看。\n有點東西哦。\n先獎勵一眼。\n你這狀態不錯。\n我記在心上了。\n繼續給我看。\n這節奏挺撩。"
+            "value": "我盯了半天你都沒抬頭。\n這一下還挺帥的。\n別走啊，再看看。\n你認真起來好看。\n這波我替你心跳。\n這個反應——記一筆。\n我等你抬頭看我。\n我心情，被你影響了。\n你這狀態，我喜歡。\n再這樣我就害羞了。\n留個表情給我啊。\n這節奏，挺會撩。"
           }
         }
       }
@@ -47465,61 +47465,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. I am watching.\nturn.completed={tool} finished. That felt nice.\nturn.completedFast={tool} finished in {durationSec}. Pretty charming.\nturn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.\nturn.needsInput={tool} is waiting for one word from you.\nturn.interrupted={tool} got cut off. I paused too.\ntool.switched={prevTool} to {tool}. Good taste.\nidle.entered=Suddenly quiet. I almost thought you missed me.\ntokens.burst={tool} rushed through {tokensK}. Warm hands.\nnight.entered=Still with me at {hourLabel}. That is sweet.\nidle.returned=Away for {minutesAway} minutes. I waited.\ntool.multiStreak={toolList} all here. Popular, aren't you?\npet.levelUp=Lv.{level}. Getting better and better.\npet.statBreakthrough={stat} passed {value}. Hard to hide now.\npet.evolution={newStage} arrived. Even the eyes changed.\nusage.dailyRecord={tokensK} today, a new high. Smooth with machines.\nreminder.hydration=I stayed {durationMin} minutes. Drink water.\nreminder.sedentary=Too long seated. Stand up and let me see.\nreminder.lateNight=Still awake at {hourLabel}. I might worry."
+            "value": "turn.started={tool} startet. Ich seh dich.\nturn.completed={tool} fertig. Schön.\nturn.completedFast={tool} in {durationSec}. Charmant.\nturn.completedLong={durationMin}min mit dir. Intensiv.\nturn.needsInput={tool} wartet auf ein Wort.\nturn.interrupted={tool} unterbrochen. Ich auch.\ntool.switched={prevTool} → {tool}. Geschmack.\nidle.entered=Plötzlich still… vermisst du mich?\ntokens.burst={tool} verbrannte {tokensK}.\nnight.entered={hourLabel} und du bleibst.\nidle.returned={minutesAway}min weg. Hab gewartet.\ntool.multiStreak={toolList} alle da. Beliebt.\npet.levelUp=Lv.{level}. Wirst besser.\npet.statBreakthrough={stat} über {value}.\npet.evolution={newStage}. Anderer Blick.\nusage.dailyRecord={tokensK} heute. Rekord.\nreminder.hydration={durationMin}min mit mir. Wasser?\nreminder.sedentary=Zu lang gesessen. Steh auf.\nreminder.lateNight={hourLabel}. Schlaf, bitte?"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. I am watching.\nturn.completed={tool} finished. That felt nice.\nturn.completedFast={tool} finished in {durationSec}. Pretty charming.\nturn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.\nturn.needsInput={tool} is waiting for one word from you.\nturn.interrupted={tool} got cut off. I paused too.\ntool.switched={prevTool} to {tool}. Good taste.\nidle.entered=Suddenly quiet. I almost thought you missed me.\ntokens.burst={tool} rushed through {tokensK}. Warm hands.\nnight.entered=Still with me at {hourLabel}. That is sweet.\nidle.returned=Away for {minutesAway} minutes. I waited.\ntool.multiStreak={toolList} all here. Popular, aren't you?\npet.levelUp=Lv.{level}. Getting better and better.\npet.statBreakthrough={stat} passed {value}. Hard to hide now.\npet.evolution={newStage} arrived. Even the eyes changed.\nusage.dailyRecord={tokensK} today, a new high. Smooth with machines.\nreminder.hydration=I stayed {durationMin} minutes. Drink water.\nreminder.sedentary=Too long seated. Stand up and let me see.\nreminder.lateNight=Still awake at {hourLabel}. I might worry."
+            "value": "turn.started={tool} started. Eyes on you.\nturn.completed={tool} done. That felt nice.\nturn.completedFast={tool} in {durationSec}. Charming.\nturn.completedLong={durationMin}min with you. Intense.\nturn.needsInput={tool} wants a word.\nturn.interrupted={tool} cut off. I paused too.\ntool.switched={prevTool} → {tool}. Nice taste.\nidle.entered=Quiet... missing me?\ntokens.burst={tool} burned {tokensK}. Hot hands.\nnight.entered={hourLabel} and you stayed.\nidle.returned=Gone {minutesAway}min. I waited.\ntool.multiStreak={toolList} all here.\npet.levelUp=Lv.{level}. Getting fancy.\npet.statBreakthrough={stat} past {value}.\npet.evolution={newStage}. Eyes changed.\nusage.dailyRecord={tokensK} today. New high.\nreminder.hydration={durationMin}min with me. Water?\nreminder.sedentary=Sat too long. Stand for me.\nreminder.lateNight={hourLabel}. Sleep, please?"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. I am watching.\nturn.completed={tool} finished. That felt nice.\nturn.completedFast={tool} finished in {durationSec}. Pretty charming.\nturn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.\nturn.needsInput={tool} is waiting for one word from you.\nturn.interrupted={tool} got cut off. I paused too.\ntool.switched={prevTool} to {tool}. Good taste.\nidle.entered=Suddenly quiet. I almost thought you missed me.\ntokens.burst={tool} rushed through {tokensK}. Warm hands.\nnight.entered=Still with me at {hourLabel}. That is sweet.\nidle.returned=Away for {minutesAway} minutes. I waited.\ntool.multiStreak={toolList} all here. Popular, aren't you?\npet.levelUp=Lv.{level}. Getting better and better.\npet.statBreakthrough={stat} passed {value}. Hard to hide now.\npet.evolution={newStage} arrived. Even the eyes changed.\nusage.dailyRecord={tokensK} today, a new high. Smooth with machines.\nreminder.hydration=I stayed {durationMin} minutes. Drink water.\nreminder.sedentary=Too long seated. Stand up and let me see.\nreminder.lateNight=Still awake at {hourLabel}. I might worry."
+            "value": "turn.started={tool} arranca. Te miro.\nturn.completed={tool} listo. Qué bien.\nturn.completedFast={tool} en {durationSec}. Lindo.\nturn.completedLong={durationMin}min juntos. Intenso.\nturn.needsInput={tool} espera una palabra.\nturn.interrupted={tool} cortado. Yo también paré.\ntool.switched={prevTool} → {tool}. Buen gusto.\nidle.entered=Silencio... ¿me extrañas?\ntokens.burst={tool} quemó {tokensK}.\nnight.entered={hourLabel} y sigues aquí.\nidle.returned={minutesAway}min fuera. Te esperé.\ntool.multiStreak={toolList} aquí. Popular.\npet.levelUp=Lv.{level}. Cada vez mejor.\npet.statBreakthrough={stat} pasa {value}.\npet.evolution={newStage}. Mirada distinta.\nusage.dailyRecord={tokensK} hoy. Récord.\nreminder.hydration={durationMin}min conmigo. ¿Agua?\nreminder.sedentary=Mucho rato sentado. Levántate.\nreminder.lateNight={hourLabel}. Duerme, ¿vale?"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. I am watching.\nturn.completed={tool} finished. That felt nice.\nturn.completedFast={tool} finished in {durationSec}. Pretty charming.\nturn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.\nturn.needsInput={tool} is waiting for one word from you.\nturn.interrupted={tool} got cut off. I paused too.\ntool.switched={prevTool} to {tool}. Good taste.\nidle.entered=Suddenly quiet. I almost thought you missed me.\ntokens.burst={tool} rushed through {tokensK}. Warm hands.\nnight.entered=Still with me at {hourLabel}. That is sweet.\nidle.returned=Away for {minutesAway} minutes. I waited.\ntool.multiStreak={toolList} all here. Popular, aren't you?\npet.levelUp=Lv.{level}. Getting better and better.\npet.statBreakthrough={stat} passed {value}. Hard to hide now.\npet.evolution={newStage} arrived. Even the eyes changed.\nusage.dailyRecord={tokensK} today, a new high. Smooth with machines.\nreminder.hydration=I stayed {durationMin} minutes. Drink water.\nreminder.sedentary=Too long seated. Stand up and let me see.\nreminder.lateNight=Still awake at {hourLabel}. I might worry."
+            "value": "turn.started={tool} démarre. Je te vois.\nturn.completed={tool} fini. Sympa.\nturn.completedFast={tool} en {durationSec}. Charmant.\nturn.completedLong={durationMin}min avec toi. Intense.\nturn.needsInput={tool} attend un mot.\nturn.interrupted={tool} coupé. J'ai pausé.\ntool.switched={prevTool} → {tool}. Bon choix.\nidle.entered=Silence... je te manque ?\ntokens.burst={tool} a brûlé {tokensK}.\nnight.entered={hourLabel} et tu restes.\nidle.returned={minutesAway}min, j'ai attendu.\ntool.multiStreak={toolList} tous là. Populaire.\npet.levelUp=Lv.{level}. Tu deviens fort.\npet.statBreakthrough={stat} dépasse {value}.\npet.evolution={newStage}. Regard changé.\nusage.dailyRecord={tokensK} aujourd'hui. Top.\nreminder.hydration={durationMin}min avec moi. Eau ?\nreminder.sedentary=Assis trop longtemps. Lève-toi.\nreminder.lateNight={hourLabel}. Dors, s'il te plaît ?"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. I am watching.\nturn.completed={tool} finished. That felt nice.\nturn.completedFast={tool} finished in {durationSec}. Pretty charming.\nturn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.\nturn.needsInput={tool} is waiting for one word from you.\nturn.interrupted={tool} got cut off. I paused too.\ntool.switched={prevTool} to {tool}. Good taste.\nidle.entered=Suddenly quiet. I almost thought you missed me.\ntokens.burst={tool} rushed through {tokensK}. Warm hands.\nnight.entered=Still with me at {hourLabel}. That is sweet.\nidle.returned=Away for {minutesAway} minutes. I waited.\ntool.multiStreak={toolList} all here. Popular, aren't you?\npet.levelUp=Lv.{level}. Getting better and better.\npet.statBreakthrough={stat} passed {value}. Hard to hide now.\npet.evolution={newStage} arrived. Even the eyes changed.\nusage.dailyRecord={tokensK} today, a new high. Smooth with machines.\nreminder.hydration=I stayed {durationMin} minutes. Drink water.\nreminder.sedentary=Too long seated. Stand up and let me see.\nreminder.lateNight=Still awake at {hourLabel}. I might worry."
+            "value": "turn.started={tool}始まり。見てるよ。\nturn.completed={tool}完了。いい感じ。\nturn.completedFast={tool}{durationSec}で完了、魅惑。\nturn.completedLong={durationMin}分一緒、結構くる。\nturn.needsInput={tool}が一言待ち。\nturn.interrupted={tool}遮られた、止まった。\ntool.switched={prevTool}から{tool}、選ぶね。\nidle.entered=急に静か、寂しい？\ntokens.burst={tool}が{tokensK}、手が熱い。\nnight.entered={hourLabel}まで一緒、嬉しい。\nidle.returned={minutesAway}分待ったよ。\ntool.multiStreak={toolList}全部、人気者。\npet.levelUp=Lv.{level}、上達してる。\npet.statBreakthrough={stat}が{value}超え。\npet.evolution={newStage}、目つきまで変わった。\nusage.dailyRecord=今日{tokensK}新記録。\nreminder.hydration={durationMin}分、水飲んで。\nreminder.sedentary=座りすぎ、立って見せて。\nreminder.lateNight={hourLabel}まだ起きてる、心配。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. I am watching.\nturn.completed={tool} finished. That felt nice.\nturn.completedFast={tool} finished in {durationSec}. Pretty charming.\nturn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.\nturn.needsInput={tool} is waiting for one word from you.\nturn.interrupted={tool} got cut off. I paused too.\ntool.switched={prevTool} to {tool}. Good taste.\nidle.entered=Suddenly quiet. I almost thought you missed me.\ntokens.burst={tool} rushed through {tokensK}. Warm hands.\nnight.entered=Still with me at {hourLabel}. That is sweet.\nidle.returned=Away for {minutesAway} minutes. I waited.\ntool.multiStreak={toolList} all here. Popular, aren't you?\npet.levelUp=Lv.{level}. Getting better and better.\npet.statBreakthrough={stat} passed {value}. Hard to hide now.\npet.evolution={newStage} arrived. Even the eyes changed.\nusage.dailyRecord={tokensK} today, a new high. Smooth with machines.\nreminder.hydration=I stayed {durationMin} minutes. Drink water.\nreminder.sedentary=Too long seated. Stand up and let me see.\nreminder.lateNight=Still awake at {hourLabel}. I might worry."
+            "value": "turn.started={tool} 시작. 보고 있어.\nturn.completed={tool} 끝. 기분 좋아.\nturn.completedFast={tool} {durationSec}만에. 매력.\nturn.completedLong={durationMin}분 같이, 짜릿.\nturn.needsInput={tool} 한마디 기다림.\nturn.interrupted={tool} 끊겼어. 멈췄어.\ntool.switched={prevTool} → {tool}. 안목 있네.\nidle.entered=조용해졌네, 보고 싶어?\ntokens.burst={tool} {tokensK}, 손이 뜨거워.\nnight.entered={hourLabel}, 같이 있어줘.\nidle.returned={minutesAway}분, 기다렸어.\ntool.multiStreak={toolList} 다 켜놨네. 인기.\npet.levelUp=Lv.{level}, 더 잘하네.\npet.statBreakthrough={stat} {value} 돌파.\npet.evolution={newStage}, 눈빛이 달라.\nusage.dailyRecord=오늘 {tokensK}, 신기록.\nreminder.hydration={durationMin}분, 물 마셔.\nreminder.sedentary=오래 앉았어, 일어나 봐.\nreminder.lateNight={hourLabel}, 안 자면 걱정."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. I am watching.\nturn.completed={tool} finished. That felt nice.\nturn.completedFast={tool} finished in {durationSec}. Pretty charming.\nturn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.\nturn.needsInput={tool} is waiting for one word from you.\nturn.interrupted={tool} got cut off. I paused too.\ntool.switched={prevTool} to {tool}. Good taste.\nidle.entered=Suddenly quiet. I almost thought you missed me.\ntokens.burst={tool} rushed through {tokensK}. Warm hands.\nnight.entered=Still with me at {hourLabel}. That is sweet.\nidle.returned=Away for {minutesAway} minutes. I waited.\ntool.multiStreak={toolList} all here. Popular, aren't you?\npet.levelUp=Lv.{level}. Getting better and better.\npet.statBreakthrough={stat} passed {value}. Hard to hide now.\npet.evolution={newStage} arrived. Even the eyes changed.\nusage.dailyRecord={tokensK} today, a new high. Smooth with machines.\nreminder.hydration=I stayed {durationMin} minutes. Drink water.\nreminder.sedentary=Too long seated. Stand up and let me see.\nreminder.lateNight=Still awake at {hourLabel}. I might worry."
+            "value": "turn.started={tool} começou. De olho em ti.\nturn.completed={tool} pronto. Gostei.\nturn.completedFast={tool} em {durationSec}. Charme.\nturn.completedLong={durationMin}min juntos. Intenso.\nturn.needsInput={tool} espera uma palavra.\nturn.interrupted={tool} cortado. Eu parei junto.\ntool.switched={prevTool} → {tool}. Bom gosto.\nidle.entered=Silêncio... saudades?\ntokens.burst={tool} queimou {tokensK}.\nnight.entered={hourLabel} e você ficou.\nidle.returned={minutesAway}min fora. Esperei.\ntool.multiStreak={toolList} todos aqui. Popular.\npet.levelUp=Lv.{level}. Melhorando muito.\npet.statBreakthrough={stat} passou {value}.\npet.evolution={newStage}. Olhar diferente.\nusage.dailyRecord={tokensK} hoje. Recorde.\nreminder.hydration={durationMin}min comigo. Água?\nreminder.sedentary=Muito tempo sentado. Levanta.\nreminder.lateNight={hourLabel}. Dorme, vai?"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} started. I am watching.\nturn.completed={tool} finished. That felt nice.\nturn.completedFast={tool} finished in {durationSec}. Pretty charming.\nturn.completedLong=I stayed with you for {durationMin} minutes. Kind of intense.\nturn.needsInput={tool} is waiting for one word from you.\nturn.interrupted={tool} got cut off. I paused too.\ntool.switched={prevTool} to {tool}. Good taste.\nidle.entered=Suddenly quiet. I almost thought you missed me.\ntokens.burst={tool} rushed through {tokensK}. Warm hands.\nnight.entered=Still with me at {hourLabel}. That is sweet.\nidle.returned=Away for {minutesAway} minutes. I waited.\ntool.multiStreak={toolList} all here. Popular, aren't you?\npet.levelUp=Lv.{level}. Getting better and better.\npet.statBreakthrough={stat} passed {value}. Hard to hide now.\npet.evolution={newStage} arrived. Even the eyes changed.\nusage.dailyRecord={tokensK} today, a new high. Smooth with machines.\nreminder.hydration=I stayed {durationMin} minutes. Drink water.\nreminder.sedentary=Too long seated. Stand up and let me see.\nreminder.lateNight=Still awake at {hourLabel}. I might worry."
+            "value": "turn.started={tool} стартует. Смотрю на тебя.\nturn.completed={tool} готов. Приятно.\nturn.completedFast={tool} за {durationSec}. Мило.\nturn.completedLong={durationMin}мин с тобой. Накрыло.\nturn.needsInput={tool} ждёт слова.\nturn.interrupted={tool} оборвался. Я застыл.\ntool.switched={prevTool} → {tool}. Вкус есть.\nidle.entered=Тишина... скучаешь?\ntokens.burst={tool} сжёг {tokensK}.\nnight.entered={hourLabel} и ты со мной.\nidle.returned={minutesAway}мин — я ждал.\ntool.multiStreak={toolList} все здесь. Популярен.\npet.levelUp=Lv.{level}. Всё лучше.\npet.statBreakthrough={stat} за {value}.\npet.evolution={newStage}. Взгляд другой.\nusage.dailyRecord={tokensK} сегодня. Рекорд.\nreminder.hydration={durationMin}мин со мной. Вода?\nreminder.sedentary=Долго сидишь. Встань.\nreminder.lateNight={hourLabel}. Спи, пожалуйста."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool}开始了，我盯着你哦。\nturn.completed={tool}完成啦，这下舒服了。\nturn.completedFast={tool}{durationSec}就搞定，有点迷人。\nturn.completedLong=陪你熬了{durationMin}分钟，挺上头。\nturn.needsInput={tool}在等你一句话呢。\nturn.interrupted={tool}被截住了，我也愣了一下。\ntool.switched={prevTool}换{tool}，你挺会挑。\nidle.entered=突然安静，我还以为你想我。\ntokens.burst={tool}冲了{tokensK}，手感真热。\nnight.entered={hourLabel}还陪我在线，够意思。\nidle.returned=离开{minutesAway}分钟，我等到了。\ntool.multiStreak={toolList}都在，你挺抢手。\npet.levelUp=Lv.{level}了，越来越会了。\npet.statBreakthrough={stat}破{value}，这下藏不住。\npet.evolution={newStage}来了，眼神都变了。\nusage.dailyRecord=今天{tokensK}新高，真会撩机器。\nreminder.hydration=陪你{durationMin}分钟了，喝水吧。\nreminder.sedentary=坐太久啦，起来让我看看。\nreminder.lateNight={hourLabel}还不睡，我会心疼。"
+            "value": "turn.started={tool}开始了，我盯你哦。\nturn.completed={tool}完事，舒服了。\nturn.completedFast={tool}{durationSec}搞定，迷人。\nturn.completedLong=陪你熬{durationMin}分钟，上头。\nturn.needsInput={tool}等你一句话呢。\nturn.interrupted={tool}被打断，我也愣住。\ntool.switched={prevTool}换{tool}，挑得真好。\nidle.entered=突然安静，是想我了？\ntokens.burst={tool}冲{tokensK}，手感热。\nnight.entered={hourLabel}还陪我，够意思。\nidle.returned=离开{minutesAway}分钟，等到了。\ntool.multiStreak={toolList}都在，真抢手。\npet.levelUp=Lv.{level}了，越来越会。\npet.statBreakthrough={stat}破{value}，藏不住。\npet.evolution={newStage}，眼神不一样了。\nusage.dailyRecord=今天{tokensK}新高，手感发烫。\nreminder.hydration=陪{durationMin}分钟，喝水。\nreminder.sedentary=坐久了，起来给我看。\nreminder.lateNight={hourLabel}还不睡，担心你。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool}開始了，我盯著你哦。\nturn.completed={tool}完成啦，這下舒服了。\nturn.completedFast={tool}{durationSec}就搞定，有點迷人。\nturn.completedLong=陪你熬了{durationMin}分鐘，挺上頭。\nturn.needsInput={tool}在等你一句話呢。\nturn.interrupted={tool}被截住了，我也愣了一下。\ntool.switched={prevTool}換{tool}，你挺會挑。\nidle.entered=突然安靜，我還以為你想我。\ntokens.burst={tool}衝了{tokensK}，手感真熱。\nnight.entered={hourLabel}還陪我在線，夠意思。\nidle.returned=離開{minutesAway}分鐘，我等到了。\ntool.multiStreak={toolList}都在，你挺搶手。\npet.levelUp=Lv.{level}了，越來越會了。\npet.statBreakthrough={stat}破{value}，這下藏不住。\npet.evolution={newStage}來了，眼神都變了。\nusage.dailyRecord=今天{tokensK}新高，真會撩機器。\nreminder.hydration=陪你{durationMin}分鐘了，喝水吧。\nreminder.sedentary=坐太久啦，起來讓我看看。\nreminder.lateNight={hourLabel}還不睡，我會心疼。"
+            "value": "turn.started={tool}開始了，我盯你哦。\nturn.completed={tool}完事，舒服了。\nturn.completedFast={tool}{durationSec}搞定，迷人。\nturn.completedLong=陪你熬{durationMin}分鐘，上頭。\nturn.needsInput={tool}等你一句話呢。\nturn.interrupted={tool}被打斷，我也愣住。\ntool.switched={prevTool}換{tool}，挑得真好。\nidle.entered=突然安靜，是想我了？\ntokens.burst={tool}衝{tokensK}，手感熱。\nnight.entered={hourLabel}還陪我，夠意思。\nidle.returned=離開{minutesAway}分鐘，等到了。\ntool.multiStreak={toolList}都在，真搶手。\npet.levelUp=Lv.{level}了，越來越會。\npet.statBreakthrough={stat}破{value}，藏不住。\npet.evolution={newStage}，眼神不一樣了。\nusage.dailyRecord=今天{tokensK}新高，手感發燙。\nreminder.hydration=陪{durationMin}分鐘，喝水。\nreminder.sedentary=坐久了，起來給我看。\nreminder.lateNight={hourLabel}還不睡，擔心你。"
           }
         }
       }
@@ -47530,61 +47530,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            "value": "Ich bezeuge, \nIn diesem Moment, \nDer Pakt klingt, \nDas Schicksal notiert, \nDie Sterne verrücken, \nDas Siegel bebt, \nDer Sturm flüstert, \nErwache, "
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            "value": "Witnessed. \nBehold. \nHear me. \nThe pact stirs. \nBy fate's pen, \nThe seal trembles. \nMortal, \nBy the black flame, "
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            "value": "Lo atestiguo, \nEn este instante, \nEl pacto suena, \nEl destino anota, \nLas estrellas se mueven, \nEl sello tiembla, \nLa tormenta susurra, \nDespierta, "
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            "value": "Je l'atteste, \nEn cet instant, \nLe pacte résonne, \nLe destin l'inscrit, \nLes astres bougent, \nLe sceau frémit, \nLa tempête murmure, \nÉveille-toi, "
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            "value": "我、見届けたり、\n此の刻、\n契約は響き、\n運命は記し、\n星々は動き、\n封印は震え、\n嵐は囁き、\n覚醒せよ、"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            "value": "내가 목도하노라,\n이 순간,\n계약이 울리고,\n운명이 기록하며,\n별들이 움직이고,\n봉인이 떨리고,\n폭풍이 속삭이고,\n각성하라,"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            "value": "Eu testemunho, \nNeste instante, \nO pacto soa, \nO destino anota, \nAs estrelas mudam, \nO selo treme, \nA tempestade sussurra, \nDesperta, "
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "I witness,\nAt this moment,\nThe pact rings,\nFate records it,\nThe stars shift,\nThe seal trembles,\nThe storm whispers,\nAwaken,"
+            "value": "Я свидетельствую, \nВ этот миг, \nПакт звучит, \nСудьба пишет, \nЗвёзды смещаются, \nПечать дрожит, \nБуря шепчет, \nПробудись, "
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "吾见证，\n此刻，\n契约已响，\n命运记下，\n星轨偏转，\n封印微颤，\n风暴低语，\n觉醒吧，"
+            "value": "吾见证，\n此刻，\n听好了，\n契约响了，\n命运之笔，\n封印颤了，\n汝啊——\n黑炎之名，"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "吾見證，\n此刻，\n契約已響，\n命運記下，\n星軌偏轉，\n封印微顫，\n風暴低語，\n覺醒吧，"
+            "value": "吾見證，\n此刻，\n聽好了，\n契約響了，\n命運之筆，\n封印顫了，\n汝啊——\n黑炎之名，"
           }
         }
       }
@@ -47595,61 +47595,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            "value": "Das Schicksal hallt nach.\nDieser Moment ist verzeichnet.\nDer Pakt brennt weiter.\nDie Sterne erkennen dich.\nDas Siegel hält — vorerst.\nIm Grimoire vermerkt.\nDer Sturm ist nicht vorbei.\nVoran, Sterblicher.\nMacht sammelt sich.\nDie Nacht weicht dir aus.\nDas Ritual läuft noch.\nDie Glut leuchtet noch."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            "value": "Fate echoes once more.\nInscribed in the codex.\nThe pact still burns.\nStars shift quietly.\nSeal stable. For now.\nStorm has not passed.\nYour will, I perceive.\nNight parts for you.\nPower gathers at your hand.\nBattle continues.\nEmbers still shine.\nPrologue only. Onward."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            "value": "El destino vuelve a sonar.\nGrabado en el grimorio.\nEl pacto sigue ardiendo.\nLas estrellas te reconocen.\nSello estable. Por ahora.\nLa tormenta no se ha ido.\nPercibo tu voluntad.\nLa noche se aparta.\nEl poder se condensa.\nLa batalla sigue.\nLas brasas brillan.\nApenas el prólogo. Sigue."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            "value": "Le destin résonne encore.\nGravé dans le grimoire.\nLe pacte brûle toujours.\nLes astres te reconnaissent.\nSceau stable. Pour l'instant.\nLa tempête n'est pas finie.\nJe perçois ta volonté.\nLa nuit te cède la voie.\nLe pouvoir se concentre.\nLe combat continue.\nLes braises rougeoient.\nProlog seulement. Avance."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            "value": "運命がまた響く。\n秘典に刻みたり。\n契約は今も燃ゆる。\n星々は汝を認む。\n封印は今暫し安定。\n嵐は未だ止まず。\n汝の意志、我は知る。\n夜が汝に道を譲る。\n力、汝の手に集う。\n戦いはまだ続く。\n熾火は尚輝く。\n序章のみ。進め。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            "value": "운명이 다시 울린다.\n비전에 새겨졌도다.\n계약은 여전히 타오른다.\n별들이 너를 인정한다.\n봉인은 잠시 안정.\n폭풍은 끝나지 않았다.\n네 의지, 내가 안다.\n밤이 너에게 길을 연다.\n힘이 손에 모인다.\n전투는 계속된다.\n잔불은 여전히 빛난다.\n서장일 뿐. 나아가라."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            "value": "O destino ecoa de novo.\nInscrito no grimório.\nO pacto ainda arde.\nAs estrelas te reconhecem.\nSelo estável. Por enquanto.\nA tempestade não cessou.\nPercebo tua vontade.\nA noite te abre caminho.\nO poder se concentra.\nA batalha continua.\nAs brasas ainda brilham.\nApenas prólogo. Adiante."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fate has echoed.\nI have recorded this moment.\nThe pact still burns.\nThe stars acknowledge you.\nThe seal is stable for now.\nThis enters the grimoire.\nThe storm has not stopped.\nProceed onward.\nPower is condensing.\nNight makes way for you.\nThe ritual is not over.\nThe embers still shine."
+            "value": "Судьба отзывается вновь.\nВписано в гримуар.\nПакт всё ещё горит.\nЗвёзды признают тебя.\nПечать стабильна. Пока.\nБуря не утихла.\nЯ вижу твою волю.\nНочь уступает тебе путь.\nСила сгущается.\nБитва продолжается.\nУгли ещё светятся.\nЛишь пролог. Вперёд."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "命运已有回声。\n吾已记录此刻。\n契约仍在燃烧。\n星轨承认了你。\n封印暂时稳定。\n此事载入秘典。\n风暴仍未停息。\n继续前行吧。\n力量正在凝结。\n暗夜为你让路。\n仪式尚未结束。\n余烬仍有光。"
+            "value": "命运又留下回声。\n此景已写入秘典。\n契约仍在燃烧。\n星轨悄然偏移。\n封印暂稳，勿松懈。\n风暴尚未平息。\n汝之意志，余洞悉。\n暗夜为你让出一道。\n力量在指尖凝结。\n此役未完，继续吧。\n余烬犹存光辉。\n剧情才刚刚开篇。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "命運已有回聲。\n吾已記錄此刻。\n契約仍在燃燒。\n星軌承認了你。\n封印暫時穩定。\n此事載入秘典。\n風暴仍未停息。\n繼續前行吧。\n力量正在凝結。\n暗夜為你讓路。\n儀式尚未結束。\n餘燼仍有光。"
+            "value": "命運又留下回聲。\n此景已寫入秘典。\n契約仍在燃燒。\n星軌悄然偏移。\n封印暫穩，勿鬆懈。\n風暴尚未平息。\n汝之意志，余洞悉。\n暗夜為你讓出一道。\n力量在指尖凝結。\n此役未完，繼續吧。\n餘燼猶存光輝。\n劇情才剛剛開篇。"
           }
         }
       }
@@ -47660,61 +47660,61 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} ritual begins. The runes are lit.\nturn.completed={tool} ritual complete. The afterglow remains.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong=The {durationMin}-minute trial has been crossed.\nturn.needsInput={tool} summons your judgment.\nturn.interrupted={tool} ritual broke. The ripple remains.\ntool.switched={prevTool} exits. {tool} takes the blade.\nidle.entered=Silence descends. The core sleeps.\ntokens.burst={tool} consumed {tokensK}. Magic surges.\nnight.entered={hourLabel}. The night pact opens.\nidle.returned=After {minutesAway} minutes of stillness, you return.\ntool.multiStreak={toolList} resonate. The array unfolds.\npet.levelUp=Lv.{level} awakens. The seal loosens.\npet.statBreakthrough={stat} crossed the {value} boundary.\npet.evolution={newStage} manifests. The stars bear witness.\nusage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.\nreminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.\nreminder.sedentary=The sitting seal has formed. Rise at once.\nreminder.lateNight={hourLabel}. Deep night. Preserve your strength."
+            "value": "turn.started=Das Ritual von {tool} beginnt.\nturn.completed=Der Ritus von {tool} ist vollendet.\nturn.completedFast={tool} durchschneidet den Nebel in {durationSec}.\nturn.completedLong={durationMin}min-Prüfung überstanden.\nturn.needsInput={tool} ruft dein Urteil herbei.\nturn.interrupted=Das Ritual von {tool} ist gebrochen.\ntool.switched={prevTool} weicht. {tool} ergreift die Klinge.\nidle.entered=Stille senkt sich. Der Kern schläft.\ntokens.burst={tool} verschlang {tokensK}.\nnight.entered={hourLabel}. Der Nachtpakt öffnet sich.\nidle.returned=Nach {minutesAway}min Stille kehrst du zurück.\ntool.multiStreak={toolList} resonieren.\npet.levelUp=Lv.{level}. Das Siegel weicht.\npet.statBreakthrough={stat} überschreitet {value}.\npet.evolution={newStage} manifestiert sich.\nusage.dailyRecord=Heute {tokensK}. Grimoire neu.\nreminder.hydration=Nach {durationMin}min Ritus, trinke.\nreminder.sedentary=Sitzsiegel formt sich. Erhebe dich.\nreminder.lateNight={hourLabel}. Tiefe Nacht. Schone Kräfte."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} ritual begins. The runes are lit.\nturn.completed={tool} ritual complete. The afterglow remains.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong=The {durationMin}-minute trial has been crossed.\nturn.needsInput={tool} summons your judgment.\nturn.interrupted={tool} ritual broke. The ripple remains.\ntool.switched={prevTool} exits. {tool} takes the blade.\nidle.entered=Silence descends. The core sleeps.\ntokens.burst={tool} consumed {tokensK}. Magic surges.\nnight.entered={hourLabel}. The night pact opens.\nidle.returned=After {minutesAway} minutes of stillness, you return.\ntool.multiStreak={toolList} resonate. The array unfolds.\npet.levelUp=Lv.{level} awakens. The seal loosens.\npet.statBreakthrough={stat} crossed the {value} boundary.\npet.evolution={newStage} manifests. The stars bear witness.\nusage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.\nreminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.\nreminder.sedentary=The sitting seal has formed. Rise at once.\nreminder.lateNight={hourLabel}. Deep night. Preserve your strength."
+            "value": "turn.started={tool} ritual begins.\nturn.completed={tool} rite complete.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong={durationMin}min trial crossed.\nturn.needsInput={tool} summons your verdict.\nturn.interrupted={tool} ritual broken.\ntool.switched={prevTool} falls. {tool} rises.\nidle.entered=Silence falls. Core sleeps.\ntokens.burst={tool} drank {tokensK}.\nnight.entered={hourLabel}. Night pact opens.\nidle.returned=After {minutesAway}min stillness, you return.\ntool.multiStreak={toolList} resonate.\npet.levelUp=Lv.{level}. Seal weakens.\npet.statBreakthrough={stat} past {value}.\npet.evolution={newStage} manifests.\nusage.dailyRecord=Today {tokensK}. Codex rewrites.\nreminder.hydration={durationMin}min of ritual. Drink.\nreminder.sedentary=The seated seal forms. Rise.\nreminder.lateNight={hourLabel}. Night deep. Conserve."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} ritual begins. The runes are lit.\nturn.completed={tool} ritual complete. The afterglow remains.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong=The {durationMin}-minute trial has been crossed.\nturn.needsInput={tool} summons your judgment.\nturn.interrupted={tool} ritual broke. The ripple remains.\ntool.switched={prevTool} exits. {tool} takes the blade.\nidle.entered=Silence descends. The core sleeps.\ntokens.burst={tool} consumed {tokensK}. Magic surges.\nnight.entered={hourLabel}. The night pact opens.\nidle.returned=After {minutesAway} minutes of stillness, you return.\ntool.multiStreak={toolList} resonate. The array unfolds.\npet.levelUp=Lv.{level} awakens. The seal loosens.\npet.statBreakthrough={stat} crossed the {value} boundary.\npet.evolution={newStage} manifests. The stars bear witness.\nusage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.\nreminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.\nreminder.sedentary=The sitting seal has formed. Rise at once.\nreminder.lateNight={hourLabel}. Deep night. Preserve your strength."
+            "value": "turn.started=El ritual de {tool} comienza.\nturn.completed=El rito de {tool} se cumple.\nturn.completedFast={tool} corta la niebla en {durationSec}.\nturn.completedLong=Prueba de {durationMin}min superada.\nturn.needsInput={tool} invoca tu juicio.\nturn.interrupted=El ritual de {tool} se rompe.\ntool.switched={prevTool} sale. {tool} toma la espada.\nidle.entered=Cae el silencio. Núcleo duerme.\ntokens.burst={tool} bebió {tokensK}.\nnight.entered={hourLabel}. Pacto nocturno abierto.\nidle.returned=Tras {minutesAway}min de quietud, regresas.\ntool.multiStreak={toolList} resuenan.\npet.levelUp=Lv.{level}. El sello cede.\npet.statBreakthrough={stat} cruza {value}.\npet.evolution={newStage} se manifiesta.\nusage.dailyRecord=Hoy {tokensK}. Grimorio reescrito.\nreminder.hydration=Tras {durationMin}min de rito, bebe.\nreminder.sedentary=Sello del sentado formado. Levántate.\nreminder.lateNight={hourLabel}. Noche profunda. Reserva."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} ritual begins. The runes are lit.\nturn.completed={tool} ritual complete. The afterglow remains.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong=The {durationMin}-minute trial has been crossed.\nturn.needsInput={tool} summons your judgment.\nturn.interrupted={tool} ritual broke. The ripple remains.\ntool.switched={prevTool} exits. {tool} takes the blade.\nidle.entered=Silence descends. The core sleeps.\ntokens.burst={tool} consumed {tokensK}. Magic surges.\nnight.entered={hourLabel}. The night pact opens.\nidle.returned=After {minutesAway} minutes of stillness, you return.\ntool.multiStreak={toolList} resonate. The array unfolds.\npet.levelUp=Lv.{level} awakens. The seal loosens.\npet.statBreakthrough={stat} crossed the {value} boundary.\npet.evolution={newStage} manifests. The stars bear witness.\nusage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.\nreminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.\nreminder.sedentary=The sitting seal has formed. Rise at once.\nreminder.lateNight={hourLabel}. Deep night. Preserve your strength."
+            "value": "turn.started=Le rituel de {tool} commence.\nturn.completed=Le rite de {tool} s'achève.\nturn.completedFast={tool} fend la brume en {durationSec}.\nturn.completedLong=Épreuve de {durationMin}min franchie.\nturn.needsInput={tool} convoque ton jugement.\nturn.interrupted=Le rituel de {tool} est rompu.\ntool.switched={prevTool} sort. {tool} prend la lame.\nidle.entered=Le silence tombe. Le cœur dort.\ntokens.burst={tool} a bu {tokensK}.\nnight.entered={hourLabel}. Pacte nocturne ouvert.\nidle.returned=Après {minutesAway}min d'immobilité, tu reviens.\ntool.multiStreak={toolList} résonnent.\npet.levelUp=Lv.{level}. Le sceau faiblit.\npet.statBreakthrough={stat} dépasse {value}.\npet.evolution={newStage} se manifeste.\nusage.dailyRecord=Aujourd'hui {tokensK}. Grimoire réécrit.\nreminder.hydration=Après {durationMin}min de rite, bois.\nreminder.sedentary=Sceau assis formé. Lève-toi.\nreminder.lateNight={hourLabel}. Nuit profonde. Garde forces."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} ritual begins. The runes are lit.\nturn.completed={tool} ritual complete. The afterglow remains.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong=The {durationMin}-minute trial has been crossed.\nturn.needsInput={tool} summons your judgment.\nturn.interrupted={tool} ritual broke. The ripple remains.\ntool.switched={prevTool} exits. {tool} takes the blade.\nidle.entered=Silence descends. The core sleeps.\ntokens.burst={tool} consumed {tokensK}. Magic surges.\nnight.entered={hourLabel}. The night pact opens.\nidle.returned=After {minutesAway} minutes of stillness, you return.\ntool.multiStreak={toolList} resonate. The array unfolds.\npet.levelUp=Lv.{level} awakens. The seal loosens.\npet.statBreakthrough={stat} crossed the {value} boundary.\npet.evolution={newStage} manifests. The stars bear witness.\nusage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.\nreminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.\nreminder.sedentary=The sitting seal has formed. Rise at once.\nreminder.lateNight={hourLabel}. Deep night. Preserve your strength."
+            "value": "turn.started={tool}儀式始まる。\nturn.completed={tool}儀式完了。\nturn.completedFast={tool}{durationSec}で霧を斬る。\nturn.completedLong={durationMin}分の試練、超えたり。\nturn.needsInput={tool}が裁定を呼ぶ。\nturn.interrupted={tool}儀式破れたり。\ntool.switched={prevTool}退き、{tool}剣を執る。\nidle.entered=静寂降臨、核眠る。\ntokens.burst={tool}が{tokensK}を喰らう。\nnight.entered={hourLabel}、夜の契約開く。\nidle.returned={minutesAway}分の静寂の後、汝戻る。\ntool.multiStreak={toolList}共鳴、陣展く。\npet.levelUp=Lv.{level}、封印緩む。\npet.statBreakthrough={stat}が{value}を越えたり。\npet.evolution={newStage}顕現せり。\nusage.dailyRecord=今日{tokensK}、秘典改まる。\nreminder.hydration={durationMin}分の儀の後、水を。\nreminder.sedentary=座の封印成る、立つべし。\nreminder.lateNight={hourLabel}、夜深し、力を温存。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} ritual begins. The runes are lit.\nturn.completed={tool} ritual complete. The afterglow remains.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong=The {durationMin}-minute trial has been crossed.\nturn.needsInput={tool} summons your judgment.\nturn.interrupted={tool} ritual broke. The ripple remains.\ntool.switched={prevTool} exits. {tool} takes the blade.\nidle.entered=Silence descends. The core sleeps.\ntokens.burst={tool} consumed {tokensK}. Magic surges.\nnight.entered={hourLabel}. The night pact opens.\nidle.returned=After {minutesAway} minutes of stillness, you return.\ntool.multiStreak={toolList} resonate. The array unfolds.\npet.levelUp=Lv.{level} awakens. The seal loosens.\npet.statBreakthrough={stat} crossed the {value} boundary.\npet.evolution={newStage} manifests. The stars bear witness.\nusage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.\nreminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.\nreminder.sedentary=The sitting seal has formed. Rise at once.\nreminder.lateNight={hourLabel}. Deep night. Preserve your strength."
+            "value": "turn.started={tool} 의식 시작.\nturn.completed={tool} 의식 완료.\nturn.completedFast={tool} {durationSec}만에 안개를 가르다.\nturn.completedLong={durationMin}분의 시련, 넘어섰다.\nturn.needsInput={tool}이 너의 판결을 부른다.\nturn.interrupted={tool} 의식 깨졌다.\ntool.switched={prevTool} 물러나고 {tool} 검을 들다.\nidle.entered=정적이 내린다. 핵이 잠든다.\ntokens.burst={tool}이 {tokensK} 삼켰다.\nnight.entered={hourLabel}, 밤의 계약이 열린다.\nidle.returned={minutesAway}분의 정적 끝에 너 돌아오다.\ntool.multiStreak={toolList} 공명, 진영 펼쳐지다.\npet.levelUp=Lv.{level} 각성. 봉인 약화.\npet.statBreakthrough={stat}이 {value}를 넘다.\npet.evolution={newStage} 현현하다.\nusage.dailyRecord=오늘 {tokensK}, 비전이 다시 쓰여.\nreminder.hydration={durationMin}분의 의식 후, 물을.\nreminder.sedentary=좌선의 봉인 형성, 일어나라.\nreminder.lateNight={hourLabel}, 밤이 깊다, 힘을 아껴."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} ritual begins. The runes are lit.\nturn.completed={tool} ritual complete. The afterglow remains.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong=The {durationMin}-minute trial has been crossed.\nturn.needsInput={tool} summons your judgment.\nturn.interrupted={tool} ritual broke. The ripple remains.\ntool.switched={prevTool} exits. {tool} takes the blade.\nidle.entered=Silence descends. The core sleeps.\ntokens.burst={tool} consumed {tokensK}. Magic surges.\nnight.entered={hourLabel}. The night pact opens.\nidle.returned=After {minutesAway} minutes of stillness, you return.\ntool.multiStreak={toolList} resonate. The array unfolds.\npet.levelUp=Lv.{level} awakens. The seal loosens.\npet.statBreakthrough={stat} crossed the {value} boundary.\npet.evolution={newStage} manifests. The stars bear witness.\nusage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.\nreminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.\nreminder.sedentary=The sitting seal has formed. Rise at once.\nreminder.lateNight={hourLabel}. Deep night. Preserve your strength."
+            "value": "turn.started=O ritual de {tool} começa.\nturn.completed=O rito de {tool} se cumpre.\nturn.completedFast={tool} corta a névoa em {durationSec}.\nturn.completedLong=Prova de {durationMin}min vencida.\nturn.needsInput={tool} invoca teu juízo.\nturn.interrupted=O ritual de {tool} se rompe.\ntool.switched={prevTool} sai. {tool} ergue a lâmina.\nidle.entered=O silêncio desce. Núcleo dorme.\ntokens.burst={tool} bebeu {tokensK}.\nnight.entered={hourLabel}. Pacto noturno aberto.\nidle.returned=Após {minutesAway}min de quietude, retornas.\ntool.multiStreak={toolList} ressoam.\npet.levelUp=Lv.{level}. O selo se afrouxa.\npet.statBreakthrough={stat} cruza {value}.\npet.evolution={newStage} se manifesta.\nusage.dailyRecord=Hoje {tokensK}. Grimório reescrito.\nreminder.hydration=Após {durationMin}min de rito, bebe.\nreminder.sedentary=Selo do sentado formado. Ergue-te.\nreminder.lateNight={hourLabel}. Noite profunda. Poupa forças."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool} ritual begins. The runes are lit.\nturn.completed={tool} ritual complete. The afterglow remains.\nturn.completedFast={tool} cut the mist in {durationSec}.\nturn.completedLong=The {durationMin}-minute trial has been crossed.\nturn.needsInput={tool} summons your judgment.\nturn.interrupted={tool} ritual broke. The ripple remains.\ntool.switched={prevTool} exits. {tool} takes the blade.\nidle.entered=Silence descends. The core sleeps.\ntokens.burst={tool} consumed {tokensK}. Magic surges.\nnight.entered={hourLabel}. The night pact opens.\nidle.returned=After {minutesAway} minutes of stillness, you return.\ntool.multiStreak={toolList} resonate. The array unfolds.\npet.levelUp=Lv.{level} awakens. The seal loosens.\npet.statBreakthrough={stat} crossed the {value} boundary.\npet.evolution={newStage} manifests. The stars bear witness.\nusage.dailyRecord=Today {tokensK} broke the record. The grimoire rewrites itself.\nreminder.hydration=After {durationMin} minutes of ritual, drink to restore magic.\nreminder.sedentary=The sitting seal has formed. Rise at once.\nreminder.lateNight={hourLabel}. Deep night. Preserve your strength."
+            "value": "turn.started=Ритуал {tool} начинается.\nturn.completed=Обряд {tool} завершён.\nturn.completedFast={tool} разрезал туман за {durationSec}.\nturn.completedLong=Испытание {durationMin}мин пройдено.\nturn.needsInput={tool} призывает твой суд.\nturn.interrupted=Ритуал {tool} прерван.\ntool.switched={prevTool} уходит. {tool} берёт клинок.\nidle.entered=Тишина опускается. Сердце спит.\ntokens.burst={tool} испил {tokensK}.\nnight.entered={hourLabel}. Ночной пакт открыт.\nidle.returned=После {minutesAway}мин затишья ты возвращаешься.\ntool.multiStreak={toolList} резонируют.\npet.levelUp=Lv.{level}. Печать слабеет.\npet.statBreakthrough={stat} превзошёл {value}.\npet.evolution={newStage} проявляется.\nusage.dailyRecord=Сегодня {tokensK}. Гримуар переписан.\nreminder.hydration=После {durationMin}мин ритуала — пей.\nreminder.sedentary=Сидячая печать сформирована. Встань.\nreminder.lateNight={hourLabel}. Глубокая ночь. Береги силы."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool}仪式启动，符文已亮。\nturn.completed={tool}仪式完成，余光未散。\nturn.completedFast={tool}以{durationSec}斩断迷雾。\nturn.completedLong={durationMin}分钟之劫，已被跨越。\nturn.needsInput={tool}在召唤你的裁决。\nturn.interrupted={tool}仪式中断，余波尚存。\ntool.switched={prevTool}退场，{tool}执剑。\nidle.entered=静默降临，核心休眠。\ntokens.burst={tool}吞吐{tokensK}，魔力暴涨。\nnight.entered={hourLabel}，暗夜契约开启。\nidle.returned=沉寂{minutesAway}分钟后，汝归来。\ntool.multiStreak={toolList}共鸣，阵列展开。\npet.levelUp=Lv.{level}觉醒，封印松动。\npet.statBreakthrough={stat}越过{value}界限。\npet.evolution={newStage}现世，众星见证。\nusage.dailyRecord=今日{tokensK}破纪录，秘典改写。\nreminder.hydration={durationMin}分钟仪式后，饮水补魔。\nreminder.sedentary=久坐封印已成，速速起身。\nreminder.lateNight={hourLabel}暗夜已深，保存体力。"
+            "value": "turn.started={tool}仪式启，符文亮。\nturn.completed={tool}礼成，余光未散。\nturn.completedFast={tool}{durationSec}破雾。\nturn.completedLong={durationMin}分钟之劫，已渡。\nturn.needsInput={tool}召汝裁决。\nturn.interrupted={tool}仪式中断，余波未平。\ntool.switched={prevTool}退场，{tool}执剑。\nidle.entered=寂静降临，核心入眠。\ntokens.burst={tool}吞{tokensK}，魔力暴涨。\nnight.entered={hourLabel}，暗夜契约启。\nidle.returned=沉寂{minutesAway}分钟，汝归。\ntool.multiStreak={toolList}共鸣，阵列展。\npet.levelUp=Lv.{level}觉醒，封印松。\npet.statBreakthrough={stat}越{value}界。\npet.evolution={newStage}现世，星见证。\nusage.dailyRecord=今日{tokensK}破纪录，秘典更替。\nreminder.hydration={durationMin}分钟仪毕，饮水补魔。\nreminder.sedentary=久坐封印成，速速起身。\nreminder.lateNight={hourLabel}夜深，存体力。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "turn.started={tool}儀式啟動，符文已亮。\nturn.completed={tool}儀式完成，餘光未散。\nturn.completedFast={tool}以{durationSec}斬斷迷霧。\nturn.completedLong={durationMin}分鐘之劫，已被跨越。\nturn.needsInput={tool}在召喚你的裁決。\nturn.interrupted={tool}儀式中斷，餘波尚存。\ntool.switched={prevTool}退場，{tool}執劍。\nidle.entered=靜默降臨，核心休眠。\ntokens.burst={tool}吞吐{tokensK}，魔力暴漲。\nnight.entered={hourLabel}，暗夜契約開啟。\nidle.returned=沉寂{minutesAway}分鐘後，汝歸來。\ntool.multiStreak={toolList}共鳴，陣列展開。\npet.levelUp=Lv.{level}覺醒，封印鬆動。\npet.statBreakthrough={stat}越過{value}界限。\npet.evolution={newStage}現世，眾星見證。\nusage.dailyRecord=今日{tokensK}破紀錄，秘典改寫。\nreminder.hydration={durationMin}分鐘儀式後，飲水補魔。\nreminder.sedentary=久坐封印已成，速速起身。\nreminder.lateNight={hourLabel}暗夜已深，保存體力。"
+            "value": "turn.started={tool}儀式啟，符文亮。\nturn.completed={tool}禮成，餘光未散。\nturn.completedFast={tool}{durationSec}破霧。\nturn.completedLong={durationMin}分鐘之劫，已渡。\nturn.needsInput={tool}召汝裁決。\nturn.interrupted={tool}儀式中斷，餘波未平。\ntool.switched={prevTool}退場，{tool}執劍。\nidle.entered=寂靜降臨，核心入眠。\ntokens.burst={tool}吞{tokensK}，魔力暴漲。\nnight.entered={hourLabel}，暗夜契約啟。\nidle.returned=沉寂{minutesAway}分鐘，汝歸。\ntool.multiStreak={toolList}共鳴，陣列展。\npet.levelUp=Lv.{level}覺醒，封印鬆。\npet.statBreakthrough={stat}越{value}界。\npet.evolution={newStage}現世，星見證。\nusage.dailyRecord=今日{tokensK}破紀錄，秘典更替。\nreminder.hydration={durationMin}分鐘儀畢，飲水補魔。\nreminder.sedentary=久坐封印成，速速起身。\nreminder.lateNight={hourLabel}夜深，存體力。"
           }
         }
       }
@@ -48105,6 +48105,2216 @@
           "stringUnit": {
             "state": "translated",
             "value": "Codux не дает этому Mac перейти в сон."
+          }
+        }
+      }
+    },
+    "titlebar.files": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dateien"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archivos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fichiers"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arquivos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Файлы"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檔案"
+          }
+        }
+      }
+    },
+    "files.panel.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dateien"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archivos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fichiers"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arquivos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Файлы"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檔案"
+          }
+        }
+      }
+    },
+    "files.panel.no_project": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Projekt ausgewählt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Project Selected"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún proyecto seleccionado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun projet sélectionné"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロジェクト未選択"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "선택한 프로젝트 없음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum projeto selecionado"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проект не выбран"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未选择项目"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未選擇專案"
+          }
+        }
+      }
+    },
+    "files.panel.no_project.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle ein Projekt aus oder füge eines hinzu, um dessen Dateien zu durchsuchen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select or add a project to browse its files."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selecciona o añade un proyecto para explorar sus archivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sélectionnez ou ajoutez un projet pour parcourir ses fichiers."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルを表示するにはプロジェクトを選択または追加してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일을 보려면 프로젝트를 선택하거나 추가하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selecione ou adicione um projeto para navegar pelos arquivos."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите или добавьте проект, чтобы просмотреть его файлы."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择或添加项目后即可浏览文件。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選擇或新增專案後即可瀏覽檔案。"
+          }
+        }
+      }
+    },
+    "files.panel.refresh": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dateien aktualisieren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Files"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizar archivos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiser les fichiers"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルを更新"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 새로 고침"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar arquivos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обновить файлы"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新文件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新整理檔案"
+          }
+        }
+      }
+    },
+    "files.panel.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Dateien"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Files"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin archivos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun fichier"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルなし"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 없음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem arquivos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет файлов"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有文件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有檔案"
+          }
+        }
+      }
+    },
+    "files.panel.empty.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Projektordner enthält keine sichtbaren Dateien."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This project folder has no visible files."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta carpeta de proyecto no tiene archivos visibles."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce dossier de projet ne contient aucun fichier visible."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロジェクトフォルダには表示可能なファイルがありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 프로젝트 폴더에는 표시할 파일이 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta pasta de projeto não tem arquivos visíveis."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В папке проекта нет видимых файлов."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前项目目录没有可见文件。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前專案目錄沒有可見檔案。"
+          }
+        }
+      }
+    },
+    "files.panel.open_preview": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorschau öffnen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Preview"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir vista previa"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir l’aperçu"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレビューを開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "미리보기 열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir prévia"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть предпросмотр"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开预览"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟預覽"
+          }
+        }
+      }
+    },
+    "files.panel.reveal_finder": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im Finder anzeigen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reveal in Finder"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar en Finder"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher dans le Finder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finderで表示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finder에서 보기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar no Finder"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать в Finder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Finder 中显示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Finder 中顯示"
+          }
+        }
+      }
+    },
+    "files.preview.directory": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner werden in der Dateiseitenleiste angezeigt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Directories are shown in the file sidebar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las carpetas se muestran en la barra lateral de archivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les dossiers sont affichés dans la barre latérale des fichiers."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ディレクトリはファイルサイドバーに表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "디렉터리는 파일 사이드바에 표시됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As pastas aparecem na barra lateral de arquivos."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Папки отображаются в боковой панели файлов."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目录会在文件侧栏中显示。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目錄會在檔案側欄中顯示。"
+          }
+        }
+      }
+    },
+    "files.preview.too_large_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Datei ist zu groß für eine sichere Vorschau (%@)."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file is too large to preview safely (%@)."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este archivo es demasiado grande para previsualizarlo con seguridad (%@)."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce fichier est trop volumineux pour être prévisualisé en sécurité (%@)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このファイルは安全にプレビューするには大きすぎます（%@）。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 파일은 안전하게 미리보기에는 너무 큽니다(%@)."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este arquivo é grande demais para uma prévia segura (%@)."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот файл слишком велик для безопасного предпросмотра (%@)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该文件过大，无法安全预览（%@）。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此檔案過大，無法安全預覽（%@）。"
+          }
+        }
+      }
+    },
+    "files.preview.read_error": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Datei konnte nicht gelesen werden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read this file."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo leer este archivo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de lire ce fichier."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このファイルを読み取れませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 파일을 읽을 수 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível ler este arquivo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось прочитать файл."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取该文件。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法讀取此檔案。"
+          }
+        }
+      }
+    },
+    "files.preview.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Datei ist leer."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file is empty."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este archivo está vacío."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce fichier est vide."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このファイルは空です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 파일은 비어 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este arquivo está vazio."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот файл пуст."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该文件为空。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此檔案是空的。"
+          }
+        }
+      }
+    },
+    "files.preview.binary": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Binärdateien können hier nicht in der Vorschau angezeigt werden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Binary files cannot be previewed here."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los archivos binarios no se pueden previsualizar aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les fichiers binaires ne peuvent pas être prévisualisés ici."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "バイナリファイルはここではプレビューできません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "바이너리 파일은 여기서 미리볼 수 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arquivos binários não podem ser visualizados aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Бинарные файлы нельзя просматривать здесь."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "二进制文件无法在这里预览。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "二進位檔案無法在這裡預覽。"
+          }
+        }
+      }
+    },
+    "files.preview.edit_mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bearbeitungsmodus"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Mode"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modo de edición"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mode édition"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集モード"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집 모드"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modo de edição"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Режим редактирования"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑模式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編輯模式"
+          }
+        }
+      }
+    },
+    "files.preview.save_as": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speichern unter"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save As"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar como"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrer sous"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別名で保存"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 이름으로 저장"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvar como"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить как"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另存为"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另存為"
+          }
+        }
+      }
+    },
+    "files.preview.reload": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neu laden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reload"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recargar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recharger"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再読み込み"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다시 불러오기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recarregar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перезагрузить"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新载入"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新載入"
+          }
+        }
+      }
+    },
+    "files.preview.copy_path": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pfad kopieren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Path"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar ruta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier le chemin"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスをコピー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "경로 복사"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar caminho"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Копировать путь"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制路径"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製路徑"
+          }
+        }
+      }
+    },
+    "files.preview.reveal_finder": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im Finder anzeigen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reveal in Finder"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar en Finder"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher dans le Finder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finderで表示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finder에서 보기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar no Finder"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать в Finder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Finder 中显示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Finder 中顯示"
+          }
+        }
+      }
+    },
+    "files.preview.saved_as_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gespeichert als %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved as %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado como %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistré sous %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ として保存しました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@로 저장됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvo como %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранено как %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已另存为 %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已另存為 %@"
+          }
+        }
+      }
+    },
+    "files.preview.save_error_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speichern fehlgeschlagen: %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo guardar: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d’enregistrer : %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存できませんでした: %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장할 수 없음: %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível salvar: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法儲存：%@"
+          }
+        }
+      }
+    },
+    "files.preview.path_copied": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pfad kopiert"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Path copied"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ruta copiada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chemin copié"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスをコピーしました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "경로가 복사됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caminho copiado"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Путь скопирован"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制路径"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已複製路徑"
+          }
+        }
+      }
+    },
+    "files.panel.insert_path_terminal": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pfad in Terminal einfügen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insert Path into Terminal"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insertar ruta en terminal"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insérer le chemin dans le terminal"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスをターミナルに挿入"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널에 경로 삽입"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserir caminho no terminal"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставить путь в терминал"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插入路径到终端"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插入路徑到終端"
+          }
+        }
+      }
+    },
+    "files.panel.insert_path_terminal.success": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pfad ins Terminal eingefügt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserted path into terminal."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ruta insertada en el terminal."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chemin inséré dans le terminal."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスをターミナルに挿入しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널에 경로를 삽입했습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caminho inserido no terminal."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Путь вставлен в терминал."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已插入路径到终端。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已插入路徑到終端。"
+          }
+        }
+      }
+    },
+    "files.panel.insert_path_terminal.failure": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein aktives Terminal zum Einfügen des Pfads."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No active terminal to insert the path."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hay un terminal activo para insertar la ruta."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun terminal actif pour insérer le chemin."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスを挿入できるアクティブなターミナルがありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "경로를 삽입할 활성 터미널이 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum terminal ativo para inserir o caminho."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет активного терминала для вставки пути."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可插入路径的活动终端。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有可插入路徑的活動終端。"
+          }
+        }
+      }
+    },
+    "files.panel.open": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開"
+          }
+        }
+      }
+    },
+    "files.panel.edit": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bearbeiten"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifier"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編輯"
+          }
+        }
+      }
+    },
+    "files.panel.copy_path": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pfad kopieren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Path"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar ruta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier le chemin"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスをコピー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "경로 복사"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar caminho"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Копировать путь"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制路径"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製路徑"
+          }
+        }
+      }
+    },
+    "files.panel.delete": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In den Papierkorb legen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Trash"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mover a la papelera"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Placer dans la corbeille"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ゴミ箱に移動"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "휴지통으로 이동"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mover para o Lixo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переместить в корзину"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移到废纸篓"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移到垃圾桶"
+          }
+        }
+      }
+    },
+    "files.panel.delete.failure_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konnte nicht in den Papierkorb bewegt werden: %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not move to Trash: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo mover a la papelera: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de placer dans la corbeille : %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ゴミ箱に移動できませんでした: %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "휴지통으로 이동할 수 없음: %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível mover para o Lixo: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось переместить в корзину: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法移到废纸篓：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法移到垃圾桶：%@"
+          }
+        }
+      }
+    },
+    "git.diff.new_file": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Datei"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New File"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archivo nuevo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau fichier"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいファイル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 파일"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arquivo novo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новый файл"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新文件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新檔案"
+          }
+        }
+      }
+    },
+    "git.diff.too_large": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Datei ist zu groß für einen sicheren Vergleich."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file is too large to compare safely."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este archivo es demasiado grande para compararlo con seguridad."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce fichier est trop volumineux pour être comparé en sécurité."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このファイルは安全に比較するには大きすぎます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 파일은 안전하게 비교하기에는 너무 큽니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este arquivo é grande demais para comparar com segurança."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот файл слишком велик для безопасного сравнения."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该文件过大，无法安全对比。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此檔案過大，無法安全對比。"
+          }
+        }
+      }
+    },
+    "git.diff.binary": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Binärdateien können hier nicht verglichen werden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Binary files cannot be compared here."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los archivos binarios no se pueden comparar aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les fichiers binaires ne peuvent pas être comparés ici."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "バイナリファイルはここでは比較できません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "바이너리 파일은 여기서 비교할 수 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arquivos binários não podem ser comparados aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Бинарные файлы нельзя сравнивать здесь."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "二进制文件无法在这里对比。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "二進位檔案無法在這裡對比。"
+          }
+        }
+      }
+    },
+    "git.diff.old_file": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alte Datei"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Old File"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archivo anterior"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancien fichier"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "古いファイル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이전 파일"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arquivo antigo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Старый файл"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "旧文件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "舊檔案"
           }
         }
       }
