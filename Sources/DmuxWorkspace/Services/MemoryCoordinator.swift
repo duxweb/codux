@@ -9,17 +9,14 @@ extension Notification.Name {
 
 actor MemoryCoordinator {
     private let store: MemoryStore
-    private let credentialStore: AICredentialStore
     private let providerSelectionService = AIProviderSelectionService()
     private let debugLog = AppDebugLog.shared
     private var isProcessingQueue = false
 
     init(
-        store: MemoryStore = MemoryStore(),
-        credentialStore: AICredentialStore = AICredentialStore()
+        store: MemoryStore = MemoryStore()
     ) {
         self.store = store
-        self.credentialStore = credentialStore
     }
 
     func currentStatusSnapshot() async -> MemoryExtractionStatusSnapshot {
@@ -93,7 +90,7 @@ actor MemoryCoordinator {
         publishStatus(.queued)
         defer { isProcessingQueue = false }
 
-        let providerFactory = AIProviderFactory(credentialStore: credentialStore)
+        let providerFactory = AIProviderFactory()
         while true {
             let task: MemoryExtractionTask
             do {

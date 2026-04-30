@@ -149,7 +149,7 @@ struct TitlebarPetButton: View {
     private var hasAnyRunningActivity: Bool {
         model.activityByProjectID.values.contains {
             switch $0 {
-            case .running, .waitingInput:
+            case .loading, .running, .waitingInput:
                 return true
             default:
                 return false

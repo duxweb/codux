@@ -298,7 +298,7 @@ private struct ActivityBadgeView: View {
             switch phase {
             case .idle:
                 EmptyView()
-            case .running:
+            case .loading, .running:
                 Circle()
                     .stroke(Color.white.opacity(0.16), lineWidth: 1.6)
                     .overlay(

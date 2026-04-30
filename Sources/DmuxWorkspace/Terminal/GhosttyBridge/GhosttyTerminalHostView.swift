@@ -19,6 +19,7 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
     var onFocusConsumed: (() -> Void)? = nil
     var onStartupSucceeded: (() -> Void)? = nil
     var onStartupFailure: ((String) -> Void)? = nil
+    var onLoadingStateChanged: ((Bool) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -43,7 +44,8 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
             onInteraction: onInteraction,
             onFocusConsumed: onFocusConsumed,
             onStartupSucceeded: onStartupSucceeded,
-            onStartupFailure: onStartupFailure
+            onStartupFailure: onStartupFailure,
+            onLoadingStateChanged: onLoadingStateChanged
         )
         let coordinator = context.coordinator
         let previousContainerView = coordinator.containerView

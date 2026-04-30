@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-04-30
+
+### Fixed
+
+- Fixed AI API provider keys so they are stored in the app configuration instead of macOS Keychain, removing the `dmux.ai.providers` permission prompt for provider-backed memory extraction and pet LLM lines.
+- Fixed pet sleep timing so titlebar and desktop pets stay awake while the current project terminal is still loading, then start the 30-second idle sleep timer after loading clears.
+
 ## [0.8.0] - 2026-04-30
 
 ### Added

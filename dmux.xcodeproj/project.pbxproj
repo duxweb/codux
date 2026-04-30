@@ -34,7 +34,6 @@
 		21A2B3C4D5E6F708192A3B4E /* AIToolDriverSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2B3C4D5E6F708192A3B4F /* AIToolDriverSupport.swift */; };
 		210000000000000000000101 /* AppAISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000001 /* AppAISettings.swift */; };
 		210000000000000000000102 /* MemoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000002 /* MemoryModels.swift */; };
-		210000000000000000000103 /* AICredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000003 /* AICredentialStore.swift */; };
 		210000000000000000000104 /* AIProviderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000004 /* AIProviderService.swift */; };
 		220000000000000000000101 /* AIProviderTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000001 /* AIProviderTypes.swift */; };
 		220000000000000000000102 /* AIProviderFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000002 /* AIProviderFactory.swift */; };
@@ -194,7 +193,6 @@
 		1D05D834FCB2D530F185C773 /* AIUsageModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageModels.swift; sourceTree = "<group>"; };
 		210000000000000000000001 /* AppAISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAISettings.swift; sourceTree = "<group>"; };
 		210000000000000000000002 /* MemoryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryModels.swift; sourceTree = "<group>"; };
-		210000000000000000000003 /* AICredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICredentialStore.swift; sourceTree = "<group>"; };
 		210000000000000000000004 /* AIProviderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderService.swift; sourceTree = "<group>"; };
 		220000000000000000000001 /* AIProviderTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderTypes.swift; sourceTree = "<group>"; };
 		220000000000000000000002 /* AIProviderFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderFactory.swift; sourceTree = "<group>"; };
@@ -627,7 +625,6 @@
 				21A2B3C4D5E6F708192A3B55 /* CodexToolDriver.swift */,
 				21A2B3C4D5E6F708192A3B59 /* GeminiToolDriver.swift */,
 				21A2B3C4D5E6F708192A3B57 /* OpenCodeToolDriver.swift */,
-				210000000000000000000003 /* AICredentialStore.swift */,
 				210000000000000000000004 /* AIProviderService.swift */,
 				220000000000000000000001 /* AIProviderTypes.swift */,
 				220000000000000000000002 /* AIProviderFactory.swift */,
@@ -814,7 +811,6 @@
 				D49FDC9CAB55B3DAD5FE45C5 /* AIToolDriverFactory.swift in Sources */,
 				B10000000000000000000043 /* AIUsageStore+Persistence.swift in Sources */,
 				21A2B3C4D5E6F708192A3B4E /* AIToolDriverSupport.swift in Sources */,
-				210000000000000000000103 /* AICredentialStore.swift in Sources */,
 				210000000000000000000104 /* AIProviderService.swift in Sources */,
 				220000000000000000000101 /* AIProviderTypes.swift in Sources */,
 				220000000000000000000102 /* AIProviderFactory.swift in Sources */,
@@ -972,7 +968,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 37;
+				CURRENT_PROJECT_VERSION = 38;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -985,7 +981,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.8.0;
+				MARKETING_VERSION = 0.8.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1046,7 +1042,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 37;
+				CURRENT_PROJECT_VERSION = 38;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1065,7 +1061,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.8.0;
+				MARKETING_VERSION = 0.8.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

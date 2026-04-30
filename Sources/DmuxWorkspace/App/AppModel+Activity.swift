@@ -109,6 +109,8 @@ extension AppModel {
             switch phase {
             case .idle:
                 activityLabel = "idle"
+            case .loading:
+                activityLabel = "loading"
             case .running(let tool):
                 activityLabel = "running:\(tool)"
             case .waitingInput(let tool):
@@ -209,8 +211,11 @@ extension AppModel {
         }
     }
 
-    private func resolvedProjectActivityPhase(projectID: UUID) -> ProjectActivityPhase {
+    func resolvedProjectActivityPhase(projectID: UUID) -> ProjectActivityPhase {
         discardStaleCompletionPresentationIfNeeded(projectID: projectID)
+        if projectHasLoadingTerminal(projectID: projectID) {
+            return .loading
+        }
         let runtimePhase = aiSessionStore.projectPhase(projectID: projectID)
         let completionPhase = completionPresentationPhase(for: projectID)
         return Self.resolveDisplayedActivityPhase(
@@ -223,6 +228,8 @@ extension AppModel {
         switch phase {
         case .idle:
             return "idle"
+        case .loading:
+            return "loading"
         case .running(let tool):
             return "running:\(tool)"
         case .waitingInput(let tool):
@@ -230,6 +237,14 @@ extension AppModel {
         case .completed(let tool, _, let exitCode):
             return "completed:\(tool):\(exitCode.map(String.init) ?? "nil")"
         }
+    }
+
+    private func projectHasLoadingTerminal(projectID: UUID) -> Bool {
+        guard !terminalLoadingSessionIDs.isEmpty,
+              let workspace = workspaces.first(where: { $0.projectID == projectID }) else {
+            return false
+        }
+        return workspace.sessions.contains { terminalLoadingSessionIDs.contains($0.id) }
     }
 
     private func completionPresentationPhase(for projectID: UUID) -> ProjectActivityPhase {
@@ -343,7 +358,7 @@ extension AppModel {
         return .idle
     }
 
-    private func markActivityStateChanged() {
+    func markActivityStateChanged() {
         activityRenderVersion &+= 1
         updateDockBadge()
     }

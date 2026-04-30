@@ -6,12 +6,9 @@ struct PetSpeechAuditPrompt: Equatable, Sendable {
 }
 
 actor PetSpeechLLMService {
-    private let credentialStore: AICredentialStore
     private let providerSelection = AIProviderSelectionService()
 
-    init(credentialStore: AICredentialStore) {
-        self.credentialStore = credentialStore
-    }
+    init() {}
 
     func generateLine(
         event: PetSpeechEvent,
@@ -25,7 +22,7 @@ actor PetSpeechLLMService {
         }
 
         let prompt = Self.auditPrompt(event: event, mode: mode)
-        let providerFactory = AIProviderFactory(credentialStore: credentialStore)
+        let providerFactory = AIProviderFactory()
         do {
             let response = try await withThrowingTaskGroup(of: String.self) { group in
                 group.addTask {

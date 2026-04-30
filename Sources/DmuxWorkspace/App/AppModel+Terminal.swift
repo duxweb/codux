@@ -252,6 +252,7 @@ extension AppModel {
     }
 
     func closeSession(_ sessionID: UUID) {
+        noteTerminalLoadingState(sessionID, isLoading: false)
         if let placement = detachedTerminalPlacementBySessionID.removeValue(forKey: sessionID) {
             debugLog.log(
                 "terminal-lifecycle",

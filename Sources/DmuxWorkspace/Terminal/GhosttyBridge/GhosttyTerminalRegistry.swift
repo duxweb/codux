@@ -20,7 +20,8 @@ final class GhosttyTerminalRegistry {
         onInteraction: (() -> Void)?,
         onFocusConsumed: (() -> Void)?,
         onStartupSucceeded: (() -> Void)?,
-        onStartupFailure: ((String) -> Void)?
+        onStartupFailure: ((String) -> Void)?,
+        onLoadingStateChanged: ((Bool) -> Void)?
     ) -> GhosttyTerminalContainerView {
         if let existing = containers[session.id] {
             existing.updateSession(
@@ -35,7 +36,8 @@ final class GhosttyTerminalRegistry {
                 onInteraction: onInteraction,
                 onFocusConsumed: onFocusConsumed,
                 onStartupSucceeded: onStartupSucceeded,
-                onStartupFailure: onStartupFailure
+                onStartupFailure: onStartupFailure,
+                onLoadingStateChanged: onLoadingStateChanged
             )
             return existing
         }
@@ -47,7 +49,8 @@ final class GhosttyTerminalRegistry {
             onInteraction: onInteraction,
             onFocusConsumed: onFocusConsumed,
             onStartupSucceeded: onStartupSucceeded,
-            onStartupFailure: onStartupFailure
+            onStartupFailure: onStartupFailure,
+            onLoadingStateChanged: onLoadingStateChanged
         )
         created.updateSession(
             session,
@@ -61,7 +64,8 @@ final class GhosttyTerminalRegistry {
             onInteraction: onInteraction,
             onFocusConsumed: onFocusConsumed,
             onStartupSucceeded: onStartupSucceeded,
-            onStartupFailure: onStartupFailure
+            onStartupFailure: onStartupFailure,
+            onLoadingStateChanged: onLoadingStateChanged
         )
         containers[session.id] = created
         return created

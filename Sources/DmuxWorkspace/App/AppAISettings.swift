@@ -76,7 +76,7 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
     var isEnabled: Bool
     var model: String
     var baseURL: String
-    var apiKeyReference: String?
+    var apiKey: String
     var useForMemoryExtraction: Bool
     var priority: Int
 
@@ -87,7 +87,7 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
         isEnabled: Bool = true,
         model: String = "",
         baseURL: String = "",
-        apiKeyReference: String? = nil,
+        apiKey: String = "",
         useForMemoryExtraction: Bool = true,
         priority: Int = 0
     ) {
@@ -97,9 +97,48 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
         self.isEnabled = isEnabled
         self.model = model
         self.baseURL = baseURL
-        self.apiKeyReference = apiKeyReference
+        self.apiKey = apiKey
         self.useForMemoryExtraction = useForMemoryExtraction
         self.priority = priority
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case kind
+        case displayName
+        case isEnabled
+        case model
+        case baseURL
+        case apiKey
+        case useForMemoryExtraction
+        case priority
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kind = try container.decode(AppAIProviderKind.self, forKey: .kind)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
+        baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL) ?? ""
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        useForMemoryExtraction =
+            try container.decodeIfPresent(Bool.self, forKey: .useForMemoryExtraction) ?? true
+        priority = try container.decodeIfPresent(Int.self, forKey: .priority) ?? 0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(model, forKey: .model)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(apiKey, forKey: .apiKey)
+        try container.encode(useForMemoryExtraction, forKey: .useForMemoryExtraction)
+        try container.encode(priority, forKey: .priority)
     }
 
     static let defaultConfigurations: [AppAIProviderConfiguration] = []
@@ -118,7 +157,7 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
             isEnabled: true,
             model: model ?? kind.defaultModel,
             baseURL: baseURL ?? kind.defaultBaseURL,
-            apiKeyReference: nil,
+            apiKey: "",
             useForMemoryExtraction: true,
             priority: priority
         )

@@ -71,6 +71,7 @@ final class AppModel {
     var isGeneratingCommitMessage = false
     var terminalFocusRequestID: UUID?
     var terminalFocusRenderVersion: UInt64 = 0
+    var terminalLoadingSessionIDs: Set<UUID> = []
     var memoryExtractionStatus = MemoryExtractionStatusSnapshot(
         status: .idle,
         pendingCount: 0,
@@ -90,7 +91,6 @@ final class AppModel {
     private let persistenceService: PersistenceService
     let gitService = GitService()
     let gitCredentialStore = GitCredentialStore()
-    let aiCredentialStore = AICredentialStore()
     let activityService = ProjectActivityService()
     let diagnosticsExportService = AppDiagnosticsExportService()
     let toolPermissionSettingsService = AIToolPermissionSettingsService()
@@ -210,12 +210,11 @@ final class AppModel {
             activitySnapshots: { [weak self] in
                 self?.petSpeechActivitySnapshots() ?? []
             },
-            llmLineProvider: { [weak self] event, mode, aiSettings in
-                guard let self,
-                      aiSettings.pet.speechLLMEnabled else {
+            llmLineProvider: { event, mode, aiSettings in
+                guard aiSettings.pet.speechLLMEnabled else {
                     return nil
                 }
-                return await PetSpeechLLMService(credentialStore: self.aiCredentialStore)
+                return await PetSpeechLLMService()
                     .generateLine(event: event, mode: mode, settings: aiSettings)
             }
         )
@@ -479,6 +478,7 @@ final class AppModel {
             "terminal-lifecycle",
             "release-request session=\(sessionID.uuidString) reason=startup-failure"
         )
+        noteTerminalLoadingState(sessionID, isLoading: false)
         DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
 
         if selectedSessionID == sessionID {
@@ -493,6 +493,32 @@ final class AppModel {
         debugLog.log("terminal-recovery", "recovered session=\(sessionID.uuidString)")
     }
 
+    func noteTerminalLoadingState(_ sessionID: UUID, isLoading: Bool) {
+        let didChange: Bool
+        if isLoading {
+            didChange = terminalLoadingSessionIDs.insert(sessionID).inserted
+        } else {
+            didChange = terminalLoadingSessionIDs.remove(sessionID) != nil
+        }
+        guard didChange else {
+            return
+        }
+
+        if let context = terminalRecoveryContext(for: sessionID) {
+            activityByProjectID[context.projectID] = resolvedProjectActivityPhase(projectID: context.projectID)
+            debugLog.log(
+                "terminal-loading",
+                "session=\(sessionID.uuidString) project=\(context.projectID.uuidString) loading=\(isLoading)"
+            )
+        } else {
+            debugLog.log(
+                "terminal-loading",
+                "session=\(sessionID.uuidString) loading=\(isLoading)"
+            )
+        }
+        markActivityStateChanged()
+    }
+
     func retryTerminalRecovery(_ sessionID: UUID) {
         terminalRecoveryIssueBySessionID[sessionID] = nil
         terminalRecoveryRetryTokenBySessionID[sessionID, default: 0] += 1
@@ -500,6 +526,7 @@ final class AppModel {
             "terminal-lifecycle",
             "release-request session=\(sessionID.uuidString) reason=recovery-retry token=\(terminalRecoveryRetryTokenBySessionID[sessionID] ?? 0)"
         )
+        noteTerminalLoadingState(sessionID, isLoading: false)
         DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
         terminalFocusRequestID = sessionID
         debugLog.log(
@@ -601,6 +628,7 @@ final class AppModel {
     func clearTerminalRecoveryState(for sessionID: UUID) {
         terminalRecoveryIssueBySessionID[sessionID] = nil
         terminalRecoveryRetryTokenBySessionID[sessionID] = nil
+        terminalLoadingSessionIDs.remove(sessionID)
     }
 
     private func terminalRecoveryContext(for sessionID: UUID) -> (projectID: UUID, title: String)? {

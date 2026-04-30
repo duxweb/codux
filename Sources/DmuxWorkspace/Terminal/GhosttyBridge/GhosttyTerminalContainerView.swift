@@ -39,6 +39,8 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     private var onFocusConsumed: (() -> Void)?
     private var onStartupSucceeded: (() -> Void)?
     private var onStartupFailure: ((String) -> Void)?
+    private var onLoadingStateChanged: ((Bool) -> Void)?
+    private var lastReportedLoadingState: Bool?
     private var hasStartedProcess = false
     private var hasReceivedInitialOutput = false
     private var pendingFocusRequest = false
@@ -70,7 +72,8 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         onInteraction: (() -> Void)?,
         onFocusConsumed: (() -> Void)?,
         onStartupSucceeded: (() -> Void)?,
-        onStartupFailure: ((String) -> Void)?
+        onStartupFailure: ((String) -> Void)?,
+        onLoadingStateChanged: ((Bool) -> Void)?
     ) {
         configuredSession = session
         configuredEnvironment = environment
@@ -81,6 +84,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         self.onFocusConsumed = onFocusConsumed
         self.onStartupSucceeded = onStartupSucceeded
         self.onStartupFailure = onStartupFailure
+        self.onLoadingStateChanged = onLoadingStateChanged
         if let sessionResources {
             processBridge = sessionResources.processBridge
             controller = sessionResources.controller
@@ -117,13 +121,15 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         onInteraction: (() -> Void)?,
         onFocusConsumed: (() -> Void)?,
         onStartupSucceeded: (() -> Void)?,
-        onStartupFailure: ((String) -> Void)?
+        onStartupFailure: ((String) -> Void)?,
+        onLoadingStateChanged: ((Bool) -> Void)?
     ) {
         configuredEnvironment = environment
         self.onInteraction = onInteraction
         self.onFocusConsumed = onFocusConsumed
         self.onStartupSucceeded = onStartupSucceeded
         self.onStartupFailure = onStartupFailure
+        self.onLoadingStateChanged = onLoadingStateChanged
         lastShowsInactiveOverlay = showsInactiveOverlay
 
         if self.terminalBackgroundPreset != terminalBackgroundPreset || self.backgroundColorPreset != backgroundColorPreset {
@@ -143,6 +149,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             hasStartedProcess = false
             hasReceivedInitialOutput = false
             hasReportedStartupFailure = false
+            lastReportedLoadingState = nil
             pendingFocusRequest = false
             lastAppliedFocusedState = nil
             lastAppliedVisibleState = nil
@@ -574,6 +581,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             )
         }
         pendingFocusRequest = false
+        reportLoadingState(false)
     }
 
     private func reportStartupFailureIfNeeded(_ detail: String) {
@@ -589,13 +597,23 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     }
 
     private func updateLoadingShieldVisibility() {
-        loadingShieldView.isHidden = hasReceivedInitialOutput
+        let isLoading = !hasReceivedInitialOutput
+        loadingShieldView.isHidden = !isLoading
         terminalView.alphaValue = hasReceivedInitialOutput ? 1 : 0
+        reportLoadingState(isLoading)
         if hasReceivedInitialOutput == false,
            let responder = window?.firstResponder,
            ownsResponder(responder) {
             window?.makeFirstResponder(nil)
         }
+    }
+
+    private func reportLoadingState(_ isLoading: Bool) {
+        guard lastReportedLoadingState != isLoading else {
+            return
+        }
+        lastReportedLoadingState = isLoading
+        onLoadingStateChanged?(isLoading)
     }
 
     private func notifyInteraction() {

@@ -198,10 +198,8 @@ extension AppModel {
     }
 
     func updateAIProviderAPIKey(_ value: String, providerID: String) {
-        let reference = aiCredentialStore.defaultReference(for: providerID)
-        aiCredentialStore.saveAPIKey(value, for: reference)
         updateAIProvider(providerID: providerID) { provider in
-            provider.apiKeyReference = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : reference
+            provider.apiKey = value.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -209,7 +207,7 @@ extension AppModel {
         guard let provider = appSettings.ai.provider(withID: providerID) else {
             return ""
         }
-        return aiCredentialStore.apiKey(for: provider.apiKeyReference) ?? ""
+        return provider.apiKey
     }
 
     func addAIProviderChannel(
@@ -245,8 +243,7 @@ extension AppModel {
         else {
             return
         }
-        let removed = settings.ai.providers.remove(at: index)
-        aiCredentialStore.deleteAPIKey(for: removed.apiKeyReference)
+        settings.ai.providers.remove(at: index)
         if settings.ai.memory.defaultExtractorProviderID == providerID {
             settings.ai.memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
         }
@@ -265,9 +262,9 @@ extension AppModel {
             updatedAt: Date()
         )
 
-        Task { [provider, aiCredentialStore] in
+        Task { [provider] in
             do {
-                let response = try await AIProviderFactory(credentialStore: aiCredentialStore)
+                let response = try await AIProviderFactory()
                     .client(for: provider.kind)
                     .complete(
                         AIProviderCompletionRequest(

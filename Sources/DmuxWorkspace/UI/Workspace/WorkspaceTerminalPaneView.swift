@@ -123,7 +123,10 @@ struct TerminalPaneView: View {
             onInteraction: onSelect,
             onFocusConsumed: { model.consumeTerminalFocusRequest(session.id) },
             onStartupSucceeded: { model.noteTerminalStartupSucceeded(session.id) },
-            onStartupFailure: { detail in model.noteTerminalStartupFailure(session.id, detail: detail) }
+            onStartupFailure: { detail in model.noteTerminalStartupFailure(session.id, detail: detail) },
+            onLoadingStateChanged: { isLoading in
+                model.noteTerminalLoadingState(session.id, isLoading: isLoading)
+            }
         )
         .id("terminal-\(session.id.uuidString)-\(model.terminalRecoveryRetryToken(for: session.id))-ghostty")
     }

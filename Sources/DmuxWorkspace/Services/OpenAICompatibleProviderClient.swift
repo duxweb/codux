@@ -1,13 +1,12 @@
 import Foundation
 
 struct OpenAICompatibleProviderClient: AIProviderClient {
-    let credentialStore: AICredentialStore
-
     func complete(
         _ request: AIProviderCompletionRequest,
         configuration: AppAIProviderConfiguration
     ) async throws -> String {
-        guard let apiKey = credentialStore.apiKey(for: configuration.apiKeyReference) else {
+        let apiKey = configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty else {
             throw AIProviderError.missingAPIKey
         }
         let baseURLString = configuration.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)

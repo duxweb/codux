@@ -3,6 +3,7 @@ import UserNotifications
 
 enum ProjectActivityPhase: Equatable {
     case idle
+    case loading
     case running(tool: String)
     case waitingInput(tool: String)
     case completed(tool: String, finishedAt: Date, exitCode: Int?)

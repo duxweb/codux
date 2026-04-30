@@ -222,6 +222,7 @@ extension AppModel {
     else {
       return false
     }
+    noteTerminalLoadingState(sessionID, isLoading: false)
     var updatedWorkspaces = workspaces
     updatedWorkspaces[workspaceIndex].removeSession(sessionID)
     workspaces = updatedWorkspaces
