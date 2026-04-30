@@ -107,6 +107,7 @@ extension AIUsageStore {
                 session.last_seen_at,
                 session.last_model,
                 session.external_session_id,
+                session.source,
                 CASE
                     WHEN ? IS NULL THEN session.active_duration_seconds
                     WHEN session.last_seen_at <= ? THEN 0
@@ -192,17 +193,17 @@ extension AIUsageStore {
                         sessionTitle: sessionTitle,
                         firstSeenAt: columnDate(statement, index: 3),
                         lastSeenAt: columnDate(statement, index: 4),
-                        lastTool: nil,
+                        lastTool: columnText(statement, index: 7),
                         lastModel: columnText(statement, index: 5),
-                        requestCount: columnInt(statement, index: 8),
-                        totalInputTokens: columnInt(statement, index: 9),
-                        totalOutputTokens: columnInt(statement, index: 10),
-                        totalTokens: columnInt(statement, index: 11),
-                        cachedInputTokens: columnInt(statement, index: 12),
+                        requestCount: columnInt(statement, index: 9),
+                        totalInputTokens: columnInt(statement, index: 10),
+                        totalOutputTokens: columnInt(statement, index: 11),
+                        totalTokens: columnInt(statement, index: 12),
+                        cachedInputTokens: columnInt(statement, index: 13),
                         maxContextUsagePercent: nil,
-                        activeDurationSeconds: columnInt(statement, index: 7),
-                        todayTokens: columnInt(statement, index: 13),
-                        todayCachedInputTokens: columnInt(statement, index: 14)
+                        activeDurationSeconds: columnInt(statement, index: 8),
+                        todayTokens: columnInt(statement, index: 14),
+                        todayCachedInputTokens: columnInt(statement, index: 15)
                     )
                 )
             }

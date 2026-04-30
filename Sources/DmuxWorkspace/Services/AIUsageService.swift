@@ -60,11 +60,23 @@ struct AIUsageService: Sendable {
         currentSnapshot: AITerminalSessionSnapshot?,
         status: AIIndexingStatus
     ) -> AIStatsPanelState {
-        let liveOverlaySnapshots = overlaySnapshots(from: liveSnapshots)
-        let nextLiveOverlayTokens = liveOverlaySnapshots.reduce(0) { $0 + $1.currentTotalTokens }
-        let nextLiveOverlayCachedInputTokens = liveOverlaySnapshots.reduce(0) { $0 + $1.currentCachedInputTokens }
+        let liveOverlay = AIUsageLiveOverlayCalculator(calendar: calendar).calculate(
+            snapshots: liveSnapshots,
+            indexedSessions: currentState.sessions,
+            existingBaselines: AIUsageLiveOverlayBaselines(
+                day: currentState.liveOverlayBaselineDay,
+                totalTokensBySessionKey: currentState.liveOverlayTotalBaselines,
+                cachedInputTokensBySessionKey: currentState.liveOverlayCachedInputBaselines
+            )
+        )
+        let nextLiveOverlayTokens = liveOverlay.totalTokens
+        let nextLiveOverlayCachedInputTokens = liveOverlay.cachedInputTokens
+        let nextLiveTodayOverlayTokens = liveOverlay.todayTokens
+        let nextLiveTodayOverlayCachedInputTokens = liveOverlay.todayCachedInputTokens
         let shouldPreserveCompletedOverlay = liveSnapshots.contains { $0.hasCompletedTurn } &&
             currentState.liveOverlayTokens > nextLiveOverlayTokens
+        let shouldPreserveCompletedTodayOverlay = liveSnapshots.contains { $0.hasCompletedTurn } &&
+            currentState.liveTodayOverlayTokens > nextLiveTodayOverlayTokens
         let preservedCompletedOverlayTokens = preservedOverlayAmount(
             shouldPreserve: shouldPreserveCompletedOverlay,
             current: currentState.liveOverlayTokens,
@@ -75,23 +87,39 @@ struct AIUsageService: Sendable {
             current: currentState.liveOverlayCachedInputTokens,
             next: nextLiveOverlayCachedInputTokens
         )
+        let preservedCompletedTodayOverlayTokens = preservedOverlayAmount(
+            shouldPreserve: shouldPreserveCompletedTodayOverlay,
+            current: currentState.liveTodayOverlayTokens,
+            next: nextLiveTodayOverlayTokens
+        )
+        let preservedCompletedTodayOverlayCachedInputTokens = preservedOverlayAmount(
+            shouldPreserve: shouldPreserveCompletedTodayOverlay,
+            current: currentState.liveTodayOverlayCachedInputTokens,
+            next: nextLiveTodayOverlayCachedInputTokens
+        )
 
         var nextState = currentState
         nextState.currentSnapshot = currentSnapshot
         nextState.liveSnapshots = liveSnapshots
         nextState.liveOverlayTokens = nextLiveOverlayTokens
         nextState.liveOverlayCachedInputTokens = nextLiveOverlayCachedInputTokens
+        nextState.liveTodayOverlayTokens = nextLiveTodayOverlayTokens
+        nextState.liveTodayOverlayCachedInputTokens = nextLiveTodayOverlayCachedInputTokens
+        nextState.liveOverlayBaselineDay = liveOverlay.baselines.day
+        nextState.liveOverlayTotalBaselines = liveOverlay.baselines.totalTokensBySessionKey
+        nextState.liveOverlayCachedInputBaselines = liveOverlay.baselines.cachedInputTokensBySessionKey
         nextState.indexingStatus = status
 
         if var summary = currentState.projectSummary, summary.projectID == project.id {
             let baseProjectTotal = max(0, summary.projectTotalTokens - currentState.liveOverlayTokens)
             let baseProjectCached = max(0, summary.projectCachedInputTokens - currentState.liveOverlayCachedInputTokens)
-            let baseTodayTotal = max(0, summary.todayTotalTokens - currentState.liveOverlayTokens)
-            let baseTodayCached = max(0, summary.todayCachedInputTokens - currentState.liveOverlayCachedInputTokens)
+            let staleToday = staleCachedTodayEvidence(in: currentState)
+            let baseTodayTotal = staleToday ? 0 : max(0, summary.todayTotalTokens - currentState.liveTodayOverlayTokens)
+            let baseTodayCached = staleToday ? 0 : max(0, summary.todayCachedInputTokens - currentState.liveTodayOverlayCachedInputTokens)
             summary.projectTotalTokens = baseProjectTotal + nextLiveOverlayTokens + preservedCompletedOverlayTokens
             summary.projectCachedInputTokens = baseProjectCached + nextLiveOverlayCachedInputTokens + preservedCompletedOverlayCachedInputTokens
-            summary.todayTotalTokens = baseTodayTotal + nextLiveOverlayTokens + preservedCompletedOverlayTokens
-            summary.todayCachedInputTokens = baseTodayCached + nextLiveOverlayCachedInputTokens + preservedCompletedOverlayCachedInputTokens
+            summary.todayTotalTokens = baseTodayTotal + nextLiveTodayOverlayTokens + preservedCompletedTodayOverlayTokens
+            summary.todayCachedInputTokens = baseTodayCached + nextLiveTodayOverlayCachedInputTokens + preservedCompletedTodayOverlayCachedInputTokens
             summary.currentSessionTokens = displayedCurrentSessionTokens(from: currentSnapshot)
             summary.currentSessionCachedInputTokens = displayedCurrentSessionCachedInputTokens(from: currentSnapshot)
             summary.currentTool = currentSnapshot?.tool
@@ -108,6 +136,8 @@ struct AIUsageService: Sendable {
                 sessions: currentState.sessions,
                 liveOverlayTokens: nextLiveOverlayTokens,
                 liveOverlayCachedInputTokens: nextLiveOverlayCachedInputTokens,
+                liveTodayOverlayTokens: nextLiveTodayOverlayTokens,
+                liveTodayOverlayCachedInputTokens: nextLiveTodayOverlayCachedInputTokens,
                 todayTotalTokens: todayTotalTokens(
                     timeBuckets: currentState.todayTimeBuckets,
                     heatmap: currentState.heatmap
@@ -204,9 +234,15 @@ struct AIUsageService: Sendable {
         currentSnapshot: AITerminalSessionSnapshot?,
         status: AIIndexingStatus
     ) -> AIStatsPanelState {
-        let liveOverlaySnapshots = overlaySnapshots(from: liveSnapshots)
-        let totalLiveDelta = liveOverlaySnapshots.reduce(0) { $0 + $1.currentTotalTokens }
-        let totalLiveCachedDelta = liveOverlaySnapshots.reduce(0) { $0 + $1.currentCachedInputTokens }
+        let liveOverlay = AIUsageLiveOverlayCalculator(calendar: calendar).calculate(
+            snapshots: liveSnapshots,
+            indexedSessions: indexed?.sessions ?? [],
+            existingBaselines: .empty
+        )
+        let totalLiveDelta = liveOverlay.totalTokens
+        let totalLiveCachedDelta = liveOverlay.cachedInputTokens
+        let todayLiveDelta = liveOverlay.todayTokens
+        let todayLiveCachedDelta = liveOverlay.todayCachedInputTokens
 
         var summary = indexed?.projectSummary ?? AIProjectUsageSummary(
             projectID: project.id,
@@ -232,11 +268,11 @@ struct AIUsageService: Sendable {
         summary.todayTotalTokens = todayTotalTokens(
             timeBuckets: indexed?.todayTimeBuckets ?? [],
             heatmap: indexed?.heatmap ?? []
-        ) + totalLiveDelta
+        ) + todayLiveDelta
         summary.todayCachedInputTokens = todayCachedInputTokens(
             timeBuckets: indexed?.todayTimeBuckets ?? [],
             heatmap: indexed?.heatmap ?? []
-        ) + totalLiveCachedDelta
+        ) + todayLiveCachedDelta
         summary.currentSessionTokens = displayedCurrentSessionTokens(from: currentSnapshot)
         summary.currentSessionCachedInputTokens = displayedCurrentSessionCachedInputTokens(from: currentSnapshot)
         summary.currentTool = currentSnapshot?.tool
@@ -252,6 +288,11 @@ struct AIUsageService: Sendable {
             liveSnapshots: liveSnapshots,
             liveOverlayTokens: totalLiveDelta,
             liveOverlayCachedInputTokens: totalLiveCachedDelta,
+            liveTodayOverlayTokens: todayLiveDelta,
+            liveTodayOverlayCachedInputTokens: todayLiveCachedDelta,
+            liveOverlayBaselineDay: liveOverlay.baselines.day,
+            liveOverlayTotalBaselines: liveOverlay.baselines.totalTokensBySessionKey,
+            liveOverlayCachedInputBaselines: liveOverlay.baselines.cachedInputTokensBySessionKey,
             sessions: indexed?.sessions ?? [],
             heatmap: indexed?.heatmap ?? [],
             todayTimeBuckets: indexed?.todayTimeBuckets ?? [],
@@ -262,23 +303,14 @@ struct AIUsageService: Sendable {
         )
     }
 
-    private func overlaySnapshots(from liveSnapshots: [AITerminalSessionSnapshot]) -> [AITerminalSessionSnapshot] {
-        liveSnapshots.map { snapshot in
-            var overlaySnapshot = snapshot
-            overlaySnapshot.currentInputTokens = max(0, snapshot.currentInputTokens - snapshot.baselineInputTokens)
-            overlaySnapshot.currentOutputTokens = max(0, snapshot.currentOutputTokens - snapshot.baselineOutputTokens)
-            overlaySnapshot.currentTotalTokens = max(0, snapshot.currentTotalTokens - snapshot.baselineTotalTokens)
-            overlaySnapshot.currentCachedInputTokens = max(0, snapshot.currentCachedInputTokens - snapshot.baselineCachedInputTokens)
-            return overlaySnapshot
-        }
-    }
-
     private func baseProjectSummary(
         project: Project,
         liveSnapshot: AITerminalSessionSnapshot?,
         sessions: [AISessionSummary],
         liveOverlayTokens: Int,
         liveOverlayCachedInputTokens: Int,
+        liveTodayOverlayTokens: Int,
+        liveTodayOverlayCachedInputTokens: Int,
         todayTotalTokens: Int,
         todayCachedInputTokens: Int
     ) -> AIProjectUsageSummary {
@@ -289,8 +321,8 @@ struct AIUsageService: Sendable {
             currentSessionCachedInputTokens: displayedCurrentSessionCachedInputTokens(from: liveSnapshot),
             projectTotalTokens: sessions.reduce(0) { $0 + $1.totalTokens } + liveOverlayTokens,
             projectCachedInputTokens: sessions.reduce(0) { $0 + $1.cachedInputTokens } + liveOverlayCachedInputTokens,
-            todayTotalTokens: todayTotalTokens + liveOverlayTokens,
-            todayCachedInputTokens: todayCachedInputTokens + liveOverlayCachedInputTokens,
+            todayTotalTokens: todayTotalTokens + liveTodayOverlayTokens,
+            todayCachedInputTokens: todayCachedInputTokens + liveTodayOverlayCachedInputTokens,
             currentTool: liveSnapshot?.tool,
             currentModel: liveSnapshot?.model,
             currentContextUsagePercent: liveSnapshot?.currentContextUsagePercent,
@@ -326,22 +358,64 @@ struct AIUsageService: Sendable {
     }
 
     private func todayTotalTokens(timeBuckets: [AITimeBucket], heatmap: [AIHeatmapDay]) -> Int {
-        let bucketTotal = timeBuckets.reduce(0) { $0 + $1.totalTokens }
+        let today = calendar.startOfDay(for: Date())
+        let bucketTotal = timeBuckets.reduce(0) { partial, bucket in
+            guard calendar.isDate(bucket.start, inSameDayAs: today) else {
+                return partial
+            }
+            return partial + bucket.totalTokens
+        }
         if bucketTotal > 0 {
             return bucketTotal
         }
 
-        let today = calendar.startOfDay(for: Date())
         return heatmap.first(where: { calendar.isDate($0.day, inSameDayAs: today) })?.totalTokens ?? 0
     }
 
     private func todayCachedInputTokens(timeBuckets: [AITimeBucket], heatmap: [AIHeatmapDay]) -> Int {
-        let bucketTotal = timeBuckets.reduce(0) { $0 + $1.cachedInputTokens }
+        let today = calendar.startOfDay(for: Date())
+        let bucketTotal = timeBuckets.reduce(0) { partial, bucket in
+            guard calendar.isDate(bucket.start, inSameDayAs: today) else {
+                return partial
+            }
+            return partial + bucket.cachedInputTokens
+        }
         if bucketTotal > 0 {
             return bucketTotal
         }
 
-        let today = calendar.startOfDay(for: Date())
         return heatmap.first(where: { calendar.isDate($0.day, inSameDayAs: today) })?.cachedInputTokens ?? 0
+    }
+
+    private func staleCachedTodayEvidence(in state: AIStatsPanelState) -> Bool {
+        let today = calendar.startOfDay(for: Date())
+        var hasDatedEvidence = false
+
+        for bucket in state.todayTimeBuckets {
+            hasDatedEvidence = true
+            if calendar.isDate(bucket.start, inSameDayAs: today) {
+                return false
+            }
+        }
+        for day in state.heatmap {
+            hasDatedEvidence = true
+            if calendar.isDate(day.day, inSameDayAs: today) {
+                return false
+            }
+        }
+        if let updatedAt = state.projectSummary?.currentSessionUpdatedAt {
+            hasDatedEvidence = true
+            if calendar.isDate(updatedAt, inSameDayAs: today) {
+                return false
+            }
+        }
+        if let indexedAt = state.indexedAt {
+            hasDatedEvidence = true
+            if calendar.isDate(indexedAt, inSameDayAs: today) {
+                return false
+            }
+        }
+
+        return hasDatedEvidence
     }
 }

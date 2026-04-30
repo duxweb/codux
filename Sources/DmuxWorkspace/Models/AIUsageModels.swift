@@ -17,6 +17,11 @@ struct AIStatsPanelState: Equatable {
     var liveSnapshots: [AITerminalSessionSnapshot]
     var liveOverlayTokens: Int
     var liveOverlayCachedInputTokens: Int
+    var liveTodayOverlayTokens: Int = 0
+    var liveTodayOverlayCachedInputTokens: Int = 0
+    var liveOverlayBaselineDay: Date? = nil
+    var liveOverlayTotalBaselines: [String: Int] = [:]
+    var liveOverlayCachedInputBaselines: [String: Int] = [:]
     var sessions: [AISessionSummary]
     var heatmap: [AIHeatmapDay]
     var todayTimeBuckets: [AITimeBucket]

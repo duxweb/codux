@@ -92,7 +92,7 @@ final class AIStatsStoreMetricsTests: XCTestCase {
         XCTAssertEqual(resolved, 3_040_000)
     }
 
-    func testTitlebarTodayLevelTokensUsesCachedProjectStateIncludingLiveOverlay() {
+    func testProjectTodayTokensUseCachedProjectStateIncludingLiveOverlay() {
         let store = makeStore()
         let project = Project(
             id: UUID(),
@@ -163,10 +163,324 @@ final class AIStatsStoreMetricsTests: XCTestCase {
             baselineTotalTokens: 0
         )
 
-        XCTAssertEqual(store.titlebarTodayLevelTokens(), 2_920_000)
+        XCTAssertEqual(store.totalTodayNormalizedTokensAcrossProjects([project]), 2_920_000)
     }
 
-    func testTitlebarTodayLevelTokensUsesFreshLiveOverlayAcrossAllCurrentProjects() {
+    func testTitlebarTodayLevelTokensResetsStaleCachedTodayStateAfterDayChangesWithoutRestart() {
+        let store = makeStore()
+        let project = makeProject(name: "Project A", path: "/tmp/project-a")
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today.addingTimeInterval(-86_400)
+        let yesterdayBucketStart = calendar.date(byAdding: .hour, value: 22, to: yesterday) ?? yesterday
+        let yesterdayBucketEnd = calendar.date(byAdding: .minute, value: 30, to: yesterdayBucketStart) ?? yesterdayBucketStart
+
+        store.currentProjects = [project]
+        store.cacheState(
+            AIStatsPanelState(
+                projectSummary: AIProjectUsageSummary(
+                    projectID: project.id,
+                    projectName: project.name,
+                    currentSessionTokens: 0,
+                    currentSessionCachedInputTokens: 0,
+                    projectTotalTokens: 500,
+                    projectCachedInputTokens: 40,
+                    todayTotalTokens: 500,
+                    todayCachedInputTokens: 40,
+                    currentTool: nil,
+                    currentModel: nil,
+                    currentContextUsagePercent: nil,
+                    currentContextUsedTokens: nil,
+                    currentContextWindow: nil,
+                    currentSessionUpdatedAt: yesterdayBucketEnd
+                ),
+                currentSnapshot: nil,
+                liveSnapshots: [],
+                liveOverlayTokens: 0,
+                liveOverlayCachedInputTokens: 0,
+                sessions: [],
+                heatmap: [
+                    AIHeatmapDay(
+                        day: yesterday,
+                        totalTokens: 500,
+                        cachedInputTokens: 40,
+                        requestCount: 1
+                    )
+                ],
+                todayTimeBuckets: [
+                    AITimeBucket(
+                        start: yesterdayBucketStart,
+                        end: yesterdayBucketEnd,
+                        totalTokens: 500,
+                        cachedInputTokens: 40,
+                        requestCount: 1
+                    )
+                ],
+                toolBreakdown: [],
+                modelBreakdown: [],
+                indexedAt: yesterdayBucketEnd,
+                indexingStatus: .completed(detail: "done")
+            ),
+            for: project.id
+        )
+
+        XCTAssertEqual(store.titlebarTodayLevelTokens(), 0)
+        XCTAssertEqual(store.totalTodayDisplayedTokensAcrossProjects([project]), 0)
+    }
+
+    func testProjectTodayTokensCountOnlyPostMidnightLiveGrowthFromCachedBaseline() {
+        let store = makeStore()
+        let project = makeProject(name: "Project A", path: "/tmp/project-a")
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today.addingTimeInterval(-86_400)
+        let yesterdayBucketEnd = calendar.date(byAdding: .hour, value: 23, to: yesterday) ?? yesterday
+        let baselineKey = "codex|long-live"
+
+        store.currentProjects = [project]
+        store.cacheState(
+            AIStatsPanelState(
+                projectSummary: AIProjectUsageSummary(
+                    projectID: project.id,
+                    projectName: project.name,
+                    currentSessionTokens: 1_000,
+                    currentSessionCachedInputTokens: 0,
+                    projectTotalTokens: 1_000,
+                    projectCachedInputTokens: 0,
+                    todayTotalTokens: 1_000,
+                    todayCachedInputTokens: 0,
+                    currentTool: "codex",
+                    currentModel: "gpt-5.4",
+                    currentContextUsagePercent: nil,
+                    currentContextUsedTokens: nil,
+                    currentContextWindow: nil,
+                    currentSessionUpdatedAt: yesterdayBucketEnd
+                ),
+                currentSnapshot: nil,
+                liveSnapshots: [],
+                liveOverlayTokens: 1_000,
+                liveOverlayCachedInputTokens: 0,
+                liveTodayOverlayTokens: 0,
+                liveTodayOverlayCachedInputTokens: 0,
+                liveOverlayBaselineDay: today,
+                liveOverlayTotalBaselines: [baselineKey: 1_000],
+                liveOverlayCachedInputBaselines: [baselineKey: 0],
+                sessions: [],
+                heatmap: [
+                    AIHeatmapDay(
+                        day: yesterday,
+                        totalTokens: 1_000,
+                        cachedInputTokens: 0,
+                        requestCount: 1
+                    )
+                ],
+                todayTimeBuckets: [],
+                toolBreakdown: [],
+                modelBreakdown: [],
+                indexedAt: yesterdayBucketEnd,
+                indexingStatus: .completed(detail: "done")
+            ),
+            for: project.id
+        )
+
+        seedLiveSession(
+            terminalID: UUID(),
+            project: project,
+            externalSessionID: "long-live",
+            totalTokens: 1_250,
+            baselineTotalTokens: 0,
+            startedAt: yesterday
+        )
+
+        XCTAssertEqual(store.totalTodayNormalizedTokensAcrossProjects([project]), 250)
+    }
+
+    func testProjectTodayTokensKeepSummaryBaseWhenCrossDayLiveHasZeroTodayOverlay() {
+        let store = makeStore()
+        let project = makeProject(name: "Project A", path: "/tmp/project-a")
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today.addingTimeInterval(-86_400)
+        let baselineKey = "codex|long-live"
+
+        store.currentProjects = [project]
+        store.cacheState(
+            AIStatsPanelState(
+                projectSummary: AIProjectUsageSummary(
+                    projectID: project.id,
+                    projectName: project.name,
+                    currentSessionTokens: 700,
+                    currentSessionCachedInputTokens: 0,
+                    projectTotalTokens: 1_100,
+                    projectCachedInputTokens: 0,
+                    todayTotalTokens: 400,
+                    todayCachedInputTokens: 0,
+                    currentTool: "codex",
+                    currentModel: "gpt-5.4",
+                    currentContextUsagePercent: nil,
+                    currentContextUsedTokens: nil,
+                    currentContextWindow: nil,
+                    currentSessionUpdatedAt: today.addingTimeInterval(60)
+                ),
+                currentSnapshot: nil,
+                liveSnapshots: [],
+                liveOverlayTokens: 700,
+                liveOverlayCachedInputTokens: 0,
+                liveTodayOverlayTokens: 0,
+                liveTodayOverlayCachedInputTokens: 0,
+                liveOverlayBaselineDay: today,
+                liveOverlayTotalBaselines: [baselineKey: 700],
+                liveOverlayCachedInputBaselines: [baselineKey: 0],
+                sessions: [],
+                heatmap: [],
+                todayTimeBuckets: [],
+                toolBreakdown: [],
+                modelBreakdown: [],
+                indexedAt: today.addingTimeInterval(30),
+                indexingStatus: .completed(detail: "done")
+            ),
+            for: project.id
+        )
+
+        seedLiveSession(
+            terminalID: UUID(),
+            project: project,
+            externalSessionID: "long-live",
+            totalTokens: 700,
+            baselineTotalTokens: 0,
+            startedAt: yesterday
+        )
+
+        XCTAssertEqual(store.totalTodayNormalizedTokensAcrossProjects([project]), 400)
+    }
+
+    func testProjectAllTimeTokensIgnoreTodayBaselineForCrossDayLiveSession() {
+        let store = makeStore()
+        let project = makeProject(name: "Project A", path: "/tmp/project-a")
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today.addingTimeInterval(-86_400)
+        let baselineKey = "codex|long-live"
+
+        store.currentProjects = [project]
+        store.cacheState(
+            AIStatsPanelState(
+                projectSummary: AIProjectUsageSummary(
+                    projectID: project.id,
+                    projectName: project.name,
+                    currentSessionTokens: 700,
+                    currentSessionCachedInputTokens: 0,
+                    projectTotalTokens: 1_100,
+                    projectCachedInputTokens: 0,
+                    todayTotalTokens: 400,
+                    todayCachedInputTokens: 0,
+                    currentTool: "codex",
+                    currentModel: "gpt-5.4",
+                    currentContextUsagePercent: nil,
+                    currentContextUsedTokens: nil,
+                    currentContextWindow: nil,
+                    currentSessionUpdatedAt: today.addingTimeInterval(60)
+                ),
+                currentSnapshot: nil,
+                liveSnapshots: [],
+                liveOverlayTokens: 700,
+                liveOverlayCachedInputTokens: 0,
+                liveTodayOverlayTokens: 0,
+                liveTodayOverlayCachedInputTokens: 0,
+                liveOverlayBaselineDay: today,
+                liveOverlayTotalBaselines: [baselineKey: 700],
+                liveOverlayCachedInputBaselines: [baselineKey: 0],
+                sessions: [],
+                heatmap: [],
+                todayTimeBuckets: [],
+                toolBreakdown: [],
+                modelBreakdown: [],
+                indexedAt: today.addingTimeInterval(30),
+                indexingStatus: .completed(detail: "done")
+            ),
+            for: project.id
+        )
+
+        seedLiveSession(
+            terminalID: UUID(),
+            project: project,
+            externalSessionID: "long-live",
+            totalTokens: 700,
+            baselineTotalTokens: 0,
+            startedAt: yesterday
+        )
+
+        XCTAssertEqual(store.totalAllTimeNormalizedTokensAcrossProjects([project]), 1_100)
+    }
+
+    func testTitlebarTodayLevelTokensIgnoresProjectOpenAndRemovalScopeChanges() {
+        let aiUsageStore = AIUsageStore(databaseURL: databaseURL)
+        let store = makeStore(aiUsageStore: aiUsageStore)
+        let projectA = makeProject(name: "Project A", path: "/tmp/project-a")
+        let projectB = makeProject(name: "Project B", path: "/tmp/project-b")
+        let projectC = makeProject(name: "Project C", path: "/tmp/project-c")
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today.addingTimeInterval(-86_400)
+
+        aiUsageStore.saveExternalSummary(
+            makeExternalSummary(
+                project: projectA,
+                externalSessionID: "a-today",
+                firstSeenAt: calendar.date(byAdding: .hour, value: 9, to: today) ?? today,
+                totalTokens: 200
+            )
+        )
+        aiUsageStore.saveExternalSummary(
+            makeExternalSummary(
+                project: projectB,
+                externalSessionID: "b-today",
+                firstSeenAt: calendar.date(byAdding: .hour, value: 10, to: today) ?? today,
+                totalTokens: 300
+            )
+        )
+        aiUsageStore.saveExternalSummary(
+            makeExternalSummary(
+                project: projectC,
+                externalSessionID: "c-yesterday",
+                firstSeenAt: calendar.date(byAdding: .hour, value: 10, to: yesterday) ?? yesterday,
+                totalTokens: 700
+            )
+        )
+
+        store.currentProjects = [projectA]
+        XCTAssertEqual(store.titlebarTodayLevelTokens(), 500)
+
+        store.currentProjects = [projectA, projectB, projectC]
+        XCTAssertEqual(store.titlebarTodayLevelTokens(), 500)
+
+        store.currentProjects = [projectA]
+        XCTAssertEqual(store.titlebarTodayLevelTokens(), 500)
+    }
+
+    func testTitlebarTodayLevelTokensIsPureReadAfterExplicitLiveOverlayRefresh() {
+        let store = makeStore()
+        let project = makeProject(name: "Project A", path: "/tmp/project-a")
+        store.currentProjects = [project]
+
+        seedLiveSession(
+            terminalID: UUID(),
+            project: project,
+            externalSessionID: "titlebar-live",
+            totalTokens: 120,
+            baselineTotalTokens: 20
+        )
+
+        XCTAssertEqual(store.titlebarTodayLevelTokens(), 0)
+        XCTAssertTrue(store.refreshTitlebarTodayLiveOverlay())
+        XCTAssertEqual(store.titlebarTodayLevelTokens(), 100)
+
+        let renderVersion = store.renderVersion
+        XCTAssertEqual(store.titlebarTodayLevelTokens(), 100)
+        XCTAssertEqual(store.renderVersion, renderVersion)
+    }
+
+    func testProjectTodayTokensUseFreshLiveOverlayAcrossAllCurrentProjects() {
         let store = makeStore()
         let projectA = makeProject(name: "Project A", path: "/tmp/project-a")
         let projectB = makeProject(name: "Project B", path: "/tmp/project-b")
@@ -252,7 +566,9 @@ final class AIStatsStoreMetricsTests: XCTestCase {
             baselineTotalTokens: 20
         )
 
-        XCTAssertEqual(store.titlebarTodayLevelTokens(), 1_310)
+        store.refreshTitlebarTodayLiveOverlay()
+        XCTAssertEqual(store.totalTodayNormalizedTokensAcrossProjects([projectA, projectB]), 1_310)
+        XCTAssertEqual(store.titlebarTodayLevelTokens(), 130)
         XCTAssertEqual(store.totalAllTimeNormalizedTokensAcrossProjects([projectA, projectB]), 3_610)
     }
 

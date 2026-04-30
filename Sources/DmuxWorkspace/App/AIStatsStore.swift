@@ -53,6 +53,11 @@ final class AIStatsStore {
     var terminalFocusObserver: NSObjectProtocol?
     var pendingLiveRefreshTask: Task<Void, Never>?
     var pendingLiveRefreshReason: LiveRefreshReason?
+    var titlebarLiveOverlayBaselineDay: Date?
+    var titlebarLiveOverlayTotalBaselines: [String: Int] = [:]
+    var titlebarLiveOverlayCachedInputBaselines: [String: Int] = [:]
+    var titlebarTodayLiveOverlayTokens = 0
+    var titlebarTodayLiveOverlayCachedInputTokens = 0
     var currentProjectID: UUID?
     var currentSelectedSessionID: UUID?
     var currentProjects: [Project] = []

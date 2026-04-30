@@ -286,37 +286,31 @@ extension AIProjectHistoryService {
                 ?? model
                 ?? "unknown"
 
-            var usage = info["last_token_usage"] as? [String: Any]
-            if usage == nil,
-               let totalUsage = info["total_token_usage"] as? [String: Any] {
+            let lastUsage = codexHistoryUsage(info["last_token_usage"] as? [String: Any])
+            let totalUsage = codexHistoryUsage(info["total_token_usage"] as? [String: Any])
+            let usage: CodexHistoryUsage?
+            if let totalUsage {
                 let previous = totalByModel[resolvedModel] ?? 0
-                let current = numberValue(totalUsage["total_tokens"])
+                let current = totalUsage.totalTokens
                 let delta = max(0, current - previous)
                 totalByModel[resolvedModel] = max(previous, current)
-                if delta > 0 {
-                    usage = [
-                        "input_tokens": numberValue(totalUsage["input_tokens"]),
-                        "output_tokens": numberValue(totalUsage["output_tokens"]),
-                        "cached_input_tokens": numberValue(totalUsage["cached_input_tokens"]),
-                        "reasoning_output_tokens": numberValue(totalUsage["reasoning_output_tokens"]),
-                        "total_tokens": delta,
-                    ]
+                guard delta > 0 else {
+                    return true
                 }
+                if let lastUsage, lastUsage.totalTokens == delta {
+                    usage = lastUsage
+                } else {
+                    usage = totalUsage.delta(totalTokens: delta)
+                }
+            } else {
+                usage = lastUsage
             }
 
             guard let usage else {
                 return true
             }
 
-            let cachedInputTokens = numberValue(usage["cached_input_tokens"]) + numberValue(usage["cache_read_input_tokens"])
-            let reasoningOutputTokens = numberValue(usage["reasoning_output_tokens"])
-            let rawInputTokens = numberValue(usage["input_tokens"])
-            let rawOutputTokens = numberValue(usage["output_tokens"])
-            let inputTokens = max(0, rawInputTokens - cachedInputTokens)
-            let outputTokens = max(0, rawOutputTokens - reasoningOutputTokens)
-            let explicitTotal = numberValue(usage["total_tokens"])
-            let totalTokens = max(explicitTotal, inputTokens + outputTokens + cachedInputTokens + reasoningOutputTokens)
-            guard totalTokens > 0 else {
+            guard usage.totalTokens > 0 else {
                 return true
             }
 
@@ -326,10 +320,10 @@ extension AIProjectHistoryService {
                     projectName: project.name,
                     timestamp: timestamp,
                     model: resolvedModel,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cachedInputTokens: cachedInputTokens,
-                    reasoningOutputTokens: reasoningOutputTokens
+                    inputTokens: usage.inputTokens,
+                    outputTokens: usage.outputTokens,
+                    cachedInputTokens: usage.cachedInputTokens,
+                    reasoningOutputTokens: usage.reasoningOutputTokens
                 )
             )
             model = resolvedModel
@@ -546,6 +540,67 @@ extension AIProjectHistoryService {
     private func truncateTitle(_ value: String) -> String {
         String(value.replacingOccurrences(of: "\n", with: " ").prefix(80))
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private struct CodexHistoryUsage {
+        var inputTokens: Int
+        var outputTokens: Int
+        var cachedInputTokens: Int
+        var reasoningOutputTokens: Int
+
+        var totalTokens: Int {
+            inputTokens + outputTokens + reasoningOutputTokens
+        }
+
+        func delta(totalTokens delta: Int) -> CodexHistoryUsage {
+            guard delta > 0, totalTokens > 0 else {
+                return CodexHistoryUsage(
+                    inputTokens: max(0, delta),
+                    outputTokens: 0,
+                    cachedInputTokens: 0,
+                    reasoningOutputTokens: 0
+                )
+            }
+
+            let ratio = Double(delta) / Double(totalTokens)
+            let scaledOutput = Int((Double(outputTokens) * ratio).rounded())
+            let scaledReasoning = Int((Double(reasoningOutputTokens) * ratio).rounded())
+            let scaledCached = Int((Double(cachedInputTokens) * ratio).rounded())
+            let scaledInput = max(0, delta - scaledOutput - scaledReasoning)
+
+            return CodexHistoryUsage(
+                inputTokens: scaledInput,
+                outputTokens: max(0, scaledOutput),
+                cachedInputTokens: max(0, scaledCached),
+                reasoningOutputTokens: max(0, scaledReasoning)
+            )
+        }
+    }
+
+    private func codexHistoryUsage(_ usage: [String: Any]?) -> CodexHistoryUsage? {
+        guard let usage, usage.isEmpty == false else {
+            return nil
+        }
+
+        let cachedInputTokens = numberValue(usage["cached_input_tokens"]) + numberValue(usage["cache_read_input_tokens"])
+        let reasoningOutputTokens = numberValue(usage["reasoning_output_tokens"])
+        let rawInputTokens = numberValue(usage["input_tokens"])
+        let rawOutputTokens = numberValue(usage["output_tokens"])
+        let inputTokens = max(0, rawInputTokens - cachedInputTokens)
+        let outputTokens = max(0, rawOutputTokens - reasoningOutputTokens)
+
+        let parsed = CodexHistoryUsage(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cachedInputTokens: cachedInputTokens,
+            reasoningOutputTokens: reasoningOutputTokens
+        )
+
+        guard parsed.totalTokens > 0 || parsed.cachedInputTokens > 0 else {
+            return nil
+        }
+
+        return parsed
     }
 
     func numberValue(_ value: Any?) -> Int {

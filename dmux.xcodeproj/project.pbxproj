@@ -132,6 +132,7 @@
 		B10000000000000000000050 /* AppTerminalGhosttyThemes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000050 /* AppTerminalGhosttyThemes.swift */; };
 		B10000000000000000000051 /* AIProjectHistoryIndexingProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000051 /* AIProjectHistoryIndexingProfile.swift */; };
 		B10000000000000000000052 /* AIProjectHistoryService+Concurrency.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000052 /* AIProjectHistoryService+Concurrency.swift */; };
+		B10000000000000000000053 /* AIUsageLiveOverlayCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000053 /* AIUsageLiveOverlayCalculator.swift */; };
 		A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0598FB11F350F43D5A39628A /* AIUsageService.swift */; };
 		A8B33C70370354EC1B39A24A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB59CA2E305DD7DBA2C167 /* main.swift */; };
 		A9D536707C6623508B39B82C /* WorkspacePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E565A0971373275B0012B0 /* WorkspacePaths.swift */; };
@@ -268,6 +269,7 @@
 		C10000000000000000000050 /* AppTerminalGhosttyThemes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTerminalGhosttyThemes.swift; sourceTree = "<group>"; };
 		C10000000000000000000051 /* AIProjectHistoryIndexingProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProjectHistoryIndexingProfile.swift; sourceTree = "<group>"; };
 		C10000000000000000000052 /* AIProjectHistoryService+Concurrency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIProjectHistoryService+Concurrency.swift"; sourceTree = "<group>"; };
+		C10000000000000000000053 /* AIUsageLiveOverlayCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageLiveOverlayCalculator.swift; sourceTree = "<group>"; };
 		8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiRuntimeProbeService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293A4B5 /* ClaudeRuntimeProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRuntimeProbeService.swift; sourceTree = "<group>"; };
 		A2EEF0E8297855B7EA05302D /* GitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStore.swift; sourceTree = "<group>"; };
@@ -586,6 +588,7 @@
 				210000000000000000000007 /* MemoryStore.swift */,
 				210000000000000000000008 /* ProjectPathUtilities.swift */,
 				0598FB11F350F43D5A39628A /* AIUsageService.swift */,
+				C10000000000000000000053 /* AIUsageLiveOverlayCalculator.swift */,
 				C9E2A14549F6FB2DF8C4F7CF /* AIUsageStore.swift */,
 				C10000000000000000000043 /* AIUsageStore+Persistence.swift */,
 				21A2B3C4D5E6F708192A3B4D /* AIToolPermissionSettingsService.swift */,
@@ -763,6 +766,7 @@
 				210000000000000000000107 /* MemoryStore.swift in Sources */,
 				5F0A9C1D7E2B4A5C8D9E0F21 /* PetModels.swift in Sources */,
 				A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */,
+				B10000000000000000000053 /* AIUsageLiveOverlayCalculator.swift in Sources */,
 				D4DD773949CEDDF9C154D306 /* AIUsageStore.swift in Sources */,
 				4EF6990AA74B30E0197BF632 /* AboutWindows.swift in Sources */,
 				4646A52CD76847E45BD9EC10 /* AppCommands.swift in Sources */,

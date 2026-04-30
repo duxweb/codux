@@ -12,6 +12,7 @@ extension AIStatsStore {
         selectedProjectProvider = selectedProject
         selectedSessionIDProvider = selectedSessionID
         projectsProvider = projects
+        refreshTitlebarTodayLiveOverlay()
 
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: max(30, automaticRefreshInterval), repeats: true) { [weak self] _ in
@@ -277,14 +278,18 @@ extension AIStatsStore {
                   let selectedProject = self.selectedProjectProvider,
                   let selectedSessionID = self.selectedSessionIDProvider,
                   let projects = self.projectsProvider,
-                  isPanelVisible(),
                   let project = selectedProject() else {
+                self.refreshTitlebarTodayLiveOverlay()
                 return
             }
 
             let currentProjects = projects()
             let sessionID = self.effectiveSessionID(selectedSessionID())
             _ = self.ingestRuntime(project: project, projects: currentProjects, selectedSessionID: sessionID)
+            self.refreshTitlebarTodayLiveOverlay(notify: !isPanelVisible())
+            guard isPanelVisible() else {
+                return
+            }
             self.refreshLiveState(
                 project: project,
                 selectedSessionID: sessionID,

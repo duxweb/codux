@@ -4,10 +4,31 @@ import Foundation
 @MainActor
 extension AIStatsStore {
     func titlebarTodayLevelTokens() -> Int {
-        if !currentProjects.isEmpty {
-            return totalTodayNormalizedTokensAcrossProjects(currentProjects)
+        clampedAdd(aiUsageStore.globalTodayNormalizedTokens(), titlebarTodayLiveOverlayTokens)
+    }
+
+    @discardableResult
+    func refreshTitlebarTodayLiveOverlay(notify: Bool = true) -> Bool {
+        let previousBaselineDay = titlebarLiveOverlayBaselineDay
+        let previousTotalBaselines = titlebarLiveOverlayTotalBaselines
+        let previousCachedBaselines = titlebarLiveOverlayCachedInputBaselines
+        let previousTokens = titlebarTodayLiveOverlayTokens
+        let previousCachedTokens = titlebarTodayLiveOverlayCachedInputTokens
+
+        let overlay = globalTodayLiveOverlayTotals(indexedSessions: aiUsageStore.indexedSessions(since: nil))
+        titlebarTodayLiveOverlayTokens = overlay.tokens
+        titlebarTodayLiveOverlayCachedInputTokens = overlay.cachedInputTokens
+
+        let didChange = previousBaselineDay != titlebarLiveOverlayBaselineDay
+            || previousTotalBaselines != titlebarLiveOverlayTotalBaselines
+            || previousCachedBaselines != titlebarLiveOverlayCachedInputBaselines
+            || previousTokens != titlebarTodayLiveOverlayTokens
+            || previousCachedTokens != titlebarTodayLiveOverlayCachedInputTokens
+
+        if didChange, notify {
+            renderVersion &+= 1
         }
-        return aiUsageStore.globalTodayNormalizedTokens()
+        return didChange
     }
 
     func normalizedTokenTotalsForPet(_ projects: [Project], claimedAt: Date?) -> [UUID: Int] {
@@ -19,12 +40,17 @@ extension AIStatsStore {
             return [:]
         }
 
-        var totalsByProject = aiUsageStore.indexedSessions(since: claimedAt, projectIDs: projectIDs)
+        let indexedSessions = aiUsageStore.indexedSessions(since: claimedAt, projectIDs: projectIDs)
+        var totalsByProject = indexedSessions
             .reduce(into: [UUID: Int]()) { partial, session in
                 partial[session.projectID] = clampedAdd(partial[session.projectID] ?? 0, session.totalTokens)
             }
 
-        let liveTotals = liveOverlayTotalTokensForPet(projectIDs: projectIDs, claimedAt: claimedAt)
+        let liveTotals = liveOverlayTotalTokensForPet(
+            projectIDs: projectIDs,
+            claimedAt: claimedAt,
+            indexedSessions: indexedSessions
+        )
         for (projectID, liveTotal) in liveTotals {
             totalsByProject[projectID] = clampedAdd(totalsByProject[projectID] ?? 0, liveTotal)
         }
@@ -53,8 +79,12 @@ extension AIStatsStore {
 
     func totalTodayNormalizedTokensAcrossProjects(_ projects: [Project]) -> Int {
         projects.reduce(0) { partial, project in
-            let liveOverlay = liveOverlayTotals(projectID: project.id)
             if let liveOrCached = cachedState(for: project.id) {
+                let liveOverlay = liveOverlayTotals(
+                    projectID: project.id,
+                    indexedSessions: liveOrCached.sessions,
+                    state: liveOrCached
+                )
                 return clampedAdd(
                     partial,
                     clampedAdd(historicalTodayBase(from: liveOrCached), liveOverlay.tokens)
@@ -62,6 +92,7 @@ extension AIStatsStore {
             }
 
             if let indexed = aiUsageStore.indexedProjectSnapshot(projectID: project.id) {
+                let liveOverlay = liveOverlayTotals(projectID: project.id, indexedSessions: indexed.sessions)
                 return clampedAdd(
                     partial,
                     clampedAdd(
@@ -75,14 +106,19 @@ extension AIStatsStore {
                 )
             }
 
-            return partial
+            let liveOverlay = liveOverlayTotals(projectID: project.id)
+            return clampedAdd(partial, liveOverlay.tokens)
         }
     }
 
     func totalTodayDisplayedTokensAcrossProjects(_ projects: [Project]) -> Int {
         projects.reduce(0) { partial, project in
-            let liveOverlay = liveOverlayTotals(projectID: project.id)
             if let liveOrCached = cachedState(for: project.id) {
+                let liveOverlay = liveOverlayTotals(
+                    projectID: project.id,
+                    indexedSessions: liveOrCached.sessions,
+                    state: liveOrCached
+                )
                 return clampedAdd(
                     partial,
                     clampedAdd(
@@ -93,6 +129,7 @@ extension AIStatsStore {
             }
 
             if let indexed = aiUsageStore.indexedProjectSnapshot(projectID: project.id) {
+                let liveOverlay = liveOverlayTotals(projectID: project.id, indexedSessions: indexed.sessions)
                 return clampedAdd(
                     partial,
                     clampedAdd(
@@ -107,14 +144,20 @@ extension AIStatsStore {
                 )
             }
 
-            return partial
+            let liveOverlay = liveOverlayTotals(projectID: project.id)
+            return clampedAdd(partial, clampedAdd(liveOverlay.tokens, liveOverlay.cachedInputTokens))
         }
     }
 
     func totalAllTimeNormalizedTokensAcrossProjects(_ projects: [Project]) -> Int {
         projects.reduce(0) { partial, project in
-            let liveOverlay = liveOverlayTotals(projectID: project.id)
             if let liveOrCached = cachedState(for: project.id) {
+                let liveOverlay = liveOverlayTotals(
+                    projectID: project.id,
+                    indexedSessions: liveOrCached.sessions,
+                    state: liveOrCached,
+                    useTodayBaseline: false
+                )
                 return clampedAdd(
                     partial,
                     clampedAdd(historicalAllTimeBase(from: liveOrCached), liveOverlay.tokens)
@@ -122,41 +165,73 @@ extension AIStatsStore {
             }
 
             if let indexed = aiUsageStore.indexedProjectSnapshot(projectID: project.id) {
+                let liveOverlay = liveOverlayTotals(
+                    projectID: project.id,
+                    indexedSessions: indexed.sessions,
+                    useTodayBaseline: false
+                )
                 let indexedTotal = max(
                     indexed.projectSummary.projectTotalTokens,
                     indexed.sessions.reduce(0) { clampedAdd($0, $1.totalTokens) }
                 )
                 return clampedAdd(partial, clampedAdd(indexedTotal, liveOverlay.tokens))
             }
+            let liveOverlay = liveOverlayTotals(projectID: project.id, useTodayBaseline: false)
             return clampedAdd(partial, liveOverlay.tokens)
         }
     }
 
-    private func liveOverlayTotals(projectID: UUID) -> (tokens: Int, cachedInputTokens: Int) {
-        aiSessionStore.liveAggregationSnapshots(projectID: projectID).reduce(into: (tokens: 0, cachedInputTokens: 0)) { partial, snapshot in
-            partial.tokens = clampedAdd(
-                partial.tokens,
-                max(0, snapshot.currentTotalTokens - snapshot.baselineTotalTokens)
-            )
-            partial.cachedInputTokens = clampedAdd(
-                partial.cachedInputTokens,
-                max(0, snapshot.currentCachedInputTokens - snapshot.baselineCachedInputTokens)
-            )
+    private func liveOverlayTotals(
+        projectID: UUID,
+        indexedSessions: [AISessionSummary] = [],
+        state: AIStatsPanelState? = nil,
+        useTodayBaseline: Bool = true
+    ) -> (tokens: Int, cachedInputTokens: Int) {
+        let overlay = AIUsageLiveOverlayCalculator().calculate(
+            snapshots: aiSessionStore.liveAggregationSnapshots(projectID: projectID),
+            indexedSessions: indexedSessions,
+            existingBaselines: AIUsageLiveOverlayBaselines(
+                day: state?.liveOverlayBaselineDay,
+                totalTokensBySessionKey: state?.liveOverlayTotalBaselines ?? [:],
+                cachedInputTokensBySessionKey: state?.liveOverlayCachedInputBaselines ?? [:]
+            ),
+            useTodayBaseline: useTodayBaseline
+        )
+        if useTodayBaseline {
+            return (tokens: overlay.todayTokens, cachedInputTokens: overlay.todayCachedInputTokens)
         }
+        return (tokens: overlay.totalTokens, cachedInputTokens: overlay.cachedInputTokens)
     }
 
-    private func liveOverlayTotalTokensForPet(projectIDs: Set<UUID>, claimedAt: Date) -> [UUID: Int] {
-        aiSessionStore.globalLiveAggregationSnapshots().reduce(into: [UUID: Int]()) { partial, snapshot in
-            guard projectIDs.contains(snapshot.projectID) else {
-                return
-            }
-            let firstTrackedAt = snapshot.startedAt ?? snapshot.updatedAt
-            guard firstTrackedAt >= claimedAt else {
-                return
-            }
-            let delta = max(0, snapshot.currentTotalTokens - snapshot.baselineTotalTokens)
-            partial[snapshot.projectID] = clampedAdd(partial[snapshot.projectID] ?? 0, delta)
-        }
+    private func liveOverlayTotalTokensForPet(
+        projectIDs: Set<UUID>,
+        claimedAt: Date,
+        indexedSessions: [AISessionSummary]
+    ) -> [UUID: Int] {
+        AIUsageLiveOverlayCalculator().liveTotalTokensForPet(
+            snapshots: aiSessionStore.globalLiveAggregationSnapshots(),
+            projectIDs: projectIDs,
+            claimedAt: claimedAt,
+            indexedSessions: indexedSessions
+        )
+    }
+
+    private func globalTodayLiveOverlayTotals(
+        indexedSessions: [AISessionSummary]
+    ) -> (tokens: Int, cachedInputTokens: Int) {
+        let overlay = AIUsageLiveOverlayCalculator().calculate(
+            snapshots: aiSessionStore.globalLiveAggregationSnapshots(),
+            indexedSessions: indexedSessions,
+            existingBaselines: AIUsageLiveOverlayBaselines(
+                day: titlebarLiveOverlayBaselineDay,
+                totalTokensBySessionKey: titlebarLiveOverlayTotalBaselines,
+                cachedInputTokensBySessionKey: titlebarLiveOverlayCachedInputBaselines
+            )
+        )
+        titlebarLiveOverlayBaselineDay = overlay.baselines.day
+        titlebarLiveOverlayTotalBaselines = overlay.baselines.totalTokensBySessionKey
+        titlebarLiveOverlayCachedInputBaselines = overlay.baselines.cachedInputTokensBySessionKey
+        return (tokens: overlay.todayTokens, cachedInputTokens: overlay.todayCachedInputTokens)
     }
 
     private func historicalAllTimeBase(from state: AIStatsPanelState) -> Int {
@@ -168,23 +243,80 @@ extension AIStatsStore {
     }
 
     private func historicalTodayBase(from state: AIStatsPanelState) -> Int {
-        resolvedTodayTotalTokens(
-            summary: max(0, (state.projectSummary?.todayTotalTokens ?? 0) - max(0, state.liveOverlayTokens)),
+        let summary = staleCachedTodayEvidence(in: state)
+            ? 0
+            : max(0, (state.projectSummary?.todayTotalTokens ?? 0) - historicalLiveTodayOverlayTokens(from: state))
+        return resolvedTodayTotalTokens(
+            summary: summary,
             timeBuckets: state.todayTimeBuckets,
             heatmap: state.heatmap
         )
     }
 
     private func historicalDisplayedTodayBase(from state: AIStatsPanelState) -> Int {
-        resolvedDisplayedTodayTotalTokens(
-            summary: max(0, (state.projectSummary?.todayTotalTokens ?? 0) - max(0, state.liveOverlayTokens)),
-            summaryCached: max(
+        let staleToday = staleCachedTodayEvidence(in: state)
+        let summary = staleToday
+            ? 0
+            : max(0, (state.projectSummary?.todayTotalTokens ?? 0) - historicalLiveTodayOverlayTokens(from: state))
+        let summaryCached = staleToday
+            ? 0
+            : max(
                 0,
-                (state.projectSummary?.todayCachedInputTokens ?? 0) - max(0, state.liveOverlayCachedInputTokens)
-            ),
+                (state.projectSummary?.todayCachedInputTokens ?? 0) - historicalLiveTodayOverlayCachedInputTokens(from: state)
+            )
+        return resolvedDisplayedTodayTotalTokens(
+            summary: summary,
+            summaryCached: summaryCached,
             timeBuckets: state.todayTimeBuckets,
             heatmap: state.heatmap
         )
+    }
+
+    private func staleCachedTodayEvidence(in state: AIStatsPanelState) -> Bool {
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: Date())
+        var hasDatedEvidence = false
+
+        for bucket in state.todayTimeBuckets {
+            hasDatedEvidence = true
+            if calendar.isDate(bucket.start, inSameDayAs: today) {
+                return false
+            }
+        }
+        for day in state.heatmap {
+            hasDatedEvidence = true
+            if calendar.isDate(day.day, inSameDayAs: today) {
+                return false
+            }
+        }
+        if let updatedAt = state.projectSummary?.currentSessionUpdatedAt {
+            hasDatedEvidence = true
+            if calendar.isDate(updatedAt, inSameDayAs: today) {
+                return false
+            }
+        }
+        if let indexedAt = state.indexedAt {
+            hasDatedEvidence = true
+            if calendar.isDate(indexedAt, inSameDayAs: today) {
+                return false
+            }
+        }
+
+        return hasDatedEvidence
+    }
+
+    private func historicalLiveTodayOverlayTokens(from state: AIStatsPanelState) -> Int {
+        if state.liveOverlayBaselineDay != nil {
+            return max(0, state.liveTodayOverlayTokens)
+        }
+        return max(0, state.liveOverlayTokens)
+    }
+
+    private func historicalLiveTodayOverlayCachedInputTokens(from state: AIStatsPanelState) -> Int {
+        if state.liveOverlayBaselineDay != nil {
+            return max(0, state.liveTodayOverlayCachedInputTokens)
+        }
+        return max(0, state.liveOverlayCachedInputTokens)
     }
 
     private func clampedAdd(_ lhs: Int, _ rhs: Int) -> Int {

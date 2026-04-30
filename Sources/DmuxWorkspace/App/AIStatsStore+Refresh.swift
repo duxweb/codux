@@ -213,12 +213,15 @@ extension AIStatsStore {
     }
 
     func storeState(_ newState: AIStatsPanelState, refreshState newRefreshState: PanelRefreshState, for projectID: UUID, updateCurrent: Bool) {
+        let titlebarDidChange = refreshTitlebarTodayLiveOverlay(notify: false)
         panelStateByProjectID[projectID] = newState
         refreshStateByProjectID[projectID] = newRefreshState
         cacheState(newState, for: projectID)
         if updateCurrent {
             state = newState
             refreshState = newRefreshState
+            renderVersion &+= 1
+        } else if titlebarDidChange || newState.indexedAt != nil {
             renderVersion &+= 1
         }
     }
@@ -270,9 +273,14 @@ extension AIStatsStore {
     }
 
     func resolvedTodayTotalTokens(summary: Int, timeBuckets: [AITimeBucket], heatmap: [AIHeatmapDay]) -> Int {
-        let bucketTotal = timeBuckets.reduce(0) { $0 + $1.totalTokens }
         let calendar = Calendar.autoupdatingCurrent
         let today = calendar.startOfDay(for: Date())
+        let bucketTotal = timeBuckets.reduce(0) { partial, bucket in
+            guard calendar.isDate(bucket.start, inSameDayAs: today) else {
+                return partial
+            }
+            return partial + bucket.totalTokens
+        }
         let heatmapToday = heatmap.first(where: { calendar.isDate($0.day, inSameDayAs: today) })?.totalTokens ?? 0
         return max(max(0, summary), max(bucketTotal, heatmapToday))
     }
@@ -292,9 +300,14 @@ extension AIStatsStore {
         timeBuckets: [AITimeBucket],
         heatmap: [AIHeatmapDay]
     ) -> Int {
-        let bucketTotal = timeBuckets.reduce(0) { $0 + $1.totalTokens + $1.cachedInputTokens }
         let calendar = Calendar.autoupdatingCurrent
         let today = calendar.startOfDay(for: Date())
+        let bucketTotal = timeBuckets.reduce(0) { partial, bucket in
+            guard calendar.isDate(bucket.start, inSameDayAs: today) else {
+                return partial
+            }
+            return partial + bucket.totalTokens + bucket.cachedInputTokens
+        }
         let heatmapTotal: Int = {
             guard let heatmapToday = heatmap.first(where: { calendar.isDate($0.day, inSameDayAs: today) }) else {
                 return 0
