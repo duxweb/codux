@@ -201,7 +201,7 @@ private struct DexSidebar: View {
 
                         // Attribute bars
                         let accent = record.species.dexAccent
-                        let maxV = max(1, record.stats.maxValue)
+                        let maxV = PetStats.traitDisplayMaxValue
                         Group {
                             DexAttrBar(emoji: "🧠", name: petL("pet.attribute.wisdom", "Wisdom"), value: record.stats.wisdom, maxValue: maxV, color: accent, widestValueText: widestStatText)
                             DexAttrBar(emoji: "🔥", name: petL("pet.attribute.chaos", "Chaos"), value: record.stats.chaos, maxValue: maxV, color: Color(hex: 0xFF6030), widestValueText: widestStatText)
@@ -308,7 +308,7 @@ private struct DexAttrBar: View {
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 2).fill(color.opacity(0.12)).frame(height: 4)
                     RoundedRectangle(cornerRadius: 2).fill(color.opacity(0.75))
-                        .frame(width: geo.size.width * CGFloat(value) / CGFloat(max(1, maxValue)), height: 4)
+                        .frame(width: geo.size.width * min(1, max(0, CGFloat(value) / CGFloat(max(1, maxValue)))), height: 4)
                 }
             }
             .frame(height: 4)

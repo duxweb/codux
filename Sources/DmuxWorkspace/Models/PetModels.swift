@@ -12,6 +12,7 @@ struct PetStats: Codable, Equatable, Sendable {
     let empathy: Int
 
     static let neutral = PetStats(wisdom: 0, chaos: 0, night: 0, stamina: 0, empathy: 0)
+    static let traitDisplayMaxValue = 330
 
     var maxValue: Int {
         max(wisdom, chaos, night, stamina, empathy)

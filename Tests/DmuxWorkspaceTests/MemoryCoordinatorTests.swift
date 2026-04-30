@@ -99,29 +99,140 @@ final class MemoryCoordinatorTests: XCTestCase {
         XCTAssertNil(recovered.lastError)
     }
 
-    func testAutomaticProviderSelectionKeepsToolProviderFirstThenFallbacks() throws {
+    func testAutomaticProviderSelectionUsesAPIProvidersOnlyByPriority() throws {
         let service = AIProviderSelectionService()
-        let settings = AppAISettings()
+        var settings = AppAISettings()
+        settings.providers = [
+            AppAIProviderConfiguration.customAPIChannel(
+                kind: .openAICompatible,
+                priority: 2,
+                displayName: "OpenAI"
+            ),
+            AppAIProviderConfiguration.customAPIChannel(
+                kind: .anthropic,
+                priority: 1,
+                displayName: "Claude API"
+            ),
+        ]
 
         let providers = service.candidateMemoryExtractionProviders(in: settings, tool: "codex")
 
         XCTAssertEqual(
-            providers.map(\.id).prefix(3),
-            [
-                AppAIProviderKind.codex.builtInProviderID,
-                AppAIProviderKind.claude.builtInProviderID,
-                AppAIProviderKind.gemini.builtInProviderID,
-            ])
+            providers.map(\.displayName),
+            ["Claude API", "OpenAI"])
     }
 
     func testExplicitProviderSelectionDoesNotFallbackToOtherProviders() throws {
         let service = AIProviderSelectionService()
         var settings = AppAISettings()
-        settings.memory.defaultExtractorProviderID = AppAIProviderKind.gemini.builtInProviderID
+        let preferred = AppAIProviderConfiguration.customAPIChannel(
+            kind: .openAICompatible,
+            priority: 1,
+            displayName: "Preferred API"
+        )
+        settings.providers = [
+            preferred,
+            AppAIProviderConfiguration.customAPIChannel(
+                kind: .anthropic,
+                priority: 0,
+                displayName: "Fallback API"
+            ),
+        ]
+        settings.memory.defaultExtractorProviderID = preferred.id
 
         let providers = service.candidateMemoryExtractionProviders(in: settings, tool: "codex")
 
-        XCTAssertEqual(providers.map(\.id), [AppAIProviderKind.gemini.builtInProviderID])
+        XCTAssertEqual(providers.map(\.id), [preferred.id])
+    }
+
+    func testSettingsMigrationRemovesLegacyCliExtractionProviders() throws {
+        let data = Data(
+            """
+            {
+              "memory": {
+                "defaultExtractorProviderID": "builtin-claude"
+              },
+              "providers": [
+                {
+                  "id": "builtin-claude",
+                  "kind": "claude",
+                  "displayName": "Claude",
+                  "isEnabled": true,
+                  "model": "",
+                  "baseURL": "",
+                  "apiKeyReference": null,
+                  "useForMemoryExtraction": true,
+                  "priority": 0
+                },
+                {
+                  "id": "api-openai",
+                  "kind": "openAICompatible",
+                  "displayName": "API",
+                  "isEnabled": true,
+                  "model": "gpt-4.1-mini",
+                  "baseURL": "https://api.openai.com/v1",
+                  "apiKeyReference": null,
+                  "useForMemoryExtraction": true,
+                  "priority": 1
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let settings = try JSONDecoder().decode(AppAISettings.self, from: data)
+
+        XCTAssertFalse(settings.providers.contains { $0.id == "builtin-claude" })
+        XCTAssertTrue(settings.providers.contains { $0.kind == .openAICompatible })
+        XCTAssertEqual(
+            settings.memory.defaultExtractorProviderID,
+            AppMemorySettings.automaticExtractorProviderID
+        )
+    }
+
+    func testSettingsMigrationRemovesLegacyBuiltInAPIChannel() throws {
+        let data = Data(
+            """
+            {
+              "memory": {
+                "defaultExtractorProviderID": "custom-openai-compatible"
+              },
+              "providers": [
+                {
+                  "id": "custom-openai-compatible",
+                  "kind": "openAICompatible",
+                  "displayName": "OpenAI-Compatible API",
+                  "isEnabled": false,
+                  "model": "gpt-4.1-mini",
+                  "baseURL": "https://api.openai.com/v1",
+                  "apiKeyReference": null,
+                  "useForMemoryExtraction": false,
+                  "priority": 0
+                },
+                {
+                  "id": "api-openai-compatible-test",
+                  "kind": "openAICompatible",
+                  "displayName": "OpenAI API",
+                  "isEnabled": true,
+                  "model": "gpt-4.1-mini",
+                  "baseURL": "https://api.openai.com/v1",
+                  "apiKeyReference": null,
+                  "useForMemoryExtraction": true,
+                  "priority": 1
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let settings = try JSONDecoder().decode(AppAISettings.self, from: data)
+
+        XCTAssertFalse(settings.providers.contains { $0.id == "custom-openai-compatible" })
+        XCTAssertEqual(settings.providers.map(\.id), ["api-openai-compatible-test"])
+        XCTAssertEqual(
+            settings.memory.defaultExtractorProviderID,
+            AppMemorySettings.automaticExtractorProviderID
+        )
     }
 
     func testExtractionResponseDecoderAcceptsMarkdownFencedJSON() throws {

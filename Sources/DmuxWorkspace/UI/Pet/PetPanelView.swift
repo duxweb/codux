@@ -649,7 +649,7 @@ struct PetAttributeRow: View {
         guard maxValue > 0 else {
             return 0
         }
-        return CGFloat(value) / CGFloat(maxValue)
+        return min(1, max(0, CGFloat(value) / CGFloat(maxValue)))
     }
 
     private var valueText: String {

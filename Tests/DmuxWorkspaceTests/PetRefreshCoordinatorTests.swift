@@ -25,7 +25,7 @@ final class PetRefreshCoordinatorTests: XCTestCase {
 
         coordinator.configure(
             totalNormalizedTokensByProject: { totals.value },
-            computedStats: {
+            computedStats: { _ in
                 statsCallCount += 1
                 return .neutral
             }
@@ -57,7 +57,7 @@ final class PetRefreshCoordinatorTests: XCTestCase {
         let totals = TotalsBox([projectA: 120, projectB: 300])
         coordinator.configure(
             totalNormalizedTokensByProject: { totals.value },
-            computedStats: { .neutral }
+            computedStats: { _ in .neutral }
         )
 
         coordinator.refreshNow(reason: .bootstrap, now: Date(timeIntervalSince1970: 1_700_000_000))

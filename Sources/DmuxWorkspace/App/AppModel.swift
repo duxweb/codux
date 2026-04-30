@@ -177,14 +177,11 @@ final class AppModel {
                 }
                 return totals
             },
-            computedStats: { [weak self] in
+            computedStats: { [weak self] now in
                 guard let self else {
                     return .neutral
                 }
-                return self.aiStatsStore.petStatsSinceClaimedAt(
-                    self.petStore.claimedAt,
-                    projects: self.projects
-                )
+                return self.aiStatsStore.petStatsRolling(self.projects, now: now)
             }
         )
         aiSessionStore.onRenderVersionChange = { [weak self] in

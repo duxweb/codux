@@ -35,7 +35,7 @@ enum SettingsSectionTab: String, CaseIterable, Identifiable {
         case .pet:
             return 430
         case .ai:
-            return 640
+            return 720
         case .notifications:
             return 620
         case .remote:

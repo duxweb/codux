@@ -25,7 +25,9 @@ struct TitlebarOverlayView: View {
                         TitlebarPerformanceMonitorView(model: model)
                     }
 
-                    TitlebarMemoryStatusView(snapshot: model.memoryExtractionStatus)
+                    if model.appSettings.ai.memory.enabled {
+                        TitlebarMemoryStatusView(snapshot: model.memoryExtractionStatus)
+                    }
                     TitlebarRemoteStatusButton(
                         model: model,
                         isShowingPopover: $isShowingRemotePopover

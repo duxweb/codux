@@ -19,7 +19,7 @@ struct PetPopoverView: View {
     private var identity: PetResolvedIdentity { info.stage.resolvedIdentity(for: species, evoPath: path, customName: petStore.customName) }
     private var displayName: String { identity.title }
     private var hasLegacy: Bool { !petStore.legacy.isEmpty }
-    private var maxStatValue: Int { max(1, petStore.currentStats.maxValue) }
+    private var maxStatValue: Int { PetStats.traitDisplayMaxValue }
     private var widestStatText: String { petStore.currentStats.widestCompactValueText }
 
     var body: some View {

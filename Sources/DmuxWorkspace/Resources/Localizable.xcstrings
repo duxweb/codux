@@ -37594,19 +37594,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Automatic uses the current terminal tool first, then falls back to provider priority."
+            "value": "Automatic uses selected API channels by priority."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "自动会优先使用当前终端工具对应的提供商，然后按提供商优先级回退。"
+            "value": "自动按已选择的 API 渠道优先级提取。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "自動會優先使用目前終端工具對應的提供商，然後依提供商優先級回退。"
+            "value": "自動按已選擇的 API 渠道優先級擷取。"
           }
         },
         "de": {
@@ -38309,19 +38309,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Providers"
+            "value": "API Channels"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "提供商"
+            "value": "API 渠道"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "提供商"
+            "value": "API 渠道"
           }
         },
         "de": {
@@ -38586,6 +38586,144 @@
           "stringUnit": {
             "state": "translated",
             "value": "支援的工具啟動時注入，會和記憶上下文合併並寫入對應工具的啟動上下文。"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.add": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add API Channel"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加 API 渠道"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增 API 渠道"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.anthropic_help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uses Anthropic Messages API at /v1/messages."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Anthropic Messages API 的 /v1/messages。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Anthropic Messages API 的 /v1/messages。"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.api_only_help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API channels for memory extraction."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于记忆提取的 API 渠道。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用於記憶擷取的 API 渠道。"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名称"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名稱"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.openai_compatible_help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use this for OpenAI, DeepSeek, and other /v1/chat/completions-compatible APIs."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于 OpenAI、DeepSeek 和其他兼容 /v1/chat/completions 的 API。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用於 OpenAI、DeepSeek 和其他相容 /v1/chat/completions 的 API。"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.remove": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除"
           }
         }
       }

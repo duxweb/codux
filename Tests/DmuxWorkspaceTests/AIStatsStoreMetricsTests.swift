@@ -645,6 +645,45 @@ final class AIStatsStoreMetricsTests: XCTestCase {
         )
     }
 
+    func testPetStatsRollingUsesRecentWindowInsteadOfClaimDate() {
+        let aiUsageStore = AIUsageStore(databaseURL: databaseURL)
+        let store = makeStore(aiUsageStore: aiUsageStore)
+        let project = makeProject(name: "Project A", path: "/tmp/project-a")
+        let calendar = Calendar.autoupdatingCurrent
+        let now = calendar.date(from: DateComponents(year: 2026, month: 4, day: 30, hour: 12)) ?? Date()
+        let recentDayStart = calendar.startOfDay(for: now).addingTimeInterval(10 * 3_600)
+        let oldNightStart = calendar.startOfDay(for: now.addingTimeInterval(-20 * 86_400)).addingTimeInterval(23 * 3_600)
+
+        for index in 0..<8 {
+            aiUsageStore.saveExternalSummary(
+                makeExternalSummary(
+                    project: project,
+                    externalSessionID: "recent-day-\(index)",
+                    firstSeenAt: recentDayStart.addingTimeInterval(Double(index) * 600),
+                    totalTokens: 30_000,
+                    requestCount: 4,
+                    activeDurationSeconds: 600
+                )
+            )
+            aiUsageStore.saveExternalSummary(
+                makeExternalSummary(
+                    project: project,
+                    externalSessionID: "old-night-\(index)",
+                    firstSeenAt: oldNightStart.addingTimeInterval(Double(index) * 600),
+                    totalTokens: 30_000,
+                    requestCount: 4,
+                    activeDurationSeconds: 600
+                )
+            )
+        }
+
+        let rolling = store.petStatsRolling([project], now: now)
+        let sinceClaim = store.petStatsSinceClaimedAt(now.addingTimeInterval(-30 * 86_400), projects: [project])
+
+        XCTAssertLessThan(rolling.night, 200)
+        XCTAssertGreaterThanOrEqual(sinceClaim.night - rolling.night, 80)
+    }
+
     func testPetRefreshCoordinatorIgnoresRemovedProjectUsageThatStillExistsInStatsStore() {
         let aiUsageStore = AIUsageStore(databaseURL: databaseURL)
         let statsStore = makeStore(aiUsageStore: aiUsageStore)
@@ -663,8 +702,8 @@ final class AIStatsStoreMetricsTests: XCTestCase {
             totalNormalizedTokensByProject: {
                 statsStore.normalizedTokenTotalsForPet(currentProjects.value, claimedAt: petStore.claimedAt)
             },
-            computedStats: {
-                statsStore.petStatsSinceClaimedAt(petStore.claimedAt, projects: currentProjects.value)
+            computedStats: { now in
+                statsStore.petStatsRolling(currentProjects.value, now: now)
             }
         )
 
@@ -758,8 +797,8 @@ final class AIStatsStoreMetricsTests: XCTestCase {
             totalNormalizedTokensByProject: {
                 statsStore.normalizedTokenTotalsForPet(currentProjects.value, claimedAt: petStore.claimedAt)
             },
-            computedStats: {
-                statsStore.petStatsSinceClaimedAt(petStore.claimedAt, projects: currentProjects.value)
+            computedStats: { now in
+                statsStore.petStatsRolling(currentProjects.value, now: now)
             }
         )
 
@@ -931,9 +970,11 @@ final class AIStatsStoreMetricsTests: XCTestCase {
         project: Project,
         externalSessionID: String,
         firstSeenAt: Date,
-        totalTokens: Int
+        totalTokens: Int,
+        requestCount: Int = 1,
+        activeDurationSeconds: Int = 120
     ) -> AIExternalFileSummary {
-        let lastSeenAt = firstSeenAt.addingTimeInterval(120)
+        let lastSeenAt = firstSeenAt.addingTimeInterval(Double(activeDurationSeconds))
         return AIExternalFileSummary(
             source: "codex",
             filePath: "\(project.path)-\(externalSessionID).jsonl",
@@ -954,8 +995,8 @@ final class AIStatsStoreMetricsTests: XCTestCase {
                     outputTokens: 0,
                     totalTokens: totalTokens,
                     cachedInputTokens: 0,
-                    requestCount: 1,
-                    activeDurationSeconds: 120,
+                    requestCount: requestCount,
+                    activeDurationSeconds: activeDurationSeconds,
                     firstSeenAt: firstSeenAt,
                     lastSeenAt: lastSeenAt
                 )
@@ -971,13 +1012,13 @@ final class AIStatsStoreMetricsTests: XCTestCase {
                     lastSeenAt: lastSeenAt,
                     lastTool: "codex",
                     lastModel: "gpt-5.4",
-                    requestCount: 1,
+                    requestCount: requestCount,
                     totalInputTokens: totalTokens,
                     totalOutputTokens: 0,
                     totalTokens: totalTokens,
                     cachedInputTokens: 0,
                     maxContextUsagePercent: nil,
-                    activeDurationSeconds: 120,
+                    activeDurationSeconds: activeDurationSeconds,
                     todayTokens: totalTokens,
                     todayCachedInputTokens: 0
                 )

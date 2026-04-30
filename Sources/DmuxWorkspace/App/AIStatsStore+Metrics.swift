@@ -77,6 +77,16 @@ extension AIStatsStore {
         )
     }
 
+    func petStatsRolling(_ projects: [Project], windowDays: Int = 14, now: Date = Date()) -> PetStats {
+        let projectIDs = Set(projects.map(\.id))
+        guard !projectIDs.isEmpty else {
+            return .neutral
+        }
+        let cutoff = now.addingTimeInterval(-Double(windowDays) * 86_400)
+        let sessions = aiUsageStore.indexedSessions(since: cutoff, projectIDs: projectIDs)
+        return Self.computePetStats(from: sessions, now: now)
+    }
+
     func totalTodayNormalizedTokensAcrossProjects(_ projects: [Project]) -> Int {
         projects.reduce(0) { partial, project in
             if let liveOrCached = cachedState(for: project.id) {
@@ -325,7 +335,7 @@ extension AIStatsStore {
         return increment > Int.max - base ? Int.max : base + increment
     }
 
-    static func computePetStats(from sessions: [AISessionSummary]) -> PetStats {
+    static func computePetStats(from sessions: [AISessionSummary], now: Date = Date()) -> PetStats {
         guard !sessions.isEmpty else { return .neutral }
 
         let totalRequests = sessions.reduce(0) { $0 + $1.requestCount }
@@ -333,90 +343,98 @@ extension AIStatsStore {
         let totalSecs     = sessions.reduce(0) { $0 + $1.activeDurationSeconds }
         let sessionCount  = max(1, sessions.count)
 
+        if sessions.count < 3 || totalRequests < 5 || totalTokens < 20_000 {
+            return PetStats(wisdom: 100, chaos: 100, night: 100, stamina: 100, empathy: 100)
+        }
+
+        let calendar = Calendar.autoupdatingCurrent
         let avgTokPerReq = totalRequests > 0 ? Double(totalTokens) / Double(totalRequests) : 0
         let reqPerHour   = totalSecs > 0 ? Double(totalRequests) / (Double(totalSecs) / 3600.0) : 0
         let shortCount   = sessions.filter { $0.activeDurationSeconds < 300 }.count
-        let shortRatio   = Double(shortCount) / Double(sessions.count)
         let nightCount   = sessions.filter {
-            let h = Calendar.current.component(.hour, from: $0.firstSeenAt)
+            let h = calendar.component(.hour, from: $0.firstSeenAt)
             return h >= 22 || h < 6
         }.count
-        let nightRatio   = Double(nightCount) / Double(sessionCount)
         let sustainedSessionSeconds = sessions.map { session -> Int in
             let activeSeconds = max(0, session.activeDurationSeconds)
             let wallClockSeconds = max(0, Int(session.lastSeenAt.timeIntervalSince(session.firstSeenAt).rounded()))
             return max(activeSeconds, wallClockSeconds)
         }
         let maxSecs      = sustainedSessionSeconds.max() ?? 0
-        let avgSecs      = sustainedSessionSeconds.reduce(0, +) / sessions.count
-        let totalSustainedSecs = sustainedSessionSeconds.reduce(0, +)
         let multiTurnSessions = sessions.filter { $0.requestCount >= 4 }
-        let multiTurnRatio    = Double(multiTurnSessions.count) / Double(sessionCount)
 
         let iterativeRepairSessions = sessions.filter { s in
             guard s.requestCount >= 3, s.totalTokens > 0 else { return false }
             let avgPerTurn = Double(s.totalTokens) / Double(s.requestCount)
             return s.activeDurationSeconds >= 360 && avgPerTurn >= 120 && avgPerTurn <= 4_200
         }
-        let repairSecs        = iterativeRepairSessions.reduce(0) { $0 + $1.activeDurationSeconds }
-        let repairRatio       = min(1.0, Double(repairSecs) / Double(max(1, totalSecs)))
         let repairTokenBudget = iterativeRepairSessions.reduce(0) { $0 + $1.totalTokens }
-        let adjustmentLoopCount = sessions.filter { s in
-            guard s.requestCount >= 3, s.totalTokens > 0 else { return false }
-            let avgPerTurn = Double(s.totalTokens) / Double(s.requestCount)
-            return s.activeDurationSeconds < 360 && avgPerTurn >= 120 && avgPerTurn <= 3_600
+
+        func smoothedRatio(positive: Int, total: Int) -> Double {
+            let alpha = 2.0
+            let beta = 2.0
+            return (Double(max(0, positive)) + alpha) / (Double(max(0, total)) + alpha + beta)
+        }
+
+        func satRatio(_ value: Double, target: Double) -> Double {
+            guard value > 0, target > 0 else { return 0 }
+            return value / (value + target)
+        }
+
+        func displayPts(_ ratio: Double, weight: Double, exponent: Double = 0.55) -> Double {
+            guard ratio > 0, weight > 0 else { return 0 }
+            return min(weight, pow(min(1.0, max(0, ratio)), exponent) * weight)
+        }
+
+        let depthRatio = satRatio(avgTokPerReq, target: 6_000)
+        let depth = displayPts(depthRatio, weight: 230, exponent: 0.60)
+        let deepSessions = sessions.filter { session in
+            session.requestCount > 0 && Double(session.totalTokens) / Double(session.requestCount) >= 2_000
         }.count
+        let focus = displayPts(
+            smoothedRatio(positive: deepSessions, total: sessions.count),
+            weight: 80,
+            exponent: 0.55
+        )
 
-        func logPts(_ value: Double, divisor: Double, weight: Double, cap: Double) -> Double {
-            guard value > 0, divisor > 0, weight > 0 else { return 0 }
-            return min(log1p(value / divisor) * weight, cap)
-        }
-        func ratioPts(_ value: Double, exponent: Double, weight: Double, cap: Double) -> Double {
-            guard value > 0, exponent > 0, weight > 0 else { return 0 }
-            return min(pow(value, exponent) * weight, cap)
-        }
+        let burst = displayPts(
+            smoothedRatio(positive: shortCount, total: sessions.count),
+            weight: 200,
+            exponent: 0.55
+        )
+        let rate = displayPts(satRatio(reqPerHour, target: 6.0), weight: 130, exponent: 0.65)
 
-        let shared = logPts(Double(totalTokens), divisor: 250_000, weight: 16, cap: 20)
+        let core = displayPts(
+            smoothedRatio(positive: nightCount, total: sessionCount),
+            weight: 240,
+            exponent: 0.55
+        )
+        let streak = displayPts(satRatio(Double(nightCount), target: 8.0), weight: 70, exponent: 0.60)
 
-        let wisdomScore =
-            logPts(avgTokPerReq,       divisor: 400,    weight: 110, cap: 175) +
-            logPts(Double(totalSecs),  divisor: 12_000, weight: 12,  cap: 24)  +
-            shared
+        let longSessionCount = sustainedSessionSeconds.filter { $0 >= 1_800 }.count
+        let long = displayPts(
+            smoothedRatio(positive: longSessionCount, total: sessions.count),
+            weight: 200,
+            exponent: 0.55
+        )
+        let peak = displayPts(satRatio(Double(maxSecs), target: 3_600), weight: 130, exponent: 0.60)
 
-        let chaosScore =
-            logPts(reqPerHour,            divisor: 2.2, weight: 92, cap: 138) +
-            ratioPts(shortRatio,          exponent: 0.72, weight: 46, cap: 46) +
-            logPts(Double(totalRequests), divisor: 26,  weight: 20, cap: 34)  +
-            shared
-
-        let nightTokens = Double(totalTokens) * max(0.08, nightRatio)
-        let nightScore =
-            ratioPts(nightRatio,          exponent: 0.72, weight: 96, cap: 96) +
-            logPts(Double(nightCount),    divisor: 4.5,  weight: 22, cap: 42) +
-            logPts(nightTokens,           divisor: 150_000, weight: 10, cap: 18) +
-            shared * 0.35
-
-        let staminaScore =
-            logPts(Double(maxSecs),  divisor: 1_400, weight: 58, cap: 88) +
-            logPts(Double(avgSecs),  divisor: 900,   weight: 52, cap: 72) +
-            logPts(Double(totalSustainedSecs), divisor: 28_800, weight: 18, cap: 28) +
-            logPts(Double(totalRequests), divisor: 18, weight: 14, cap: 20) +
-            shared * 0.5
-
-        let empathyScore =
-            ratioPts(repairRatio,              exponent: 0.70, weight: 92, cap: 92) +
-            ratioPts(multiTurnRatio,           exponent: 0.58, weight: 42, cap: 42) +
-            logPts(Double(repairSecs) / 60,    divisor: 900,   weight: 30, cap: 46) +
-            logPts(Double(repairTokenBudget),  divisor: 150_000, weight: 18, cap: 30) +
-            logPts(Double(adjustmentLoopCount),divisor: 2.4,   weight: 14, cap: 20) +
-            shared * 0.5
+        let repairTokenShare = totalTokens > 0
+            ? Double(repairTokenBudget) / Double(totalTokens)
+            : 0
+        let repair = displayPts(min(1.0, repairTokenShare), weight: 210, exponent: 0.55)
+        let collaboration = displayPts(
+            smoothedRatio(positive: multiTurnSessions.count, total: sessionCount),
+            weight: 120,
+            exponent: 0.55
+        )
 
         return PetStats(
-            wisdom:  max(0, Int(wisdomScore.rounded())),
-            chaos:   max(0, Int(chaosScore.rounded())),
-            night:   max(0, Int(nightScore.rounded())),
-            stamina: max(0, Int(staminaScore.rounded())),
-            empathy: max(0, Int(empathyScore.rounded()))
+            wisdom:  max(0, Int((depth + focus).rounded())),
+            chaos:   max(0, Int((burst + rate).rounded())),
+            night:   max(0, Int((core + streak).rounded())),
+            stamina: max(0, Int((long + peak).rounded())),
+            empathy: max(0, Int((repair + collaboration).rounded()))
         )
     }
 

@@ -160,7 +160,7 @@ extension AppModel {
     func updateAIProviderEnabled(_ enabled: Bool, providerID: String) {
         updateAIProvider(providerID: providerID) { provider in
             provider.isEnabled = enabled
-            if provider.kind == .openAICompatible && enabled == false {
+            if enabled == false {
                 provider.useForMemoryExtraction = false
             }
         }
@@ -169,6 +169,13 @@ extension AppModel {
     func updateAIProviderUseForMemoryExtraction(_ enabled: Bool, providerID: String) {
         updateAIProvider(providerID: providerID) { provider in
             provider.useForMemoryExtraction = enabled
+        }
+    }
+
+    func updateAIProviderDisplayName(_ displayName: String, providerID: String) {
+        updateAIProvider(providerID: providerID) { provider in
+            let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            provider.displayName = trimmed.isEmpty ? provider.kind.defaultDisplayName : trimmed
         }
     }
 
@@ -203,6 +210,49 @@ extension AppModel {
             return ""
         }
         return aiCredentialStore.apiKey(for: provider.apiKeyReference) ?? ""
+    }
+
+    func addAIProviderChannel(
+        kind: AppAIProviderKind,
+        displayName: String? = nil,
+        model: String? = nil,
+        baseURL: String? = nil
+    ) {
+        guard kind.allowsUserDefinedChannels else {
+            return
+        }
+        var settings = appSettings
+        let nextPriority = (settings.ai.providers.map(\.priority).max() ?? -1) + 1
+        settings.ai.providers.append(
+            AppAIProviderConfiguration.customAPIChannel(
+                kind: kind,
+                priority: nextPriority,
+                displayName: displayName,
+                model: model,
+                baseURL: baseURL
+            )
+        )
+        settings.ai.migrateMissingDefaultProviders()
+        appSettings = settings
+        persist()
+    }
+
+    func removeAIProviderChannel(providerID: String) {
+        var settings = appSettings
+        guard let index = settings.ai.providers.firstIndex(where: { $0.id == providerID }),
+              settings.ai.providers[index].kind.allowsUserDefinedChannels,
+              providerID.hasPrefix("api-")
+        else {
+            return
+        }
+        let removed = settings.ai.providers.remove(at: index)
+        aiCredentialStore.deleteAPIKey(for: removed.apiKeyReference)
+        if settings.ai.memory.defaultExtractorProviderID == providerID {
+            settings.ai.memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
+        }
+        settings.ai.migrateMissingDefaultProviders()
+        appSettings = settings
+        persist()
     }
 
     func testAIProvider(providerID: String) {
@@ -261,7 +311,7 @@ extension AppModel {
         transform(&settings.ai.providers[index])
         settings.ai.migrateMissingDefaultProviders()
         if settings.ai.memory.defaultExtractorProviderID != AppMemorySettings.automaticExtractorProviderID,
-           settings.ai.providers.contains(where: { $0.id == settings.ai.memory.defaultExtractorProviderID && $0.isEnabled && $0.useForMemoryExtraction }) == false {
+           settings.ai.providers.contains(where: { $0.id == settings.ai.memory.defaultExtractorProviderID && $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }) == false {
             settings.ai.memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
         }
         appSettings = settings

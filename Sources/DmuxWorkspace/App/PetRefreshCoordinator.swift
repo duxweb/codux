@@ -15,7 +15,7 @@ final class PetRefreshCoordinator {
     private let logger = AppDebugLog.shared
     private let liveRefreshDelay: Duration
     private var totalNormalizedTokensByProjectProvider: (@MainActor () -> [UUID: Int])?
-    private var computedStatsProvider: (@MainActor () -> PetStats)?
+    private var computedStatsProvider: (@MainActor (Date) -> PetStats)?
     private var pendingRefreshTask: Task<Void, Never>?
     private var periodicRefreshTimer: Timer?
 
@@ -29,7 +29,7 @@ final class PetRefreshCoordinator {
 
     func configure(
         totalNormalizedTokensByProject: @escaping @MainActor () -> [UUID: Int],
-        computedStats: @escaping @MainActor () -> PetStats
+        computedStats: @escaping @MainActor (Date) -> PetStats
     ) {
         totalNormalizedTokensByProjectProvider = totalNormalizedTokensByProject
         computedStatsProvider = computedStats
@@ -81,7 +81,7 @@ final class PetRefreshCoordinator {
             return increment > Int.max - base ? Int.max : base + increment
         }
         let computedStats = petStore.shouldRefreshStats(now: now)
-            ? computedStatsProvider()
+            ? computedStatsProvider(now)
             : nil
 
         petStore.refreshDerivedState(

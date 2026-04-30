@@ -113,258 +113,217 @@ final class PetFeatureTests: XCTestCase {
 
     func testWisdomNoLongerDependsOnClaudeToolBias() {
         let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
-        let claudeSession = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "claude",
-            firstSeenAt: baseDate,
-            lastSeenAt: baseDate.addingTimeInterval(1_800),
-            lastTool: "claude",
-            lastModel: "haiku",
-            requestCount: 10,
-            totalInputTokens: 50_000,
-            totalOutputTokens: 450_000,
-            totalTokens: 500_000,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 1_800,
-            todayTokens: 500_000
+        let claudeSessions = makePetSessions(
+            count: 4,
+            baseDate: baseDate,
+            titlePrefix: "claude",
+            tool: "claude",
+            requestCount: 3,
+            totalTokens: 60_000,
+            activeDurationSeconds: 1_800
         )
-        let codexSession = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "codex",
-            firstSeenAt: baseDate,
-            lastSeenAt: baseDate.addingTimeInterval(1_800),
-            lastTool: "codex",
-            lastModel: "gpt-5.4-mini",
-            requestCount: 10,
-            totalInputTokens: 50_000,
-            totalOutputTokens: 450_000,
-            totalTokens: 500_000,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 1_800,
-            todayTokens: 500_000
+        let codexSessions = makePetSessions(
+            count: 4,
+            baseDate: baseDate,
+            titlePrefix: "codex",
+            tool: "codex",
+            requestCount: 3,
+            totalTokens: 60_000,
+            activeDurationSeconds: 1_800
         )
 
         XCTAssertEqual(
-            AIStatsStore.computePetStats(from: [claudeSession]).wisdom,
-            AIStatsStore.computePetStats(from: [codexSession]).wisdom
+            AIStatsStore.computePetStats(from: claudeSessions).wisdom,
+            AIStatsStore.computePetStats(from: codexSessions).wisdom
         )
+    }
+
+    func testComputePetStatsReturnsNeutralBaselineForLowSampleSize() {
+        let sessions = makePetSessions(
+            count: 2,
+            baseDate: Date(timeIntervalSince1970: 1_700_000_000),
+            requestCount: 10,
+            totalTokens: 500_000,
+            activeDurationSeconds: 1_800
+        )
+
+        XCTAssertEqual(
+            AIStatsStore.computePetStats(from: sessions),
+            PetStats(wisdom: 100, chaos: 100, night: 100, stamina: 100, empathy: 100)
+        )
+    }
+
+    func testNightTraitRespondsToRecentNightWork() {
+        let calendar = Calendar.autoupdatingCurrent
+        let startOfDay = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let daySessions = makePetSessions(
+            count: 8,
+            baseDate: startOfDay.addingTimeInterval(10 * 3_600),
+            requestCount: 4,
+            totalTokens: 30_000,
+            activeDurationSeconds: 600
+        )
+        let nightSessions = makePetSessions(
+            count: 8,
+            baseDate: startOfDay.addingTimeInterval(23 * 3_600),
+            requestCount: 4,
+            totalTokens: 30_000,
+            activeDurationSeconds: 600
+        )
+
+        let dayStats = AIStatsStore.computePetStats(from: daySessions)
+        let nightStats = AIStatsStore.computePetStats(from: nightSessions)
+        XCTAssertGreaterThan(nightStats.night, 200)
+        XCTAssertGreaterThanOrEqual(nightStats.night, dayStats.night)
+    }
+
+    func testLongSessionsDriveStaminaWithoutDependingOnTotalVolume() {
+        let sessions = makePetSessions(
+            count: 4,
+            baseDate: Date(timeIntervalSince1970: 1_700_000_000),
+            requestCount: 6,
+            totalTokens: 30_000,
+            activeDurationSeconds: 10_800
+        )
+
+        XCTAssertGreaterThan(AIStatsStore.computePetStats(from: sessions).stamina, 200)
+    }
+
+    func testShortBurstSessionsDriveChaos() {
+        let sessions = makePetSessions(
+            count: 8,
+            baseDate: Date(timeIntervalSince1970: 1_700_000_000),
+            requestCount: 3,
+            totalTokens: 50_000,
+            activeDurationSeconds: 60
+        )
+
+        XCTAssertGreaterThan(AIStatsStore.computePetStats(from: sessions).chaos, 200)
     }
 
     func testEmpathyRewardsIterativeRepairSessionsNotJustTinyPrompts() {
-        let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
-        let iterativeRepair = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "repair",
-            firstSeenAt: baseDate,
-            lastSeenAt: baseDate.addingTimeInterval(1_800),
-            lastTool: "codex",
-            lastModel: "gpt-5.4-mini",
-            requestCount: 7,
-            totalInputTokens: 180_000,
-            totalOutputTokens: 520_000,
-            totalTokens: 700_000,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 1_800,
-            todayTokens: 700_000
+        let repairSessions = makePetSessions(
+            count: 4,
+            baseDate: Date(timeIntervalSince1970: 1_700_000_000),
+            titlePrefix: "repair",
+            requestCount: 10,
+            totalTokens: 30_000,
+            activeDurationSeconds: 1_800
         )
-        let oneShotLong = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "oneshot",
-            firstSeenAt: baseDate,
-            lastSeenAt: baseDate.addingTimeInterval(1_800),
-            lastTool: "codex",
-            lastModel: "gpt-5.4-mini",
+        let oneShotSessions = makePetSessions(
+            count: 4,
+            baseDate: Date(timeIntervalSince1970: 1_700_000_000),
+            titlePrefix: "oneshot",
             requestCount: 1,
-            totalInputTokens: 300_000,
-            totalOutputTokens: 400_000,
-            totalTokens: 700_000,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 1_800,
-            todayTokens: 700_000
+            totalTokens: 30_000,
+            activeDurationSeconds: 1_800
         )
 
-        XCTAssertGreaterThan(
-            AIStatsStore.computePetStats(from: [iterativeRepair]).empathy,
-            AIStatsStore.computePetStats(from: [oneShotLong]).empathy
-        )
+        let repairStats = AIStatsStore.computePetStats(from: repairSessions)
+        let oneShotStats = AIStatsStore.computePetStats(from: oneShotSessions)
+        XCTAssertGreaterThan(repairStats.empathy, 200)
+        XCTAssertGreaterThan(repairStats.empathy, oneShotStats.empathy)
     }
 
-    func testNightTraitSoftStartsWithoutTenPercentHardCutoff() {
-        let calendar = Calendar.current
-        let referenceDate = Date(timeIntervalSince1970: 1_700_000_000)
-        let startOfDay = calendar.startOfDay(for: referenceDate)
-        let daySessions = (0..<19).map { index in
-            AISessionSummary(
-                sessionID: UUID(),
-                externalSessionID: nil,
-                projectID: UUID(),
-                projectName: "codux",
-                sessionTitle: "day-\(index)",
-                firstSeenAt: startOfDay.addingTimeInterval(Double(index % 8) * 3_600 + 9 * 3_600),
-                lastSeenAt: startOfDay.addingTimeInterval(Double(index % 8) * 3_600 + 9 * 3_600 + 180),
-                lastTool: "codex",
-                lastModel: "gpt-5.4-mini",
-                requestCount: 2,
-                totalInputTokens: 200,
-                totalOutputTokens: 300,
-                totalTokens: 500,
-                maxContextUsagePercent: nil,
-                activeDurationSeconds: 180,
-                todayTokens: 500
-            )
-        }
-        let nightSession = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "night",
-            firstSeenAt: startOfDay.addingTimeInterval(23 * 3_600),
-            lastSeenAt: startOfDay.addingTimeInterval(23 * 3_600 + 180),
-            lastTool: "codex",
-            lastModel: "gpt-5.4-mini",
-            requestCount: 2,
-            totalInputTokens: 200,
-            totalOutputTokens: 300,
-            totalTokens: 500,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 180,
-            todayTokens: 500
+    func testComputePetStatsCapsBelowTheoreticalMax() {
+        let calendar = Calendar.autoupdatingCurrent
+        let startOfDay = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let sessions = makePetSessions(
+            count: 12,
+            baseDate: startOfDay.addingTimeInterval(23 * 3_600),
+            requestCount: 12,
+            totalTokens: 50_000,
+            activeDurationSeconds: 10_800
         )
 
-        let stats = AIStatsStore.computePetStats(from: daySessions + [nightSession])
-        XCTAssertGreaterThan(stats.night, 0)
+        let stats = AIStatsStore.computePetStats(from: sessions)
+        XCTAssertLessThan(stats.wisdom, 340)
+        XCTAssertLessThan(stats.chaos, 340)
+        XCTAssertLessThan(stats.night, 340)
+        XCTAssertLessThan(stats.stamina, 340)
+        XCTAssertLessThan(stats.empathy, 340)
     }
 
-    func testSingleLongSessionDoesNotOverfavorStaminaOverWisdom() {
-        let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
-        let longSession = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "deep-work",
-            firstSeenAt: baseDate,
-            lastSeenAt: baseDate.addingTimeInterval(1_800),
-            lastTool: "codex",
-            lastModel: "gpt-5.4-mini",
-            requestCount: 1,
-            totalInputTokens: 1_000,
-            totalOutputTokens: 2_000,
-            totalTokens: 3_000,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 1_800,
-            todayTokens: 3_000
-        )
-
-        let stats = AIStatsStore.computePetStats(from: [longSession])
-        XCTAssertGreaterThan(stats.wisdom, stats.stamina)
-    }
-
-    func testStaminaBackfillsFromSessionSpanAndTurnCountWhenActiveDurationIsSparse() {
-        let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
-        let sustainedSession = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "sustained",
-            firstSeenAt: baseDate,
-            lastSeenAt: baseDate.addingTimeInterval(360),
-            lastTool: "codex",
-            lastModel: "gpt-5.4-mini",
+    func testComputePetStatsDifferentiatesStylesAtSameVolume() {
+        let calendar = Calendar.autoupdatingCurrent
+        let startOfDay = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let daySessions = makePetSessions(
+            count: 8,
+            baseDate: startOfDay.addingTimeInterval(10 * 3_600),
             requestCount: 4,
-            totalInputTokens: 8_000,
-            totalOutputTokens: 22_000,
             totalTokens: 30_000,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 2,
-            todayTokens: 30_000
+            activeDurationSeconds: 600
         )
-        let burstSession = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "burst",
-            firstSeenAt: baseDate,
-            lastSeenAt: baseDate.addingTimeInterval(3),
-            lastTool: "codex",
-            lastModel: "gpt-5.4-mini",
-            requestCount: 1,
-            totalInputTokens: 8_000,
-            totalOutputTokens: 22_000,
+        let nightSessions = makePetSessions(
+            count: 8,
+            baseDate: startOfDay.addingTimeInterval(23 * 3_600),
+            requestCount: 4,
             totalTokens: 30_000,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 2,
-            todayTokens: 30_000
+            activeDurationSeconds: 600
+        )
+        let longSessions = makePetSessions(
+            count: 8,
+            baseDate: startOfDay.addingTimeInterval(10 * 3_600),
+            requestCount: 4,
+            totalTokens: 30_000,
+            activeDurationSeconds: 3_600
+        )
+        let shortSessions = makePetSessions(
+            count: 8,
+            baseDate: startOfDay.addingTimeInterval(10 * 3_600),
+            requestCount: 4,
+            totalTokens: 30_000,
+            activeDurationSeconds: 60
         )
 
-        XCTAssertGreaterThan(
-            AIStatsStore.computePetStats(from: [sustainedSession]).stamina,
-            AIStatsStore.computePetStats(from: [burstSession]).stamina
-        )
-    }
+        XCTAssertEqual(daySessions.reduce(0) { $0 + $1.totalTokens }, nightSessions.reduce(0) { $0 + $1.totalTokens })
+        XCTAssertEqual(longSessions.reduce(0) { $0 + $1.totalTokens }, shortSessions.reduce(0) { $0 + $1.totalTokens })
 
-    func testPetStatsComputedFromClaimedSessionsOnly() {
-        let claimDate = Date(timeIntervalSince1970: 1_700_000_000)
-        let historicalSession = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "old",
-            firstSeenAt: claimDate.addingTimeInterval(-86_400),
-            lastSeenAt: claimDate.addingTimeInterval(-60),
-            lastTool: "claude",
-            lastModel: "claude-haiku",
-            requestCount: 20,
-            totalInputTokens: 100_000,
-            totalOutputTokens: 4_900_000,
-            totalTokens: 5_000_000,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 7_200,
-            todayTokens: 0
-        )
-        let claimedSession = AISessionSummary(
-            sessionID: UUID(),
-            externalSessionID: nil,
-            projectID: UUID(),
-            projectName: "codux",
-            sessionTitle: "new",
-            firstSeenAt: claimDate.addingTimeInterval(60),
-            lastSeenAt: claimDate.addingTimeInterval(3_600),
-            lastTool: "opencode",
-            lastModel: "minimax",
-            requestCount: 2,
-            totalInputTokens: 50,
-            totalOutputTokens: 150,
-            totalTokens: 200,
-            maxContextUsagePercent: nil,
-            activeDurationSeconds: 120,
-            todayTokens: 200
-        )
-
-        let claimedOnly = AIStatsStore.computePetStats(from: [claimedSession])
-        let mixed = AIStatsStore.computePetStats(from: [historicalSession, claimedSession].filter { $0.lastSeenAt >= claimDate })
-
-        XCTAssertEqual(claimedOnly, mixed)
+        let dayStats = AIStatsStore.computePetStats(from: daySessions)
+        let nightStats = AIStatsStore.computePetStats(from: nightSessions)
+        let longStats = AIStatsStore.computePetStats(from: longSessions)
+        let shortStats = AIStatsStore.computePetStats(from: shortSessions)
+        XCTAssertGreaterThanOrEqual(nightStats.night - dayStats.night, 80)
+        XCTAssertGreaterThanOrEqual(longStats.stamina - shortStats.stamina, 80)
     }
 
     func testGentleObserverMeansNoTraitDataYet() {
         XCTAssertTrue(["空信号", "Null Signal"].contains(PetStats.neutral.personaTag))
+    }
+
+    private func makePetSessions(
+        count: Int,
+        baseDate: Date,
+        titlePrefix: String = "session",
+        tool: String = "codex",
+        requestCount: Int,
+        totalTokens: Int,
+        activeDurationSeconds: Int
+    ) -> [AISessionSummary] {
+        (0..<count).map { index in
+            let firstSeenAt = baseDate.addingTimeInterval(Double(index) * 600)
+            let lastSeenAt = firstSeenAt.addingTimeInterval(Double(activeDurationSeconds))
+            let inputTokens = totalTokens / 3
+            let outputTokens = totalTokens - inputTokens
+            return AISessionSummary(
+                sessionID: UUID(),
+                externalSessionID: nil,
+                projectID: UUID(),
+                projectName: "codux",
+                sessionTitle: "\(titlePrefix)-\(index)",
+                firstSeenAt: firstSeenAt,
+                lastSeenAt: lastSeenAt,
+                lastTool: tool,
+                lastModel: "gpt-5.4-mini",
+                requestCount: requestCount,
+                totalInputTokens: inputTokens,
+                totalOutputTokens: outputTokens,
+                totalTokens: totalTokens,
+                maxContextUsagePercent: nil,
+                activeDurationSeconds: activeDurationSeconds,
+                todayTokens: totalTokens
+            )
+        }
     }
 }
 

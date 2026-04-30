@@ -1,56 +1,55 @@
 import Foundation
 
 enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case claude
-    case codex
-    case gemini
-    case opencode
     case openAICompatible
+    case anthropic
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .claude:
-            return "Claude"
-        case .codex:
-            return "Codex"
-        case .gemini:
-            return "Gemini"
-        case .opencode:
-            return "OpenCode"
         case .openAICompatible:
             return "OpenAI-Compatible API"
+        case .anthropic:
+            return "Claude API"
         }
     }
 
     var defaultDisplayName: String {
-        title
+        switch self {
+        case .openAICompatible:
+            return "OpenAI API"
+        case .anthropic:
+            return "Claude API"
+        }
     }
 
     var defaultModel: String {
         switch self {
-        case .claude, .codex, .gemini, .opencode:
-            return ""
         case .openAICompatible:
             return "gpt-4.1-mini"
+        case .anthropic:
+            return "claude-3-5-haiku-latest"
         }
     }
 
-    var builtInProviderID: String {
+    var defaultBaseURL: String {
         switch self {
-        case .claude:
-            return "builtin-claude"
-        case .codex:
-            return "builtin-codex"
-        case .gemini:
-            return "builtin-gemini"
-        case .opencode:
-            return "builtin-opencode"
         case .openAICompatible:
-            return "custom-openai-compatible"
+            return "https://api.openai.com/v1"
+        case .anthropic:
+            return "https://api.anthropic.com/v1"
         }
     }
+
+    var supportsAPICompletion: Bool {
+        true
+    }
+
+    var allowsUserDefinedChannels: Bool {
+        true
+    }
+
 }
 
 struct AIProviderTestState: Equatable, Sendable {
@@ -103,37 +102,27 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
         self.priority = priority
     }
 
-    static func builtIn(_ kind: AppAIProviderKind, priority: Int) -> AppAIProviderConfiguration {
+    static let defaultConfigurations: [AppAIProviderConfiguration] = []
+
+    static func customAPIChannel(
+        kind: AppAIProviderKind,
+        priority: Int,
+        displayName: String? = nil,
+        model: String? = nil,
+        baseURL: String? = nil
+    ) -> AppAIProviderConfiguration {
         AppAIProviderConfiguration(
-            id: kind.builtInProviderID,
+            id: "api-\(kind.rawValue)-\(UUID().uuidString)",
             kind: kind,
-            displayName: kind.defaultDisplayName,
-            isEnabled: kind != .opencode,
-            model: kind.defaultModel,
-            baseURL: "",
+            displayName: displayName ?? kind.defaultDisplayName,
+            isEnabled: true,
+            model: model ?? kind.defaultModel,
+            baseURL: baseURL ?? kind.defaultBaseURL,
             apiKeyReference: nil,
-            useForMemoryExtraction: kind != .opencode,
+            useForMemoryExtraction: true,
             priority: priority
         )
     }
-
-    static let defaultConfigurations: [AppAIProviderConfiguration] = [
-        .builtIn(.claude, priority: 0),
-        .builtIn(.codex, priority: 1),
-        .builtIn(.gemini, priority: 2),
-        .builtIn(.opencode, priority: 3),
-        AppAIProviderConfiguration(
-            id: AppAIProviderKind.openAICompatible.builtInProviderID,
-            kind: .openAICompatible,
-            displayName: AppAIProviderKind.openAICompatible.defaultDisplayName,
-            isEnabled: false,
-            model: AppAIProviderKind.openAICompatible.defaultModel,
-            baseURL: "https://api.openai.com/v1",
-            apiKeyReference: nil,
-            useForMemoryExtraction: false,
-            priority: 4
-        ),
-    ]
 }
 
 struct AppMemorySettings: Codable, Equatable, Sendable {
@@ -227,23 +216,22 @@ struct AppAISettings: Codable, Equatable, Sendable {
             ?? .init()
         globalPrompt = try container.decodeIfPresent(String.self, forKey: .globalPrompt) ?? ""
         memory = try container.decodeIfPresent(AppMemorySettings.self, forKey: .memory) ?? .init()
-        providers =
-            try container.decodeIfPresent([AppAIProviderConfiguration].self, forKey: .providers)
-            ?? AppAIProviderConfiguration.defaultConfigurations
+        if let decodedProviders = try? container.decode(
+            [LossyAppAIProviderConfiguration].self,
+            forKey: .providers
+        ) {
+            providers = decodedProviders.compactMap(\.value)
+        } else {
+            providers = AppAIProviderConfiguration.defaultConfigurations
+        }
         migrateMissingDefaultProviders()
     }
 
     mutating func migrateMissingDefaultProviders() {
-        var existingByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.id, $0) })
-        for (index, provider) in AppAIProviderConfiguration.defaultConfigurations.enumerated() {
-            if existingByID[provider.id] == nil {
-                existingByID[provider.id] = provider
-            } else if existingByID[provider.id]?.priority == 0 && provider.priority != 0
-                && provider.id != AppAIProviderKind.claude.builtInProviderID
-            {
-                existingByID[provider.id]?.priority = provider.priority
-            }
-            _ = index
+        var existingByID: [String: AppAIProviderConfiguration] = [:]
+        for provider in providers
+        where provider.kind.supportsAPICompletion && provider.id.hasPrefix("api-") {
+            existingByID[provider.id] = provider
         }
         providers = existingByID.values.sorted {
             if $0.priority == $1.priority {
@@ -255,7 +243,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
         if memory.defaultExtractorProviderID != AppMemorySettings.automaticExtractorProviderID,
             providers.contains(where: {
                 $0.id == memory.defaultExtractorProviderID && $0.useForMemoryExtraction
-                    && $0.isEnabled
+                    && $0.isEnabled && $0.kind.supportsAPICompletion
             }) == false
         {
             memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
@@ -268,7 +256,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
 
     func preferredExtractionProviderID() -> String? {
         providers
-            .filter { $0.isEnabled && $0.useForMemoryExtraction }
+            .filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }
             .sorted { lhs, rhs in
                 if lhs.priority == rhs.priority {
                     return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
@@ -280,19 +268,10 @@ struct AppAISettings: Codable, Equatable, Sendable {
             .id
     }
 
-    func preferredExtractionProvider(forTool tool: String?) -> AppAIProviderConfiguration? {
-        if let tool,
-            let kind = AppAIProviderKind(rawValue: Self.canonicalProviderToolName(tool)),
-            let provider = provider(withID: kind.builtInProviderID),
-            provider.isEnabled,
-            provider.useForMemoryExtraction
-        {
-            return provider
-        }
-
+    func preferredExtractionProvider() -> AppAIProviderConfiguration? {
         return
             providers
-            .filter { $0.isEnabled && $0.useForMemoryExtraction }
+            .filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }
             .sorted { lhs, rhs in
                 if lhs.priority == rhs.priority {
                     return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
@@ -302,19 +281,12 @@ struct AppAISettings: Codable, Equatable, Sendable {
             }
             .first
     }
+}
 
-    static func canonicalProviderToolName(_ tool: String) -> String {
-        switch tool.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "claude", "claude-code":
-            return AppAIProviderKind.claude.rawValue
-        case "codex":
-            return AppAIProviderKind.codex.rawValue
-        case "gemini":
-            return AppAIProviderKind.gemini.rawValue
-        case "opencode":
-            return AppAIProviderKind.opencode.rawValue
-        default:
-            return tool.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        }
+private struct LossyAppAIProviderConfiguration: Decodable {
+    var value: AppAIProviderConfiguration?
+
+    init(from decoder: Decoder) throws {
+        value = try? AppAIProviderConfiguration(from: decoder)
     }
 }

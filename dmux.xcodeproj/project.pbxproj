@@ -31,6 +31,10 @@
 		210000000000000000000102 /* MemoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000002 /* MemoryModels.swift */; };
 		210000000000000000000103 /* AICredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000003 /* AICredentialStore.swift */; };
 		210000000000000000000104 /* AIProviderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000004 /* AIProviderService.swift */; };
+		220000000000000000000101 /* AIProviderTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000001 /* AIProviderTypes.swift */; };
+		220000000000000000000102 /* AIProviderFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000002 /* AIProviderFactory.swift */; };
+		220000000000000000000104 /* OpenAICompatibleProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000004 /* OpenAICompatibleProviderClient.swift */; };
+		220000000000000000000105 /* AnthropicProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000005 /* AnthropicProviderClient.swift */; };
 		210000000000000000000109 /* AIToolEnvironmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000009 /* AIToolEnvironmentService.swift */; };
 		210000000000000000000105 /* MemoryContextService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000005 /* MemoryContextService.swift */; };
 		210000000000000000000106 /* MemoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000006 /* MemoryCoordinator.swift */; };
@@ -180,6 +184,10 @@
 		210000000000000000000002 /* MemoryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryModels.swift; sourceTree = "<group>"; };
 		210000000000000000000003 /* AICredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICredentialStore.swift; sourceTree = "<group>"; };
 		210000000000000000000004 /* AIProviderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderService.swift; sourceTree = "<group>"; };
+		220000000000000000000001 /* AIProviderTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderTypes.swift; sourceTree = "<group>"; };
+		220000000000000000000002 /* AIProviderFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderFactory.swift; sourceTree = "<group>"; };
+		220000000000000000000004 /* OpenAICompatibleProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompatibleProviderClient.swift; sourceTree = "<group>"; };
+		220000000000000000000005 /* AnthropicProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicProviderClient.swift; sourceTree = "<group>"; };
 		210000000000000000000009 /* AIToolEnvironmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolEnvironmentService.swift; sourceTree = "<group>"; };
 		210000000000000000000005 /* MemoryContextService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryContextService.swift; sourceTree = "<group>"; };
 		210000000000000000000006 /* MemoryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryCoordinator.swift; sourceTree = "<group>"; };
@@ -582,6 +590,10 @@
 				21A2B3C4D5E6F708192A3B57 /* OpenCodeToolDriver.swift */,
 				210000000000000000000003 /* AICredentialStore.swift */,
 				210000000000000000000004 /* AIProviderService.swift */,
+				220000000000000000000001 /* AIProviderTypes.swift */,
+				220000000000000000000002 /* AIProviderFactory.swift */,
+				220000000000000000000004 /* OpenAICompatibleProviderClient.swift */,
+				220000000000000000000005 /* AnthropicProviderClient.swift */,
 				210000000000000000000009 /* AIToolEnvironmentService.swift */,
 				210000000000000000000005 /* MemoryContextService.swift */,
 				210000000000000000000006 /* MemoryCoordinator.swift */,
@@ -751,6 +763,10 @@
 				21A2B3C4D5E6F708192A3B4E /* AIToolDriverSupport.swift in Sources */,
 				210000000000000000000103 /* AICredentialStore.swift in Sources */,
 				210000000000000000000104 /* AIProviderService.swift in Sources */,
+				220000000000000000000101 /* AIProviderTypes.swift in Sources */,
+				220000000000000000000102 /* AIProviderFactory.swift in Sources */,
+				220000000000000000000104 /* OpenAICompatibleProviderClient.swift in Sources */,
+				220000000000000000000105 /* AnthropicProviderClient.swift in Sources */,
 				210000000000000000000109 /* AIToolEnvironmentService.swift in Sources */,
 				21A2B3C4D5E6F708192A3B52 /* ClaudeToolDriver.swift in Sources */,
 				21A2B3C4D5E6F708192A3B54 /* CodexToolDriver.swift in Sources */,

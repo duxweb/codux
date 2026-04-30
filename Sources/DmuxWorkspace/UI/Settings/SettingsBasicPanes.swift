@@ -238,11 +238,11 @@ struct AISettingsPane: View {
                     ) {
                         Text(String(localized: "settings.ai.memory.extraction_provider.automatic", defaultValue: "Automatic", bundle: .module))
                             .tag(AppMemorySettings.automaticExtractorProviderID)
-                        ForEach(model.appSettings.ai.providers.filter { $0.isEnabled && $0.useForMemoryExtraction }) { provider in
+                        ForEach(model.appSettings.ai.providers.filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }) { provider in
                             Text(provider.displayName).tag(provider.id)
                         }
                     }
-                    Text(String(localized: "settings.ai.memory.extraction_provider.automatic_help", defaultValue: "Automatic uses the current terminal tool first, then falls back to provider priority.", bundle: .module))
+                    Text(String(localized: "settings.ai.memory.extraction_provider.automatic_help", defaultValue: "Automatic uses selected API channels by priority.", bundle: .module))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
 
@@ -272,7 +272,38 @@ struct AISettingsPane: View {
                 }
             }
 
-            ForEach(model.appSettings.ai.providers) { provider in
+            Section(String(localized: "settings.ai.section.providers", defaultValue: "API Channels", bundle: .module)) {
+                HStack(spacing: 12) {
+                    Text(String(localized: "settings.ai.provider.api_only_help", defaultValue: "API channels for memory extraction.", bundle: .module))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+
+                    Spacer(minLength: 16)
+
+                    Menu {
+                        Button("OpenAI-Compatible API") {
+                            model.addAIProviderChannel(kind: .openAICompatible)
+                        }
+                        Button("Claude API") {
+                            model.addAIProviderChannel(kind: .anthropic)
+                        }
+                        Button("DeepSeek API") {
+                            model.addAIProviderChannel(
+                                kind: .openAICompatible,
+                                displayName: "DeepSeek API",
+                                model: "deepseek-chat",
+                                baseURL: "https://api.deepseek.com"
+                            )
+                        }
+                    } label: {
+                        Label(String(localized: "settings.ai.provider.add", defaultValue: "Add API Channel", bundle: .module), systemImage: "plus")
+                    }
+                    .fixedSize()
+                }
+            }
+
+            ForEach(model.appSettings.ai.providers.filter { $0.kind.supportsAPICompletion }) { provider in
                 Section(provider.displayName) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -294,6 +325,14 @@ struct AISettingsPane: View {
 
                     if model.appSettings.ai.provider(withID: provider.id)?.isEnabled ?? false {
                         TextField(
+                            String(localized: "settings.ai.provider.name", defaultValue: "Name", bundle: .module),
+                            text: Binding(
+                                get: { model.appSettings.ai.provider(withID: provider.id)?.displayName ?? "" },
+                                set: { model.updateAIProviderDisplayName($0, providerID: provider.id) }
+                            )
+                        )
+
+                        TextField(
                             String(localized: "settings.ai.provider.model", defaultValue: "Model", bundle: .module),
                             text: Binding(
                                 get: { model.appSettings.ai.provider(withID: provider.id)?.model ?? "" },
@@ -301,22 +340,30 @@ struct AISettingsPane: View {
                             )
                         )
 
-                        if provider.kind == .openAICompatible {
-                            TextField(
-                                String(localized: "settings.ai.provider.base_url", defaultValue: "Base URL", bundle: .module),
-                                text: Binding(
-                                    get: { model.appSettings.ai.provider(withID: provider.id)?.baseURL ?? "" },
-                                    set: { model.updateAIProviderBaseURL($0, providerID: provider.id) }
-                                )
+                        TextField(
+                            String(localized: "settings.ai.provider.base_url", defaultValue: "Base URL", bundle: .module),
+                            text: Binding(
+                                get: { model.appSettings.ai.provider(withID: provider.id)?.baseURL ?? "" },
+                                set: { model.updateAIProviderBaseURL($0, providerID: provider.id) }
                             )
+                        )
 
-                            SecureField(
-                                String(localized: "settings.ai.provider.api_key", defaultValue: "API Key", bundle: .module),
-                                text: Binding(
-                                    get: { model.storedAIProviderAPIKey(providerID: provider.id) },
-                                    set: { model.updateAIProviderAPIKey($0, providerID: provider.id) }
-                                )
+                        SecureField(
+                            String(localized: "settings.ai.provider.api_key", defaultValue: "API Key", bundle: .module),
+                            text: Binding(
+                                get: { model.storedAIProviderAPIKey(providerID: provider.id) },
+                                set: { model.updateAIProviderAPIKey($0, providerID: provider.id) }
                             )
+                        )
+
+                        if provider.kind == .openAICompatible {
+                            Text(String(localized: "settings.ai.provider.openai_compatible_help", defaultValue: "Use this for OpenAI, DeepSeek, and other /v1/chat/completions-compatible APIs.", bundle: .module))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        } else if provider.kind == .anthropic {
+                            Text(String(localized: "settings.ai.provider.anthropic_help", defaultValue: "Uses Anthropic Messages API at /v1/messages.", bundle: .module))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
                         }
 
                         Toggle(
@@ -351,6 +398,14 @@ struct AISettingsPane: View {
                                 Text(String(localized: "settings.ai.provider.test", defaultValue: "Test", bundle: .module))
                             }
                             .disabled(testState?.isTesting == true)
+
+                            if provider.id.hasPrefix("api-") {
+                                Button(role: .destructive) {
+                                    model.removeAIProviderChannel(providerID: provider.id)
+                                } label: {
+                                    Label(String(localized: "settings.ai.provider.remove", defaultValue: "Remove", bundle: .module), systemImage: "trash")
+                                }
+                            }
 
                             if let message = testState?.message {
                                 Text(message)
