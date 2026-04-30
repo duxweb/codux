@@ -26,7 +26,9 @@ struct TitlebarOverlayView: View {
                     }
 
                     if model.appSettings.ai.memory.enabled {
-                        TitlebarMemoryStatusView(snapshot: model.memoryExtractionStatus)
+                        TitlebarMemoryStatusView(snapshot: model.memoryExtractionStatus) {
+                            MemoryManagerWindowPresenter.show(model: model)
+                        }
                     }
                     TitlebarRemoteStatusButton(
                         model: model,
@@ -212,6 +214,7 @@ private struct TitlebarPerformanceMonitorView: View {
 
 private struct TitlebarMemoryStatusView: View {
     let snapshot: MemoryExtractionStatusSnapshot
+    let action: () -> Void
 
     private var isActive: Bool {
         snapshot.status == .queued || snapshot.status == .processing
@@ -244,29 +247,32 @@ private struct TitlebarMemoryStatusView: View {
     }
 
     var body: some View {
-        ZStack {
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(statusColor)
+        Button(action: action) {
+            ZStack {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(statusColor)
 
-            if isActive {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.58)
-                    .frame(width: 22, height: 22)
-                    .offset(x: 9, y: -9)
+                if isActive {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.58)
+                        .frame(width: 22, height: 22)
+                        .offset(x: 9, y: -9)
+                }
             }
+            .frame(width: TitlebarControlMetrics.pillHeight, height: TitlebarControlMetrics.pillHeight)
+            .frame(height: TitlebarControlMetrics.pillHeight)
+            .background(
+                RoundedRectangle(cornerRadius: TitlebarControlMetrics.pillCornerRadius, style: .continuous)
+                    .fill(statusColor.opacity(isActive ? 0.12 : 0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: TitlebarControlMetrics.pillCornerRadius, style: .continuous)
+                    .stroke(statusColor.opacity(isActive ? 0.28 : 0.14), lineWidth: 0.5)
+            )
         }
-        .frame(width: TitlebarControlMetrics.pillHeight, height: TitlebarControlMetrics.pillHeight)
-        .frame(height: TitlebarControlMetrics.pillHeight)
-        .background(
-            RoundedRectangle(cornerRadius: TitlebarControlMetrics.pillCornerRadius, style: .continuous)
-                .fill(statusColor.opacity(isActive ? 0.12 : 0.07))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: TitlebarControlMetrics.pillCornerRadius, style: .continuous)
-                .stroke(statusColor.opacity(isActive ? 0.28 : 0.14), lineWidth: 0.5)
-        )
+        .buttonStyle(.plain)
         .floatingTooltip(tooltipText, placement: .below)
         .accessibilityLabel(statusText)
     }

@@ -18,6 +18,7 @@ enum AppWindowIdentifier {
     static let about = NSUserInterfaceItemIdentifier("dmux.about")
     static let agreement = NSUserInterfaceItemIdentifier("dmux.agreement")
     static let petDex = NSUserInterfaceItemIdentifier("dmux.petDex")
+    static let memoryManager = NSUserInterfaceItemIdentifier("dmux.memoryManager")
     static let detachedTerminalPrefix = "dmux.detached-terminal."
 
     static func detachedTerminal(_ sessionID: UUID) -> NSUserInterfaceItemIdentifier {
@@ -54,7 +55,8 @@ func isStandardChromeWindow(_ window: NSWindow) -> Bool {
         if id == AppWindowIdentifier.settings.rawValue
             || id == AppWindowIdentifier.about.rawValue
             || id == AppWindowIdentifier.agreement.rawValue
-            || id == AppWindowIdentifier.petDex.rawValue {
+            || id == AppWindowIdentifier.petDex.rawValue
+            || id == AppWindowIdentifier.memoryManager.rawValue {
             return true
         }
         if id.contains("Settings") || id.contains("settings") {

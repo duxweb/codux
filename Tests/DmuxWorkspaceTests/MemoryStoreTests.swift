@@ -182,4 +182,66 @@ final class MemoryStoreTests: XCTestCase {
         )
         XCTAssertTrue(activeEntries.isEmpty)
     }
+
+    func testManagementQueriesListProjectsAndDeleteEntries() throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+        let projectID = UUID()
+        let userEntry = try store.upsert(
+            MemoryCandidate(
+                scope: .user,
+                projectID: nil,
+                toolID: nil,
+                tier: .core,
+                kind: .preference,
+                content: "Prefer concise status updates.",
+                rationale: nil,
+                sourceTool: "codex",
+                sourceSessionID: "user-session",
+                sourceFingerprint: "user-fp"
+            )
+        )
+        let projectEntry = try store.upsert(
+            MemoryCandidate(
+                scope: .project,
+                projectID: projectID,
+                toolID: nil,
+                tier: .working,
+                kind: .decision,
+                content: "Keep memory extraction API-only.",
+                rationale: "Avoid extra CLI sessions.",
+                sourceTool: "codex",
+                sourceSessionID: "project-session",
+                sourceFingerprint: "project-fp"
+            )
+        )
+        let summary = try store.upsertSummary(
+            scope: .project,
+            projectID: projectID,
+            content: "Project summary",
+            sourceEntryIDs: [projectEntry.id],
+            maxVersions: 3
+        )
+
+        let userOverview = try store.memoryScopeOverview(scope: .user)
+        XCTAssertEqual(userOverview.activeEntryCount, 1)
+
+        let projectOverviews = try store.projectOverviewsForManagement()
+        XCTAssertEqual(projectOverviews.map(\.projectID), [projectID])
+        XCTAssertEqual(projectOverviews.first?.activeEntryCount, 1)
+        XCTAssertEqual(projectOverviews.first?.summaryCount, 1)
+
+        let working = try store.listEntriesForManagement(
+            scope: .project,
+            projectID: projectID,
+            tiers: [.working],
+            statuses: [.active]
+        )
+        XCTAssertEqual(working.map(\.id), [projectEntry.id])
+
+        try store.deleteEntry(userEntry.id)
+        XCTAssertEqual(try store.memoryScopeOverview(scope: .user).activeEntryCount, 0)
+
+        try store.deleteSummary(summary.id)
+        XCTAssertTrue(try store.listSummariesForManagement(scope: .project, projectID: projectID).isEmpty)
+    }
 }

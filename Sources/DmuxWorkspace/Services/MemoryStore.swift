@@ -209,6 +209,217 @@ struct MemoryStore: Sendable {
         }
     }
 
+    func listEntriesForManagement(
+        scope: MemoryScope,
+        projectID: UUID? = nil,
+        tiers: [MemoryTier]? = nil,
+        statuses: [MemoryEntryStatus]? = nil,
+        limit: Int = 500
+    ) throws -> [MemoryEntry] {
+        try withDatabase { db in
+            var clauses = [
+                "scope = ?",
+                "COALESCE(project_id, '') = COALESCE(?, '')",
+            ]
+            var bindings: [SQLiteBinding] = [
+                .text(scope.rawValue),
+                .nullableText(projectID?.uuidString),
+            ]
+
+            if let tiers, !tiers.isEmpty {
+                clauses.append(
+                    "tier IN (\(Array(repeating: "?", count: tiers.count).joined(separator: ",")))"
+                )
+                bindings.append(contentsOf: tiers.map { .text($0.rawValue) })
+            }
+
+            if let statuses, !statuses.isEmpty {
+                clauses.append(
+                    "status IN (\(Array(repeating: "?", count: statuses.count).joined(separator: ",")))"
+                )
+                bindings.append(contentsOf: statuses.map { .text($0.rawValue) })
+            }
+
+            bindings.append(.int64(Int64(limit)))
+            return try fetchEntries(
+                db: db,
+                sql: """
+                SELECT \(Self.entrySelectColumns)
+                FROM memory_entries
+                WHERE \(clauses.joined(separator: " AND "))
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT ?;
+                """,
+                bindings: bindings
+            )
+        }
+    }
+
+    func memoryScopeOverview(scope: MemoryScope, projectID: UUID? = nil) throws -> MemoryScopeOverview {
+        try withDatabase { db in
+            let entryCounts = try fetchMemoryCountRow(
+                db: db,
+                sql: """
+                SELECT
+                    SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN status = 'merged' THEN 1 ELSE 0 END),
+                    MAX(updated_at)
+                FROM memory_entries
+                WHERE scope = ?
+                  AND COALESCE(project_id, '') = COALESCE(?, '');
+                """,
+                bindings: [.text(scope.rawValue), .nullableText(projectID?.uuidString)]
+            )
+            let summaryCounts = try fetchMemoryCountRow(
+                db: db,
+                sql: """
+                SELECT 0, 0, COUNT(*), MAX(updated_at)
+                FROM memory_summaries
+                WHERE scope = ?
+                  AND COALESCE(project_id, '') = COALESCE(?, '');
+                """,
+                bindings: [.text(scope.rawValue), .nullableText(projectID?.uuidString)]
+            )
+            return MemoryScopeOverview(
+                activeEntryCount: entryCounts.active,
+                archivedEntryCount: entryCounts.archived,
+                mergedEntryCount: entryCounts.merged,
+                summaryCount: summaryCounts.merged,
+                updatedAt: maxDate(entryCounts.updatedAt, summaryCounts.updatedAt)
+            )
+        }
+    }
+
+    func projectOverviewsForManagement() throws -> [MemoryProjectOverview] {
+        try withDatabase { db in
+            var overviews: [UUID: MemoryProjectOverview] = [:]
+
+            let entryRows = try fetchProjectMemoryCountRows(
+                db: db,
+                sql: """
+                SELECT
+                    project_id,
+                    SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN status = 'merged' THEN 1 ELSE 0 END),
+                    MAX(updated_at)
+                FROM memory_entries
+                WHERE scope = 'project'
+                  AND project_id IS NOT NULL
+                GROUP BY project_id;
+                """,
+                bindings: []
+            )
+            for row in entryRows {
+                guard let projectID = row.projectID else {
+                    continue
+                }
+                overviews[projectID] = MemoryProjectOverview(
+                    projectID: projectID,
+                    activeEntryCount: row.active,
+                    archivedEntryCount: row.archived,
+                    mergedEntryCount: row.merged,
+                    summaryCount: 0,
+                    updatedAt: row.updatedAt
+                )
+            }
+
+            let summaryRows = try fetchProjectMemoryCountRows(
+                db: db,
+                sql: """
+                SELECT project_id, 0, 0, COUNT(*), MAX(updated_at)
+                FROM memory_summaries
+                WHERE scope = 'project'
+                  AND project_id IS NOT NULL
+                GROUP BY project_id;
+                """,
+                bindings: []
+            )
+            for row in summaryRows {
+                guard let projectID = row.projectID else {
+                    continue
+                }
+                var overview = overviews[projectID] ?? MemoryProjectOverview(
+                    projectID: projectID,
+                    activeEntryCount: 0,
+                    archivedEntryCount: 0,
+                    mergedEntryCount: 0,
+                    summaryCount: 0,
+                    updatedAt: nil
+                )
+                overview.summaryCount += row.merged
+                overview.updatedAt = maxDate(overview.updatedAt, row.updatedAt)
+                overviews[projectID] = overview
+            }
+
+            return overviews.values
+                .filter { $0.totalCount > 0 }
+                .sorted {
+                    switch ($0.updatedAt, $1.updatedAt) {
+                    case let (lhs?, rhs?):
+                        return lhs > rhs
+                    case (_?, nil):
+                        return true
+                    case (nil, _?):
+                        return false
+                    case (nil, nil):
+                        return $0.projectID.uuidString < $1.projectID.uuidString
+                    }
+                }
+        }
+    }
+
+    func listSummariesForManagement(scope: MemoryScope, projectID: UUID? = nil) throws -> [MemorySummary] {
+        try withDatabase { db in
+            try fetchSummaries(
+                db: db,
+                sql: """
+                SELECT id, scope, project_id, tool_id, content, version, source_entry_ids, token_estimate, created_at, updated_at
+                FROM memory_summaries
+                WHERE scope = ?
+                  AND COALESCE(project_id, '') = COALESCE(?, '')
+                ORDER BY updated_at DESC;
+                """,
+                bindings: [.text(scope.rawValue), .nullableText(projectID?.uuidString)]
+            )
+        }
+    }
+
+    func deleteEntry(_ entryID: UUID) throws {
+        try withDatabase { db in
+            try execute(
+                db,
+                sql: "DELETE FROM memory_entries WHERE id = ?;",
+                bindings: [.text(entryID.uuidString)]
+            )
+        }
+    }
+
+    func deleteSummary(_ summaryID: UUID) throws {
+        try withDatabase { db in
+            try execute(
+                db,
+                sql: "DELETE FROM memory_summary_versions WHERE summary_id = ?;",
+                bindings: [.text(summaryID.uuidString)]
+            )
+            try execute(
+                db,
+                sql: "DELETE FROM memory_summaries WHERE id = ?;",
+                bindings: [.text(summaryID.uuidString)]
+            )
+            try execute(
+                db,
+                sql: """
+                UPDATE memory_entries
+                SET merged_summary_id = NULL, updated_at = ?
+                WHERE merged_summary_id = ?;
+                """,
+                bindings: [.double(Date().timeIntervalSince1970), .text(summaryID.uuidString)]
+            )
+        }
+    }
+
     func bumpAccess(for entryIDs: [UUID]) throws {
         guard !entryIDs.isEmpty else {
             return
@@ -871,6 +1082,10 @@ struct MemoryStore: Sendable {
     }
 
     private func fetchSummary(db: OpaquePointer, sql: String, bindings: [SQLiteBinding]) throws -> MemorySummary? {
+        try fetchSummaries(db: db, sql: sql, bindings: bindings).first
+    }
+
+    private func fetchSummaries(db: OpaquePointer, sql: String, bindings: [SQLiteBinding]) throws -> [MemorySummary] {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else {
@@ -879,27 +1094,32 @@ struct MemoryStore: Sendable {
         defer { sqlite3_finalize(statement) }
         try bind(bindings, to: statement)
 
-        guard sqlite3_step(statement) == SQLITE_ROW,
-              let rawID = sqlite3_column_text(statement, 0),
-              let id = UUID(uuidString: String(cString: rawID)),
-              let rawScope = sqlite3_column_text(statement, 1),
-              let scope = MemoryScope(rawValue: String(cString: rawScope)),
-              let rawContent = sqlite3_column_text(statement, 4) else {
-            return nil
-        }
+        var summaries: [MemorySummary] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let rawID = sqlite3_column_text(statement, 0),
+                  let id = UUID(uuidString: String(cString: rawID)),
+                  let rawScope = sqlite3_column_text(statement, 1),
+                  let scope = MemoryScope(rawValue: String(cString: rawScope)),
+                  let rawContent = sqlite3_column_text(statement, 4) else {
+                continue
+            }
 
-        return MemorySummary(
-            id: id,
-            scope: scope,
-            projectID: sqlite3_column_text(statement, 2).flatMap { UUID(uuidString: String(cString: $0)) },
-            toolID: sqlite3_column_text(statement, 3).map { String(cString: $0) },
-            content: String(cString: rawContent),
-            version: Int(sqlite3_column_int64(statement, 5)),
-            sourceEntryIDs: decodeUUIDs(sqlite3_column_text(statement, 6).map { String(cString: $0) }),
-            tokenEstimate: Int(sqlite3_column_int64(statement, 7)),
-            createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 8)),
-            updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 9))
-        )
+            summaries.append(
+                MemorySummary(
+                    id: id,
+                    scope: scope,
+                    projectID: sqlite3_column_text(statement, 2).flatMap { UUID(uuidString: String(cString: $0)) },
+                    toolID: sqlite3_column_text(statement, 3).map { String(cString: $0) },
+                    content: String(cString: rawContent),
+                    version: Int(sqlite3_column_int64(statement, 5)),
+                    sourceEntryIDs: decodeUUIDs(sqlite3_column_text(statement, 6).map { String(cString: $0) }),
+                    tokenEstimate: Int(sqlite3_column_int64(statement, 7)),
+                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 8)),
+                    updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 9))
+                )
+            )
+        }
+        return summaries
     }
 
     private func insertSummaryVersion(
@@ -982,6 +1202,54 @@ struct MemoryStore: Sendable {
             return nil
         }
         return sqlite3_column_text(statement, 0).map { String(cString: $0) }
+    }
+
+    private func fetchMemoryCountRow(db: OpaquePointer, sql: String, bindings: [SQLiteBinding]) throws -> MemoryCountRow {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else {
+            throw NSError(domain: "MemoryStore", code: 9, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare memory count query."])
+        }
+        defer { sqlite3_finalize(statement) }
+        try bind(bindings, to: statement)
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return MemoryCountRow(projectID: nil, active: 0, archived: 0, merged: 0, updatedAt: nil)
+        }
+        return MemoryCountRow(
+            projectID: nil,
+            active: Int(sqlite3_column_int64(statement, 0)),
+            archived: Int(sqlite3_column_int64(statement, 1)),
+            merged: Int(sqlite3_column_int64(statement, 2)),
+            updatedAt: sqlite3_column_type(statement, 3) == SQLITE_NULL ? nil : Date(timeIntervalSince1970: sqlite3_column_double(statement, 3))
+        )
+    }
+
+    private func fetchProjectMemoryCountRows(db: OpaquePointer, sql: String, bindings: [SQLiteBinding]) throws -> [MemoryCountRow] {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else {
+            throw NSError(domain: "MemoryStore", code: 10, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare project memory count query."])
+        }
+        defer { sqlite3_finalize(statement) }
+        try bind(bindings, to: statement)
+
+        var rows: [MemoryCountRow] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let rawProjectID = sqlite3_column_text(statement, 0),
+                  let projectID = UUID(uuidString: String(cString: rawProjectID)) else {
+                continue
+            }
+            rows.append(
+                MemoryCountRow(
+                    projectID: projectID,
+                    active: Int(sqlite3_column_int64(statement, 1)),
+                    archived: Int(sqlite3_column_int64(statement, 2)),
+                    merged: Int(sqlite3_column_int64(statement, 3)),
+                    updatedAt: sqlite3_column_type(statement, 4) == SQLITE_NULL ? nil : Date(timeIntervalSince1970: sqlite3_column_double(statement, 4))
+                )
+            )
+        }
+        return rows
     }
 
     private func execute(_ db: OpaquePointer, sql: String, bindings: [SQLiteBinding]) throws {
@@ -1100,6 +1368,27 @@ struct MemoryStore: Sendable {
         let order: [MemoryTier: Int] = [.core: 0, .working: 1, .archive: 2]
         return (order[lhs] ?? 9) <= (order[rhs] ?? 9) ? lhs : rhs
     }
+
+    private func maxDate(_ lhs: Date?, _ rhs: Date?) -> Date? {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?):
+            return max(lhs, rhs)
+        case let (lhs?, nil):
+            return lhs
+        case let (nil, rhs?):
+            return rhs
+        case (nil, nil):
+            return nil
+        }
+    }
+}
+
+private struct MemoryCountRow {
+    var projectID: UUID?
+    var active: Int
+    var archived: Int
+    var merged: Int
+    var updatedAt: Date?
 }
 
 private enum SQLiteBinding {

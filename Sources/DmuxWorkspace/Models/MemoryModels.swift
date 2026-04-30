@@ -1,5 +1,9 @@
 import Foundation
 
+func memoryL(_ key: StaticString, _ defaultValue: String.LocalizationValue) -> String {
+    String(localized: key, defaultValue: defaultValue, bundle: .module)
+}
+
 enum MemoryScope: String, Codable, Sendable, CaseIterable {
     case user
     case project
@@ -47,6 +51,33 @@ struct MemoryEntry: Identifiable, Codable, Equatable, Sendable {
     var lastAccessedAt: Date?
     var createdAt: Date
     var updatedAt: Date
+}
+
+struct MemoryProjectOverview: Identifiable, Codable, Equatable, Sendable {
+    var projectID: UUID
+    var activeEntryCount: Int
+    var archivedEntryCount: Int
+    var mergedEntryCount: Int
+    var summaryCount: Int
+    var updatedAt: Date?
+
+    var id: UUID { projectID }
+
+    var totalCount: Int {
+        activeEntryCount + archivedEntryCount + mergedEntryCount + summaryCount
+    }
+}
+
+struct MemoryScopeOverview: Codable, Equatable, Sendable {
+    var activeEntryCount: Int
+    var archivedEntryCount: Int
+    var mergedEntryCount: Int
+    var summaryCount: Int
+    var updatedAt: Date?
+
+    var totalCount: Int {
+        activeEntryCount + archivedEntryCount + mergedEntryCount + summaryCount
+    }
 }
 
 struct MemorySummary: Identifiable, Codable, Equatable, Sendable {

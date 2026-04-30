@@ -35,6 +35,7 @@
 		220000000000000000000102 /* AIProviderFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000002 /* AIProviderFactory.swift */; };
 		220000000000000000000104 /* OpenAICompatibleProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000004 /* OpenAICompatibleProviderClient.swift */; };
 		220000000000000000000105 /* AnthropicProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000005 /* AnthropicProviderClient.swift */; };
+		230000000000000000000101 /* MemoryManagerWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000001 /* MemoryManagerWindow.swift */; };
 		210000000000000000000109 /* AIToolEnvironmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000009 /* AIToolEnvironmentService.swift */; };
 		210000000000000000000105 /* MemoryContextService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000005 /* MemoryContextService.swift */; };
 		210000000000000000000106 /* MemoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000006 /* MemoryCoordinator.swift */; };
@@ -188,6 +189,7 @@
 		220000000000000000000002 /* AIProviderFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderFactory.swift; sourceTree = "<group>"; };
 		220000000000000000000004 /* OpenAICompatibleProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompatibleProviderClient.swift; sourceTree = "<group>"; };
 		220000000000000000000005 /* AnthropicProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicProviderClient.swift; sourceTree = "<group>"; };
+		230000000000000000000001 /* MemoryManagerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryManagerWindow.swift; sourceTree = "<group>"; };
 		210000000000000000000009 /* AIToolEnvironmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolEnvironmentService.swift; sourceTree = "<group>"; };
 		210000000000000000000005 /* MemoryContextService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryContextService.swift; sourceTree = "<group>"; };
 		210000000000000000000006 /* MemoryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryCoordinator.swift; sourceTree = "<group>"; };
@@ -355,6 +357,7 @@
 				19760E06D49656E3D31AB5CB /* About */,
 				53630BEDF0D68812E68CC096 /* AI */,
 				82AE56FA93228B3FAAFCE874 /* Git */,
+				230000000000000000000002 /* Memory */,
 				5F0A9C1D7E2B4A5C8D9E0F14 /* Pet */,
 				B4F7A03CDB8D571391DB7693 /* Settings */,
 				8F61624E724457A42B80201A /* Sidebar */,
@@ -369,6 +372,14 @@
 				C7E1EC9BC74648163A178985 /* Theme.swift */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		230000000000000000000002 /* Memory */ = {
+			isa = PBXGroup;
+			children = (
+				230000000000000000000001 /* MemoryManagerWindow.swift */,
+			);
+			path = Memory;
 			sourceTree = "<group>";
 		};
 			5F0A9C1D7E2B4A5C8D9E0F14 /* Pet */ = {
@@ -840,6 +851,7 @@
 					B10000000000000000000047 /* PetPopoverViews.swift in Sources */,
 					5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */,
 					5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */,
+				230000000000000000000101 /* MemoryManagerWindow.swift in Sources */,
 				577F3384BE4EDD492C520037 /* RootView.swift in Sources */,
 				B10000000000000000000034 /* RootWindowSupport.swift in Sources */,
 				B10000000000000000000035 /* RootSplitContainer.swift in Sources */,

@@ -4637,6 +4637,71 @@
         }
       }
     },
+    "common.delete": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刪除"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Löschen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "削除"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "삭제"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Excluir"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить"
+          }
+        }
+      }
+    },
     "common.choose": {
       "extractionState": "manual",
       "localizations": {
@@ -37261,6 +37326,270 @@
             "value": "記憶排隊"
           }
         }
+      }
+    },
+    "memory.kind.bug_lesson": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Bug Lesson"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "问题经验"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "問題經驗"}}
+      }
+    },
+    "memory.kind.convention": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Convention"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "约定"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "約定"}}
+      }
+    },
+    "memory.kind.decision": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Decision"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "决策"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "決策"}}
+      }
+    },
+    "memory.kind.fact": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Fact"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "事实"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "事實"}}
+      }
+    },
+    "memory.kind.preference": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Preference"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "偏好"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "偏好"}}
+      }
+    },
+    "memory.manager.archive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Archive"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "归档"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "封存"}}
+      }
+    },
+    "memory.manager.delete.confirm.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "This removes the selected memory from the local memory database."}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "这会从本地记忆库中删除选中的记忆。"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "這會從本機記憶庫中刪除選取的記憶。"}}
+      }
+    },
+    "memory.manager.delete.confirm.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Delete Memory"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "删除记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "刪除記憶"}}
+      }
+    },
+    "memory.manager.empty.entries": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "No memories in this view"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "当前视图没有记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "目前視圖沒有記憶"}}
+      }
+    },
+    "memory.manager.empty.entries.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Try another type tab or wait for memory extraction to complete."}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "可以切换其他类型，或等待记忆提取完成。"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "可以切換其他類型，或等待記憶擷取完成。"}}
+      }
+    },
+    "memory.manager.empty.summary": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "No summary memory"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "暂无摘要记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "暫無摘要記憶"}}
+      }
+    },
+    "memory.manager.empty.summary.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Summaries appear after extraction has enough useful context."}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "提取到足够有用上下文后会生成摘要。"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "擷取到足夠有用上下文後會生成摘要。"}}
+      }
+    },
+    "memory.manager.error": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Memory could not be loaded"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "记忆加载失败"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "記憶載入失敗"}}
+      }
+    },
+    "memory.manager.overview_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "%lld active, %lld archived, %lld summaries"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 条活跃，%lld 条归档，%lld 个摘要"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "%lld 條活躍，%lld 條封存，%lld 個摘要"}}
+      }
+    },
+    "memory.manager.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Browse and clean extracted memories"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "查看和清理已提取的记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "檢視和清理已擷取的記憶"}}
+      }
+    },
+    "memory.manager.summary.sources_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "%lld source entries"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 条来源记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "%lld 條來源記憶"}}
+      }
+    },
+    "memory.manager.summary.tokens_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "%lld tokens"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld tokens"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "%lld tokens"}}
+      }
+    },
+    "memory.manager.summary.version_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "v%lld"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "v%lld"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "v%lld"}}
+      }
+    },
+    "memory.manager.tab.archive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Archive"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "归档"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "封存"}}
+      }
+    },
+    "memory.manager.tab.core": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Core"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "核心"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "核心"}}
+      }
+    },
+    "memory.manager.tab.summary": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Summary"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "摘要"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "摘要"}}
+      }
+    },
+    "memory.manager.tab.working": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Working"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "工作记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "工作記憶"}}
+      }
+    },
+    "memory.manager.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Memory"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "記憶"}}
+      }
+    },
+    "memory.manager.unknown_project_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Project %@"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "项目 %@"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "專案 %@"}}
+      }
+    },
+    "memory.manager.user_memory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "User Memory"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "用户记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "使用者記憶"}}
+      }
+    },
+    "memory.manager.user_memory.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Cross-project preferences"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "跨项目偏好"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "跨專案偏好"}}
+      }
+    },
+    "memory.manager.window.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Memory Manager"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "记忆管理"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "記憶管理"}}
+      }
+    },
+    "memory.status.active": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Active"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "活跃"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "活躍"}}
+      }
+    },
+    "memory.status.archived": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Archived"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "已归档"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "已封存"}}
+      }
+    },
+    "memory.status.merged": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Merged"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "已合并"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "已合併"}}
+      }
+    },
+    "memory.tier.archive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Archive"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "归档"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "封存"}}
+      }
+    },
+    "memory.tier.core": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Core"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "核心"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "核心"}}
+      }
+    },
+    "memory.tier.working": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Working"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "工作记忆"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "工作記憶"}}
       }
     },
     "settings.ai.memory.automatic_extraction": {
