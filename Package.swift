@@ -35,6 +35,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedFramework("Carbon"),
+                .linkedFramework("IOKit"),
                 .linkedLibrary("sqlite3"),
             ]
         ),

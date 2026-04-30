@@ -711,6 +711,56 @@ final class AISessionStoreTests: XCTestCase {
         )
     }
 
+    func testRuntimeTokenGrowthKeepsRespondingSessionVisibleWhenSnapshotTimestampIsStale() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        let now = Date().timeIntervalSince1970
+
+        XCTAssertTrue(
+            store.apply(
+                AIHookEvent(
+                    kind: .promptSubmitted,
+                    terminalID: terminalID,
+                    terminalInstanceID: "instance-1",
+                    projectID: projectID,
+                    projectName: "Codux",
+                    sessionTitle: "Terminal",
+                    tool: "codex",
+                    aiSessionID: "codex-session",
+                    model: "gpt-5.5",
+                    totalTokens: 100,
+                    updatedAt: now - 120,
+                    metadata: nil
+                )
+            )
+        )
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+
+        XCTAssertTrue(
+            store.applyRuntimeSnapshot(
+                terminalID: terminalID,
+                snapshot: AIRuntimeContextSnapshot(
+                    tool: "codex",
+                    externalSessionID: "codex-session",
+                    model: "gpt-5.5",
+                    inputTokens: 120,
+                    outputTokens: 40,
+                    cachedInputTokens: 0,
+                    totalTokens: 160,
+                    updatedAt: now - 120,
+                    responseState: nil,
+                    wasInterrupted: false,
+                    hasCompletedTurn: false
+                )
+            )
+        )
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.state, .responding)
+        XCTAssertEqual(session.committedTotalTokens, 160)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .running(tool: "codex"))
+    }
+
     func testLiveDeltaOnlyCountsGrowthAfterSessionStartedSeed() throws {
         let terminalID = UUID()
         let projectID = UUID()

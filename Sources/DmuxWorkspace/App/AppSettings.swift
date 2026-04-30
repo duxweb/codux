@@ -18,6 +18,25 @@ enum AppAIStatisticsDisplayMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum AppSleepPreventionMode: String, Codable, CaseIterable, Identifiable {
+    case always
+    case off
+    case powerAdapterOnly
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .always:
+            return String(localized: "settings.sleep_prevention.mode.always", defaultValue: "Always", bundle: .module)
+        case .off:
+            return String(localized: "settings.sleep_prevention.mode.off", defaultValue: "Off", bundle: .module)
+        case .powerAdapterOnly:
+            return String(localized: "settings.sleep_prevention.mode.power_adapter_only", defaultValue: "On Power Only", bundle: .module)
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable {
     var language: AppLanguage = .system
     var terminalBackgroundPreset: AppTerminalBackgroundPreset = .automatic
@@ -32,6 +51,7 @@ struct AppSettings: Codable, Equatable {
     var aiAutoRefreshInterval: TimeInterval = 180
     var aiBackgroundRefreshInterval: TimeInterval = 600
     var aiStatisticsDisplayMode: AppAIStatisticsDisplayMode = .normalized
+    var sleepPreventionMode: AppSleepPreventionMode = .off
     var developer = AppDeveloperSettings()
     var shortcuts = AppShortcutConfiguration.defaults
     var pet = AppPetSettings()
@@ -54,6 +74,7 @@ struct AppSettings: Codable, Equatable {
         case aiAutoRefreshInterval
         case aiBackgroundRefreshInterval
         case aiStatisticsDisplayMode
+        case sleepPreventionMode
         case developer
         case shortcuts
         case pet
@@ -82,6 +103,7 @@ struct AppSettings: Codable, Equatable {
         aiAutoRefreshInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .aiAutoRefreshInterval) ?? 180
         aiBackgroundRefreshInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .aiBackgroundRefreshInterval) ?? 600
         aiStatisticsDisplayMode = try container.decodeIfPresent(AppAIStatisticsDisplayMode.self, forKey: .aiStatisticsDisplayMode) ?? .normalized
+        sleepPreventionMode = try container.decodeIfPresent(AppSleepPreventionMode.self, forKey: .sleepPreventionMode) ?? .off
         developer = try container.decodeIfPresent(AppDeveloperSettings.self, forKey: .developer) ?? .init()
         shortcuts = (try container.decodeIfPresent(AppShortcutConfiguration.self, forKey: .shortcuts) ?? .defaults)
             .migratedFromLegacyDefaultsIfNeeded()
@@ -105,6 +127,7 @@ struct AppSettings: Codable, Equatable {
         try container.encode(aiAutoRefreshInterval, forKey: .aiAutoRefreshInterval)
         try container.encode(aiBackgroundRefreshInterval, forKey: .aiBackgroundRefreshInterval)
         try container.encode(aiStatisticsDisplayMode, forKey: .aiStatisticsDisplayMode)
+        try container.encode(sleepPreventionMode, forKey: .sleepPreventionMode)
         try container.encode(developer, forKey: .developer)
         try container.encode(shortcuts, forKey: .shortcuts)
         try container.encode(pet, forKey: .pet)
@@ -189,6 +212,7 @@ struct AppRemoteSettings: Codable, Equatable {
 
 struct AppPetSettings: Codable, Equatable {
     var enabled = true
+    var desktopWidgetEnabled = false
     var staticMode = false
     var hydrationReminderEnabled = true
     var hydrationReminderInterval: TimeInterval = 7200
@@ -201,6 +225,7 @@ struct AppPetSettings: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case enabled
+        case desktopWidgetEnabled
         case staticMode
         case hydrationReminderEnabled
         case hydrationReminderInterval
@@ -213,6 +238,7 @@ struct AppPetSettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        desktopWidgetEnabled = try container.decodeIfPresent(Bool.self, forKey: .desktopWidgetEnabled) ?? false
         staticMode = try container.decodeIfPresent(Bool.self, forKey: .staticMode) ?? false
         hydrationReminderEnabled = try container.decodeIfPresent(Bool.self, forKey: .hydrationReminderEnabled) ?? true
         hydrationReminderInterval = max(300, try container.decodeIfPresent(TimeInterval.self, forKey: .hydrationReminderInterval) ?? 7200)

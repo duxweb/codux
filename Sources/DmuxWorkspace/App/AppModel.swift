@@ -82,6 +82,7 @@ final class AppModel {
     let aiStatsStore = AIStatsStore()
     let petStore = PetStore.shared
     let petRefreshCoordinator = PetRefreshCoordinator(petStore: PetStore.shared)
+    let petSpeechCoordinator = PetSpeechCoordinator()
     let gitStore = GitStore()
     let performanceMonitor = AppPerformanceMonitorStore()
 
@@ -96,6 +97,7 @@ final class AppModel {
     @ObservationIgnored lazy var remoteHostService = RemoteHostService(model: self)
     private let runtimeBridgeService = AIRuntimeBridgeService()
     let memoryCoordinator = MemoryCoordinator()
+    let sleepPreventionService = SleepPreventionService.shared
     let runtimeIngressService = AIRuntimeIngressService.shared
     private let runtimePollingService = AIRuntimePollingService.shared
     private let terminalProcessInspector = TerminalProcessInspector()
@@ -144,6 +146,7 @@ final class AppModel {
 
         DmuxTerminalBackend.shared.configure(using: appSettings)
         remoteHostService.applySettings()
+        sleepPreventionService.configure(mode: appSettings.sleepPreventionMode)
 
         refreshGitState()
         resetActivityState()
@@ -182,8 +185,48 @@ final class AppModel {
                     return .neutral
                 }
                 return self.aiStatsStore.petStatsRolling(self.projects, now: now)
+            },
+            dailyTotalTokens: { [weak self] in
+                guard let self else {
+                    return 0
+                }
+                return self.aiStatsStore.totalTodayNormalizedTokensAcrossProjects(self.projects)
             }
         )
+        petSpeechCoordinator.configure(
+            settings: { [weak self] in
+                self?.appSettings.ai.pet ?? AppAIPetSettings()
+            },
+            aiSettings: { [weak self] in
+                self?.appSettings.ai ?? AppAISettings()
+            },
+            petSettings: { [weak self] in
+                self?.appSettings.pet ?? AppPetSettings()
+            },
+            petName: { [weak self] in
+                self?.resolvedPetSpeechName() ?? petSpeechL("pet.speech.payload.pet_name", "Little One")
+            },
+            activitySnapshots: { [weak self] in
+                self?.petSpeechActivitySnapshots() ?? []
+            },
+            llmLineProvider: { [weak self] event, mode, aiSettings in
+                guard let self,
+                      aiSettings.pet.speechLLMEnabled else {
+                    return nil
+                }
+                return await PetSpeechLLMService(credentialStore: self.aiCredentialStore)
+                    .generateLine(event: event, mode: mode, settings: aiSettings)
+            }
+        )
+        aiSessionStore.onSpeechEvent = { [weak self] event in
+            self?.petSpeechCoordinator.notify(event)
+        }
+        petStore.onSpeechEvent = { [weak self] event in
+            self?.petSpeechCoordinator.notify(event)
+        }
+        petRefreshCoordinator.onSpeechEvent = { [weak self] event in
+            self?.petSpeechCoordinator.notify(event)
+        }
         aiSessionStore.onRenderVersionChange = { [weak self] in
             guard let self else {
                 return
@@ -200,6 +243,7 @@ final class AppModel {
                 )
             }
         }
+        petSpeechCoordinator.start()
         petRefreshCoordinator.start()
         aiStatsStore.startTimers(
             isPanelVisible: { self.rightPanel == .aiStats },
@@ -254,6 +298,34 @@ final class AppModel {
         activityByProjectID = [:]
         activityRenderVersion = 0
         activityCacheByProjectID.removeAll()
+    }
+
+    private func resolvedPetSpeechName() -> String {
+        let trimmedName = petStore.customName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty {
+            return trimmedName
+        }
+        let evoPath = petStore.currentEvoPath()
+        let info = PetProgressInfo(
+            totalXP: petStore.currentExperienceTokens,
+            hatchTokens: petStore.currentHatchTokens,
+            evoPath: evoPath
+        )
+        return info.stage.speciesName(for: petStore.species, evoPath: evoPath)
+    }
+
+    private func petSpeechActivitySnapshots() -> [PetSpeechActivitySnapshot] {
+        aiSessionStore.terminalSessionsByID.values.map { session in
+            PetSpeechActivitySnapshot(
+                tool: session.tool,
+                model: session.model,
+                projectName: session.projectName,
+                state: session.state.rawValue,
+                updatedAt: Date(timeIntervalSince1970: session.updatedAt),
+                activeStartedAt: session.activeTurnStartedAt.map { Date(timeIntervalSince1970: $0) },
+                totalTokens: session.committedTotalTokens
+            )
+        }
     }
 
     var allowsDeferredTerminalStartup: Bool {

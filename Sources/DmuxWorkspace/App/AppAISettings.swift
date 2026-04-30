@@ -198,6 +198,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
     var runtimeTools = AppAIToolPermissionSettings()
     var globalPrompt = ""
     var memory = AppMemorySettings()
+    var pet = AppAIPetSettings()
     var providers = AppAIProviderConfiguration.defaultConfigurations
 
     init() {}
@@ -206,6 +207,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
         case runtimeTools
         case globalPrompt
         case memory
+        case pet
         case providers
     }
 
@@ -216,6 +218,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
             ?? .init()
         globalPrompt = try container.decodeIfPresent(String.self, forKey: .globalPrompt) ?? ""
         memory = try container.decodeIfPresent(AppMemorySettings.self, forKey: .memory) ?? .init()
+        pet = try container.decodeIfPresent(AppAIPetSettings.self, forKey: .pet) ?? .init()
         if let decodedProviders = try? container.decode(
             [LossyAppAIProviderConfiguration].self,
             forKey: .providers
@@ -247,6 +250,12 @@ struct AppAISettings: Codable, Equatable, Sendable {
             }) == false
         {
             memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
+        }
+        if pet.speechProviderID != AppAIPetSettings.automaticSpeechProviderID,
+           providers.contains(where: {
+               $0.id == pet.speechProviderID && $0.isEnabled && $0.kind.supportsAPICompletion
+           }) == false {
+            pet.speechProviderID = AppAIPetSettings.automaticSpeechProviderID
         }
     }
 

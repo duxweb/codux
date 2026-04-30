@@ -1,6 +1,29 @@
 import Foundation
 
 struct AIProviderSelectionService: Sendable {
+    func preferredPetSpeechProvider(in settings: AppAISettings) -> AppAIProviderConfiguration? {
+        let enabledProviders = settings.providers
+            .filter { $0.isEnabled && $0.kind.supportsAPICompletion }
+            .sorted { lhs, rhs in
+                if lhs.priority == rhs.priority {
+                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                        == .orderedAscending
+                }
+                return lhs.priority < rhs.priority
+            }
+
+        if settings.pet.speechProviderID != AppAIPetSettings.automaticSpeechProviderID {
+            if let selected = settings.provider(withID: settings.pet.speechProviderID),
+               selected.isEnabled,
+               selected.kind.supportsAPICompletion {
+                return selected
+            }
+            return enabledProviders.first
+        }
+
+        return enabledProviders.first
+    }
+
     func preferredMemoryExtractionProvider(in settings: AppAISettings, tool: String?)
         -> AppAIProviderConfiguration?
     {

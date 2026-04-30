@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-30
+
+### Added
+
+- Added the pet speech system for AI runtime events, milestones, reminders, and completion states, with messages shown through the desktop widget bubble instead of the old top pet speech surface.
+- Added pet speech modes, hourly frequency controls with a 30-second global cooldown, temporary mute controls, and optional LLM line polishing through configured API providers.
+- Added desktop pet widget controls and wired hydration, sedentary, late-night, and completed-turn reminders into the widget message flow.
+- Added a General setting to prevent Mac idle sleep with Off, Always, and Power Adapter Only modes while still allowing the display to turn off.
+
+### Changed
+
+- Simplified pet settings by removing mixed-mode explanation, prompt audit preview, and daily LLM limit controls from the user-facing panel.
+- Localized the new pet speech, desktop widget, LLM, reminder, and sleep-prevention UI strings across the app's supported languages.
+
+### Fixed
+
+- Improved Codex activity handling so completed turns and queued runtime updates remain visible long enough for widget messages instead of disappearing immediately.
+- Hardened pet speech provider selection so disabled or incompatible providers fall back to automatic selection.
+
 ## [0.6.1] - 2026-04-29
 
 ### Changed

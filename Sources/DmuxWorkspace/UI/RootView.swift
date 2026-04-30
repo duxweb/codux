@@ -33,6 +33,25 @@ struct RootView: View {
         .ignoresSafeArea(.container, edges: .top)
         .onAppear {
             model.noteRootViewAppeared()
+            PetDesktopWindowPresenter.sync(model: model)
+        }
+        .onChange(of: model.appSettings.pet.enabled) { _, _ in
+            PetDesktopWindowPresenter.sync(model: model)
+        }
+        .onChange(of: model.appSettings.pet.desktopWidgetEnabled) { _, _ in
+            PetDesktopWindowPresenter.sync(model: model)
+        }
+        .onChange(of: model.appSettings.pet.staticMode) { _, _ in
+            PetDesktopWindowPresenter.sync(model: model)
+        }
+        .onChange(of: model.petStore.isClaimed) { _, _ in
+            PetDesktopWindowPresenter.sync(model: model)
+        }
+        .onChange(of: model.petStore.currentExperienceTokens) { _, _ in
+            PetDesktopWindowPresenter.sync(model: model)
+        }
+        .onChange(of: model.petStore.currentHatchTokens) { _, _ in
+            PetDesktopWindowPresenter.sync(model: model)
         }
     }
 }

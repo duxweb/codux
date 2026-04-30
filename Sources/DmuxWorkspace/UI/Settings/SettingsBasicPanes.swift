@@ -29,6 +29,19 @@ struct GeneralSettingsPane: View {
                 set: { model.updateDockBadgeEnabled($0) }
             ))
 
+            Picker(String(localized: "settings.sleep_prevention", defaultValue: "Prevent Mac Sleep", bundle: .module), selection: Binding(
+                get: { model.appSettings.sleepPreventionMode },
+                set: { model.updateSleepPreventionMode($0) }
+            )) {
+                ForEach(AppSleepPreventionMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+
+            Text(String(localized: "settings.sleep_prevention.help", defaultValue: "Allows the display to turn off, but prevents the Mac from idle sleeping while enabled.", bundle: .module))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+
             Picker(String(localized: "settings.git_auto_refresh", defaultValue: "Git Auto Refresh", bundle: .module), selection: Binding(
                 get: { model.appSettings.gitAutoRefreshInterval },
                 set: { model.updateGitAutoRefreshInterval($0) }
@@ -82,10 +95,99 @@ struct PetSettingsPane: View {
                     set: { model.updatePetEnabled($0) }
                 ))
 
+                Toggle(String(localized: "settings.pet.desktop_widget", defaultValue: "Desktop Pet", bundle: .module), isOn: Binding(
+                    get: { model.appSettings.pet.desktopWidgetEnabled },
+                    set: { model.updatePetDesktopWidgetEnabled($0) }
+                ))
+                .disabled(!model.appSettings.pet.enabled)
+
                 Toggle(String(localized: "settings.pet.static_mode", defaultValue: "Static Pet Sprite", bundle: .module), isOn: Binding(
                     get: { model.appSettings.pet.staticMode },
                     set: { model.updatePetStaticMode($0) }
                 ))
+            }
+
+            Section(String(localized: "settings.pet.speech.section", defaultValue: "Pet Speech", bundle: .module)) {
+                Picker(String(localized: "settings.pet.speech.mode", defaultValue: "Mode", bundle: .module), selection: Binding(
+                    get: { model.appSettings.ai.pet.speechMode },
+                    set: { model.updatePetSpeechMode($0) }
+                )) {
+                    ForEach(PetSpeechMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+
+                Picker(String(localized: "settings.pet.speech.frequency", defaultValue: "Frequency", bundle: .module), selection: Binding(
+                    get: { model.appSettings.ai.pet.speechFrequency },
+                    set: { model.updatePetSpeechFrequency($0) }
+                )) {
+                    ForEach(PetSpeechFrequency.allCases) { frequency in
+                        Text(petSpeechFrequencyOptionTitle(frequency)).tag(frequency)
+                    }
+                }
+                .disabled(model.appSettings.ai.pet.speechMode == .off)
+                Text(String(localized: "settings.pet.speech.frequency_help", defaultValue: "Frequency is estimated per hour, not a daily cap. The shortest global cooldown is 30 seconds.", bundle: .module))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+
+                Toggle(String(localized: "settings.pet.speech.quiet_during_work", defaultValue: "Speak Less During Work Hours", bundle: .module), isOn: Binding(
+                    get: { model.appSettings.ai.pet.speechQuietDuringWork },
+                    set: { model.updatePetSpeechQuietDuringWork($0) }
+                ))
+                .disabled(model.appSettings.ai.pet.speechMode == .off)
+
+                Toggle(String(localized: "settings.pet.speech.louder_at_night", defaultValue: "Speak More At Night", bundle: .module), isOn: Binding(
+                    get: { model.appSettings.ai.pet.speechLouderAtNight },
+                    set: { model.updatePetSpeechLouderAtNight($0) }
+                ))
+                .disabled(model.appSettings.ai.pet.speechMode == .off)
+
+                Toggle(String(localized: "settings.pet.speech.mute_on_fullscreen", defaultValue: "Mute In Full Screen", bundle: .module), isOn: Binding(
+                    get: { model.appSettings.ai.pet.speechMuteOnFullscreen },
+                    set: { model.updatePetSpeechMuteOnFullscreen($0) }
+                ))
+                .disabled(model.appSettings.ai.pet.speechMode == .off)
+
+                Toggle(String(localized: "settings.pet.speech.quiet_hours", defaultValue: "Quiet Hours 22:00-08:00", bundle: .module), isOn: Binding(
+                    get: { model.appSettings.ai.pet.speechQuietHoursStart != nil && model.appSettings.ai.pet.speechQuietHoursEnd != nil },
+                    set: { enabled in
+                        model.updatePetSpeechQuietHours(start: enabled ? 22 : nil, end: enabled ? 8 : nil)
+                    }
+                ))
+                .disabled(model.appSettings.ai.pet.speechMode == .off)
+
+                HStack {
+                    Button(String(localized: "settings.pet.speech.mute_30_minutes", defaultValue: "Mute 30 Minutes", bundle: .module)) {
+                        model.updatePetSpeechTemporaryMuteUntil(Date().addingTimeInterval(1800))
+                    }
+                    Button(String(localized: "settings.pet.speech.unmute", defaultValue: "Cancel Temporary Mute", bundle: .module)) {
+                        model.updatePetSpeechTemporaryMuteUntil(nil)
+                    }
+                }
+                .disabled(model.appSettings.ai.pet.speechMode == .off)
+            }
+
+            Section(String(localized: "settings.pet.llm.section", defaultValue: "Pet LLM", bundle: .module)) {
+                Toggle(String(localized: "settings.pet.llm.enabled", defaultValue: "Enable LLM Line Polishing", bundle: .module), isOn: Binding(
+                    get: { model.appSettings.ai.pet.speechLLMEnabled },
+                    set: { model.updatePetSpeechLLMEnabled($0) }
+                ))
+                .disabled(model.appSettings.ai.pet.speechMode == .off)
+
+                Picker(String(localized: "settings.pet.llm.channel", defaultValue: "LLM Channel", bundle: .module), selection: Binding(
+                    get: { model.appSettings.ai.pet.speechProviderID },
+                    set: { model.updatePetSpeechProviderID($0) }
+                )) {
+                    Text(String(localized: "settings.pet.llm.channel.automatic", defaultValue: "Automatic", bundle: .module)).tag(AppAIPetSettings.automaticSpeechProviderID)
+                    ForEach(model.appSettings.ai.providers.filter { $0.kind.supportsAPICompletion }) { provider in
+                        Text(provider.displayName).tag(provider.id)
+                    }
+                }
+                .disabled(model.appSettings.ai.pet.speechMode == .off || !model.appSettings.ai.pet.speechLLMEnabled)
+
+                Text(String(localized: "settings.pet.llm.help", defaultValue: "Only rhythm and milestone messages try LLM polishing. Template lines are used if it fails, times out, or no API channel is available.", bundle: .module))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
 
             Section(String(localized: "settings.pet.section.reminders", defaultValue: "Reminders", bundle: .module)) {
@@ -142,6 +244,29 @@ struct PetSettingsPane: View {
         .scrollContentBackground(.hidden)
         .background(Color(nsColor: .windowBackgroundColor))
     }
+}
+
+private func petSpeechFrequencyOptionTitle(_ frequency: PetSpeechFrequency) -> String {
+    String(
+        format: String(localized: "settings.pet.speech.frequency_option_format", defaultValue: "%@ · %@/hour · cooldown %@", bundle: .module),
+        frequency.title,
+        frequency.config.estimatedHourlyCount,
+        petSpeechCooldownTitle(frequency.config.globalCooldown)
+    )
+}
+
+private func petSpeechCooldownTitle(_ seconds: TimeInterval) -> String {
+    if seconds >= 60 {
+        let minutes = Int(seconds / 60)
+        return String(
+            format: String(localized: "settings.pet.speech.cooldown.minutes_format", defaultValue: "%d min", bundle: .module),
+            minutes
+        )
+    }
+    return String(
+        format: String(localized: "settings.pet.speech.cooldown.seconds_format", defaultValue: "%d sec", bundle: .module),
+        Int(seconds)
+    )
 }
 
 // MARK: - AI Settings
@@ -274,7 +399,7 @@ struct AISettingsPane: View {
 
             Section(String(localized: "settings.ai.section.providers", defaultValue: "API Channels", bundle: .module)) {
                 HStack(spacing: 12) {
-                    Text(String(localized: "settings.ai.provider.api_only_help", defaultValue: "API channels for memory extraction.", bundle: .module))
+                    Text(String(localized: "settings.ai.provider.api_only_help", defaultValue: "API channels for memory extraction and pet LLM lines.", bundle: .module))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)

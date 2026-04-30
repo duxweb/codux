@@ -16,8 +16,11 @@ final class PetRefreshCoordinator {
     private let liveRefreshDelay: Duration
     private var totalNormalizedTokensByProjectProvider: (@MainActor () -> [UUID: Int])?
     private var computedStatsProvider: (@MainActor (Date) -> PetStats)?
+    private var dailyTotalTokensProvider: (@MainActor () -> Int)?
     private var pendingRefreshTask: Task<Void, Never>?
     private var periodicRefreshTimer: Timer?
+    private var highestObservedDailyTokens = 0
+    var onSpeechEvent: (@MainActor (PetSpeechEvent) -> Void)?
 
     init(
         petStore: PetStore,
@@ -29,10 +32,12 @@ final class PetRefreshCoordinator {
 
     func configure(
         totalNormalizedTokensByProject: @escaping @MainActor () -> [UUID: Int],
-        computedStats: @escaping @MainActor (Date) -> PetStats
+        computedStats: @escaping @MainActor (Date) -> PetStats,
+        dailyTotalTokens: (@MainActor () -> Int)? = nil
     ) {
         totalNormalizedTokensByProjectProvider = totalNormalizedTokensByProject
         computedStatsProvider = computedStats
+        dailyTotalTokensProvider = dailyTotalTokens
     }
 
     func start() {
@@ -89,6 +94,20 @@ final class PetRefreshCoordinator {
             computedStats: computedStats,
             now: now
         )
+
+        if let todayTokens = dailyTotalTokensProvider?(),
+           todayTokens > highestObservedDailyTokens {
+            if highestObservedDailyTokens > 0 {
+                onSpeechEvent?(
+                    PetSpeechEvent(
+                        kind: .usageDailyRecord,
+                        payload: ["tokensK": "\(max(1, todayTokens / 1000))K"],
+                        occurredAt: now
+                    )
+                )
+            }
+            highestObservedDailyTokens = todayTokens
+        }
 
         logger.log(
             "pet-refresh",

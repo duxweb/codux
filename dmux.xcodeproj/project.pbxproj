@@ -10,6 +10,7 @@
 		C0D0C0D0C0D0C0D0C0D00001 /* RemoteHostService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10001 /* RemoteHostService.swift */; };
 		C0D0C0D0C0D0C0D0C0D00002 /* AppModel+Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10002 /* AppModel+Remote.swift */; };
 		C0D0C0D0C0D0C0D0C0D00003 /* SettingsRemotePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10003 /* SettingsRemotePane.swift */; };
+		C0D0C0D0C0D0C0D0C0D00004 /* SleepPreventionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */; };
 		011BED1E652A34A9642CEDEA /* Package.swift in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8AF9CB866BDB2AF3ECA35178 /* Package.swift */; };
 		0677DA593A0554DAC639D0A3 /* AppReleaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* AppUpdaterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */; };
@@ -61,6 +62,7 @@
 		A4B5C6D7E8F90123456789AB /* AIRuntimeSharedTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4B5C6D7E8F90123456789AC /* AIRuntimeSharedTypes.swift */; };
 		B7C8D9E0F1A2233445566778 /* TerminalProcessInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C8D9E0F1A2233445566779 /* TerminalProcessInspector.swift */; };
 		41CEA0910EEBD49E51352695 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = D48B542546FE32FD237D7575 /* libsqlite3.tbd */; };
+		41CEA0910EEBD49E51352696 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D48B542546FE32FD237D7576 /* IOKit.framework */; };
 		4634F57FC973786B1BC12CE7 /* CodexHookRuntimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED37E17B7F68D17CEE7E83E4 /* CodexHookRuntimeService.swift */; };
 		4646A52CD76847E45BD9EC10 /* AppCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5980BCE4A13117C99D8051E5 /* AppCommands.swift */; };
 		46597B6975112CD732F7D16D /* DmuxWorkspaceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0716C74164A92ABC63BDE25A /* DmuxWorkspaceApp.swift */; };
@@ -70,8 +72,13 @@
 		5F0A9C1D7E2B4A5C8D9E0F11 /* PetPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F10 /* PetPanelView.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F15 /* PetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F16 /* PetStore.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */; };
+		5F0A9C1D7E2B4A5C8D9E0F25 /* PetDesktopWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F26 /* PetDesktopWindow.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F24 /* PetRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F23 /* PetRefreshCoordinator.swift */; };
+		D0D0C0DE0000000000000101 /* PetSpeechModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000001 /* PetSpeechModels.swift */; };
+		D0D0C0DE0000000000000102 /* PetSpeechCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000002 /* PetSpeechCatalog.swift */; };
+		D0D0C0DE0000000000000103 /* PetSpeechCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000003 /* PetSpeechCoordinator.swift */; };
+		D0D0C0DE0000000000000104 /* PetSpeechLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000004 /* PetSpeechLLMService.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F12 /* Pets in Resources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F13 /* Pets */; };
 		A7B8C9D0E1F2031425364762 /* DmuxTerminalBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2031425364763 /* DmuxTerminalBackend.swift */; };
 		6FE3BAABA1DF148107499517 /* AIStatsPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE6C21DB9D84B024B4A9FC4 /* AIStatsPanelView.swift */; };
@@ -293,7 +300,12 @@
 			5F0A9C1D7E2B4A5C8D9E0F16 /* PetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetStore.swift; sourceTree = "<group>"; };
 			5F0A9C1D7E2B4A5C8D9E0F10 /* PetPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetPanelView.swift; sourceTree = "<group>"; };
 			5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetDexWindow.swift; sourceTree = "<group>"; };
+			5F0A9C1D7E2B4A5C8D9E0F26 /* PetDesktopWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetDesktopWindow.swift; sourceTree = "<group>"; };
 			5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetEvolutionEffect.swift; sourceTree = "<group>"; };
+			D0D0C0DE0000000000000001 /* PetSpeechModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetSpeechModels.swift; sourceTree = "<group>"; };
+			D0D0C0DE0000000000000002 /* PetSpeechCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetSpeechCatalog.swift; sourceTree = "<group>"; };
+			D0D0C0DE0000000000000003 /* PetSpeechCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetSpeechCoordinator.swift; sourceTree = "<group>"; };
+			D0D0C0DE0000000000000004 /* PetSpeechLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetSpeechLLMService.swift; sourceTree = "<group>"; };
 			5F0A9C1D7E2B4A5C8D9E0F13 /* Pets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Pets; sourceTree = "<group>"; };
 			C328274D91C96E2AF3C1CFD4 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		C42E01A9B97E740A3EBF3C68 /* FloatingTooltip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTooltip.swift; sourceTree = "<group>"; };
@@ -305,6 +317,7 @@
 		CF3062F44A5DB544744A8CAD /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D218CBB783275650D562D0EA /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		D48B542546FE32FD237D7575 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		D48B542546FE32FD237D7576 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		DA51FF0D184B4B658DF3C288 /* Codux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Codux.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppReleaseService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdaterService.swift; sourceTree = "<group>"; };
@@ -315,6 +328,7 @@
 		C0D0C0D0C0D0C0D0C0D10001 /* RemoteHostService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHostService.swift; sourceTree = "<group>"; };
 		C0D0C0D0C0D0C0D0C0D10002 /* AppModel+Remote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Remote.swift"; sourceTree = "<group>"; };
 		C0D0C0D0C0D0C0D0C0D10003 /* SettingsRemotePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRemotePane.swift; sourceTree = "<group>"; };
+		C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepPreventionService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -328,6 +342,7 @@
 				E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */,
 				94E74A9C02052D31600A15A8 /* UniformTypeIdentifiers.framework in Frameworks */,
 				7CC77BFB4230078241327312 /* Carbon.framework in Frameworks */,
+				41CEA0910EEBD49E51352696 /* IOKit.framework in Frameworks */,
 				41CEA0910EEBD49E51352695 /* libsqlite3.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -389,6 +404,7 @@
 					C10000000000000000000046 /* PetProgression.swift */,
 					C10000000000000000000047 /* PetPopoverViews.swift */,
 					5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */,
+					5F0A9C1D7E2B4A5C8D9E0F26 /* PetDesktopWindow.swift */,
 					5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */,
 				);
 			path = Pet;
@@ -426,6 +442,7 @@
 			isa = PBXGroup;
 			children = (
 				E4DFD3851711A42A405F5E7D /* Carbon.framework */,
+				D48B542546FE32FD237D7576 /* IOKit.framework */,
 				D48B542546FE32FD237D7575 /* libsqlite3.tbd */,
 				8257AFB3A285E940A6A4A3DD /* UniformTypeIdentifiers.framework */,
 			);
@@ -491,6 +508,7 @@
 				1D05D834FCB2D530F185C773 /* AIUsageModels.swift */,
 				210000000000000000000002 /* MemoryModels.swift */,
 				5F0A9C1D7E2B4A5C8D9E0F22 /* PetModels.swift */,
+				D0D0C0DE0000000000000001 /* PetSpeechModels.swift */,
 				AE95489EB51C81E7321103FD /* AppModels.swift */,
 			);
 			path = Models;
@@ -625,6 +643,10 @@
 				ED37E17B7F68D17CEE7E83E4 /* CodexHookRuntimeService.swift */,
 				8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */,
 				C0D0C0D0C0D0C0D0C0D10001 /* RemoteHostService.swift */,
+				C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */,
+				D0D0C0DE0000000000000002 /* PetSpeechCatalog.swift */,
+				D0D0C0DE0000000000000003 /* PetSpeechCoordinator.swift */,
+				D0D0C0DE0000000000000004 /* PetSpeechLLMService.swift */,
 				377788C9C2C0ECF640DBAA6D /* GitCredentialStore.swift */,
 				4BF246B9127D41605A990516 /* GitService.swift */,
 				812A0EDEE4527FA414569297 /* PersistenceService.swift */,
@@ -850,13 +872,19 @@
 					B10000000000000000000046 /* PetProgression.swift in Sources */,
 					B10000000000000000000047 /* PetPopoverViews.swift in Sources */,
 					5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */,
+					5F0A9C1D7E2B4A5C8D9E0F25 /* PetDesktopWindow.swift in Sources */,
 					5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */,
+				D0D0C0DE0000000000000101 /* PetSpeechModels.swift in Sources */,
+				D0D0C0DE0000000000000102 /* PetSpeechCatalog.swift in Sources */,
+				D0D0C0DE0000000000000103 /* PetSpeechCoordinator.swift in Sources */,
+				D0D0C0DE0000000000000104 /* PetSpeechLLMService.swift in Sources */,
 				230000000000000000000101 /* MemoryManagerWindow.swift in Sources */,
 				577F3384BE4EDD492C520037 /* RootView.swift in Sources */,
 				B10000000000000000000034 /* RootWindowSupport.swift in Sources */,
 				B10000000000000000000035 /* RootSplitContainer.swift in Sources */,
 				B10000000000000000000036 /* RootTitlebarView.swift in Sources */,
 				C0D0C0D0C0D0C0D0C0D00001 /* RemoteHostService.swift in Sources */,
+				C0D0C0D0C0D0C0D0C0D00004 /* SleepPreventionService.swift in Sources */,
 				C0D0C0D0C0D0C0D0C0D00002 /* AppModel+Remote.swift in Sources */,
 				C0D0C0D0C0D0C0D0C0D00003 /* SettingsRemotePane.swift in Sources */,
 				1144DC09253CDEA30AC56B0E /* SettingsView.swift in Sources */,
@@ -920,7 +948,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -933,7 +961,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.6.1;
+				MARKETING_VERSION = 0.7.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -994,7 +1022,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1013,7 +1041,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.6.1;
+				MARKETING_VERSION = 0.7.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

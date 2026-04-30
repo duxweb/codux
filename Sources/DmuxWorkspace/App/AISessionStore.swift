@@ -177,6 +177,7 @@ final class AISessionStore {
         }
     }
     var onRenderVersionChange: (@MainActor () -> Void)?
+    var onSpeechEvent: (@MainActor (PetSpeechEvent) -> Void)?
 
     private init() {}
 
@@ -349,6 +350,7 @@ final class AISessionStore {
                 "ai-session-store",
                 "apply terminal=\(event.terminalID.uuidString) tool=\(normalizedTool) kind=\(event.kind.rawValue) state=\(session.state.rawValue) external=\(session.aiSessionID ?? "nil") total=\(session.committedTotalTokens) baseline=\(session.baselineTotalTokens)"
             )
+            emitSpeechEvents(previousState: previousState, nextState: session, event: event)
         }
         return didChange
     }
@@ -542,10 +544,24 @@ final class AISessionStore {
 
             resolveBaselineIfNeeded(&session, snapshot: snapshot)
             applyRuntimeLifecycle(&session, snapshot: snapshot, previousState: previousState)
+            let observedActiveTokenGrowth =
+                previousState.state == .responding
+                && snapshot.responseState != .idle
+                && snapshot.wasInterrupted == false
+                && snapshot.hasCompletedTurn == false
+                && (
+                    snapshot.inputTokens > previousState.committedInputTokens
+                    || snapshot.outputTokens > previousState.committedOutputTokens
+                    || snapshot.cachedInputTokens > previousState.committedCachedInputTokens
+                    || snapshot.totalTokens > previousState.committedTotalTokens
+                )
             session.committedInputTokens = max(session.committedInputTokens, snapshot.inputTokens)
             session.committedOutputTokens = max(session.committedOutputTokens, snapshot.outputTokens)
             session.committedCachedInputTokens = max(session.committedCachedInputTokens, snapshot.cachedInputTokens)
             session.committedTotalTokens = max(session.committedTotalTokens, snapshot.totalTokens)
+            if observedActiveTokenGrowth {
+                session.updatedAt = max(session.updatedAt, Date().timeIntervalSince1970)
+            }
 
             terminalSessionsByID[targetTerminalID] = session
             recordRuntimeObservation(for: session, snapshot: snapshot)
@@ -974,6 +990,124 @@ final class AISessionStore {
             targetToolName: event.metadata?.targetToolName,
             interactionMessage: event.metadata?.message
         )
+    }
+
+    private func emitSpeechEvents(
+        previousState: TerminalSessionState?,
+        nextState session: TerminalSessionState,
+        event: AIHookEvent
+    ) {
+        let occurredAt = Date(timeIntervalSince1970: event.updatedAt)
+        if let previousTool = previousState?.tool,
+           previousTool != session.tool,
+           event.kind == .promptSubmitted {
+            onSpeechEvent?(
+                PetSpeechEvent(
+                    kind: .toolSwitched,
+                    payload: speechPayload(
+                        session: session,
+                        event: event,
+                        extra: ["prevTool": previousTool]
+                    ),
+                    occurredAt: occurredAt
+                )
+            )
+        }
+
+        if event.kind == .promptSubmitted,
+           previousState?.state != .responding {
+            onSpeechEvent?(
+                PetSpeechEvent(
+                    kind: .turnStarted,
+                    payload: speechPayload(session: session, event: event),
+                    occurredAt: occurredAt
+                )
+            )
+        }
+
+        if event.kind == .needsInput,
+           previousState?.state != .needsInput {
+            onSpeechEvent?(
+                PetSpeechEvent(
+                    kind: .turnNeedsInput,
+                    payload: speechPayload(session: session, event: event),
+                    occurredAt: occurredAt
+                )
+            )
+        }
+
+        guard event.kind == .turnCompleted else {
+            return
+        }
+
+        if session.wasInterrupted || session.hasCompletedTurn == false {
+            onSpeechEvent?(
+                PetSpeechEvent(
+                    kind: .turnInterrupted,
+                    payload: speechPayload(session: session, event: event),
+                    occurredAt: occurredAt
+                )
+            )
+            return
+        }
+
+        let startedAt = previousState?.activeTurnStartedAt
+            ?? previousState?.runtimeTurnStartedAt
+            ?? session.activeTurnStartedAt
+            ?? session.startedAt
+            ?? event.updatedAt
+        let duration = max(0, event.updatedAt - startedAt)
+        let kind: PetSpeechEventKind
+        if duration < 30 {
+            kind = .turnCompletedFast
+        } else if duration >= 300 {
+            kind = .turnCompletedLong
+        } else {
+            kind = .turnCompleted
+        }
+        onSpeechEvent?(
+            PetSpeechEvent(
+                kind: kind,
+                payload: speechPayload(
+                    session: session,
+                    event: event,
+                    extra: [
+                        "durationSec": "\(max(1, Int(duration.rounded())))",
+                        "durationMin": "\(max(1, Int((duration / 60).rounded())))",
+                    ]
+                ),
+                occurredAt: occurredAt
+            )
+        )
+    }
+
+    private func speechPayload(
+        session: TerminalSessionState,
+        event: AIHookEvent,
+        extra: [String: String] = [:]
+    ) -> [String: String] {
+        let tokens = max(0, event.totalTokens ?? session.committedTotalTokens)
+        var payload: [String: String] = [
+            "tool": session.tool,
+            "project": session.projectName,
+            "tokens": "\(tokens)",
+            "tokensInt": "\(tokens)",
+            "tokensK": speechCompactTokens(tokens),
+        ]
+        if let model = session.model ?? event.model {
+            payload["model"] = model
+        }
+        for (key, value) in extra {
+            payload[key] = value
+        }
+        return payload
+    }
+
+    private func speechCompactTokens(_ tokens: Int) -> String {
+        guard tokens >= 1000 else {
+            return "\(tokens)"
+        }
+        return "\(max(1, tokens / 1000))K"
     }
 
     private var codexMemoriesRootPath: String {

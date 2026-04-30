@@ -344,9 +344,27 @@ extension AppModel {
         persist()
     }
 
+    func updateSleepPreventionMode(_ mode: AppSleepPreventionMode) {
+        guard appSettings.sleepPreventionMode != mode else {
+            return
+        }
+        var settings = appSettings
+        settings.sleepPreventionMode = mode
+        appSettings = settings
+        sleepPreventionService.configure(mode: mode)
+        persist()
+    }
+
     func updatePetEnabled(_ enabled: Bool) {
         var settings = appSettings
         settings.pet.enabled = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updatePetDesktopWidgetEnabled(_ enabled: Bool) {
+        var settings = appSettings
+        settings.pet.desktopWidgetEnabled = enabled
         appSettings = settings
         persist()
     }
@@ -397,6 +415,80 @@ extension AppModel {
         var settings = appSettings
         settings.pet.lateNightReminderInterval = interval
         appSettings = settings
+        persist()
+    }
+
+    func updatePetSpeechMode(_ mode: PetSpeechMode) {
+        var settings = appSettings
+        settings.ai.pet.speechMode = mode
+        appSettings = settings
+        if mode == .off {
+            petSpeechCoordinator.clearCurrentLine()
+        }
+        persist()
+    }
+
+    func updatePetSpeechFrequency(_ frequency: PetSpeechFrequency) {
+        var settings = appSettings
+        settings.ai.pet.speechFrequency = frequency
+        appSettings = settings
+        persist()
+    }
+
+    func updatePetSpeechLLMEnabled(_ enabled: Bool) {
+        var settings = appSettings
+        settings.ai.pet.speechLLMEnabled = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updatePetSpeechProviderID(_ providerID: String) {
+        var settings = appSettings
+        let trimmed = providerID.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.ai.pet.speechProviderID = trimmed.isEmpty
+            ? AppAIPetSettings.automaticSpeechProviderID
+            : trimmed
+        settings.ai.migrateMissingDefaultProviders()
+        appSettings = settings
+        persist()
+    }
+
+    func updatePetSpeechQuietDuringWork(_ enabled: Bool) {
+        var settings = appSettings
+        settings.ai.pet.speechQuietDuringWork = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updatePetSpeechLouderAtNight(_ enabled: Bool) {
+        var settings = appSettings
+        settings.ai.pet.speechLouderAtNight = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updatePetSpeechMuteOnFullscreen(_ enabled: Bool) {
+        var settings = appSettings
+        settings.ai.pet.speechMuteOnFullscreen = enabled
+        appSettings = settings
+        persist()
+    }
+
+    func updatePetSpeechQuietHours(start: Int?, end: Int?) {
+        var settings = appSettings
+        settings.ai.pet.speechQuietHoursStart = AppAIPetSettings.normalizedHour(start)
+        settings.ai.pet.speechQuietHoursEnd = AppAIPetSettings.normalizedHour(end)
+        appSettings = settings
+        persist()
+    }
+
+    func updatePetSpeechTemporaryMuteUntil(_ date: Date?) {
+        var settings = appSettings
+        settings.ai.pet.speechTemporaryMuteUntil = date
+        appSettings = settings
+        if date != nil {
+            petSpeechCoordinator.clearCurrentLine()
+        }
         persist()
     }
 

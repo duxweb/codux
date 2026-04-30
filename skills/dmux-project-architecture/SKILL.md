@@ -65,6 +65,10 @@ Use this skill before making non-trivial dmux changes that cross subsystem bound
 
 ## Persistence model
 
+- Runtime/user data paths are resolved through `AppRuntimePaths`, not hard-coded.
+  Current release app data lives under `~/Library/Application Support/Codux/`.
+  Current dev app data lives under `~/Library/Application Support/Codux-dev/`.
+  Do not inspect or document the legacy dmux support namespace for current runtime logs; that namespace is only for migrations.
 - `PersistenceService.swift`
   Reads/writes `state.json` under Application Support.
   Sanitizes projects/workspaces on load.

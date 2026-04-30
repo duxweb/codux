@@ -18,6 +18,7 @@ enum AppWindowIdentifier {
     static let about = NSUserInterfaceItemIdentifier("dmux.about")
     static let agreement = NSUserInterfaceItemIdentifier("dmux.agreement")
     static let petDex = NSUserInterfaceItemIdentifier("dmux.petDex")
+    static let desktopPet = NSUserInterfaceItemIdentifier("dmux.desktopPet")
     static let memoryManager = NSUserInterfaceItemIdentifier("dmux.memoryManager")
     static let detachedTerminalPrefix = "dmux.detached-terminal."
 
@@ -327,6 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationWillTerminate(_ notification: Notification) {
         AppDebugLog.shared.log("ghostty-lifecycle", "application-will-terminate")
+        SleepPreventionService.shared.stop()
         DmuxTerminalBackend.shared.registry.terminateAll()
     }
 

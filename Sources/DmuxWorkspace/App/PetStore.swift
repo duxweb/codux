@@ -113,6 +113,7 @@ final class PetStore {
     private let fileManager = FileManager.default
     private let debugLog = AppDebugLog.shared
     private let storage: Storage
+    var onSpeechEvent: (@MainActor (PetSpeechEvent) -> Void)?
 
     var isClaimed: Bool {
         claimedAt != nil
@@ -291,6 +292,13 @@ final class PetStore {
             return
         }
 
+        let previousLevel = PetProgressInfo.levelFromXP(currentExperienceTokens)
+        let previousStage = PetProgressInfo(
+            totalXP: currentExperienceTokens,
+            hatchTokens: currentHatchTokens,
+            evoPath: currentEvoPath()
+        ).stage
+        let previousStats = currentStats
         var didChange = false
         var deltaTokens = 0
         var effectiveTotalNormalizedTokens = 0
@@ -397,6 +405,78 @@ final class PetStore {
 
         if didChange {
             save()
+            emitMilestoneSpeechEvents(
+                previousLevel: previousLevel,
+                previousStage: previousStage,
+                previousStats: previousStats,
+                now: now
+            )
+        }
+    }
+
+    private func emitMilestoneSpeechEvents(
+        previousLevel: Int,
+        previousStage: PetStage,
+        previousStats: PetStats,
+        now: Date
+    ) {
+        let nextLevel = PetProgressInfo.levelFromXP(currentExperienceTokens)
+        if nextLevel > previousLevel {
+            onSpeechEvent?(
+                PetSpeechEvent(
+                    kind: .petLevelUp,
+                    payload: ["level": "\(nextLevel)"],
+                    occurredAt: now
+                )
+            )
+        }
+
+        let nextStage = PetProgressInfo(
+            totalXP: currentExperienceTokens,
+            hatchTokens: currentHatchTokens,
+            evoPath: currentEvoPath()
+        ).stage
+        if nextStage != previousStage,
+           nextStage != .egg {
+            onSpeechEvent?(
+                PetSpeechEvent(
+                    kind: .petEvolution,
+                    payload: ["newStage": nextStage.displayName],
+                    occurredAt: now
+                )
+            )
+        }
+
+        for threshold in [200, 250, 300] {
+            for entry in statBreakthroughEntries(previous: previousStats, next: currentStats, threshold: threshold) {
+                onSpeechEvent?(
+                    PetSpeechEvent(
+                        kind: .petStatBreakthrough,
+                        payload: [
+                            "stat": entry.name,
+                            "value": "\(threshold)",
+                        ],
+                        occurredAt: now
+                    )
+                )
+            }
+        }
+    }
+
+    private func statBreakthroughEntries(
+        previous: PetStats,
+        next: PetStats,
+        threshold: Int
+    ) -> [(name: String, value: Int)] {
+        [
+            (petL("pet.attribute.wisdom", "Wisdom"), previous.wisdom, next.wisdom),
+            (petL("pet.attribute.chaos", "Chaos"), previous.chaos, next.chaos),
+            (petL("pet.attribute.night", "Night"), previous.night, next.night),
+            (petL("pet.attribute.stamina", "Stamina"), previous.stamina, next.stamina),
+            (petL("pet.attribute.empathy", "Empathy"), previous.empathy, next.empathy),
+        ]
+        .compactMap { entry in
+            entry.1 < threshold && entry.2 >= threshold ? (entry.0, entry.2) : nil
         }
     }
 
