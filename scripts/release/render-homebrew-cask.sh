@@ -24,7 +24,7 @@ cask "codux" do
 
   url "https://github.com/duxweb/codux/releases/download/v#{version}/Codux-#{version}-macos-universal.dmg"
   name "Codux"
-  desc "Native macOS terminal workspace for AI coding tools"
+  desc "Native terminal workspace for AI coding tools"
   homepage "https://github.com/duxweb/codux"
 
   livecheck do

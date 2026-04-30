@@ -217,31 +217,28 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
-            echo "[tap] HOMEBREW_TAP_TOKEN is not configured, skipping tap publish"
+            echo "::error::[tap] HOMEBREW_TAP_TOKEN is required to publish the Homebrew tap"
             {
               echo "### Homebrew tap"
               echo
-              echo "- Skipped: \`HOMEBREW_TAP_TOKEN\` is not configured."
+              echo "- Failed: \`HOMEBREW_TAP_TOKEN\` is not configured."
+              echo "- Configure a token with read/write access to \`duxweb/homebrew-tap\`."
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            exit 1
           fi
-
-          set +e
 
           tap_dir="$RUNNER_TEMP/homebrew-tap"
           tap_repo_url="https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/duxweb/homebrew-tap.git"
           rm -rf "$tap_dir"
-          git clone "$tap_repo_url" "$tap_dir"
-          clone_status=$?
-          if [[ $clone_status -ne 0 ]]; then
-            echo "::warning::[tap] Failed to clone duxweb/homebrew-tap using HOMEBREW_TAP_TOKEN. Check token validity and repo write access."
+          if ! git clone "$tap_repo_url" "$tap_dir"; then
+            echo "::error::[tap] Failed to clone duxweb/homebrew-tap using HOMEBREW_TAP_TOKEN"
             {
               echo "### Homebrew tap"
               echo
               echo "- Failed: could not clone \`duxweb/homebrew-tap\`."
               echo "- Check whether \`HOMEBREW_TAP_TOKEN\` is valid and has read/write access to the tap repository."
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            exit 1
           fi
 
           dmg_path="dist/Codux-${VERSION}-macos-universal.dmg"
@@ -263,29 +260,25 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/codux.rb
-          git commit -m "Update codux cask to v${VERSION}"
-          commit_status=$?
-          if [[ $commit_status -ne 0 ]]; then
-            echo "::warning::[tap] Failed to commit Homebrew cask update."
+          if ! git commit -m "Update codux cask to v${VERSION}"; then
+            echo "::error::[tap] Failed to commit Homebrew cask update"
             {
               echo "### Homebrew tap"
               echo
               echo "- Failed: could not commit the generated cask update."
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            exit 1
           fi
 
-          git push origin HEAD:main
-          push_status=$?
-          if [[ $push_status -ne 0 ]]; then
-            echo "::warning::[tap] Failed to push Homebrew tap update using HOMEBREW_TAP_TOKEN. Check token validity and tap repository permissions."
+          if ! git push origin HEAD:main; then
+            echo "::error::[tap] Failed to push Homebrew tap update using HOMEBREW_TAP_TOKEN"
             {
               echo "### Homebrew tap"
               echo
               echo "- Failed: could not push the cask update to \`duxweb/homebrew-tap\`."
               echo "- Check whether \`HOMEBREW_TAP_TOKEN\` is valid and has read/write access to the tap repository."
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            exit 1
           fi
 
           {
