@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-05-05
+
+### Added
+
+- Added shared remote terminal splits for Codux Mobile, so mobile clients can browse, create, switch, resize, and close the same split sessions shown on macOS.
+- Added WebRTC DataChannel P2P transport for remote terminal traffic, using STUN direct connection first with encrypted WebSocket relay fallback.
+- Added host-side support for mobile file-manager paste, drag/drop moves, inline rename, external opening for media and office files, and terminal file-drop insertion.
+
+### Changed
+
+- Improved remote terminal resize ownership so mobile terminal grids can drive the shared Mac session without forcing visible macOS focus changes.
+- Updated P2P ICE server ordering to prefer domestic STUN for Chinese language environments while retaining global STUN fallbacks.
+- Refined the README screenshots and remote-terminal documentation for the current shared-terminal workflow.
+
+### Fixed
+
+- Fixed remote-created terminals so they can start in background projects and replay their history when the Mac later opens that project.
+- Fixed Codex runtime snapshots so a completed turn after a 502 error clears loading instead of leaving the session stuck responding.
+- Fixed duplicate remote terminal input handling by adding input IDs and host-side duplicate suppression.
+
 ## [0.8.1] - 2026-04-30
 
 ### Fixed

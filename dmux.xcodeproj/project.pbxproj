@@ -11,6 +11,7 @@
 		C0D0C0D0C0D0C0D0C0D00002 /* AppModel+Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10002 /* AppModel+Remote.swift */; };
 		C0D0C0D0C0D0C0D0C0D00003 /* SettingsRemotePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10003 /* SettingsRemotePane.swift */; };
 		C0D0C0D0C0D0C0D0C0D00004 /* SleepPreventionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */; };
+		C0D0C0D0C0D0C0D0C0D00005 /* RemoteP2PHostTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0C0D0C0D0C0D0C0D10005 /* RemoteP2PHostTransport.swift */; };
 		F11000000000000000000001 /* ProjectFileModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000001 /* ProjectFileModels.swift */; };
 		F11000000000000000000002 /* ProjectFileBrowserService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000002 /* ProjectFileBrowserService.swift */; };
 		F11000000000000000000003 /* FileBrowserPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000003 /* FileBrowserPanelView.swift */; };
@@ -21,6 +22,7 @@
 		A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B60 /* Sparkle */; };
 		A7B8C9D0E1F2031425364758 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A7B8C9D0E1F2031425364759 /* GhosttyTerminal */; };
 		A7B8C9D0E1F2031425364767 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = A7B8C9D0E1F2031425364768 /* GhosttyTheme */; };
+		BEEF00000000000000000001 /* LiveKitWebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = BEEF00000000000000000003 /* LiveKitWebRTC */; };
 		0D664E0A08F199B7A97D0BA2 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CDEB30421E61195A008FD00E /* Localizable.xcstrings */; };
 		E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = E1A41C4E3A0A4C0A9D7B42A2 /* Logging */; };
 		0FA3288DB5DECC9BDA2E1291 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E1EC9BC74648163A178985 /* Theme.swift */; };
@@ -331,6 +333,7 @@
 		C0D0C0D0C0D0C0D0C0D10002 /* AppModel+Remote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Remote.swift"; sourceTree = "<group>"; };
 		C0D0C0D0C0D0C0D0C0D10003 /* SettingsRemotePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRemotePane.swift; sourceTree = "<group>"; };
 		C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepPreventionService.swift; sourceTree = "<group>"; };
+		C0D0C0D0C0D0C0D0C0D10005 /* RemoteP2PHostTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteP2PHostTransport.swift; sourceTree = "<group>"; };
 		F12000000000000000000001 /* ProjectFileModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFileModels.swift; sourceTree = "<group>"; };
 		F12000000000000000000002 /* ProjectFileBrowserService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFileBrowserService.swift; sourceTree = "<group>"; };
 		F12000000000000000000003 /* FileBrowserPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserPanelView.swift; sourceTree = "<group>"; };
@@ -346,6 +349,7 @@
 				A7B8C9D0E1F2031425364767 /* GhosttyTheme in Frameworks */,
 				A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */,
 				E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */,
+				BEEF00000000000000000001 /* LiveKitWebRTC in Frameworks */,
 				94E74A9C02052D31600A15A8 /* UniformTypeIdentifiers.framework in Frameworks */,
 				7CC77BFB4230078241327312 /* Carbon.framework in Frameworks */,
 				41CEA0910EEBD49E51352696 /* IOKit.framework in Frameworks */,
@@ -651,6 +655,7 @@
 				ED37E17B7F68D17CEE7E83E4 /* CodexHookRuntimeService.swift */,
 				8B2C3D4E5F60718293A4B5C6 /* GeminiRuntimeProbeService.swift */,
 				C0D0C0D0C0D0C0D0C0D10001 /* RemoteHostService.swift */,
+				C0D0C0D0C0D0C0D0C0D10005 /* RemoteP2PHostTransport.swift */,
 				C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */,
 				D0D0C0DE0000000000000002 /* PetSpeechCatalog.swift */,
 				D0D0C0DE0000000000000003 /* PetSpeechCoordinator.swift */,
@@ -714,6 +719,7 @@
 				A7B8C9D0E1F2031425364759 /* GhosttyTerminal */,
 				A7B8C9D0E1F2031425364768 /* GhosttyTheme */,
 				E1A41C4E3A0A4C0A9D7B42A2 /* Logging */,
+				BEEF00000000000000000003 /* LiveKitWebRTC */,
 			);
 			productName = dmux;
 			productReference = DA51FF0D184B4B658DF3C288 /* Codux.app */;
@@ -755,6 +761,7 @@
 				A7B8C9D0E1F2031425364766 /* XCRemoteSwiftPackageReference "libghostty-spm" */,
 				A1B2C3D4E5F60718293A4B5F /* XCRemoteSwiftPackageReference "Sparkle" */,
 				E1A41C4E3A0A4C0A9D7B42A3 /* XCRemoteSwiftPackageReference "swift-log" */,
+				BEEF00000000000000000002 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7651A8B853F6627D943F04C9 /* Products */;
@@ -904,6 +911,7 @@
 				B10000000000000000000035 /* RootSplitContainer.swift in Sources */,
 				B10000000000000000000036 /* RootTitlebarView.swift in Sources */,
 				C0D0C0D0C0D0C0D0C0D00001 /* RemoteHostService.swift in Sources */,
+				C0D0C0D0C0D0C0D0C0D00005 /* RemoteP2PHostTransport.swift in Sources */,
 				C0D0C0D0C0D0C0D0C0D00004 /* SleepPreventionService.swift in Sources */,
 				C0D0C0D0C0D0C0D0C0D00002 /* AppModel+Remote.swift in Sources */,
 				C0D0C0D0C0D0C0D0C0D00003 /* SettingsRemotePane.swift in Sources */,
@@ -968,7 +976,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -981,7 +989,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.8.1;
+				MARKETING_VERSION = 0.8.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1042,7 +1050,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1061,7 +1069,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.8.1;
+				MARKETING_VERSION = 0.8.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1137,6 +1145,14 @@
 				minimumVersion = 1.6.0;
 			};
 		};
+		BEEF00000000000000000002 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/webrtc-xcframework.git";
+			requirement = {
+				kind = exactVersion;
+				version = 137.7151.13;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1159,6 +1175,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E1A41C4E3A0A4C0A9D7B42A3 /* XCRemoteSwiftPackageReference "swift-log" */;
 			productName = Logging;
+		};
+		BEEF00000000000000000003 /* LiveKitWebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BEEF00000000000000000002 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */;
+			productName = LiveKitWebRTC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -154,6 +154,13 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
         return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
     }
 
+    func outputHistorySnapshot() -> Data {
+        lock.lock()
+        let data = outputHistory
+        lock.unlock()
+        return data
+    }
+
     func terminateProcessTree() {
         terminateProcessTree(signal: SIGHUP)
     }

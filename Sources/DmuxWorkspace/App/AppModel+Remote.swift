@@ -16,11 +16,7 @@ extension AppModel {
     var orderedIDs: [UUID] = []
 
     for workspace in workspaces {
-      var workspaceSessionIDs = workspace.topSessionIDs
-      if let bottomSessionID = workspace.selectedBottomTabSessionID ?? workspace.bottomTabSessionIDs.last {
-        workspaceSessionIDs.append(bottomSessionID)
-      }
-      for sessionID in workspaceSessionIDs {
+      for sessionID in workspace.visibleSessionIDs {
         guard let session = workspace.session(for: sessionID) else { continue }
         if sessionsByID[sessionID] == nil {
           orderedIDs.append(sessionID)
@@ -56,9 +52,10 @@ extension AppModel {
       updatedWorkspaces[workspaceIndex].addBottomTab(session.id)
     }
     workspaces = updatedWorkspaces
-    updateSelectedProjectID(project.id, source: "remoteCreateTerminal")
-    terminalFocusRequestID = session.id
-    terminalFocusRenderVersion &+= 1
+    if selectedProjectID == project.id {
+      terminalFocusRequestID = session.id
+      terminalFocusRenderVersion &+= 1
+    }
     persist()
     refreshAIStatsIfNeeded()
     return session

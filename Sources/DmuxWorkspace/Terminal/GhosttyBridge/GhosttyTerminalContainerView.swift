@@ -53,6 +53,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     private var lastShowsInactiveOverlay = false
     private var viewportRefreshScheduled = false
     private var lastViewportRefreshSignature = ""
+    private var needsRemoteOutputReplayOnVisible = false
     private let startupDelay: TimeInterval = 0.18
     private let startupWatchdogDelay: TimeInterval = 3.5
     private let logger = AppDebugLog.shared
@@ -154,6 +155,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             lastAppliedFocusedState = nil
             lastAppliedVisibleState = nil
             lastViewportRefreshSignature = ""
+            needsRemoteOutputReplayOnVisible = false
             updateLoadingShieldVisibility()
             terminalView.configuration = surfaceOptions()
         } else {
@@ -248,6 +250,9 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
     func startProcessForRemoteIfNeeded(environment: [(String, String)]) {
         configuredEnvironment = environment
+        if window == nil || lastAppliedVisibleState != true {
+            needsRemoteOutputReplayOnVisible = true
+        }
         startProcessIfPossible(trigger: "remote-background", requiresWindow: false)
     }
 
@@ -402,6 +407,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
     func portalDidUpdateFrame() {
         scheduleViewportRefresh(reason: "portal-frame")
+        replayRemoteOutputOnVisibleSurfaceIfNeeded(reason: "portal-frame")
     }
 
     func ownsResponder(_ responder: NSResponder?) -> Bool {
@@ -697,6 +703,29 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         logger.log(
             "ghostty-metrics",
             "viewport-refresh session=\(configuredSession.id.uuidString) reason=\(reason) size=\(Int(bounds.width.rounded(.down)))x\(Int(bounds.height.rounded(.down))) window=\(window?.windowNumber ?? -1)"
+        )
+        replayRemoteOutputOnVisibleSurfaceIfNeeded(reason: "viewport-\(reason)")
+    }
+
+    private func replayRemoteOutputOnVisibleSurfaceIfNeeded(reason: String) {
+        guard needsRemoteOutputReplayOnVisible else {
+            return
+        }
+        guard window != nil, bounds.width > 1, bounds.height > 1, lastAppliedVisibleState == true else {
+            return
+        }
+
+        let history = processBridge.outputHistorySnapshot()
+        guard history.isEmpty == false else {
+            return
+        }
+
+        terminalView.configuration = surfaceOptions()
+        processBridge.terminalSession.receive(history)
+        needsRemoteOutputReplayOnVisible = false
+        logger.log(
+            "ghostty-process",
+            "replay-remote-history session=\(configuredSession.id.uuidString) bytes=\(history.count) reason=\(reason)"
         )
     }
 

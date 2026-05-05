@@ -1,5 +1,5 @@
 {
-  "originHash" : "053d0654ceae9bd0cbdfd594ed41a454d5d6885c4fdabb9e40de068dd0cb7b6f",
+  "originHash" : "341df35e903ecd94cb33ac14069872d207fcb30781f05f392969ecce34e6608e",
   "pins" : [
     {
       "identity" : "libghostty-spm",
@@ -35,6 +35,15 @@
       "state" : {
         "revision" : "5073617dac96330a486245e4c0179cb0a6fd2256",
         "version" : "1.12.0"
+      }
+    },
+    {
+      "identity" : "webrtc-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/livekit/webrtc-xcframework.git",
+      "state" : {
+        "revision" : "0cdbbd1731050137dd7f3678c8ee626e1a32570c",
+        "version" : "137.7151.13"
       }
     }
   ],

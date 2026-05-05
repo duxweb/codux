@@ -175,11 +175,14 @@ private func parseCodexRuntimeState(fileURL: URL?, projectPath: String?) -> Code
     }
 
     let responseState: AIResponseState? = {
-        guard let latestStartedAt else {
-            return nil
-        }
-        if let latestCompletedAt, latestCompletedAt >= latestStartedAt {
+        if let latestStartedAt, let latestCompletedAt, latestCompletedAt >= latestStartedAt {
             return .idle
+        }
+        if latestStartedAt == nil, latestCompletedAt != nil {
+            return .idle
+        }
+        guard latestStartedAt != nil else {
+            return nil
         }
         return .responding
     }()

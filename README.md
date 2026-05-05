@@ -5,7 +5,8 @@
 <h1 align="center">Codux</h1>
 
 <p align="center">
-  A native macOS terminal workspace for AI coding tools.
+  Your macOS workstation for AI coding.<br/>
+  Native SwiftUI + AppKit · GPU-accelerated terminal · built for <b>Claude Code</b>, <b>Codex</b>, <b>Gemini CLI</b>, and <b>OpenCode</b>.
 </p>
 
 <p align="center">
@@ -28,100 +29,88 @@
 
 GitHub README does not render third-party iframe players. Watch the demo on [Bilibili](https://www.bilibili.com/video/BV1mK9vBCEYD/).
 
-## Why Codux?
+## 10 Highlights
 
-Codux is for developers who spend most of their AI coding time in terminal tools such as Claude Code, Codex, Gemini CLI, and OpenCode.
-
-| Problem | What Codux gives you |
-|:--|:--|
-| Terminal windows multiply across projects | A project-aware workspace where each project keeps its own sessions, split layout, and state. |
-| AI work finishes while you are in another project | Activity indicators and notifications show which project is running, waiting, or completed. |
-| Git requires another app | A built-in Git panel for branches, diffs, staging, commits, history, and sync. |
-| AI token usage is hard to understand | A live usage dashboard shows tool, model, request, token, and daily trend breakdowns. |
-| Useful AI decisions get buried in history | Local AI memory extracts durable preferences, project conventions, and lessons from completed sessions. |
-| You want to check or control work from your phone | Codux Mobile connects to the Mac host through Codux Service and runs remote terminal sessions securely. |
-| Electron terminals feel heavy | Codux is native SwiftUI + AppKit. No Electron, no WebKit terminal surface. |
-
-## Core Features
-
-| Area | What You Get | Where It Lives |
+| # | Feature | One-liner |
 |:--|:--|:--|
-| Multi-project terminal workspace | Per-project terminals, tabs, splits, restored state, and project activity status. | Main window |
-| Built-in Git | Branches, staged changes, diffs, commit history, and remote sync. | Sidebar Git panel |
-| AI usage dashboard | Token totals, model breakdowns, tool rankings, daily trends, and live session state. | AI panel |
-| AI memory | Local `memory.sqlite3` storage, automatic extraction, provider tests, global prompts, and app-private launch context for supported tools. | Settings > AI and title-bar memory indicator |
-| Remote workspace | Pair mobile devices, create mobile-only terminal sessions on the Mac host, browse files, upload images, and operate terminals from Android. | Settings > Remote and Codux Mobile |
-| Daily level | A lightweight daily usage ladder from `Idle` to `Godlike`. | Title bar / AI stats |
-| Pet companion | Optional companion that grows with AI coding activity and shows contextual reminders. | Title bar pet button and Settings > Pet |
+| 1 | **Live AI Activity** | Real-time status + system notifications for every AI terminal — Claude / Codex / Gemini / OpenCode. |
+| 2 | **AI Stats & Session Restore** | Token history per tool / model / project, plus one-click resume of any past AI session. |
+| 3 | **Daily Level** | A daily ladder powered by real token usage — see exactly what you shipped today. |
+| 4 | **Pet Companion** | Your AI coding buddy. Grows with your style, has its own roadmap, and chimes in once in a while. |
+| 5 | **Built-in Git** | Human-friendly branches, commits, push/pull and sync — everyday Git without leaving the workspace. |
+| 6 | **Project File Browser** | Per-project file manager — edit, preview, and drag files straight into the terminal. |
+| 7 | **Multi-Project Workspaces** | Up to **6 split terminals** per project plus **unlimited tabs**, isolated state per project. |
+| 8 | **Three-Layer AI Memory** | User / project / tool memory shared across Codex, Claude, Gemini, and OpenCode. |
+| 9 | **Mobile Handoff** | Continue your AI CLI work from your phone when you step away from the Mac. |
+| 10 | **Ghostty Engine & Themes** | GPU-accelerated terminal via `ghostty`, with rich light/dark theme variants. |
 
-## Screenshots
+### 1. Live AI Activity
 
-| Workspace | Git | AI Usage |
-|:--|:--|:--|
-| ![Codux Split Workspace](docs/images/screenshot.png) | ![Codux Git Panel](docs/images/git.png) | ![Codux AI Stats](docs/images/ai-stats.png) |
+Each AI terminal reports its real state — thinking, waiting on input, finished, errored — surfaced in three places: the tab indicator, the project tile, and a system notification when a turn completes. You stop watching the cursor blink; Codux taps you on the shoulder.
 
-| Daily Level | Pet |
-|:--|:--|
-| ![Codux Daily Level](docs/images/level.png) | ![Codux Pet System](docs/images/pet.png) |
+### 2. AI Stats & Session Restore
 
-## Remote Access
+The AI panel turns scattered runs into a usable history: token totals split by tool / model / project, daily and trend views, and **one-click resume** of any past session back into the original tool (Claude Code, Codex, Gemini CLI, OpenCode).
 
-Codux remote access is split into three parts so you can self-host the relay and keep the Mac as the real terminal host.
+![Codux AI Stats](docs/images/ai-stats.png)
+
+### 3. Daily Level
+
+A lightweight daily ladder driven by real AI activity. Instead of raw token counts, you get a single "today" snapshot — what you ran, how much, and how today compares to a normal day.
+
+![Codux Daily Level](docs/images/level.png)
+
+### 4. Pet Companion
+
+An optional pet that lives in the title bar. Different coding styles unlock different growth values and roadmaps, and the pet drops the occasional comment so a long AI session doesn't feel quite so lonely. Fully optional, easy to mute.
+
+![Codux Pet](docs/images/pet.png)
+
+### 5. Built-in Git
+
+A first-class Git panel — not an embedded webview. Branch checkout / create / rename / delete, staging with line-level diffs, full commit history, and push / pull / sync with sane defaults and clear conflict resolution.
+
+![Codux Git Panel](docs/images/git.png)
+
+### 6. Project File Browser
+
+A native file manager scoped to each project. Edit code inline, preview images and other assets, and drag any file straight into the terminal so your AI tool gets the right path on the first try.
+
+### 7. Multi-Project Workspaces
+
+Every project is its own room. Up to **6 split terminals** for parallel work, and **unlimited tabs** when 6 is not enough. Each project keeps its own layout, sessions, AI tool selection, and state across restarts.
+
+### 8. Three-Layer AI Memory
+
+Codux extracts long-term memory from completed AI sessions and stores it locally in `memory.sqlite3`, layered so the right context shows up at the right time:
+
+- **User layer** — durable preferences across projects.
+- **Project layer** — conventions, decisions, and lessons specific to this repo.
+- **Tool layer** — app-private launch context (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`) generated for Codex, Claude Code, Gemini CLI, and OpenCode.
+
+So Codex / Claude / Gemini / OpenCode no longer forget what you did last session. Memory files are managed by Codux and never written into your repo — your repository stays the source of truth.
+
+### 9. Mobile Handoff
+
+Step away from the Mac and keep going on your phone. Codux Mobile pairs with the Mac host and lets you open new AI CLI sessions, drive existing ones, browse project files, and upload images — all running on the Mac while you watch from anywhere.
 
 | Component | Purpose | Download |
 |:--|:--|:--|
-| Codux for macOS | Main desktop app. It owns projects, terminals, Git, AI stats, memory, and remote host sessions. | [macOS Releases](https://github.com/duxweb/codux/releases) |
-| Codux Mobile | Android client for pairing with the Mac, opening remote terminal sessions, browsing project files, and uploading images. | [Mobile Releases](https://github.com/duxweb/codux-flutter/releases) |
-| Codux Service | Lightweight Go relay for device pairing and encrypted WebSocket message forwarding. | [Service Releases](https://github.com/duxweb/codux-service/releases) |
+| Codux Mobile | Android client: pair with the Mac, run AI CLI sessions remotely, browse files, upload images. | [Mobile Releases](https://github.com/duxweb/codux-flutter/releases) |
+| Codux Service | Lightweight Go relay for device pairing and encrypted WebSocket forwarding. | [Service Releases](https://github.com/duxweb/codux-service/releases) |
 
-For a quick trial, enter one of the official trial relays in **Settings > Remote**:
+For a quick trial, use one of the official trial relays in **Settings > Remote**:
 
 | Node | URL |
 |:--|:--|
 | China relay direct | `https://codux-service.dux.plus` |
 | Global transit acceleration | `https://codux-node.dux.plus` |
 
-For production or long-term use, self-hosting `codux-service` is recommended.
+Terminal input, output, file payloads, project lists, and AI stats are end-to-end encrypted between Codux for macOS and Codux Mobile. The relay sees only routing metadata (host ID, device ID, pairing state, online state) — never decrypted terminal content. For long-term use, self-hosting `codux-service` is recommended.
 
-### Remote Setup Flow
+### 10. Ghostty Engine & Themes
 
-| Step | Action |
-|:--|:--|
-| 1 | Use one of the official trial relays above, or deploy `codux-service` on your own server, VPS, or LAN machine. |
-| 2 | Put HTTPS/WSS in front of the service for production use. Edge/CDN products can proxy WebSocket traffic, but the Go relay should run as a normal long-lived process. |
-| 3 | Open Codux for macOS, go to **Settings > Remote**, enter the relay server URL, and enable remote access. |
-| 4 | Click the pairing button to show a one-time QR code. |
-| 5 | Install Codux Mobile, scan the QR code, compare the matching code, and confirm the device on macOS. |
-| 6 | Use Codux Mobile to open remote terminal sessions that run on the Mac host without inserting those sessions into the visible Mac split layout. |
-
-Remote terminal input, output, file payloads, project lists, and AI stats are wrapped as end-to-end encrypted payloads between Codux for macOS and Codux Mobile. The relay sees routing metadata such as host ID, device ID, pairing state, and online state, but not decrypted terminal content.
-
-## AI Memory
-
-Codux can turn completed AI coding sessions into durable memory. It stores user preferences, project conventions, decisions, facts, and bug lessons locally in SQLite, then prepares concise launch context for supported tools. Memory is injected from Codux-managed runtime files, not written into your repository, and the current repo remains the source of truth.
-
-| Capability | Details |
-|:--|:--|
-| Storage | Local `memory.sqlite3` for user and project memory. |
-| Extraction | Completed Claude, Codex, Gemini, and OpenCode sessions can be summarized automatically. |
-| Provider control | Automatic provider selection plus per-provider test buttons in **Settings > AI**. |
-| Launch context | App-private `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md` are generated for supported tool launches. |
-| Status | The title bar shows queued, running, and failed memory extraction states. |
-
-## Pet Companion
-
-The pet system is optional and intentionally lightweight. It turns AI coding activity into a small companion loop without becoming a separate game screen.
-
-| Item | Description |
-|:--|:--|
-| Entry | Click the title-bar pet button. If no pet exists, Codux opens the egg claim dialog. |
-| Growth | AI coding activity contributes to hatching, level growth, traits, evolutions, dex unlocks, and inheritance history. |
-| Reminders | Hydration, sedentary, and late-night reminders can be configured in **Settings > Pet**. |
-| Control | You can disable the pet or switch to static sprite mode in **Settings > Pet**. |
-
-## Native macOS Experience
-
-Codux is built with SwiftUI + AppKit. It launches quickly, idles quietly, supports light/dark mode, and keeps terminal, Git, AI stats, memory, and remote state in one native workspace.
+Codux embeds the [`ghostty`](https://ghostty.org) terminal engine for GPU-accelerated rendering, so even busy AI output stays smooth. Pair that with a curated set of light and dark themes that match macOS appearance changes — the workspace looks good and stays fast.
 
 ## Getting Started
 
@@ -175,24 +164,7 @@ All shortcuts can be customized in **Settings > Shortcuts**.
 
 Found a bug or have a feature request? Open an [issue on GitHub](https://github.com/duxweb/codux/issues).
 
-When reporting a bug, please include the following diagnostics whenever possible:
-
-### App Logs
-
-The easiest way is:
-
-- Open `Help -> Export Diagnostics…`
-- Save the generated `.zip`
-- Attach that archive to your GitHub issue
-
-The diagnostics archive includes the most important files for troubleshooting, including:
-
-- app runtime logs
-- previous rotated logs
-- performance event summary from the current app session
-- saved app state files
-- invalid state backups when available
-- related crash / hang / spin reports from macOS when available
+When reporting a bug, the easiest path is `Help -> Export Diagnostics…` — save the generated `.zip` and attach it to your GitHub issue. The archive bundles runtime logs, rotated logs, performance summaries, saved app state, invalid state backups, and any matching macOS crash / hang / spin reports.
 
 If you need to collect logs manually, Codux writes runtime logs to:
 
@@ -202,53 +174,23 @@ If you need to collect logs manually, Codux writes runtime logs to:
 
 Notes:
 
-- Codux clears the previous app session logs on each launch, then starts a fresh runtime log for the current session
-- `runtime.previous.log` only appears if the current session log grows large enough to rotate
-- `performance-summary.json` contains recent performance spike / main-thread stall summaries for the current session
+- Codux clears the previous app session logs on each launch
+- `runtime.previous.log` only appears once the current session log rotates
+- `performance-summary.json` covers recent performance spikes / main-thread stalls
 
-You can also open the current log file from the app via the top bar action: `Debug Log`.
-
-Or run this command in Terminal to open the log folder directly:
+Open the log folder directly:
 
 ```bash
 open ~/Library/Application\ Support/Codux/logs
 ```
 
-### Crash Reports
-
-If the app is frozen or unresponsive, still export diagnostics first from:
-
-- `Help -> Export Diagnostics…`
-
-If the app crashes or becomes unresponsive right after launch, macOS may generate a crash report here:
-
-- `~/Library/Logs/DiagnosticReports/`
-
-In most cases, the file you need will be named like one of these:
-
-- `Codux-YYYY-MM-DD-*.ips`
-- `dmux-YYYY-MM-DD-*.ips`
-
-If there are multiple files, please attach the one whose timestamp is closest to the time of the crash.
-
-To open the crash report folder directly, run:
+If the app crashes or hangs right after launch, macOS may write a system crash report to `~/Library/Logs/DiagnosticReports/` (look for `Codux-*.ips` or `dmux-*.ips`). Attach the file whose timestamp is closest to the crash.
 
 ```bash
 open ~/Library/Logs/DiagnosticReports
 ```
 
-### Recommended Issue Attachments
-
-Please attach or paste:
-
-1. Your macOS version and Codux version
-2. Steps to reproduce the issue
-3. `runtime.log`
-4. `runtime.previous.log` if it exists
-5. `performance-summary.json` if it exists
-6. The matching crash report from `~/Library/Logs/DiagnosticReports/` if the app crashed
-
-If convenient, compress the relevant files into a single `.zip` before submitting the issue.
+When opening an issue, please include: macOS version + Codux version, repro steps, `runtime.log`, `runtime.previous.log` (if present), `performance-summary.json` (if present), and the matching crash report (if any).
 
 ---
 

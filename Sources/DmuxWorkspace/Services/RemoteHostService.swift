@@ -68,9 +68,11 @@ final class RemoteHostService: ObservableObject {
   private var terminalOutputBuffer: [String: String] = [:]
   private var pendingTerminalOutput: [String: PendingTerminalOutput] = [:]
   private var terminalViewersBySession: [String: Set<String>] = [:]
+  private var recentTerminalInputIDs: [String: [String]] = [:]
   private var sendSeqByDevice: [String: Int64] = [:]
   private var receiveSeqByDevice: [String: Int64] = [:]
   private var e2eKeyCache: [String: SymmetricKey] = [:]
+  private let p2pTransport = RemoteP2PHostTransport()
   private let terminalEnvironmentService = AIRuntimeBridgeService()
   private let maxTerminalBufferCharacters = 2_000_000
   private let terminalOutputFlushInterval: TimeInterval = 0.016
@@ -99,6 +101,21 @@ final class RemoteHostService: ObservableObject {
       throw DecodingError.dataCorruptedError(
         in: container, debugDescription: "Invalid ISO8601 date: \(value)")
     }
+    p2pTransport.onSignal = { [weak self] signal in
+      Task { @MainActor in
+        self?.send(type: signal.type, deviceID: signal.deviceID, payload: signal.payload)
+      }
+    }
+    p2pTransport.onMessage = { [weak self] deviceID, data in
+      Task { @MainActor in
+        self?.handleP2PMessage(deviceID: deviceID, data: data)
+      }
+    }
+    p2pTransport.onState = { [weak self] deviceID, state in
+      Task { @MainActor in
+        self?.logger.log("remote-p2p", "state device=\(deviceID) state=\(state)")
+      }
+    }
     startTerminalOutputObserver()
   }
 
@@ -110,7 +127,8 @@ final class RemoteHostService: ObservableObject {
 
   func applySettings() {
     guard let model else { return }
-    let serverURL = model.appSettings.remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    let serverURL = model.appSettings.remote.serverURL.trimmingCharacters(
+      in: .whitespacesAndNewlines)
     if model.appSettings.remote.isEnabled, serverURL.isEmpty == false {
       start()
     } else {
@@ -153,6 +171,7 @@ final class RemoteHostService: ObservableObject {
     sendSeqByDevice.removeAll()
     receiveSeqByDevice.removeAll()
     e2eKeyCache.removeAll()
+    p2pTransport.stop()
     update(
       status: .stopped,
       message: String(
@@ -386,10 +405,15 @@ final class RemoteHostService: ObservableObject {
     case "device.info":
       refreshDevices()
     case "device.connected":
-      updateDeviceOnline(envelope.deviceID ?? envelope.payload?["deviceId"] as? String, online: true)
+      updateDeviceOnline(
+        envelope.deviceID ?? envelope.payload?["deviceId"] as? String, online: true)
       refreshDevices()
     case "device.disconnected":
-      updateDeviceOnline(envelope.deviceID ?? envelope.payload?["deviceId"] as? String, online: false)
+      updateDeviceOnline(
+        envelope.deviceID ?? envelope.payload?["deviceId"] as? String, online: false)
+      if let deviceID = envelope.deviceID ?? envelope.payload?["deviceId"] as? String {
+        p2pTransport.close(deviceID: deviceID)
+      }
     case "project.list":
       send(
         type: "project.list", deviceID: envelope.deviceID,
@@ -521,17 +545,16 @@ final class RemoteHostService: ObservableObject {
           type: "error", deviceID: envelope.deviceID,
           payload: ["message": "Unable to load AI stats"])
       }
-    case "terminal.buffer":
-      if let sessionID = envelope.sessionID {
-        if let uuid = UUID(uuidString: sessionID) {
-          ensureRemoteTerminalStarted(sessionID: uuid)
-        }
-        sendTerminalBuffer(
-          sessionID: sessionID,
-          deviceID: envelope.deviceID,
-          offset: requestedTerminalBufferOffset(from: envelope.payload)
-        )
+    case "p2p.offer":
+      if let deviceID = envelope.deviceID, let payload = envelope.payload {
+        p2pTransport.handleOffer(deviceID: deviceID, payload: payload)
       }
+    case "p2p.candidate":
+      if let deviceID = envelope.deviceID, let payload = envelope.payload {
+        p2pTransport.handleCandidate(deviceID: deviceID, payload: payload)
+      }
+    case "terminal.buffer":
+      _ = handleP2PTerminalEnvelope(envelope)
     case "terminal.create":
       let projectID = envelope.payload?["projectId"] as? String
       let command = envelope.payload?["command"] as? String ?? ""
@@ -557,52 +580,11 @@ final class RemoteHostService: ObservableObject {
           payload: ["message": "Unable to create terminal"])
       }
     case "terminal.input":
-      if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)),
-        let data = envelope.payload?["data"] as? String
-      {
-        logger.log(
-          "remote-terminal",
-          "input session=\(sessionID.uuidString) bytes=\(data.utf8.count)"
-        )
-        registerTerminalViewer(sessionID: sessionID.uuidString, deviceID: envelope.deviceID)
-        ensureRemoteTerminalStarted(sessionID: sessionID)
-        let sent = DmuxTerminalBackend.shared.registry.sendText(data, to: sessionID)
-        if sent == false {
-          send(
-            type: "error", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
-            payload: [
-              "message":
-                "Terminal is not ready yet. Please create it again or select a running terminal."
-            ])
-        }
-      }
+      _ = handleP2PTerminalEnvelope(envelope)
     case "terminal.resize":
-      if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)),
-        let colsValue = envelope.payload?["cols"],
-        let rowsValue = envelope.payload?["rows"]
-      {
-        let cols = UInt16(clamping: UInt((colsValue as? Int) ?? Int((colsValue as? Double) ?? 0)))
-        let rows = UInt16(clamping: UInt((rowsValue as? Int) ?? Int((rowsValue as? Double) ?? 0)))
-        if cols > 0, rows > 0 {
-          ensureRemoteTerminalStarted(sessionID: sessionID)
-          guard canResizeTerminal(sessionID: sessionID, deviceID: envelope.deviceID) else {
-            logger.log(
-              "remote-terminal",
-              "resize-skip session=\(sessionID.uuidString) cols=\(cols) rows=\(rows) reason=not-resize-owner"
-            )
-            return
-          }
-          logger.log(
-            "remote-terminal",
-            "resize session=\(sessionID.uuidString) cols=\(cols) rows=\(rows)"
-          )
-          _ = DmuxTerminalBackend.shared.registry.resize(
-            columns: cols, rows: rows, sessionID: sessionID
-          )
-        }
-      }
+      _ = handleP2PTerminalEnvelope(envelope)
     case "terminal.upload":
-      handleTerminalUpload(envelope)
+      _ = handleP2PTerminalEnvelope(envelope)
     case "terminal.close":
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)) {
         let didCloseSharedSession = model?.remoteCloseTerminal(sessionID: sessionID) == true
@@ -610,6 +592,9 @@ final class RemoteHostService: ObservableObject {
         if didCloseSharedSession {
           terminalOutputBuffer.removeValue(forKey: sessionID.uuidString)
           terminalViewersBySession.removeValue(forKey: sessionID.uuidString)
+          recentTerminalInputIDs = recentTerminalInputIDs.filter {
+            !$0.key.hasSuffix(":\(sessionID.uuidString)")
+          }
           send(
             type: "terminal.closed", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
             payload: ["id": sessionID.uuidString])
@@ -632,6 +617,99 @@ final class RemoteHostService: ObservableObject {
       }
     default:
       break
+    }
+  }
+
+  private func handleP2PMessage(deviceID: String, data: Data) {
+    guard let envelope = try? decoder.decode(RemoteEnvelope.self, from: data) else {
+      logger.log("remote-p2p", "drop malformed data device=\(deviceID)")
+      return
+    }
+    let handled = handleP2PTerminalEnvelope(envelope.withDeviceID(deviceID))
+    if handled == false {
+      logger.log("remote-p2p", "drop unsupported type=\(envelope.type) device=\(deviceID)")
+    }
+  }
+
+  @discardableResult
+  private func handleP2PTerminalEnvelope(_ envelope: RemoteEnvelope) -> Bool {
+    switch envelope.type {
+    case "terminal.buffer":
+      if let sessionID = envelope.sessionID {
+        if let uuid = UUID(uuidString: sessionID) {
+          ensureRemoteTerminalStarted(sessionID: uuid)
+        }
+        sendTerminalBuffer(
+          sessionID: sessionID,
+          deviceID: envelope.deviceID,
+          offset: requestedTerminalBufferOffset(from: envelope.payload)
+        )
+      }
+      return true
+    case "terminal.input":
+      if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)),
+        let data = envelope.payload?["data"] as? String
+      {
+        guard shouldAcceptTerminalInput(envelope: envelope, sessionID: sessionID) else {
+          return true
+        }
+        logger.log(
+          "remote-terminal",
+          "p2p input session=\(sessionID.uuidString) bytes=\(data.utf8.count)"
+        )
+        registerTerminalViewer(sessionID: sessionID.uuidString, deviceID: envelope.deviceID)
+        ensureRemoteTerminalStarted(sessionID: sessionID)
+        let sent = DmuxTerminalBackend.shared.registry.sendText(data, to: sessionID)
+        if sent == false {
+          send(
+            type: "error", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
+            payload: [
+              "message":
+                "Terminal is not ready yet. Please create it again or select a running terminal."
+            ])
+        }
+      }
+      return true
+    case "terminal.resize":
+      if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)),
+        let colsValue = envelope.payload?["cols"],
+        let rowsValue = envelope.payload?["rows"]
+      {
+        let cols = UInt16(clamping: UInt((colsValue as? Int) ?? Int((colsValue as? Double) ?? 0)))
+        let rows = UInt16(clamping: UInt((rowsValue as? Int) ?? Int((rowsValue as? Double) ?? 0)))
+        if cols > 0, rows > 0 {
+          ensureRemoteTerminalStarted(sessionID: sessionID)
+          guard canResizeTerminal(sessionID: sessionID, deviceID: envelope.deviceID) else {
+            logger.log(
+              "remote-terminal",
+              "resize-skip session=\(sessionID.uuidString) cols=\(cols) rows=\(rows) reason=not-resize-owner"
+            )
+            return true
+          }
+          logger.log(
+            "remote-terminal",
+            "p2p resize session=\(sessionID.uuidString) cols=\(cols) rows=\(rows)"
+          )
+          _ = DmuxTerminalBackend.shared.registry.resize(
+            columns: cols, rows: rows, sessionID: sessionID
+          )
+        }
+      }
+      return true
+    case "terminal.upload":
+      handleTerminalUpload(envelope)
+      return true
+    case "terminal.signal":
+      if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)) {
+        let signal = envelope.payload?["signal"] as? String
+        if signal == "interrupt" {
+          _ = DmuxTerminalBackend.shared.registry.sendInterrupt(to: sessionID)
+        }
+        if signal == "escape" { _ = DmuxTerminalBackend.shared.registry.sendEscape(to: sessionID) }
+      }
+      return true
+    default:
+      return false
     }
   }
 
@@ -696,7 +774,9 @@ final class RemoteHostService: ObservableObject {
         domain: "CoduxRemote", code: 415,
         userInfo: [NSLocalizedDescriptionKey: "Only UTF-8 text files can be edited on mobile"])
     }
-    return ["path": url.path, "name": url.lastPathComponent, "content": content, "size": data.count]
+    return [
+      "path": url.path, "name": url.lastPathComponent, "content": content, "size": data.count,
+    ]
   }
 
   private func remoteFileWrite(path: String, content: String) throws {
@@ -707,7 +787,8 @@ final class RemoteHostService: ObservableObject {
   private func remoteFileRename(path: String, newPath: String) throws {
     let sourceURL = URL(fileURLWithPath: path).standardizedFileURL
     let destinationURL = URL(fileURLWithPath: newPath).standardizedFileURL
-    guard sourceURL.deletingLastPathComponent().path == destinationURL.deletingLastPathComponent().path
+    guard
+      sourceURL.deletingLastPathComponent().path == destinationURL.deletingLastPathComponent().path
     else {
       throw NSError(
         domain: "CoduxRemote", code: 400,
@@ -938,7 +1019,8 @@ final class RemoteHostService: ObservableObject {
       "cols": 0,
       "rows": 0,
       "gridSource": "mac",
-      "status": DmuxTerminalBackend.shared.registry.shellPID(for: session.id) == nil ? "idle" : "running",
+      "status": DmuxTerminalBackend.shared.registry.shellPID(for: session.id) == nil
+        ? "idle" : "running",
       "isRunning": DmuxTerminalBackend.shared.registry.shellPID(for: session.id) != nil,
       "createdAt": "",
       "lastActiveAt": "",
@@ -950,6 +1032,27 @@ final class RemoteHostService: ObservableObject {
   private func registerTerminalViewer(sessionID: String, deviceID: String?) {
     guard let deviceID, deviceID.isEmpty == false else { return }
     terminalViewersBySession[sessionID, default: []].insert(deviceID)
+  }
+
+  private func shouldAcceptTerminalInput(envelope: RemoteEnvelope, sessionID: UUID) -> Bool {
+    guard let inputID = envelope.payload?["inputId"] as? String, inputID.isEmpty == false else {
+      return true
+    }
+    let key = "\(envelope.deviceID ?? ""):\(sessionID.uuidString)"
+    var recent = recentTerminalInputIDs[key] ?? []
+    if recent.contains(inputID) {
+      logger.log(
+        "remote-terminal",
+        "drop duplicate input session=\(sessionID.uuidString) device=\(envelope.deviceID ?? "") inputID=\(inputID)"
+      )
+      return false
+    }
+    recent.append(inputID)
+    if recent.count > 200 {
+      recent.removeFirst(recent.count - 200)
+    }
+    recentTerminalInputIDs[key] = recent
+    return true
   }
 
   private func canResizeTerminal(sessionID: UUID, deviceID: String?) -> Bool {
@@ -979,11 +1082,13 @@ final class RemoteHostService: ObservableObject {
 
   private func isTerminalQueryResponse(_ text: String) -> Bool {
     guard text.count <= 64 else { return false }
-    let pattern = #"^(?:\u{001B}\[\??[0-9;]*[Rcn]|\u{001B}\][0-9;]*[^\u{0007}\u{001B}]*(?:\u{0007}|\u{001B}\\))+$"#
+    let pattern =
+      #"^(?:\u{001B}\[\??[0-9;]*[Rcn]|\u{001B}\][0-9;]*[^\u{0007}\u{001B}]*(?:\u{0007}|\u{001B}\\))+$"#
     return text.range(of: pattern, options: .regularExpression) != nil
   }
 
-  private func sendTerminalBuffer(sessionID: String, deviceID: String?, offset requestedOffset: Int) {
+  private func sendTerminalBuffer(sessionID: String, deviceID: String?, offset requestedOffset: Int)
+  {
     registerTerminalViewer(sessionID: sessionID, deviceID: deviceID)
     if let uuid = UUID(uuidString: sessionID) {
       seedTerminalBufferFromDesktopHistory(sessionID: sessionID, uuid: uuid)
@@ -998,7 +1103,7 @@ final class RemoteHostService: ObservableObject {
     } else {
       chunk = data
     }
-    send(
+    sendTerminalData(
       type: "terminal.output", deviceID: deviceID, sessionID: sessionID,
       payload: terminalOutputPayload(
         text: chunk,
@@ -1052,7 +1157,7 @@ final class RemoteHostService: ObservableObject {
     pending.flushTimer?.invalidate()
     pending.flushTimer = nil
     guard pending.text.isEmpty == false else { return }
-    send(
+    sendTerminalData(
       type: "terminal.output",
       deviceID: pending.deviceID,
       sessionID: sessionID,
@@ -1063,6 +1168,33 @@ final class RemoteHostService: ObservableObject {
         bufferCharacters: pending.bufferCharacters
       )
     )
+  }
+
+  @discardableResult
+  private func sendTerminalData(
+    type: String,
+    deviceID: String?,
+    sessionID: String?,
+    payload: [String: Any]
+  ) -> Bool {
+    let envelope = RemoteOutgoingEnvelope(
+      type: type,
+      deviceID: deviceID,
+      sessionID: sessionID,
+      payload: payload
+    )
+    guard let data = try? JSONSerialization.data(withJSONObject: envelope.dictionary) else {
+      return false
+    }
+    if p2pTransport.send(data: data, deviceID: deviceID) {
+      return true
+    }
+    logger.log(
+      "remote-p2p",
+      "fallback relay terminal data type=\(type) session=\(sessionID ?? "") device=\(deviceID ?? "") reason=p2p-not-open"
+    )
+    send(type: type, deviceID: deviceID, sessionID: sessionID, payload: payload)
+    return true
   }
 
   private func flushAllPendingTerminalOutput() {
@@ -1381,11 +1513,12 @@ final class RemoteHostService: ObservableObject {
     pairingSecret: String?
   ) {
     guard !pairingID.isEmpty else { return }
-    let displayedCode = remotePairingMatchCode(
-      pairingCode: pairingCode,
-      pairingSecret: pairingSecret,
-      devicePublicKey: devicePublicKey
-    ) ?? pairingCode
+    let displayedCode =
+      remotePairingMatchCode(
+        pairingCode: pairingCode,
+        pairingSecret: pairingSecret,
+        devicePublicKey: devicePublicKey
+      ) ?? pairingCode
     if snapshot.pairing?.pairingId == pairingID {
       snapshot.pairing = nil
       stopPairingPoll()
@@ -1452,7 +1585,8 @@ final class RemoteHostService: ObservableObject {
     guard let device = snapshot.devices.first(where: { $0.id == deviceID }),
       device.publicKey.isEmpty == false
     else {
-      logger.log("remote-e2e", "drop encrypted message device=\(deviceID) reason=missing_device_key")
+      logger.log(
+        "remote-e2e", "drop encrypted message device=\(deviceID) reason=missing_device_key")
       refreshDevices()
       return nil
     }
@@ -1475,12 +1609,14 @@ final class RemoteHostService: ObservableObject {
       }
       return inner.withDeviceID(deviceID)
     } catch {
-      logger.log("remote-e2e", "decrypt failed device=\(deviceID) error=\(error.localizedDescription)")
+      logger.log(
+        "remote-e2e", "decrypt failed device=\(deviceID) error=\(error.localizedDescription)")
       return nil
     }
   }
 
-  private func encryptedOutgoingEnvelope(_ inner: RemoteOutgoingEnvelope) -> RemoteOutgoingEnvelope? {
+  private func encryptedOutgoingEnvelope(_ inner: RemoteOutgoingEnvelope) -> RemoteOutgoingEnvelope?
+  {
     guard let deviceID = inner.deviceID, deviceID.isEmpty == false else {
       return inner
     }
@@ -1510,7 +1646,8 @@ final class RemoteHostService: ObservableObject {
         payload: encryptedPayload
       )
     } catch {
-      logger.log("remote-e2e", "encrypt failed device=\(deviceID) error=\(error.localizedDescription)")
+      logger.log(
+        "remote-e2e", "encrypt failed device=\(deviceID) error=\(error.localizedDescription)")
       return nil
     }
   }
@@ -1520,12 +1657,16 @@ final class RemoteHostService: ObservableObject {
   ) {
     let inner = RemoteOutgoingEnvelope(
       type: type, deviceID: deviceID, sessionID: sessionID, payload: payload)
-    let envelope = encryptedOutgoingEnvelope(inner) ?? RemoteOutgoingEnvelope(
-      type: "secure.required",
-      deviceID: deviceID,
-      sessionID: sessionID,
-      payload: ["message": "End-to-end encryption is required. Please pair this mobile device again."]
-    )
+    let envelope =
+      encryptedOutgoingEnvelope(inner)
+      ?? RemoteOutgoingEnvelope(
+        type: "secure.required",
+        deviceID: deviceID,
+        sessionID: sessionID,
+        payload: [
+          "message": "End-to-end encryption is required. Please pair this mobile device again."
+        ]
+      )
     guard let data = try? JSONSerialization.data(withJSONObject: envelope.dictionary),
       let text = String(data: data, encoding: .utf8)
     else { return }
@@ -1754,7 +1895,8 @@ enum RemoteE2ECrypto {
   ) throws -> [String: Any] {
     let nonceData = randomData(count: 12)
     let nonce = try AES.GCM.Nonce(data: nonceData)
-    let sealed = try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: aad(hostID: hostID, deviceID: deviceID))
+    let sealed = try AES.GCM.seal(
+      plaintext, using: key, nonce: nonce, authenticating: aad(hostID: hostID, deviceID: deviceID))
     return [
       "v": 1,
       "alg": "X25519-HKDF-SHA256-AES-256-GCM",
@@ -1785,7 +1927,8 @@ enum RemoteE2ECrypto {
       ciphertext: ciphertext,
       tag: tag
     )
-    return try AES.GCM.open(box, using: key, authenticating: aad(hostID: hostID, deviceID: deviceID))
+    return try AES.GCM.open(
+      box, using: key, authenticating: aad(hostID: hostID, deviceID: deviceID))
   }
 
   static func matchCode(
@@ -1794,7 +1937,8 @@ enum RemoteE2ECrypto {
     pairingCode: String,
     pairingSecret: String
   ) -> String {
-    let material = "codux-e2e-match-v1|\(hostPublicKey)|\(devicePublicKey)|\(pairingCode)|\(pairingSecret)"
+    let material =
+      "codux-e2e-match-v1|\(hostPublicKey)|\(devicePublicKey)|\(pairingCode)|\(pairingSecret)"
     let digest = SHA256.hash(data: Data(material.utf8))
     let prefix = digest.prefix(3).map { String(format: "%02X", $0) }.joined()
     let split = prefix.index(prefix.startIndex, offsetBy: 3)

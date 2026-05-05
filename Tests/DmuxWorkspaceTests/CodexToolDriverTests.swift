@@ -105,6 +105,57 @@ final class CodexToolDriverTests: XCTestCase {
         XCTAssertEqual(resolved.metadata?.hasCompletedTurn, true)
     }
 
+    func testRuntimeSnapshotClearsLoadingWhenTailOnlyHasTaskComplete() async throws {
+        let temporaryDirectoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectoryURL) }
+
+        let databaseURL = temporaryDirectoryURL.appendingPathComponent("state_5.sqlite", isDirectory: false)
+        let rolloutURL = temporaryDirectoryURL.appendingPathComponent("rollout.jsonl", isDirectory: false)
+        let projectPath = "/tmp/codex-runtime-project"
+        let sessionID = "thread-502"
+
+        let largeOutput = String(repeating: "x", count: 320_000)
+        try writeCodexRollout(
+            rows: [
+                #"{"timestamp":"2026-05-05T05:51:08.558Z","type":"event_msg","payload":{"type":"task_started","started_at":1777960268}}"#,
+                #"{"timestamp":"2026-05-05T05:52:41.550Z","type":"event_msg","payload":{"type":"error","message":"unexpected status 502 Bad Gateway: openai_error, url: http://127.0.0.1:15721/v1/responses"}}"#,
+                #"{"timestamp":"2026-05-05T05:52:41.550Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-large","output":"\#(largeOutput)"}}"#,
+                #"{"timestamp":"2026-05-05T05:52:41.551Z","type":"event_msg","payload":{"type":"task_complete","completed_at":1777960361,"last_agent_message":null}}"#
+            ],
+            to: rolloutURL
+        )
+        try seedCodexThreadDatabase(
+            databaseURL: databaseURL,
+            sessionID: sessionID,
+            projectPath: projectPath,
+            rolloutURL: rolloutURL,
+            model: "gpt-5.5"
+        )
+
+        let driver = CodexToolDriver(databaseURL: databaseURL)
+        let session = AISessionStore.TerminalSessionState(
+            terminalID: UUID(),
+            projectID: UUID(),
+            projectName: "Codux",
+            projectPath: projectPath,
+            sessionTitle: "Codex",
+            tool: "codex",
+            aiSessionID: sessionID,
+            state: .responding,
+            model: "gpt-5.5",
+            updatedAt: 1_777_960_268,
+            activeTurnStartedAt: 1_777_960_268,
+            wasInterrupted: false,
+            hasCompletedTurn: false
+        )
+
+        let runtimeSnapshot = await driver.runtimeSnapshot(for: session)
+        let snapshot = try XCTUnwrap(runtimeSnapshot)
+        XCTAssertEqual(snapshot.responseState, .idle)
+        XCTAssertTrue(snapshot.hasCompletedTurn)
+        XCTAssertFalse(snapshot.wasInterrupted)
+    }
+
     func testRuntimeSnapshotDoesNotDoubleCountWhenNewTurnStartsWithRepeatedPreviousTotals() async throws {
         let temporaryDirectoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: temporaryDirectoryURL) }
