@@ -42,12 +42,12 @@ Implemented:
 
 Implemented:
 
-- egg selection and random egg hidden-species routing
+- companion claim flow and random species routing
 - claim baseline XP
 - custom naming on claim
-- per-project token baselines and hatch threshold flow
-- stage / evolution / Lv.100 FX overlays
-- species persistence + inheritance history
+- per-project token baselines and direct XP flow
+- single companion stage / level-up / Lv.100 FX overlays
+- species persistence + archive history
 - sleep detection
 - bubble triggers
 - daily damped pet stats cache

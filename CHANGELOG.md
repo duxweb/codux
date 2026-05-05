@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-06
+
+### Added
+
+- Added the flat single-form Codex-style pet atlas pipeline, bundled pet packages, conversion tooling, and developer guidance for producing new white-background pet spritesheets.
+- Added new built-in companion species using one `pet.json` and one `spritesheet.png` per species.
+- Added Markdown split preview support in the file preview window.
+
+### Changed
+
+- Reworked pet presentation to use single-form atlas assets instead of egg, stage, evolution, and mega-form sprite chains while keeping existing pet progress data compatible.
+- Tuned pet animation playback so short-frame actions hold longer, idle and waiting states feel calmer, and all bundled pet animations play more slowly.
+- Updated pet naming and pet UI strings across supported localizations.
+- Improved file-browser keyboard focus, inline rename behavior, delete confirmation flow, and Finder/file action handling.
+
+### Fixed
+
+- Fixed project activity loading state handling for interrupted Codex turns and missing stop hooks with a focused runtime polling fallback.
+- Fixed terminal and file-browser shortcut routing so file actions only trigger while the file panel has focus.
+- Fixed memory and runtime state cleanup paths that could leave stale provider or session data after project changes.
+
 ## [0.8.2] - 2026-05-05
 
 ### Added

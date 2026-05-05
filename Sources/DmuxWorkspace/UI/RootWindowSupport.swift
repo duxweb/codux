@@ -11,6 +11,8 @@ struct MainWorkspaceWindowConfigurator: NSViewRepresentable {
     }
 
     private final class ConfigView: NSView {
+        private var hasScheduledDeferredConfiguration = false
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             applyWindowConfigurationIfNeeded()
@@ -21,7 +23,17 @@ struct MainWorkspaceWindowConfigurator: NSViewRepresentable {
                 return
             }
             window.identifier = AppWindowIdentifier.main
-            applyImmersiveWindowChrome(window)
+            applyMainWorkspaceWindowChrome(window)
+            guard hasScheduledDeferredConfiguration == false else {
+                return
+            }
+            hasScheduledDeferredConfiguration = true
+            Task { @MainActor [weak window] in
+                guard let window else {
+                    return
+                }
+                applyMainWorkspaceWindowChrome(window)
+            }
         }
     }
 }

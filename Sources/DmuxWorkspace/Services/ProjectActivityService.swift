@@ -7,11 +7,37 @@ enum ProjectActivityPhase: Equatable {
     case running(tool: String)
     case waitingInput(tool: String)
     case completed(tool: String, finishedAt: Date, exitCode: Int?)
+
+    var isPetActivityStatusVisible: Bool {
+        switch self {
+        case .idle:
+            return false
+        case .loading, .running, .waitingInput, .completed:
+            return true
+        }
+    }
+
+    var petActivityStatusPriority: Int {
+        switch self {
+        case .waitingInput:
+            return 4
+        case .running:
+            return 3
+        case .loading:
+            return 2
+        case .completed:
+            return 1
+        case .idle:
+            return 0
+        }
+    }
 }
 
 struct ProjectActivityService: @unchecked Sendable {
     private let externalNotificationService = AppExternalNotificationService.shared
-    private let notificationCenter = UNUserNotificationCenter.current()
+    private var notificationCenter: UNUserNotificationCenter {
+        UNUserNotificationCenter.current()
+    }
 
     private var supportsSystemNotifications: Bool {
         Bundle.main.bundleURL.pathExtension == "app" && Bundle.main.bundleIdentifier != nil

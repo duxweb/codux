@@ -98,7 +98,7 @@ final class MemoryStoreTests: XCTestCase {
         XCTAssertEqual(task?.tool, "codex")
     }
 
-    func testFailedExtractionCanRetryUntilAttemptLimit() throws {
+    func testFailedExtractionStaysFailedWithoutAutomaticRetry() throws {
         let store = MemoryStore(databaseURL: databaseURL)
         let projectID = UUID()
         let fingerprint = "retry-fingerprint"
@@ -117,21 +117,13 @@ final class MemoryStoreTests: XCTestCase {
         try store.markExtractionTaskRunning(first.id)
         try store.markExtractionTaskFailed(first.id, error: "timeout")
 
-        let retry = try XCTUnwrap(store.retryableFailedExtractionTask())
-        XCTAssertEqual(retry.id, first.id)
-        XCTAssertEqual(retry.attempts, 1)
+        XCTAssertNil(try store.nextPendingExtractionTask())
 
-        try store.resetExtractionTaskForRetry(first.id)
-        let second = try XCTUnwrap(store.nextPendingExtractionTask())
-        try store.markExtractionTaskRunning(second.id)
-        try store.markExtractionTaskFailed(second.id, error: "timeout")
-
-        try store.resetExtractionTaskForRetry(first.id)
-        let third = try XCTUnwrap(store.nextPendingExtractionTask())
-        try store.markExtractionTaskRunning(third.id)
-        try store.markExtractionTaskFailed(third.id, error: "timeout")
-
-        XCTAssertNil(try store.retryableFailedExtractionTask())
+        let snapshot = try store.extractionStatusSnapshot()
+        XCTAssertEqual(snapshot.status, .failed)
+        XCTAssertEqual(snapshot.pendingCount, 0)
+        XCTAssertEqual(snapshot.runningCount, 0)
+        XCTAssertEqual(snapshot.lastError, "timeout")
     }
 
     func testSummaryUpsertVersionsAndMergedEntriesAreHiddenFromActiveLists() throws {

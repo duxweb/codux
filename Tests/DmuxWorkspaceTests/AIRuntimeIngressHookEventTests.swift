@@ -522,10 +522,10 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
         XCTAssertEqual(store.projectPhase(projectID: projectID), .waitingInput(tool: "claude"))
     }
 
-    func testClaudeTurnCompletedAppliesImmediatelyThenBackfillsRuntimeTokens() async throws {
+    func testClaudeTurnCompletedAppliesImmediatelyWithoutRuntimePollingBackfill() async throws {
         let terminalID = UUID()
         let projectID = UUID()
-        let driver = DeferredClaudeBackfillDriver(
+        let driver = SnapshotCountingClaudeDriver(
             snapshot: AIRuntimeContextSnapshot(
                 tool: "claude",
                 externalSessionID: "claude-thread",
@@ -602,14 +602,14 @@ final class AIRuntimeIngressHookEventTests: XCTestCase {
             }
         }
 
-        let backfilledSession = try XCTUnwrap(store.session(for: terminalID))
-        XCTAssertEqual(backfilledSession.committedTotalTokens, 298)
+        let finalSession = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(finalSession.committedTotalTokens, 0)
         let snapshotCalls = await driver.snapshotCallCount()
-        XCTAssertGreaterThanOrEqual(snapshotCalls, 3)
+        XCTAssertEqual(snapshotCalls, 0)
     }
 }
 
-private actor DeferredClaudeBackfillCounter {
+private actor SnapshotCountingClaudeDriverCounter {
     private var calls = 0
 
     func nextCall() -> Int {
@@ -622,13 +622,13 @@ private actor DeferredClaudeBackfillCounter {
     }
 }
 
-private struct DeferredClaudeBackfillDriver: AIToolDriver {
+private struct SnapshotCountingClaudeDriver: AIToolDriver {
     let id = "claude"
     let aliases: Set<String> = ["claude"]
     let isRealtimeTool = true
     let snapshot: AIRuntimeContextSnapshot
     let nilSnapshotCount: Int
-    private let counter = DeferredClaudeBackfillCounter()
+    private let counter = SnapshotCountingClaudeDriverCounter()
 
     func resolveHookEvent(
         _ event: AIHookEvent,

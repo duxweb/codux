@@ -3,13 +3,15 @@ import XCTest
 
 @MainActor
 final class PetFeatureTests: XCTestCase {
-    func testRandomEggUsesHiddenSpeciesChanceThenStandardPool() {
-        XCTAssertEqual(PetClaimOption.random.resolveSpecies(hiddenSpeciesChance: 0.15, randomValue: 0.00), .chaossprite)
-        XCTAssertEqual(PetClaimOption.random.resolveSpecies(hiddenSpeciesChance: 0.15, randomValue: 0.149), .chaossprite)
-
-        XCTAssertEqual(PetClaimOption.random.resolveSpecies(hiddenSpeciesChance: 0.15, randomValue: 0.150), .voidcat)
-        XCTAssertEqual(PetClaimOption.random.resolveSpecies(hiddenSpeciesChance: 0.15, randomValue: 0.500), .rusthound)
-        XCTAssertEqual(PetClaimOption.random.resolveSpecies(hiddenSpeciesChance: 0.15, randomValue: 0.990), .goose)
+    func testRandomPetUsesAllSpeciesPool() {
+        let count = Double(PetSpecies.allCases.count)
+        for (index, species) in PetSpecies.allCases.enumerated() {
+            let randomValue = (Double(index) + 0.01) / count
+            XCTAssertEqual(
+                PetClaimOption.random.resolveSpecies(hiddenSpeciesChance: 0.15, randomValue: randomValue),
+                species
+            )
+        }
     }
 
     func testHiddenSpeciesChanceUsesTwoRecentToolsForBoost() {
@@ -27,28 +29,13 @@ final class PetFeatureTests: XCTestCase {
         )
     }
 
-    func testPetProgressInfoStaysEggUntilHatchThreshold() {
-        let preHatch = PetProgressInfo(totalXP: 0, hatchTokens: PetProgressInfo.hatchThreshold - 1, evoPath: .pathA)
-        XCTAssertEqual(preHatch.level, 0)
-        XCTAssertEqual(preHatch.stage, .egg)
-        XCTAssertTrue(preHatch.isHatching)
+    func testPetProgressInfoAlwaysUsesSingleCompanionStage() {
+        let initial = PetProgressInfo(totalXP: 0)
+        XCTAssertEqual(initial.level, 1)
+        XCTAssertEqual(initial.stage, .companion)
 
-        let hatched = PetProgressInfo(totalXP: 0, hatchTokens: PetProgressInfo.hatchThreshold, evoPath: .pathA)
-        XCTAssertEqual(hatched.level, 1)
-        XCTAssertEqual(hatched.stage, .infant)
-        XCTAssertFalse(hatched.isHatching)
-        XCTAssertEqual(hatched.totalXP, 0)
-    }
-
-    func testPetProgressInfoUsesEvolutionPathForLateStages() {
-        let evoAXP = PetProgressInfo.totalXPRequired(toReach: 61)
-        let evoBXP = PetProgressInfo.totalXPRequired(toReach: 61)
-        let megaXP = PetProgressInfo.totalXPRequired(toReach: 86)
-
-        XCTAssertEqual(PetProgressInfo(totalXP: evoAXP, hatchTokens: PetProgressInfo.hatchThreshold, evoPath: .pathA).stage, .evoA)
-        XCTAssertEqual(PetProgressInfo(totalXP: evoBXP, hatchTokens: PetProgressInfo.hatchThreshold, evoPath: .pathB).stage, .evoB)
-        XCTAssertEqual(PetProgressInfo(totalXP: megaXP, hatchTokens: PetProgressInfo.hatchThreshold, evoPath: .pathA).stage, .megaA)
-        XCTAssertEqual(PetProgressInfo(totalXP: megaXP, hatchTokens: PetProgressInfo.hatchThreshold, evoPath: .pathB).stage, .megaB)
+        let lateXP = PetProgressInfo.totalXPRequired(toReach: 86)
+        XCTAssertEqual(PetProgressInfo(totalXP: lateXP).stage, .companion)
     }
 
     func testPetProgressInfoLevelCurveReachesConfiguredLevel100Target() {
@@ -58,20 +45,51 @@ final class PetFeatureTests: XCTestCase {
         )
     }
 
-    func testPetStageSpeciesNameFollowsEvolutionPath() {
-        XCTAssertTrue(["书卷猫", "Tomecat"].contains(PetStage.evoA.speciesName(for: .voidcat, evoPath: .pathA)))
-        XCTAssertTrue(["暗影猫", "Shadecat"].contains(PetStage.evoB.speciesName(for: .voidcat, evoPath: .pathB)))
-        XCTAssertTrue(["艳阳", "Sunflare"].contains(PetStage.megaA.speciesName(for: .rusthound, evoPath: .pathA)))
-        XCTAssertTrue(["血月", "Bloodmoon"].contains(PetStage.megaB.speciesName(for: .rusthound, evoPath: .pathB)))
+    func testPetSpeciesNamesAreUnified() {
+        XCTAssertEqual(PetSpecies.chaossprite.displayName, "Chaos")
+        XCTAssertEqual(PetSpecies.code.displayName, "code")
+        XCTAssertEqual(PetSpecies.dolphin.displayName, "Splash")
+        XCTAssertEqual(PetSpecies.dragon.displayName, "Drako")
+        XCTAssertEqual(PetSpecies.goose.displayName, "Goosey")
+        XCTAssertEqual(PetSpecies.ox.displayName, "MooMoo")
+        XCTAssertEqual(PetSpecies.panda.displayName, "Bamboo")
+        XCTAssertEqual(PetSpecies.penguin.displayName, "Pingu")
+        XCTAssertEqual(PetSpecies.phoenix.displayName, "Ember")
+        XCTAssertEqual(PetSpecies.rusthound.displayName, "Ruff")
+        XCTAssertEqual(PetSpecies.sheep.displayName, "BaaBaa")
+        XCTAssertEqual(PetSpecies.voidcat.displayName, "Mimi")
+    }
+
+    func testPetSpeciesNamesCoverSupportedLocales() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "Localizable", withExtension: "xcstrings"))
+        let data = try Data(contentsOf: url)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        let locales = Set(["de", "en", "es", "fr", "ja", "ko", "pt-BR", "ru", "zh-Hans", "zh-Hant"])
+
+        for species in PetSpecies.allCases {
+            let key = "pet.species.\(species.rawValue).base"
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing \(key)")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], "Missing localizations for \(key)")
+            XCTAssertEqual(Set(localizations.keys), locales, "Incomplete locale coverage for \(key)")
+        }
+
+        let codeEntry = try XCTUnwrap(strings["pet.species.code.base"] as? [String: Any])
+        let codeLocalizations = try XCTUnwrap(codeEntry["localizations"] as? [String: Any])
+        for locale in locales {
+            let localization = try XCTUnwrap(codeLocalizations[locale] as? [String: Any])
+            let unit = try XCTUnwrap(localization["stringUnit"] as? [String: Any])
+            XCTAssertEqual(unit["value"] as? String, "code")
+        }
     }
 
     func testPetResolvedIdentityUsesCustomNameOrSpeciesFallback() {
-        let named = PetStage.adult.resolvedIdentity(for: .voidcat, evoPath: .pathA, customName: "奶盖")
+        let named = PetStage.companion.resolvedIdentity(for: .voidcat, evoPath: .pathA, customName: "奶盖")
         XCTAssertEqual(named.title, "奶盖")
-        XCTAssertTrue(["墨瞳猫", "Voidcat"].contains(named.subtitle ?? ""))
+        XCTAssertEqual(named.subtitle, "Mimi")
 
-        let fallback = PetStage.evoB.resolvedIdentity(for: .voidcat, evoPath: .pathB, customName: " ")
-        XCTAssertTrue(["暗影猫", "Shadecat"].contains(fallback.title))
+        let fallback = PetStage.companion.resolvedIdentity(for: .voidcat, evoPath: .pathB, customName: " ")
+        XCTAssertEqual(fallback.title, "Mimi")
         XCTAssertNil(fallback.subtitle)
     }
 
@@ -82,15 +100,13 @@ final class PetFeatureTests: XCTestCase {
         XCTAssertEqual(petFormatCompactNumber(3_600_000_000), "3.6B")
     }
 
-    func testFinalAwakeningDisplayNameIsUnified() {
-        XCTAssertTrue(["最终觉醒", "Final Awakening"].contains(PetStage.megaA.displayName))
-        XCTAssertTrue(["最终觉醒", "Final Awakening"].contains(PetStage.megaB.displayName))
+    func testCompanionDisplayNameIsUnified() {
+        XCTAssertEqual(PetStage.companion.displayName, "Companion")
     }
 
-    func testPetDexCatalogUsesAllSpeciesAcrossSevenPlayableStagesWithoutEgg() {
-        XCTAssertEqual(PetDexEntry.catalogStages.count, 7)
-        XCTAssertEqual(PetDexEntry.allCases.count, PetSpecies.allCases.count * 7)
-        XCTAssertFalse(PetDexEntry.allCases.contains { $0.stage == .egg })
+    func testPetDexCatalogUsesOneEntryPerSpecies() {
+        XCTAssertEqual(PetDexEntry.allCases.count, PetSpecies.allCases.count)
+        XCTAssertEqual(Set(PetDexEntry.allCases.map(\.species)), Set(PetSpecies.allCases))
     }
 
     func testPetStatsApplyingDampingMovesTowardTargetWithoutOvershoot() {
@@ -338,17 +354,15 @@ final class PetStoreLifecycleTests: XCTestCase {
         XCTAssertEqual(store.species, .voidcat)
         XCTAssertEqual(store.customName, "奶盖")
         XCTAssertEqual(store.currentExperienceTokens, 0)
-        XCTAssertEqual(store.currentHatchTokens, 0)
         XCTAssertEqual(store.globalNormalizedTotalWatermark, 432_100)
     }
 
-    func testRefreshDerivedStateLocksEvolutionPathOnceUnlocked() {
+    func testRefreshDerivedStateKeepsSingleCompatPath() {
         let store = PetStore(storage: .inMemory)
         store.claim(option: .rusthound, customName: "")
 
-        let unlockXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.evoUnlockLevel)
+        let unlockXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.maxLevel)
         let targetStats = PetStats(wisdom: 5, chaos: 90, night: 10, stamina: 20, empathy: 3)
-        store.debugCompleteHatch()
         store.debugForceExperienceTokens(unlockXP)
         store.refreshDerivedState(
             totalNormalizedTokens: 0,
@@ -439,8 +453,7 @@ final class PetStoreLifecycleTests: XCTestCase {
         )
 
         XCTAssertEqual(store.currentStats, initial)
-        XCTAssertEqual(store.currentHatchTokens, 123_456)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 123_456)
     }
 
     func testRefreshDerivedStateUsesMonotonicGlobalWatermark() {
@@ -453,7 +466,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: claimTime
         )
-        XCTAssertEqual(store.currentHatchTokens, 100)
+        XCTAssertEqual(store.currentExperienceTokens, 100)
         XCTAssertEqual(store.globalNormalizedTotalWatermark, 100)
 
         store.refreshDerivedState(
@@ -466,7 +479,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: claimTime.addingTimeInterval(120)
         )
-        XCTAssertEqual(store.currentHatchTokens, 120)
+        XCTAssertEqual(store.currentExperienceTokens, 120)
         XCTAssertEqual(store.globalNormalizedTotalWatermark, 120)
 
         store.refreshDerivedState(
@@ -479,7 +492,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: claimTime.addingTimeInterval(240)
         )
-        XCTAssertEqual(store.currentHatchTokens, 140)
+        XCTAssertEqual(store.currentExperienceTokens, 140)
         XCTAssertEqual(store.globalNormalizedTotalWatermark, 140)
     }
 
@@ -494,7 +507,6 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        XCTAssertEqual(store.currentHatchTokens, 0)
         XCTAssertEqual(store.currentExperienceTokens, 0)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[projectA], 100)
 
@@ -503,8 +515,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_060)
         )
-        XCTAssertEqual(store.currentHatchTokens, 40)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 40)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[projectA], 140)
 
         store.refreshDerivedState(
@@ -512,8 +523,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_120)
         )
-        XCTAssertEqual(store.currentHatchTokens, 40)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 40)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[projectB], 900)
 
         store.refreshDerivedState(
@@ -521,8 +531,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_180)
         )
-        XCTAssertEqual(store.currentHatchTokens, 120)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 120)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[projectB], 980)
     }
 
@@ -537,14 +546,14 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        XCTAssertEqual(store.currentHatchTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 0)
 
         store.refreshDerivedState(
             totalNormalizedTokensByProject: [projectA: 180, projectB: 340],
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_060)
         )
-        XCTAssertEqual(store.currentHatchTokens, 100)
+        XCTAssertEqual(store.currentExperienceTokens, 100)
 
         store.forgetProjectBaseline(projectB)
         XCTAssertNil(store.projectNormalizedTokenWatermarks[projectB])
@@ -555,7 +564,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_120)
         )
-        XCTAssertEqual(store.currentHatchTokens, 100)
+        XCTAssertEqual(store.currentExperienceTokens, 100)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[projectB], 900)
 
         store.refreshDerivedState(
@@ -563,8 +572,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_180)
         )
-        XCTAssertEqual(store.currentHatchTokens, 180)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 180)
     }
 
     func testProjectRemovalKeepsPetProgressStable() {
@@ -583,7 +591,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_060)
         )
-        XCTAssertEqual(store.currentHatchTokens, 100)
+        XCTAssertEqual(store.currentExperienceTokens, 100)
 
         store.forgetProjectBaseline(projectB)
         store.refreshDerivedState(
@@ -591,8 +599,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_120)
         )
-        XCTAssertEqual(store.currentHatchTokens, 100)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 100)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[projectA], 180)
         XCTAssertNil(store.projectNormalizedTokenWatermarks[projectB])
         XCTAssertEqual(store.globalNormalizedTotalWatermark, 180)
@@ -602,16 +609,14 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_180)
         )
-        XCTAssertEqual(store.currentHatchTokens, 180)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 180)
 
         store.refreshDerivedState(
             totalNormalizedTokensByProject: [projectA: 260, projectB: 900],
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_240)
         )
-        XCTAssertEqual(store.currentHatchTokens, 180)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 180)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[projectB], 900)
 
         store.refreshDerivedState(
@@ -619,8 +624,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_300)
         )
-        XCTAssertEqual(store.currentHatchTokens, 260)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 260)
     }
 
     func testRefreshDerivedStatePrunesMissingProjectBaselineFromSnapshotTotals() {
@@ -639,7 +643,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_060)
         )
-        XCTAssertEqual(store.currentHatchTokens, 100)
+        XCTAssertEqual(store.currentExperienceTokens, 100)
 
         store.refreshDerivedState(
             totalNormalizedTokensByProject: [projectA: 260],
@@ -647,8 +651,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_700_000_120)
         )
 
-        XCTAssertEqual(store.currentHatchTokens, 180)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 180)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[projectA], 260)
         XCTAssertNil(store.projectNormalizedTokenWatermarks[projectB])
         XCTAssertEqual(store.globalNormalizedTotalWatermark, 260)
@@ -671,7 +674,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_060)
         )
-        XCTAssertEqual(store.currentHatchTokens, 120)
+        XCTAssertEqual(store.currentExperienceTokens, 120)
 
         store.forgetProjectBaselines([projectA, projectB])
         XCTAssertTrue(store.projectNormalizedTokenWatermarks.isEmpty)
@@ -682,8 +685,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_120)
         )
-        XCTAssertEqual(store.currentHatchTokens, 120)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 120)
         XCTAssertEqual(store.projectNormalizedTokenWatermarks[reopenedProjectA], 960)
 
         store.refreshDerivedState(
@@ -691,8 +693,7 @@ final class PetStoreLifecycleTests: XCTestCase {
             computedStats: nil,
             now: Date(timeIntervalSince1970: 1_700_000_180)
         )
-        XCTAssertEqual(store.currentHatchTokens, 200)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 200)
     }
 
     func testEncryptedDatStorageRoundTripsWithoutKeychain() {
@@ -789,13 +790,12 @@ final class PetStoreLifecycleTests: XCTestCase {
         XCTAssertEqual(reloadedStore.customName, "旧宠物")
     }
 
-    func testInheritArchivesCurrentPetAndResetsClaimState() {
+    func testArchiveCurrentPetResetsClaimState() {
         let store = PetStore(storage: .inMemory)
         store.claim(option: .goose, customName: "阿呆")
 
         let maxXP = PetProgressInfo.totalXPRequired(toReach: PetProgressInfo.maxLevel)
         let stats = PetStats(wisdom: 8, chaos: 25, night: 12, stamina: 20, empathy: 80)
-        store.debugCompleteHatch()
         store.debugForceExperienceTokens(maxXP)
         store.refreshDerivedState(
             totalNormalizedTokens: 0,
@@ -803,8 +803,8 @@ final class PetStoreLifecycleTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
-        XCTAssertTrue(store.canInherit())
-        store.inheritCurrentPet()
+        XCTAssertTrue(store.canArchive())
+        store.archiveCurrentPet()
 
         XCTAssertFalse(store.isClaimed)
         XCTAssertEqual(store.species, .voidcat)
@@ -823,7 +823,6 @@ final class PetStoreLifecycleTests: XCTestCase {
 
         store.debugForceExperienceTokens(0)
 
-        XCTAssertEqual(store.currentHatchTokens, PetProgressInfo.hatchThreshold)
         XCTAssertEqual(store.currentExperienceTokens, 0)
     }
 
@@ -841,44 +840,39 @@ final class PetStoreLifecycleTests: XCTestCase {
         XCTAssertEqual(store.currentEvoPath(), .pathA)
     }
 
-    func testHatchThresholdDoesNotCountTowardGrowthXP() {
+    func testFirstRefreshAddsTokensDirectlyToExperience() {
         let store = PetStore(storage: .inMemory)
         store.claim(option: .voidcat, customName: "")
 
         store.refreshDerivedState(
-            totalNormalizedTokens: PetProgressInfo.hatchThreshold,
+            totalNormalizedTokens: 123,
             computedStats: .neutral,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
-        XCTAssertEqual(store.currentHatchTokens, PetProgressInfo.hatchThreshold)
-        XCTAssertEqual(store.currentExperienceTokens, 0)
+        XCTAssertEqual(store.currentExperienceTokens, 123)
         XCTAssertEqual(
-            PetProgressInfo(totalXP: store.currentExperienceTokens, hatchTokens: store.currentHatchTokens, evoPath: .pathA).level,
+            PetProgressInfo(totalXP: store.currentExperienceTokens).level,
             1
         )
     }
 
-    func testFirstHatchCarriesOverflowIntoGrowthXP() {
+    func testSubsequentRefreshAppliesOnlyPositiveTokenDelta() {
         let store = PetStore(storage: .inMemory)
         store.claim(option: .voidcat, customName: "")
 
         let overflow = PetProgressInfo.xpForLevel(1) * 2
         store.refreshDerivedState(
-            totalNormalizedTokens: PetProgressInfo.hatchThreshold + overflow,
+            totalNormalizedTokens: overflow,
             computedStats: .neutral,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
-        XCTAssertEqual(store.currentHatchTokens, PetProgressInfo.hatchThreshold)
         XCTAssertEqual(store.currentExperienceTokens, overflow)
-        XCTAssertEqual(
-            PetProgressInfo(totalXP: store.currentExperienceTokens, hatchTokens: store.currentHatchTokens, evoPath: .pathA).level,
-            2
-        )
+        XCTAssertGreaterThanOrEqual(PetProgressInfo(totalXP: store.currentExperienceTokens).level, 2)
 
         store.refreshDerivedState(
-            totalNormalizedTokens: PetProgressInfo.hatchThreshold + overflow + 123,
+            totalNormalizedTokens: overflow + 123,
             computedStats: .neutral,
             now: Date(timeIntervalSince1970: 1_700_000_100)
         )

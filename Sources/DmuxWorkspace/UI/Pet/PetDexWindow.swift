@@ -68,7 +68,7 @@ private struct PetDexWindowView: View {
                     currentRecord: currentRecord,
                     claimedAt: petStore.claimedAt,
                     legacyCount: petStore.legacy.count,
-                    unlockedCount: unlockedSpecies.count * PetDexEntry.catalogStages.count,
+                    unlockedCount: unlockedSpecies.count,
                     totalCount: PetDexEntry.allCases.count
                 )
                 .frame(width: 260)
@@ -120,7 +120,7 @@ private struct DexSidebar: View {
     let totalCount: Int
 
     private var currentIdentity: PetResolvedIdentity? {
-        currentRecord.map { $0.resolvedIdentity(for: $0.progressInfo.stage) }
+        currentRecord.map { $0.resolvedIdentity(for: .companion) }
     }
 
     private var widestStatText: String {
@@ -153,23 +153,23 @@ private struct DexSidebar: View {
                     DexStat(label: petL("pet.dex.current_companion", "Current Companion"),
                             value: currentIdentity?.title ?? petL("pet.dex.unclaimed", "Not Claimed"),
                             sub: currentRecord.map {
-                                let identity = $0.resolvedIdentity(for: $0.progressInfo.stage)
+                                let identity = $0.resolvedIdentity(for: .companion)
                                 let prefix = identity.subtitle.map { "\($0) · " } ?? ""
                                 return "\(prefix)Lv.\($0.progressInfo.level)"
                             } ?? "—")
-                    DexStat(label: petL("pet.dex.inherited", "Inherited"),
+                    DexStat(label: petL("pet.dex.archived", "Archived"),
                             value: "\(legacyCount)",
-                            sub: legacyCount == 0 ? petL("pet.dex.inherited.none", "No inheritance records yet") : petL("pet.dex.inherited.history", "Past companions"))
+                            sub: legacyCount == 0 ? petL("pet.dex.archived.none", "No archived pets yet") : petL("pet.dex.archived.history", "Past companions"))
                     DexStat(label: petL("pet.dex.collection", "Dex Collection"),
                             value: "\(unlockedCount)/\(totalCount)",
-                            sub: unlockedCount == totalCount ? petL("pet.dex.collection.complete", "All stages unlocked") : petL("pet.dex.collection.continue", "Keep exploring"))
+                            sub: unlockedCount == totalCount ? petL("pet.dex.collection.complete", "All companions unlocked") : petL("pet.dex.collection.continue", "Keep exploring"))
                 }
 
                 Divider()
 
                 // Current pet detail
                 if let record = currentRecord {
-                    let identity = record.resolvedIdentity(for: record.progressInfo.stage)
+                    let identity = record.resolvedIdentity(for: .companion)
                     VStack(alignment: .leading, spacing: 10) {
                         Text(petL("pet.dex.current_pet", "Current Pet"))
                             .font(.system(size: 12, weight: .semibold))
@@ -179,7 +179,7 @@ private struct DexSidebar: View {
                         VStack(spacing: 8) {
                             PetSpriteView(
                                 species: record.species,
-                                stage: record.progressInfo.stage,
+                                stage: .companion,
                                 staticMode: true,
                                 displaySize: 80
                             )
@@ -188,11 +188,11 @@ private struct DexSidebar: View {
                             Text(identity.title)
                                 .font(.system(size: 14, weight: .bold, design: .rounded))
                             if let subtitle = identity.subtitle {
-                                Text("\(subtitle) · \(record.progressInfo.stage.displayName)")
+                                Text("\(subtitle) · \(PetStage.companion.displayName)")
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
                             } else {
-                                Text(record.progressInfo.stage.displayName)
+                                Text(PetStage.companion.displayName)
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
                             }
@@ -338,7 +338,7 @@ private struct DexSpeciesGrid: View {
                 Text(petL("pet.dex.title", "Pet Dex"))
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                 Spacer()
-                Text(String(format: petL("pet.dex.unlocked_count", "%@/%@ unlocked"), "\(unlockedSpecies.count * PetDexEntry.catalogStages.count)", "\(PetDexEntry.allCases.count)"))
+                Text(String(format: petL("pet.dex.unlocked_count", "%@/%@ unlocked"), "\(unlockedSpecies.count)", "\(PetDexEntry.allCases.count)"))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -373,7 +373,7 @@ private struct DexSpeciesCard: View {
                 if unlocked {
                     PetSpriteView(
                         species: entry.species,
-                        stage: entry.stage,
+                        stage: .companion,
                         staticMode: true,
                         displaySize: 44
                     )
@@ -386,12 +386,12 @@ private struct DexSpeciesCard: View {
             }
 
             VStack(spacing: 3) {
-                Text(unlocked ? entry.stage.speciesName(for: entry.species, evoPath: entry.evoPath) : petL("pet.dex.unknown", "???"))
+                Text(unlocked ? entry.species.displayName : petL("pet.dex.unknown", "???"))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .multilineTextAlignment(.center)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text(unlocked ? entry.stage.displayName : petL("pet.dex.locked", "Locked"))
+                Text(unlocked ? PetStage.companion.displayName : petL("pet.dex.locked", "Locked"))
                     .font(.system(size: 12))
                     .foregroundStyle(unlocked ? entry.species.dexAccent : .secondary)
                     .lineLimit(1)
@@ -420,7 +420,7 @@ private struct DexHistorySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(petL("pet.inherit.history", "Inheritance History"))
+            Text(petL("pet.archive.history", "Archive History"))
                 .font(.system(size: 15, weight: .bold, design: .rounded))
 
             VStack(spacing: 6) {
@@ -452,7 +452,7 @@ private struct DexHistoryRow: View {
                 HStack(spacing: 6) {
                     Text(identity.title)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    Text(info.stage.displayName)
+                    Text(PetStage.companion.displayName)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(record.species.dexAccent)
                         .padding(.horizontal, 6)
@@ -509,7 +509,7 @@ private struct DexSpotlightOverlay: View {
 
                     PetSpriteView(
                         species: entry.species,
-                        stage: entry.stage,
+                        stage: .companion,
                         staticMode: false,
                         displaySize: 140
                     )
@@ -520,11 +520,11 @@ private struct DexSpotlightOverlay: View {
 
                 // Name & stage
                 VStack(spacing: 6) {
-                    Text(entry.stage.speciesName(for: entry.species, evoPath: entry.evoPath))
+                    Text(entry.species.displayName)
                         .font(.system(size: 22, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
 
-                    Text(entry.stage.displayName)
+                    Text(PetStage.companion.displayName)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(entry.species.dexAccent)
                         .padding(.horizontal, 12)
@@ -558,42 +558,23 @@ private struct DexSpotlightOverlay: View {
 
 private extension PetLegacyRecord {
     var progressInfo: PetProgressInfo {
-        PetProgressInfo(totalXP: totalXP, hatchTokens: PetProgressInfo.hatchThreshold, evoPath: evoPath)
+        PetProgressInfo(totalXP: totalXP)
     }
 }
 
 struct PetDexEntry: CaseIterable, Identifiable {
     let species: PetSpecies
-    let stage: PetStage
-    let evoPath: PetEvoPath
 
-    var id: String { "\(species.rawValue)-\(stage.rawValue)-\(evoPath.rawValue)" }
+    var id: String { species.rawValue }
 
-    static let catalogStages: [(PetStage, PetEvoPath)] = [
-        (.infant, .pathA),
-        (.child, .pathA),
-        (.adult, .pathA),
-        (.evoA, .pathA),
-        (.evoB, .pathB),
-        (.megaA, .pathA),
-        (.megaB, .pathB),
-    ]
-
-    static let allCases: [PetDexEntry] = PetSpecies.allCases.flatMap { species in
-        catalogStages.map { stage, evoPath in
-            PetDexEntry(species: species, stage: stage, evoPath: evoPath)
-        }
+    static let allCases: [PetDexEntry] = PetSpecies.allCases.map { species in
+        PetDexEntry(species: species)
     }
 }
 
 private extension PetSpecies {
     var dexAccent: Color {
-        switch self {
-        case .voidcat:    return Color(hex: 0x6A5CFF)
-        case .rusthound:  return Color(hex: 0xFF8A3D)
-        case .goose:      return Color(hex: 0x3E86F6)
-        case .chaossprite: return Color(hex: 0xFF4FA3)
-        }
+        petAccentColor
     }
 }
 

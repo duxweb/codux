@@ -565,7 +565,7 @@ case "${action}" in
       "$(extract_hook_session_id)" \
       "$(resolved_hook_model)" \
       "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
-      "" \
+      "$(extract_first_hook_field transcript_path transcriptPath)" \
       "" \
       "user-input" \
       "" \

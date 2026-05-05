@@ -55,4 +55,52 @@ final class ProjectFileBrowserServiceTests: XCTestCase {
             XCTFail("Expected binary message")
         }
     }
+
+    func testMarkdownPreviewUsesSplitLayoutForMarkdownExtensions() {
+        XCTAssertTrue(ProjectFilePreviewLayoutPolicy.usesMarkdownSplitPreview(fileExtension: "md"))
+        XCTAssertTrue(ProjectFilePreviewLayoutPolicy.usesMarkdownSplitPreview(fileExtension: "markdown"))
+        XCTAssertTrue(ProjectFilePreviewLayoutPolicy.usesMarkdownSplitPreview(fileExtension: "MD"))
+        XCTAssertFalse(ProjectFilePreviewLayoutPolicy.usesMarkdownSplitPreview(fileExtension: "swift"))
+        XCTAssertFalse(ProjectFilePreviewLayoutPolicy.usesMarkdownSplitPreview(fileExtension: "txt"))
+    }
+
+    @MainActor
+    func testDeleteSelectedItemMarksPendingDeleteBeforeConfirmation() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileURL = root.appendingPathComponent("README.md")
+        try "readme".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let project = Project(
+            id: UUID(),
+            name: "Demo",
+            path: root.path,
+            shell: "/bin/zsh",
+            defaultCommand: "",
+            badgeText: nil,
+            badgeSymbol: nil,
+            badgeColorHex: nil,
+            gitDefaultPushRemoteName: nil
+        )
+        let store = ProjectFileBrowserStore()
+        store.load(project: project)
+
+        guard let item = store.visibleRows.first(where: { $0.item.name == "README.md" })?.item else {
+            XCTFail("Expected file row")
+            return
+        }
+
+        store.select(item)
+        store.deleteSelectedItem()
+
+        XCTAssertEqual(store.pendingDeletePaths, [item.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+
+        store.cancelPendingDeletes()
+
+        XCTAssertTrue(store.pendingDeletePaths.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+    }
 }

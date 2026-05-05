@@ -74,9 +74,11 @@ extension AppModel {
 
     func revealGitEntriesInFinder(_ entries: [GitFileEntry]) {
         guard let project = selectedProject else { return }
-        let urls = entries.map { URL(fileURLWithPath: project.path).appendingPathComponent($0.path) }
-        guard !urls.isEmpty else { return }
-        NSWorkspace.shared.activateFileViewerSelecting(urls)
+        let directories = Set(entries.map { entry in
+            URL(fileURLWithPath: project.path).appendingPathComponent(entry.path).deletingLastPathComponent().standardizedFileURL
+        })
+        guard !directories.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(Array(directories))
     }
 
     func mergeBranchIntoCurrent(_ branch: String) {

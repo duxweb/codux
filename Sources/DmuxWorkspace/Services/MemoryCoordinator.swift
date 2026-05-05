@@ -225,18 +225,7 @@ actor MemoryCoordinator {
     }
 
     private func nextExtractionTask() throws -> MemoryExtractionTask? {
-        if let nextTask = try store.nextPendingExtractionTask() {
-            return nextTask
-        }
-        guard let retryTask = try store.retryableFailedExtractionTask() else {
-            return nil
-        }
-        try store.resetExtractionTaskForRetry(retryTask.id)
-        debugLog.log(
-            "memory-extraction",
-            "retry task=\(retryTask.id.uuidString) attempts=\(retryTask.attempts) error=\(retryTask.error ?? "")"
-        )
-        return retryTask
+        try store.nextPendingExtractionTask()
     }
 
     private func statusSnapshot(fallback: MemoryExtractionStatus) -> MemoryExtractionStatusSnapshot

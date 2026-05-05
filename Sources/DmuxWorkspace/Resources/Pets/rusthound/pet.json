@@ -1,0 +1,6 @@
+{
+  "id": "rusthound-default",
+  "displayName": "rusthound",
+  "description": "Codux bundled pet atlas.",
+  "spritesheetPath": "spritesheet.png"
+}

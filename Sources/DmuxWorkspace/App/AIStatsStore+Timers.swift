@@ -247,10 +247,8 @@ extension AIStatsStore {
             guard let self else {
                 return
             }
-            let kind = notification.userInfo?["kind"] as? String
-            let reason: LiveRefreshReason = kind == "runtime-poll" ? .runtimePoll : .runtimeBridge
             Task { @MainActor [weak self] in
-                self?.scheduleLiveRefresh(reason: reason)
+                self?.scheduleLiveRefresh(reason: .runtimeBridge)
             }
         }
     }
@@ -305,8 +303,6 @@ extension AIStatsStore {
         switch (existing, incoming) {
         case (.runtimeBridge, _), (_, .runtimeBridge):
             return .runtimeBridge
-        case (.runtimePoll, _), (_, .runtimePoll):
-            return .runtimePoll
         case (.terminalFocus, _), (_, .terminalFocus):
             return .terminalFocus
         case (.none, _):

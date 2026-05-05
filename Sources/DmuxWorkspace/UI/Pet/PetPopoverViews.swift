@@ -8,14 +8,13 @@ struct PetPopoverView: View {
     let petStats: PetStats
     let onInheritConfirmed: (() -> Void)?
     @State private var isEditingName = false
-    @State private var showsInheritanceConfirmation = false
+    @State private var showsArchiveConfirmation = false
 
     private var petStore: PetStore { model.petStore }
     private var species: PetSpecies { petStore.species }
     private var path: PetEvoPath { petStore.currentEvoPath() }
     private var currentXP: Int { petStore.currentExperienceTokens }
-    private var hatchTokens: Int { petStore.currentHatchTokens }
-    private var info: PetProgressInfo { PetProgressInfo(totalXP: currentXP, hatchTokens: hatchTokens, evoPath: path) }
+    private var info: PetProgressInfo { PetProgressInfo(totalXP: currentXP) }
     private var identity: PetResolvedIdentity { info.stage.resolvedIdentity(for: species, evoPath: path, customName: petStore.customName) }
     private var displayName: String { identity.title }
     private var hasLegacy: Bool { !petStore.legacy.isEmpty }
@@ -26,180 +25,100 @@ struct PetPopoverView: View {
         AnyView(
             mainContent
                 .frame(width: 300)
-                .alert(petL("pet.inherit.alert.title", "Inherit Current Pet"), isPresented: $showsInheritanceConfirmation) {
+                .alert(petL("pet.archive.alert.title", "Archive Current Pet"), isPresented: $showsArchiveConfirmation) {
                     Button(petL("common.cancel", "Cancel"), role: .cancel) {}
-                    Button(petL("pet.inherit.confirm", "Confirm Inheritance")) {
-                        petStore.inheritCurrentPet()
+                    Button(petL("pet.archive.confirm", "Confirm Archive")) {
+                        petStore.archiveCurrentPet()
                         onInheritConfirmed?()
                     }
                 } message: {
-                    Text(petL("pet.inherit.alert.message", "Inheritance will archive the current pet into the dex and return you to egg selection."))
+                    Text(petL("pet.archive.alert.message", "Archive this pet into the dex and choose a new companion."))
                 }
         )
     }
 
     private var mainContent: some View {
-        Group {
-            if info.isHatching {
-                VStack(spacing: 0) {
-                    HStack(alignment: .center, spacing: 12) {
-                        PetSpriteView(
-                            species: species,
-                            stage: .egg,
-                            staticMode: model.appSettings.pet.staticMode,
-                            displaySize: 80
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
+                PetSpriteView(
+                    species: species,
+                    stage: info.stage,
+                    sleeping: sleeping,
+                    staticMode: model.appSettings.pet.staticMode,
+                    displaySize: 110
+                )
+                .frame(width: 110, height: 110)
+
+                Spacer().frame(height: 14)
+
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if isEditingName {
+                        TextField(
+                            petL("pet.name.placeholder", "Pet Name"),
+                            text: Binding(
+                                get: { petStore.customName },
+                                set: { petStore.rename($0) }
+                            )
                         )
-                        .frame(width: 80, height: 80)
-
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(displayName)
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundStyle(.primary)
-                            Text(petL("pet.stage.egg", "Hatching"))
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundStyle(info.stage.accentColor)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Capsule().fill(info.stage.accentColor.opacity(0.14)))
-                        }
-
-                        Spacer(minLength: 0)
-
-                        VStack(spacing: 2) {
-                            Text("\(info.hatchPercentText)%")
-                                .font(.system(size: 26, weight: .black, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(.primary)
-                                .contentTransition(.numericText())
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                            Text(petL("pet.hatch.progress.short", "Hatch"))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .frame(minWidth: 88, alignment: .trailing)
-                    }
-                    .padding(14)
-
-                    Divider()
-                        .padding(.horizontal, 14)
-
-                    VStack(spacing: 6) {
-                        HStack {
-                            Text(petL("pet.hatch.progress.title", "Hatch Progress"))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("\(petFormatCompactNumber(info.hatchTokens)) / \(petFormatCompactNumber(PetProgressInfo.hatchThreshold))")
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(info.stage.accentColor.opacity(0.15))
-                                    .frame(height: 7)
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [info.stage.accentColor, info.stage.accentColor.adjustingBrightness(-0.12)],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .frame(width: max(0, geo.size.width * info.hatchProgress), height: 7)
-                                    .animation(.easeInOut(duration: 0.4), value: info.hatchProgress)
-                            }
-                        }
-                        .frame(height: 7)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .appCursor(.arrow)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    VStack(spacing: 0) {
-                        PetSpriteView(
-                            species: species,
-                            stage: info.stage,
-                            sleeping: sleeping,
-                            staticMode: model.appSettings.pet.staticMode,
-                            displaySize: 110
-                        )
-                        .frame(width: 110, height: 110)
-
-                        Spacer().frame(height: 14)
-
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            if isEditingName {
-                                TextField(
-                                    petL("pet.name.placeholder", "Pet Name"),
-                                    text: Binding(
-                                        get: { petStore.customName },
-                                        set: { petStore.rename($0) }
-                                    )
-                                )
-                                .font(.system(size: 17, weight: .bold, design: .rounded))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 140)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 140)
+                    } else {
+                        Group {
+                            if let subtitle = identity.subtitle {
+                                Text(identity.title)
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.primary)
+                                + Text("  \(subtitle)")
+                                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.secondary)
                             } else {
-                                Group {
-                                    if let subtitle = identity.subtitle {
-                                        Text(identity.title)
-                                            .font(.system(size: 17, weight: .bold, design: .rounded))
-                                            .foregroundStyle(.primary)
-                                        + Text("  \(subtitle)")
-                                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        Text(identity.title)
-                                            .font(.system(size: 17, weight: .bold, design: .rounded))
-                                            .foregroundStyle(.primary)
-                                    }
-                                }
-                                .onTapGesture { isEditingName = true }
+                                Text(identity.title)
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.primary)
                             }
                         }
-
-                        Spacer().frame(height: 8)
-
-                        Text(petStore.currentStats.personaTag)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(info.stage.accentColor)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(info.stage.accentColor.opacity(0.14)))
-
-                        Spacer().frame(height: 10)
-
-                        Text("Lv.\(info.level)")
-                            .font(.system(size: 26, weight: .black, design: .rounded))
-                            .foregroundStyle(.primary)
-                            .contentTransition(.numericText())
+                        .onTapGesture { isEditingName = true }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 18)
-                    .padding(.bottom, 14)
-                    .padding(.horizontal, 14)
-                    .overlay(alignment: .topTrailing) {
-                        Button {
-                            PetDexWindowPresenter.show(model: model)
-                        } label: {
-                            Image(systemName: "books.vertical.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(info.stage.accentColor.opacity(0.8))
-                                .frame(width: 28, height: 28)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(info.stage.accentColor.opacity(0.1))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .help(petL("pet.dex.open", "Open Dex"))
-                        .padding(14)
-                    }
+                }
+
+                Spacer().frame(height: 8)
+
+                Text(petStore.currentStats.personaTag)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(info.stage.accentColor)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(info.stage.accentColor.opacity(0.14)))
+
+                Spacer().frame(height: 10)
+
+                Text("Lv.\(info.level)")
+                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .contentTransition(.numericText())
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
+            .padding(.horizontal, 14)
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    PetDexWindowPresenter.show(model: model)
+                } label: {
+                    Image(systemName: "books.vertical.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(info.stage.accentColor.opacity(0.8))
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(info.stage.accentColor.opacity(0.1))
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(petL("pet.dex.open", "Open Dex"))
+                .padding(14)
+            }
 
                     Divider().padding(.horizontal, 14)
 
@@ -292,29 +211,24 @@ struct PetPopoverView: View {
 
                     Divider().padding(.horizontal, 14)
 
-                    HStack(spacing: 0) {
-                        PetStatCell(label: petL("pet.total_xp", "Total XP"), value: petFormatCompactNumber(info.totalXP))
-                            .frame(maxWidth: .infinity)
-                        Divider().frame(height: 32)
-                        PetStatCell(label: petL("pet.next_stage", "Next Stage"), value: nextStageLabel(info: info))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .padding(.vertical, 10)
+                    PetStatCell(label: petL("pet.total_xp", "Total XP"), value: petFormatCompactNumber(info.totalXP))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
 
-                    if info.hasUnlockedInheritance {
+                    if info.hasUnlockedArchive {
                         Divider().padding(.horizontal, 14)
 
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(petL("pet.inherit.unlocked", "Inheritance Unlocked"))
+                                Text(petL("pet.archive.unlocked", "Archive Unlocked"))
                                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                Text(petL("pet.inherit.unlocked.detail", "Inheritance unlocks at level 100, but levels can keep increasing."))
+                                Text(petL("pet.archive.unlocked.detail", "Archive unlocks at level 100, but levels can keep increasing."))
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button(petL("pet.inherit.action", "Inherit")) {
-                                showsInheritanceConfirmation = true
+                            Button(petL("pet.archive.action", "Archive")) {
+                                showsArchiveConfirmation = true
                             }
                             .buttonStyle(.borderedProminent)
                         }
@@ -326,46 +240,21 @@ struct PetPopoverView: View {
                         Divider().padding(.horizontal, 14)
 
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(petL("pet.inherit.history", "Inheritance History"))
+                            Text(petL("pet.archive.history", "Archive History"))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.tertiary)
 
                             ForEach(Array(petStore.legacy.prefix(2))) { record in
                                 PetLegacyRow(
                                     record: record,
-                                    stage: PetProgressInfo(
-                                        totalXP: record.totalXP,
-                                        hatchTokens: PetProgressInfo.hatchThreshold,
-                                        evoPath: record.evoPath
-                                    ).stage
+                                    stage: PetProgressInfo(totalXP: record.totalXP).stage
                                 )
                             }
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                     }
-                }
-            }
         }
-    }
-
-    private func nextStageLabel(info: PetProgressInfo) -> String {
-        let next: PetStage
-        switch info.stage {
-        case .egg:
-            next = .infant
-        case .infant:
-            next = .child
-        case .child:
-            next = .adult
-        case .adult:
-            next = path == .pathA ? .evoA : .evoB
-        case .evoA, .evoB:
-            next = path == .pathA ? .megaA : .megaB
-        case .megaA, .megaB:
-            return petL("pet.stage.awakened_complete", "Awakened")
-        }
-        return next.displayName
     }
 }
 
@@ -404,43 +293,43 @@ private struct PetLegacyRow: View {
     }
 }
 
-struct PetEggSelectionDialogState: Equatable {
+struct PetClaimDialogState: Equatable {
     var selectedOption: PetClaimOption
 }
 
-struct PetEggClaimResult {
+struct PetClaimResult {
     let option: PetClaimOption
     let customName: String
 }
 
 @MainActor
-enum PetEggSelectionDialogPresenter {
+enum PetClaimDialogPresenter {
     static func present(
-        dialog: PetEggSelectionDialogState,
+        dialog: PetClaimDialogState,
         staticMode: Bool,
         parentWindow: NSWindow,
-        completion: @escaping (PetEggClaimResult?) -> Void
+        completion: @escaping (PetClaimResult?) -> Void
     ) {
-        let controller = PetEggSelectionDialogController(dialog: dialog, staticMode: staticMode)
+        let controller = PetClaimDialogController(dialog: dialog, staticMode: staticMode)
         controller.beginSheet(for: parentWindow, completion: completion)
     }
 }
 
 @MainActor
-private final class PetEggSelectionDialogViewModel: ObservableObject {
+private final class PetClaimDialogViewModel: ObservableObject {
     @Published var selectedOption: PetClaimOption
     @Published var customName: String = ""
 
-    init(dialog: PetEggSelectionDialogState) {
+    init(dialog: PetClaimDialogState) {
         self.selectedOption = dialog.selectedOption
     }
 }
 
-private struct PetEggSelectionDialogView: View {
+private struct PetClaimDialogView: View {
     static let dialogWidth: CGFloat = 640
     static let dialogHeight: CGFloat = 420
 
-    @ObservedObject var viewModel: PetEggSelectionDialogViewModel
+    @ObservedObject var viewModel: PetClaimDialogViewModel
     let staticMode: Bool
     let onCancel: () -> Void
     let onConfirm: () -> Void
@@ -455,6 +344,24 @@ private struct PetEggSelectionDialogView: View {
             return Color(hex: 0xFF6030)
         case .goose:
             return Color(hex: 0xF5DEB3)
+        case .chaossprite:
+            return Color(hex: 0xFF4FA3)
+        case .code:
+            return Color(hex: 0x2F8FFF)
+        case .sheep:
+            return Color(hex: 0xF28FB8)
+        case .ox:
+            return Color(hex: 0xF3B43F)
+        case .dragon:
+            return Color(hex: 0xE04435)
+        case .phoenix:
+            return Color(hex: 0xFF7A22)
+        case .dolphin:
+            return Color(hex: 0x1E9BFF)
+        case .penguin:
+            return Color(hex: 0x5C6D85)
+        case .panda:
+            return Color(hex: 0x6A6F78)
         case .random:
             return .purple
         }
@@ -467,9 +374,27 @@ private struct PetEggSelectionDialogView: View {
         case .rusthound:
             return petL("pet.claim.rusthound.description", "It falls over, gets up again, and keeps going anyway.")
         case .goose:
-            return petL("pet.claim.goose.description", "It doesn't fully get what's happening, but it also doesn't mind.")
+            return petL("pet.claim.goose.description", "A steady companion with a relaxed rhythm.")
+        case .chaossprite:
+            return petL("pet.claim.chaossprite.description", "A bright companion for messy ideas and sudden turns.")
+        case .code:
+            return petL("pet.claim.code.description", "A coding companion that keeps your terminal alive.")
+        case .sheep:
+            return petL("pet.claim.sheep.description", "A soft companion that keeps long work calm.")
+        case .ox:
+            return petL("pet.claim.ox.description", "A steady companion for reliable, grounded progress.")
+        case .dragon:
+            return petL("pet.claim.dragon.description", "A brave companion for big pushes and hot paths.")
+        case .phoenix:
+            return petL("pet.claim.phoenix.description", "A bright companion that makes every restart feel lighter.")
+        case .dolphin:
+            return petL("pet.claim.dolphin.description", "A nimble companion that moves quickly through ideas.")
+        case .penguin:
+            return petL("pet.claim.penguin.description", "A calm companion for focused work and cool heads.")
+        case .panda:
+            return petL("pet.claim.panda.description", "A round, gentle companion that keeps the pace steady.")
         case .random:
-            return petL("pet.claim.random.description", "Leave it to fate. A random egg can hatch the hidden species.")
+            return petL("pet.claim.random.description", "Let Codux choose one companion for you.")
         }
     }
 
@@ -482,7 +407,7 @@ private struct PetEggSelectionDialogView: View {
             }
         } label: {
             HStack(spacing: 10) {
-                PetClaimEggPreview(option: option, staticMode: staticMode)
+                PetClaimPreview(option: option, staticMode: staticMode)
                     .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(option.title)
@@ -531,9 +456,9 @@ private struct PetEggSelectionDialogView: View {
                 }
                 .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(petL("pet.claim.dialog.title", "Choose a Pet Egg"))
+                    Text(petL("pet.claim.dialog.title", "Choose a Pet"))
                         .font(.system(size: 15, weight: .bold, design: .rounded))
-                    Text(petL("pet.claim.dialog.subtitle", "A tiny coding partner that hatches by your side"))
+                    Text(petL("pet.claim.dialog.subtitle", "A tiny coding partner for your workspace"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -546,12 +471,14 @@ private struct PetEggSelectionDialogView: View {
             Divider()
 
             HStack(alignment: .top, spacing: 0) {
-                VStack(spacing: 8) {
-                    ForEach(PetClaimOption.allCases) { option in
-                        optionRow(option)
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(spacing: 8) {
+                        ForEach(PetClaimOption.allCases) { option in
+                            optionRow(option)
+                        }
                     }
+                    .padding(14)
                 }
-                .padding(14)
                 .frame(width: 220)
 
                 Divider()
@@ -564,7 +491,7 @@ private struct PetEggSelectionDialogView: View {
                         if let species = selectedOption.previewSpecies {
                             PetSpriteView(
                                 species: species,
-                                stage: .egg,
+                                stage: .companion,
                                 staticMode: true,
                                 displaySize: 84
                             )
@@ -629,18 +556,18 @@ private struct PetEggSelectionDialogView: View {
 }
 
 @MainActor
-private final class PetEggSelectionDialogController: AppDialogController<PetEggClaimResult> {
-    private let viewModel: PetEggSelectionDialogViewModel
+private final class PetClaimDialogController: AppDialogController<PetClaimResult> {
+    private let viewModel: PetClaimDialogViewModel
 
-    init(dialog: PetEggSelectionDialogState, staticMode: Bool) {
-        self.viewModel = PetEggSelectionDialogViewModel(dialog: dialog)
+    init(dialog: PetClaimDialogState, staticMode: Bool) {
+        self.viewModel = PetClaimDialogViewModel(dialog: dialog)
 
         let panel = AppDialogPanel(
             contentRect: NSRect(
                 x: 0,
                 y: 0,
-                width: PetEggSelectionDialogView.dialogWidth,
-                height: PetEggSelectionDialogView.dialogHeight
+                width: PetClaimDialogView.dialogWidth,
+                height: PetClaimDialogView.dialogHeight
             ),
             styleMask: [.titled, .closable],
             backing: .buffered,
@@ -654,13 +581,13 @@ private final class PetEggSelectionDialogController: AppDialogController<PetEggC
         panel.collectionBehavior = [.fullScreenAuxiliary]
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
-        panel.setContentSize(NSSize(width: PetEggSelectionDialogView.dialogWidth, height: PetEggSelectionDialogView.dialogHeight))
-        panel.minSize = NSSize(width: PetEggSelectionDialogView.dialogWidth, height: PetEggSelectionDialogView.dialogHeight)
-        panel.maxSize = NSSize(width: PetEggSelectionDialogView.dialogWidth, height: PetEggSelectionDialogView.dialogHeight)
+        panel.setContentSize(NSSize(width: PetClaimDialogView.dialogWidth, height: PetClaimDialogView.dialogHeight))
+        panel.minSize = NSSize(width: PetClaimDialogView.dialogWidth, height: PetClaimDialogView.dialogHeight)
+        panel.maxSize = NSSize(width: PetClaimDialogView.dialogWidth, height: PetClaimDialogView.dialogHeight)
 
         super.init(panel: panel)
 
-        let contentView = PetEggSelectionDialogView(
+        let contentView = PetClaimDialogView(
             viewModel: viewModel,
             staticMode: staticMode,
             onCancel: { [weak self] in
@@ -668,7 +595,7 @@ private final class PetEggSelectionDialogController: AppDialogController<PetEggC
             },
             onConfirm: { [weak self] in
                 guard let self else { return }
-                let result = PetEggClaimResult(
+                let result = PetClaimResult(
                     option: viewModel.selectedOption,
                     customName: viewModel.customName.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
@@ -679,8 +606,8 @@ private final class PetEggSelectionDialogController: AppDialogController<PetEggC
         hostingController.view.frame = NSRect(
             x: 0,
             y: 0,
-            width: PetEggSelectionDialogView.dialogWidth,
-            height: PetEggSelectionDialogView.dialogHeight
+            width: PetClaimDialogView.dialogWidth,
+            height: PetClaimDialogView.dialogHeight
         )
         hostingController.view.autoresizingMask = [.width, .height]
         panel.contentViewController = hostingController

@@ -1,4 +1,5 @@
 import AppKit
+import MarkdownUI
 import SwiftUI
 
 private extension Notification.Name {
@@ -79,12 +80,22 @@ private struct ProjectFilePreviewView: View {
             Group {
                 switch preview.state {
                 case let .text(attributedText):
-                    EditableTextPreview(
-                        text: $textContent,
-                        isEditing: isEditing,
-                        fileExtension: fileURL.pathExtension,
-                        highlightedText: attributedText
-                    )
+                    if ProjectFilePreviewLayoutPolicy.usesMarkdownSplitPreview(fileExtension: fileURL.pathExtension) {
+                        MarkdownSplitPreview(
+                            text: $textContent,
+                            isEditing: isEditing,
+                            fileExtension: fileURL.pathExtension,
+                            highlightedText: attributedText,
+                            sourceURL: fileURL
+                        )
+                    } else {
+                        EditableTextPreview(
+                            text: $textContent,
+                            isEditing: isEditing,
+                            fileExtension: fileURL.pathExtension,
+                            highlightedText: attributedText
+                        )
+                    }
                 case let .message(message):
                     VStack(spacing: 10) {
                         Image(systemName: "doc.badge.ellipsis")
@@ -236,6 +247,17 @@ private struct ProjectFilePreviewView: View {
     }
 }
 
+enum ProjectFilePreviewLayoutPolicy {
+    static func usesMarkdownSplitPreview(fileExtension: String) -> Bool {
+        switch fileExtension.lowercased() {
+        case "md", "markdown":
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 private struct FilePreviewToolbarButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     let isActive: Bool
@@ -309,6 +331,93 @@ private struct FilePreviewToolbarButtonBody: View {
             return Color(nsColor: .separatorColor).opacity(0.36)
         }
         return Color.clear
+    }
+}
+
+private struct MarkdownSplitPreview: View {
+    @Binding var text: String
+    let isEditing: Bool
+    let fileExtension: String
+    let highlightedText: NSAttributedString?
+    let sourceURL: URL
+
+    var body: some View {
+        HStack(spacing: 0) {
+            EditableTextPreview(
+                text: $text,
+                isEditing: isEditing,
+                fileExtension: fileExtension,
+                highlightedText: highlightedText
+            )
+            .frame(minWidth: 260)
+
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.42))
+                .frame(width: 1)
+
+            MarkdownRenderedPreview(text: $text, sourceURL: sourceURL)
+                .frame(minWidth: 260)
+        }
+    }
+}
+
+private struct MarkdownRenderedPreview: View {
+    @Binding var text: String
+    let sourceURL: URL
+    @State private var renderedContent: MarkdownContent
+
+    init(text: Binding<String>, sourceURL: URL) {
+        self._text = text
+        self.sourceURL = sourceURL
+        _renderedContent = State(initialValue: MarkdownContent(text.wrappedValue))
+    }
+
+    var body: some View {
+        ScrollView {
+            Markdown(renderedContent, baseURL: sourceURL.deletingLastPathComponent(), imageBaseURL: sourceURL.deletingLastPathComponent())
+                .markdownTheme(.gitHub)
+                .markdownImageProvider(ProjectFilePreviewMarkdownImageProvider())
+                .markdownInlineImageProvider(ProjectFilePreviewMarkdownInlineImageProvider())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 20)
+        }
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.24))
+        .onChange(of: text) { _, newValue in
+            renderedContent = MarkdownContent(newValue)
+        }
+    }
+}
+
+private struct ProjectFilePreviewMarkdownImageProvider: ImageProvider {
+    func makeImage(url: URL?) -> some View {
+        if let image = ProjectFilePreviewMarkdownImageLoader.image(for: url) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+        } else {
+            Color.clear
+                .frame(width: 0, height: 0)
+        }
+    }
+}
+
+private struct ProjectFilePreviewMarkdownInlineImageProvider: InlineImageProvider {
+    func image(with url: URL, label: String) async throws -> Image {
+        if let image = ProjectFilePreviewMarkdownImageLoader.image(for: url) {
+            return Image(nsImage: image)
+        }
+        return Image(nsImage: NSImage(size: .zero))
+    }
+}
+
+private enum ProjectFilePreviewMarkdownImageLoader {
+    static func image(for url: URL?) -> NSImage? {
+        guard let url, url.isFileURL else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
     }
 }
 

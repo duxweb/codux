@@ -1,6 +1,6 @@
 ---
 name: pet-sprite-pipeline
-description: Use when rebuilding or importing pet sprite assets: processing numbered PNG sequences into sprite sheets, updating animation timing metadata, or wiring new bundled sprite files into the dmux pet UI.
+description: Use when importing single-form Codex-style pet atlas assets, normalizing white-background sprite sheets, replacing bundled species spritesheets, or checking pet asset package structure.
 ---
 
 # Pet Sprite Pipeline
@@ -9,59 +9,48 @@ Use this only for asset pipeline work. For pet gameplay rules or UI behavior, re
 
 ## Directory Layout
 
-```
+```text
 scripts/pet-sprites/
-├── bg_remove.py           # BFS background removal + palette quantization (shared lib)
-├── seq_to_sprite.py       # Directory of numbered PNGs → sprite sheet PNG + JSON
-├── image_to_sprite.py     # Single PNG → single-frame sprite sheet
-├── process_voidcat.py     # Run this to rebuild voidcat sprites
-├── process_rusthound.py
-├── process_goose.py
-└── process_chaossprite.py
+├── bg_remove.py
+├── normalize_codex_atlas.py
+└── test_normalize_codex_atlas.py
 
 Sources/DmuxWorkspace/Resources/Pets/
 └── <species>/
-    ├── egg.png / egg.json
-    ├── infant_idle.png / infant_idle.json
-    ├── child_idle.png / child_idle.json
-    ├── adult_idle.png / adult_idle.json
-    └── evo_* / mega_* sprite sheets
+    ├── pet.json
+    └── spritesheet.png
 ```
 
-## Sprite Sheet Format
+Each bundled species is a single companion form. Do not add egg, infant, child, adult, evolution, or mega sprite directories.
 
-Each PNG is a horizontal strip of frames. JSON with the same stem stores clip metadata beside it.
+## Atlas Format
 
-Raw source files live under `RawAssets/Pets/<species>/...`.
+- Grid: `8 columns x 9 rows`
+- Output size: `1536 x 1872`
+- Cell size: `192 x 208`
+- One `spritesheet.png` per species
+- One `pet.json` manifest beside the spritesheet
 
-## Rebuild commands
+## Generation Prompt Rules
+
+Use `docs/pet-codex-atlas.md` as the prompt source of truth. The generated pet must have no bubbles, dialog balloons, icons, particles, speed lines, shadows, or any decorative elements around the character. Frames in the same action row must keep a stable body center and baseline, avoid sudden large pose/scale/style differences, and loop cleanly from the last frame back to the first frame.
+
+## Import Command
 
 ```bash
-cd /Volumes/Web/未命名文件夹
-python3 scripts/pet-sprites/process_voidcat.py
-python3 scripts/pet-sprites/process_rusthound.py
-python3 scripts/pet-sprites/process_goose.py
-python3 scripts/pet-sprites/process_chaossprite.py
+python3 scripts/pet-sprites/normalize_codex_atlas.py \
+  ~/Downloads/voidcat-white.png \
+  --output-dir Sources/DmuxWorkspace/Resources/Pets/voidcat \
+  --id voidcat \
+  --name "喵喵" \
+  --description "Codux bundled pet atlas."
 ```
 
-The processors write directly into `Sources/DmuxWorkspace/Resources/Pets/<species>/`.
+Use the species directory directly as `--output-dir`; there is no `codex-atlas/default` subdirectory.
 
-## Processor expectations
+## After Importing
 
-- Sequence processors expect numbered PNG frames in the raw asset directory.
-- `image_to_sprite.py` is used for single-frame assets like eggs.
-- Main tuning knobs:
-  - `size`
-  - `duration`
-  - `tolerance`
-  - `alpha_erode`
-  - `num_colors`
-  - `content_pct`
-
-## After rebuilding
-
-1. Verify output files landed in `Sources/DmuxWorkspace/Resources/Pets/<species>/`.
-2. Rebuild the app:
-   - `swift build`
-   - or `./dev.sh`
-3. Check the target animation in the dev app pet popover.
+1. Verify `pet.json` and `spritesheet.png` landed in `Sources/DmuxWorkspace/Resources/Pets/<species>/`.
+2. Run `python3 -m unittest scripts/pet-sprites/test_normalize_codex_atlas.py`.
+3. Run the Swift pet tests and `swift build`.
+4. Check the pet in the dev app titlebar and desktop widget.

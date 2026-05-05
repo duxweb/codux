@@ -14,7 +14,6 @@ final class AIStatsStore {
 
     enum LiveRefreshReason: String {
         case runtimeBridge = "runtime-bridge"
-        case runtimePoll = "runtime-poll"
         case terminalFocus = "terminal-focus"
     }
 

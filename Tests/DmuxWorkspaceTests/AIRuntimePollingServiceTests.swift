@@ -152,8 +152,7 @@ final class AIRuntimePollingServiceTests: XCTestCase {
             aiSessionStore: store,
             toolDriverFactory: AIToolDriverFactory(drivers: [driver]),
             notificationCenter: notificationCenter,
-            interval: 60,
-            hookSuppressionWindow: 2
+            interval: 60
         )
         let expectation = expectation(description: "runtime poll notification")
         let observer = notificationCenter.addObserver(
@@ -227,8 +226,7 @@ final class AIRuntimePollingServiceTests: XCTestCase {
             aiSessionStore: store,
             toolDriverFactory: AIToolDriverFactory(drivers: [driver]),
             notificationCenter: notificationCenter,
-            interval: 60,
-            hookSuppressionWindow: 0.05
+            interval: 60
         )
         defer { service.stop() }
 
@@ -257,7 +255,7 @@ final class AIRuntimePollingServiceTests: XCTestCase {
         XCTAssertEqual(session.committedTotalTokens, 0)
     }
 
-    func testRespondingSessionPollsAfterSuppressionEvenWhenHookJustUpdatedTimestamp() async throws {
+    func testRespondingSessionPollsWhenHookWasAppliedBeforePollStarted() async throws {
         let terminalID = UUID()
         let projectID = UUID()
         let now = Date().timeIntervalSince1970
@@ -303,8 +301,7 @@ final class AIRuntimePollingServiceTests: XCTestCase {
             aiSessionStore: store,
             toolDriverFactory: AIToolDriverFactory(drivers: [driver]),
             notificationCenter: notificationCenter,
-            interval: 60,
-            hookSuppressionWindow: 0.05
+            interval: 60
         )
         defer { service.stop() }
 
@@ -383,8 +380,7 @@ final class AIRuntimePollingServiceTests: XCTestCase {
             aiSessionStore: store,
             toolDriverFactory: AIToolDriverFactory(drivers: [driver]),
             notificationCenter: notificationCenter,
-            interval: 60,
-            hookSuppressionWindow: 0.05
+            interval: 60
         )
         defer { service.stop() }
 
@@ -484,7 +480,7 @@ final class AIRuntimePollingServiceTests: XCTestCase {
         XCTAssertEqual(store.projectPhase(projectID: projectID), .running(tool: "codex"))
     }
 
-    func testIdleSessionPollsImmediatelyAfterTurnCompletedHook() async throws {
+    func testIdleCompletedSessionDoesNotPollForTokenBackfill() async throws {
         let terminalID = UUID()
         let projectID = UUID()
         let now = Date().timeIntervalSince1970
@@ -530,11 +526,11 @@ final class AIRuntimePollingServiceTests: XCTestCase {
             aiSessionStore: store,
             toolDriverFactory: AIToolDriverFactory(drivers: [driver]),
             notificationCenter: notificationCenter,
-            interval: 60,
-            hookSuppressionWindow: 2
+            interval: 60
         )
 
         let expectation = expectation(description: "runtime poll notification")
+        expectation.isInverted = true
         let observer = notificationCenter.addObserver(
             forName: .dmuxAIRuntimeBridgeDidChange,
             object: nil,
@@ -552,14 +548,14 @@ final class AIRuntimePollingServiceTests: XCTestCase {
         service.noteHookApplied(for: terminalID, reason: "turnCompleted")
         service.sync(reason: "ai-hook")
 
-        await fulfillment(of: [expectation], timeout: 2)
+        await fulfillment(of: [expectation], timeout: 0.3)
 
         let snapshotCallCount = await driver.snapshotCallCount()
-        XCTAssertEqual(snapshotCallCount, 1)
+        XCTAssertEqual(snapshotCallCount, 0)
         let session = try XCTUnwrap(store.session(for: terminalID))
         XCTAssertEqual(session.state, .idle)
         XCTAssertTrue(session.hasCompletedTurn)
-        XCTAssertEqual(session.committedTotalTokens, 150)
+        XCTAssertEqual(session.committedTotalTokens, 0)
     }
 
     func testRuntimeSnapshotInterruptedClearsRespondingPhase() async throws {
@@ -626,6 +622,71 @@ final class AIRuntimePollingServiceTests: XCTestCase {
         }
 
         service.sync(reason: "test")
+        await fulfillment(of: [expectation], timeout: 2)
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(session.wasInterrupted)
+        XCTAssertFalse(session.hasCompletedTurn)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+    }
+
+    func testCodexPollingClearsInterruptedTurnWhenStopHookIsMissing() async throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        let transcriptURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("dmux-codex-poll-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: transcriptURL) }
+
+        let rows = [
+            #"{"timestamp":"2026-04-21T03:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4","cwd":"/tmp/codex-poll-project"}}"#,
+            #"{"timestamp":"2026-04-21T03:00:01Z","type":"event_msg","payload":{"type":"task_started","started_at":1713668401}}"#,
+            #"{"timestamp":"2026-04-21T03:00:03Z","type":"event_msg","payload":{"type":"turn_aborted","completed_at":1713668403}}"#
+        ]
+        try rows.joined(separator: "\n").appending("\n").write(to: transcriptURL, atomically: true, encoding: .utf8)
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-codex-poll",
+                projectID: projectID,
+                projectName: "Codux",
+                projectPath: "/tmp/codex-poll-project",
+                sessionTitle: "Codex",
+                tool: "codex",
+                aiSessionID: "codex-poll-session",
+                model: "gpt-5.4",
+                totalTokens: nil,
+                updatedAt: 1713668401,
+                metadata: .init(transcriptPath: transcriptURL.path)
+            )
+        )
+
+        let notificationCenter = NotificationCenter()
+        let service = AIRuntimePollingService(
+            aiSessionStore: store,
+            toolDriverFactory: AIToolDriverFactory(drivers: [CodexToolDriver()]),
+            notificationCenter: notificationCenter,
+            interval: 60
+        )
+
+        let expectation = expectation(description: "runtime poll notification")
+        let observer = notificationCenter.addObserver(
+            forName: .dmuxAIRuntimeBridgeDidChange,
+            object: nil,
+            queue: .main
+        ) { note in
+            if (note.userInfo?["kind"] as? String) == "runtime-poll" {
+                expectation.fulfill()
+            }
+        }
+        defer {
+            notificationCenter.removeObserver(observer)
+            service.stop()
+        }
+
+        service.sync(reason: "missing-stop-hook")
         await fulfillment(of: [expectation], timeout: 2)
 
         let session = try XCTUnwrap(store.session(for: terminalID))

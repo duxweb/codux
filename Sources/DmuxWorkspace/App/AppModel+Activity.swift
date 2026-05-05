@@ -209,13 +209,11 @@ extension AppModel {
             activityByProjectID = phases
             markActivityStateChanged()
         }
+        updatePetActivityStatus(using: phases)
     }
 
     func resolvedProjectActivityPhase(projectID: UUID) -> ProjectActivityPhase {
         discardStaleCompletionPresentationIfNeeded(projectID: projectID)
-        if projectHasLoadingTerminal(projectID: projectID) {
-            return .loading
-        }
         let runtimePhase = aiSessionStore.projectPhase(projectID: projectID)
         let completionPhase = completionPresentationPhase(for: projectID)
         return Self.resolveDisplayedActivityPhase(
@@ -239,12 +237,39 @@ extension AppModel {
         }
     }
 
-    private func projectHasLoadingTerminal(projectID: UUID) -> Bool {
-        guard !terminalLoadingSessionIDs.isEmpty,
-              let workspace = workspaces.first(where: { $0.projectID == projectID }) else {
-            return false
+    private func updatePetActivityStatus(using phases: [UUID: ProjectActivityPhase]) {
+        guard appSettings.pet.desktopWidgetEnabled else {
+            petSpeechCoordinator.clearActivityStatus()
+            return
         }
-        return workspace.sessions.contains { terminalLoadingSessionIDs.contains($0.id) }
+
+        if let selectedProjectID,
+           let selectedPhase = phases[selectedProjectID],
+           selectedPhase.isPetActivityStatusVisible {
+            petSpeechCoordinator.updateActivityStatus(
+                selectedPhase,
+                projectName: projects.first(where: { $0.id == selectedProjectID })?.name
+            )
+            return
+        }
+
+        guard let fallback = projects
+            .compactMap({ project -> (Project, ProjectActivityPhase)? in
+                guard let phase = phases[project.id],
+                      phase.isPetActivityStatusVisible else {
+                    return nil
+                }
+                return (project, phase)
+            })
+            .sorted(by: { lhs, rhs in
+                lhs.1.petActivityStatusPriority > rhs.1.petActivityStatusPriority
+            })
+            .first else {
+            petSpeechCoordinator.updateActivityStatus(.idle)
+            return
+        }
+
+        petSpeechCoordinator.updateActivityStatus(fallback.1, projectName: fallback.0.name)
     }
 
     private func completionPresentationPhase(for projectID: UUID) -> ProjectActivityPhase {

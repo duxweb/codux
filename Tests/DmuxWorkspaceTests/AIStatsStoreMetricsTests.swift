@@ -724,7 +724,7 @@ final class AIStatsStoreMetricsTests: XCTestCase {
             )
         )
         coordinator.refreshNow(reason: .bootstrap, now: claimDate.addingTimeInterval(180))
-        XCTAssertEqual(petStore.currentHatchTokens, 0)
+        XCTAssertEqual(petStore.currentExperienceTokens, 0)
         XCTAssertEqual(petStore.projectNormalizedTokenWatermarks[projectA.id], 120)
         XCTAssertEqual(petStore.projectNormalizedTokenWatermarks[projectB.id], 300)
 
@@ -745,7 +745,7 @@ final class AIStatsStoreMetricsTests: XCTestCase {
             )
         )
         coordinator.refreshNow(reason: .periodic, now: claimDate.addingTimeInterval(360))
-        XCTAssertEqual(petStore.currentHatchTokens, 100)
+        XCTAssertEqual(petStore.currentExperienceTokens, 100)
 
         petStore.forgetProjectBaseline(projectB.id)
         currentProjects.value = [projectA]
@@ -760,8 +760,7 @@ final class AIStatsStoreMetricsTests: XCTestCase {
         )
         coordinator.refreshNow(reason: .periodic, now: claimDate.addingTimeInterval(480))
 
-        XCTAssertEqual(petStore.currentHatchTokens, 100)
-        XCTAssertEqual(petStore.currentExperienceTokens, 0)
+        XCTAssertEqual(petStore.currentExperienceTokens, 100)
         XCTAssertNil(petStore.projectNormalizedTokenWatermarks[projectB.id])
         XCTAssertEqual(petStore.globalNormalizedTotalWatermark, 180)
 
@@ -774,8 +773,7 @@ final class AIStatsStoreMetricsTests: XCTestCase {
             )
         )
         coordinator.refreshNow(reason: .periodic, now: claimDate.addingTimeInterval(600))
-        XCTAssertEqual(petStore.currentHatchTokens, 180)
-        XCTAssertEqual(petStore.currentExperienceTokens, 0)
+        XCTAssertEqual(petStore.currentExperienceTokens, 180)
     }
 
     func testPetRefreshCoordinatorTreatsReaddedProjectAsFreshBaseline() {
@@ -837,12 +835,12 @@ final class AIStatsStoreMetricsTests: XCTestCase {
             )
         )
         coordinator.refreshNow(reason: .periodic, now: claimDate.addingTimeInterval(360))
-        XCTAssertEqual(petStore.currentHatchTokens, 100)
+        XCTAssertEqual(petStore.currentExperienceTokens, 100)
 
         petStore.forgetProjectBaseline(projectB.id)
         currentProjects.value = [projectA]
         coordinator.refreshNow(reason: .periodic, now: claimDate.addingTimeInterval(420))
-        XCTAssertEqual(petStore.currentHatchTokens, 100)
+        XCTAssertEqual(petStore.currentExperienceTokens, 100)
 
         currentProjects.value = [projectA, reopenedProjectB]
         aiUsageStore.saveExternalSummary(
@@ -855,8 +853,7 @@ final class AIStatsStoreMetricsTests: XCTestCase {
         )
         coordinator.refreshNow(reason: .periodic, now: claimDate.addingTimeInterval(540))
 
-        XCTAssertEqual(petStore.currentHatchTokens, 100)
-        XCTAssertEqual(petStore.currentExperienceTokens, 0)
+        XCTAssertEqual(petStore.currentExperienceTokens, 100)
         XCTAssertEqual(petStore.projectNormalizedTokenWatermarks[reopenedProjectB.id], 900)
 
         aiUsageStore.saveExternalSummary(
@@ -869,8 +866,7 @@ final class AIStatsStoreMetricsTests: XCTestCase {
         )
         coordinator.refreshNow(reason: .periodic, now: claimDate.addingTimeInterval(660))
 
-        XCTAssertEqual(petStore.currentHatchTokens, 180)
-        XCTAssertEqual(petStore.currentExperienceTokens, 0)
+        XCTAssertEqual(petStore.currentExperienceTokens, 180)
     }
 
     private func makeStore(aiUsageStore: AIUsageStore? = nil) -> AIStatsStore {

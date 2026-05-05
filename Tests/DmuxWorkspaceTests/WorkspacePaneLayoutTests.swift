@@ -3,6 +3,30 @@ import XCTest
 
 @MainActor
 final class WorkspacePaneLayoutTests: XCTestCase {
+    func testTerminalStartupLoadingDoesNotBecomeProjectActivityLoading() {
+        let projectID = UUID(uuidString: "00000000-0000-0000-0000-000000000020")!
+        let sessionID = UUID(uuidString: "40000000-0000-0000-0000-000000000001")!
+        let model = AppModel(snapshot: nil, persistenceService: PersistenceService())
+        model.projects = [
+            Project(
+                id: projectID,
+                name: "Project",
+                path: "/tmp/project-\(projectID.uuidString)",
+                shell: "/bin/zsh",
+                defaultCommand: "",
+                badgeText: nil,
+                badgeSymbol: nil,
+                badgeColorHex: nil,
+                gitDefaultPushRemoteName: nil
+            )
+        ]
+        model.workspaces = [makeWorkspace(projectID: projectID, sessionIDs: [sessionID])]
+
+        model.noteTerminalLoadingState(sessionID, isLoading: true)
+
+        XCTAssertEqual(model.resolvedProjectActivityPhase(projectID: projectID), ProjectActivityPhase.idle)
+    }
+
     func testTopPaneDistributionDoesNotResetWhenSwitchingProjects() {
         let currentWorkspace = makeWorkspace(
             projectID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,

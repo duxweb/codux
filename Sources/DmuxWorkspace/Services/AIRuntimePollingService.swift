@@ -4,36 +4,28 @@ import Foundation
 final class AIRuntimePollingService {
     static let shared = AIRuntimePollingService()
 
-    private struct HookPollSuppression: Sendable {
-        var recordedAt: TimeInterval
-        var deadline: TimeInterval
-    }
-
     private let aiSessionStore: AISessionStore
     private let toolDriverFactory: AIToolDriverFactory
     private let notificationCenter: NotificationCenter
     private let logger = AppDebugLog.shared
     private let interval: TimeInterval
-    private let hookSuppressionWindow: TimeInterval
 
     private var runtimeBridgeObserver: NSObjectProtocol?
     private var timer: Timer?
     private var isPolling = false
     private var pendingPollReason: String?
-    private var hookPollSuppressionByTerminalID: [UUID: HookPollSuppression] = [:]
+    private var lastHookAppliedAtByTerminalID: [UUID: TimeInterval] = [:]
 
     init(
         aiSessionStore: AISessionStore = .shared,
         toolDriverFactory: AIToolDriverFactory = .shared,
         notificationCenter: NotificationCenter = .default,
-        interval: TimeInterval = 6,
-        hookSuppressionWindow: TimeInterval = 1.25
+        interval: TimeInterval = 6
     ) {
         self.aiSessionStore = aiSessionStore
         self.toolDriverFactory = toolDriverFactory
         self.notificationCenter = notificationCenter
         self.interval = interval
-        self.hookSuppressionWindow = hookSuppressionWindow
     }
 
     func start() {
@@ -68,19 +60,16 @@ final class AIRuntimePollingService {
         timer = nil
         pendingPollReason = nil
         isPolling = false
-        hookPollSuppressionByTerminalID.removeAll()
+        lastHookAppliedAtByTerminalID.removeAll()
     }
 
     func noteHookApplied(for terminalID: UUID, reason: String) {
         let now = Date().timeIntervalSince1970
-        hookPollSuppressionByTerminalID[terminalID] = HookPollSuppression(
-            recordedAt: now,
-            deadline: now + hookSuppressionWindow
-        )
-        pruneExpiredSuppressions(now: now)
+        lastHookAppliedAtByTerminalID[terminalID] = now
+        pruneHookMarkers(now: now)
         logger.log(
             "runtime-refresh",
-            "suppress terminal=\(terminalID.uuidString) reason=\(reason) windowMs=\(Int(hookSuppressionWindow * 1000))"
+            "hook terminal=\(terminalID.uuidString) reason=\(reason)"
         )
     }
 
@@ -113,7 +102,7 @@ final class AIRuntimePollingService {
         }
 
         let now = Date().timeIntervalSince1970
-        pruneExpiredSuppressions(now: now)
+        pruneHookMarkers(now: now)
         let trackedSessions = aiSessionStore.runtimeTrackedSessions()
             .filter { shouldPoll(session: $0, now: now) }
         guard !trackedSessions.isEmpty else {
@@ -181,23 +170,14 @@ final class AIRuntimePollingService {
             schedulePoll(reason: pendingPollReason)
         }
 
-        pruneExpiredSuppressions(now: now)
-    }
-
-    private func isSuppressed(terminalID: UUID, now: TimeInterval) -> Bool {
-        guard let suppression = hookPollSuppressionByTerminalID[terminalID] else {
-            return false
-        }
-        return suppression.deadline > now
+        pruneHookMarkers(now: now)
     }
 
     private func shouldPoll(
         session: AISessionStore.TerminalSessionState,
         now: TimeInterval
     ) -> Bool {
-        if isSuppressed(terminalID: session.terminalID, now: now) {
-            return true
-        }
+        _ = now
         switch session.state {
         case .responding, .needsInput:
             return true
@@ -207,14 +187,14 @@ final class AIRuntimePollingService {
     }
 
     private func shouldSkipSnapshot(terminalID: UUID, pollStartedAt: TimeInterval, now: TimeInterval) -> Bool {
-        guard let suppression = hookPollSuppressionByTerminalID[terminalID] else {
+        guard let lastHookAppliedAt = lastHookAppliedAtByTerminalID[terminalID] else {
             return false
         }
         _ = now
-        return suppression.recordedAt > pollStartedAt
+        return lastHookAppliedAt > pollStartedAt
     }
 
-    private func pruneExpiredSuppressions(now: TimeInterval) {
-        hookPollSuppressionByTerminalID = hookPollSuppressionByTerminalID.filter { $0.value.deadline > now }
+    private func pruneHookMarkers(now: TimeInterval) {
+        lastHookAppliedAtByTerminalID = lastHookAppliedAtByTerminalID.filter { now - $0.value < max(interval * 2, 10) }
     }
 }

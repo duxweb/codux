@@ -140,7 +140,7 @@ Quick map:
 Current pet design in code:
 
 - XP starts from claim-time per-project baselines, not from historical total tokens.
-- Removed/reopened projects must not replay historical usage into hatch or XP progress.
+- Removed/reopened projects must not replay historical usage into XP progress.
 - Pet stats are refreshed from AI usage but cached daily in `PetStore` with damping.
 - Sleep/bubble behavior currently lives in `TitlebarPetButton`.
 - Further pet work should continue extending this structure, not replace it with an unrelated parallel flow.

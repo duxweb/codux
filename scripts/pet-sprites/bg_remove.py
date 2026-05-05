@@ -16,20 +16,34 @@ def remove_white_bg(
     tolerance: int = 30,
     internal_island_min_area: int = 0,
     internal_island_rules: list[dict] | None = None,
+    pocket_max_area: int = 0,
+    bg_color: str = "white",
 ) -> Image.Image:
-    """从四边 BFS,去除与边界连通的近白色背景。
+    """从四边 BFS,去除与边界连通的纯色背景（白底或黑底）。
 
-    internal_island_min_area > 0 时，还会额外删除不接触边界的近白色大连通域，
-    用于处理被图形包裹的内部白底/白洞。
+    bg_color="white" 时，把 R/G/B 都 >= 255-tolerance 的像素视作背景；
+    bg_color="black" 时，把 R/G/B 都 <= tolerance 的像素视作背景。
+    用于不同生成素材的纯色底（推荐白色物种用黑底素材）。
+
+    internal_island_min_area > 0 时，还会额外删除不接触边界的同色大连通域。
+    pocket_max_area > 0 时，删除被角色完全包裹、面积 <= 阈值的同色小连通域
+    （腿间、腋下等被围合的背景口袋）；大块同色身体内容因面积超阈值得以保留。
     """
     rgb = img.convert("RGB")
     w, h = rgb.size
     px = rgb.load()
     assert px is not None
 
-    def is_bg(x: int, y: int) -> bool:
-        r, g, b = px[x, y]
-        return r >= 255 - tolerance and g >= 255 - tolerance and b >= 255 - tolerance
+    if bg_color == "white":
+        def is_bg(x: int, y: int) -> bool:
+            r, g, b = px[x, y]
+            return r >= 255 - tolerance and g >= 255 - tolerance and b >= 255 - tolerance
+    elif bg_color == "black":
+        def is_bg(x: int, y: int) -> bool:
+            r, g, b = px[x, y]
+            return r <= tolerance and g <= tolerance and b <= tolerance
+    else:
+        raise ValueError(f"bg_color must be 'white' or 'black', got {bg_color!r}")
 
     visited = [[False] * h for _ in range(w)]
     bg_mask = [[False] * h for _ in range(w)]
@@ -55,7 +69,7 @@ def remove_white_bg(
                 visited[nx][ny] = True
                 queue.append((nx, ny))
 
-    if internal_island_min_area > 0 or internal_island_rules:
+    if internal_island_min_area > 0 or internal_island_rules or pocket_max_area > 0:
         for x in range(w):
             for y in range(h):
                 if visited[x][y] or not is_bg(x, y):
@@ -83,6 +97,9 @@ def remove_white_bg(
 
                 should_clear = False
                 if not touches_edge and internal_island_min_area > 0 and len(component) >= internal_island_min_area:
+                    should_clear = True
+
+                if not touches_edge and pocket_max_area > 0 and len(component) <= pocket_max_area:
                     should_clear = True
 
                 if not touches_edge and internal_island_rules:

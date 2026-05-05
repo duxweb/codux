@@ -50,8 +50,5 @@ struct RootView: View {
         .onChange(of: model.petStore.currentExperienceTokens) { _, _ in
             PetDesktopWindowPresenter.sync(model: model)
         }
-        .onChange(of: model.petStore.currentHatchTokens) { _, _ in
-            PetDesktopWindowPresenter.sync(model: model)
-        }
     }
 }

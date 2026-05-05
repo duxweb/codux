@@ -70,6 +70,44 @@ final class PetSpeechCoordinatorTests: XCTestCase {
         XCTAssertNil(coordinator.currentLine)
     }
 
+    func testActivityStatusDisplaysWhenSpeechModeIsOff() {
+        let coordinator = PetSpeechCoordinator()
+        let settings = AppAIPetSettings()
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.updateActivityStatus(.running(tool: "codex"))
+
+        XCTAssertNil(coordinator.currentLine)
+        XCTAssertEqual(coordinator.currentActivityLine?.key, "running:codex")
+        XCTAssertEqual(coordinator.displayLine?.isActivityStatus, true)
+        XCTAssertEqual(coordinator.displayLine?.text, "codex is running")
+    }
+
+    func testSpeechTemporarilyOverridesActivityStatus() {
+        let coordinator = PetSpeechCoordinator()
+        var settings = AppAIPetSettings()
+        settings.speechMode = .encourage
+        settings.speechFrequency = .lively
+        settings.speechQuietDuringWork = false
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.updateActivityStatus(.running(tool: "codex"))
+        let activityLine = coordinator.displayLine
+        coordinator.notify(PetSpeechEvent(kind: .petLevelUp, payload: ["level": "2"]))
+
+        XCTAssertEqual(activityLine?.isActivityStatus, true)
+        XCTAssertEqual(coordinator.displayLine?.isActivityStatus, false)
+        XCTAssertEqual(coordinator.currentActivityLine?.key, "running:codex")
+    }
+
     func testModeOffStillAllowsReminderEvents() {
         let coordinator = PetSpeechCoordinator()
         let settings = AppAIPetSettings()

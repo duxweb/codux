@@ -419,6 +419,48 @@ extension AppModel {
 
     func cancelCurrentAIIndexing() {
         aiStatsStore.cancelCurrent(project: selectedProject, projects: projects)
+        interruptCurrentAIRuntime(reason: "ai-stats-stop")
+    }
+
+    func interruptCurrentAIRuntime(reason: String) {
+        let focusedSessionID = DmuxTerminalBackend.shared.registry.focusedSessionID()
+        let candidateSessionID = focusedSessionID ?? selectedSessionID
+        guard let sessionID = candidateSessionID else {
+            debugLog.log("runtime-interrupt", "skip reason=\(reason) session=nil")
+            return
+        }
+
+        let tool = aiSessionStore.tool(for: sessionID)
+        let isRealtimeTool = tool.map { toolDriverFactory.isRealtimeTool($0) } ?? false
+        let isRunning = aiSessionStore.isRunning(terminalID: sessionID)
+        let shellPID = DmuxTerminalBackend.shared.registry.shellPID(for: sessionID)
+        let activeTool = shellPID.flatMap { TerminalProcessInspector().activeTool(forShellPID: $0) }
+
+        guard isRealtimeTool, isRunning else {
+            debugLog.log(
+                "runtime-interrupt",
+                "skip reason=\(reason) session=\(sessionID.uuidString) focused=\(focusedSessionID?.uuidString ?? "nil") tool=\(tool ?? "nil") realtime=\(isRealtimeTool) running=\(isRunning) shellPID=\(shellPID.map(String.init) ?? "nil") activeTool=\(activeTool ?? "nil")"
+            )
+            return
+        }
+
+        terminalFocusRequestID = sessionID
+        let didSendEscape = DmuxTerminalBackend.shared.registry.sendEscape(to: sessionID)
+        let didSendInterrupt = didSendEscape ? false : DmuxTerminalBackend.shared.registry.sendInterrupt(to: sessionID)
+        let didMarkInterrupted = aiSessionStore.markInterrupted(terminalID: sessionID)
+        refreshProjectActivity(sendNotifications: true)
+        if let selectedProject {
+            aiStatsStore.refreshLiveState(
+                project: selectedProject,
+                selectedSessionID: selectedSessionID,
+                reason: .runtimeBridge
+            )
+        }
+
+        debugLog.log(
+            "runtime-interrupt",
+            "sent reason=\(reason) session=\(sessionID.uuidString) focused=\(focusedSessionID?.uuidString ?? "nil") tool=\(tool ?? "nil") shellPID=\(shellPID.map(String.init) ?? "nil") activeTool=\(activeTool ?? "nil") escape=\(didSendEscape) interrupt=\(didSendInterrupt) marked=\(didMarkInterrupted)"
+        )
     }
 
     func refreshCurrentAIIndexing() {

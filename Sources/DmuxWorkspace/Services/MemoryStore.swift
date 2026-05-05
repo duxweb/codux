@@ -748,32 +748,6 @@ struct MemoryStore: Sendable {
         }
     }
 
-    func retryableFailedExtractionTask() throws -> MemoryExtractionTask? {
-        try withDatabase { db in
-            try fetchTask(
-                db: db,
-                sql: """
-                SELECT id, project_id, tool, session_id, transcript_path, source_fingerprint, status, attempts, error, enqueued_at
-                FROM memory_extraction_queue
-                WHERE status = 'failed'
-                  AND attempts < ?
-                  AND NOT EXISTS (
-                    SELECT 1 FROM memory_extraction_queue done
-                    WHERE done.source_fingerprint = memory_extraction_queue.source_fingerprint
-                      AND done.status = 'done'
-                  )
-                ORDER BY enqueued_at DESC
-                LIMIT 1;
-                """,
-                bindings: [.int64(Int64(Self.maxExtractionAttempts))]
-            )
-        }
-    }
-
-    func resetExtractionTaskForRetry(_ taskID: UUID) throws {
-        try updateTaskStatus(taskID: taskID, status: "pending", error: nil, incrementAttempts: false)
-    }
-
     func resetRunningExtractionTasks(reason: String) throws -> Int {
         try withDatabase { db in
             let count = try fetchScalarInt(

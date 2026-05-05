@@ -11,6 +11,20 @@ enum FileBrowserKeyboardFocusState {
     static var shouldSuppressTerminalRouting: Bool {
         isActive && isInlineRenaming == false
     }
+
+    static func shouldHandleFileBrowserShortcut(
+        isActive: Bool,
+        isInlineRenaming: Bool,
+        hasWindow: Bool,
+        eventWindowMatches: Bool,
+        isTerminalResponder: Bool
+    ) -> Bool {
+        isActive
+            && isInlineRenaming == false
+            && hasWindow
+            && eventWindowMatches
+            && isTerminalResponder == false
+    }
 }
 
 enum TerminalKeyRoutingPolicy {
@@ -99,6 +113,39 @@ func applyImmersiveWindowChrome(_ window: NSWindow) {
     window.toolbar = nil
 }
 
+@MainActor
+func applyMainWorkspaceWindowChrome(_ window: NSWindow) {
+    applyImmersiveWindowChrome(window)
+    repositionMainWorkspaceTrafficLights(in: window)
+}
+
+@MainActor
+func repositionMainWorkspaceTrafficLights(in window: NSWindow) {
+    guard !(window is NSPanel) else {
+        return
+    }
+
+    guard let closeButton = window.standardWindowButton(.closeButton),
+          let miniaturizeButton = window.standardWindowButton(.miniaturizeButton),
+          let zoomButton = window.standardWindowButton(.zoomButton) else {
+        return
+    }
+
+    guard let buttonContainer = closeButton.superview else {
+        return
+    }
+
+    let buttons = [closeButton, miniaturizeButton, zoomButton]
+    let centerYFromTop: CGFloat = 22
+    let targetCenterY = buttonContainer.bounds.height - centerYFromTop
+
+    for button in buttons {
+        var frame = button.frame
+        frame.origin.y = targetCenterY - frame.height / 2
+        button.setFrameOrigin(frame.origin)
+    }
+}
+
 struct DmuxWorkspaceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel.bootstrap()
@@ -125,7 +172,6 @@ struct DmuxWorkspaceApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     @MainActor
     private static var isRelaunching = false
-    private var trafficLightBaseY: [ObjectIdentifier: CGFloat] = [:]
     private weak var model: AppModel?
     private var localKeyMonitor: Any?
 
@@ -315,11 +361,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         let responder = window.firstResponder
-        if FileBrowserKeyboardFocusState.shouldSuppressTerminalRouting {
+        let isTerminalResponder = responder.map {
+            DmuxTerminalBackend.shared.registry.ownsResponder($0)
+        } ?? false
+        if FileBrowserKeyboardFocusState.shouldSuppressTerminalRouting,
+           isTerminalResponder == false {
             return false
         }
         if responder is NSTextView,
-           DmuxTerminalBackend.shared.registry.ownsResponder(responder) == false {
+           isTerminalResponder == false {
             return false
         }
 
@@ -359,7 +409,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return
         }
 
-        repositionTrafficLights(in: window)
+        repositionMainWorkspaceTrafficLights(in: window)
     }
 
     @objc
@@ -402,40 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return
         }
 
-        applyImmersiveWindowChrome(window)
-
-        repositionTrafficLights(in: window)
-    }
-
-    @MainActor
-    private func repositionTrafficLights(in window: NSWindow) {
-        guard !(window is NSPanel) else {
-            return
-        }
-
-        guard let closeButton = window.standardWindowButton(.closeButton),
-              let miniaturizeButton = window.standardWindowButton(.miniaturizeButton),
-              let zoomButton = window.standardWindowButton(.zoomButton) else {
-            return
-        }
-
-        let buttons = [closeButton, miniaturizeButton, zoomButton]
-        let downwardOffset: CGFloat = 5
-        let windowID = ObjectIdentifier(window)
-
-        let baseY: CGFloat
-        if let storedBaseY = trafficLightBaseY[windowID] {
-            baseY = storedBaseY
-        } else {
-            baseY = closeButton.frame.origin.y
-            trafficLightBaseY[windowID] = baseY
-        }
-
-        for button in buttons {
-            var frame = button.frame
-            frame.origin.y = baseY - downwardOffset
-            button.setFrameOrigin(frame.origin)
-        }
+        applyMainWorkspaceWindowChrome(window)
     }
 
     @MainActor

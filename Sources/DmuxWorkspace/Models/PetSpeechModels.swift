@@ -134,7 +134,6 @@ enum PetSpeechEventKind: String, Codable, CaseIterable, Sendable {
     case toolMultiStreak = "tool.multiStreak"
     case petLevelUp = "pet.levelUp"
     case petStatBreakthrough = "pet.statBreakthrough"
-    case petEvolution = "pet.evolution"
     case usageDailyRecord = "usage.dailyRecord"
     case reminderHydration = "reminder.hydration"
     case reminderSedentary = "reminder.sedentary"
@@ -146,7 +145,7 @@ enum PetSpeechEventKind: String, Codable, CaseIterable, Sendable {
             return .daily
         case .tokensBurst, .nightEntered, .idleReturned, .toolMultiStreak, .reminderHydration, .reminderSedentary, .reminderLateNight:
             return .rhythm
-        case .petLevelUp, .petStatBreakthrough, .petEvolution, .usageDailyRecord:
+        case .petLevelUp, .petStatBreakthrough, .usageDailyRecord:
             return .milestone
         }
     }
@@ -188,7 +187,7 @@ struct PetSpeechEvent: Equatable, Sendable {
     var tier: PetSpeechTier { kind.tier }
     var isHardOverride: Bool {
         switch kind {
-        case .petLevelUp, .petStatBreakthrough, .petEvolution:
+        case .petLevelUp, .petStatBreakthrough:
             return true
         default:
             return false
@@ -213,6 +212,19 @@ struct PetSpeechLine: Identifiable, Equatable, Sendable {
     var expiresAt: Date {
         createdAt.addingTimeInterval(ttl)
     }
+}
+
+struct PetActivityStatusLine: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    var text: String
+    var key: String
+    var updatedAt: Date
+    var expiresAt: Date?
+}
+
+struct PetSpeechDisplayLine: Equatable, Sendable {
+    var text: String
+    var isActivityStatus: Bool
 }
 
 struct PetSpeechActivitySnapshot: Equatable, Sendable {

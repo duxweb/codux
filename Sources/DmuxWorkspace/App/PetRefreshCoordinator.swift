@@ -102,7 +102,7 @@ final class PetRefreshCoordinator {
 
         logger.log(
             "pet-refresh",
-            "reason=\(reason.rawValue) projects=\(totalNormalizedTokensByProject.count) total=\(totalNormalizedTokens) watermark=\(petStore.globalNormalizedTotalWatermark ?? 0) hatch=\(petStore.currentHatchTokens) xp=\(petStore.currentExperienceTokens)"
+            "reason=\(reason.rawValue) projects=\(totalNormalizedTokensByProject.count) total=\(totalNormalizedTokens) watermark=\(petStore.globalNormalizedTotalWatermark ?? 0) xp=\(petStore.currentExperienceTokens)"
         )
     }
 

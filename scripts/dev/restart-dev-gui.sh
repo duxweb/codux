@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-root_dir="$(cd "$(dirname "$0")/../.." && pwd)"
+root_dir="$(cd "$(dirname "$0")/../.." && pwd -P)"
 project_path="${root_dir}/dmux.xcodeproj"
 scheme="dmux"
 configuration="Debug"
@@ -68,6 +68,7 @@ build_app() {
   mkdir -p "${build_dir}"
   normalize_package_artifact_paths
   rm -rf "${build_dir}/Build" "${build_dir}/Logs"
+  rm -rf "${built_app_dir}" "${app_dir}"
   mkdir -p "${build_products_dir}"
 
   xcodebuild \

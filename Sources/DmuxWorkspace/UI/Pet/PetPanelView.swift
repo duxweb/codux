@@ -6,63 +6,22 @@ struct PetSpriteView: View {
     let species: PetSpecies
     let stage: PetStage
     var sleeping: Bool = false
+    var animationState: CodexPetAnimationState? = nil
     var staticMode = false
     let displaySize: CGFloat
 
     @State private var frame: Int = 0
-    @State private var loadedImage: NSImage? = nil
-    @State private var eggRocking = false
+    @State private var loadedCodexAtlas: NSImage? = nil
+    @State private var activeFrameCount: Int = 1
 
-    private var spriteName: String {
-        if species == .chaossprite {
-            if sleeping, stage.sleepSpriteName != nil {
-                return stage == .megaA || stage == .megaB ? "mega_sleep" : "evo_sleep"
-            }
-            switch stage {
-            case .egg:
-                return "egg"
-            case .infant:
-                return "infant_idle"
-            case .child:
-                return "child_idle"
-            case .adult:
-                return "adult_idle"
-            case .evoA, .evoB:
-                return "evo_idle"
-            case .megaA, .megaB:
-                return "mega_idle"
-            }
-        }
-        if sleeping, let s = stage.sleepSpriteName { return s }
-        return stage.idleSpriteName
-    }
-
-    private var frameCount: Int {
-        sleeping && stage.sleepSpriteName != nil ? stage.sleepFrameCount : stage.idleFrameCount
-    }
-
-    private var frameDuration: TimeInterval {
-        sleeping ? 0.625 : stage.idleFrameDuration
+    private var codexAnimationState: CodexPetAnimationState {
+        animationState ?? (sleeping ? .waiting : .idle)
     }
 
     var body: some View {
-        let size = stage.nativeFrameSize
-        let scale = displaySize / size
-        let sheetWidth = size * CGFloat(frameCount) * scale
-
         ZStack {
-            if let img = loadedImage {
-                Image(nsImage: img)
-                    .resizable()
-                    .interpolation(.medium)
-                    .frame(width: sheetWidth, height: displaySize)
-                    .offset(x: -displaySize * CGFloat(frame))
-                    .frame(width: displaySize, height: displaySize, alignment: .leading)
-                    .clipped()
-                    .rotationEffect(
-                        stage == .egg && !staticMode ? .degrees(eggRocking ? 8 : -8) : .zero,
-                        anchor: .bottom
-                    )
+            if let atlas = loadedCodexAtlas {
+                codexAtlasFrame(atlas)
             } else {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(stage.accentColor.opacity(0.12))
@@ -71,44 +30,103 @@ struct PetSpriteView: View {
                     .font(.system(size: displaySize * 0.34, weight: .semibold))
                     .foregroundStyle(stage.accentColor.opacity(0.7))
             }
-            if sleeping, stage.sleepSpriteName == nil {
-                sleepFallbackIndicator
-            }
         }
-        .task(id: "\(spriteName)-\(staticMode)") {
+        .task(id: "\(species.rawValue)-\(codexAnimationState.rawValue)-\(staticMode)") {
             frame = 0
-            loadedImage = loadSprite(spriteName)
-            if stage == .egg && !staticMode {
-                withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) {
-                    eggRocking = true
-                }
-            }
+            let codexAtlas = loadCodexAtlas()
+            loadedCodexAtlas = codexAtlas
+            let animation = CodexPetAtlasSpec.animation(for: codexAnimationState)
+            let resolvedActiveFrameCount = codexAtlas.map {
+                codexAtlasActiveFrameCount($0, row: animation.row, fallback: animation.frameCount)
+            } ?? animation.frameCount
+            activeFrameCount = resolvedActiveFrameCount
             guard !staticMode else {
                 return
             }
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(frameDuration * 1_000_000_000))
-                frame = (frame + 1) % max(1, frameCount)
+                let delay = CodexPetPlaybackPolicy.frameDuration(
+                    for: animation,
+                    activeFrameCount: resolvedActiveFrameCount,
+                    frame: frame
+                )
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                frame = (frame + 1) % max(1, resolvedActiveFrameCount)
             }
         }
     }
 
-    private func loadSprite(_ name: String) -> NSImage? {
+    private func codexAtlasFrame(_ atlas: NSImage) -> some View {
+        let animation = CodexPetAtlasSpec.animation(for: codexAnimationState)
+        let cellWidth = CGFloat(CodexPetAtlasSpec.cellWidth)
+        let cellHeight = CGFloat(CodexPetAtlasSpec.cellHeight)
+        let scale = displaySize / cellHeight
+        let scaledCellWidth = cellWidth * scale
+        let scaledCellHeight = cellHeight * scale
+        let atlasWidth = CGFloat(CodexPetAtlasSpec.atlasWidth) * scale
+        let atlasHeight = CGFloat(CodexPetAtlasSpec.atlasHeight) * scale
+        return Image(nsImage: atlas)
+            .resizable()
+            .interpolation(.medium)
+            .frame(width: atlasWidth, height: atlasHeight, alignment: .topLeading)
+            .offset(
+                x: -scaledCellWidth * CGFloat(min(frame, max(0, activeFrameCount - 1))),
+                y: -scaledCellHeight * CGFloat(animation.row)
+            )
+            .frame(width: scaledCellWidth, height: scaledCellHeight, alignment: .topLeading)
+            .clipped()
+            .frame(width: displaySize, height: displaySize)
+    }
+
+    private func loadCodexAtlas() -> NSImage? {
         guard species.isImplemented else {
             return nil
         }
-        if let url = Bundle.module.url(forResource: name, withExtension: "png", subdirectory: "Pets/\(species.assetFolder)") {
-            return NSImage(contentsOf: url)
+        for fileExtension in ["webp", "png"] {
+            if let url = Bundle.module.url(forResource: "spritesheet", withExtension: fileExtension, subdirectory: "Pets/\(species.assetFolder)"),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
         }
         return nil
     }
 
-    private var sleepFallbackIndicator: some View {
-        Text("Z")
-            .font(.system(size: max(14, displaySize * 0.18), weight: .heavy, design: .rounded))
-            .foregroundStyle(stage.accentColor)
-            .shadow(color: .black.opacity(0.18), radius: 1, y: 1)
-            .offset(x: displaySize * 0.32, y: -displaySize * 0.36)
+    private func codexAtlasActiveFrameCount(_ atlas: NSImage, row: Int, fallback: Int) -> Int {
+        guard
+            let tiff = atlas.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiff),
+            bitmap.pixelsWide >= CodexPetAtlasSpec.atlasWidth,
+            bitmap.pixelsHigh >= CodexPetAtlasSpec.atlasHeight
+        else {
+            return fallback
+        }
+
+        var count = 0
+        for column in 0..<CodexPetAtlasSpec.columns {
+            if codexAtlasCellHasContent(bitmap, row: row, column: column) {
+                count = column + 1
+            }
+        }
+        return max(1, min(count, fallback))
+    }
+
+    private func codexAtlasCellHasContent(_ bitmap: NSBitmapImageRep, row: Int, column: Int) -> Bool {
+        let startX = column * CodexPetAtlasSpec.cellWidth
+        let startY = row * CodexPetAtlasSpec.cellHeight
+        let endX = min(startX + CodexPetAtlasSpec.cellWidth, bitmap.pixelsWide)
+        let endY = min(startY + CodexPetAtlasSpec.cellHeight, bitmap.pixelsHigh)
+
+        var y = startY
+        while y < endY {
+            var x = startX
+            while x < endX {
+                if (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.01 {
+                    return true
+                }
+                x += 4
+            }
+            y += 4
+        }
+        return false
     }
 }
 
@@ -123,19 +141,16 @@ struct TitlebarPetButton: View {
     @State private var appIsActive = NSApplication.shared.isActive
     @State private var recentActivityTick = Date()
     @State private var sleepClock = Date()
-    @State private var pendingEvoFrom: PetStage? = nil
     @State private var lastKnownStage: PetStage? = nil
     @State private var showMaxLevelEffect = false
     @State private var showLevelUpEffect = false
     @State private var levelUpTarget: Int = 0
-    @State private var showHatchEffect = false
 
     private var petStore: PetStore { model.petStore }
     private var species: PetSpecies { petStore.species }
     private var evoPath: PetEvoPath { petStore.currentEvoPath() }
     private var currentXP: Int { petStore.currentExperienceTokens }
-    private var hatchTokens: Int { petStore.currentHatchTokens }
-    private var info: PetProgressInfo { PetProgressInfo(totalXP: currentXP, hatchTokens: hatchTokens, evoPath: evoPath) }
+    private var info: PetProgressInfo { PetProgressInfo(totalXP: currentXP) }
     private var petStats: PetStats { petStore.currentStats }
     private var displayName: String {
         petStore.customName.isEmpty ? info.stage.speciesName(for: species, evoPath: evoPath) : petStore.customName
@@ -166,6 +181,24 @@ struct TitlebarPetButton: View {
         return sleepClock.timeIntervalSince(recentActivityTick) >= 30
     }
 
+    private var titlebarAnimationState: CodexPetAnimationState {
+        if isSleeping {
+            return .waiting
+        }
+        switch currentPhase {
+        case .loading:
+            return .running
+        case .running:
+            return .running
+        case .waitingInput:
+            return .review
+        case .completed(_, _, let exitCode):
+            return exitCode == 0 || exitCode == nil ? .waving : .failed
+        case .idle:
+            return hasAnyRunningActivity ? .running : .idle
+        }
+    }
+
     var body: some View {
         #if SWIFT_PACKAGE
         EmptyView()
@@ -174,7 +207,7 @@ struct TitlebarPetButton: View {
             if petStore.isClaimed {
                 isShowingPopover.toggle()
             } else {
-                presentEggSelectionDialog()
+                presentClaimDialog()
             }
         } label: {
             titlebarPill
@@ -192,22 +225,11 @@ struct TitlebarPetButton: View {
                     sleeping: isSleeping,
                     petStats: petStats,
                     onInheritConfirmed: {
-                        pendingEvoFrom = nil
                         showMaxLevelEffect = false
                         showLevelUpEffect = false
                         isShowingPopover = false
                     }
                 )
-                if let fromStage = pendingEvoFrom {
-                    PetEvolutionEffectView(
-                        species: species,
-                        evoPath: evoPath,
-                        fromStage: fromStage,
-                        toStage: info.stage,
-                        onComplete: { pendingEvoFrom = nil }
-                    )
-                    .transition(.opacity)
-                }
                 if showMaxLevelEffect {
                     PetMaxLevelEffectView(
                         species: species,
@@ -221,13 +243,6 @@ struct TitlebarPetButton: View {
                         level: levelUpTarget,
                         accentColor: info.stage.accentColor,
                         onComplete: { showLevelUpEffect = false }
-                    )
-                    .transition(.opacity)
-                }
-                if showHatchEffect {
-                    PetHatchEffectView(
-                        species: species,
-                        onComplete: { showHatchEffect = false }
                     )
                     .transition(.opacity)
                 }
@@ -252,22 +267,6 @@ struct TitlebarPetButton: View {
             recentActivityTick = Date()
             sleepClock = recentActivityTick
             lastKnownStage = info.stage
-        }
-        .onChange(of: info.stage) { oldStage, newStage in
-            guard petStore.isClaimed, oldStage != newStage else {
-                lastKnownStage = newStage
-                return
-            }
-            if oldStage == .egg, newStage == .infant {
-                // Egg just hatched
-                isShowingPopover = true
-                showHatchEffect = true
-            } else if oldStage != .egg, newStage != .egg {
-                // Evolution
-                pendingEvoFrom = oldStage
-                isShowingPopover = true
-            }
-            lastKnownStage = newStage
         }
         .onChange(of: currentPhase) { _, _ in
             recentActivityTick = Date()
@@ -308,19 +307,17 @@ struct TitlebarPetButton: View {
 
     private var titleText: String {
         petStore.isClaimed
-            ? (info.isHatching
-                ? String(format: petL("pet.title.hatching_percent", "Hatching %@%%"), info.hatchPercentText)
-                : "Lv.\(info.level)")
+            ? "Lv.\(info.level)"
             : petL("pet.title.claim", "Claim")
     }
 
     private var tooltipText: String {
-        petStore.isClaimed ? displayName : petL("pet.tooltip.egg", "Pet Egg")
+        petStore.isClaimed ? displayName : petL("pet.tooltip.pet", "Pet")
     }
 
     private var titlebarPill: some View {
         HStack(alignment: .center, spacing: 5) {
-            PetTitlebarBadge(stage: info.stage, size: 19, isMaxLevel: info.hasUnlockedInheritance)
+            PetTitlebarBadge(stage: info.stage, size: 19, isMaxLevel: info.hasUnlockedArchive)
 
             Text(titleText)
                 .font(.system(size: 12.5, weight: .semibold, design: .rounded))
@@ -353,12 +350,12 @@ struct TitlebarPetButton: View {
         .fixedSize(horizontal: true, vertical: false)
     }
 
-    private func presentEggSelectionDialog() {
+    private func presentClaimDialog() {
         guard let parentWindow = NSApp.keyWindow ?? NSApp.mainWindow else {
             return
         }
-        PetEggSelectionDialogPresenter.present(
-            dialog: PetEggSelectionDialogState(selectedOption: .voidcat),
+        PetClaimDialogPresenter.present(
+            dialog: PetClaimDialogState(selectedOption: .voidcat),
             staticMode: model.appSettings.pet.staticMode,
             parentWindow: parentWindow
         ) { result in
@@ -495,10 +492,9 @@ struct PetStatCell: View {
     }
 }
 
-struct PetClaimEggPreview: View {
+struct PetClaimPreview: View {
     let option: PetClaimOption
     let staticMode: Bool
-    @State private var randomEggImage: NSImage? = nil
 
     var body: some View {
         ZStack {
@@ -508,30 +504,14 @@ struct PetClaimEggPreview: View {
             if let species = option.previewSpecies {
                 PetSpriteView(
                     species: species,
-                    stage: .egg,
+                    stage: .companion,
                     staticMode: true,
                     displaySize: 60
                 )
             } else {
-                if let randomEggImage {
-                    Image(nsImage: randomEggImage)
-                        .resizable()
-                        .interpolation(.none)
-                        .frame(width: 60, height: 60)
-                } else {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.primary.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        .padding(10)
-                }
-            }
-        }
-        .task {
-            guard option == .random else {
-                randomEggImage = nil
-                return
-            }
-            if let url = Bundle.module.url(forResource: "egg", withExtension: "png", subdirectory: "Pets/random") {
-                randomEggImage = NSImage(contentsOf: url)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Color.secondary.opacity(0.72))
             }
         }
     }

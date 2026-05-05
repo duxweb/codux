@@ -1,0 +1,6 @@
+{
+  "id": "sheep-default",
+  "displayName": "sheep",
+  "description": "Codux bundled pet atlas.",
+  "spritesheetPath": "spritesheet.png"
+}

@@ -37,6 +37,7 @@ final class ProjectFileBrowserStore {
     var renamingPath: String?
     var renamingName = ""
     var renamingFocusToken = 0
+    var pendingDeletePaths: Set<String> = []
     var errorMessage: String?
 
     private let service: ProjectFileBrowserService
@@ -65,6 +66,7 @@ final class ProjectFileBrowserStore {
             renamingPath = nil
             renamingName = ""
             renamingFocusToken = 0
+            pendingDeletePaths.removeAll()
             errorMessage = nil
             return
         }
@@ -81,6 +83,7 @@ final class ProjectFileBrowserStore {
         renamingPath = nil
         renamingName = ""
         renamingFocusToken = 0
+        pendingDeletePaths.removeAll()
         errorMessage = nil
         loadChildren(for: root)
     }
@@ -89,6 +92,7 @@ final class ProjectFileBrowserStore {
         guard let rootItem else {
             return
         }
+        pendingDeletePaths = pendingDeletePaths.filter { findItem(withID: $0) != nil }
         let rememberedExpanded = expandedPaths
         childrenByPath.removeAll()
         expandedPaths = rememberedExpanded.union([rootItem.id])
@@ -117,6 +121,10 @@ final class ProjectFileBrowserStore {
 
     func select(_ item: ProjectFileItem) {
         selectedPath = item.id
+    }
+
+    var pendingDeleteCount: Int {
+        pendingDeletePaths.count
     }
 
     func openPreview(_ item: ProjectFileItem) {
@@ -174,7 +182,28 @@ final class ProjectFileBrowserStore {
 
     func deleteSelectedItem() {
         guard let selectedPath, let item = findItem(withID: selectedPath) else { return }
-        moveToTrash(item)
+        markForDelete(item)
+    }
+
+    func markForDelete(_ item: ProjectFileItem) {
+        selectedPath = item.id
+        pendingDeletePaths.insert(item.id)
+        if renamingPath == item.id {
+            cancelRename()
+        }
+    }
+
+    func cancelPendingDeletes() {
+        pendingDeletePaths.removeAll()
+    }
+
+    func confirmPendingDeletes() {
+        let items = pendingDeletePaths.compactMap { findItem(withID: $0) }
+        guard items.isEmpty == false else {
+            pendingDeletePaths.removeAll()
+            return
+        }
+        moveToTrash(items)
     }
 
     func beginRename(_ item: ProjectFileItem) {
@@ -210,6 +239,7 @@ final class ProjectFileBrowserStore {
 
     private func rename(_ item: ProjectFileItem, to newName: String) -> Bool {
         selectedPath = item.id
+        pendingDeletePaths.remove(item.id)
         do {
             let oldPath = item.id
             let parentURL = item.url.deletingLastPathComponent()
@@ -219,6 +249,7 @@ final class ProjectFileBrowserStore {
             if item.isDirectory {
                 let wasExpanded = expandedPaths.remove(oldPath) != nil
                 childrenByPath.removeValue(forKey: oldPath)
+                pendingDeletePaths = pendingDeletePaths.filter { $0 != oldPath && !$0.hasPrefix(oldPath + "/") }
                 if wasExpanded {
                     expandedPaths.insert(newURL.path)
                 }
@@ -260,8 +291,13 @@ final class ProjectFileBrowserStore {
     }
 
     func moveToTrash(_ item: ProjectFileItem) {
-        selectedPath = item.id
-        NSWorkspace.shared.recycle([item.url]) { [weak self] _, error in
+        moveToTrash([item])
+    }
+
+    private func moveToTrash(_ items: [ProjectFileItem]) {
+        let urls = items.map(\.url)
+        let ids = Set(items.map(\.id))
+        NSWorkspace.shared.recycle(urls) { [weak self] _, error in
             Task { @MainActor in
                 guard let self else { return }
                 if let error {
@@ -271,10 +307,15 @@ final class ProjectFileBrowserStore {
                     )
                     return
                 }
-                self.selectedPath = nil
-                self.expandedPaths.remove(item.id)
-                self.loadingPaths.remove(item.id)
-                self.childrenByPath.removeValue(forKey: item.id)
+                if let selectedPath = self.selectedPath, ids.contains(selectedPath) {
+                    self.selectedPath = nil
+                }
+                self.pendingDeletePaths.subtract(ids)
+                for item in items {
+                    self.expandedPaths.remove(item.id)
+                    self.loadingPaths.remove(item.id)
+                    self.childrenByPath.removeValue(forKey: item.id)
+                }
                 self.refresh()
             }
         }
@@ -437,17 +478,27 @@ struct FileBrowserPanelView: View {
     @State private var store = ProjectFileBrowserStore()
     @State private var isPanelDropTargeted = false
     @State private var isKeyboardActive = false
+    @State private var keyboardFocusToken = 0
 
     var body: some View {
         VStack(spacing: 0) {
             header
             GitPanelSeparator()
             content
+            if store.pendingDeleteCount > 0 {
+                GitPanelSeparator()
+                FileBrowserDeleteConfirmationBar(
+                    count: store.pendingDeleteCount,
+                    cancel: { store.cancelPendingDeletes() },
+                    confirm: { store.confirmPendingDeletes() }
+                )
+            }
         }
         .background(Color.clear)
         .background {
             FileBrowserKeyboardHandler(
                 isActive: $isKeyboardActive,
+                focusToken: keyboardFocusToken,
                 isInlineRenaming: store.renamingPath != nil,
                 copy: { store.copySelectedFile() },
                 cut: { store.cutSelectedFile() },
@@ -547,6 +598,7 @@ struct FileBrowserPanelView: View {
                             isLoading: store.loadingPaths.contains(row.item.id),
                             isSelected: store.selectedPath == row.item.id,
                             isRenaming: store.renamingPath == row.item.id,
+                            isPendingDelete: store.pendingDeletePaths.contains(row.item.id),
                             renamingName: store.renamingName,
                             renamingFocusToken: store.renamingFocusToken,
                             focus: { activateFileBrowserKeyboard() },
@@ -571,7 +623,7 @@ struct FileBrowserPanelView: View {
                             },
                             paste: { store.pasteFiles(into: row.item) },
                             canPaste: store.canPasteFiles(),
-                            delete: { store.moveToTrash(row.item) },
+                            delete: { store.markForDelete(row.item) },
                             reveal: { store.revealInFinder(row.item) },
                             dragProvider: { store.dragProvider(for: row.item) },
                             drop: { providers in handleDrop(providers: providers, target: row.item) }
@@ -586,6 +638,7 @@ struct FileBrowserPanelView: View {
 
     private func activateFileBrowserKeyboard() {
         isKeyboardActive = true
+        keyboardFocusToken &+= 1
         FileBrowserKeyboardFocusState.isActive = true
         FileBrowserKeyboardFocusState.isInlineRenaming = store.renamingPath != nil
     }
@@ -610,6 +663,7 @@ private struct FileBrowserRowView: View {
     let isLoading: Bool
     let isSelected: Bool
     let isRenaming: Bool
+    let isPendingDelete: Bool
     let renamingName: String
     let renamingFocusToken: Int
     let focus: () -> Void
@@ -708,6 +762,7 @@ private struct FileBrowserRowView: View {
                     .foregroundStyle(AppTheme.textMuted)
             }
         }
+        .opacity(isPendingDelete ? 0.46 : 1)
         .padding(.leading, 12)
         .padding(.trailing, 10)
         .frame(height: 28)
@@ -772,11 +827,91 @@ private struct FileBrowserRowView: View {
     private var rowBackground: some View {
         RoundedRectangle(cornerRadius: 5, style: .continuous)
             .fill(
-                isSelected
+                isPendingDelete
+                    ? Color.red.opacity(isSelected ? 0.18 : 0.10)
+                    : isSelected
                     ? AppTheme.focus.opacity(0.16)
                     : (isDropTargeted ? AppTheme.focus.opacity(0.12) : (isHovered ? Color(nsColor: .quaternarySystemFill) : Color.clear))
             )
             .padding(.horizontal, 8)
+    }
+}
+
+private struct FileBrowserDeleteConfirmationBar: View {
+    let count: Int
+    let cancel: () -> Void
+    let confirm: () -> Void
+    @State private var hoveredAction: Action?
+
+    private enum Action {
+        case cancel
+        case confirm
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "trash")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(statusText)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Color.white.opacity(0.92))
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 12) {
+                barButton(
+                    action: .cancel,
+                    systemImage: "xmark",
+                    help: String(localized: "files.panel.delete.cancel", defaultValue: "Cancel Delete", bundle: .module),
+                    perform: cancel
+                )
+                barButton(
+                    action: .confirm,
+                    systemImage: "checkmark",
+                    help: String(localized: "files.panel.delete.confirm", defaultValue: "Confirm Delete", bundle: .module),
+                    perform: confirm
+                )
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 32)
+        .frame(maxWidth: .infinity)
+        .background(Color.red.opacity(0.78))
+    }
+
+    private var statusText: String {
+        String(
+            format: String(localized: "files.panel.delete.pending_count_format", defaultValue: "%d item(s) marked for delete", bundle: .module),
+            count
+        )
+    }
+
+    private func barButton(
+        action: Action,
+        systemImage: String,
+        help: String,
+        perform: @escaping () -> Void
+    ) -> some View {
+        Button(action: perform) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.96))
+                .frame(width: 24, height: 22)
+                .contentShape(Rectangle())
+                .background {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(hoveredAction == action ? 0.22 : 0.001))
+                }
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .onHover { hovering in
+            hoveredAction = hovering ? action : (hoveredAction == action ? nil : hoveredAction)
+        }
     }
 }
 
@@ -915,6 +1050,7 @@ private struct FileBrowserInlineRenameField: NSViewRepresentable {
 
 private struct FileBrowserKeyboardHandler: NSViewRepresentable {
     @Binding var isActive: Bool
+    let focusToken: Int
     let isInlineRenaming: Bool
     let copy: () -> Void
     let cut: () -> Void
@@ -935,6 +1071,7 @@ private struct FileBrowserKeyboardHandler: NSViewRepresentable {
         view.isInlineRenaming = isInlineRenaming
         FileBrowserKeyboardFocusState.isActive = isActive
         FileBrowserKeyboardFocusState.isInlineRenaming = isInlineRenaming
+        view.requestFocusIfNeeded(focusToken: focusToken)
         view.onDeactivate = {
             isActive = false
         }
@@ -961,11 +1098,42 @@ private struct FileBrowserKeyboardHandler: NSViewRepresentable {
         var isInlineRenaming = false
         private var keyMonitor: Any?
         private var terminalFocusObserver: NSObjectProtocol?
+        private var lastFocusToken = 0
+
+        override var acceptsFirstResponder: Bool {
+            true
+        }
+
+        override func becomeFirstResponder() -> Bool {
+            isActive = true
+            FileBrowserKeyboardFocusState.isActive = true
+            FileBrowserKeyboardFocusState.isInlineRenaming = isInlineRenaming
+            return true
+        }
+
+        override func resignFirstResponder() -> Bool {
+            FileBrowserKeyboardFocusState.isActive = false
+            FileBrowserKeyboardFocusState.isInlineRenaming = false
+            return true
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             installKeyMonitorIfNeeded()
             installTerminalFocusObserverIfNeeded()
+        }
+
+        func requestFocusIfNeeded(focusToken: Int) {
+            guard isActive, focusToken != lastFocusToken else {
+                return
+            }
+            lastFocusToken = focusToken
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.isActive, let window = self.window else {
+                    return
+                }
+                window.makeFirstResponder(self)
+            }
         }
 
         func uninstallMonitors() {
@@ -1010,16 +1178,19 @@ private struct FileBrowserKeyboardHandler: NSViewRepresentable {
         }
 
         private func shouldHandleLocally(_ event: NSEvent) -> Bool {
-            guard isActive, isInlineRenaming == false else {
-                return false
-            }
-            guard let window else {
-                return false
-            }
-            if let eventWindow = event.window, eventWindow !== window {
-                return false
-            }
-            return true
+            let currentWindow = window
+            let eventWindowMatches = event.window.map { $0 === currentWindow } ?? true
+            let isTerminalResponder = currentWindow?.firstResponder.map {
+                DmuxTerminalBackend.shared.registry.ownsResponder($0)
+            } ?? false
+
+            return FileBrowserKeyboardFocusState.shouldHandleFileBrowserShortcut(
+                isActive: isActive,
+                isInlineRenaming: isInlineRenaming,
+                hasWindow: currentWindow != nil,
+                eventWindowMatches: eventWindowMatches,
+                isTerminalResponder: isTerminalResponder
+            )
         }
 
         private func handleFileBrowserKeyDown(_ event: NSEvent) -> Bool {

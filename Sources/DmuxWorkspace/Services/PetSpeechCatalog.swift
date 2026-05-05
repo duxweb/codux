@@ -140,7 +140,6 @@ final class PetSpeechCatalog {
             "prevTool": "",
             "minutesAway": petSpeechL("pet.speech.payload.minutes_away", "a while"),
             "toolList": "",
-            "newStage": "",
         ]
     }
 
@@ -243,7 +242,6 @@ final class PetSpeechCatalog {
             tool.multiStreak={toolList} all open. Showoff.
             pet.levelUp=Lv.{level}. Don't act surprised.
             pet.statBreakthrough={stat} past {value}. Wild.
-            pet.evolution={newStage} with the entrance.
             usage.dailyRecord={tokensK} today. Glutton.
             reminder.hydration={durationMin}min in. Water? No?
             reminder.sedentary=Sat {durationMin}min. Legs gone.
@@ -265,7 +263,6 @@ final class PetSpeechCatalog {
             tool.multiStreak={toolList} all running.
             pet.levelUp=Lv.{level} unlocked.
             pet.statBreakthrough={stat} hit {value}.
-            pet.evolution=You became {newStage}.
             usage.dailyRecord={tokensK} today. New high.
             reminder.hydration={durationMin}min and no water.
             reminder.sedentary=Sat for {durationMin}min. Stretch.
@@ -287,7 +284,6 @@ final class PetSpeechCatalog {
             tool.multiStreak={toolList} all here. Popular.
             pet.levelUp=Lv.{level}. Getting fancy.
             pet.statBreakthrough={stat} past {value}. Wow.
-            pet.evolution={newStage}. Even your eyes changed.
             usage.dailyRecord={tokensK} today. New high. Hot.
             reminder.hydration={durationMin}min with me. Water?
             reminder.sedentary=Sat too long. Stand for me.
@@ -309,7 +305,6 @@ final class PetSpeechCatalog {
             tool.multiStreak={toolList} resonate.
             pet.levelUp=Lv.{level}. Seal weakens.
             pet.statBreakthrough={stat} past {value}.
-            pet.evolution={newStage} manifests.
             usage.dailyRecord=Today {tokensK}. Codex rewrites.
             reminder.hydration={durationMin}min of ritual. Drink.
             reminder.sedentary=The seated seal forms. Rise.

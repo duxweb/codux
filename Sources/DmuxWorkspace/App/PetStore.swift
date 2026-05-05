@@ -102,7 +102,6 @@ final class PetStore {
     private(set) var claimedAt: Date?
     private(set) var species: PetSpecies = .voidcat
     private(set) var customName: String = ""
-    private(set) var currentHatchTokens: Int = 0
     private(set) var currentExperienceTokens: Int = 0
     private(set) var currentStats: PetStats = .neutral
     private(set) var statsUpdatedDay: Date?
@@ -141,7 +140,6 @@ final class PetStore {
         claimedAt = Date()
         species = option.resolveSpecies(hiddenSpeciesChance: hiddenSpeciesChance)
         self.customName = customName.trimmingCharacters(in: .whitespacesAndNewlines)
-        currentHatchTokens = 0
         currentExperienceTokens = 0
         currentStats = .neutral
         statsUpdatedDay = nil
@@ -160,15 +158,15 @@ final class PetStore {
     }
 
     func currentEvoPath() -> PetEvoPath {
-        lockedEvoPath ?? previewEvoPath(for: currentStats)
+        .pathA
     }
 
-    func canInherit() -> Bool {
+    func canArchive() -> Bool {
         isClaimed && PetProgressInfo.levelFromXP(currentExperienceTokens) >= PetProgressInfo.maxLevel
     }
 
-    func inheritCurrentPet() {
-        guard isClaimed, canInherit() else {
+    func archiveCurrentPet() {
+        guard isClaimed, canArchive() else {
             return
         }
 
@@ -186,7 +184,6 @@ final class PetStore {
         claimedAt = nil
         species = .voidcat
         customName = ""
-        currentHatchTokens = 0
         currentExperienceTokens = 0
         currentStats = .neutral
         statsUpdatedDay = nil
@@ -239,6 +236,10 @@ final class PetStore {
         case .goose:
             return stats.empathy >= stats.chaos ? .pathA : .pathB
         case .chaossprite:
+            return .pathA
+        case .code:
+            return .pathA
+        case .sheep, .ox, .dragon, .phoenix, .dolphin, .penguin, .panda:
             return .pathA
         }
     }
@@ -293,11 +294,6 @@ final class PetStore {
         }
 
         let previousLevel = PetProgressInfo.levelFromXP(currentExperienceTokens)
-        let previousStage = PetProgressInfo(
-            totalXP: currentExperienceTokens,
-            hatchTokens: currentHatchTokens,
-            evoPath: currentEvoPath()
-        ).stage
         let previousStats = currentStats
         var didChange = false
         var deltaTokens = 0
@@ -349,15 +345,15 @@ final class PetStore {
             effectiveTotalNormalizedTokens = sanitizedTotal
 
             if globalNormalizedTotalWatermark == nil {
-                globalNormalizedTotalWatermark = sanitizedTotal
+                globalNormalizedTotalWatermark = 0
                 didChange = true
                 debugLog.log(
                     Self.ledgerLogCategory,
-                    "bootstrap-watermark total=\(sanitizedTotal) hatch=\(currentHatchTokens) xp=\(currentExperienceTokens)"
+                    "bootstrap-watermark total=\(sanitizedTotal) xp=\(currentExperienceTokens)"
                 )
             }
 
-            let previousTotal = globalNormalizedTotalWatermark ?? sanitizedTotal
+            let previousTotal = globalNormalizedTotalWatermark ?? 0
             deltaTokens = max(0, sanitizedTotal - previousTotal)
             if sanitizedTotal > previousTotal {
                 globalNormalizedTotalWatermark = sanitizedTotal
@@ -366,15 +362,11 @@ final class PetStore {
         }
 
         if deltaTokens > 0 {
-            let hatchRemaining = max(0, PetProgressInfo.hatchThreshold - currentHatchTokens)
-            let hatchDelta = min(hatchRemaining, deltaTokens)
-            let experienceDelta = max(0, deltaTokens - hatchDelta)
-            currentHatchTokens += hatchDelta
-            currentExperienceTokens += experienceDelta
+            currentExperienceTokens += deltaTokens
             didChange = true
             debugLog.log(
                 Self.ledgerLogCategory,
-                "apply-delta delta=\(deltaTokens) total=\(effectiveTotalNormalizedTokens) hatchDelta=\(hatchDelta) xpDelta=\(experienceDelta) hatch=\(currentHatchTokens) xp=\(currentExperienceTokens)"
+                "apply-delta delta=\(deltaTokens) total=\(effectiveTotalNormalizedTokens) xp=\(currentExperienceTokens)"
             )
         }
 
@@ -396,18 +388,10 @@ final class PetStore {
             }
         }
 
-        if lockedEvoPath == nil,
-           currentHatchTokens >= PetProgressInfo.hatchThreshold,
-           PetProgressInfo.levelFromXP(currentExperienceTokens) >= PetProgressInfo.evoUnlockLevel {
-            lockedEvoPath = previewEvoPath(for: currentStats)
-            didChange = true
-        }
-
         if didChange {
             save()
             emitMilestoneSpeechEvents(
                 previousLevel: previousLevel,
-                previousStage: previousStage,
                 previousStats: previousStats,
                 now: now
             )
@@ -416,7 +400,6 @@ final class PetStore {
 
     private func emitMilestoneSpeechEvents(
         previousLevel: Int,
-        previousStage: PetStage,
         previousStats: PetStats,
         now: Date
     ) {
@@ -426,22 +409,6 @@ final class PetStore {
                 PetSpeechEvent(
                     kind: .petLevelUp,
                     payload: ["level": "\(nextLevel)"],
-                    occurredAt: now
-                )
-            )
-        }
-
-        let nextStage = PetProgressInfo(
-            totalXP: currentExperienceTokens,
-            hatchTokens: currentHatchTokens,
-            evoPath: currentEvoPath()
-        ).stage
-        if nextStage != previousStage,
-           nextStage != .egg {
-            onSpeechEvent?(
-                PetSpeechEvent(
-                    kind: .petEvolution,
-                    payload: ["newStage": nextStage.displayName],
                     occurredAt: now
                 )
             )
@@ -484,27 +451,7 @@ final class PetStore {
         guard isClaimed else {
             return
         }
-        currentHatchTokens = PetProgressInfo.hatchThreshold
         currentExperienceTokens = max(0, experienceTokens)
-        globalNormalizedTotalWatermark = nil
-        projectNormalizedTokenWatermarks = [:]
-        if statsUpdatedDay == nil {
-            statsUpdatedDay = now
-        }
-        if PetProgressInfo.levelFromXP(currentExperienceTokens) >= PetProgressInfo.evoUnlockLevel {
-            lockedEvoPath = previewEvoPath(for: currentStats)
-        } else {
-            lockedEvoPath = nil
-        }
-        save()
-    }
-
-    func debugCompleteHatch(now: Date = .init()) {
-        guard isClaimed else {
-            return
-        }
-        currentHatchTokens = PetProgressInfo.hatchThreshold
-        currentExperienceTokens = 0
         globalNormalizedTotalWatermark = nil
         projectNormalizedTokenWatermarks = [:]
         if statsUpdatedDay == nil {
@@ -517,7 +464,6 @@ final class PetStore {
     func debugSwitchSpecies(_ nextSpecies: PetSpecies, now: Date = .init()) {
         if !isClaimed {
             claimedAt = now
-            currentHatchTokens = 0
             currentExperienceTokens = 0
             currentStats = .neutral
             statsUpdatedDay = nil
@@ -526,12 +472,7 @@ final class PetStore {
         }
         species = nextSpecies
         customName = ""
-        if currentHatchTokens >= PetProgressInfo.hatchThreshold,
-           PetProgressInfo.levelFromXP(currentExperienceTokens) >= PetProgressInfo.evoUnlockLevel {
-            lockedEvoPath = previewEvoPath(for: currentStats)
-        } else {
-            lockedEvoPath = nil
-        }
+        lockedEvoPath = nil
         save()
     }
 
@@ -577,15 +518,13 @@ final class PetStore {
             lockedEvoPath = nil
             debugLog.log(
                 Self.ledgerLogCategory,
-                "migrate-reset-stats version=\(resolvedState.stateVersion ?? 0) preservedLedger=true resetClaimedAt=true hatch=\(currentHatchTokens) xp=\(currentExperienceTokens)"
+                "migrate-reset-stats version=\(resolvedState.stateVersion ?? 0) preservedLedger=true resetClaimedAt=true xp=\(currentExperienceTokens)"
             )
             save()
             return
         }
 
-        let legacyWasHatched = legacyStateWasHatched(resolvedState)
         claimedAt = Date()
-        currentHatchTokens = legacyWasHatched ? PetProgressInfo.hatchThreshold : 0
         currentExperienceTokens = 0
         currentStats = .neutral
         statsUpdatedDay = nil
@@ -593,13 +532,12 @@ final class PetStore {
         globalNormalizedTotalWatermark = nil
         debugLog.log(
             Self.ledgerLogCategory,
-            "migrate-reset version=\(resolvedState.stateVersion ?? 0) hatched=\(legacyWasHatched) resetClaimedAt=true hatch=\(currentHatchTokens) xp=\(currentExperienceTokens)"
+            "migrate-reset version=\(resolvedState.stateVersion ?? 0) resetClaimedAt=true xp=\(currentExperienceTokens)"
         )
         save()
     }
 
     private func applyLedgerState(from state: PersistedPetState) {
-        currentHatchTokens = max(0, state.currentHatchTokens ?? 0)
         currentExperienceTokens = max(0, state.currentExperienceTokens ?? 0)
         currentStats = state.currentStats ?? .neutral
         statsUpdatedDay = state.statsUpdatedDay
@@ -612,18 +550,7 @@ final class PetStore {
         guard state.stateVersion == 4 else {
             return false
         }
-        return (state.currentHatchTokens ?? 0) > 0 || (state.currentExperienceTokens ?? 0) > 0
-    }
-
-    private func legacyStateWasHatched(_ state: PersistedPetState) -> Bool {
-        if let hatchTokens = state.currentHatchTokens {
-            return hatchTokens >= PetProgressInfo.hatchThreshold
-        }
-        let legacyXP = max(0, state.currentExperienceTokens ?? 0)
-        if legacyXP >= PetProgressInfo.hatchThreshold {
-            return true
-        }
-        return (state.growthBaselineAllTimeTokens ?? 0) > 0
+        return (state.legacyPreXPTokenCount ?? 0) > 0 || (state.currentExperienceTokens ?? 0) > 0
     }
 
     private func save() {
@@ -633,7 +560,7 @@ final class PetStore {
             claimedAt: claimedAt,
             species: species,
             customName: customName,
-            currentHatchTokens: currentHatchTokens,
+            legacyPreXPTokenCount: nil,
             currentExperienceTokens: currentExperienceTokens,
             currentStats: currentStats,
             statsUpdatedDay: statsUpdatedDay,
@@ -759,7 +686,7 @@ private struct PersistedPetState: Codable, Equatable {
     var claimedAt: Date?
     var species: PetSpecies?
     var customName: String?
-    var currentHatchTokens: Int?
+    var legacyPreXPTokenCount: Int?
     var currentExperienceTokens: Int?
     var currentStats: PetStats?
     var statsUpdatedDay: Date?
@@ -768,9 +695,29 @@ private struct PersistedPetState: Codable, Equatable {
     var globalNormalizedTotalWatermark: Int?
     var projectNormalizedTokenWatermarks: [UUID: Int]?
 
-    // Legacy fields kept only while older hatch-state inference still reads them.
+    // Legacy fields kept only while older pre-XP state inference still reads them.
     var progressionVersion: Int?
     var dailyPaceVersion: Int?
     var baselineAllTimeTokens: Int?
     var growthBaselineAllTimeTokens: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case stateVersion
+        case statsModelVersion
+        case claimedAt
+        case species
+        case customName
+        case legacyPreXPTokenCount = "currentHatchTokens"
+        case currentExperienceTokens
+        case currentStats
+        case statsUpdatedDay
+        case lockedEvoPath
+        case legacy
+        case globalNormalizedTotalWatermark
+        case projectNormalizedTokenWatermarks
+        case progressionVersion
+        case dailyPaceVersion
+        case baselineAllTimeTokens
+        case growthBaselineAllTimeTokens
+    }
 }

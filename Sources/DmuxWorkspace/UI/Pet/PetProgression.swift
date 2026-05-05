@@ -7,46 +7,27 @@ struct PetProgressInfo {
     let xpInLevel: Int
     let xpForLevel: Int
     let totalXP: Int
-    let hatchTokens: Int
     let stage: PetStage
 
-    static let hatchThreshold = 50_000_000
     static let dailyTargetXP = 40_000_000
     static let maxLevel = 100
     static let targetXPToReachLevel100 = dailyTargetXP * 30
     static let minXPPerLevel = 2_000_000
     static let maxXPPerLevel = 22_000_000
-    static let infantRange = 1 ... 15
-    static let childRange = 16 ... 35
-    static let adultRange = 36 ... 60
-    static let evoRange = 61 ... 85
-    static let megaStartLevel = 86
-    static let evoUnlockLevel = evoRange.lowerBound
-    private static let levelXPRequirements = buildLevelXPRequirements()
     static let postCapXP = levelXPRequirements.last ?? maxXPPerLevel
+
+    private static let levelXPRequirements = buildLevelXPRequirements()
     private static let levelXPPrefixSums = buildLevelXPPrefixSums()
 
-    init(totalXP: Int, hatchTokens: Int, evoPath: PetEvoPath) {
+    init(totalXP: Int) {
         let growthXP = max(0, totalXP)
-        let hatch = min(max(0, hatchTokens), Self.hatchThreshold)
-        guard hatch >= Self.hatchThreshold else {
-            self.level = 0
-            self.xpInLevel = hatch
-            self.xpForLevel = Self.hatchThreshold
-            self.totalXP = 0
-            self.hatchTokens = hatch
-            self.stage = .egg
-            return
-        }
-
         let lvl = Self.levelFromXP(growthXP)
         let consumed = Self.totalXPRequired(toReach: lvl)
         self.level = lvl
         self.xpInLevel = max(0, growthXP - consumed)
         self.xpForLevel = Self.xpForLevel(lvl)
         self.totalXP = growthXP
-        self.hatchTokens = hatch
-        self.stage = PetStage.stage(for: lvl, evoPath: evoPath)
+        self.stage = .companion
     }
 
     var xpProgress: Double {
@@ -54,21 +35,7 @@ struct PetProgressInfo {
         return min(1.0, Double(xpInLevel) / Double(xpForLevel))
     }
 
-    var hatchProgress: Double {
-        min(1.0, Double(hatchTokens) / Double(Self.hatchThreshold))
-    }
-
-    var hatchPercentText: String {
-        let percent = hatchProgress * 100
-        if hatchTokens > 0, percent < 0.01 {
-            return "0.01"
-        }
-        return String(format: "%.2f", percent)
-    }
-
-    var isHatching: Bool { stage == .egg }
-
-    var hasUnlockedInheritance: Bool { level >= Self.maxLevel }
+    var hasUnlockedArchive: Bool { level >= Self.maxLevel }
 
     static func xpForLevel(_ level: Int) -> Int {
         if level >= maxLevel {
@@ -146,161 +113,48 @@ struct PetProgressInfo {
             return running
         }
     }
-
 }
 
+// Persisted for old state files only. It no longer changes pet appearance.
 enum PetEvoPath: String, Codable {
     case pathA, pathB
 }
 
 enum PetStage: String {
-    case egg
-    case infant
-    case child
-    case adult
-    case evoA = "evo_a"
-    case evoB = "evo_b"
-    case megaA = "mega_a"
-    case megaB = "mega_b"
-
-    static func stage(for level: Int, evoPath: PetEvoPath) -> PetStage {
-        switch level {
-        case PetProgressInfo.infantRange: return .infant
-        case PetProgressInfo.childRange: return .child
-        case PetProgressInfo.adultRange: return .adult
-        case PetProgressInfo.evoRange: return evoPath == .pathA ? .evoA : .evoB
-        default: return evoPath == .pathA ? .megaA : .megaB
-        }
-    }
+    case companion
 
     var displayName: String {
-        switch self {
-        case .egg: return petL("pet.stage.egg", "Hatching")
-        case .infant: return petL("pet.stage.infant", "Infant")
-        case .child: return petL("pet.stage.child", "Growing")
-        case .adult: return petL("pet.stage.adult", "Adult")
-        case .evoA, .evoB: return petL("pet.stage.awakened", "Awakened")
-        case .megaA, .megaB: return petL("pet.stage.final_awakening", "Final Awakening")
-        }
+        petL("pet.stage.companion", "Companion")
     }
 
-    func speciesName(for species: PetSpecies, evoPath: PetEvoPath) -> String {
-        switch species {
-        case .voidcat:
-            switch self {
-            case .egg: return petL("pet.species.voidcat.egg", "花花蛋")
-            case .infant: return petL("pet.species.voidcat.infant", "Huahua")
-            case .child: return petL("pet.species.voidcat.child", "Shadow Cat")
-            case .adult: return petL("pet.species.voidcat.adult", "Voidcat")
-            case .evoA: return petL("pet.species.voidcat.evo_a", "Tomecat")
-            case .evoB: return petL("pet.species.voidcat.evo_b", "Shadecat")
-            case .megaA: return petL("pet.species.voidcat.mega_a", "Inkspirit")
-            case .megaB: return petL("pet.species.voidcat.mega_b", "Nightspirit")
-            }
-        case .rusthound:
-            switch self {
-            case .egg: return petL("pet.species.rusthound.egg", "毛团蛋")
-            case .infant: return petL("pet.species.rusthound.infant", "Furball")
-            case .child: return petL("pet.species.rusthound.child", "Flop-Eared Pup")
-            case .adult: return petL("pet.species.rusthound.adult", "Rusthound")
-            case .evoA: return petL("pet.species.rusthound.evo_a", "Blazehound")
-            case .evoB: return petL("pet.species.rusthound.evo_b", "Ironwolf")
-            case .megaA: return petL("pet.species.rusthound.mega_a", "Sunflare")
-            case .megaB: return petL("pet.species.rusthound.mega_b", "Bloodmoon")
-            }
-        case .goose:
-            switch self {
-            case .egg: return petL("pet.species.goose.egg", "啾啾蛋")
-            case .infant: return petL("pet.species.goose.infant", "Chirpy")
-            case .child: return petL("pet.species.goose.child", "Dozy")
-            case .adult: return petL("pet.species.goose.adult", "Goosey")
-            case .evoA: return petL("pet.species.goose.evo_a", "Dawnwing")
-            case .evoB: return petL("pet.species.goose.evo_b", "Windwing")
-            case .megaA: return petL("pet.species.goose.mega_a", "Wildfire")
-            case .megaB: return petL("pet.species.goose.mega_b", "Tempest")
-            }
-        case .chaossprite:
-            switch self {
-            case .egg: return petL("pet.species.chaossprite.egg", "混沌蛋")
-            case .infant: return petL("pet.species.chaossprite.infant", "Chaos")
-            case .child: return petL("pet.species.chaossprite.child", "Mischief")
-            case .adult: return petL("pet.species.chaossprite.adult", "Glimmer")
-            case .evoA, .evoB: return petL("pet.species.chaossprite.evo", "Chaos Wisp")
-            case .megaA, .megaB: return petL("pet.species.chaossprite.mega", "Prism Core")
-            }
-        }
+    func speciesName(for species: PetSpecies, evoPath: PetEvoPath = .pathA) -> String {
+        species.displayName
     }
 
-    var idleSpriteName: String { rawValue == "egg" ? "egg" : "\(rawValue)_idle" }
+    var accentColor: Color { Color(hex: 0x2F8FFF) }
+}
 
-    var sleepSpriteName: String? {
+extension PetSpecies {
+    var petAccentColor: Color {
         switch self {
-        case .evoA, .evoB, .megaA, .megaB:
-            return "\(rawValue)_sleep"
-        default:
-            return nil
-        }
-    }
-
-    var idleFrameCount: Int {
-        switch self {
-        case .egg:
-            return 1
-        case .infant, .child, .adult, .megaA, .megaB:
-            return 8
-        case .evoA, .evoB:
-            return 6
-        }
-    }
-
-    var sleepFrameCount: Int { 8 }
-
-    var nativeFrameSize: CGFloat {
-        switch self {
-        case .egg, .infant:
-            return 256
-        case .child, .adult:
-            return 320
-        case .evoA, .evoB:
-            return 384
-        case .megaA, .megaB:
-            return 512
-        }
-    }
-
-    var idleFrameDuration: TimeInterval {
-        switch self {
-        case .evoA, .evoB:
-            return 0.600
-        default:
-            return 0.625
-        }
-    }
-
-    var accentColor: Color {
-        switch self {
-        case .egg:
-            return Color(hex: 0x888888)
-        case .infant:
-            return Color(hex: 0xC98663)
-        case .child:
-            return Color(hex: 0xC8D1E3)
-        case .adult:
-            return Color(hex: 0xE8AA34)
-        case .evoA:
-            return Color(hex: 0x2A80FF)
-        case .evoB:
-            return Color(hex: 0x9040FF)
-        case .megaA:
-            return Color(hex: 0xE0C040)
-        case .megaB:
-            return Color(hex: 0x6020CC)
+        case .voidcat:      return Color(hex: 0x6A5CFF)
+        case .rusthound:    return Color(hex: 0xFF8A3D)
+        case .goose:        return Color(hex: 0x3E86F6)
+        case .chaossprite:  return Color(hex: 0xFF4FA3)
+        case .code:         return Color(hex: 0x2F8FFF)
+        case .sheep:        return Color(hex: 0xF28FB8)
+        case .ox:           return Color(hex: 0xF3B43F)
+        case .dragon:       return Color(hex: 0xE04435)
+        case .phoenix:      return Color(hex: 0xFF7A22)
+        case .dolphin:      return Color(hex: 0x1E9BFF)
+        case .penguin:      return Color(hex: 0x5C6D85)
+        case .panda:        return Color(hex: 0x6A6F78)
         }
     }
 }
 
 extension PetStage {
-    func resolvedIdentity(for species: PetSpecies, evoPath: PetEvoPath, customName: String) -> PetResolvedIdentity {
+    func resolvedIdentity(for species: PetSpecies, evoPath: PetEvoPath = .pathA, customName: String) -> PetResolvedIdentity {
         let speciesName = speciesName(for: species, evoPath: evoPath)
         let trimmedName = customName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {

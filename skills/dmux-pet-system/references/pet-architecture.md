@@ -3,23 +3,23 @@
 ## Current behavior
 
 - Claim flow:
-  - User chooses one egg from the modal shown before first claim.
+  - User chooses one companion from the modal shown before first claim.
   - Name is optional; empty name falls back to the current stage species name.
-  - Random egg resolves to one of `voidcat`, `rusthound`, `goose`, or hidden `chaossprite`.
+  - Random claim resolves to one of the bundled species.
 - Persistence:
   - Main pet state is stored as encrypted `pet-state.dat` under the current Codux application support folder.
   - Legacy dmux namespaces are migrated on load when available.
 - XP:
   - Per-project token watermarks are captured as projects first appear after claim.
-  - New or reopened project history seeds a watermark first and does not grant retroactive hatch or XP progress.
+  - New or reopened project history seeds a watermark first and does not grant retroactive XP progress.
   - Removed project watermarks are forgotten and stale watermarks are pruned on snapshot refresh.
 - Stats:
   - Pet token totals come from `AIStatsStore.normalizedTokenTotalsForPet(_:, claimedAt:)`.
   - `PetStore.refreshDerivedState` caches damped daily stats instead of replacing them continuously.
-- Evolution:
-  - `lockedEvoPath` is set once the pet reaches `PetProgressInfo.evoUnlockLevel`.
-  - From that point, stage naming and sprites use the locked path.
-- Inheritance:
+- Appearance:
+  - Each species has one flat `spritesheet.png` atlas under `Sources/DmuxWorkspace/Resources/Pets/<species>/`.
+  - `PetStage` is always `.companion`; legacy evolution path fields are read only for old state compatibility.
+- Archive:
   - Available at `Lv.100+`.
   - Current pet is archived into `legacy` and claim state resets.
 
@@ -29,12 +29,12 @@
   `TitlebarPetButton`
 - Popover:
   `PetPopoverView`
-- Egg claim flow:
-  `PetEggSelectionDialogView`
+- Claim flow:
+  `PetClaimDialogView`
 - Dex window:
   `PetDexWindowPresenter` + `PetDexWindowView`
 - FX:
-  `PetEvolutionEffectView`, `PetMaxLevelEffectView`
+  `PetLevelUpEffectView`, `PetMaxLevelEffectView`
 
 ## Sleep and bubble rules
 
@@ -58,7 +58,7 @@ These are ephemeral UI events, not persisted gameplay history.
 - No pet click / petting interaction
 - No post-100 accessory system
 - No complex dex filters
-- No extra materials pipeline beyond the existing sprite processors
+- No extra materials pipeline beyond the flat Codex atlas normalizer
 
 ## Test entrypoints
 
@@ -67,4 +67,4 @@ These are ephemeral UI events, not persisted gameplay history.
   `Tests/DmuxWorkspaceTests/PetRefreshCoordinatorTests.swift`
   `Tests/DmuxWorkspaceTests/AIStatsStoreMetricsTests.swift`
 - Dev-only visual checks:
-  open the pet popover in the dev app and use the debug buttons for bubble / evolution / max-level effects
+  open the pet popover in the dev app and use the debug buttons for bubble / level-up / max-level effects

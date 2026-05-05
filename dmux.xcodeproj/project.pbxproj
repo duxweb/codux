@@ -22,6 +22,7 @@
 		A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B60 /* Sparkle */; };
 		A7B8C9D0E1F2031425364758 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A7B8C9D0E1F2031425364759 /* GhosttyTerminal */; };
 		A7B8C9D0E1F2031425364767 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = A7B8C9D0E1F2031425364768 /* GhosttyTheme */; };
+		B0C0D0E0F1029384756A0001 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = B0C0D0E0F1029384756A0003 /* MarkdownUI */; };
 		BEEF00000000000000000001 /* LiveKitWebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = BEEF00000000000000000003 /* LiveKitWebRTC */; };
 		0D664E0A08F199B7A97D0BA2 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CDEB30421E61195A008FD00E /* Localizable.xcstrings */; };
 		E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = E1A41C4E3A0A4C0A9D7B42A2 /* Logging */; };
@@ -78,8 +79,10 @@
 		5F0A9C1D7E2B4A5C8D9E0F15 /* PetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F16 /* PetStore.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F25 /* PetDesktopWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F26 /* PetDesktopWindow.swift */; };
-		5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */; };
+		5F0A9C1D7E2B4A5C8D9E0F19 /* PetMilestoneEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F20 /* PetMilestoneEffect.swift */; };
 		5F0A9C1D7E2B4A5C8D9E0F24 /* PetRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0A9C1D7E2B4A5C8D9E0F23 /* PetRefreshCoordinator.swift */; };
+		D0D0C0DE0000000000000105 /* CodexPetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000005 /* CodexPetModels.swift */; };
+		D0D0C0DE0000000000000106 /* CodexPetPackageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000006 /* CodexPetPackageService.swift */; };
 		D0D0C0DE0000000000000101 /* PetSpeechModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000001 /* PetSpeechModels.swift */; };
 		D0D0C0DE0000000000000102 /* PetSpeechCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000002 /* PetSpeechCatalog.swift */; };
 		D0D0C0DE0000000000000103 /* PetSpeechCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0C0DE0000000000000003 /* PetSpeechCoordinator.swift */; };
@@ -209,6 +212,8 @@
 		A91F0A7E1B2C3D4E5F607182 /* AIHookEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIHookEvent.swift; sourceTree = "<group>"; };
 		5F0A9C1D7E2B4A5C8D9E0F22 /* PetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetModels.swift; sourceTree = "<group>"; };
 		5F0A9C1D7E2B4A5C8D9E0F23 /* PetRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetRefreshCoordinator.swift; sourceTree = "<group>"; };
+		D0D0C0DE0000000000000005 /* CodexPetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexPetModels.swift; sourceTree = "<group>"; };
+		D0D0C0DE0000000000000006 /* CodexPetPackageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexPetPackageService.swift; sourceTree = "<group>"; };
 		1E6B5C4D3A2F1E0D9C8B7A6E /* AppPerformanceMonitorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPerformanceMonitorStore.swift; sourceTree = "<group>"; };
 		2A3B4C5D6E7F8091A2B3C4D5 /* AppDiagnosticsExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiagnosticsExportService.swift; sourceTree = "<group>"; };
 		21A2B3C4D5E6F708192A3B4D /* AIToolPermissionSettingsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolPermissionSettingsService.swift; sourceTree = "<group>"; };
@@ -305,7 +310,7 @@
 			5F0A9C1D7E2B4A5C8D9E0F10 /* PetPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetPanelView.swift; sourceTree = "<group>"; };
 			5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetDexWindow.swift; sourceTree = "<group>"; };
 			5F0A9C1D7E2B4A5C8D9E0F26 /* PetDesktopWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetDesktopWindow.swift; sourceTree = "<group>"; };
-			5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetEvolutionEffect.swift; sourceTree = "<group>"; };
+			5F0A9C1D7E2B4A5C8D9E0F20 /* PetMilestoneEffect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetMilestoneEffect.swift; sourceTree = "<group>"; };
 			D0D0C0DE0000000000000001 /* PetSpeechModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetSpeechModels.swift; sourceTree = "<group>"; };
 			D0D0C0DE0000000000000002 /* PetSpeechCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetSpeechCatalog.swift; sourceTree = "<group>"; };
 			D0D0C0DE0000000000000003 /* PetSpeechCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetSpeechCoordinator.swift; sourceTree = "<group>"; };
@@ -350,6 +355,7 @@
 				A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */,
 				E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */,
 				BEEF00000000000000000001 /* LiveKitWebRTC in Frameworks */,
+				B0C0D0E0F1029384756A0001 /* MarkdownUI in Frameworks */,
 				94E74A9C02052D31600A15A8 /* UniformTypeIdentifiers.framework in Frameworks */,
 				7CC77BFB4230078241327312 /* Carbon.framework in Frameworks */,
 				41CEA0910EEBD49E51352696 /* IOKit.framework in Frameworks */,
@@ -416,7 +422,7 @@
 					C10000000000000000000047 /* PetPopoverViews.swift */,
 					5F0A9C1D7E2B4A5C8D9E0F18 /* PetDexWindow.swift */,
 					5F0A9C1D7E2B4A5C8D9E0F26 /* PetDesktopWindow.swift */,
-					5F0A9C1D7E2B4A5C8D9E0F20 /* PetEvolutionEffect.swift */,
+					5F0A9C1D7E2B4A5C8D9E0F20 /* PetMilestoneEffect.swift */,
 				);
 			path = Pet;
 			sourceTree = "<group>";
@@ -517,6 +523,7 @@
 			children = (
 				A91F0A7E1B2C3D4E5F607182 /* AIHookEvent.swift */,
 				1D05D834FCB2D530F185C773 /* AIUsageModels.swift */,
+				D0D0C0DE0000000000000005 /* CodexPetModels.swift */,
 				210000000000000000000002 /* MemoryModels.swift */,
 				5F0A9C1D7E2B4A5C8D9E0F22 /* PetModels.swift */,
 				D0D0C0DE0000000000000001 /* PetSpeechModels.swift */,
@@ -657,6 +664,7 @@
 				C0D0C0D0C0D0C0D0C0D10001 /* RemoteHostService.swift */,
 				C0D0C0D0C0D0C0D0C0D10005 /* RemoteP2PHostTransport.swift */,
 				C0D0C0D0C0D0C0D0C0D10004 /* SleepPreventionService.swift */,
+				D0D0C0DE0000000000000006 /* CodexPetPackageService.swift */,
 				D0D0C0DE0000000000000002 /* PetSpeechCatalog.swift */,
 				D0D0C0DE0000000000000003 /* PetSpeechCoordinator.swift */,
 				D0D0C0DE0000000000000004 /* PetSpeechLLMService.swift */,
@@ -720,6 +728,7 @@
 				A7B8C9D0E1F2031425364768 /* GhosttyTheme */,
 				E1A41C4E3A0A4C0A9D7B42A2 /* Logging */,
 				BEEF00000000000000000003 /* LiveKitWebRTC */,
+				B0C0D0E0F1029384756A0003 /* MarkdownUI */,
 			);
 			productName = dmux;
 			productReference = DA51FF0D184B4B658DF3C288 /* Codux.app */;
@@ -762,6 +771,7 @@
 				A1B2C3D4E5F60718293A4B5F /* XCRemoteSwiftPackageReference "Sparkle" */,
 				E1A41C4E3A0A4C0A9D7B42A3 /* XCRemoteSwiftPackageReference "swift-log" */,
 				BEEF00000000000000000002 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */,
+				B0C0D0E0F1029384756A0002 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7651A8B853F6627D943F04C9 /* Products */;
@@ -837,6 +847,7 @@
 				210000000000000000000106 /* MemoryCoordinator.swift in Sources */,
 				210000000000000000000102 /* MemoryModels.swift in Sources */,
 				210000000000000000000107 /* MemoryStore.swift in Sources */,
+				D0D0C0DE0000000000000105 /* CodexPetModels.swift in Sources */,
 				5F0A9C1D7E2B4A5C8D9E0F21 /* PetModels.swift in Sources */,
 				A458177F176213CEE32928D8 /* AIUsageService.swift in Sources */,
 				B10000000000000000000053 /* AIUsageLiveOverlayCalculator.swift in Sources */,
@@ -889,16 +900,17 @@
 				B10000000000000000000023 /* GitStore+Operations.swift in Sources */,
 				B10000000000000000000024 /* GitStore+Remote.swift in Sources */,
 				210000000000000000000108 /* ProjectPathUtilities.swift in Sources */,
-					BCB26675EA2CC890F29674A0 /* PersistenceService.swift in Sources */,
-					151B69EF643EA9CF5E6975C2 /* ProjectActivityService.swift in Sources */,
-					B10000000000000000000048 /* ProjectActivityNotifications.swift in Sources */,
-					3BE284778A63A397792D1E4E /* ProjectEditorDialog.swift in Sources */,
-					5F0A9C1D7E2B4A5C8D9E0F11 /* PetPanelView.swift in Sources */,
-					B10000000000000000000046 /* PetProgression.swift in Sources */,
-					B10000000000000000000047 /* PetPopoverViews.swift in Sources */,
-					5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */,
-					5F0A9C1D7E2B4A5C8D9E0F25 /* PetDesktopWindow.swift in Sources */,
-					5F0A9C1D7E2B4A5C8D9E0F19 /* PetEvolutionEffect.swift in Sources */,
+				BCB26675EA2CC890F29674A0 /* PersistenceService.swift in Sources */,
+				151B69EF643EA9CF5E6975C2 /* ProjectActivityService.swift in Sources */,
+				B10000000000000000000048 /* ProjectActivityNotifications.swift in Sources */,
+				3BE284778A63A397792D1E4E /* ProjectEditorDialog.swift in Sources */,
+				5F0A9C1D7E2B4A5C8D9E0F11 /* PetPanelView.swift in Sources */,
+				B10000000000000000000046 /* PetProgression.swift in Sources */,
+				B10000000000000000000047 /* PetPopoverViews.swift in Sources */,
+				5F0A9C1D7E2B4A5C8D9E0F17 /* PetDexWindow.swift in Sources */,
+				5F0A9C1D7E2B4A5C8D9E0F25 /* PetDesktopWindow.swift in Sources */,
+				5F0A9C1D7E2B4A5C8D9E0F19 /* PetMilestoneEffect.swift in Sources */,
+				D0D0C0DE0000000000000106 /* CodexPetPackageService.swift in Sources */,
 				D0D0C0DE0000000000000101 /* PetSpeechModels.swift in Sources */,
 				D0D0C0DE0000000000000102 /* PetSpeechCatalog.swift in Sources */,
 				D0D0C0DE0000000000000103 /* PetSpeechCoordinator.swift in Sources */,
@@ -976,7 +988,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -989,7 +1001,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.8.2;
+				MARKETING_VERSION = 0.9.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1050,7 +1062,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1069,7 +1081,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.8.2;
+				MARKETING_VERSION = 0.9.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1153,6 +1165,14 @@
 				version = 137.7151.13;
 			};
 		};
+		B0C0D0E0F1029384756A0002 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.4.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1180,6 +1200,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BEEF00000000000000000002 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */;
 			productName = LiveKitWebRTC;
+		};
+		B0C0D0E0F1029384756A0003 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B0C0D0E0F1029384756A0002 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

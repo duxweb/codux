@@ -2,7 +2,59 @@ import AppKit
 import XCTest
 @testable import DmuxWorkspace
 
+@MainActor
 final class TerminalKeyRoutingTests: XCTestCase {
+    func testFileBrowserShortcutsDoNotHandleTerminalResponder() {
+        XCTAssertFalse(
+            FileBrowserKeyboardFocusState.shouldHandleFileBrowserShortcut(
+                isActive: true,
+                isInlineRenaming: false,
+                hasWindow: true,
+                eventWindowMatches: true,
+                isTerminalResponder: true
+            )
+        )
+    }
+
+    func testFileBrowserShortcutsHandleOnlyActivePanelFocus() {
+        XCTAssertTrue(
+            FileBrowserKeyboardFocusState.shouldHandleFileBrowserShortcut(
+                isActive: true,
+                isInlineRenaming: false,
+                hasWindow: true,
+                eventWindowMatches: true,
+                isTerminalResponder: false
+            )
+        )
+        XCTAssertFalse(
+            FileBrowserKeyboardFocusState.shouldHandleFileBrowserShortcut(
+                isActive: false,
+                isInlineRenaming: false,
+                hasWindow: true,
+                eventWindowMatches: true,
+                isTerminalResponder: false
+            )
+        )
+        XCTAssertFalse(
+            FileBrowserKeyboardFocusState.shouldHandleFileBrowserShortcut(
+                isActive: true,
+                isInlineRenaming: true,
+                hasWindow: true,
+                eventWindowMatches: true,
+                isTerminalResponder: false
+            )
+        )
+        XCTAssertFalse(
+            FileBrowserKeyboardFocusState.shouldHandleFileBrowserShortcut(
+                isActive: true,
+                isInlineRenaming: false,
+                hasWindow: true,
+                eventWindowMatches: false,
+                isTerminalResponder: false
+            )
+        )
+    }
+
     func testMainMenuShortcutsAreNotRoutedToTerminalKeyDown() {
         XCTAssertFalse(
             TerminalKeyRoutingPolicy.shouldRouteToTerminal(

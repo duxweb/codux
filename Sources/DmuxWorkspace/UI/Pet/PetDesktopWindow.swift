@@ -144,16 +144,11 @@ private struct PetDesktopWidgetView: View {
     @State private var sleepClock = Date()
 
     private var petStore: PetStore { model.petStore }
-    private var evoPath: PetEvoPath { petStore.currentEvoPath() }
     private var info: PetProgressInfo {
-        PetProgressInfo(
-            totalXP: petStore.currentExperienceTokens,
-            hatchTokens: petStore.currentHatchTokens,
-            evoPath: evoPath
-        )
+        PetProgressInfo(totalXP: petStore.currentExperienceTokens)
     }
-    private var desktopMessage: String? {
-        model.petSpeechCoordinator.currentLine?.text
+    private var desktopMessage: PetSpeechDisplayLine? {
+        model.petSpeechCoordinator.displayLine
     }
     private var hasAnyRunningActivity: Bool {
         model.activityByProjectID.values.contains {
@@ -285,10 +280,11 @@ private struct PetDesktopWidgetView: View {
         .frame(width: 146, height: 150)
     }
 
-    private func messageBubble(_ desktopMessage: String) -> some View {
+    private func messageBubble(_ desktopMessage: PetSpeechDisplayLine) -> some View {
         let corner = bubbleCorner
         return DesktopPetMessageBubble(
-            text: desktopMessage,
+            text: desktopMessage.text,
+            isActivityStatus: desktopMessage.isActivityStatus,
             tailSide: corner.tailSide,
             tailVerticalPosition: corner.tailVerticalPosition
         )
@@ -314,6 +310,7 @@ private enum PixelSpeechBubbleTailVerticalPosition {
 
 private struct DesktopPetMessageBubble: View {
     let text: String
+    var isActivityStatus = false
     let tailSide: DesktopPetBubbleTailSide
     let tailVerticalPosition: PixelSpeechBubbleTailVerticalPosition
 
@@ -349,8 +346,8 @@ private struct DesktopPetMessageBubble: View {
             tailVerticalPosition: tailVerticalPosition
         )
         Text(text)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .tracking(0.4)
+            .font(.system(size: isActivityStatus ? 11 : 12, weight: isActivityStatus ? .semibold : .bold, design: .monospaced))
+            .tracking(isActivityStatus ? 0.2 : 0.4)
             .foregroundStyle(textColor)
             .lineLimit(4)
             .multilineTextAlignment(.center)

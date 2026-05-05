@@ -305,13 +305,7 @@ final class AppModel {
         if !trimmedName.isEmpty {
             return trimmedName
         }
-        let evoPath = petStore.currentEvoPath()
-        let info = PetProgressInfo(
-            totalXP: petStore.currentExperienceTokens,
-            hatchTokens: petStore.currentHatchTokens,
-            evoPath: evoPath
-        )
-        return info.stage.speciesName(for: petStore.species, evoPath: evoPath)
+        return petStore.species.displayName
     }
 
     private func petSpeechActivitySnapshots() -> [PetSpeechActivitySnapshot] {

@@ -1,0 +1,6 @@
+{
+  "id": "penguin-default",
+  "displayName": "penguin",
+  "description": "Codux bundled pet atlas.",
+  "spritesheetPath": "spritesheet.png"
+}

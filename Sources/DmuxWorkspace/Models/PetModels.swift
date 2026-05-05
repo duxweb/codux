@@ -110,22 +110,29 @@ enum PetSpecies: String, Codable, CaseIterable, Equatable, Sendable {
     case rusthound
     case goose
     case chaossprite
+    case code
+    case sheep
+    case ox
+    case dragon
+    case phoenix
+    case dolphin
+    case penguin
+    case panda
 
-    var eggChoiceName: String {
+    var displayName: String {
         switch self {
-        case .voidcat:      return petL("pet.species.voidcat.base", "Voidcat")
+        case .voidcat:      return petL("pet.species.voidcat.base", "Mimi")
         case .rusthound:    return petL("pet.species.rusthound.base", "Ruff")
         case .goose:        return petL("pet.species.goose.base", "Goosey")
-        case .chaossprite:  return petL("pet.species.chaossprite.egg", "Chaos Sprite")
-        }
-    }
-
-    var englishName: String {
-        switch self {
-        case .voidcat:      return "VoidCat"
-        case .rusthound:    return "RustHound"
-        case .goose:        return "Goose"
-        case .chaossprite:  return "ChaosSprite"
+        case .chaossprite:  return petL("pet.species.chaossprite.base", "Chaos")
+        case .code:         return petL("pet.species.code.base", "code")
+        case .sheep:        return petL("pet.species.sheep.base", "BaaBaa")
+        case .ox:           return petL("pet.species.ox.base", "MooMoo")
+        case .dragon:       return petL("pet.species.dragon.base", "Drako")
+        case .phoenix:      return petL("pet.species.phoenix.base", "Ember")
+        case .dolphin:      return petL("pet.species.dolphin.base", "Splash")
+        case .penguin:      return petL("pet.species.penguin.base", "Pingu")
+        case .panda:        return petL("pet.species.panda.base", "Bamboo")
         }
     }
 
@@ -143,6 +150,14 @@ enum PetSpecies: String, Codable, CaseIterable, Equatable, Sendable {
         case .rusthound:    return "dog.fill"
         case .goose:        return "bird.fill"
         case .chaossprite:  return "sparkles"
+        case .code:         return "terminal.fill"
+        case .sheep:        return "cloud.fill"
+        case .ox:           return "shield.fill"
+        case .dragon:       return "flame.fill"
+        case .phoenix:      return "flame.circle.fill"
+        case .dolphin:      return "water.waves"
+        case .penguin:      return "snowflake"
+        case .panda:        return "circle.grid.cross.fill"
         }
     }
 }
@@ -151,31 +166,67 @@ enum PetClaimOption: String, CaseIterable, Identifiable, Sendable {
     case voidcat
     case rusthound
     case goose
+    case chaossprite
+    case code
+    case sheep
+    case ox
+    case dragon
+    case phoenix
+    case dolphin
+    case penguin
+    case panda
     case random
 
-    private static let randomPool: [PetSpecies] = [.voidcat, .rusthound, .goose]
+    private static let randomPool: [PetSpecies] = PetSpecies.allCases
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .voidcat:
-            return petL("pet.claim.voidcat.title", "Voidcat Egg")
+            return PetSpecies.voidcat.displayName
         case .rusthound:
-            return petL("pet.claim.rusthound.title", "Ruff Egg")
+            return PetSpecies.rusthound.displayName
         case .goose:
-            return petL("pet.claim.goose.title", "Goosey Egg")
+            return PetSpecies.goose.displayName
+        case .chaossprite:
+            return PetSpecies.chaossprite.displayName
+        case .code:
+            return PetSpecies.code.displayName
+        case .sheep:
+            return PetSpecies.sheep.displayName
+        case .ox:
+            return PetSpecies.ox.displayName
+        case .dragon:
+            return PetSpecies.dragon.displayName
+        case .phoenix:
+            return PetSpecies.phoenix.displayName
+        case .dolphin:
+            return PetSpecies.dolphin.displayName
+        case .penguin:
+            return PetSpecies.penguin.displayName
+        case .panda:
+            return PetSpecies.panda.displayName
         case .random:
-            return petL("pet.claim.random.title", "Random Egg")
+            return petL("pet.claim.random.title", "随机")
         }
     }
 
     var subtitle: String {
         switch self {
-        case .voidcat:   return petL("pet.claim.voidcat.subtitle", "Wise and nocturnal")
-        case .rusthound: return petL("pet.claim.rusthound.subtitle", "Fiery and stubborn")
-        case .goose:     return petL("pet.claim.goose.subtitle", "Calm and healing")
-        case .random:    return petL("pet.claim.random.subtitle", "Draw a surprise")
+        case .voidcat:      return petL("pet.claim.voidcat.subtitle", "专注、安静、夜间陪伴")
+        case .rusthound:    return petL("pet.claim.rusthound.subtitle", "热情、稳定、持续推进")
+        case .goose:        return petL("pet.claim.goose.subtitle", "轻松、治愈、节奏稳定")
+        case .chaossprite:  return petL("pet.claim.chaossprite.subtitle", "灵感、变化、隐藏能量")
+        case .code:         return petL("pet.claim.code.subtitle", "编码、终端、任务执行")
+        case .sheep:        return petL("pet.claim.sheep.subtitle", "Soft, patient, keeps moving")
+        case .ox:           return petL("pet.claim.ox.subtitle", "Grounded, reliable, steady")
+        case .dragon:       return petL("pet.claim.dragon.subtitle", "Bold, fiery, task guardian")
+        case .phoenix:      return petL("pet.claim.phoenix.subtitle", "Restart, recover, shine again")
+        case .dolphin:      return petL("pet.claim.dolphin.subtitle", "Nimble, fresh, quick swimmer")
+        case .penguin:      return petL("pet.claim.penguin.subtitle", "Calm, focused, cool-headed")
+        case .panda:        return petL("pet.claim.panda.subtitle", "Round, gentle, steady pace")
+        case .random:       return petL("pet.claim.random.subtitle", "随机选择一个伙伴")
         }
     }
 
@@ -187,6 +238,24 @@ enum PetClaimOption: String, CaseIterable, Identifiable, Sendable {
             return "dog.fill"
         case .goose:
             return "bird.fill"
+        case .chaossprite:
+            return "sparkles"
+        case .code:
+            return "terminal.fill"
+        case .sheep:
+            return "cloud.fill"
+        case .ox:
+            return "shield.fill"
+        case .dragon:
+            return "flame.fill"
+        case .phoenix:
+            return "flame.circle.fill"
+        case .dolphin:
+            return "water.waves"
+        case .penguin:
+            return "snowflake"
+        case .panda:
+            return "circle.grid.cross.fill"
         case .random:
             return "sparkles"
         }
@@ -203,18 +272,30 @@ enum PetClaimOption: String, CaseIterable, Identifiable, Sendable {
             return .rusthound
         case .goose:
             return .goose
+        case .chaossprite:
+            return .chaossprite
+        case .code:
+            return .code
+        case .sheep:
+            return .sheep
+        case .ox:
+            return .ox
+        case .dragon:
+            return .dragon
+        case .phoenix:
+            return .phoenix
+        case .dolphin:
+            return .dolphin
+        case .penguin:
+            return .penguin
+        case .panda:
+            return .panda
         case .random:
-            let hiddenChance = min(max(hiddenSpeciesChance, 0), 0.50)
-            let roll = min(max(randomValue ?? Double.random(in: 0..<1), 0), 0.999_999)
-            if roll < hiddenChance {
-                return .chaossprite
-            }
             guard let randomValue else {
                 return Self.randomPool.randomElement() ?? .voidcat
             }
             let clamped = min(max(randomValue, 0), 0.999_999)
-            let normalized = (clamped - hiddenChance) / max(0.000_001, (1 - hiddenChance))
-            let index = min(Int(normalized * Double(Self.randomPool.count)), Self.randomPool.count - 1)
+            let index = min(Int(clamped * Double(Self.randomPool.count)), Self.randomPool.count - 1)
             return Self.randomPool[index]
         }
     }
@@ -227,6 +308,24 @@ enum PetClaimOption: String, CaseIterable, Identifiable, Sendable {
             return .rusthound
         case .goose:
             return .goose
+        case .chaossprite:
+            return .chaossprite
+        case .code:
+            return .code
+        case .sheep:
+            return .sheep
+        case .ox:
+            return .ox
+        case .dragon:
+            return .dragon
+        case .phoenix:
+            return .phoenix
+        case .dolphin:
+            return .dolphin
+        case .penguin:
+            return .penguin
+        case .panda:
+            return .panda
         case .random:
             return nil
         }

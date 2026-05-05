@@ -30,8 +30,20 @@ final class PetSpeechCoordinator {
     private var temporaryFrequencyOffset = 0
     private var temporaryFrequencyOffsetUntil: Date?
     private var reminderActiveStartedAt: Date?
+    private var lastActivityKey: String?
+    private var currentActivityLineExpiryTask: Task<Void, Never>?
 
     var currentLine: PetSpeechLine?
+    var currentActivityLine: PetActivityStatusLine?
+    var displayLine: PetSpeechDisplayLine? {
+        if let currentLine {
+            return PetSpeechDisplayLine(text: currentLine.text, isActivityStatus: false)
+        }
+        guard let currentActivityLine else {
+            return nil
+        }
+        return PetSpeechDisplayLine(text: currentActivityLine.text, isActivityStatus: true)
+    }
 
     init(catalog: PetSpeechCatalog = PetSpeechCatalog()) {
         self.catalog = catalog
@@ -67,6 +79,8 @@ final class PetSpeechCoordinator {
         periodicTimer = nil
         expiryTask?.cancel()
         expiryTask = nil
+        currentActivityLineExpiryTask?.cancel()
+        currentActivityLineExpiryTask = nil
     }
 
     func notify(_ event: PetSpeechEvent) {
@@ -113,6 +127,45 @@ final class PetSpeechCoordinator {
         expiryTask?.cancel()
         expiryTask = nil
         currentLine = nil
+    }
+
+    func updateActivityStatus(_ phase: ProjectActivityPhase, projectName: String? = nil, now: Date = Date()) {
+        let candidate = activityStatusLine(for: phase, projectName: projectName, now: now)
+        guard candidate?.key != lastActivityKey || candidate?.text != currentActivityLine?.text else {
+            if let candidate, let expiresAt = candidate.expiresAt, expiresAt <= now {
+                clearActivityStatus()
+            }
+            return
+        }
+
+        currentActivityLineExpiryTask?.cancel()
+        currentActivityLineExpiryTask = nil
+        currentActivityLine = candidate
+        lastActivityKey = candidate?.key
+
+        guard let candidate, let expiresAt = candidate.expiresAt else {
+            return
+        }
+
+        currentActivityLineExpiryTask = Task { @MainActor [weak self] in
+            let delay = max(0, expiresAt.timeIntervalSince(now))
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            guard let self,
+                  !Task.isCancelled,
+                  self.currentActivityLine?.id == candidate.id else {
+                return
+            }
+            self.clearActivityStatus()
+        }
+    }
+
+    func clearActivityStatus() {
+        currentActivityLineExpiryTask?.cancel()
+        currentActivityLineExpiryTask = nil
+        currentActivityLine = nil
+        lastActivityKey = nil
     }
 
     func skipCurrentLine() {
@@ -505,5 +558,65 @@ final class PetSpeechCoordinator {
             return true
         }
         return now.timeIntervalSince(lastSpeechAt) >= interval
+    }
+
+    private func activityStatusLine(
+        for phase: ProjectActivityPhase,
+        projectName: String?,
+        now: Date
+    ) -> PetActivityStatusLine? {
+        let text: String
+        let key: String
+        let expiresAt: Date?
+        switch phase {
+        case .idle:
+            return nil
+        case .loading:
+            let projectLabel = normalizedActivityLabel(projectName)
+                ?? petSpeechL("pet.speech.payload.project", "this task")
+            text = petSpeechL("pet.activity.loading", "Preparing workspace")
+            key = "loading:\(projectLabel)"
+            expiresAt = nil
+        case .running(let tool):
+            text = String(
+                format: petSpeechL("pet.activity.running_format", "%@ is running"),
+                tool
+            )
+            key = "running:\(tool)"
+            expiresAt = nil
+        case .waitingInput(let tool):
+            text = String(
+                format: petSpeechL("pet.activity.waiting_input_format", "%@ needs input"),
+                tool
+            )
+            key = "waiting:\(tool)"
+            expiresAt = nil
+        case .completed(let tool, _, let exitCode):
+            if let exitCode, exitCode != 0 {
+                text = String(
+                    format: petSpeechL("pet.activity.failed_format", "%@ failed"),
+                    tool
+                )
+                key = "failed:\(tool):\(exitCode)"
+            } else {
+                text = String(
+                    format: petSpeechL("pet.activity.completed_format", "%@ completed"),
+                    tool
+                )
+                key = "completed:\(tool)"
+            }
+            expiresAt = now.addingTimeInterval(3)
+        }
+        return PetActivityStatusLine(
+            text: text,
+            key: key,
+            updatedAt: now,
+            expiresAt: expiresAt
+        )
+    }
+
+    private func normalizedActivityLabel(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

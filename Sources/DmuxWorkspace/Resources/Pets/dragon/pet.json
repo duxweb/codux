@@ -1,0 +1,6 @@
+{
+  "id": "dragon-default",
+  "displayName": "dragon",
+  "description": "Codux bundled pet atlas.",
+  "spritesheetPath": "spritesheet.png"
+}

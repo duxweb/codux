@@ -48,7 +48,7 @@ final class PetRefreshCoordinatorTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(60))
 
         XCTAssertEqual(petStore.projectNormalizedTokenWatermarks[projectID], 180)
-        XCTAssertEqual(petStore.currentHatchTokens, 0)
+        XCTAssertEqual(petStore.currentExperienceTokens, 0)
         XCTAssertEqual(statsCallCount, 1)
     }
 
@@ -78,7 +78,7 @@ final class PetRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(petStore.projectNormalizedTokenWatermarks[projectA], 180)
         XCTAssertNil(petStore.projectNormalizedTokenWatermarks[projectB])
         XCTAssertEqual(petStore.globalNormalizedTotalWatermark, 180)
-        XCTAssertEqual(petStore.currentHatchTokens, 60)
+        XCTAssertEqual(petStore.currentExperienceTokens, 60)
     }
 
     func testDailyRecordOnlyEmitsWhenCrossingMajorTokenBucket() {

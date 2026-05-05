@@ -459,6 +459,55 @@ final class AISessionStore {
         return true
     }
 
+    @discardableResult
+    func markInterrupted(terminalID: UUID, updatedAt: Double = Date().timeIntervalSince1970) -> Bool {
+        guard var session = terminalSessionsByID[terminalID],
+              session.state == .responding || session.state == .needsInput else {
+            return false
+        }
+
+        let previousLogicalKey = session.logicalSessionKey
+        let previousState = session
+        session.state = .idle
+        session.updatedAt = max(session.updatedAt, updatedAt)
+        session.activeTurnStartedAt = nil
+        session.runtimeTurnStartedAt = nil
+        session.wasInterrupted = true
+        session.hasCompletedTurn = false
+        session.notificationType = nil
+        session.targetToolName = nil
+        session.interactionMessage = nil
+        terminalSessionsByID[terminalID] = session
+        reconcileLogicalSession(for: session, previousLogicalKey: previousLogicalKey)
+
+        guard previousState != session else {
+            return false
+        }
+        renderVersion &+= 1
+        logger.log(
+            "ai-session-store",
+            "mark-interrupted terminal=\(terminalID.uuidString) tool=\(session.tool) external=\(session.aiSessionID ?? "nil")"
+        )
+        emitSpeechEvents(
+            previousState: previousState,
+            nextState: session,
+            event: AIHookEvent(
+                kind: .turnCompleted,
+                terminalID: terminalID,
+                terminalInstanceID: session.terminalInstanceID,
+                projectID: session.projectID,
+                projectName: session.projectName,
+                sessionTitle: session.sessionTitle,
+                tool: session.tool,
+                aiSessionID: session.aiSessionID,
+                model: session.model,
+                updatedAt: session.updatedAt,
+                metadata: .init(wasInterrupted: true, hasCompletedTurn: false)
+            )
+        )
+        return true
+    }
+
     func clearCompleted(projectID: UUID) -> Bool {
         var didChange = false
 
