@@ -3,6 +3,16 @@ import AppKit
 import Observation
 import UserNotifications
 
+@MainActor
+enum FileBrowserKeyboardFocusState {
+    static var isActive = false
+    static var isInlineRenaming = false
+
+    static var shouldSuppressTerminalRouting: Bool {
+        isActive && isInlineRenaming == false
+    }
+}
+
 enum TerminalKeyRoutingPolicy {
     static func shouldRouteToTerminal(
         isMainMenuShortcut: Bool,
@@ -305,6 +315,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         let responder = window.firstResponder
+        if FileBrowserKeyboardFocusState.shouldSuppressTerminalRouting {
+            return false
+        }
         if responder is NSTextView,
            DmuxTerminalBackend.shared.registry.ownsResponder(responder) == false {
             return false

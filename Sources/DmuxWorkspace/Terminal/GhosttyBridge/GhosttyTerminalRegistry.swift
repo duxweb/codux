@@ -118,6 +118,56 @@ final class GhosttyTerminalRegistry {
         containers[sessionID]?.terminalProcessInstanceID
     }
 
+    func outputHistory(for sessionID: UUID) -> String? {
+        containers[sessionID]?.terminalOutputHistory
+    }
+
+    @discardableResult
+    func ensureStartedForRemote(
+        session: TerminalSession,
+        environment: [(String, String)],
+        terminalBackgroundPreset: AppTerminalBackgroundPreset,
+        backgroundColorPreset: AppBackgroundColorPreset,
+        terminalFontSize: Int,
+        onStartupSucceeded: (() -> Void)?,
+        onStartupFailure: ((String) -> Void)?,
+        onLoadingStateChanged: ((Bool) -> Void)?
+    ) -> Bool {
+        let container: GhosttyTerminalContainerView
+        if let existing = containers[session.id] {
+            container = existing
+        } else {
+            container = GhosttyTerminalContainerView(
+                session: session,
+                environment: environment,
+                terminalFontSize: terminalFontSize,
+                onInteraction: nil,
+                onFocusConsumed: nil,
+                onStartupSucceeded: onStartupSucceeded,
+                onStartupFailure: onStartupFailure,
+                onLoadingStateChanged: onLoadingStateChanged
+            )
+            container.updateSession(
+                session,
+                environment: environment,
+                terminalBackgroundPreset: terminalBackgroundPreset,
+                backgroundColorPreset: backgroundColorPreset,
+                terminalFontSize: terminalFontSize,
+                isFocused: false,
+                isVisible: false,
+                showsInactiveOverlay: false,
+                onInteraction: nil,
+                onFocusConsumed: nil,
+                onStartupSucceeded: onStartupSucceeded,
+                onStartupFailure: onStartupFailure,
+                onLoadingStateChanged: onLoadingStateChanged
+            )
+            containers[session.id] = container
+        }
+        container.startProcessForRemoteIfNeeded(environment: environment)
+        return true
+    }
+
     func activeSessionInstanceIDs() -> Set<String> {
         Set(containers.values.map(\.terminalProcessInstanceID))
     }

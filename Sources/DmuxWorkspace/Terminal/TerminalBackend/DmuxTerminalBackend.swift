@@ -38,6 +38,7 @@ protocol DmuxTerminalBackendRegistry: AnyObject {
     func shellPID(for sessionID: UUID) -> Int32?
     func projectID(for sessionID: UUID) -> UUID?
     func sessionInstanceID(for sessionID: UUID) -> String?
+    func outputHistory(for sessionID: UUID) -> String?
     func activeSessionInstanceIDs() -> Set<String>
     func sendText(_ text: String, to sessionID: UUID) -> Bool
     func resize(columns: UInt16, rows: UInt16, sessionID: UUID) -> Bool

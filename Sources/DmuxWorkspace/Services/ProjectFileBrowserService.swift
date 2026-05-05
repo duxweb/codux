@@ -1,9 +1,16 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
+
+enum ProjectFileOpenMode {
+    case codePreview
+    case systemApplication
+}
 
 struct ProjectFileBrowserService {
     private let fileManager: FileManager
     private let maxPreviewBytes: UInt64
+    typealias ConflictResolver = (_ sourceURL: URL, _ destinationURL: URL, _ suggestedName: String) -> String?
 
     init(fileManager: FileManager = .default, maxPreviewBytes: UInt64 = 1_500_000) {
         self.fileManager = fileManager
@@ -57,6 +64,68 @@ struct ProjectFileBrowserService {
             }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
+    }
+
+    func fileURLsFromPasteboard(_ pasteboard: NSPasteboard = .general) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true,
+        ]
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL] {
+            return urls.map { $0.standardizedFileURL }
+        }
+        return []
+    }
+
+    func copyItems(
+        _ sourceURLs: [URL],
+        to targetDirectory: URL,
+        conflictResolver: ConflictResolver
+    ) throws -> [URL] {
+        try transferItems(
+            sourceURLs,
+            to: targetDirectory,
+            mode: .copy,
+            conflictResolver: conflictResolver
+        )
+    }
+
+    func moveItems(
+        _ sourceURLs: [URL],
+        to targetDirectory: URL,
+        conflictResolver: ConflictResolver
+    ) throws -> [URL] {
+        try transferItems(
+            sourceURLs,
+            to: targetDirectory,
+            mode: .move,
+            conflictResolver: conflictResolver
+        )
+    }
+
+    func renameItem(at sourceURL: URL, to newName: String) throws -> URL {
+        let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedName.isEmpty == false, trimmedName.contains("/") == false else {
+            throw NSError(
+                domain: "CoduxFileBrowser",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "files.panel.rename.invalid", defaultValue: "Enter a valid file name.", bundle: .module)]
+            )
+        }
+
+        let source = sourceURL.standardizedFileURL
+        let destination = source.deletingLastPathComponent().appendingPathComponent(trimmedName)
+        guard source.path != destination.standardizedFileURL.path else {
+            return source
+        }
+        guard fileManager.fileExists(atPath: destination.path) == false else {
+            throw NSError(
+                domain: "CoduxFileBrowser",
+                code: 409,
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "files.panel.rename.exists", defaultValue: "A file with this name already exists.", bundle: .module)]
+            )
+        }
+        try fileManager.moveItem(at: source, to: destination)
+        return destination.standardizedFileURL
     }
 
     func preview(for fileURL: URL, rootURL: URL) -> ProjectFilePreview {
@@ -120,6 +189,28 @@ struct ProjectFileBrowserService {
         )
     }
 
+    func relativePathForDisplay(url: URL, rootURL: URL) -> String {
+        relativePath(for: url, rootURL: rootURL)
+    }
+
+    func openMode(for fileURL: URL) -> ProjectFileOpenMode {
+        let ext = fileURL.pathExtension.lowercased()
+        if Self.systemApplicationExtensions.contains(ext) {
+            return .systemApplication
+        }
+        guard let type = UTType(filenameExtension: ext) else {
+            return .codePreview
+        }
+        if type.conforms(to: .image) ||
+            type.conforms(to: .movie) ||
+            type.conforms(to: .audiovisualContent) ||
+            type.conforms(to: .presentation) ||
+            type.conforms(to: .spreadsheet) {
+            return .systemApplication
+        }
+        return .codePreview
+    }
+
     private func relativePath(for url: URL, rootURL: URL) -> String {
         let rootPath = rootURL.standardizedFileURL.path
         let path = url.standardizedFileURL.path
@@ -130,6 +221,121 @@ struct ProjectFileBrowserService {
         let suffix = path[index...].trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return suffix.isEmpty ? url.lastPathComponent : suffix
     }
+
+    private enum TransferMode {
+        case copy
+        case move
+    }
+
+    private func transferItems(
+        _ sourceURLs: [URL],
+        to targetDirectory: URL,
+        mode: TransferMode,
+        conflictResolver: ConflictResolver
+    ) throws -> [URL] {
+        let directory = targetDirectory.standardizedFileURL
+        let values = try directory.resourceValues(forKeys: [.isDirectoryKey])
+        guard values.isDirectory == true else {
+            throw NSError(
+                domain: "CoduxFileBrowser",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "files.panel.target_not_directory", defaultValue: "The drop target is not a folder.", bundle: .module)]
+            )
+        }
+
+        var results: [URL] = []
+        for rawSourceURL in sourceURLs {
+            let sourceURL = rawSourceURL.standardizedFileURL
+            guard fileManager.fileExists(atPath: sourceURL.path) else { continue }
+            if mode == .move, isSameFile(sourceURL, directory) {
+                continue
+            }
+            if mode == .move, isDirectory(sourceURL), directory.path.hasPrefix(sourceURL.path + "/") {
+                throw NSError(
+                    domain: "CoduxFileBrowser",
+                    code: 409,
+                    userInfo: [NSLocalizedDescriptionKey: String(localized: "files.panel.move_into_self", defaultValue: "A folder cannot be moved into itself.", bundle: .module)]
+                )
+            }
+
+            guard let destinationURL = resolvedDestinationURL(
+                sourceURL: sourceURL,
+                targetDirectory: directory,
+                conflictResolver: conflictResolver
+            ) else {
+                continue
+            }
+            if isSameFile(sourceURL, destinationURL) {
+                continue
+            }
+            switch mode {
+            case .copy:
+                try fileManager.copyItem(at: sourceURL, to: destinationURL)
+            case .move:
+                try fileManager.moveItem(at: sourceURL, to: destinationURL)
+            }
+            results.append(destinationURL.standardizedFileURL)
+        }
+        return results
+    }
+
+    private func resolvedDestinationURL(
+        sourceURL: URL,
+        targetDirectory: URL,
+        conflictResolver: ConflictResolver
+    ) -> URL? {
+        let defaultDestination = targetDirectory.appendingPathComponent(sourceURL.lastPathComponent)
+        guard fileManager.fileExists(atPath: defaultDestination.path) else {
+            return defaultDestination
+        }
+
+        let suggestedName = availableCopyName(for: sourceURL.lastPathComponent, in: targetDirectory)
+        guard let replacementName = conflictResolver(sourceURL, defaultDestination, suggestedName)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              replacementName.isEmpty == false,
+              replacementName.contains("/") == false else {
+            return nil
+        }
+        let candidate = targetDirectory.appendingPathComponent(replacementName)
+        guard fileManager.fileExists(atPath: candidate.path) == false else {
+            return resolvedDestinationURL(
+                sourceURL: URL(fileURLWithPath: replacementName),
+                targetDirectory: targetDirectory,
+                conflictResolver: conflictResolver
+            )
+        }
+        return candidate
+    }
+
+    private func availableCopyName(for fileName: String, in directory: URL) -> String {
+        let url = URL(fileURLWithPath: fileName)
+        let base = url.deletingPathExtension().lastPathComponent
+        let ext = url.pathExtension
+        var index = 1
+        while true {
+            let suffix = index == 1 ? " copy" : " copy \(index)"
+            let candidate = ext.isEmpty ? "\(base)\(suffix)" : "\(base)\(suffix).\(ext)"
+            if fileManager.fileExists(atPath: directory.appendingPathComponent(candidate).path) == false {
+                return candidate
+            }
+            index += 1
+        }
+    }
+
+    private func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+    }
+
+    private func isSameFile(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.standardizedFileURL.path == rhs.standardizedFileURL.path
+    }
+
+    private static let systemApplicationExtensions: Set<String> = [
+        "apng", "avif", "bmp", "gif", "heic", "heif", "ico", "jpeg", "jpg", "png", "psd", "svg", "tif", "tiff", "webp",
+        "3g2", "3gp", "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv",
+        "aac", "aiff", "flac", "m4a", "mp3", "ogg", "wav",
+        "doc", "docx", "key", "numbers", "pages", "pdf", "ppt", "pptx", "xls", "xlsx",
+    ]
 }
 
 enum ProjectFileSyntaxHighlighter {

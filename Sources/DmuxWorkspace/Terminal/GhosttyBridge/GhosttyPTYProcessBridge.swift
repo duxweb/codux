@@ -59,10 +59,12 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
     private var processSource: DispatchSourceProcess?
     private var launchDate = Date()
     private var hasObservedOutput = false
+    private var outputHistory = Data()
     private var lastViewport = InMemoryTerminalViewport(columns: 80, rows: 24)
     private var lastAppliedViewport: InMemoryTerminalViewport?
     private var pendingResizeWorkItem: DispatchWorkItem?
     private let resizeDebounceDelay: TimeInterval = 0.05
+    private let maxOutputHistoryBytes = 2_000_000
 
     init(sessionID: UUID, suppressPromptEolMark: Bool = false) {
         self.sessionID = sessionID
@@ -143,6 +145,13 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return shellPID > 0 ? shellPID : nil
+    }
+
+    func outputHistoryText() -> String {
+        lock.lock()
+        let data = outputHistory
+        lock.unlock()
+        return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
     }
 
     func terminateProcessTree() {
@@ -289,6 +298,7 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
                 var fireFirstOutput = false
 
                 lock.lock()
+                appendOutputHistoryLocked(data)
                 if hasObservedOutput == false {
                     hasObservedOutput = true
                     fireFirstOutput = true
@@ -321,6 +331,14 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
             }
 
             return
+        }
+    }
+
+    private func appendOutputHistoryLocked(_ data: Data) {
+        guard data.isEmpty == false else { return }
+        outputHistory.append(data)
+        if outputHistory.count > maxOutputHistoryBytes {
+            outputHistory.removeFirst(outputHistory.count - maxOutputHistoryBytes)
         }
     }
 

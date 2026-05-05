@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Compression
 import CryptoKit
 import Foundation
 
@@ -56,28 +57,25 @@ final class RemoteHostService: ObservableObject {
 
   private weak var model: AppModel?
   private let logger = AppDebugLog.shared
-  private let terminalEnvironmentService = AIRuntimeBridgeService()
   private var socket: URLSessionWebSocketTask?
   private var activeSocketURL: URL?
   private var isStarting = false
-  private var outputObserver: NSObjectProtocol?
+  private nonisolated(unsafe) var outputObserver: NSObjectProtocol?
   private var pingTimer: Timer?
   private var reconnectTimer: Timer?
   private var reconnectAttempt = 0
   private var pairingPollTask: Task<Void, Never>?
   private var terminalOutputBuffer: [String: String] = [:]
-  private var remoteSessions: [UUID: TerminalSession] = [:]
-  private var remoteSessionMetadata: [UUID: RemoteTerminalMetadata] = [:]
-  private var remoteProcessBridges: [UUID: GhosttyPTYProcessBridge] = [:]
+  private var pendingTerminalOutput: [String: PendingTerminalOutput] = [:]
+  private var terminalViewersBySession: [String: Set<String>] = [:]
   private var sendSeqByDevice: [String: Int64] = [:]
   private var receiveSeqByDevice: [String: Int64] = [:]
   private var e2eKeyCache: [String: SymmetricKey] = [:]
+  private let terminalEnvironmentService = AIRuntimeBridgeService()
   private let maxTerminalBufferCharacters = 2_000_000
-  private let metadataDateFormatter: ISO8601DateFormatter = {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return formatter
-  }()
+  private let terminalOutputFlushInterval: TimeInterval = 0.016
+  private let terminalOutputFlushByteLimit = 32 * 1024
+  private let terminalOutputCompressionThreshold = 4 * 1024
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
   @Published private(set) var snapshot = Snapshot()
@@ -100,6 +98,13 @@ final class RemoteHostService: ObservableObject {
       }
       throw DecodingError.dataCorruptedError(
         in: container, debugDescription: "Invalid ISO8601 date: \(value)")
+    }
+    startTerminalOutputObserver()
+  }
+
+  deinit {
+    if let outputObserver {
+      NotificationCenter.default.removeObserver(outputObserver)
     }
   }
 
@@ -143,6 +148,8 @@ final class RemoteHostService: ObservableObject {
     stopPairingPoll()
     snapshot.pairing = nil
     snapshot.pendingPairings.removeAll()
+    flushAllPendingTerminalOutput()
+    terminalViewersBySession.removeAll()
     sendSeqByDevice.removeAll()
     receiveSeqByDevice.removeAll()
     e2eKeyCache.removeAll()
@@ -516,36 +523,34 @@ final class RemoteHostService: ObservableObject {
       }
     case "terminal.buffer":
       if let sessionID = envelope.sessionID {
-        sendTerminalBuffer(sessionID: sessionID, deviceID: envelope.deviceID)
+        if let uuid = UUID(uuidString: sessionID) {
+          ensureRemoteTerminalStarted(sessionID: uuid)
+        }
+        sendTerminalBuffer(
+          sessionID: sessionID,
+          deviceID: envelope.deviceID,
+          offset: requestedTerminalBufferOffset(from: envelope.payload)
+        )
       }
     case "terminal.create":
       let projectID = envelope.payload?["projectId"] as? String
       let command = envelope.payload?["command"] as? String ?? ""
       if let session = model?.remoteCreateTerminal(projectID: projectID, command: command) {
-        remoteSessions[session.id] = session
         let sessionID = session.id.uuidString
-        let now = Date()
-        remoteSessionMetadata[session.id] = RemoteTerminalMetadata(
-          ownerDeviceID: envelope.deviceID,
-          ownerKind: "mobile",
-          kind: "remote-mobile",
-          resizeOwner: "mobile",
-          columns: nil,
-          rows: nil,
-          createdAt: now,
-          lastActiveAt: now,
-          status: "starting"
-        )
+        registerTerminalViewer(sessionID: sessionID, deviceID: envelope.deviceID)
+        ensureRemoteTerminalStarted(session: session)
         logger.log(
           "remote-terminal",
-          "created session=\(sessionID) project=\(session.projectID.uuidString) shell=\(session.shell) command=\(session.command) cwd=\(session.cwd)"
+          "created shared session=\(sessionID) project=\(session.projectID.uuidString) shell=\(session.shell) command=\(session.command) cwd=\(session.cwd)"
         )
         send(
           type: "terminal.created", deviceID: envelope.deviceID, sessionID: sessionID,
-          payload: remoteTerminalPayload(for: session)
+          payload: remoteDesktopTerminalPayload(for: session)
         )
-        startRemoteProcessIfNeeded(for: session, deviceID: envelope.deviceID)
-        sendTerminalBuffer(sessionID: sessionID, deviceID: envelope.deviceID)
+        send(
+          type: "terminal.list", deviceID: envelope.deviceID,
+          payload: ["terminals": remoteTerminals()])
+        sendTerminalBuffer(sessionID: sessionID, deviceID: envelope.deviceID, offset: 0)
       } else {
         send(
           type: "error", deviceID: envelope.deviceID,
@@ -557,26 +562,18 @@ final class RemoteHostService: ObservableObject {
       {
         logger.log(
           "remote-terminal",
-          "input session=\(sessionID.uuidString) bytes=\(data.utf8.count) bridge=\(remoteProcessBridges[sessionID] != nil)"
+          "input session=\(sessionID.uuidString) bytes=\(data.utf8.count)"
         )
-        updateRemoteTerminalActivity(
-          sessionID: sessionID,
-          status: remoteProcessBridges[sessionID] == nil ? "starting" : "running",
-          ownerDeviceID: envelope.deviceID
-        )
-        ensureRemoteProcessBridge(for: sessionID, deviceID: envelope.deviceID)
-        if let bridge = remoteProcessBridges[sessionID] {
-          bridge.sendText(data)
-        } else {
-          let sent = DmuxTerminalBackend.shared.registry.sendText(data, to: sessionID)
-          if sent == false {
-            send(
-              type: "error", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
-              payload: [
-                "message":
-                  "Terminal is not ready yet. Please create it again or select a running terminal."
-              ])
-          }
+        registerTerminalViewer(sessionID: sessionID.uuidString, deviceID: envelope.deviceID)
+        ensureRemoteTerminalStarted(sessionID: sessionID)
+        let sent = DmuxTerminalBackend.shared.registry.sendText(data, to: sessionID)
+        if sent == false {
+          send(
+            type: "error", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
+            payload: [
+              "message":
+                "Terminal is not ready yet. Please create it again or select a running terminal."
+            ])
         }
       }
     case "terminal.resize":
@@ -587,41 +584,43 @@ final class RemoteHostService: ObservableObject {
         let cols = UInt16(clamping: UInt((colsValue as? Int) ?? Int((colsValue as? Double) ?? 0)))
         let rows = UInt16(clamping: UInt((rowsValue as? Int) ?? Int((rowsValue as? Double) ?? 0)))
         if cols > 0, rows > 0 {
-          upsertRemoteTerminalMetadata(
-            sessionID: sessionID,
-            ownerDeviceID: envelope.deviceID,
-            columns: Int(cols),
-            rows: Int(rows)
-          )
+          ensureRemoteTerminalStarted(sessionID: sessionID)
+          guard canResizeTerminal(sessionID: sessionID, deviceID: envelope.deviceID) else {
+            logger.log(
+              "remote-terminal",
+              "resize-skip session=\(sessionID.uuidString) cols=\(cols) rows=\(rows) reason=not-resize-owner"
+            )
+            return
+          }
           logger.log(
             "remote-terminal",
-            "resize session=\(sessionID.uuidString) cols=\(cols) rows=\(rows) bridge=\(remoteProcessBridges[sessionID] != nil)"
+            "resize session=\(sessionID.uuidString) cols=\(cols) rows=\(rows)"
           )
-          ensureRemoteProcessBridge(for: sessionID, deviceID: envelope.deviceID)
-          if let bridge = remoteProcessBridges[sessionID] {
-            bridge.resize(columns: cols, rows: rows)
-          } else {
-            _ = DmuxTerminalBackend.shared.registry.resize(
-              columns: cols, rows: rows, sessionID: sessionID)
-          }
+          _ = DmuxTerminalBackend.shared.registry.resize(
+            columns: cols, rows: rows, sessionID: sessionID
+          )
         }
       }
     case "terminal.upload":
       handleTerminalUpload(envelope)
     case "terminal.close":
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)) {
-        if let bridge = remoteProcessBridges.removeValue(forKey: sessionID) {
-          bridge.terminateProcessTree()
+        let didCloseSharedSession = model?.remoteCloseTerminal(sessionID: sessionID) == true
+        flushPendingTerminalOutput(sessionID: sessionID.uuidString)
+        if didCloseSharedSession {
+          terminalOutputBuffer.removeValue(forKey: sessionID.uuidString)
+          terminalViewersBySession.removeValue(forKey: sessionID.uuidString)
+          send(
+            type: "terminal.closed", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
+            payload: ["id": sessionID.uuidString])
+          send(
+            type: "terminal.list", deviceID: envelope.deviceID,
+            payload: ["terminals": remoteTerminals()])
+        } else {
+          send(
+            type: "error", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
+            payload: ["message": "Terminal not found"])
         }
-        remoteSessions.removeValue(forKey: sessionID)
-        remoteSessionMetadata.removeValue(forKey: sessionID)
-        terminalOutputBuffer.removeValue(forKey: sessionID.uuidString)
-        send(
-          type: "terminal.closed", deviceID: envelope.deviceID, sessionID: sessionID.uuidString,
-          payload: ["id": sessionID.uuidString])
-        send(
-          type: "terminal.list", deviceID: envelope.deviceID,
-          payload: ["terminals": remoteTerminals()])
       }
     case "terminal.signal":
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)) {
@@ -766,33 +765,29 @@ final class RemoteHostService: ObservableObject {
     mode: String, tool: String?
   ) {
     let uuid = UUID(uuidString: sessionID)
-    if let uuid {
-      ensureRemoteProcessBridge(for: uuid, deviceID: nil)
-    }
     let tool = uuid.flatMap { activeAITool(for: $0) }
-    if let uuid, let bridge = remoteProcessBridges[uuid], let tool,
-      supportsClipboardImagePaste(tool)
-    {
+    if let uuid, let tool, supportsClipboardImagePaste(tool) {
       prepareImagePasteboard(url: url, data: data, mime: mime)
-      bridge.sendText("\u{16}")
+      _ = DmuxTerminalBackend.shared.registry.sendText("\u{16}", to: uuid)
       return ("clipboard", tool)
     }
     let text = "\(url.path) "
-    if let uuid, let bridge = remoteProcessBridges[uuid] {
-      bridge.sendText(text)
-    } else if let uuid {
+    if let uuid {
       _ = DmuxTerminalBackend.shared.registry.sendText(text, to: uuid)
     }
     return ("path", tool)
   }
 
   private func activeAITool(for sessionID: UUID) -> String? {
-    if let shellPID = remoteProcessBridges[sessionID]?.currentShellPID,
+    if let shellPID = DmuxTerminalBackend.shared.registry.shellPID(for: sessionID),
       let tool = TerminalProcessInspector().activeTool(forShellPID: shellPID)
     {
       return tool
     }
-    guard let command = remoteSessions[sessionID]?.command.lowercased() else {
+    guard
+      let command = model?.remoteDesktopTerminals().first(where: { $0.id == sessionID })?.command
+        .lowercased()
+    else {
       return nil
     }
     if command.contains("claude") { return "claude" }
@@ -848,75 +843,83 @@ final class RemoteHostService: ObservableObject {
     return candidate
   }
 
-  private func startRemoteProcessIfNeeded(for session: TerminalSession, deviceID: String?) {
-    guard remoteProcessBridges[session.id] == nil else { return }
-    let bridge = GhosttyPTYProcessBridge(sessionID: session.id, suppressPromptEolMark: true)
-    remoteProcessBridges[session.id] = bridge
-    updateRemoteTerminalActivity(
-      sessionID: session.id,
-      status: "running",
-      ownerDeviceID: deviceID
-    )
-    let sessionID = session.id.uuidString
-    bridge.onOutput = { [weak self] data in
+  private func startTerminalOutputObserver() {
+    guard outputObserver == nil else { return }
+    outputObserver = NotificationCenter.default.addObserver(
+      forName: .coduxTerminalOutputDidReceive,
+      object: nil,
+      queue: .main
+    ) { [weak self] notification in
+      guard let sessionID = notification.userInfo?["sessionID"] as? UUID,
+        let data = notification.userInfo?["data"] as? Data
+      else { return }
       Task { @MainActor in
-        guard let self, let text = String(data: data, encoding: .utf8) else { return }
-        self.appendBuffer(sessionID: sessionID, text: text)
-        self.updateRemoteTerminalActivity(
-          sessionID: session.id,
-          status: "running",
-          ownerDeviceID: deviceID
-        )
-        self.logger.log(
-          "remote-terminal",
-          "output session=\(sessionID) bytes=\(data.count)"
-        )
-        self.send(
-          type: "terminal.output", deviceID: deviceID, sessionID: sessionID, payload: ["data": text]
-        )
+        self?.handleLocalTerminalOutput(sessionID: sessionID, data: data)
       }
     }
-    bridge.onProcessTerminated = { [weak self] exitCode in
-      Task { @MainActor in
-        guard let self else { return }
-        self.remoteProcessBridges[session.id] = nil
-        self.updateRemoteTerminalActivity(
-          sessionID: session.id,
-          status: "exited",
-          ownerDeviceID: deviceID
-        )
-      }
-    }
-    guard let model else { return }
-    let environment = terminalEnvironmentService
-      .environmentResolution(for: session, aiSettings: model.appSettings.ai)
-      .pairs
-    bridge.start(
-      shell: session.shell,
-      shellName: URL(fileURLWithPath: session.shell).lastPathComponent,
-      command: session.command,
-      cwd: session.cwd,
-      environment: environment
-    )
   }
 
-  private func ensureRemoteProcessBridge(for sessionID: UUID, deviceID: String?) {
-    guard remoteProcessBridges[sessionID] == nil else { return }
-    guard let session = remoteSessions[sessionID] else { return }
-    logger.log(
-      "remote-terminal",
-      "restore bridge session=\(sessionID.uuidString) project=\(session.projectID.uuidString)"
-    )
-    startRemoteProcessIfNeeded(for: session, deviceID: deviceID)
+  private func handleLocalTerminalOutput(sessionID: UUID, data: Data) {
+    guard let text = String(data: data, encoding: .utf8), text.isEmpty == false else { return }
+    let id = sessionID.uuidString
+    appendBuffer(sessionID: id, text: text)
+    let bufferCharacters = terminalOutputBuffer[id]?.count ?? 0
+    for deviceID in terminalViewersBySession[id] ?? [] {
+      enqueueTerminalOutput(
+        sessionID: id,
+        deviceID: deviceID,
+        text: text,
+        bufferCharacters: bufferCharacters
+      )
+    }
   }
 
   private func remoteTerminals() -> [[String: Any]] {
-    remoteSessions.values.map { remoteTerminalPayload(for: $0) }
+    model?.remoteDesktopTerminals().map { remoteDesktopTerminalPayload(for: $0) } ?? []
   }
 
-  private func remoteTerminalPayload(for session: TerminalSession) -> [String: Any] {
-    let metadata = remoteSessionMetadata[session.id]
-    let ownerDeviceID = metadata?.ownerDeviceID ?? ""
+  @discardableResult
+  private func ensureRemoteTerminalStarted(sessionID: UUID) -> Bool {
+    guard let session = model?.remoteDesktopTerminals().first(where: { $0.id == sessionID }) else {
+      return false
+    }
+    return ensureRemoteTerminalStarted(session: session)
+  }
+
+  @discardableResult
+  private func ensureRemoteTerminalStarted(session: TerminalSession) -> Bool {
+    guard let model else { return false }
+    let environment = terminalEnvironmentService.environmentResolution(
+      for: session,
+      aiSettings: model.appSettings.ai
+    ).pairs
+    let didEnsure = GhosttyTerminalRegistry.shared.ensureStartedForRemote(
+      session: session,
+      environment: environment,
+      terminalBackgroundPreset: model.terminalBackgroundPreset,
+      backgroundColorPreset: model.backgroundColorPreset,
+      terminalFontSize: model.appSettings.terminalFontSize,
+      onStartupSucceeded: { [weak model] in
+        model?.noteTerminalStartupSucceeded(session.id)
+      },
+      onStartupFailure: { [weak model] detail in
+        model?.noteTerminalStartupFailure(session.id, detail: detail)
+      },
+      onLoadingStateChanged: { [weak model] isLoading in
+        model?.noteTerminalLoadingState(session.id, isLoading: isLoading)
+      }
+    )
+    logger.log(
+      "remote-terminal",
+      "ensure-started session=\(session.id.uuidString) project=\(session.projectID.uuidString) didEnsure=\(didEnsure)"
+    )
+    return didEnsure
+  }
+
+  private func remoteDesktopTerminalPayload(for session: TerminalSession) -> [String: Any] {
+    let cachedBuffer = terminalOutputBuffer[session.id.uuidString]
+    let desktopHistory = DmuxTerminalBackend.shared.registry.outputHistory(for: session.id)
+    let bufferCharacters = max(cachedBuffer?.count ?? 0, desktopHistory?.count ?? 0)
     return [
       "id": session.id.uuidString,
       "title": session.title,
@@ -927,31 +930,30 @@ final class RemoteHostService: ObservableObject {
       "cwd": session.cwd,
       "shell": session.shell,
       "command": session.command,
-      "kind": metadata?.kind ?? "remote-mobile",
-      "ownerKind": metadata?.ownerKind ?? "mobile",
-      "ownerDeviceId": ownerDeviceID,
-      "ownerDeviceName": remoteDeviceName(for: ownerDeviceID),
-      "resizeOwner": metadata?.resizeOwner ?? "mobile",
-      "cols": metadata?.columns ?? 0,
-      "rows": metadata?.rows ?? 0,
-      "gridSource": metadata?.resizeOwner ?? "mobile",
-      "status": metadata?.status ?? (remoteProcessBridges[session.id] == nil ? "idle" : "running"),
-      "isRunning": remoteProcessBridges[session.id] != nil,
-      "createdAt": formattedMetadataDate(metadata?.createdAt),
-      "lastActiveAt": formattedMetadataDate(metadata?.lastActiveAt),
-      "bufferCharacters": terminalOutputBuffer[session.id.uuidString]?.count ?? 0,
-      "hasBuffer": terminalOutputBuffer[session.id.uuidString]?.isEmpty == false,
+      "kind": "desktop-shared",
+      "ownerKind": "mac",
+      "ownerDeviceId": "",
+      "ownerDeviceName": "Mac",
+      "resizeOwner": "mac",
+      "cols": 0,
+      "rows": 0,
+      "gridSource": "mac",
+      "status": DmuxTerminalBackend.shared.registry.shellPID(for: session.id) == nil ? "idle" : "running",
+      "isRunning": DmuxTerminalBackend.shared.registry.shellPID(for: session.id) != nil,
+      "createdAt": "",
+      "lastActiveAt": "",
+      "bufferCharacters": bufferCharacters,
+      "hasBuffer": bufferCharacters > 0,
     ]
   }
 
-  private func remoteDeviceName(for deviceID: String) -> String {
-    guard deviceID.isEmpty == false else { return "" }
-    return snapshot.devices.first { $0.id == deviceID }?.name ?? ""
+  private func registerTerminalViewer(sessionID: String, deviceID: String?) {
+    guard let deviceID, deviceID.isEmpty == false else { return }
+    terminalViewersBySession[sessionID, default: []].insert(deviceID)
   }
 
-  private func formattedMetadataDate(_ date: Date?) -> String {
-    guard let date else { return "" }
-    return metadataDateFormatter.string(from: date)
+  private func canResizeTerminal(sessionID: UUID, deviceID: String?) -> Bool {
+    model?.remoteDesktopTerminals().contains(where: { $0.id == sessionID }) == true
   }
 
   private func updateDeviceOnline(_ deviceID: String?, online: Bool) {
@@ -962,45 +964,6 @@ final class RemoteHostService: ObservableObject {
     if online {
       snapshot.devices[index].lastSeen = Date()
     }
-  }
-
-  private func upsertRemoteTerminalMetadata(
-    sessionID: UUID,
-    ownerDeviceID: String?,
-    columns: Int,
-    rows: Int
-  ) {
-    let current = remoteSessionMetadata[sessionID]
-    remoteSessionMetadata[sessionID] = RemoteTerminalMetadata(
-      ownerDeviceID: current?.ownerDeviceID ?? ownerDeviceID,
-      ownerKind: current?.ownerKind ?? "mobile",
-      kind: current?.kind ?? "remote-mobile",
-      resizeOwner: current?.resizeOwner ?? "mobile",
-      columns: columns,
-      rows: rows,
-      createdAt: current?.createdAt ?? Date(),
-      lastActiveAt: Date(),
-      status: current?.status ?? "running"
-    )
-  }
-
-  private func updateRemoteTerminalActivity(
-    sessionID: UUID,
-    status: String,
-    ownerDeviceID: String?
-  ) {
-    let current = remoteSessionMetadata[sessionID]
-    remoteSessionMetadata[sessionID] = RemoteTerminalMetadata(
-      ownerDeviceID: current?.ownerDeviceID ?? ownerDeviceID,
-      ownerKind: current?.ownerKind ?? "mobile",
-      kind: current?.kind ?? "remote-mobile",
-      resizeOwner: current?.resizeOwner ?? "mobile",
-      columns: current?.columns,
-      rows: current?.rows,
-      createdAt: current?.createdAt ?? Date(),
-      lastActiveAt: Date(),
-      status: status
-    )
   }
 
   private func appendBuffer(sessionID: String, text: String) {
@@ -1020,14 +983,151 @@ final class RemoteHostService: ObservableObject {
     return text.range(of: pattern, options: .regularExpression) != nil
   }
 
-  private func sendTerminalBuffer(sessionID: String, deviceID: String?) {
+  private func sendTerminalBuffer(sessionID: String, deviceID: String?, offset requestedOffset: Int) {
+    registerTerminalViewer(sessionID: sessionID, deviceID: deviceID)
     if let uuid = UUID(uuidString: sessionID) {
-      ensureRemoteProcessBridge(for: uuid, deviceID: deviceID)
+      seedTerminalBufferFromDesktopHistory(sessionID: sessionID, uuid: uuid)
     }
+    flushPendingTerminalOutput(sessionID: sessionID)
     let data = terminalOutputBuffer[sessionID] ?? ""
+    let offset = min(max(requestedOffset, 0), data.count)
+    let chunk: String
+    if offset > 0 {
+      let start = data.index(data.startIndex, offsetBy: offset)
+      chunk = String(data[start...])
+    } else {
+      chunk = data
+    }
     send(
       type: "terminal.output", deviceID: deviceID, sessionID: sessionID,
-      payload: ["data": data, "buffer": true])
+      payload: terminalOutputPayload(
+        text: chunk,
+        isBuffer: true,
+        offset: offset,
+        bufferCharacters: data.count
+      ))
+  }
+
+  private func seedTerminalBufferFromDesktopHistory(sessionID: String, uuid: UUID) {
+    guard let history = DmuxTerminalBackend.shared.registry.outputHistory(for: uuid),
+      history.isEmpty == false
+    else { return }
+    if let cached = terminalOutputBuffer[sessionID], cached.count >= history.count {
+      return
+    }
+    terminalOutputBuffer[sessionID] = history
+  }
+
+  private func enqueueTerminalOutput(
+    sessionID: String,
+    deviceID: String?,
+    text: String,
+    bufferCharacters: Int
+  ) {
+    guard text.isEmpty == false else { return }
+    var pending = pendingTerminalOutput[sessionID] ?? PendingTerminalOutput(deviceID: deviceID)
+    pending.deviceID = deviceID ?? pending.deviceID
+    pending.text += text
+    pending.bufferCharacters = bufferCharacters
+    let shouldFlush = pending.text.utf8.count >= terminalOutputFlushByteLimit
+    if pending.flushTimer == nil && shouldFlush == false {
+      pending.flushTimer = Timer(timeInterval: terminalOutputFlushInterval, repeats: false) {
+        [weak self] _ in
+        Task { @MainActor in
+          self?.flushPendingTerminalOutput(sessionID: sessionID)
+        }
+      }
+      if let flushTimer = pending.flushTimer {
+        RunLoop.main.add(flushTimer, forMode: .common)
+      }
+    }
+    pendingTerminalOutput[sessionID] = pending
+    if shouldFlush {
+      flushPendingTerminalOutput(sessionID: sessionID)
+    }
+  }
+
+  private func flushPendingTerminalOutput(sessionID: String) {
+    guard var pending = pendingTerminalOutput.removeValue(forKey: sessionID) else { return }
+    pending.flushTimer?.invalidate()
+    pending.flushTimer = nil
+    guard pending.text.isEmpty == false else { return }
+    send(
+      type: "terminal.output",
+      deviceID: pending.deviceID,
+      sessionID: sessionID,
+      payload: terminalOutputPayload(
+        text: pending.text,
+        isBuffer: false,
+        offset: nil,
+        bufferCharacters: pending.bufferCharacters
+      )
+    )
+  }
+
+  private func flushAllPendingTerminalOutput() {
+    let sessionIDs = Array(pendingTerminalOutput.keys)
+    for sessionID in sessionIDs {
+      flushPendingTerminalOutput(sessionID: sessionID)
+    }
+  }
+
+  private func requestedTerminalBufferOffset(from payload: [String: Any]?) -> Int {
+    let value = payload?["offset"]
+    if let intValue = value as? Int { return intValue }
+    if let doubleValue = value as? Double { return Int(doubleValue) }
+    if let stringValue = value as? String, let intValue = Int(stringValue) { return intValue }
+    return 0
+  }
+
+  private func terminalOutputPayload(
+    text: String,
+    isBuffer: Bool,
+    offset: Int?,
+    bufferCharacters: Int
+  ) -> [String: Any] {
+    var payload: [String: Any] = [
+      "data": text,
+      "bufferLength": bufferCharacters,
+    ]
+    if isBuffer {
+      payload["buffer"] = true
+      payload["offset"] = offset ?? 0
+    }
+    guard let data = text.data(using: .utf8),
+      data.count >= terminalOutputCompressionThreshold,
+      let compressed = deflateCompressedData(data),
+      compressed.count < data.count
+    else {
+      return payload
+    }
+    payload["data"] = RemoteE2ECrypto.base64URLEncode(compressed)
+    payload["compressed"] = true
+    payload["encoding"] = "base64+deflate+utf8"
+    payload["originalBytes"] = data.count
+    return payload
+  }
+
+  private func deflateCompressedData(_ data: Data) -> Data? {
+    guard data.isEmpty == false else { return nil }
+    let capacity = data.count + max(64, data.count / 16)
+    let destination = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
+    defer { destination.deallocate() }
+    let count = data.withUnsafeBytes { source in
+      guard let baseAddress = source.bindMemory(to: UInt8.self).baseAddress else {
+        return 0
+      }
+      return compression_encode_buffer(
+        destination,
+        capacity,
+        baseAddress,
+        data.count,
+        nil,
+        COMPRESSION_ZLIB
+      )
+    }
+    guard count > 0 else { return nil }
+    return Data(bytes: destination, count: count)
   }
 
   private func requestPairing() async {
@@ -1573,16 +1673,11 @@ private struct RemoteOutgoingEnvelope {
   }
 }
 
-private struct RemoteTerminalMetadata {
-  var ownerDeviceID: String?
-  var ownerKind: String
-  var kind: String
-  var resizeOwner: String
-  var columns: Int?
-  var rows: Int?
-  var createdAt: Date
-  var lastActiveAt: Date
-  var status: String
+private struct PendingTerminalOutput {
+  var deviceID: String?
+  var text: String = ""
+  var bufferCharacters: Int = 0
+  var flushTimer: Timer?
 }
 
 private enum JSONValue: Decodable {

@@ -11,8 +11,25 @@ extension AppModel {
     }
   }
 
-  func remoteTerminals() -> [[String: String]] {
-    []
+  func remoteDesktopTerminals() -> [TerminalSession] {
+    var sessionsByID: [UUID: TerminalSession] = [:]
+    var orderedIDs: [UUID] = []
+
+    for workspace in workspaces {
+      var workspaceSessionIDs = workspace.topSessionIDs
+      if let bottomSessionID = workspace.selectedBottomTabSessionID ?? workspace.bottomTabSessionIDs.last {
+        workspaceSessionIDs.append(bottomSessionID)
+      }
+      for sessionID in workspaceSessionIDs {
+        guard let session = workspace.session(for: sessionID) else { continue }
+        if sessionsByID[sessionID] == nil {
+          orderedIDs.append(sessionID)
+        }
+        sessionsByID[sessionID] = session
+      }
+    }
+
+    return orderedIDs.compactMap { sessionsByID[$0] }
   }
 
   func remoteCreateTerminal(projectID: String?, command: String) -> TerminalSession? {
@@ -27,7 +44,24 @@ extension AppModel {
     guard let project = resolvedProject else {
       return nil
     }
-    return TerminalSession.make(project: project, command: command)
+    guard let workspaceIndex = workspaces.firstIndex(where: { $0.projectID == project.id }) else {
+      return nil
+    }
+
+    let effectiveCommand = command.isEmpty ? project.defaultCommand : command
+    let session = TerminalSession.make(project: project, command: effectiveCommand)
+    var updatedWorkspaces = workspaces
+    updatedWorkspaces[workspaceIndex].sessions.append(session)
+    if updatedWorkspaces[workspaceIndex].addTopSession(session.id) == false {
+      updatedWorkspaces[workspaceIndex].addBottomTab(session.id)
+    }
+    workspaces = updatedWorkspaces
+    updateSelectedProjectID(project.id, source: "remoteCreateTerminal")
+    terminalFocusRequestID = session.id
+    terminalFocusRenderVersion &+= 1
+    persist()
+    refreshAIStatsIfNeeded()
+    return session
   }
 
   func remoteAddProject(path: String, name: String?) -> Project? {
@@ -223,8 +257,23 @@ extension AppModel {
       return false
     }
     noteTerminalLoadingState(sessionID, isLoading: false)
+    let projectID = workspaces[workspaceIndex].projectID
+    let project = projects.first(where: { $0.id == projectID })
+    let shouldRebuildLastTerminal = workspaces[workspaceIndex].visibleSessionCount <= 1
+    let replacementSession = shouldRebuildLastTerminal
+      ? project.map { TerminalSession.make(project: $0, command: $0.defaultCommand) }
+      : nil
     var updatedWorkspaces = workspaces
     updatedWorkspaces[workspaceIndex].removeSession(sessionID)
+    if let replacementSession {
+      updatedWorkspaces[workspaceIndex].sessions.append(replacementSession)
+      _ = updatedWorkspaces[workspaceIndex].addTopSession(replacementSession.id)
+      if selectedProjectID == projectID {
+        terminalFocusRequestID = replacementSession.id
+      }
+    } else if selectedProjectID == projectID {
+      terminalFocusRequestID = updatedWorkspaces[workspaceIndex].selectedSessionID
+    }
     workspaces = updatedWorkspaces
     runtimeIngressService.clearLiveState(sessionID: sessionID)
     aiStatsStore.handleTerminalSessionClosed(
@@ -237,6 +286,7 @@ extension AppModel {
     clearTerminalRecoveryState(for: sessionID)
     persist()
     refreshAIStatsIfNeeded()
+    terminalFocusRenderVersion &+= 1
     return true
   }
 }

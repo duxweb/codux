@@ -238,8 +238,17 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         processBridge.processInstanceID
     }
 
+    var terminalOutputHistory: String {
+        processBridge.outputHistoryText()
+    }
+
     func terminateProcessTree() {
         processBridge.terminateProcessTree()
+    }
+
+    func startProcessForRemoteIfNeeded(environment: [(String, String)]) {
+        configuredEnvironment = environment
+        startProcessIfPossible(trigger: "remote-background", requiresWindow: false)
     }
 
     func prepareForPermanentRemoval() {
@@ -374,6 +383,23 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         forwardScrollWheel(event)
     }
 
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        fileURLs(from: sender.draggingPasteboard).isEmpty ? [] : .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = fileURLs(from: sender.draggingPasteboard)
+        guard urls.isEmpty == false else { return false }
+        let text = urls.map { shellQuoted($0.standardizedFileURL.path) }.joined(separator: " ") + " "
+        sendText(text)
+        focusTerminal()
+        logger.log(
+            "terminal-command",
+            "drop-files session=\(configuredSession.id.uuidString) count=\(urls.count)"
+        )
+        return true
+    }
+
     func portalDidUpdateFrame() {
         scheduleViewportRefresh(reason: "portal-frame")
     }
@@ -438,6 +464,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         pinTerminalView(terminalView)
         pinInactiveOverlayView()
         pinLoadingShieldView()
+        registerForDraggedTypes([.fileURL])
 
         bindProcessCallbacks()
         updateLoadingShieldVisibility()
@@ -499,13 +526,15 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         DispatchQueue.main.asyncAfter(deadline: .now() + startupDelay, execute: workItem)
     }
 
-    private func startProcessIfPossible(trigger: String) {
+    private func startProcessIfPossible(trigger: String, requiresWindow: Bool = true) {
         guard hasStartedProcess == false else {
             return
         }
-        guard window != nil, bounds.width > 0, bounds.height > 0 else {
-            scheduleProcessStartIfPossible(reason: "\(trigger)-awaiting-layout")
-            return
+        if requiresWindow {
+            guard window != nil, bounds.width > 0, bounds.height > 0 else {
+                scheduleProcessStartIfPossible(reason: "\(trigger)-awaiting-layout")
+                return
+            }
         }
 
         let shell = configuredSession.shell
@@ -618,6 +647,13 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
     private func notifyInteraction() {
         onInteraction?()
+    }
+
+    private func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true,
+        ]
+        return (pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL]) ?? []
     }
 
     private func scheduleViewportRefresh(reason: String) {

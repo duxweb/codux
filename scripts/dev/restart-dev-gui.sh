@@ -41,8 +41,32 @@ ensure_metal_toolchain() {
   fi
 }
 
+normalize_package_artifact_paths() {
+  local state_file="${build_dir}/SourcePackages/workspace-state.json"
+  local artifacts_dir="${build_dir}/SourcePackages/artifacts"
+  local normalized_file
+
+  if [[ ! -f "${state_file}" ]]; then
+    return
+  fi
+
+  normalized_file="$(mktemp "${state_file}.XXXXXX")"
+  DMUX_PACKAGE_ARTIFACTS_DIR="${artifacts_dir}" /usr/bin/perl -0pe \
+    's/"path"\s*:\s*"[^"]*\/\.xcode-dev\/SourcePackages\/artifacts\//"path" : "$ENV{DMUX_PACKAGE_ARTIFACTS_DIR}\//g' \
+    "${state_file}" > "${normalized_file}"
+
+  if cmp -s "${state_file}" "${normalized_file}"; then
+    rm -f "${normalized_file}"
+    return
+  fi
+
+  mv "${normalized_file}" "${state_file}"
+  print -- "[dev] normalized SwiftPM binary artifact paths"
+}
+
 build_app() {
   mkdir -p "${build_dir}"
+  normalize_package_artifact_paths
   rm -rf "${build_dir}/Build" "${build_dir}/Logs"
   mkdir -p "${build_products_dir}"
 
@@ -109,6 +133,7 @@ require_command swiftc
 require_command iconutil
 require_command codesign
 require_command open
+require_command perl
 
 if [[ ! -d "${project_path}" ]]; then
   print -u2 -- "[dev] missing Xcode project: ${project_path}"
