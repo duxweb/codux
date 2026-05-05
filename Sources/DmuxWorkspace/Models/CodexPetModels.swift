@@ -55,7 +55,7 @@ enum CodexPetPlaybackPolicy {
         }
 
         let targetTotal = baseFrameDuration
-            * TimeInterval(max(1, animation.frameCount))
+            * TimeInterval(max(1, max(animation.frameCount, activeFrameCount)))
             * cycleDurationMultiplier(for: animation.state)
         let scale = targetTotal / sourceTotal
         return sourceDurations.map { max(0.08, $0 * scale) }
@@ -126,6 +126,29 @@ enum CodexPetAtlasSpec {
             return CodexPetAnimation(state: state, row: 7, frameDurationsMS: [120, 120, 120, 120, 120, 220])
         case .review:
             return CodexPetAnimation(state: state, row: 8, frameDurationsMS: [150, 150, 150, 150, 150, 280])
+        }
+    }
+}
+
+enum CodexPetActivityAnimationMapper {
+    static func animationState(
+        for phase: ProjectActivityPhase,
+        sleeping: Bool,
+        hasAnyRunningActivity: Bool
+    ) -> CodexPetAnimationState {
+        if sleeping {
+            return .waiting
+        }
+
+        switch phase {
+        case .loading, .running:
+            return .running
+        case .waitingInput:
+            return .review
+        case .completed(_, _, let exitCode):
+            return exitCode == 0 || exitCode == nil ? .waving : .failed
+        case .idle:
+            return hasAnyRunningActivity ? .running : .idle
         }
     }
 }

@@ -59,6 +59,23 @@ final class CodexPetAtlasSpecTests: XCTestCase {
         XCTAssertGreaterThan(durations[0], durations[1])
     }
 
+    func testPlaybackUsesActiveFrameCountWithoutRushingLongRows() {
+        let animation = CodexPetAtlasSpec.animation(for: .idle)
+        let activeFrameCount = animation.frameCount + 1
+        let durations = CodexPetPlaybackPolicy.frameDurations(
+            for: animation,
+            activeFrameCount: activeFrameCount
+        )
+
+        XCTAssertEqual(durations.count, activeFrameCount)
+        XCTAssertEqual(
+            durations.reduce(0, +),
+            CodexPetPlaybackPolicy.baseFrameDuration * Double(activeFrameCount),
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(durations[0], durations[1])
+    }
+
     func testWaitingPlaybackIsSlowerForSleepState() {
         let idle = CodexPetAtlasSpec.animation(for: .idle)
         let waiting = CodexPetAtlasSpec.animation(for: .waiting)
@@ -141,6 +158,85 @@ final class CodexPetAtlasSpecTests: XCTestCase {
 
             XCTAssertEqual(manifest.displayName, species.assetFolder)
         }
+    }
+}
+
+final class CodexPetActivityAnimationMapperTests: XCTestCase {
+    func testMapsAIActivityPhasesToPetAnimationStates() {
+        let finishedAt = Date()
+
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .loading,
+                sleeping: false,
+                hasAnyRunningActivity: false
+            ),
+            .running
+        )
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .running(tool: "codex"),
+                sleeping: false,
+                hasAnyRunningActivity: false
+            ),
+            .running
+        )
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .waitingInput(tool: "codex"),
+                sleeping: false,
+                hasAnyRunningActivity: false
+            ),
+            .review
+        )
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .completed(tool: "codex", finishedAt: finishedAt, exitCode: 0),
+                sleeping: false,
+                hasAnyRunningActivity: false
+            ),
+            .waving
+        )
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .completed(tool: "codex", finishedAt: finishedAt, exitCode: nil),
+                sleeping: false,
+                hasAnyRunningActivity: false
+            ),
+            .waving
+        )
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .completed(tool: "codex", finishedAt: finishedAt, exitCode: 1),
+                sleeping: false,
+                hasAnyRunningActivity: false
+            ),
+            .failed
+        )
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .idle,
+                sleeping: false,
+                hasAnyRunningActivity: true
+            ),
+            .running
+        )
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .idle,
+                sleeping: false,
+                hasAnyRunningActivity: false
+            ),
+            .idle
+        )
+        XCTAssertEqual(
+            CodexPetActivityAnimationMapper.animationState(
+                for: .running(tool: "codex"),
+                sleeping: true,
+                hasAnyRunningActivity: true
+            ),
+            .waiting
+        )
     }
 }
 

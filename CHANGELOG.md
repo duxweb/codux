@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-05-06
+
+### Changed
+
+- Updated the bundled single-form pet spritesheets with the latest generated assets while preserving the flat `Pets/<species>/pet.json` package layout.
+- Improved pet atlas normalization so frames share a consistent scale and alignment across each spritesheet, reducing size jitter between animation frames.
+- Made pet animation playback adapt to the actual non-empty frame count in each atlas row, so short and long actions keep a calm cycle speed instead of being rushed or truncated.
+
+### Fixed
+
+- Unified titlebar and desktop pet animation selection so both surfaces now map AI activity states to the same running, review, success, failure, idle, and sleep animations.
+
 ## [0.9.0] - 2026-05-06
 
 ### Added

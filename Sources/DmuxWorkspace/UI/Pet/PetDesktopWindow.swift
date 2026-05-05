@@ -169,6 +169,19 @@ private struct PetDesktopWidgetView: View {
         }
         return sleepClock.timeIntervalSince(recentActivityTick) >= 30
     }
+    private var selectedActivityPhase: ProjectActivityPhase {
+        guard let project = model.selectedProject else {
+            return .idle
+        }
+        return model.activityPhase(for: project.id)
+    }
+    private var desktopAnimationState: CodexPetAnimationState {
+        CodexPetActivityAnimationMapper.animationState(
+            for: selectedActivityPhase,
+            sleeping: isSleeping,
+            hasAnyRunningActivity: hasAnyRunningActivity
+        )
+    }
 
     init(model: AppModel, initialBubbleCorner: DesktopPetBubbleCorner) {
         self.model = model
@@ -206,6 +219,10 @@ private struct PetDesktopWidgetView: View {
                 recentActivityTick = Date()
                 sleepClock = recentActivityTick
             }
+        }
+        .onChange(of: selectedActivityPhase) { _, _ in
+            recentActivityTick = Date()
+            sleepClock = recentActivityTick
         }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { now in
             sleepClock = now
@@ -274,6 +291,7 @@ private struct PetDesktopWidgetView: View {
             species: petStore.species,
             stage: info.stage,
             sleeping: isSleeping,
+            animationState: desktopAnimationState,
             staticMode: model.appSettings.pet.staticMode,
             displaySize: 128
         )

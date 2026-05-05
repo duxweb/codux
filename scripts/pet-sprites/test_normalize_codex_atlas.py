@@ -21,11 +21,12 @@ from normalize_codex_atlas import (
     ROWS,
     assign_to_cells,
     cluster_by_axis_gap,
+    compute_atlas_scale,
     decontaminate_edge_halo,
     find_components,
-    fit_frame,
     merge_bboxes,
     normalize_atlas,
+    place_frame,
     premultiplied_resize,
 )
 
@@ -221,31 +222,51 @@ class PremultipliedResizeTests(unittest.TestCase):
                     )
 
 
-class FitFrameTests(unittest.TestCase):
+class ComputeAtlasScaleTests(unittest.TestCase):
+    def test_picks_scale_to_fit_largest_frame(self) -> None:
+        # Largest frame is 200x180. content_scale 0.9 -> target 172.8x187.2.
+        # scale = min(172.8/200, 187.2/180, 1.0) = 0.864 (width-limited).
+        sizes = [(150, 180), (200, 180), (170, 175)]
+        s = compute_atlas_scale(sizes, content_scale=0.9)
+        self.assertAlmostEqual(s, 172.8 / 200, delta=0.001)
+
+    def test_caps_scale_at_one(self) -> None:
+        # Tiny frames must NOT be upscaled (sprites would blur).
+        sizes = [(20, 20), (30, 25)]
+        self.assertEqual(compute_atlas_scale(sizes, content_scale=0.9), 1.0)
+
+
+class PlaceFrameTests(unittest.TestCase):
+    def test_uniform_scale_preserves_relative_size(self) -> None:
+        """Two frames of different widths placed with the SAME scale must keep
+        their width ratio in the output (no per-frame fit-to-cell)."""
+        wide = Image.new("RGBA", (200, 180), (200, 30, 30, 255))
+        narrow = Image.new("RGBA", (140, 180), (200, 30, 30, 255))
+        scale = compute_atlas_scale([wide.size, narrow.size], content_scale=0.9)
+
+        wide_cell = place_frame(wide, scale, bottom_padding_ratio=0.06)
+        narrow_cell = place_frame(narrow, scale, bottom_padding_ratio=0.06)
+
+        wide_bbox = wide_cell.getbbox()
+        narrow_bbox = narrow_cell.getbbox()
+        wide_w = wide_bbox[2] - wide_bbox[0]
+        narrow_w = narrow_bbox[2] - narrow_bbox[0]
+        wide_h = wide_bbox[3] - wide_bbox[1]
+        narrow_h = narrow_bbox[3] - narrow_bbox[1]
+        # Heights identical at same scale.
+        self.assertEqual(wide_h, narrow_h)
+        # Width ratio in output matches the ratio in source (140/200 = 0.7).
+        self.assertAlmostEqual(narrow_w / wide_w, 140 / 200, delta=0.02)
+        # Both anchored to the same bottom row.
+        self.assertEqual(wide_bbox[3], narrow_bbox[3])
+
     def test_output_is_cell_sized_and_bottom_anchored(self) -> None:
-        # 60 wide x 40 tall opaque red blob -> fits inside one cell, anchored
-        # to bottom with the configured padding.
         crop = Image.new("RGBA", (60, 40), (200, 30, 30, 255))
-        cell = fit_frame(crop, content_scale=0.9, bottom_padding_ratio=0.06)
+        cell = place_frame(crop, scale=1.0, bottom_padding_ratio=0.06)
         self.assertEqual(cell.size, (CELL_WIDTH, CELL_HEIGHT))
-
-        bbox = cell.getbbox()
-        self.assertIsNotNone(bbox)
-        left, top, right, bottom = bbox
-        bottom_pad = int(CELL_HEIGHT * 0.06)
-        self.assertEqual(bottom, CELL_HEIGHT - bottom_pad)
-        # Horizontally centered (left+right roughly mirror around CELL_WIDTH/2)
+        left, top, right, bottom = cell.getbbox()
+        self.assertEqual(bottom, CELL_HEIGHT - int(CELL_HEIGHT * 0.06))
         self.assertAlmostEqual((left + right) / 2, CELL_WIDTH / 2, delta=2)
-
-    def test_does_not_upscale_small_frame(self) -> None:
-        # 10x10 stays 10x10 (scale capped at 1.0).
-        crop = Image.new("RGBA", (10, 10), (0, 200, 0, 255))
-        cell = fit_frame(crop, content_scale=0.9, bottom_padding_ratio=0.06)
-        bbox = cell.getbbox()
-        self.assertIsNotNone(bbox)
-        left, top, right, bottom = bbox
-        self.assertEqual(right - left, 10)
-        self.assertEqual(bottom - top, 10)
 
 
 class EndToEndAtlasTests(unittest.TestCase):

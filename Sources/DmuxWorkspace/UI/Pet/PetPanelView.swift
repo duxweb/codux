@@ -106,7 +106,7 @@ struct PetSpriteView: View {
                 count = column + 1
             }
         }
-        return max(1, min(count, fallback))
+        return count > 0 ? count : fallback
     }
 
     private func codexAtlasCellHasContent(_ bitmap: NSBitmapImageRep, row: Int, column: Int) -> Bool {
@@ -182,21 +182,11 @@ struct TitlebarPetButton: View {
     }
 
     private var titlebarAnimationState: CodexPetAnimationState {
-        if isSleeping {
-            return .waiting
-        }
-        switch currentPhase {
-        case .loading:
-            return .running
-        case .running:
-            return .running
-        case .waitingInput:
-            return .review
-        case .completed(_, _, let exitCode):
-            return exitCode == 0 || exitCode == nil ? .waving : .failed
-        case .idle:
-            return hasAnyRunningActivity ? .running : .idle
-        }
+        CodexPetActivityAnimationMapper.animationState(
+            for: currentPhase,
+            sleeping: isSleeping,
+            hasAnyRunningActivity: hasAnyRunningActivity
+        )
     }
 
     var body: some View {

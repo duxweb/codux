@@ -250,10 +250,32 @@ def premultiplied_resize(rgba: Image.Image, new_size: tuple[int, int]) -> Image.
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGBA")
 
 
-def fit_frame(rgba_crop: Image.Image, content_scale: float, bottom_padding_ratio: float) -> Image.Image:
-    max_w = max(1, int(CELL_WIDTH * content_scale))
-    max_h = max(1, int(CELL_HEIGHT * content_scale))
-    scale = min(max_w / rgba_crop.width, max_h / rgba_crop.height, 1.0)
+def compute_atlas_scale(
+    frame_sizes: list[tuple[int, int]],
+    content_scale: float,
+) -> float:
+    """Pick one scale factor that fits the LARGEST frame inside a 192x208 cell
+    leaving content_scale margin, capped at 1.0 so we never upscale tiny
+    frames. Applying this single scale to every frame keeps all poses at the
+    same per-pixel size, so the character does not jitter between frames of
+    an animation."""
+    if not frame_sizes:
+        return 1.0
+    max_w = max(w for w, _ in frame_sizes)
+    max_h = max(h for _, h in frame_sizes)
+    target_w = CELL_WIDTH * content_scale
+    target_h = CELL_HEIGHT * content_scale
+    return min(target_w / max_w, target_h / max_h, 1.0)
+
+
+def place_frame(
+    rgba_crop: Image.Image,
+    scale: float,
+    bottom_padding_ratio: float,
+) -> Image.Image:
+    """Resize rgba_crop by `scale` (using premultiplied alpha) and paste it
+    horizontally centered, bottom-anchored with bottom_padding_ratio of cell
+    height as floor padding, into a 192x208 transparent cell."""
     new_w = max(1, round(rgba_crop.width * scale))
     new_h = max(1, round(rgba_crop.height * scale))
     if (new_w, new_h) != rgba_crop.size:
@@ -314,11 +336,18 @@ def normalize_atlas(
         column_gap_ratio=column_gap_ratio,
     )
 
+    cell_crops = {
+        key: rgba_full.crop(merge_bboxes(comp_list))
+        for key, comp_list in cells.items()
+    }
+    uniform_scale = compute_atlas_scale(
+        [crop.size for crop in cell_crops.values()],
+        content_scale=content_scale,
+    )
+
     atlas = Image.new("RGBA", (ATLAS_WIDTH, ATLAS_HEIGHT), (0, 0, 0, 0))
-    for (row, column), comp_list in cells.items():
-        bbox = merge_bboxes(comp_list)
-        frame = rgba_full.crop(bbox)
-        fitted = fit_frame(frame, content_scale, bottom_padding_ratio)
+    for (row, column), crop in cell_crops.items():
+        fitted = place_frame(crop, uniform_scale, bottom_padding_ratio)
         atlas.paste(fitted, (column * CELL_WIDTH, row * CELL_HEIGHT), fitted)
 
     output_dir.mkdir(parents=True, exist_ok=True)
