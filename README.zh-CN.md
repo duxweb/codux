@@ -25,77 +25,43 @@
 
 ![Codux](docs/images/screenshot.png)
 
+<table align="center">
+<tr>
+  <td align="center"><img src="docs/images/ai-stats.png" width="360" alt="AI 用量与会话恢复"><br/><sub>AI 用量与会话恢复</sub></td>
+  <td align="center"><img src="docs/images/level.png" width="360" alt="每日等级"><br/><sub>每日等级</sub></td>
+</tr>
+<tr>
+  <td align="center"><img src="docs/images/git.png" width="360" alt="内置 Git"><br/><sub>内置 Git</sub></td>
+  <td align="center"><img src="docs/images/pet.png" width="360" alt="编程伙伴"><br/><sub>编程伙伴</sub></td>
+</tr>
+</table>
+
 ## 演示视频
 
 GitHub README 不会渲染第三方 iframe 播放器，可以前往 [Bilibili](https://www.bilibili.com/video/BV1mK9vBCEYD/) 观看演示视频。
 
 ## 十大亮点
 
-| # | 功能 | 一句话说明 |
+| # | 功能 | 说明 |
 |:--|:--|:--|
-| 1 | **实时 AI 活动** | 每个 AI 终端的实时状态 + 系统通知，支持 Claude / Codex / Gemini / OpenCode |
-| 2 | **AI 用量与会话恢复** | 按工具 / 模型 / 项目统计 Token 历史，并一键恢复任意历史会话 |
-| 3 | **每日等级** | 由真实 Token 用量驱动的每日等级，精确知道今天到底干了啥 |
-| 4 | **编程伙伴** | 你的 AI 编程伴侣，按编程特性成长，并时不时插嘴让你不孤单 |
-| 5 | **内置 Git** | 人性化的分支、提交、推送/拉取与同步，常用 Git 操作不离开工作区 |
-| 6 | **项目文件管理** | 项目级文件管理器，可编辑、可预览、可拖入终端 |
-| 7 | **多项目工作区** | 每个项目最多 **6 个分屏终端** + **不限数量 Tab**，状态独立保存 |
-| 8 | **三层 AI 记忆** | 用户 / 项目 / 工具三层记忆，在 Codex、Claude、Gemini、OpenCode 间共享 |
-| 9 | **移动端接力** | 外出时通过手机继续之前的 AI CLI 任务 |
-| 10 | **Ghostty 引擎与主题** | 集成 `ghostty` 实现 GPU 加速终端，搭配多种浅色 / 深色主题 |
+| 1 | **实时 AI 活动** | 每个 AI 终端的实时运行状态 + 系统通知，支持 Claude Code、Codex、Gemini CLI、OpenCode。Tab 内指示器、项目卡片、macOS 通知会在每一回合结束时同时点亮 —— 你不再需要盯着光标发呆。 |
+| 2 | **AI 用量与会话恢复** | 按工具 / 模型 / 项目拆分的 Token 用量、每日和趋势视图，并支持任意历史会话的 **一键恢复**，直接回到原工具继续。零散的 AI 运行变成可用的历史档案。 |
+| 3 | **每日等级** | 由真实 Token 用量驱动的每日等级。一张「今天」快照告诉你跑了什么、量有多大、与平时相比如何 —— 一眼看懂、造不了假。 |
+| 4 | **编程伙伴** | 标题栏上可选的电子宠物，会随着你的 AI 编程习惯一起成长。不同的编程特性会解锁不同的成长值与发展路线，并偶尔插一两句嘴，让长时间的 AI 编程不那么孤单。完全可选，可一键静音。 |
+| 5 | **内置 Git** | 一等公民级别的 Git 面板，不是嵌入式 WebView。分支切换 / 新建 / 重命名 / 删除，行级差异的暂存，完整提交历史，以及推送 / 拉取 / 同步 —— 默认值合理，冲突处理清晰。 |
+| 6 | **项目文件管理** | 按项目组织的原生文件管理器。可以就地编辑代码、预览图片等素材，并把任意文件直接拖进终端 —— 让 AI 工具一次拿到正确路径。 |
+| 7 | **多项目工作区** | 每个项目都是独立的房间 —— 最多 **6 个分屏终端** 并行干活，6 个不够时还可以开 **不限数量的 Tab**。每个项目独立保存布局、会话、AI 工具选择，重启后状态完整保留。 |
+| 8 | **三层 AI 记忆** | 本地 `memory.sqlite3` 从已完成会话中提取长期记忆，按 **用户 / 项目 / 工具** 三层组织。为 Codex、Claude Code、Gemini CLI、OpenCode 生成应用私有的 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`，让它们不再每次重开会话就忘记之前的开发内容 —— 同时不会写进你的项目目录。 |
+| 9 | **移动端接力** | 离开 Mac 也能继续。Codux Mobile 与 Mac 主机配对后，可在手机上远程驱动 AI CLI 会话，传输流量端到端加密。详情见下方 [移动端接力](#移动端接力) 章节。 |
+| 10 | **Ghostty 引擎与主题** | 集成 [`ghostty`](https://ghostty.org) 终端引擎实现 GPU 加速渲染，搭配多种精心调校的浅色 / 深色主题，并跟随 macOS 外观自动切换。 |
 
-### 1. 实时 AI 活动
+## 移动端接力
 
-每个跑着 AI 工具的终端都会上报真实状态 —— 思考中、等待输入、已完成、出错 —— 同时呈现在 Tab 内指示器、项目卡片以及一回合结束的系统通知里。你不再需要盯着光标发呆，Codux 会拍拍你的肩膀。
-
-### 2. AI 用量与会话恢复
-
-AI 面板把零散的 AI 运行整理成可用历史档案：按 工具 / 模型 / 项目 拆分的 Token 用量、每日和趋势视图，以及任意历史会话的 **一键恢复**，直接回到原工具（Claude Code / Codex / Gemini CLI / OpenCode）继续。
-
-![Codux AI 用量面板](docs/images/ai-stats.png)
-
-### 3. 每日等级
-
-由真实 AI 活动驱动的轻量级每日等级。不是一堆 Token 数字，而是一张"今天"快照 —— 跑了什么、量有多大、与平时相比如何，一眼就能看懂。
-
-![Codux 每日等级](docs/images/level.png)
-
-### 4. 编程伙伴
-
-一个住在标题栏、可选的电子宠物。不同的编程特性会解锁不同的成长值与发展路线，并且偶尔插一两句嘴，让长时间的 AI 编程不那么孤单。完全可选，可一键静音。
-
-![Codux 宠物](docs/images/pet.png)
-
-### 5. 内置 Git
-
-不是嵌入式 WebView，而是一等公民级别的 Git 面板。分支切换/新建/重命名/删除，行级差异的暂存，完整提交历史，以及推送 / 拉取 / 同步 —— 默认值合理，冲突处理清晰。
-
-![Codux Git 面板](docs/images/git.png)
-
-### 6. 项目文件管理
-
-按项目组织的原生文件管理器。可以就地编辑代码、预览图片等素材，并把任意文件直接拖进终端 —— 让 AI 工具一次拿到正确路径。
-
-### 7. 多项目工作区
-
-每个项目都是独立的房间。最多 **6 个分屏终端** 并行干活，6 个不够时还可以开 **不限数量的 Tab**，每个项目独立保存布局、会话、AI 工具选择，重启后状态完整保留。
-
-### 8. 三层 AI 记忆
-
-Codux 会从已完成的 AI 会话中提取长期记忆，保存在本地 `memory.sqlite3`，按层组织让正确的上下文在正确的时刻出现：
-
-- **用户层** — 跨项目的长期偏好
-- **项目层** — 当前仓库的约定、决策和经验教训
-- **工具层** — 为 Codex、Claude Code、Gemini CLI、OpenCode 生成应用私有的启动上下文文件（`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`）
-
-让 Codex / Claude / Gemini / OpenCode 不再每次重开会话就忘记之前的开发内容。记忆文件由 Codux 管理，不会写进你的项目目录 —— 仓库始终是事实来源。
-
-### 9. 移动端接力
-
-离开 Mac 也能继续。Codux Mobile 与 Mac 主机配对后，可以在手机上发起新的 AI CLI 会话、操作正在进行的会话、浏览项目文件、上传图片 —— 真正的进程仍然跑在 Mac 上，你只是在外面盯着。
+Codux Mobile + Codux Service 是独立的远程访问栈，中继服务可以自托管，真正的项目和终端始终运行在你的 Mac 上。
 
 | 组件 | 用途 | 下载 |
 |:--|:--|:--|
+| Codux macOS | 主桌面端：项目、终端、Git、AI 统计、记忆和远程主机会话 | [macOS Releases](https://github.com/duxweb/codux/releases) |
 | Codux Mobile | Android 移动端：配对 Mac、远程运行 AI CLI、浏览文件、上传图片 | [Mobile Releases](https://github.com/duxweb/codux-flutter/releases) |
 | Codux Service | Go 编写的轻量中继服务，负责设备配对和加密 WebSocket 转发 | [Service Releases](https://github.com/duxweb/codux-service/releases) |
 
@@ -106,11 +72,7 @@ Codux 会从已完成的 AI 会话中提取长期记忆，保存在本地 `memor
 | 国内中继直连 | `https://codux-service.dux.plus` |
 | 全球中转加速 | `https://codux-node.dux.plus` |
 
-终端输入、输出、文件内容、项目列表和 AI 统计在 Codux macOS 与 Codux Mobile 之间端到端加密传输。中继服务只能看到 host ID、device ID、配对状态、在线状态等路由元数据，看不到解密后的终端内容。生产或长期使用建议自托管 `codux-service`。
-
-### 10. Ghostty 引擎与主题
-
-Codux 集成了 [`ghostty`](https://ghostty.org) 终端引擎实现 GPU 加速渲染，即使是繁忙的 AI 输出也能保持丝滑。配合精心调校的多种浅色 / 深色主题，并跟随 macOS 外观自动切换，工作区好看又快。
+终端的输入、输出、文件内容、项目列表和 AI 统计在 Codux macOS 与 Codux Mobile 之间端到端加密传输。中继服务只能看到 host ID、device ID、配对状态、在线状态等路由元数据，看不到解密后的终端内容。生产或长期使用建议自托管 `codux-service`。
 
 ## 快速开始
 
