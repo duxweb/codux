@@ -178,7 +178,7 @@ final class MemoryStoreTests: XCTestCase {
         try store.markExtractionTaskFailed(
             task.id,
             error:
-                "All memory extraction providers failed. Local Llama Memory: Local model prompt exceeds the configured context window."
+                "All memory extraction providers failed. Llama Model: Local model prompt exceeds the configured context window."
         )
 
         XCTAssertEqual(
@@ -198,7 +198,7 @@ final class MemoryStoreTests: XCTestCase {
     func testRequeueFailedExtractionTasksCanLimitBatchSize() throws {
         let store = MemoryStore(databaseURL: databaseURL)
         let projectID = UUID()
-        let error = "All memory extraction providers failed. Local Llama Memory: malformed output"
+        let error = "All memory extraction providers failed. Llama Model: malformed output"
 
         for index in 0..<3 {
             XCTAssertTrue(

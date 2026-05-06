@@ -39253,61 +39253,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only rhythm and milestone messages try LLM polishing. Template lines are used if it fails, times out, or no API channel is available."
+            "value": "Only rhythm and milestone messages try LLM polishing. Template lines are used if it fails, times out, or no LLM channel is available."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nur Rhythmus- und Meilensteinmeldungen versuchen LLM-Feinschliff. Bei Fehlern, Zeitüberschreitung oder fehlendem API-Kanal werden Vorlagen verwendet."
+            "value": "Nur Rhythmus- und Meilensteinmeldungen versuchen LLM-Feinschliff. Bei Fehlern, Zeitüberschreitung oder fehlendem LLM-Kanal werden Vorlagen verwendet."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Solo los mensajes de ritmo e hitos intentan usar el LLM. Se usan plantillas si falla, caduca o no hay canal API."
+            "value": "Solo los mensajes de ritmo e hitos intentan usar el LLM. Se usan plantillas si falla, caduca o no hay canal LLM."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Seuls les messages de rythme et de jalon utilisent la retouche LLM. Les modèles sont utilisés en cas d’échec, de délai dépassé ou d’absence de canal API."
+            "value": "Seuls les messages de rythme et de jalon utilisent la retouche LLM. Les modèles sont utilisés en cas d’échec, de délai dépassé ou d’absence de canal LLM."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "リズム系とマイルストーン系のメッセージだけ LLM 調整を試します。失敗、タイムアウト、API チャンネル未設定時はテンプレートを使います。"
+            "value": "リズム系とマイルストーン系のメッセージだけ LLM 調整を試します。失敗、タイムアウト、LLM チャンネル未設定時はテンプレートを使います。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "리듬 및 마일스톤 메시지만 LLM 다듬기를 시도합니다. 실패, 시간 초과 또는 API 채널이 없으면 템플릿 대사를 사용합니다."
+            "value": "리듬 및 마일스톤 메시지만 LLM 다듬기를 시도합니다. 실패, 시간 초과 또는 LLM 채널이 없으면 템플릿 대사를 사용합니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Só mensagens de ritmo e marco tentam usar o LLM. Modelos são usados se falhar, expirar ou não houver canal de API."
+            "value": "Só mensagens de ritmo e marco tentam usar o LLM. Modelos são usados se falhar, expirar ou não houver canal LLM."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "LLM используется только для ритма и вех. При ошибке, тайм-ауте или отсутствии API-канала используются шаблоны."
+            "value": "LLM используется только для ритма и вех. При ошибке, тайм-ауте или отсутствии LLM-канала используются шаблоны."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "只对节奏和里程碑类消息尝试调用；失败、超时或没有 API 通道时自动使用模板。"
+            "value": "只对节奏和里程碑类消息尝试调用；失败、超时或没有 LLM 通道时自动使用模板。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "只對節奏和里程碑類訊息嘗試呼叫；失敗、逾時或沒有 API 通道時自動使用範本。"
+            "value": "只對節奏和里程碑類訊息嘗試呼叫；失敗、逾時或沒有 LLM 通道時自動使用範本。"
           }
         }
       }
@@ -41810,6 +41810,98 @@
         }
       }
     },
+    "memory.manager.edit_summary": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Summary"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑摘要"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編輯摘要"
+          }
+        }
+      }
+    },
+    "memory.manager.edit_summary.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changes are saved as a new summary version and used for future memory injection."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改会保存为新的摘要版本，并用于后续记忆注入。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改會儲存為新的摘要版本，並用於後續記憶注入。"
+          }
+        }
+      }
+    },
+    "memory.manager.edit_summary.empty_error": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Summary content cannot be empty."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "摘要内容不能为空。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "摘要內容不能為空。"
+          }
+        }
+      }
+    },
+    "memory.manager.edit_summary.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Summary Memory"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑摘要记忆"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編輯摘要記憶"
+          }
+        }
+      }
+    },
     "memory.manager.error": {
       "extractionState": "manual",
       "localizations": {
@@ -41829,6 +41921,52 @@
           "stringUnit": {
             "state": "translated",
             "value": "記憶載入失敗"
+          }
+        }
+      }
+    },
+    "memory.manager.index_now": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Index Now"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即索引"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即索引"
+          }
+        }
+      }
+    },
+    "memory.manager.index_now.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Immediately scan completed AI sessions for memory extraction."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即扫描已完成的 AI 会话并提取记忆。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即掃描已完成的 AI 會話並擷取記憶。"
           }
         }
       }
@@ -43689,6 +43827,136 @@
         }
       }
     },
+    "settings.ai.provider.default.local_llama": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama Model"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama-Modell"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo Llama"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèle Llama"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama モデル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama 모델"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo Llama"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Модель Llama"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama 模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama 模型"
+          }
+        }
+      }
+    },
+    "settings.ai.provider.kind.local_llama": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama Model"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama-Modell"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo Llama"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèle Llama"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama モデル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama 모델"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo Llama"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Модель Llama"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama 模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama 模型"
+          }
+        }
+      }
+    },
     "settings.ai.local_model.install": {
       "extractionState": "manual",
       "localizations": {
@@ -43833,19 +44101,61 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Runs llama.cpp locally for memory extraction. The model catalog refreshes from GitHub, and model downloads prefer ModelScope in China."
+            "value": "Runs llama.cpp locally for memory extraction and pet line polishing. The model catalog refreshes from GitHub, and model downloads prefer ModelScope in China."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Führt llama.cpp lokal für Speicherextraktion und Haustier-Textverfeinerung aus. Der Modellkatalog wird von GitHub aktualisiert; in China werden Downloads bevorzugt über ModelScope geladen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ejecuta llama.cpp localmente para extraer memoria y pulir frases de la mascota. El catálogo de modelos se actualiza desde GitHub y en China se prioriza ModelScope para descargas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exécute llama.cpp localement pour l’extraction de mémoire et la retouche des répliques du compagnon. Le catalogue se met à jour depuis GitHub et les téléchargements privilégient ModelScope en Chine."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記憶抽出とペットの台詞調整に llama.cpp をローカルで使用します。モデル一覧は GitHub から更新され、中国では ModelScope のダウンロード経路を優先します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "메모리 추출과 펫 대사 다듬기에 llama.cpp를 로컬로 사용합니다. 모델 목록은 GitHub에서 새로 고치며, 중국에서는 ModelScope 다운로드 경로를 우선합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Executa llama.cpp localmente para extração de memória e polimento das falas do pet. O catálogo de modelos é atualizado pelo GitHub e, na China, os downloads priorizam o ModelScope."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Локально запускает llama.cpp для извлечения памяти и доработки реплик питомца. Каталог моделей обновляется с GitHub, а в Китае загрузки предпочитают ModelScope."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用本机 llama.cpp 做记忆提取。模型列表会从 GitHub 刷新，国内下载优先使用 ModelScope。"
+            "value": "使用本机 llama.cpp 做记忆提取和宠物台词润色。模型列表会从 GitHub 刷新，国内下载优先使用 ModelScope。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用本機 llama.cpp 做記憶擷取。模型列表會從 GitHub 重新整理，國內下載優先使用 ModelScope。"
+            "value": "使用本機 llama.cpp 做記憶擷取和寵物台詞潤飾。模型列表會從 GitHub 重新整理，國內下載優先使用 ModelScope。"
           }
         }
       }

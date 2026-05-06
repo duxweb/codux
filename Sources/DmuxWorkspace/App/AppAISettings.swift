@@ -14,7 +14,11 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .anthropic:
             return "Claude API"
         case .localLlama:
-            return "Local Llama"
+            return String(
+                localized: "settings.ai.provider.kind.local_llama",
+                defaultValue: "Llama Model",
+                bundle: .module
+            )
         }
     }
 
@@ -25,7 +29,11 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .anthropic:
             return "Claude API"
         case .localLlama:
-            return "Local Llama Memory"
+            return String(
+                localized: "settings.ai.provider.default.local_llama",
+                defaultValue: "Llama Model",
+                bundle: .module
+            )
         }
     }
 
@@ -75,10 +83,8 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var supportsPetSpeech: Bool {
         switch self {
-        case .openAICompatible, .anthropic:
+        case .openAICompatible, .anthropic, .localLlama:
             return true
-        case .localLlama:
-            return false
         }
     }
 
@@ -202,6 +208,15 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
         )
     ]
 
+    var localizedDisplayName: String {
+        if id == Self.localLlamaProviderID,
+           kind == .localLlama,
+           Self.isDefaultLocalLlamaDisplayName(displayName) {
+            return kind.defaultDisplayName
+        }
+        return normalizedNonEmptyString(displayName) ?? kind.defaultDisplayName
+    }
+
     static func customAPIChannel(
         kind: AppAIProviderKind,
         priority: Int,
@@ -220,6 +235,34 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
             useForMemoryExtraction: true,
             priority: priority
         )
+    }
+
+    static func normalizedDefaultProviderDisplayName(
+        existing: String?,
+        defaultDisplayName: String,
+        providerID: String,
+        kind: AppAIProviderKind
+    ) -> String {
+        guard providerID == localLlamaProviderID,
+              kind == .localLlama,
+              isDefaultLocalLlamaDisplayName(existing) else {
+            return normalizedNonEmptyString(existing) ?? defaultDisplayName
+        }
+        return defaultDisplayName
+    }
+
+    private static func isDefaultLocalLlamaDisplayName(_ value: String?) -> Bool {
+        guard let normalized = normalizedNonEmptyString(value)?
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "") else {
+            return true
+        }
+        return [
+            "localllamamemory",
+            "localllama",
+            "llamamodel",
+            "llama模型",
+        ].contains(normalized)
     }
 }
 
@@ -390,8 +433,13 @@ struct AppAISettings: Codable, Equatable, Sendable {
             if let existing = decodedProviders.first(where: {
                 $0.id == defaultProvider.id && $0.kind == defaultProvider.kind
             }) {
-                provider.displayName =
-                    normalizedNonEmptyString(existing.displayName) ?? defaultProvider.displayName
+                provider.displayName = AppAIProviderConfiguration
+                    .normalizedDefaultProviderDisplayName(
+                        existing: existing.displayName,
+                        defaultDisplayName: defaultProvider.displayName,
+                        providerID: defaultProvider.id,
+                        kind: defaultProvider.kind
+                    )
                 provider.isEnabled = existing.isEnabled
                 provider.model = normalizedNonEmptyString(existing.model) ?? defaultProvider.model
                 provider.baseURL = defaultProvider.baseURL

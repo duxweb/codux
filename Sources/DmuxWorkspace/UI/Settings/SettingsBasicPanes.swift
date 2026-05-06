@@ -180,12 +180,12 @@ struct PetSettingsPane: View {
                 )) {
                     Text(String(localized: "settings.pet.llm.channel.automatic", defaultValue: "Automatic", bundle: .module)).tag(AppAIPetSettings.automaticSpeechProviderID)
                     ForEach(model.appSettings.ai.providers.filter { $0.kind.supportsPetSpeech }) { provider in
-                        Text(provider.displayName).tag(provider.id)
+                        Text(provider.localizedDisplayName).tag(provider.id)
                     }
                 }
                 .disabled(model.appSettings.ai.pet.speechMode == .off || !model.appSettings.ai.pet.speechLLMEnabled)
 
-                Text(String(localized: "settings.pet.llm.help", defaultValue: "Only rhythm and milestone messages try LLM polishing. Template lines are used if it fails, times out, or no API channel is available.", bundle: .module))
+                Text(String(localized: "settings.pet.llm.help", defaultValue: "Only rhythm and milestone messages try LLM polishing. Template lines are used if it fails, times out, or no LLM channel is available.", bundle: .module))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -364,7 +364,7 @@ struct AISettingsPane: View {
                         Text(String(localized: "settings.ai.memory.extraction_provider.automatic", defaultValue: "Automatic", bundle: .module))
                             .tag(AppMemorySettings.automaticExtractorProviderID)
                         ForEach(model.appSettings.ai.providers.filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsMemoryExtraction }) { provider in
-                            Text(provider.displayName).tag(provider.id)
+                            Text(provider.localizedDisplayName).tag(provider.id)
                         }
                     }
                     Text(String(localized: "settings.ai.memory.extraction_provider.automatic_help", defaultValue: "Automatic uses selected memory providers by priority.", bundle: .module))
@@ -429,7 +429,7 @@ struct AISettingsPane: View {
             }
 
             ForEach(model.appSettings.ai.providers.filter { $0.kind.supportsMemoryExtraction }) { provider in
-                Section(provider.displayName) {
+                Section(provider.localizedDisplayName) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(provider.kind.title)

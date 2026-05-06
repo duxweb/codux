@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-05-06
+
+### Added
+
+- Added a manual memory indexing action in the memory manager, allowing completed AI sessions to be scanned on demand even when automatic extraction is disabled.
+- Added manual editing for summary memories, saving edits as new summary versions for future memory injection.
+- Added local Llama support to the pet LLM channel picker.
+
+### Changed
+
+- Renamed the built-in local Llama provider from legacy "Local Llama Memory" wording to localized "Llama Model" naming across AI settings, memory extraction, and pet LLM selection.
+- Improved memory manager spacing in the sidebar and main header.
+
+### Fixed
+
+- Fixed local Llama provider names in memory extraction failures so built-in providers use the localized display name.
+
 ## [0.9.4] - 2026-05-06
 
 ### Added

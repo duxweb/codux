@@ -136,6 +136,68 @@ final class MemoryCoordinatorTests: XCTestCase {
         XCTAssertNil(refreshed.lastError)
     }
 
+    func testManualExtractionBypassesAutomaticToggleAndIdleDelay() async throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+        let coordinator = MemoryCoordinator(store: store)
+        let projectID = UUID()
+        let projectURL = temporaryDirectoryURL.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+        let transcriptURL = temporaryDirectoryURL.appendingPathComponent("manual-transcript.jsonl")
+        try """
+        {"role":"user","content":"Remember that this project keeps memory extraction manual when needed."}
+        {"role":"assistant","content":"Implementation completed."}
+        """.write(to: transcriptURL, atomically: true, encoding: .utf8)
+        let session = AISessionStore.TerminalSessionState(
+            terminalID: UUID(),
+            projectID: projectID,
+            projectName: "Memory Project",
+            projectPath: projectURL.path,
+            sessionTitle: "Codex",
+            tool: "codex",
+            aiSessionID: "manual-session",
+            state: .idle,
+            updatedAt: Date().timeIntervalSince1970,
+            wasInterrupted: false,
+            hasCompletedTurn: true,
+            transcriptPath: transcriptURL.path
+        )
+        var settings = AppAISettings()
+        settings.providers = []
+        settings.memory.automaticExtractionEnabled = false
+        settings.memory.extractionIdleDelaySeconds = 3600
+        let project = Project(
+            id: projectID,
+            name: "Memory Project",
+            path: projectURL.path,
+            shell: "/bin/zsh",
+            defaultCommand: "",
+            badgeText: nil,
+            badgeSymbol: nil,
+            badgeColorHex: nil,
+            gitDefaultPushRemoteName: nil
+        )
+
+        await coordinator.handleSessionSnapshots(
+            [session],
+            settings: settings,
+            projects: [project]
+        )
+
+        let automaticSnapshot = await coordinator.currentStatusSnapshot()
+        XCTAssertEqual(automaticSnapshot.status, .idle)
+
+        await coordinator.handleSessionSnapshots(
+            [session],
+            settings: settings,
+            projects: [project],
+            mode: .manual
+        )
+
+        let manualSnapshot = await coordinator.currentStatusSnapshot()
+        XCTAssertEqual(manualSnapshot.status, .failed)
+        XCTAssertEqual(manualSnapshot.lastError, AIProviderError.unavailableProvider.localizedDescription)
+    }
+
     func testDefaultProviderSelectionUsesLocalLlamaForMemoryExtraction() throws {
         let service = AIProviderSelectionService()
         let settings = AppAISettings()
@@ -145,7 +207,10 @@ final class MemoryCoordinatorTests: XCTestCase {
         XCTAssertEqual(providers.map(\.id), [AppAIProviderConfiguration.localLlamaProviderID])
         XCTAssertEqual(providers.first?.kind, .localLlama)
         XCTAssertEqual(providers.first?.model, LocalLlamaModelCatalog.defaultModelID)
-        XCTAssertNil(service.preferredPetSpeechProvider(in: settings))
+        XCTAssertEqual(
+            service.preferredPetSpeechProvider(in: settings)?.id,
+            AppAIProviderConfiguration.localLlamaProviderID
+        )
     }
 
     func testAutomaticProviderSelectionUsesMemoryProvidersByPriority() throws {
@@ -155,7 +220,7 @@ final class MemoryCoordinatorTests: XCTestCase {
             AppAIProviderConfiguration(
                 id: AppAIProviderConfiguration.localLlamaProviderID,
                 kind: .localLlama,
-                displayName: "Local Llama",
+                displayName: "Llama Model",
                 priority: 0
             ),
             AppAIProviderConfiguration.customAPIChannel(
@@ -174,7 +239,7 @@ final class MemoryCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(
             providers.map(\.displayName),
-            ["Local Llama", "Claude API", "OpenAI"])
+            ["Llama Model", "Claude API", "OpenAI"])
     }
 
     func testExplicitProviderSelectionDoesNotFallbackToOtherProviders() throws {
@@ -485,5 +550,32 @@ final class MemoryCoordinatorTests: XCTestCase {
         XCTAssertFalse(settings.providers.contains { $0.id == "local-apple-foundation-models" })
         XCTAssertEqual(settings.providers.map(\.id), [AppAIProviderConfiguration.localLlamaProviderID])
         XCTAssertEqual(settings.providers.first?.kind, .localLlama)
+    }
+
+    func testSettingsMigrationRenamesLegacyLocalLlamaDisplayName() throws {
+        let data = Data(
+            """
+            {
+              "providers": [
+                {
+                  "id": "local-llama-memory",
+                  "kind": "localLlama",
+                  "displayName": "Local Llama Memory",
+                  "isEnabled": true,
+                  "model": "\(LocalLlamaModelCatalog.defaultModelID)",
+                  "baseURL": "",
+                  "apiKey": "",
+                  "useForMemoryExtraction": true,
+                  "priority": 0
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let settings = try JSONDecoder().decode(AppAISettings.self, from: data)
+
+        XCTAssertEqual(settings.providers.first?.displayName, AppAIProviderKind.localLlama.defaultDisplayName)
+        XCTAssertEqual(settings.providers.first?.localizedDisplayName, AppAIProviderKind.localLlama.defaultDisplayName)
     }
 }

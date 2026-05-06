@@ -7,6 +7,11 @@ extension Notification.Name {
         "dmux.memoryExtractionStatusDidChange")
 }
 
+enum MemoryExtractionTriggerMode: Sendable {
+    case automatic
+    case manual
+}
+
 actor MemoryCoordinator {
     private static let localContextWindowFailureMessage =
         "Local model prompt exceeds the configured context window."
@@ -96,10 +101,18 @@ actor MemoryCoordinator {
     func handleSessionSnapshots(
         _ sessions: [AISessionStore.TerminalSessionState],
         settings: AppAISettings,
-        projects: [Project]
+        projects: [Project],
+        mode: MemoryExtractionTriggerMode = .automatic
     ) async {
-        guard settings.memory.enabled, settings.memory.automaticExtractionEnabled else {
-            return
+        switch mode {
+        case .automatic:
+            guard settings.memory.enabled, settings.memory.automaticExtractionEnabled else {
+                return
+            }
+        case .manual:
+            guard settings.memory.enabled else {
+                return
+            }
         }
 
         let projectByID = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
@@ -108,7 +121,7 @@ actor MemoryCoordinator {
         for session in sessions {
             guard session.state == .idle,
                 session.hasCompletedTurn,
-                shouldExtract(session: session, settings: settings),
+                (mode == .manual || shouldExtract(session: session, settings: settings)),
                 let project = projectByID[session.projectID],
                 let source = resolveTranscriptSource(for: session, project: project)
             else {
@@ -274,10 +287,10 @@ actor MemoryCoordinator {
                 return try decodeExtractionResponse(from: responseText)
             } catch {
                 let message = error.localizedDescription
-                failures.append("\(provider.displayName): \(message)")
+                failures.append("\(provider.localizedDisplayName): \(message)")
                 debugLog.log(
                     "memory-extraction",
-                    "provider failed task=\(taskID.uuidString) provider=\(provider.displayName) error=\(message)",
+                    "provider failed task=\(taskID.uuidString) provider=\(provider.localizedDisplayName) error=\(message)",
                     level: .error
                 )
             }

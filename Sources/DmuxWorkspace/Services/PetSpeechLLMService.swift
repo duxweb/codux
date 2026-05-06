@@ -23,6 +23,7 @@ actor PetSpeechLLMService {
 
         let prompt = Self.auditPrompt(event: event, mode: mode)
         let providerFactory = AIProviderFactory()
+        let timeout: Duration = provider.kind == .localLlama ? .seconds(10) : .seconds(3)
         do {
             let response = try await withThrowingTaskGroup(of: String.self) { group in
                 group.addTask {
@@ -37,7 +38,7 @@ actor PetSpeechLLMService {
                         )
                 }
                 group.addTask {
-                    try await Task.sleep(for: .seconds(3))
+                    try await Task.sleep(for: timeout)
                     throw CancellationError()
                 }
                 guard let result = try await group.next() else {

@@ -191,6 +191,22 @@ extension AppModel {
         }
     }
 
+    func triggerMemoryExtractionNow() {
+        pendingMemorySessionSnapshotTask?.cancel()
+        pendingMemorySessionSnapshotTask = nil
+        let sessions = Array(aiSessionStore.terminalSessionsByID.values)
+        let projects = projects
+        let aiSettings = appSettings.ai
+        Task { [memoryCoordinator, sessions, projects, aiSettings] in
+            await memoryCoordinator.handleSessionSnapshots(
+                sessions,
+                settings: aiSettings,
+                projects: projects,
+                mode: .manual
+            )
+        }
+    }
+
     private func scheduleProjectActivityRefresh(
         sendNotifications: Bool
     ) {

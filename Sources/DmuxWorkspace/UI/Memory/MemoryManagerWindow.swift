@@ -44,6 +44,7 @@ private struct MemoryManagerWindowView: View {
 
     @State private var manager = MemoryManagerViewModel()
     @State private var pendingDelete: MemoryManagerDeleteTarget?
+    @State private var editingSummary: MemoryManagerSummaryEditTarget?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -64,6 +65,10 @@ private struct MemoryManagerWindowView: View {
                     selectedTab: $manager.selectedTab,
                     selectedTitle: manager.selectedTargetTitle,
                     overview: manager.currentOverview,
+                    extractionStatus: model.memoryExtractionStatus,
+                    onIndexNow: {
+                        model.triggerMemoryExtractionNow()
+                    },
                     onReload: { manager.reload(projects: model.projects) }
                 )
 
@@ -80,6 +85,9 @@ private struct MemoryManagerWindowView: View {
                     onDeleteEntry: { entryID in
                         pendingDelete = .entry(entryID)
                     },
+                    onEditSummary: { summary in
+                        editingSummary = MemoryManagerSummaryEditTarget(summary: summary)
+                    },
                     onDeleteSummary: { summaryID in
                         pendingDelete = .summary(summaryID)
                     }
@@ -94,6 +102,26 @@ private struct MemoryManagerWindowView: View {
         }
         .onChange(of: manager.selectedTab) { _, _ in
             manager.reload(projects: model.projects)
+        }
+        .onChange(of: model.memoryExtractionStatus.updatedAt) { _, _ in
+            manager.reload(projects: model.projects)
+        }
+        .sheet(item: $editingSummary) { target in
+            MemorySummaryEditSheet(
+                target: target,
+                onCancel: {
+                    editingSummary = nil
+                },
+                onSave: { content in
+                    manager.updateSummary(
+                        target.summary,
+                        content: content,
+                        maxVersions: model.appSettings.ai.memory.maxSummaryVersions,
+                        projects: model.projects
+                    )
+                    editingSummary = nil
+                }
+            )
         }
         .confirmationDialog(
             memoryL("memory.manager.delete.confirm.title", "Delete Memory"),
@@ -238,6 +266,106 @@ private final class MemoryManagerViewModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    func updateSummary(
+        _ summary: MemorySummary,
+        content: String,
+        maxVersions: Int,
+        projects: [Project]
+    ) {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContent.isEmpty else {
+            errorMessage = memoryL(
+                "memory.manager.edit_summary.empty_error",
+                "Summary content cannot be empty."
+            )
+            return
+        }
+        guard trimmedContent != summary.content else {
+            return
+        }
+        do {
+            _ = try store.upsertSummary(
+                scope: summary.scope,
+                projectID: summary.projectID,
+                toolID: summary.toolID,
+                content: trimmedContent,
+                sourceEntryIDs: summary.sourceEntryIDs,
+                maxVersions: maxVersions
+            )
+            reload(projects: projects)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct MemoryManagerSummaryEditTarget: Identifiable {
+    let summary: MemorySummary
+
+    var id: UUID { summary.id }
+}
+
+private struct MemorySummaryEditSheet: View {
+    let target: MemoryManagerSummaryEditTarget
+    let onCancel: () -> Void
+    let onSave: (String) -> Void
+
+    @State private var draftContent: String
+
+    init(
+        target: MemoryManagerSummaryEditTarget,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (String) -> Void
+    ) {
+        self.target = target
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _draftContent = State(initialValue: target.summary.content)
+    }
+
+    private var trimmedContent: String {
+        draftContent.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(memoryL("memory.manager.edit_summary.title", "Edit Summary Memory"))
+                    .font(.system(size: 17, weight: .bold))
+                Text(memoryL("memory.manager.edit_summary.detail", "Changes are saved as a new summary version and used for future memory injection."))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            TextEditor(text: $draftContent)
+                .font(.system(size: 13))
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.10), lineWidth: 0.5)
+                )
+                .frame(minWidth: 520, minHeight: 260)
+
+            HStack {
+                Spacer()
+                Button(memoryL("common.cancel", "Cancel")) {
+                    onCancel()
+                }
+                Button(memoryL("common.save", "Save")) {
+                    onSave(trimmedContent)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(trimmedContent.isEmpty || trimmedContent == target.summary.content)
+            }
+        }
+        .padding(22)
+    }
 }
 
 private struct MemoryManagerSidebar: View {
@@ -258,7 +386,9 @@ private struct MemoryManagerSidebar: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
-            .padding(16)
+            .padding(.top, 22)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
 
             Divider()
 
@@ -338,7 +468,13 @@ private struct MemoryManagerHeader: View {
     @Binding var selectedTab: MemoryManagerTab
     let selectedTitle: String
     let overview: MemoryScopeOverview
+    let extractionStatus: MemoryExtractionStatusSnapshot
+    let onIndexNow: () -> Void
     let onReload: () -> Void
+
+    private var isIndexing: Bool {
+        extractionStatus.status == .queued || extractionStatus.status == .processing
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -352,6 +488,16 @@ private struct MemoryManagerHeader: View {
                 }
 
                 Spacer()
+
+                Button {
+                    onIndexNow()
+                } label: {
+                    Label(memoryL("memory.manager.index_now", "Index Now"), systemImage: "bolt.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isIndexing)
+                .help(memoryL("memory.manager.index_now.help", "Immediately scan completed AI sessions for memory extraction."))
 
                 Button {
                     onReload()
@@ -374,7 +520,9 @@ private struct MemoryManagerHeader: View {
                 Spacer(minLength: 0)
             }
         }
-        .padding(18)
+        .padding(.top, 24)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 18)
     }
 
     private var overviewText: String {
@@ -398,6 +546,7 @@ private struct MemoryManagerContent: View {
     let errorMessage: String?
     let onArchiveEntry: (UUID) -> Void
     let onDeleteEntry: (UUID) -> Void
+    let onEditSummary: (MemorySummary) -> Void
     let onDeleteSummary: (UUID) -> Void
 
     var body: some View {
@@ -421,6 +570,7 @@ private struct MemoryManagerContent: View {
                             ForEach(summaries) { summary in
                                 MemorySummaryCard(
                                     summary: summary,
+                                    onEdit: { onEditSummary(summary) },
                                     onDelete: { onDeleteSummary(summary.id) }
                                 )
                             }
@@ -457,6 +607,7 @@ private struct MemoryManagerContent: View {
 
 private struct MemorySummaryCard: View {
     let summary: MemorySummary
+    let onEdit: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -474,6 +625,13 @@ private struct MemorySummaryCard: View {
                 Text(summary.updatedAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
+                Button {
+                    onEdit()
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(.borderless)
+                .help(memoryL("memory.manager.edit_summary", "Edit Summary"))
                 Button(role: .destructive) {
                     onDelete()
                 } label: {
