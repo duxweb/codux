@@ -215,16 +215,23 @@ struct PetSpeechLine: Identifiable, Equatable, Sendable {
 }
 
 struct PetActivityStatusLine: Identifiable, Equatable, Sendable {
+    enum Tone: String, Codable, Sendable {
+        case normal
+        case attention
+    }
+
     let id = UUID()
     var text: String
     var key: String
     var updatedAt: Date
     var expiresAt: Date?
+    var tone: Tone = .normal
 }
 
 struct PetSpeechDisplayLine: Equatable, Sendable {
     var text: String
     var isActivityStatus: Bool
+    var tone: PetActivityStatusLine.Tone = .normal
 }
 
 struct PetSpeechActivitySnapshot: Equatable, Sendable {

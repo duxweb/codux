@@ -56,7 +56,7 @@ if value:
 PY
 )"
     ;;
-  session-start|prompt-submit|before-agent|permission-request|permission-denied|elicitation|elicitation-result|stop|stop-failure|session-end|idle|after-agent|codex-session-start|codex-prompt-submit|codex-stop)
+  session-start|prompt-submit|before-agent|permission-request|permission-denied|elicitation|elicitation-result|stop|stop-failure|session-end|idle|after-agent|codex-session-start|codex-prompt-submit|codex-pre-tool-use|codex-post-tool-use|codex-permission-request|codex-stop|codex-session-end)
     ;;
   *)
     exit 0
@@ -574,6 +574,52 @@ case "${action}" in
       "$(extract_first_hook_field cwd current_working_directory working_directory)"
     exit 0
     ;;
+  codex-pre-tool-use)
+    log_codex_hook_diagnostics
+    write_ai_hook_event \
+      "promptSubmitted" \
+      "$(extract_hook_session_id)" \
+      "$(resolved_hook_model)" \
+      "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
+      "$(extract_first_hook_field transcript_path transcriptPath)" \
+      "" \
+      "tool-use" \
+      "" \
+      "$(extract_first_hook_field cwd current_working_directory working_directory)" \
+      "$(extract_first_hook_field tool_name toolName tool)"
+    exit 0
+    ;;
+  codex-post-tool-use)
+    log_codex_hook_diagnostics
+    write_ai_hook_event \
+      "promptSubmitted" \
+      "$(extract_hook_session_id)" \
+      "$(resolved_hook_model)" \
+      "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
+      "$(extract_first_hook_field transcript_path transcriptPath)" \
+      "" \
+      "tool-use" \
+      "" \
+      "$(extract_first_hook_field cwd current_working_directory working_directory)" \
+      "$(extract_first_hook_field tool_name toolName tool)"
+    exit 0
+    ;;
+  codex-permission-request)
+    log_codex_hook_diagnostics
+    write_ai_hook_event \
+      "needsInput" \
+      "$(extract_hook_session_id)" \
+      "$(resolved_hook_model)" \
+      "null" \
+      "$(extract_first_hook_field transcript_path transcriptPath)" \
+      "permission-request" \
+      "" \
+      "permission-request" \
+      "$(extract_first_hook_field cwd current_working_directory working_directory)" \
+      "$(extract_first_hook_field tool_name toolName tool)" \
+      "$(extract_first_hook_field message prompt reason)"
+    exit 0
+    ;;
   codex-stop)
     log_codex_hook_diagnostics
     codex_total_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
@@ -587,6 +633,20 @@ case "${action}" in
       "" \
       "" \
       "$(extract_first_hook_field stop_reason reason)" \
+      "$(extract_first_hook_field cwd current_working_directory working_directory)"
+    exit 0
+    ;;
+  codex-session-end)
+    log_codex_hook_diagnostics
+    write_ai_hook_event \
+      "sessionEnded" \
+      "$(extract_hook_session_id)" \
+      "$(resolved_hook_model)" \
+      "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
+      "$(extract_first_hook_field transcript_path transcriptPath)" \
+      "" \
+      "" \
+      "$(extract_first_hook_field reason stop_reason)" \
       "$(extract_first_hook_field cwd current_working_directory working_directory)"
     exit 0
     ;;

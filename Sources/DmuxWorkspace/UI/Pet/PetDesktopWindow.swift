@@ -303,6 +303,7 @@ private struct PetDesktopWidgetView: View {
         return DesktopPetMessageBubble(
             text: desktopMessage.text,
             isActivityStatus: desktopMessage.isActivityStatus,
+            tone: desktopMessage.tone,
             tailSide: corner.tailSide,
             tailVerticalPosition: corner.tailVerticalPosition
         )
@@ -329,31 +330,50 @@ private enum PixelSpeechBubbleTailVerticalPosition {
 private struct DesktopPetMessageBubble: View {
     let text: String
     var isActivityStatus = false
+    var tone: PetActivityStatusLine.Tone = .normal
     let tailSide: DesktopPetBubbleTailSide
     let tailVerticalPosition: PixelSpeechBubbleTailVerticalPosition
 
     @Environment(\.colorScheme) private var colorScheme
 
     private var fillColor: Color {
-        colorScheme == .dark
+        if tone == .attention {
+            return colorScheme == .dark
+                ? Color(red: 0.42, green: 0.20, blue: 0.05)
+                : Color(red: 1.00, green: 0.70, blue: 0.26)
+        }
+        return colorScheme == .dark
             ? Color(red: 0.16, green: 0.17, blue: 0.21)
             : Color(red: 0.98, green: 0.96, blue: 0.90)
     }
 
     private var strokeColor: Color {
-        colorScheme == .dark
+        if tone == .attention {
+            return colorScheme == .dark
+                ? Color(red: 1.00, green: 0.68, blue: 0.22)
+                : Color(red: 0.34, green: 0.16, blue: 0.03)
+        }
+        return colorScheme == .dark
             ? Color(red: 0.92, green: 0.90, blue: 0.84)
             : Color(red: 0.16, green: 0.15, blue: 0.13)
     }
 
     private var highlightColor: Color {
-        colorScheme == .dark
+        if tone == .attention {
+            return Color.white.opacity(colorScheme == .dark ? 0.16 : 0.62)
+        }
+        return colorScheme == .dark
             ? Color.white.opacity(0.12)
             : Color.white.opacity(0.55)
     }
 
     private var textColor: Color {
-        colorScheme == .dark
+        if tone == .attention {
+            return colorScheme == .dark
+                ? Color(red: 1.00, green: 0.94, blue: 0.84)
+                : Color(red: 0.20, green: 0.10, blue: 0.03)
+        }
+        return colorScheme == .dark
             ? Color(red: 0.94, green: 0.93, blue: 0.88)
             : Color(red: 0.18, green: 0.17, blue: 0.15)
     }

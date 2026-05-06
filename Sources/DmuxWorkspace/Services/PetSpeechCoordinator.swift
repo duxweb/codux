@@ -42,7 +42,11 @@ final class PetSpeechCoordinator {
         guard let currentActivityLine else {
             return nil
         }
-        return PetSpeechDisplayLine(text: currentActivityLine.text, isActivityStatus: true)
+        return PetSpeechDisplayLine(
+            text: currentActivityLine.text,
+            isActivityStatus: true,
+            tone: currentActivityLine.tone
+        )
     }
 
     init(catalog: PetSpeechCatalog = PetSpeechCatalog()) {
@@ -611,7 +615,8 @@ final class PetSpeechCoordinator {
             text: text,
             key: key,
             updatedAt: now,
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            tone: phase.activityStatusTone
         )
     }
 

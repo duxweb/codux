@@ -354,7 +354,7 @@ final class AIRuntimePollingServiceTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .running(tool: "codex"))
 
         let notificationCenter = NotificationCenter()
         let driver = CountingRuntimeToolDriver(
@@ -688,6 +688,95 @@ final class AIRuntimePollingServiceTests: XCTestCase {
 
         service.sync(reason: "missing-stop-hook")
         await fulfillment(of: [expectation], timeout: 2)
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(session.wasInterrupted)
+        XCTAssertFalse(session.hasCompletedTurn)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
+    }
+
+    func testCodexTranscriptWriteTriggersRuntimePolling() async throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        let transcriptURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("dmux-codex-tail-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: transcriptURL) }
+
+        let initialRows = [
+            #"{"timestamp":"2026-04-21T03:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4","cwd":"/tmp/codex-tail-project"}}"#,
+            #"{"timestamp":"2026-04-21T03:00:01Z","type":"event_msg","payload":{"type":"task_started","started_at":1713668401}}"#
+        ]
+        try initialRows.joined(separator: "\n").appending("\n").write(to: transcriptURL, atomically: true, encoding: .utf8)
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-codex-tail",
+                projectID: projectID,
+                projectName: "Codux",
+                projectPath: "/tmp/codex-tail-project",
+                sessionTitle: "Codex",
+                tool: "codex",
+                aiSessionID: "codex-tail-session",
+                model: "gpt-5.4",
+                totalTokens: nil,
+                updatedAt: 1713668401,
+                metadata: .init(transcriptPath: transcriptURL.path)
+            )
+        )
+
+        let notificationCenter = NotificationCenter()
+        let service = AIRuntimePollingService(
+            aiSessionStore: store,
+            toolDriverFactory: AIToolDriverFactory(drivers: [CodexToolDriver()]),
+            notificationCenter: notificationCenter,
+            interval: 60,
+            transcriptMonitorInterval: 0.1
+        )
+
+        let initialPollExpectation = expectation(description: "initial runtime poll notification")
+        let initialObserver = notificationCenter.addObserver(
+            forName: .dmuxAIRuntimeBridgeDidChange,
+            object: nil,
+            queue: .main
+        ) { note in
+            if (note.userInfo?["kind"] as? String) == "runtime-poll" {
+                initialPollExpectation.fulfill()
+            }
+        }
+        defer {
+            notificationCenter.removeObserver(initialObserver)
+            service.stop()
+        }
+
+        service.sync(reason: "start-tail")
+        await fulfillment(of: [initialPollExpectation], timeout: 2)
+        notificationCenter.removeObserver(initialObserver)
+
+        let transcriptPollExpectation = expectation(description: "transcript tail runtime poll notification")
+        let transcriptObserver = notificationCenter.addObserver(
+            forName: .dmuxAIRuntimeBridgeDidChange,
+            object: nil,
+            queue: .main
+        ) { note in
+            if (note.userInfo?["kind"] as? String) == "runtime-poll" {
+                transcriptPollExpectation.fulfill()
+            }
+        }
+        defer {
+            notificationCenter.removeObserver(transcriptObserver)
+        }
+
+        try await Task.sleep(nanoseconds: 120_000_000)
+        let abortedRow = #"{"timestamp":"2026-04-21T03:00:03Z","type":"event_msg","payload":{"type":"turn_aborted","completed_at":1713668403}}"#
+        let handle = try FileHandle(forWritingTo: transcriptURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((abortedRow + "\n").utf8))
+        try handle.close()
+
+        await fulfillment(of: [transcriptPollExpectation], timeout: 2)
 
         let session = try XCTUnwrap(store.session(for: terminalID))
         XCTAssertEqual(session.state, .idle)

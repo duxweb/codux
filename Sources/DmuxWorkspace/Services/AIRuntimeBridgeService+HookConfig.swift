@@ -141,12 +141,13 @@ extension AIRuntimeBridgeService {
             definitions: [
                 ("SessionStart", "codex-session-start", 1000, false),
                 ("UserPromptSubmit", "codex-prompt-submit", 1000, false),
+                ("PreToolUse", "codex-pre-tool-use", 1000, false),
+                ("PostToolUse", "codex-post-tool-use", 1000, false),
+                ("PermissionRequest", "codex-permission-request", 1000, false),
                 ("Stop", "codex-stop", 1000, false),
+                ("SessionEnd", "codex-session-end", 1000, false),
             ],
-            removedDefinitions: [
-                ("PreToolUse", "codex-pre-tool-use"),
-                ("PostToolUse", "codex-post-tool-use"),
-            ]
+            removedDefinitions: []
         )
     }
 

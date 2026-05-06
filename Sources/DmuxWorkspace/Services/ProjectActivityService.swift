@@ -31,6 +31,15 @@ enum ProjectActivityPhase: Equatable {
             return 0
         }
     }
+
+    var activityStatusTone: PetActivityStatusLine.Tone {
+        switch self {
+        case .waitingInput:
+            return .attention
+        case .idle, .loading, .running, .completed:
+            return .normal
+        }
+    }
 }
 
 struct ProjectActivityService: @unchecked Sendable {

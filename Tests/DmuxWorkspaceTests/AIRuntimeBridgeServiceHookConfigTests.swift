@@ -220,4 +220,33 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
             )
         )
     }
+
+    func testInstallCodexHooksIncludesLifecyclePermissionAndToolEvents() {
+        let service = AIRuntimeBridgeService()
+        var root: [String: Any] = [:]
+
+        service.installCodexHooks(&root)
+
+        let hooksObject = root["hooks"] as? [String: Any] ?? [:]
+        let expectedActions = [
+            "SessionStart": "codex-session-start",
+            "UserPromptSubmit": "codex-prompt-submit",
+            "PreToolUse": "codex-pre-tool-use",
+            "PostToolUse": "codex-post-tool-use",
+            "PermissionRequest": "codex-permission-request",
+            "Stop": "codex-stop",
+            "SessionEnd": "codex-session-end",
+        ]
+
+        for (eventKey, action) in expectedActions {
+            let groups = hooksObject[eventKey] as? [[String: Any]]
+            let commands = groups?
+                .flatMap { $0["hooks"] as? [[String: Any]] ?? [] }
+                .compactMap { $0["command"] as? String } ?? []
+            XCTAssertTrue(
+                commands.contains(where: { $0.contains("'\(action)'") }),
+                "Expected \(eventKey) to install \(action), got \(commands)"
+            )
+        }
+    }
 }

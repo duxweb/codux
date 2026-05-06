@@ -83,8 +83,27 @@ final class PetSpeechCoordinatorTests: XCTestCase {
 
         XCTAssertNil(coordinator.currentLine)
         XCTAssertEqual(coordinator.currentActivityLine?.key, "running:codex")
+        XCTAssertEqual(coordinator.displayLine?.tone, .normal)
         XCTAssertEqual(coordinator.displayLine?.isActivityStatus, true)
         XCTAssertEqual(coordinator.displayLine?.text, "codex is running")
+    }
+
+    func testWaitingInputActivityStatusUsesAttentionToneWhenSpeechModeIsOff() {
+        let coordinator = PetSpeechCoordinator()
+        let settings = AppAIPetSettings()
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.updateActivityStatus(.waitingInput(tool: "codex"))
+
+        XCTAssertNil(coordinator.currentLine)
+        XCTAssertEqual(coordinator.currentActivityLine?.key, "waiting:codex")
+        XCTAssertEqual(coordinator.displayLine?.isActivityStatus, true)
+        XCTAssertEqual(coordinator.displayLine?.tone, .attention)
+        XCTAssertEqual(coordinator.displayLine?.text, "codex needs input")
     }
 
     func testSpeechTemporarilyOverridesActivityStatus() {
