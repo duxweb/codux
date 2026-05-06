@@ -65,6 +65,10 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
     private var pendingResizeWorkItem: DispatchWorkItem?
     private let resizeDebounceDelay: TimeInterval = 0.05
     private let maxOutputHistoryBytes = 2_000_000
+    private var pendingOutputBuffer = Data()
+    private var pendingOutputFlushScheduled = false
+    private let outputFlushDelay: TimeInterval = 1.0 / 60.0
+    private let maxOutputBatchBytes = 65_536
     private var pendingInputBuffer = Data()
     private var pendingInputOffset = 0
     private var inputRetryScheduled = false
@@ -201,6 +205,7 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
         readSource?.cancel()
         processSource?.cancel()
         ioQueue.async { [weak self] in
+            self?.flushPendingOutput()
             self?.clearPendingInput(reason: "terminate")
         }
         if fd >= 0, shouldCloseOnCancel {
@@ -324,11 +329,7 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
                 }
                 lock.unlock()
 
-                terminalSession.receive(data)
-                DispatchQueue.main.async { [sessionID, weak self] in
-                    self?.onOutput?(data)
-                    NotificationCenter.default.post(name: .coduxTerminalOutputDidReceive, object: nil, userInfo: ["sessionID": sessionID, "data": data])
-                }
+                enqueueOutput(data, flushImmediately: fireFirstOutput)
                 if fireFirstOutput {
                     DispatchQueue.main.async { [weak self] in
                         self?.onFirstOutput?()
@@ -353,6 +354,50 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
         }
     }
 
+    private func enqueueOutput(_ data: Data, flushImmediately: Bool) {
+        guard data.isEmpty == false else {
+            return
+        }
+
+        pendingOutputBuffer.append(data)
+        if flushImmediately || pendingOutputBuffer.count >= maxOutputBatchBytes {
+            flushPendingOutput()
+            return
+        }
+
+        scheduleOutputFlushIfNeeded()
+    }
+
+    private func scheduleOutputFlushIfNeeded() {
+        guard pendingOutputFlushScheduled == false else {
+            return
+        }
+        pendingOutputFlushScheduled = true
+        ioQueue.asyncAfter(deadline: .now() + outputFlushDelay) { [weak self] in
+            self?.flushPendingOutput()
+        }
+    }
+
+    private func flushPendingOutput() {
+        pendingOutputFlushScheduled = false
+        guard pendingOutputBuffer.isEmpty == false else {
+            return
+        }
+
+        let data = pendingOutputBuffer
+        pendingOutputBuffer.removeAll(keepingCapacity: data.count < maxOutputBatchBytes)
+
+        terminalSession.receive(data)
+        DispatchQueue.main.async { [sessionID, weak self] in
+            self?.onOutput?(data)
+            NotificationCenter.default.post(
+                name: .coduxTerminalOutputDidReceive,
+                object: nil,
+                userInfo: ["sessionID": sessionID, "data": data]
+            )
+        }
+    }
+
     private func appendOutputHistoryLocked(_ data: Data) {
         guard data.isEmpty == false else { return }
         outputHistory.append(data)
@@ -362,6 +407,8 @@ final class GhosttyPTYProcessBridge: @unchecked Sendable {
     }
 
     private func handleProcessExit(expectedPID: Int32) {
+        flushPendingOutput()
+
         var status: Int32 = 0
         let waitedPID = waitpid(expectedPID, &status, 0)
         let exitCode: Int32?

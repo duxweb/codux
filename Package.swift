@@ -20,6 +20,7 @@ let package = Package(
         .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", exact: "2.4.1"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.1"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
+        .package(path: "Packages/LlamaBinary"),
     ],
     targets: [
         .executableTarget(
@@ -31,6 +32,7 @@ let package = Package(
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "Logging", package: "swift-log"),
+                .product(name: "llama", package: "LlamaBinary"),
             ],
             path: "Sources/DmuxWorkspace",
             resources: [

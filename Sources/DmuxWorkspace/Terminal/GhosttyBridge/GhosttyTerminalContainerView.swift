@@ -58,8 +58,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     private let startupDelay: TimeInterval = 0.18
     private let startupWatchdogDelay: TimeInterval = 3.5
     private let viewportRefreshDebounceDelay: TimeInterval = 0.16
-    private let liveResizeViewportRefreshDebounceDelay: TimeInterval = 0.28
-    private let liveResizeTerminalFrameDebounceDelay: TimeInterval = 0.12
+    private let terminalSurfaceResizeDebounceDelay: TimeInterval = 0.16
     private let logger = AppDebugLog.shared
 
     private let processBridge: GhosttyPTYProcessBridge
@@ -311,8 +310,8 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
     override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
-        applyTerminalFrameIfNeeded(reason: "live-resize-end")
-        scheduleViewportRefresh(reason: "live-resize-end", coalescing: false)
+        scheduleTerminalFrameUpdate(reason: "live-resize-end", force: true)
+        scheduleViewportRefresh(reason: "live-resize-end", coalescing: true)
     }
 
     override func viewDidMoveToWindow() {
@@ -685,10 +684,14 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         guard window != nil, bounds.width > 0, bounds.height > 0 else {
             return
         }
+        let targetSize = bounds.size
+        guard terminalView.frame.size != targetSize else {
+            return
+        }
 
         pendingTerminalFrameWorkItem?.cancel()
 
-        if force || !inLiveResize {
+        if force || shouldDeferTerminalFrameUpdate == false {
             applyTerminalFrameIfNeeded(reason: reason)
             return
         }
@@ -698,13 +701,21 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
                 return
             }
             self.pendingTerminalFrameWorkItem = nil
+            if self.shouldDeferTerminalFrameUpdate {
+                self.scheduleTerminalFrameUpdate(reason: reason)
+                return
+            }
             self.applyTerminalFrameIfNeeded(reason: reason)
         }
         pendingTerminalFrameWorkItem = workItem
         DispatchQueue.main.asyncAfter(
-            deadline: .now() + liveResizeTerminalFrameDebounceDelay,
+            deadline: .now() + terminalSurfaceResizeDebounceDelay,
             execute: workItem
         )
+    }
+
+    private var shouldDeferTerminalFrameUpdate: Bool {
+        isLiveResizing || NSEvent.pressedMouseButtons != 0
     }
 
     private func applyTerminalFrameIfNeeded(reason _: String) {
@@ -737,9 +748,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         }
         viewportRefreshWorkItem = workItem
         if coalescing {
-            let delay = inLiveResize
-                ? liveResizeViewportRefreshDebounceDelay
-                : viewportRefreshDebounceDelay
+            let delay = viewportRefreshDelay
             DispatchQueue.main.asyncAfter(
                 deadline: .now() + delay,
                 execute: workItem
@@ -755,13 +764,17 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             return
         }
 
+        guard terminalView.frame.size == bounds.size else {
+            scheduleTerminalFrameUpdate(reason: "viewport-\(reason)")
+            scheduleViewportRefresh(reason: reason, coalescing: true)
+            return
+        }
+
         let signature = "\(window?.windowNumber ?? -1)|\(Int(bounds.width.rounded(.down)))x\(Int(bounds.height.rounded(.down)))|started=\(hasStartedProcess)|ready=\(hasReceivedInitialOutput)"
         guard signature != lastViewportRefreshSignature else {
             return
         }
         lastViewportRefreshSignature = signature
-
-        applyTerminalFrameIfNeeded(reason: reason)
 
         logger.log(
             "ghostty-metrics",
@@ -778,6 +791,17 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             return false
         }
         return true
+    }
+
+    private var isLiveResizing: Bool {
+        inLiveResize || window?.inLiveResize == true
+    }
+
+    private var viewportRefreshDelay: TimeInterval {
+        if pendingTerminalFrameWorkItem != nil || terminalView.frame.size != bounds.size {
+            return terminalSurfaceResizeDebounceDelay
+        }
+        return viewportRefreshDebounceDelay
     }
 
     private func replayRemoteOutputOnVisibleSurfaceIfNeeded(reason: String) {

@@ -135,7 +135,7 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
         }
 
         private func notifyGeometryChangedIfNeeded() {
-            let signature = "\(frame.debugDescription)|\(bounds.debugDescription)|\(window?.windowNumber ?? -1)|\(superview.map { ObjectIdentifier($0).debugDescription } ?? "nil")"
+            let signature = geometrySignature
             guard signature != lastGeometrySignature else {
                 return
             }
@@ -151,6 +151,13 @@ struct GhosttyTerminalHostView: NSViewRepresentable {
             pendingGeometryNotification = workItem
             DispatchQueue.main.async(execute: workItem)
         }
+
+        private var geometrySignature: String {
+            let frameSignature = "\(Int(frame.minX.rounded())):\(Int(frame.minY.rounded())):\(Int(frame.width.rounded()))x\(Int(frame.height.rounded()))"
+            let boundsSignature = "\(Int(bounds.width.rounded()))x\(Int(bounds.height.rounded()))"
+            return "\(frameSignature)|\(boundsSignature)|\(window?.windowNumber ?? -1)|\(superview.map { ObjectIdentifier($0).debugDescription } ?? "nil")"
+        }
+
     }
 
     static func dismantleNSView(_ nsView: HostContainerView, coordinator: Coordinator) {
@@ -286,7 +293,7 @@ final class GhosttyTerminalPortalAccessoryAnchorView: NSView {
     }
 
     private func notifyGeometryChangedIfNeeded() {
-        let signature = "\(frame.debugDescription)|\(bounds.debugDescription)|\(window?.windowNumber ?? -1)|\(superview.map { ObjectIdentifier($0).debugDescription } ?? "nil")"
+        let signature = geometrySignature
         guard signature != lastGeometrySignature else {
             return
         }
@@ -302,6 +309,13 @@ final class GhosttyTerminalPortalAccessoryAnchorView: NSView {
         pendingGeometryNotification = workItem
         DispatchQueue.main.async(execute: workItem)
     }
+
+    private var geometrySignature: String {
+        let frameSignature = "\(Int(frame.minX.rounded())):\(Int(frame.minY.rounded())):\(Int(frame.width.rounded()))x\(Int(frame.height.rounded()))"
+        let boundsSignature = "\(Int(bounds.width.rounded()))x\(Int(bounds.height.rounded()))"
+        return "\(frameSignature)|\(boundsSignature)|\(window?.windowNumber ?? -1)|\(superview.map { ObjectIdentifier($0).debugDescription } ?? "nil")"
+    }
+
 }
 
 @MainActor
@@ -471,7 +485,9 @@ private final class GhosttyWindowPortal {
         let overlayView = GhosttyTerminalPortalOverlayView(frame: .zero)
         overlayView.translatesAutoresizingMaskIntoConstraints = true
         overlayView.autoresizingMask = [.width, .height]
-        overlayView.frame = hostView.bounds
+        if overlayView.frame != hostView.bounds {
+            overlayView.frame = hostView.bounds
+        }
         overlayView.wantsLayer = false
         self.overlayView = overlayView
 
@@ -633,7 +649,9 @@ private final class GhosttyWindowPortal {
             overlayView.removeFromSuperview()
             hostView.addSubview(overlayView, positioned: .above, relativeTo: nil)
         }
-        overlayView.frame = hostView.bounds
+        if overlayView.frame != hostView.bounds {
+            overlayView.frame = hostView.bounds
+        }
 
         guard entry.visibleInUI,
               let anchorView = entry.anchorView,
@@ -687,7 +705,9 @@ private final class GhosttyWindowPortal {
             overlayView.removeFromSuperview()
             hostView.addSubview(overlayView, positioned: .above, relativeTo: nil)
         }
-        overlayView.frame = hostView.bounds
+        if overlayView.frame != hostView.bounds {
+            overlayView.frame = hostView.bounds
+        }
 
         guard entry.visibleInUI,
               let anchorView = entry.anchorView,
@@ -728,27 +748,51 @@ private final class GhosttyWindowPortal {
         CATransaction.setDisableActions(true)
 
         let previousFrame = entry.mountedView.frame
-        if entry.mountedView.superview !== overlayView {
+        let wasMounted = entry.mountedView.superview === overlayView
+        let wasHosted = entry.hostedView.superview === entry.mountedView
+        if !wasMounted {
             overlayView.addSubview(entry.mountedView)
         }
-        if entry.hostedView.superview !== entry.mountedView {
+        if !wasHosted {
             entry.hostedView.removeFromSuperview()
             entry.mountedView.addSubview(entry.hostedView)
         }
         if entry.mountedView.frame != frameInHost {
             entry.mountedView.frame = frameInHost
         }
-        overlayView.addSubview(entry.mountedView, positioned: .below, relativeTo: overlayView.subviews.first { accessories.keys.contains(ObjectIdentifier($0)) })
+        positionMountedViewBelowAccessoriesIfNeeded(entry.mountedView)
         entry.mountedView.isHidden = false
         entry.hostedView.isHidden = false
 
         CATransaction.commit()
 
-        entry.hostedView.portalDidUpdateFrame()
+        if !wasMounted || !wasHosted {
+            entry.hostedView.portalDidUpdateFrame()
+        }
 
         if previousFrame != frameInHost {
             hostView.setNeedsDisplay(previousFrame.union(frameInHost))
         }
+    }
+
+    private func positionMountedViewBelowAccessoriesIfNeeded(_ mountedView: NSView) {
+        guard let mountedIndex = overlayView.subviews.firstIndex(where: { $0 === mountedView }) else {
+            overlayView.addSubview(mountedView)
+            return
+        }
+
+        guard let firstAccessory = overlayView.subviews.first(where: { candidate in
+            accessories.keys.contains(ObjectIdentifier(candidate))
+        }) else {
+            return
+        }
+
+        guard let firstAccessoryIndex = overlayView.subviews.firstIndex(where: { $0 === firstAccessory }),
+              mountedIndex > firstAccessoryIndex else {
+            return
+        }
+
+        overlayView.addSubview(mountedView, positioned: .below, relativeTo: firstAccessory)
     }
 }
 

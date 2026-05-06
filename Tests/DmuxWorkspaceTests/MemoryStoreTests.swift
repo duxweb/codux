@@ -126,6 +126,117 @@ final class MemoryStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.lastError, "timeout")
     }
 
+    func testRequeueFailedExtractionTasksByErrorMessage() throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+        let projectID = UUID()
+        let error = AIProviderError.unavailableProvider.localizedDescription
+
+        XCTAssertTrue(
+            try store.enqueueExtractionIfNeeded(
+                projectID: projectID,
+                tool: "codex",
+                sessionID: "session-requeue",
+                transcriptPath: "/tmp/requeue.jsonl",
+                sourceFingerprint: "requeue-fingerprint"
+            )
+        )
+
+        let task = try XCTUnwrap(store.nextPendingExtractionTask())
+        try store.markExtractionTaskRunning(task.id)
+        try store.markExtractionTaskFailed(task.id, error: error)
+
+        XCTAssertEqual(try store.requeueFailedExtractionTasks(errorMessages: [error]), 1)
+
+        let snapshot = try store.extractionStatusSnapshot()
+        XCTAssertEqual(snapshot.status, .queued)
+        XCTAssertEqual(snapshot.pendingCount, 1)
+        XCTAssertEqual(snapshot.runningCount, 0)
+        XCTAssertNil(snapshot.lastError)
+
+        let requeued = try XCTUnwrap(store.nextPendingExtractionTask())
+        XCTAssertEqual(requeued.id, task.id)
+        XCTAssertEqual(requeued.attempts, 0)
+        XCTAssertNil(requeued.error)
+    }
+
+    func testRequeueFailedExtractionTasksByErrorSubstring() throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+        let projectID = UUID()
+
+        XCTAssertTrue(
+            try store.enqueueExtractionIfNeeded(
+                projectID: projectID,
+                tool: "codex",
+                sessionID: "session-context",
+                transcriptPath: "/tmp/context.jsonl",
+                sourceFingerprint: "context-fingerprint"
+            )
+        )
+
+        let task = try XCTUnwrap(store.nextPendingExtractionTask())
+        try store.markExtractionTaskRunning(task.id)
+        try store.markExtractionTaskFailed(
+            task.id,
+            error:
+                "All memory extraction providers failed. Local Llama Memory: Local model prompt exceeds the configured context window."
+        )
+
+        XCTAssertEqual(
+            try store.requeueFailedExtractionTasks(
+                errorMessages: [],
+                errorSubstrings: ["Local model prompt exceeds the configured context window."]
+            ),
+            1
+        )
+
+        let snapshot = try store.extractionStatusSnapshot()
+        XCTAssertEqual(snapshot.status, .queued)
+        XCTAssertEqual(snapshot.pendingCount, 1)
+        XCTAssertNil(snapshot.lastError)
+    }
+
+    func testRequeueFailedExtractionTasksCanLimitBatchSize() throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+        let projectID = UUID()
+        let error = "All memory extraction providers failed. Local Llama Memory: malformed output"
+
+        for index in 0..<3 {
+            XCTAssertTrue(
+                try store.enqueueExtractionIfNeeded(
+                    projectID: projectID,
+                    tool: "codex",
+                    sessionID: "session-format-\(index)",
+                    transcriptPath: "/tmp/format-\(index).jsonl",
+                    sourceFingerprint: "format-fingerprint-\(index)"
+                )
+            )
+            let task = try XCTUnwrap(store.nextPendingExtractionTask())
+            try store.markExtractionTaskRunning(task.id)
+            try store.markExtractionTaskFailed(task.id, error: error)
+        }
+
+        XCTAssertEqual(
+            try store.requeueFailedExtractionTasks(
+                errorMessages: [],
+                errorSubstrings: ["malformed output"],
+                requeueLimit: 2
+            ),
+            2
+        )
+
+        let snapshot = try store.extractionStatusSnapshot()
+        XCTAssertEqual(snapshot.pendingCount, 2)
+        XCTAssertNil(snapshot.lastError)
+        XCTAssertEqual(
+            try store.requeueFailedExtractionTasks(
+                errorMessages: [],
+                errorSubstrings: ["malformed output"],
+                requeueLimit: 10
+            ),
+            1
+        )
+    }
+
     func testSummaryUpsertVersionsAndMergedEntriesAreHiddenFromActiveLists() throws {
         let store = MemoryStore(databaseURL: databaseURL)
         let projectID = UUID()

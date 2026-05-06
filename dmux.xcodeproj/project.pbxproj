@@ -25,6 +25,7 @@
 		B0C0D0E0F1029384756A0001 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = B0C0D0E0F1029384756A0003 /* MarkdownUI */; };
 		BEEF00000000000000000001 /* LiveKitWebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = BEEF00000000000000000003 /* LiveKitWebRTC */; };
 		0D664E0A08F199B7A97D0BA2 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CDEB30421E61195A008FD00E /* Localizable.xcstrings */; };
+		240000000000000000000203 /* local-llama-models.json in Resources */ = {isa = PBXBuildFile; fileRef = 240000000000000000000003 /* local-llama-models.json */; };
 		E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = E1A41C4E3A0A4C0A9D7B42A2 /* Logging */; };
 		0FA3288DB5DECC9BDA2E1291 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E1EC9BC74648163A178985 /* Theme.swift */; };
 		1144DC09253CDEA30AC56B0E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF3062F44A5DB544744A8CAD /* SettingsView.swift */; };
@@ -42,6 +43,9 @@
 		220000000000000000000102 /* AIProviderFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000002 /* AIProviderFactory.swift */; };
 		220000000000000000000104 /* OpenAICompatibleProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000004 /* OpenAICompatibleProviderClient.swift */; };
 		220000000000000000000105 /* AnthropicProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000005 /* AnthropicProviderClient.swift */; };
+		240000000000000000000101 /* LocalLlamaModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240000000000000000000001 /* LocalLlamaModelStore.swift */; };
+		240000000000000000000102 /* LocalLlamaProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240000000000000000000002 /* LocalLlamaProviderClient.swift */; };
+		240000000000000000000201 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = 240000000000000000000302 /* llama */; };
 		230000000000000000000101 /* MemoryManagerWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000001 /* MemoryManagerWindow.swift */; };
 		210000000000000000000109 /* AIToolEnvironmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000009 /* AIToolEnvironmentService.swift */; };
 		210000000000000000000105 /* MemoryContextService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000005 /* MemoryContextService.swift */; };
@@ -208,6 +212,9 @@
 		220000000000000000000002 /* AIProviderFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProviderFactory.swift; sourceTree = "<group>"; };
 		220000000000000000000004 /* OpenAICompatibleProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompatibleProviderClient.swift; sourceTree = "<group>"; };
 		220000000000000000000005 /* AnthropicProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicProviderClient.swift; sourceTree = "<group>"; };
+		240000000000000000000001 /* LocalLlamaModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLlamaModelStore.swift; sourceTree = "<group>"; };
+		240000000000000000000002 /* LocalLlamaProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLlamaProviderClient.swift; sourceTree = "<group>"; };
+		240000000000000000000003 /* local-llama-models.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "local-llama-models.json"; sourceTree = "<group>"; };
 		230000000000000000000001 /* MemoryManagerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryManagerWindow.swift; sourceTree = "<group>"; };
 		210000000000000000000009 /* AIToolEnvironmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIToolEnvironmentService.swift; sourceTree = "<group>"; };
 		210000000000000000000005 /* MemoryContextService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryContextService.swift; sourceTree = "<group>"; };
@@ -362,6 +369,7 @@
 			files = (
 				A7B8C9D0E1F2031425364758 /* GhosttyTerminal in Frameworks */,
 				A7B8C9D0E1F2031425364767 /* GhosttyTheme in Frameworks */,
+				240000000000000000000201 /* llama in Frameworks */,
 				A1B2C3D4E5F60718293A4B5D /* Sparkle in Frameworks */,
 				E1A41C4E3A0A4C0A9D7B42A1 /* Logging in Frameworks */,
 				BEEF00000000000000000001 /* LiveKitWebRTC in Frameworks */,
@@ -579,6 +587,7 @@
 			isa = PBXGroup;
 			children = (
 				CDEB30421E61195A008FD00E /* Localizable.xcstrings */,
+				240000000000000000000003 /* local-llama-models.json */,
 				5F0A9C1D7E2B4A5C8D9E0F13 /* Pets */,
 			);
 			path = Resources;
@@ -672,6 +681,8 @@
 				220000000000000000000002 /* AIProviderFactory.swift */,
 				220000000000000000000004 /* OpenAICompatibleProviderClient.swift */,
 				220000000000000000000005 /* AnthropicProviderClient.swift */,
+				240000000000000000000001 /* LocalLlamaModelStore.swift */,
+				240000000000000000000002 /* LocalLlamaProviderClient.swift */,
 				210000000000000000000009 /* AIToolEnvironmentService.swift */,
 				210000000000000000000005 /* MemoryContextService.swift */,
 				210000000000000000000006 /* MemoryCoordinator.swift */,
@@ -760,6 +771,7 @@
 				E1A41C4E3A0A4C0A9D7B42A2 /* Logging */,
 				BEEF00000000000000000003 /* LiveKitWebRTC */,
 				B0C0D0E0F1029384756A0003 /* MarkdownUI */,
+				240000000000000000000302 /* llama */,
 			);
 			productName = dmux;
 			productReference = DA51FF0D184B4B658DF3C288 /* Codux.app */;
@@ -803,6 +815,7 @@
 				E1A41C4E3A0A4C0A9D7B42A3 /* XCRemoteSwiftPackageReference "swift-log" */,
 				BEEF00000000000000000002 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */,
 				B0C0D0E0F1029384756A0002 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				240000000000000000000301 /* XCLocalSwiftPackageReference "LlamaBinary" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7651A8B853F6627D943F04C9 /* Products */;
@@ -820,6 +833,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0D664E0A08F199B7A97D0BA2 /* Localizable.xcstrings in Resources */,
+				240000000000000000000203 /* local-llama-models.json in Resources */,
 				5F0A9C1D7E2B4A5C8D9E0F12 /* Pets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -864,6 +878,8 @@
 				220000000000000000000102 /* AIProviderFactory.swift in Sources */,
 				220000000000000000000104 /* OpenAICompatibleProviderClient.swift in Sources */,
 				220000000000000000000105 /* AnthropicProviderClient.swift in Sources */,
+				240000000000000000000101 /* LocalLlamaModelStore.swift in Sources */,
+				240000000000000000000102 /* LocalLlamaProviderClient.swift in Sources */,
 				210000000000000000000109 /* AIToolEnvironmentService.swift in Sources */,
 				21A2B3C4D5E6F708192A3B52 /* ClaudeToolDriver.swift in Sources */,
 				21A2B3C4D5E6F708192A3B54 /* CodexToolDriver.swift in Sources */,
@@ -1024,7 +1040,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 43;
+				CURRENT_PROJECT_VERSION = 44;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1037,7 +1053,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.3;
+				MARKETING_VERSION = 0.9.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1098,7 +1114,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 43;
+				CURRENT_PROJECT_VERSION = 44;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1117,7 +1133,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.3;
+				MARKETING_VERSION = 0.9.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1167,6 +1183,13 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		240000000000000000000301 /* XCLocalSwiftPackageReference "LlamaBinary" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/LlamaBinary;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		A7B8C9D0E1F2031425364766 /* XCRemoteSwiftPackageReference "libghostty-spm" */ = {
@@ -1241,6 +1264,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B0C0D0E0F1029384756A0002 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
+		};
+		240000000000000000000302 /* llama */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 240000000000000000000301 /* XCLocalSwiftPackageReference "LlamaBinary" */;
+			productName = llama;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

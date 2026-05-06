@@ -18,7 +18,7 @@ enum PetDesktopWindowPresenter {
 
     static func show(model: AppModel) {
         if let window = controller?.window {
-            updateContent(model: model)
+            updateContentIfNeeded(model: model)
             if !window.isVisible {
                 window.orderFrontRegardless()
             }
@@ -61,8 +61,12 @@ enum PetDesktopWindowPresenter {
         controller = nil
     }
 
-    private static func updateContent(model: AppModel) {
+    private static func updateContentIfNeeded(model: AppModel) {
         guard let hosting = controller?.contentViewController as? NSHostingController<PetDesktopWidgetView> else {
+            return
+        }
+        guard hosting.rootView.model !== model else {
+            makeHostingViewTransparent(hosting.view)
             return
         }
         let bubbleCorner = controller?.window.map { DesktopPetPlacementStore.bubbleCorner(for: $0.frame) } ?? .topLeading
@@ -322,46 +326,70 @@ private struct DesktopPetMessageBubble: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private var fillColor: Color {
-        if tone == .attention {
-            return colorScheme == .dark
-                ? Color(red: 0.42, green: 0.20, blue: 0.05)
-                : Color(red: 1.00, green: 0.70, blue: 0.26)
-        }
-        return colorScheme == .dark
-            ? Color(red: 0.16, green: 0.17, blue: 0.21)
-            : Color(red: 0.98, green: 0.96, blue: 0.90)
+    private struct TonePalette {
+        var fill: Color
+        var stroke: Color
+        var highlight: Color
+        var text: Color
     }
 
-    private var strokeColor: Color {
-        if tone == .attention {
-            return colorScheme == .dark
-                ? Color(red: 1.00, green: 0.68, blue: 0.22)
-                : Color(red: 0.34, green: 0.16, blue: 0.03)
+    private var palette: TonePalette {
+        switch tone {
+        case .attention:
+            return TonePalette(
+                fill: colorScheme == .dark
+                    ? Color(red: 0.42, green: 0.20, blue: 0.05)
+                    : Color(red: 1.00, green: 0.70, blue: 0.26),
+                stroke: colorScheme == .dark
+                    ? Color(red: 1.00, green: 0.68, blue: 0.22)
+                    : Color(red: 0.34, green: 0.16, blue: 0.03),
+                highlight: Color.white.opacity(colorScheme == .dark ? 0.16 : 0.62),
+                text: colorScheme == .dark
+                    ? Color(red: 1.00, green: 0.94, blue: 0.84)
+                    : Color(red: 0.20, green: 0.10, blue: 0.03)
+            )
+        case .success:
+            return TonePalette(
+                fill: colorScheme == .dark
+                    ? Color(red: 0.08, green: 0.30, blue: 0.16)
+                    : Color(red: 0.57, green: 0.88, blue: 0.46),
+                stroke: colorScheme == .dark
+                    ? Color(red: 0.55, green: 0.95, blue: 0.46)
+                    : Color(red: 0.08, green: 0.28, blue: 0.12),
+                highlight: Color.white.opacity(colorScheme == .dark ? 0.14 : 0.48),
+                text: colorScheme == .dark
+                    ? Color(red: 0.88, green: 1.00, blue: 0.82)
+                    : Color(red: 0.05, green: 0.18, blue: 0.08)
+            )
+        case .warning:
+            return TonePalette(
+                fill: colorScheme == .dark
+                    ? Color(red: 0.38, green: 0.05, blue: 0.07)
+                    : Color(red: 0.95, green: 0.22, blue: 0.18),
+                stroke: colorScheme == .dark
+                    ? Color(red: 1.00, green: 0.42, blue: 0.36)
+                    : Color(red: 0.36, green: 0.03, blue: 0.03),
+                highlight: Color.white.opacity(colorScheme == .dark ? 0.14 : 0.36),
+                text: colorScheme == .dark
+                    ? Color(red: 1.00, green: 0.91, blue: 0.88)
+                    : Color.white
+            )
+        case .normal:
+            return TonePalette(
+                fill: colorScheme == .dark
+                    ? Color(red: 0.16, green: 0.17, blue: 0.21)
+                    : Color(red: 0.98, green: 0.96, blue: 0.90),
+                stroke: colorScheme == .dark
+                    ? Color(red: 0.92, green: 0.90, blue: 0.84)
+                    : Color(red: 0.16, green: 0.15, blue: 0.13),
+                highlight: colorScheme == .dark
+                    ? Color.white.opacity(0.12)
+                    : Color.white.opacity(0.55),
+                text: colorScheme == .dark
+                    ? Color(red: 0.94, green: 0.93, blue: 0.88)
+                    : Color(red: 0.18, green: 0.17, blue: 0.15)
+            )
         }
-        return colorScheme == .dark
-            ? Color(red: 0.92, green: 0.90, blue: 0.84)
-            : Color(red: 0.16, green: 0.15, blue: 0.13)
-    }
-
-    private var highlightColor: Color {
-        if tone == .attention {
-            return Color.white.opacity(colorScheme == .dark ? 0.16 : 0.62)
-        }
-        return colorScheme == .dark
-            ? Color.white.opacity(0.12)
-            : Color.white.opacity(0.55)
-    }
-
-    private var textColor: Color {
-        if tone == .attention {
-            return colorScheme == .dark
-                ? Color(red: 1.00, green: 0.94, blue: 0.84)
-                : Color(red: 0.20, green: 0.10, blue: 0.03)
-        }
-        return colorScheme == .dark
-            ? Color(red: 0.94, green: 0.93, blue: 0.88)
-            : Color(red: 0.18, green: 0.17, blue: 0.15)
     }
 
     var body: some View {
@@ -372,7 +400,7 @@ private struct DesktopPetMessageBubble: View {
         Text(text)
             .font(.system(size: isActivityStatus ? 11 : 12, weight: isActivityStatus ? .semibold : .bold, design: .monospaced))
             .tracking(isActivityStatus ? 0.2 : 0.4)
-            .foregroundStyle(textColor)
+            .foregroundStyle(palette.text)
             .lineLimit(4)
             .multilineTextAlignment(.center)
             .minimumScaleFactor(0.78)
@@ -382,13 +410,13 @@ private struct DesktopPetMessageBubble: View {
             .padding(.leading, tailSide == .left ? 24 : 15)
             .padding(.trailing, tailSide == .right ? 24 : 15)
             .frame(minHeight: 44)
-            .background(shape.fill(fillColor))
+            .background(shape.fill(palette.fill))
             .overlay(
                 shape
                     .inset(by: 3)
-                    .stroke(highlightColor, lineWidth: 1)
+                    .stroke(palette.highlight, lineWidth: 1)
             )
-            .overlay(shape.stroke(strokeColor, lineWidth: 2))
+            .overlay(shape.stroke(palette.stroke, lineWidth: 2))
     }
 }
 

@@ -89,6 +89,14 @@ log_line() {
   print -r -- "[$(/bin/date '+%Y-%m-%dT%H:%M:%S%z')] [wrapper] $1" >> "${DMUX_LOG_FILE}"
 }
 
+debug_log_line() {
+  case "${DMUX_WRAPPER_DEBUG:-}" in
+    1|true|TRUE|debug|verbose)
+      log_line "$1"
+      ;;
+  esac
+}
+
 hook_payload_hash() {
   [[ -n "${hook_payload}" ]] || return 0
   print -rn -- "${hook_payload}" | /usr/bin/shasum -a 256 2>/dev/null | /usr/bin/awk '{print $1}'
@@ -217,7 +225,7 @@ log_codex_hook_diagnostics() {
   payload_hash="$(hook_payload_hash)"
   local payload_size
   payload_size="$(hook_payload_size)"
-  log_line "codex hook diag action=${action} tool=${tool_name} bytes=${payload_size:-0} hash=${payload_hash:-nil}${summary:+ ${summary}}"
+  debug_log_line "codex hook diag action=${action} tool=${tool_name} bytes=${payload_size:-0} hash=${payload_hash:-nil}${summary:+ ${summary}}"
 }
 
 extract_hook_session_id() {
@@ -462,7 +470,7 @@ send_runtime_event() {
     return 0
   }
   if print -r -- "${payload}" | /usr/bin/nc -U -w 1 "${DMUX_RUNTIME_SOCKET}" >/dev/null 2>&1; then
-    log_line "hook sent action=${action} tool=${tool_name} socket=${DMUX_RUNTIME_SOCKET}"
+    debug_log_line "hook sent action=${action} tool=${tool_name} socket=${DMUX_RUNTIME_SOCKET}"
   else
     log_line "hook send failed action=${action} tool=${tool_name} socket=${DMUX_RUNTIME_SOCKET}"
   fi
@@ -543,7 +551,7 @@ write_ai_hook_event() {
     }
   )"
   send_runtime_event "${event_json}"
-  log_line "ai hook kind=${event_kind} tool=${tool_name} session=${DMUX_SESSION_ID} externalSession=${ai_session_id:-nil}"
+  debug_log_line "ai hook kind=${event_kind} tool=${tool_name} session=${DMUX_SESSION_ID} externalSession=${ai_session_id:-nil}"
 }
 
 case "${action}" in

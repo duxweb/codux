@@ -7,9 +7,11 @@ final class AISessionStoreTests: XCTestCase {
 
     override func setUp() async throws {
         store.reset()
+        store.onSpeechEvent = nil
     }
 
     override func tearDown() async throws {
+        store.onSpeechEvent = nil
         store.reset()
     }
 
@@ -1686,6 +1688,52 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertEqual(store.projectPhase(projectID: projectID), .waitingInput(tool: "claude"))
     }
 
+    func testProjectPhasePrefersWaitingInputOverRunningAcrossSplitSessions() throws {
+        let runningTerminalID = UUID()
+        let waitingTerminalID = UUID()
+        let projectID = UUID()
+        let now = Date().timeIntervalSince1970
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .promptSubmitted,
+                terminalID: runningTerminalID,
+                terminalInstanceID: "instance-running",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Codex",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: 12,
+                updatedAt: now - 1,
+                metadata: nil
+            )
+        )
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .needsInput,
+                terminalID: waitingTerminalID,
+                terminalInstanceID: "instance-waiting",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Claude",
+                tool: "claude",
+                aiSessionID: "claude-session",
+                model: "claude-sonnet-4-6",
+                updatedAt: now,
+                metadata: .init(
+                    notificationType: "permission-request",
+                    targetToolName: "Bash",
+                    message: "Need approval"
+                )
+            )
+        )
+
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .waitingInput(tool: "claude"))
+    }
+
     func testProjectPhaseKeepsCompletedWhenAnotherSplitIsIdleIncomplete() throws {
         let completedTerminalID = UUID()
         let idleTerminalID = UUID()
@@ -1772,6 +1820,41 @@ final class AISessionStoreTests: XCTestCase {
         let session = try XCTUnwrap(store.session(for: terminalID))
         XCTAssertEqual(session.state, .needsInput)
         XCTAssertEqual(store.projectPhase(projectID: projectID), .waitingInput(tool: "claude"))
+    }
+
+    func testNeedsInputSpeechPayloadIncludesPermissionMetadata() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        var events: [PetSpeechEvent] = []
+        store.onSpeechEvent = { events.append($0) }
+
+        _ = store.apply(
+            AIHookEvent(
+                kind: .needsInput,
+                terminalID: terminalID,
+                terminalInstanceID: "instance-1",
+                projectID: projectID,
+                projectName: "Codux",
+                sessionTitle: "Terminal",
+                tool: "codex",
+                aiSessionID: "codex-session",
+                model: "gpt-5.4",
+                totalTokens: nil,
+                updatedAt: 100,
+                metadata: .init(
+                    notificationType: "codex-permission-request",
+                    targetToolName: "Bash",
+                    message: "Need approval"
+                )
+            )
+        )
+
+        let event = try XCTUnwrap(events.first)
+        XCTAssertEqual(event.kind, .turnNeedsInput)
+        XCTAssertEqual(event.payload["tool"], "codex")
+        XCTAssertEqual(event.payload["project"], "Codux")
+        XCTAssertEqual(event.payload["notificationType"], "codex-permission-request")
+        XCTAssertEqual(event.payload["targetToolName"], "Bash")
     }
 
     func testWaitingInputContextUsesNewestInteractionMetadata() throws {

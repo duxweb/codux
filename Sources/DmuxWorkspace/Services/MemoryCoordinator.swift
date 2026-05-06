@@ -8,6 +8,11 @@ extension Notification.Name {
 }
 
 actor MemoryCoordinator {
+    private static let localContextWindowFailureMessage =
+        "Local model prompt exceeds the configured context window."
+    private static let malformedExtractionResponseFailureMessage =
+        "Memory extraction provider returned malformed memory JSON."
+
     private let store: MemoryStore
     private let providerSelectionService = AIProviderSelectionService()
     private let debugLog = AppDebugLog.shared
@@ -38,6 +43,52 @@ actor MemoryCoordinator {
             debugLog.log(
                 "memory-extraction", "recover failed error=\(error.localizedDescription)",
                 level: .error)
+            publishStatus(.failed)
+        }
+    }
+
+    func refreshAfterProviderConfigurationChanged(settings: AppAISettings, projects: [Project])
+        async
+    {
+        guard
+            !providerSelectionService.candidateMemoryExtractionProviders(
+                in: settings,
+                tool: nil
+            ).isEmpty
+        else {
+            publishStatus(.idle)
+            return
+        }
+
+        do {
+            let count = try store.requeueFailedExtractionTasks(
+                errorMessages: [AIProviderError.unavailableProvider.localizedDescription],
+                errorSubstrings: [
+                    Self.localContextWindowFailureMessage,
+                    Self.malformedExtractionResponseFailureMessage,
+                    "Memory extraction provider did not return a valid JSON object.",
+                    "格式不正确",
+                    "correct format",
+                ],
+                requeueLimit: 3
+            )
+            if count > 0 {
+                debugLog.log(
+                    "memory-extraction",
+                    "requeued provider-configuration failures count=\(count)"
+                )
+                publishStatus(.queued)
+                let projectsByID = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
+                await processQueueIfNeeded(settings: settings, projectsByID: projectsByID)
+            } else {
+                publishStatus(.idle)
+            }
+        } catch {
+            debugLog.log(
+                "memory-extraction",
+                "provider configuration refresh failed error=\(error.localizedDescription)",
+                level: .error
+            )
             publishStatus(.failed)
         }
     }
@@ -138,6 +189,21 @@ actor MemoryCoordinator {
                     continue
                 }
 
+                let originalTranscriptTokenLimit = transcriptTokenLimit
+                let promptBudget = promptBudget(for: extractionProviders)
+                if let providerLimit = extractionProviders
+                    .compactMap({ $0.kind.memoryExtractionTranscriptTokenLimit })
+                    .min()
+                {
+                    transcriptTokenLimit = min(transcriptTokenLimit, providerLimit)
+                }
+                if let promptTranscriptLimit = promptBudget.transcriptTokens {
+                    transcriptTokenLimit = min(transcriptTokenLimit, promptTranscriptLimit)
+                }
+                defer {
+                    transcriptTokenLimit = originalTranscriptTokenLimit
+                }
+
                 let transcript = try resolveTranscriptForTask(task, project: project)
                 let userSummary = try? store.currentSummary(scope: .user)
                 let projectSummary = try? store.currentSummary(
@@ -158,7 +224,8 @@ actor MemoryCoordinator {
                     userMemories: existingUserMemories,
                     projectMemories: existingProjectMemories,
                     projectName: project.name,
-                    settings: settings
+                    settings: settings,
+                    budget: promptBudget
                 )
                 let response = try await extractMemoryResponse(
                     prompt: prompt,
@@ -257,6 +324,9 @@ actor MemoryCoordinator {
     ) throws {
         var newWorkingIDs: [UUID] = []
         for item in response.workingAdd {
+            guard let content = normalizedNonEmptyString(item.content) else {
+                continue
+            }
             let scope = item.scope ?? .project
             let entry = try store.upsert(
                 MemoryCandidate(
@@ -265,7 +335,7 @@ actor MemoryCoordinator {
                     toolID: nil,
                     tier: item.tier ?? .working,
                     kind: item.kind,
-                    content: item.content,
+                    content: content,
                     rationale: item.rationale,
                     sourceTool: task.tool,
                     sourceSessionID: task.sessionID,
@@ -337,24 +407,38 @@ actor MemoryCoordinator {
         userMemories: [MemoryEntry],
         projectMemories: [MemoryEntry],
         projectName: String,
-        settings: AppAISettings
+        settings: AppAISettings,
+        budget: MemoryExtractionPromptBudget
     ) -> String {
-        """
+        if budget.isCompact {
+            return makeCompactExtractionPrompt(
+                transcript: transcript,
+                userSummary: userSummary,
+                projectSummary: projectSummary,
+                userMemories: userMemories,
+                projectMemories: projectMemories,
+                projectName: projectName,
+                settings: settings,
+                budget: budget
+            )
+        }
+
+        return """
         Memory extraction schema version: dmux-memory-v2
 
         Project: \(projectName)
 
         Existing user summary:
-        \(renderExistingSummary(userSummary))
+        \(renderExistingSummary(userSummary, maxTokens: budget.summaryTokens))
 
         Existing project summary:
-        \(renderExistingSummary(projectSummary))
+        \(renderExistingSummary(projectSummary, maxTokens: budget.summaryTokens))
 
         Recent user working entries:
-        \(renderExistingMemories(userMemories))
+        \(renderExistingMemories(userMemories, budget: budget))
 
         Recent project working entries:
-        \(renderExistingMemories(projectMemories))
+        \(renderExistingMemories(projectMemories, budget: budget))
 
         Transcript:
         <transcript>
@@ -408,38 +492,99 @@ actor MemoryCoordinator {
         """
     }
 
-    private func renderExistingSummary(_ summary: MemorySummary?) -> String {
+    private func makeCompactExtractionPrompt(
+        transcript: String,
+        userSummary: MemorySummary?,
+        projectSummary: MemorySummary?,
+        userMemories: [MemoryEntry],
+        projectMemories: [MemoryEntry],
+        projectName: String,
+        settings: AppAISettings,
+        budget: MemoryExtractionPromptBudget
+    ) -> String {
+        """
+        Memory extraction schema version: dmux-memory-v2
+        Project: \(projectName)
+
+        Existing user summary:
+        \(renderExistingSummary(userSummary, maxTokens: budget.summaryTokens))
+
+        Existing project summary:
+        \(renderExistingSummary(projectSummary, maxTokens: budget.summaryTokens))
+
+        Recent user working entries:
+        \(renderExistingMemories(userMemories, budget: budget))
+
+        Recent project working entries:
+        \(renderExistingMemories(projectMemories, budget: budget))
+
+        Transcript:
+        <transcript>
+        \(transcript)
+        </transcript>
+
+        Return JSON only with this exact shape:
+        {"user_summary":"","project_summary":"","working_add":[{"scope":"user|project","tier":"core|working","kind":"preference|convention|decision|fact|bug_lesson","content":"...","rationale":"..."}],"working_archive":["uuid"],"merged_entry_ids":["uuid"]}
+
+        Rules:
+        - Extract only durable user preferences, repo conventions, accepted decisions, repository facts, and reusable bug lessons.
+        - Ignore progress chatter, temporary status, raw logs, generic programming knowledge, and assistant-only guesses.
+        - Use "core" only for stable rules, source-of-truth paths, accepted decisions, and reusable bug lessons. Use "working" for fresh short-lived facts.
+        - Empty user_summary or project_summary means keep the existing summary unchanged.
+        - Keep each summary under about \(settings.memory.summaryTargetTokenBudget) tokens.
+        """
+    }
+
+    private func renderExistingSummary(_ summary: MemorySummary?, maxTokens: Int?) -> String {
         guard let summary, let content = normalizedNonEmptyString(summary.content) else {
             return "(none)"
         }
-        return "version=\(summary.version)\n\(content)"
+        let rendered = "version=\(summary.version)\n\(content)"
+        guard let maxTokens else {
+            return rendered
+        }
+        return trimMemoryText(rendered, maxTokens: maxTokens)
     }
 
-    private func renderExistingMemories(_ entries: [MemoryEntry]) -> String {
+    private func renderExistingMemories(
+        _ entries: [MemoryEntry],
+        budget: MemoryExtractionPromptBudget
+    ) -> String {
         guard !entries.isEmpty else {
             return "(none)"
         }
-        return entries.map { entry in
+        let visibleEntries: ArraySlice<MemoryEntry>
+        if let maxEntries = budget.maxMemoryEntries {
+            visibleEntries = entries.prefix(maxEntries)
+        } else {
+            visibleEntries = entries[...]
+        }
+        let rendered = visibleEntries.map { entry in
             if let rationale = normalizedNonEmptyString(entry.rationale) {
                 return
                     "- id=\(entry.id.uuidString) [\(entry.kind.rawValue)] \(entry.content) (context: \(rationale))"
             }
             return "- id=\(entry.id.uuidString) [\(entry.kind.rawValue)] \(entry.content)"
         }.joined(separator: "\n")
+        guard let maxTokens = budget.memoryTokens else {
+            return rendered
+        }
+        return trimMemoryText(rendered, maxTokens: maxTokens)
     }
 
     private func decodeExtractionResponse(from rawText: String) throws -> MemoryExtractionResponse {
         let decoder = JSONDecoder()
-        var lastError: Error?
+        var sawCandidate = false
         for candidate in MemoryExtractionResponseDecoder.jsonObjectCandidates(from: rawText) {
+            sawCandidate = true
             do {
                 return try decoder.decode(MemoryExtractionResponse.self, from: Data(candidate.utf8))
             } catch {
-                lastError = error
+                continue
             }
         }
-        if let lastError {
-            throw lastError
+        if sawCandidate {
+            throw AIProviderError.requestFailure(Self.malformedExtractionResponseFailureMessage)
         }
         throw AIProviderError.requestFailure(
             "Memory extraction provider did not return a valid JSON object.")
@@ -709,7 +854,7 @@ actor MemoryCoordinator {
     }
 
     private func trimMemoryText(_ text: String, maxTokens: Int) -> String {
-        let maxCharacters = max(200, maxTokens * 4)
+        let maxCharacters = max(200, maxTokens * 3)
         guard text.count > maxCharacters else {
             return text
         }
@@ -723,13 +868,165 @@ actor MemoryCoordinator {
     }
 }
 
-private struct MemoryExtractionResponse: Decodable {
+private struct MemoryExtractionPromptBudget {
+    var isCompact: Bool
+    var transcriptTokens: Int?
+    var summaryTokens: Int?
+    var memoryTokens: Int?
+    var maxMemoryEntries: Int?
+
+    static let standard = MemoryExtractionPromptBudget(
+        isCompact: false,
+        transcriptTokens: nil,
+        summaryTokens: nil,
+        memoryTokens: nil,
+        maxMemoryEntries: nil
+    )
+}
+
+private func promptBudget(
+    for providers: [AppAIProviderConfiguration]
+) -> MemoryExtractionPromptBudget {
+    let localInputBudget = providers.compactMap { provider -> Int? in
+        guard provider.kind == .localLlama,
+              let descriptor = LocalLlamaModelCatalog.descriptor(for: provider)
+        else {
+            return nil
+        }
+        let config = descriptor.recommendedConfig["memory"]
+        let contextTokens = config?.contextTokens ?? descriptor.contextLength
+        let predictionTokens = config?.maxPredictionTokens ?? 768
+        return max(0, contextTokens - predictionTokens)
+    }.min()
+
+    guard let localInputBudget else {
+        return .standard
+    }
+
+    if localInputBudget <= 2_800 {
+        return MemoryExtractionPromptBudget(
+            isCompact: true,
+            transcriptTokens: 320,
+            summaryTokens: 80,
+            memoryTokens: 80,
+            maxMemoryEntries: 3
+        )
+    }
+
+    if localInputBudget <= 5_000 {
+        return MemoryExtractionPromptBudget(
+            isCompact: true,
+            transcriptTokens: 700,
+            summaryTokens: 140,
+            memoryTokens: 120,
+            maxMemoryEntries: 4
+        )
+    }
+
+    return MemoryExtractionPromptBudget(
+        isCompact: true,
+        transcriptTokens: 1_400,
+        summaryTokens: 220,
+        memoryTokens: 180,
+        maxMemoryEntries: 6
+    )
+}
+
+struct MemoryExtractionResponse: Decodable {
     struct Item: Decodable {
         var scope: MemoryScope?
         var tier: MemoryTier?
         var kind: MemoryKind
         var content: String
         var rationale: String?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: MemoryExtractionCodingKey.self)
+            scope = Self.decodeScope(from: container)
+            tier = Self.decodeTier(from: container)
+            kind = Self.decodeKind(from: container)
+            content = Self.decodeString(
+                from: container,
+                keys: ["content", "memory", "text", "summary", "value"]
+            ) ?? ""
+            rationale = Self.decodeString(
+                from: container,
+                keys: ["rationale", "reason", "context", "source", "why"]
+            )
+        }
+
+        private static func decodeScope(
+            from container: KeyedDecodingContainer<MemoryExtractionCodingKey>
+        ) -> MemoryScope? {
+            guard let raw = decodeString(from: container, keys: ["scope", "target", "level"])
+            else { return nil }
+            switch normalizedToken(raw) {
+            case "user", "global", "developer", "crossproject", "cross_project":
+                return .user
+            case "project", "repo", "repository", "workspace", "codebase":
+                return .project
+            default:
+                return nil
+            }
+        }
+
+        private static func decodeTier(
+            from container: KeyedDecodingContainer<MemoryExtractionCodingKey>
+        ) -> MemoryTier? {
+            guard let raw = decodeString(from: container, keys: ["tier", "priority", "stability"])
+            else { return nil }
+            switch normalizedToken(raw) {
+            case "core", "stable", "pinned", "important":
+                return .core
+            case "working", "active", "recent", "temporary":
+                return .working
+            case "archive", "archived":
+                return .archive
+            default:
+                return nil
+            }
+        }
+
+        private static func decodeKind(
+            from container: KeyedDecodingContainer<MemoryExtractionCodingKey>
+        ) -> MemoryKind {
+            guard let raw = decodeString(
+                from: container,
+                keys: ["kind", "type", "category", "memory_type"]
+            ) else {
+                return .fact
+            }
+            switch normalizedToken(raw) {
+            case "preference", "preferences", "userpreference", "style", "workflow":
+                return .preference
+            case "convention", "conventions", "rule", "standard", "pattern":
+                return .convention
+            case "decision", "decisions", "choice", "accepteddecision":
+                return .decision
+            case "buglesson", "bug_lesson", "lesson", "bug", "regression", "fix", "fixpattern",
+                "fix_pattern":
+                return .bugLesson
+            case "fact", "facts", "finding", "path", "sourceoftruth", "source_truth",
+                "source_of_truth":
+                return .fact
+            default:
+                return .fact
+            }
+        }
+
+        private static func decodeString(
+            from container: KeyedDecodingContainer<MemoryExtractionCodingKey>,
+            keys: [String]
+        ) -> String? {
+            for rawKey in keys {
+                let key = MemoryExtractionCodingKey(rawKey)
+                if let value = try? container.decodeIfPresent(String.self, forKey: key),
+                   let normalized = normalizedNonEmptyString(value) {
+                    return normalized
+                }
+            }
+            return nil
+        }
     }
 
     var userSummary: String?
@@ -738,22 +1035,135 @@ private struct MemoryExtractionResponse: Decodable {
     var workingArchive: [String]
     var mergedEntryIDs: [String]
 
-    enum CodingKeys: String, CodingKey {
-        case userSummary = "user_summary"
-        case projectSummary = "project_summary"
-        case workingAdd = "working_add"
-        case workingArchive = "working_archive"
-        case mergedEntryIDs = "merged_entry_ids"
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: MemoryExtractionCodingKey.self)
+        userSummary = Self.decodeString(
+            from: container,
+            keys: ["user_summary", "userSummary", "user-summary", "global_summary"]
+        )
+        projectSummary = Self.decodeString(
+            from: container,
+            keys: ["project_summary", "projectSummary", "project-summary", "repo_summary"]
+        )
+        workingAdd = Self.decodeItems(
+            from: container,
+            keys: ["working_add", "workingAdd", "working-add", "memories", "memory_entries", "items"]
+        )
+        if workingAdd.isEmpty,
+           Self.looksLikeSingleMemoryItem(container),
+           let item = try? Item(from: decoder),
+           normalizedNonEmptyString(item.content) != nil {
+            workingAdd = [item]
+        }
+        workingArchive = Self.decodeStringArray(
+            from: container,
+            keys: ["working_archive", "workingArchive", "working-archive", "archive_ids"]
+        )
+        mergedEntryIDs = Self.decodeStringArray(
+            from: container,
+            keys: ["merged_entry_ids", "mergedEntryIDs", "merged-entry-ids", "merged_ids"]
+        )
     }
 
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        userSummary = try container.decodeIfPresent(String.self, forKey: .userSummary)
-        projectSummary = try container.decodeIfPresent(String.self, forKey: .projectSummary)
-        workingAdd = try container.decodeIfPresent([Item].self, forKey: .workingAdd) ?? []
-        workingArchive = try container.decodeIfPresent([String].self, forKey: .workingArchive) ?? []
-        mergedEntryIDs = try container.decodeIfPresent([String].self, forKey: .mergedEntryIDs) ?? []
+    private static func decodeString(
+        from container: KeyedDecodingContainer<MemoryExtractionCodingKey>,
+        keys: [String]
+    ) -> String? {
+        for rawKey in keys {
+            let key = MemoryExtractionCodingKey(rawKey)
+            if let value = try? container.decodeIfPresent(String.self, forKey: key),
+               let normalized = normalizedNonEmptyString(value) {
+                return normalized
+            }
+        }
+        return nil
     }
+
+    private static func decodeItems(
+        from container: KeyedDecodingContainer<MemoryExtractionCodingKey>,
+        keys: [String]
+    ) -> [Item] {
+        for rawKey in keys {
+            let key = MemoryExtractionCodingKey(rawKey)
+            guard let values = try? container.decodeIfPresent(
+                [LossyDecodable<Item>].self,
+                forKey: key
+            ) else {
+                continue
+            }
+            let items = values.compactMap(\.value).filter {
+                normalizedNonEmptyString($0.content) != nil
+            }
+            if !items.isEmpty {
+                return items
+            }
+        }
+        return []
+    }
+
+    private static func decodeStringArray(
+        from container: KeyedDecodingContainer<MemoryExtractionCodingKey>,
+        keys: [String]
+    ) -> [String] {
+        for rawKey in keys {
+            let key = MemoryExtractionCodingKey(rawKey)
+            if let values = try? container.decodeIfPresent([String].self, forKey: key) {
+                return values.compactMap(normalizedNonEmptyString)
+            }
+            if let values = try? container.decodeIfPresent(
+                [LossyDecodable<String>].self,
+                forKey: key
+            ) {
+                return values.compactMap(\.value).compactMap(normalizedNonEmptyString)
+            }
+        }
+        return []
+    }
+
+    private static func looksLikeSingleMemoryItem(
+        _ container: KeyedDecodingContainer<MemoryExtractionCodingKey>
+    ) -> Bool {
+        decodeString(from: container, keys: ["content", "memory", "text", "summary", "value"])
+            != nil
+    }
+}
+
+private struct LossyDecodable<Value: Decodable>: Decodable {
+    var value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
+    }
+}
+
+private struct MemoryExtractionCodingKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+
+    init(_ stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
+private func normalizedToken(_ value: String) -> String {
+    value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+        .replacingOccurrences(of: "-", with: "_")
+        .replacingOccurrences(of: " ", with: "_")
+        .replacingOccurrences(of: ".", with: "_")
+        .replacingOccurrences(of: "__", with: "_")
 }
 
 enum MemoryExtractionResponseDecoder {

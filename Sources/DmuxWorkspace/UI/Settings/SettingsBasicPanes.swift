@@ -179,7 +179,7 @@ struct PetSettingsPane: View {
                     set: { model.updatePetSpeechProviderID($0) }
                 )) {
                     Text(String(localized: "settings.pet.llm.channel.automatic", defaultValue: "Automatic", bundle: .module)).tag(AppAIPetSettings.automaticSpeechProviderID)
-                    ForEach(model.appSettings.ai.providers.filter { $0.kind.supportsAPICompletion }) { provider in
+                    ForEach(model.appSettings.ai.providers.filter { $0.kind.supportsPetSpeech }) { provider in
                         Text(provider.displayName).tag(provider.id)
                     }
                 }
@@ -363,11 +363,11 @@ struct AISettingsPane: View {
                     ) {
                         Text(String(localized: "settings.ai.memory.extraction_provider.automatic", defaultValue: "Automatic", bundle: .module))
                             .tag(AppMemorySettings.automaticExtractorProviderID)
-                        ForEach(model.appSettings.ai.providers.filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }) { provider in
+                        ForEach(model.appSettings.ai.providers.filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsMemoryExtraction }) { provider in
                             Text(provider.displayName).tag(provider.id)
                         }
                     }
-                    Text(String(localized: "settings.ai.memory.extraction_provider.automatic_help", defaultValue: "Automatic uses selected API channels by priority.", bundle: .module))
+                    Text(String(localized: "settings.ai.memory.extraction_provider.automatic_help", defaultValue: "Automatic uses selected memory providers by priority.", bundle: .module))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
 
@@ -397,9 +397,9 @@ struct AISettingsPane: View {
                 }
             }
 
-            Section(String(localized: "settings.ai.section.providers", defaultValue: "API Channels", bundle: .module)) {
+            Section(String(localized: "settings.ai.section.providers", defaultValue: "AI Providers", bundle: .module)) {
                 HStack(spacing: 12) {
-                    Text(String(localized: "settings.ai.provider.api_only_help", defaultValue: "API channels for memory extraction and pet LLM lines.", bundle: .module))
+                    Text(String(localized: "settings.ai.provider.api_only_help", defaultValue: "Local and API providers for memory extraction.", bundle: .module))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -428,7 +428,7 @@ struct AISettingsPane: View {
                 }
             }
 
-            ForEach(model.appSettings.ai.providers.filter { $0.kind.supportsAPICompletion }) { provider in
+            ForEach(model.appSettings.ai.providers.filter { $0.kind.supportsMemoryExtraction }) { provider in
                 Section(provider.displayName) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -457,38 +457,96 @@ struct AISettingsPane: View {
                             )
                         )
 
-                        TextField(
-                            String(localized: "settings.ai.provider.model", defaultValue: "Model", bundle: .module),
-                            text: Binding(
-                                get: { model.appSettings.ai.provider(withID: provider.id)?.model ?? "" },
-                                set: { model.updateAIProviderModel($0, providerID: provider.id) }
+                        if provider.kind.usesAPIConfiguration {
+                            TextField(
+                                String(localized: "settings.ai.provider.model", defaultValue: "Model", bundle: .module),
+                                text: Binding(
+                                    get: { model.appSettings.ai.provider(withID: provider.id)?.model ?? "" },
+                                    set: { model.updateAIProviderModel($0, providerID: provider.id) }
+                                )
                             )
-                        )
 
-                        TextField(
-                            String(localized: "settings.ai.provider.base_url", defaultValue: "Base URL", bundle: .module),
-                            text: Binding(
-                                get: { model.appSettings.ai.provider(withID: provider.id)?.baseURL ?? "" },
-                                set: { model.updateAIProviderBaseURL($0, providerID: provider.id) }
+                            TextField(
+                                String(localized: "settings.ai.provider.base_url", defaultValue: "Base URL", bundle: .module),
+                                text: Binding(
+                                    get: { model.appSettings.ai.provider(withID: provider.id)?.baseURL ?? "" },
+                                    set: { model.updateAIProviderBaseURL($0, providerID: provider.id) }
+                                )
                             )
-                        )
 
-                        SecureField(
-                            String(localized: "settings.ai.provider.api_key", defaultValue: "API Key", bundle: .module),
-                            text: Binding(
-                                get: { model.storedAIProviderAPIKey(providerID: provider.id) },
-                                set: { model.updateAIProviderAPIKey($0, providerID: provider.id) }
+                            SecureField(
+                                String(localized: "settings.ai.provider.api_key", defaultValue: "API Key", bundle: .module),
+                                text: Binding(
+                                    get: { model.storedAIProviderAPIKey(providerID: provider.id) },
+                                    set: { model.updateAIProviderAPIKey($0, providerID: provider.id) }
+                                )
                             )
-                        )
 
-                        if provider.kind == .openAICompatible {
-                            Text(String(localized: "settings.ai.provider.openai_compatible_help", defaultValue: "Use this for OpenAI, DeepSeek, and other /v1/chat/completions-compatible APIs.", bundle: .module))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        } else if provider.kind == .anthropic {
-                            Text(String(localized: "settings.ai.provider.anthropic_help", defaultValue: "Uses Anthropic Messages API at /v1/messages.", bundle: .module))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
+                            if provider.kind == .openAICompatible {
+                                Text(String(localized: "settings.ai.provider.openai_compatible_help", defaultValue: "Use this for OpenAI, DeepSeek, and other /v1/chat/completions-compatible APIs.", bundle: .module))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                            } else if provider.kind == .anthropic {
+                                Text(String(localized: "settings.ai.provider.anthropic_help", defaultValue: "Uses Anthropic Messages API at /v1/messages.", bundle: .module))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if provider.kind == .localLlama {
+                            let selectedModelID =
+                                model.appSettings.ai.provider(withID: provider.id)?.model
+                                ?? LocalLlamaModelCatalog.defaultModelID
+                            let selectedDescriptor =
+                                model.localLlamaModelDescriptor(id: selectedModelID)
+                                ?? model.localLlamaModels[0]
+                            let selectedState =
+                                model.localLlamaModelInstallStates[selectedDescriptor.id]
+                                ?? .notInstalled
+
+                            Picker(
+                                String(localized: "settings.ai.provider.model", defaultValue: "Model", bundle: .module),
+                                selection: Binding(
+                                    get: {
+                                        selectedModelID
+                                    },
+                                    set: { model.updateAIProviderModel($0, providerID: provider.id) }
+                                )
+                            ) {
+                                ForEach(model.localLlamaModels) { descriptor in
+                                    let state =
+                                        model.localLlamaModelInstallStates[descriptor.id]
+                                        ?? .notInstalled
+                                    Text(localLlamaModelOptionTitle(descriptor, state: state))
+                                        .tag(descriptor.id)
+                                }
+                            }
+
+                            Picker(
+                                String(
+                                    localized: "settings.ai.local_model.download_route",
+                                    defaultValue: "Download Route",
+                                    bundle: .module
+                                ),
+                                selection: Binding(
+                                    get: { model.appSettings.ai.localLlamaDownloadRoute },
+                                    set: { model.updateLocalLlamaDownloadRoute($0) }
+                                )
+                            ) {
+                                ForEach(LocalLlamaModelDownloadRoute.allCases) { route in
+                                    Text(localLlamaDownloadRouteTitle(route)).tag(route)
+                                }
+                            }
+
+                            LocalLlamaSelectedModelInstallView(
+                                descriptor: selectedDescriptor,
+                                state: selectedState,
+                                language: model.appSettings.language,
+                                onInstall: {
+                                    model.installLocalLlamaModel(selectedDescriptor.id)
+                                },
+                                onRemove: {
+                                    model.removeLocalLlamaModel(selectedDescriptor.id)
+                                }
+                            )
                         }
 
                         Toggle(
@@ -547,6 +605,274 @@ struct AISettingsPane: View {
         .scrollContentBackground(.hidden)
         .background(Color(nsColor: .windowBackgroundColor))
     }
+}
+
+private struct LocalLlamaSelectedModelInstallView: View {
+    let descriptor: LocalLlamaModelDescriptor
+    let state: LocalLlamaModelInstallState
+    let language: AppLanguage
+    let onInstall: () -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(descriptor.displayName)
+                        .font(.system(size: 12, weight: .medium))
+                }
+
+                Spacer(minLength: 12)
+
+                switch state {
+                case .installed:
+                    Button(role: .destructive) {
+                        onRemove()
+                    } label: {
+                        Label(
+                            String(
+                                localized: "settings.ai.local_model.remove",
+                                defaultValue: "Remove Model",
+                                bundle: .module
+                            ),
+                            systemImage: "trash"
+                        )
+                    }
+                case .downloading:
+                    ProgressView()
+                        .controlSize(.small)
+                case .notInstalled, .failed:
+                    Button(String(localized: "settings.ai.local_model.install", defaultValue: "Install Model", bundle: .module)) {
+                        onInstall()
+                    }
+                }
+            }
+
+            LocalLlamaModelInfoRow(
+                label: String(
+                    localized: "settings.ai.local_model.description_label",
+                    defaultValue: "Description",
+                    bundle: .module
+                ),
+                value: descriptor.detail(language: language)
+            )
+
+            LocalLlamaModelInfoRow(
+                label: String(
+                    localized: "settings.ai.local_model.recommended_config_label",
+                    defaultValue: "Recommended Config",
+                    bundle: .module
+                ),
+                value: localLlamaRecommendedConfigText(for: descriptor)
+            )
+
+            LocalLlamaModelInfoRow(
+                label: String(
+                    localized: "settings.ai.local_model.download_size_label",
+                    defaultValue: "Download Size",
+                    bundle: .module
+                ),
+                value: descriptor.formattedSize
+            )
+
+            if case .downloading(let progress) = state {
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+            } else if case .failed(let message) = state {
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+        }
+    }
+}
+
+private struct LocalLlamaModelInfoRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private func localLlamaModelOptionTitle(
+    _ descriptor: LocalLlamaModelDescriptor,
+    state: LocalLlamaModelInstallState
+) -> String {
+    "\(localLlamaInstallStatePrefix(state)) \(descriptor.displayName)"
+}
+
+private func localLlamaInstallStatePrefix(_ state: LocalLlamaModelInstallState) -> String {
+    switch state {
+    case .installed:
+        return String(
+            localized: "settings.ai.local_model.option.installed",
+            defaultValue: "[Installed]",
+            bundle: .module
+        )
+    case .downloading:
+        return String(
+            localized: "settings.ai.local_model.option.downloading",
+            defaultValue: "[Downloading]",
+            bundle: .module
+        )
+    case .notInstalled, .failed:
+        return String(
+            localized: "settings.ai.local_model.option.not_installed",
+            defaultValue: "[Not Installed]",
+            bundle: .module
+        )
+    }
+}
+
+private func localLlamaDownloadRouteTitle(_ route: LocalLlamaModelDownloadRoute) -> String {
+    switch route {
+    case .china:
+        return String(
+            localized: "settings.ai.local_model.download_route.china",
+            defaultValue: "China",
+            bundle: .module
+        )
+    case .international:
+        return String(
+            localized: "settings.ai.local_model.download_route.international",
+            defaultValue: "International",
+            bundle: .module
+        )
+    }
+}
+
+private func localLlamaRecommendedConfigText(for descriptor: LocalLlamaModelDescriptor) -> String {
+    let hardware = localLlamaHardwareText(minimumMemoryGB: descriptor.minimumMemoryGB)
+    let profiles = localLlamaRecommendedProfiles(for: descriptor)
+    let profileText = profiles.isEmpty
+        ? ""
+        : profiles.joined(separator: " · ")
+
+    guard profileText.isEmpty == false else {
+        return hardware
+    }
+
+    let format = String(
+        localized: "settings.ai.local_model.recommended_config_format",
+        defaultValue: "%1$@ · %2$@",
+        bundle: .module
+    )
+    return String(format: format, hardware, profileText)
+}
+
+private func localLlamaRecommendedProfiles(for descriptor: LocalLlamaModelDescriptor) -> [String] {
+    let order = ["memory", "pet", "assistant", "codeReview", "reasoning"]
+    return order.compactMap { key in
+        guard let config = descriptor.recommendedConfig[key] else {
+            return nil
+        }
+        return localLlamaProfileText(key: key, config: config)
+    }
+}
+
+private func localLlamaProfileText(
+    key: String,
+    config: LocalLlamaRecommendedRuntimeConfig
+) -> String {
+    let label: String
+    switch key {
+    case "pet":
+        label = String(
+            localized: "settings.ai.local_model.profile.pet",
+            defaultValue: "Pet",
+            bundle: .module
+        )
+    case "assistant":
+        label = String(
+            localized: "settings.ai.local_model.profile.assistant",
+            defaultValue: "Assistant",
+            bundle: .module
+        )
+    case "codeReview":
+        label = String(
+            localized: "settings.ai.local_model.profile.code_review",
+            defaultValue: "Code Review",
+            bundle: .module
+        )
+    case "reasoning":
+        label = String(
+            localized: "settings.ai.local_model.profile.reasoning",
+            defaultValue: "Reasoning",
+            bundle: .module
+        )
+    default:
+        label = String(
+            localized: "settings.ai.local_model.profile.memory",
+            defaultValue: "Memory",
+            bundle: .module
+        )
+    }
+
+    let format = String(
+        localized: "settings.ai.local_model.config_tokens_format",
+        defaultValue: "%1$@ %2$d context / %3$d output",
+        bundle: .module
+    )
+    return String(
+        format: format,
+        label,
+        config.contextTokens,
+        config.maxPredictionTokens
+    )
+}
+
+private func localLlamaHardwareText(minimumMemoryGB: Int) -> String {
+    if minimumMemoryGB <= 8 {
+        return String(
+            localized: "settings.ai.local_model.hardware_8gb",
+            defaultValue: "M1 or newer, 8 GB memory or more",
+            bundle: .module
+        )
+    }
+    if minimumMemoryGB <= 16 {
+        return String(
+            localized: "settings.ai.local_model.hardware_16gb",
+            defaultValue: "M1/M2/M3/M4, 16 GB memory or more",
+            bundle: .module
+        )
+    }
+    if minimumMemoryGB <= 24 {
+        return String(
+            localized: "settings.ai.local_model.hardware_24gb",
+            defaultValue: "M1 Pro/M2 Pro/M3/M4, 24 GB memory or more",
+            bundle: .module
+        )
+    }
+    if minimumMemoryGB <= 32 {
+        return String(
+            localized: "settings.ai.local_model.hardware_32gb",
+            defaultValue: "M1 Max/M2 Pro/M3 Pro/M4 Pro, 32 GB memory or more",
+            bundle: .module
+        )
+    }
+    if minimumMemoryGB <= 64 {
+        return String(
+            localized: "settings.ai.local_model.hardware_64gb",
+            defaultValue: "M1 Max/M2 Max/M3 Max/M4 Max, 64 GB memory or more",
+            bundle: .module
+        )
+    }
+    return String(
+        localized: "settings.ai.local_model.hardware_128gb",
+        defaultValue: "M1 Ultra/M2 Ultra or M3/M4 Max, 128 GB memory",
+        bundle: .module
+    )
 }
 
 struct DeveloperSettingsPane: View {

@@ -99,10 +99,65 @@ final class MemoryCoordinatorTests: XCTestCase {
         XCTAssertNil(recovered.lastError)
     }
 
-    func testAutomaticProviderSelectionUsesAPIProvidersOnlyByPriority() throws {
+    func testProviderConfigurationRefreshClearsUnavailableProviderFailure() async throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+        let coordinator = MemoryCoordinator(store: store)
+        let projectID = UUID()
+
+        XCTAssertTrue(
+            try store.enqueueExtractionIfNeeded(
+                projectID: projectID,
+                tool: "codex",
+                sessionID: "session-provider-refresh",
+                transcriptPath: "/tmp/provider-refresh.jsonl",
+                sourceFingerprint: "fp-provider-refresh"
+            )
+        )
+
+        let task = try XCTUnwrap(store.nextPendingExtractionTask())
+        try store.markExtractionTaskRunning(task.id)
+        try store.markExtractionTaskFailed(
+            task.id,
+            error: AIProviderError.unavailableProvider.localizedDescription
+        )
+
+        let failed = await coordinator.currentStatusSnapshot()
+        XCTAssertEqual(failed.status, .failed)
+
+        await coordinator.refreshAfterProviderConfigurationChanged(
+            settings: AppAISettings(),
+            projects: []
+        )
+
+        let refreshed = await coordinator.currentStatusSnapshot()
+        XCTAssertEqual(refreshed.status, .idle)
+        XCTAssertEqual(refreshed.pendingCount, 0)
+        XCTAssertEqual(refreshed.runningCount, 0)
+        XCTAssertNil(refreshed.lastError)
+    }
+
+    func testDefaultProviderSelectionUsesLocalLlamaForMemoryExtraction() throws {
+        let service = AIProviderSelectionService()
+        let settings = AppAISettings()
+
+        let providers = service.candidateMemoryExtractionProviders(in: settings, tool: "codex")
+
+        XCTAssertEqual(providers.map(\.id), [AppAIProviderConfiguration.localLlamaProviderID])
+        XCTAssertEqual(providers.first?.kind, .localLlama)
+        XCTAssertEqual(providers.first?.model, LocalLlamaModelCatalog.defaultModelID)
+        XCTAssertNil(service.preferredPetSpeechProvider(in: settings))
+    }
+
+    func testAutomaticProviderSelectionUsesMemoryProvidersByPriority() throws {
         let service = AIProviderSelectionService()
         var settings = AppAISettings()
         settings.providers = [
+            AppAIProviderConfiguration(
+                id: AppAIProviderConfiguration.localLlamaProviderID,
+                kind: .localLlama,
+                displayName: "Local Llama",
+                priority: 0
+            ),
             AppAIProviderConfiguration.customAPIChannel(
                 kind: .openAICompatible,
                 priority: 2,
@@ -119,7 +174,7 @@ final class MemoryCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(
             providers.map(\.displayName),
-            ["Claude API", "OpenAI"])
+            ["Local Llama", "Claude API", "OpenAI"])
     }
 
     func testExplicitProviderSelectionDoesNotFallbackToOtherProviders() throws {
@@ -183,6 +238,7 @@ final class MemoryCoordinatorTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppAISettings.self, from: data)
 
         XCTAssertFalse(settings.providers.contains { $0.id == "builtin-claude" })
+        XCTAssertTrue(settings.providers.contains { $0.kind == .localLlama })
         XCTAssertTrue(settings.providers.contains { $0.kind == .openAICompatible })
         XCTAssertEqual(
             settings.memory.defaultExtractorProviderID,
@@ -228,7 +284,10 @@ final class MemoryCoordinatorTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppAISettings.self, from: data)
 
         XCTAssertFalse(settings.providers.contains { $0.id == "custom-openai-compatible" })
-        XCTAssertEqual(settings.providers.map(\.id), ["api-openai-compatible-test"])
+        XCTAssertEqual(
+            settings.providers.map(\.id),
+            [AppAIProviderConfiguration.localLlamaProviderID, "api-openai-compatible-test"]
+        )
         XCTAssertEqual(
             settings.memory.defaultExtractorProviderID,
             AppMemorySettings.automaticExtractorProviderID
@@ -290,6 +349,67 @@ final class MemoryCoordinatorTests: XCTestCase {
             })
     }
 
+    func testExtractionResponseDecodeAcceptsModelSchemaAliases() throws {
+        let raw = """
+            {
+              "userSummary": "",
+              "projectSummary": "Keep terminal resize work off the hot drag path.",
+              "memories": [
+                {
+                  "target": "repo",
+                  "stability": "stable",
+                  "category": "fix pattern",
+                  "text": "Coalesce terminal geometry updates during split dragging.",
+                  "reason": "Small local models may emit alias keys."
+                },
+                {
+                  "scope": "global",
+                  "tier": "recent",
+                  "type": "style",
+                  "memory": "Answer from repo evidence."
+                }
+              ],
+              "archive_ids": ["\(UUID().uuidString)"],
+              "merged_ids": ["\(UUID().uuidString)"]
+            }
+            """
+
+        let response = try JSONDecoder().decode(
+            MemoryExtractionResponse.self,
+            from: Data(raw.utf8)
+        )
+
+        XCTAssertEqual(response.projectSummary, "Keep terminal resize work off the hot drag path.")
+        XCTAssertEqual(response.workingAdd.count, 2)
+        XCTAssertEqual(response.workingAdd[0].scope, .project)
+        XCTAssertEqual(response.workingAdd[0].tier, .core)
+        XCTAssertEqual(response.workingAdd[0].kind, .bugLesson)
+        XCTAssertEqual(response.workingAdd[1].scope, .user)
+        XCTAssertEqual(response.workingAdd[1].tier, .working)
+        XCTAssertEqual(response.workingAdd[1].kind, .preference)
+        XCTAssertEqual(response.workingArchive.count, 1)
+        XCTAssertEqual(response.mergedEntryIDs.count, 1)
+    }
+
+    func testExtractionResponseDecodeTreatsUnknownKindAsFact() throws {
+        let raw = """
+            {
+              "working_add": [
+                {"scope":"project","tier":"working","kind":"path-note","content":"Use runtime.log for dev diagnostics."}
+              ]
+            }
+            """
+
+        let response = try JSONDecoder().decode(
+            MemoryExtractionResponse.self,
+            from: Data(raw.utf8)
+        )
+
+        XCTAssertEqual(response.workingAdd.count, 1)
+        XCTAssertEqual(response.workingAdd[0].kind, .fact)
+        XCTAssertEqual(response.workingAdd[0].content, "Use runtime.log for dev diagnostics.")
+    }
+
     func testMemorySettingsDefaultsFavorCompactExtractionAndInjection() throws {
         let settings = AppMemorySettings()
 
@@ -337,5 +457,33 @@ final class MemoryCoordinatorTests: XCTestCase {
         XCTAssertEqual(settings.maxInjectedUserWorkingMemories, 3)
         XCTAssertEqual(settings.maxInjectedProjectWorkingMemories, 5)
         XCTAssertEqual(settings.summaryTargetTokenBudget, 1200)
+    }
+
+    func testSettingsMigrationDropsAppleFoundationModelsProvider() throws {
+        let data = Data(
+            """
+            {
+              "providers": [
+                {
+                  "id": "local-apple-foundation-models",
+                  "kind": "appleFoundationModels",
+                  "displayName": "Apple Intelligence",
+                  "isEnabled": true,
+                  "model": "system-language-model",
+                  "baseURL": "",
+                  "apiKey": "",
+                  "useForMemoryExtraction": true,
+                  "priority": 0
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let settings = try JSONDecoder().decode(AppAISettings.self, from: data)
+
+        XCTAssertFalse(settings.providers.contains { $0.id == "local-apple-foundation-models" })
+        XCTAssertEqual(settings.providers.map(\.id), [AppAIProviderConfiguration.localLlamaProviderID])
+        XCTAssertEqual(settings.providers.first?.kind, .localLlama)
     }
 }

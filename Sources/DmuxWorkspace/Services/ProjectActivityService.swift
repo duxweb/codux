@@ -2,6 +2,8 @@ import Foundation
 import UserNotifications
 
 enum ProjectActivityPhase: Equatable {
+    static let petCompletedActivityStatusDisplayDuration: TimeInterval = 8
+
     case idle
     case loading
     case running(tool: String)
@@ -38,6 +40,15 @@ enum ProjectActivityPhase: Equatable {
             return .attention
         case .idle, .loading, .running, .completed:
             return .normal
+        }
+    }
+
+    func isPetActivityStatusFreshForPet(now: Date) -> Bool {
+        switch self {
+        case .completed(_, let finishedAt, _):
+            return now.timeIntervalSince(finishedAt) <= Self.petCompletedActivityStatusDisplayDuration
+        case .idle, .loading, .running, .waitingInput:
+            return true
         }
     }
 }
@@ -161,11 +172,7 @@ struct ProjectActivityService: @unchecked Sendable {
         message: String?
     ) {
         let content = UNMutableNotificationContent()
-        content.title = String(
-            localized: "project.activity.input_required",
-            defaultValue: "Action required",
-            bundle: .module
-        )
+        content.title = needsInputTitle(notificationType: notificationType)
         content.body = needsInputBody(
             projectName: projectName,
             tool: tool,
@@ -219,6 +226,21 @@ struct ProjectActivityService: @unchecked Sendable {
         }
     }
 
+    private func needsInputTitle(notificationType: String?) -> String {
+        if isPermissionRequest(notificationType) {
+            return String(
+                localized: "project.activity.permission_required",
+                defaultValue: "Permission confirmation needed",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "project.activity.input_required",
+            defaultValue: "Action required",
+            bundle: .module
+        )
+    }
+
     private func needsInputBody(
         projectName: String,
         tool: String,
@@ -226,6 +248,29 @@ struct ProjectActivityService: @unchecked Sendable {
         targetToolName: String?,
         message: String?
     ) -> String {
+        if isPermissionRequest(notificationType) {
+            if let targetToolName, !targetToolName.isEmpty {
+                return String(
+                    format: String(
+                        localized: "project.activity.permission_request_format",
+                        defaultValue: "%@ needs permission to use %@ in %@.",
+                        bundle: .module
+                    ),
+                    tool,
+                    targetToolName,
+                    projectName
+                )
+            }
+            return String(
+                format: String(
+                    localized: "project.activity.permission_request_generic_format",
+                    defaultValue: "%@ needs you to allow or deny a permission request in %@.",
+                    bundle: .module
+                ),
+                tool,
+                projectName
+            )
+        }
         if let message, !message.isEmpty {
             return message
         }
@@ -262,5 +307,14 @@ struct ProjectActivityService: @unchecked Sendable {
             tool,
             projectName
         )
+    }
+
+    private func isPermissionRequest(_ notificationType: String?) -> Bool {
+        switch notificationType?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "permission-request", "codex-permission-request":
+            return true
+        default:
+            return false
+        }
     }
 }

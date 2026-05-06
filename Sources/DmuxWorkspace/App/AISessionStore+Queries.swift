@@ -41,11 +41,11 @@ extension AISessionStore {
             .filter { $0.projectID == projectID && $0.isLive }
             .sorted(by: { $0.updatedAt > $1.updatedAt })
 
-        if let responding = trackedSessions.first(where: { $0.state == .responding }) {
-            return .running(tool: responding.tool)
-        }
         if let needsInput = trackedSessions.first(where: { $0.state == .needsInput }) {
             return .waitingInput(tool: needsInput.tool)
+        }
+        if let responding = trackedSessions.first(where: { $0.state == .responding }) {
+            return .running(tool: responding.tool)
         }
         return .idle
     }

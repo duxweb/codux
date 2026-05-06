@@ -10,6 +10,7 @@ enum AIProviderError: LocalizedError {
     case unavailableProvider
     case missingAPIKey
     case invalidBaseURL
+    case localModelNotInstalled(String)
     case emptyResponse
     case processFailure(String)
     case requestFailure(String)
@@ -22,6 +23,8 @@ enum AIProviderError: LocalizedError {
             return "The selected AI provider is missing an API key."
         case .invalidBaseURL:
             return "The selected AI provider has an invalid base URL."
+        case .localModelNotInstalled(let modelName):
+            return "The local model is not installed: \(modelName)."
         case .emptyResponse:
             return "The AI provider returned an empty response."
         case .processFailure(let message):

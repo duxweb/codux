@@ -3,6 +3,7 @@ import Foundation
 enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case openAICompatible
     case anthropic
+    case localLlama
 
     var id: String { rawValue }
 
@@ -12,6 +13,8 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
             return "OpenAI-Compatible API"
         case .anthropic:
             return "Claude API"
+        case .localLlama:
+            return "Local Llama"
         }
     }
 
@@ -21,6 +24,8 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
             return "OpenAI API"
         case .anthropic:
             return "Claude API"
+        case .localLlama:
+            return "Local Llama Memory"
         }
     }
 
@@ -30,6 +35,8 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
             return "gpt-4.1-mini"
         case .anthropic:
             return "claude-3-5-haiku-latest"
+        case .localLlama:
+            return LocalLlamaModelCatalog.defaultModelID
         }
     }
 
@@ -39,15 +46,53 @@ enum AppAIProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
             return "https://api.openai.com/v1"
         case .anthropic:
             return "https://api.anthropic.com/v1"
+        case .localLlama:
+            return ""
         }
     }
 
     var supportsAPICompletion: Bool {
+        switch self {
+        case .openAICompatible, .anthropic:
+            return true
+        case .localLlama:
+            return false
+        }
+    }
+
+    var supportsMemoryExtraction: Bool {
         true
     }
 
+    var memoryExtractionTranscriptTokenLimit: Int? {
+        switch self {
+        case .openAICompatible, .anthropic:
+            return nil
+        case .localLlama:
+            return 1200
+        }
+    }
+
+    var supportsPetSpeech: Bool {
+        switch self {
+        case .openAICompatible, .anthropic:
+            return true
+        case .localLlama:
+            return false
+        }
+    }
+
+    var usesAPIConfiguration: Bool {
+        supportsAPICompletion
+    }
+
     var allowsUserDefinedChannels: Bool {
-        true
+        switch self {
+        case .openAICompatible, .anthropic:
+            return true
+        case .localLlama:
+            return false
+        }
     }
 
 }
@@ -141,7 +186,21 @@ struct AppAIProviderConfiguration: Identifiable, Codable, Equatable, Sendable {
         try container.encode(priority, forKey: .priority)
     }
 
-    static let defaultConfigurations: [AppAIProviderConfiguration] = []
+    static let localLlamaProviderID = "local-llama-memory"
+
+    static let defaultConfigurations: [AppAIProviderConfiguration] = [
+        AppAIProviderConfiguration(
+            id: localLlamaProviderID,
+            kind: .localLlama,
+            displayName: AppAIProviderKind.localLlama.defaultDisplayName,
+            isEnabled: true,
+            model: AppAIProviderKind.localLlama.defaultModel,
+            baseURL: "",
+            apiKey: "",
+            useForMemoryExtraction: true,
+            priority: 0
+        )
+    ]
 
     static func customAPIChannel(
         kind: AppAIProviderKind,
@@ -285,6 +344,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
     var memory = AppMemorySettings()
     var pet = AppAIPetSettings()
     var providers = AppAIProviderConfiguration.defaultConfigurations
+    var localLlamaDownloadRoute = LocalLlamaModelDownloadRoute.china
 
     init() {}
 
@@ -294,6 +354,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
         case memory
         case pet
         case providers
+        case localLlamaDownloadRoute
     }
 
     init(from decoder: Decoder) throws {
@@ -304,6 +365,11 @@ struct AppAISettings: Codable, Equatable, Sendable {
         globalPrompt = try container.decodeIfPresent(String.self, forKey: .globalPrompt) ?? ""
         memory = try container.decodeIfPresent(AppMemorySettings.self, forKey: .memory) ?? .init()
         pet = try container.decodeIfPresent(AppAIPetSettings.self, forKey: .pet) ?? .init()
+        localLlamaDownloadRoute =
+            try container.decodeIfPresent(
+                LocalLlamaModelDownloadRoute.self,
+                forKey: .localLlamaDownloadRoute
+            ) ?? .china
         if let decodedProviders = try? container.decode(
             [LossyAppAIProviderConfiguration].self,
             forKey: .providers
@@ -316,12 +382,32 @@ struct AppAISettings: Codable, Equatable, Sendable {
     }
 
     mutating func migrateMissingDefaultProviders() {
-        var existingByID: [String: AppAIProviderConfiguration] = [:]
-        for provider in providers
-        where provider.kind.supportsAPICompletion && provider.id.hasPrefix("api-") {
-            existingByID[provider.id] = provider
+        let decodedProviders = providers
+        var migratedByID: [String: AppAIProviderConfiguration] = [:]
+
+        for defaultProvider in AppAIProviderConfiguration.defaultConfigurations {
+            var provider = defaultProvider
+            if let existing = decodedProviders.first(where: {
+                $0.id == defaultProvider.id && $0.kind == defaultProvider.kind
+            }) {
+                provider.displayName =
+                    normalizedNonEmptyString(existing.displayName) ?? defaultProvider.displayName
+                provider.isEnabled = existing.isEnabled
+                provider.model = normalizedNonEmptyString(existing.model) ?? defaultProvider.model
+                provider.baseURL = defaultProvider.baseURL
+                provider.apiKey = ""
+                provider.useForMemoryExtraction = existing.useForMemoryExtraction
+                provider.priority = existing.priority
+            }
+            migratedByID[provider.id] = provider
         }
-        providers = existingByID.values.sorted {
+
+        for provider in decodedProviders
+        where provider.kind.allowsUserDefinedChannels && provider.id.hasPrefix("api-") {
+            migratedByID[provider.id] = provider
+        }
+
+        providers = migratedByID.values.sorted {
             if $0.priority == $1.priority {
                 return $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
                     == .orderedAscending
@@ -331,14 +417,14 @@ struct AppAISettings: Codable, Equatable, Sendable {
         if memory.defaultExtractorProviderID != AppMemorySettings.automaticExtractorProviderID,
             providers.contains(where: {
                 $0.id == memory.defaultExtractorProviderID && $0.useForMemoryExtraction
-                    && $0.isEnabled && $0.kind.supportsAPICompletion
+                    && $0.isEnabled && $0.kind.supportsMemoryExtraction
             }) == false
         {
             memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
         }
         if pet.speechProviderID != AppAIPetSettings.automaticSpeechProviderID,
            providers.contains(where: {
-               $0.id == pet.speechProviderID && $0.isEnabled && $0.kind.supportsAPICompletion
+               $0.id == pet.speechProviderID && $0.isEnabled && $0.kind.supportsPetSpeech
            }) == false {
             pet.speechProviderID = AppAIPetSettings.automaticSpeechProviderID
         }
@@ -350,7 +436,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
 
     func preferredExtractionProviderID() -> String? {
         providers
-            .filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }
+            .filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsMemoryExtraction }
             .sorted { lhs, rhs in
                 if lhs.priority == rhs.priority {
                     return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
@@ -365,7 +451,7 @@ struct AppAISettings: Codable, Equatable, Sendable {
     func preferredExtractionProvider() -> AppAIProviderConfiguration? {
         return
             providers
-            .filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }
+            .filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsMemoryExtraction }
             .sorted { lhs, rhs in
                 if lhs.priority == rhs.priority {
                     return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)

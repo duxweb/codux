@@ -52,7 +52,6 @@ protocol DmuxTerminalBackendRegistry: AnyObject {
     func focusedSessionID() -> UUID?
     func clearFocusedSessionIfOutside(_ sessionIDs: Set<UUID>, in window: NSWindow?)
     func ownsResponder(_ responder: NSResponder?) -> Bool
-    func debugSnapshot() -> String
 }
 
 @MainActor

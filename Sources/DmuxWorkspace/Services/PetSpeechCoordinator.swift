@@ -5,6 +5,8 @@ import Observation
 @MainActor
 @Observable
 final class PetSpeechCoordinator {
+    private static let permissionActivityStatusDisplayDuration: TimeInterval = 12
+
     private let catalog: PetSpeechCatalog
     private let logger = AppDebugLog.shared
 
@@ -32,12 +34,24 @@ final class PetSpeechCoordinator {
     private var reminderActiveStartedAt: Date?
     private var lastActivityKey: String?
     private var currentActivityLineExpiryTask: Task<Void, Never>?
+    private var deferredNormalActivityLine: PetActivityStatusLine?
 
     var currentLine: PetSpeechLine?
     var currentActivityLine: PetActivityStatusLine?
     var displayLine: PetSpeechDisplayLine? {
+        if let currentActivityLine, currentActivityLine.tone != .normal {
+            return PetSpeechDisplayLine(
+                text: currentActivityLine.text,
+                isActivityStatus: true,
+                tone: currentActivityLine.tone
+            )
+        }
         if let currentLine {
-            return PetSpeechDisplayLine(text: currentLine.text, isActivityStatus: false)
+            return PetSpeechDisplayLine(
+                text: currentLine.text,
+                isActivityStatus: false,
+                tone: currentLine.eventKind.displayTone
+            )
         }
         guard let currentActivityLine else {
             return nil
@@ -85,6 +99,7 @@ final class PetSpeechCoordinator {
         expiryTask = nil
         currentActivityLineExpiryTask?.cancel()
         currentActivityLineExpiryTask = nil
+        deferredNormalActivityLine = nil
     }
 
     func notify(_ event: PetSpeechEvent) {
@@ -135,6 +150,63 @@ final class PetSpeechCoordinator {
 
     func updateActivityStatus(_ phase: ProjectActivityPhase, projectName: String? = nil, now: Date = Date()) {
         let candidate = activityStatusLine(for: phase, projectName: projectName, now: now)
+        setActivityStatus(candidate, now: now)
+    }
+
+    func updatePermissionActivityStatus(
+        tool: String?,
+        targetToolName: String?,
+        projectName: String? = nil,
+        now: Date = Date()
+    ) {
+        let toolLabel = normalizedActivityLabel(tool)
+            ?? petSpeechL("pet.speech.payload.tool", "AI")
+        let targetLabel = normalizedActivityLabel(targetToolName)
+        let text: String
+        if let targetLabel {
+            text = String(
+                format: petSpeechL("pet.activity.permission_waiting_target_format", "%@ needs permission for %@"),
+                toolLabel,
+                targetLabel
+            )
+        } else {
+            text = String(
+                format: petSpeechL("pet.activity.permission_waiting_format", "%@ needs permission"),
+                toolLabel
+            )
+        }
+        let key = [
+            "permission",
+            toolLabel,
+            targetLabel ?? "",
+            normalizedActivityLabel(projectName) ?? "",
+        ].joined(separator: ":")
+        setActivityStatus(
+            PetActivityStatusLine(
+                text: text,
+                key: key,
+                updatedAt: now,
+                expiresAt: now.addingTimeInterval(Self.permissionActivityStatusDisplayDuration),
+                tone: .attention
+            ),
+            now: now
+        )
+        logger.log(
+            "pet-speech",
+            "activity=permission tool=\(toolLabel) target=\(targetLabel ?? "nil") project=\(normalizedActivityLabel(projectName) ?? "nil")"
+        )
+    }
+
+    private func setActivityStatus(_ candidate: PetActivityStatusLine?, now: Date) {
+        if currentActivityLine?.tone == .attention,
+           candidate?.tone == .normal {
+            deferredNormalActivityLine = candidate
+            return
+        }
+        if candidate?.tone != .normal {
+            deferredNormalActivityLine = nil
+        }
+
         guard candidate?.key != lastActivityKey || candidate?.text != currentActivityLine?.text else {
             if let candidate, let expiresAt = candidate.expiresAt, expiresAt <= now {
                 clearActivityStatus()
@@ -152,13 +224,20 @@ final class PetSpeechCoordinator {
         }
 
         currentActivityLineExpiryTask = Task { @MainActor [weak self] in
-            let delay = max(0, expiresAt.timeIntervalSince(now))
+            let delay = max(0, expiresAt.timeIntervalSince(Date()))
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
             guard let self,
                   !Task.isCancelled,
                   self.currentActivityLine?.id == candidate.id else {
+                return
+            }
+            if let deferredLine = self.deferredNormalActivityLine {
+                self.deferredNormalActivityLine = nil
+                self.currentActivityLine = nil
+                self.lastActivityKey = nil
+                self.setActivityStatus(deferredLine, now: Date())
                 return
             }
             self.clearActivityStatus()
@@ -170,6 +249,7 @@ final class PetSpeechCoordinator {
         currentActivityLineExpiryTask = nil
         currentActivityLine = nil
         lastActivityKey = nil
+        deferredNormalActivityLine = nil
     }
 
     func skipCurrentLine() {
@@ -609,14 +689,20 @@ final class PetSpeechCoordinator {
                 )
                 key = "completed:\(tool)"
             }
-            expiresAt = now.addingTimeInterval(3)
+            expiresAt = now.addingTimeInterval(ProjectActivityPhase.petCompletedActivityStatusDisplayDuration)
+        }
+        let tone: PetActivityStatusLine.Tone = switch phase {
+        case .completed(_, _, let exitCode) where exitCode == nil || exitCode == 0:
+            .success
+        default:
+            phase.activityStatusTone
         }
         return PetActivityStatusLine(
             text: text,
             key: key,
             updatedAt: now,
             expiresAt: expiresAt,
-            tone: phase.activityStatusTone
+            tone: tone
         )
     }
 

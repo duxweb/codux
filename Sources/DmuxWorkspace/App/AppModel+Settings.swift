@@ -141,6 +141,7 @@ extension AppModel {
         settings.ai.memory.defaultExtractorProviderID = providerID
         appSettings = settings
         persist()
+        refreshMemoryExtractionAfterProviderConfigurationChanged()
     }
 
     func updateMemoryUserWorkingLimit(_ limit: Int) {
@@ -164,12 +165,14 @@ extension AppModel {
                 provider.useForMemoryExtraction = false
             }
         }
+        refreshMemoryExtractionAfterProviderConfigurationChanged()
     }
 
     func updateAIProviderUseForMemoryExtraction(_ enabled: Bool, providerID: String) {
         updateAIProvider(providerID: providerID) { provider in
             provider.useForMemoryExtraction = enabled
         }
+        refreshMemoryExtractionAfterProviderConfigurationChanged()
     }
 
     func updateAIProviderDisplayName(_ displayName: String, providerID: String) {
@@ -197,6 +200,13 @@ extension AppModel {
         }
     }
 
+    func updateLocalLlamaDownloadRoute(_ route: LocalLlamaModelDownloadRoute) {
+        var settings = appSettings
+        settings.ai.localLlamaDownloadRoute = route
+        appSettings = settings
+        persist()
+    }
+
     func updateAIProviderAPIKey(_ value: String, providerID: String) {
         updateAIProvider(providerID: providerID) { provider in
             provider.apiKey = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -208,6 +218,81 @@ extension AppModel {
             return ""
         }
         return provider.apiKey
+    }
+
+    func refreshLocalLlamaModelCatalog() {
+        localLlamaModels = LocalLlamaModelCatalog.models
+        refreshLocalLlamaModelInstallStates()
+
+        Task {
+            do {
+                let manifest = try await LocalLlamaModelCatalog.fetchRemoteManifest()
+                await MainActor.run {
+                    self.localLlamaModels = manifest.models
+                    self.refreshLocalLlamaModelInstallStates()
+                }
+            } catch {
+                await MainActor.run {
+                    if error.localizedDescription.contains("HTTP 404") {
+                        return
+                    }
+                    self.debugLog.log(
+                        "local-llama-models",
+                        "remote-refresh-failed error=\(error.localizedDescription)"
+                    )
+                }
+            }
+        }
+    }
+
+    func refreshLocalLlamaModelInstallStates() {
+        localLlamaModelInstallStates = localLlamaModelStore.installStates(for: localLlamaModels)
+    }
+
+    func localLlamaModelDescriptor(id: String) -> LocalLlamaModelDescriptor? {
+        LocalLlamaModelCatalog.descriptor(id: id, in: localLlamaModels)
+            ?? LocalLlamaModelCatalog.descriptor(id: id)
+    }
+
+    func installLocalLlamaModel(_ modelID: String) {
+        guard let descriptor = localLlamaModelDescriptor(id: modelID) else {
+            return
+        }
+        localLlamaModelInstallStates[modelID] = .downloading(progress: 0)
+
+        let downloadRoute = appSettings.ai.localLlamaDownloadRoute
+
+        Task { [descriptor, modelID, downloadRoute] in
+            do {
+                try await localLlamaModelStore.install(
+                    descriptor,
+                    downloadRoute: downloadRoute
+                ) { progress in
+                    await MainActor.run {
+                        self.localLlamaModelInstallStates[modelID] = .downloading(progress: progress)
+                    }
+                }
+                await MainActor.run {
+                    self.localLlamaModelInstallStates[modelID] = .installed
+                }
+            } catch {
+                await MainActor.run {
+                    self.localLlamaModelInstallStates[modelID] = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func removeLocalLlamaModel(_ modelID: String) {
+        guard let descriptor = localLlamaModelDescriptor(id: modelID) else {
+            return
+        }
+        do {
+            try localLlamaModelStore.remove(descriptor)
+            localLlamaModelInstallStates[modelID] = .notInstalled
+        } catch {
+            localLlamaModelInstallStates[modelID] = .failed(error.localizedDescription)
+        }
     }
 
     func addAIProviderChannel(
@@ -284,6 +369,7 @@ extension AppModel {
                         ),
                         updatedAt: Date()
                     )
+                    self.refreshMemoryExtractionAfterProviderConfigurationChanged()
                 }
             } catch {
                 await MainActor.run {
@@ -308,11 +394,22 @@ extension AppModel {
         transform(&settings.ai.providers[index])
         settings.ai.migrateMissingDefaultProviders()
         if settings.ai.memory.defaultExtractorProviderID != AppMemorySettings.automaticExtractorProviderID,
-           settings.ai.providers.contains(where: { $0.id == settings.ai.memory.defaultExtractorProviderID && $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }) == false {
+           settings.ai.providers.contains(where: { $0.id == settings.ai.memory.defaultExtractorProviderID && $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsMemoryExtraction }) == false {
             settings.ai.memory.defaultExtractorProviderID = AppMemorySettings.automaticExtractorProviderID
         }
         appSettings = settings
         persist()
+    }
+
+    private func refreshMemoryExtractionAfterProviderConfigurationChanged() {
+        let aiSettings = appSettings.ai
+        let projects = projects
+        Task { [memoryCoordinator, aiSettings, projects] in
+            await memoryCoordinator.refreshAfterProviderConfigurationChanged(
+                settings: aiSettings,
+                projects: projects
+            )
+        }
     }
 
     func updateNotificationChannelEnabled(_ enabled: Bool, for channel: AppNotificationChannel) {

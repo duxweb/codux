@@ -155,6 +155,42 @@ extension AppModel {
         aiStatsStore.refreshIfNeeded(project: selectedProject, projects: projects, selectedSessionID: selectedSessionID)
     }
 
+    func handleAISessionSpeechEvent(_ event: PetSpeechEvent) {
+        if event.kind == .turnNeedsInput,
+           Self.isPermissionRequestNotificationType(event.payload["notificationType"]) {
+            petSpeechCoordinator.updatePermissionActivityStatus(
+                tool: event.payload["tool"],
+                targetToolName: event.payload["targetToolName"],
+                projectName: event.payload["project"],
+                now: event.occurredAt
+            )
+            return
+        }
+
+        petSpeechCoordinator.notify(event)
+    }
+
+    func scheduleMemorySessionSnapshotHandling() {
+        pendingMemorySessionSnapshotTask?.cancel()
+        pendingMemorySessionSnapshotTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(800))
+            guard let self, !Task.isCancelled else {
+                return
+            }
+            self.pendingMemorySessionSnapshotTask = nil
+            let sessions = Array(self.aiSessionStore.terminalSessionsByID.values)
+            let projects = self.projects
+            let aiSettings = self.appSettings.ai
+            Task {
+                await self.memoryCoordinator.handleSessionSnapshots(
+                    sessions,
+                    settings: aiSettings,
+                    projects: projects
+                )
+            }
+        }
+    }
+
     private func scheduleProjectActivityRefresh(
         sendNotifications: Bool
     ) {
@@ -243,24 +279,53 @@ extension AppModel {
             return
         }
 
+        let now = Date()
+        let visibleEntries = projects.compactMap { project -> (Project, ProjectActivityPhase)? in
+            guard let phase = phases[project.id],
+                  phase.isPetActivityStatusVisible,
+                  phase.isPetActivityStatusFreshForPet(now: now) else {
+                return nil
+            }
+            return (project, phase)
+        }
+
+        if let waitingInput = visibleEntries
+            .filter({ entry in
+                if case .waitingInput = entry.1 {
+                    return true
+                }
+                return false
+            })
+            .sorted(by: { lhs, rhs in
+                lhs.0.id == selectedProjectID && rhs.0.id != selectedProjectID
+            })
+            .first {
+            if let context = aiSessionStore.waitingInputContext(projectID: waitingInput.0.id),
+               Self.isPermissionRequestNotificationType(context.notificationType) {
+                petSpeechCoordinator.updatePermissionActivityStatus(
+                    tool: context.tool,
+                    targetToolName: context.targetToolName,
+                    projectName: waitingInput.0.name
+                )
+            } else {
+                petSpeechCoordinator.updateActivityStatus(
+                    waitingInput.1,
+                    projectName: waitingInput.0.name
+                )
+            }
+            return
+        }
+
         if let selectedProjectID,
-           let selectedPhase = phases[selectedProjectID],
-           selectedPhase.isPetActivityStatusVisible {
+           let selected = visibleEntries.first(where: { $0.0.id == selectedProjectID }) {
             petSpeechCoordinator.updateActivityStatus(
-                selectedPhase,
-                projectName: projects.first(where: { $0.id == selectedProjectID })?.name
+                selected.1,
+                projectName: selected.0.name
             )
             return
         }
 
-        guard let fallback = projects
-            .compactMap({ project -> (Project, ProjectActivityPhase)? in
-                guard let phase = phases[project.id],
-                      phase.isPetActivityStatusVisible else {
-                    return nil
-                }
-                return (project, phase)
-            })
+        guard let fallback = visibleEntries
             .sorted(by: { lhs, rhs in
                 lhs.1.petActivityStatusPriority > rhs.1.petActivityStatusPriority
             })
@@ -405,7 +470,7 @@ extension AppModel {
     private func shouldNotifyForWaitingInput(
         _ context: AISessionStore.WaitingInputContext
     ) -> Bool {
-        context.notificationType == "permission-request"
+        Self.isPermissionRequestNotificationType(context.notificationType)
     }
 
     private func handleWaitingInputNotificationIfNeeded(project: Project, phase: ProjectActivityPhase) {
@@ -472,6 +537,15 @@ extension AppModel {
         finishedAt: Date
     ) -> String {
         return "realtime-\(tool)-\(Int(finishedAt.timeIntervalSince1970 * 1000))"
+    }
+
+    private static func isPermissionRequestNotificationType(_ notificationType: String?) -> Bool {
+        switch notificationType?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "permission-request", "codex-permission-request":
+            return true
+        default:
+            return false
+        }
     }
 
     private func updateActivityCache(

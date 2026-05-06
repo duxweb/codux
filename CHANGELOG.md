@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-05-06
+
+### Added
+
+- Added local Llama memory extraction with a bundled llama.cpp XCFramework package, a remote-refreshable model catalog, and one-click model install/remove controls.
+- Added China and international model download routes, preferring ModelScope in China and Hugging Face internationally.
+- Added a curated local model list covering low-end through 128 GB Macs, with multilingual descriptions and recommended memory/runtime configurations.
+
+### Changed
+
+- Made memory extraction prefer compact prompts for local models, with smaller transcript windows and safer queue recovery when provider configuration changes.
+- Reduced terminal UI churn during resize and high-output sessions by coalescing pane ratio updates, Ghostty surface refreshes, and terminal output delivery.
+
+### Fixed
+
+- Fixed pet permission prompts so they use the orange attention bubble, stay visible briefly, and then restore the running status when appropriate.
+- Fixed pet hydration, sedentary, and late-night reminders so they use a red warning bubble instead of the default speech bubble.
+- Fixed AI waiting-input notifications so Codex permission requests are treated consistently across notification and pet bubble paths.
+
 ## [0.9.3] - 2026-05-06
 
 ### Added

@@ -1,0 +1,1791 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-05-06",
+  "models": [
+    {
+      "id": "qwen2.5-0.5b-instruct-q4-k-m",
+      "displayName": "Qwen2.5 0.5B Instruct Q4_K_M",
+      "description": {
+        "en": "Tiny Chinese-friendly instruct model for low-end Macs. Good for pet replies and light extraction, but not the default for durable memory.",
+        "zh-Hans": "面向低配 Mac 的轻量中文指令模型。适合宠物回复和轻量提取，但不作为长期记忆的默认模型。",
+        "zh-Hant": "面向低配 Mac 的輕量中文指令模型。適合寵物回覆和輕量擷取，但不作為長期記憶的預設模型。",
+        "ja": "低スペックの Mac 向けの小型中国語寄り指示モデル。ペット返信や軽い抽出に向きますが、長期記憶の既定モデルにはしません。",
+        "ko": "저사양 Mac용 소형 중국어 친화 지시 모델입니다. 펫 답변과 가벼운 추출에는 좋지만 장기 메모리 기본값은 아닙니다.",
+        "fr": "Petit modèle d’instruction adapté au chinois pour les Mac modestes. Utile pour les réponses du compagnon et l’extraction légère, mais pas comme modèle mémoire par défaut.",
+        "de": "Kleines chinesischfreundliches Instruct-Modell für schwächere Macs. Gut für Pet-Antworten und leichte Extraktion, aber nicht als Standard für dauerhafte Erinnerung.",
+        "es": "Modelo instruct pequeño y favorable al chino para Mac modestos. Sirve para respuestas de la mascota y extracción ligera, pero no como modelo predeterminado de memoria duradera.",
+        "pt-BR": "Modelo instruct pequeno e favorável ao chinês para Macs modestos. Serve para respostas do pet e extração leve, mas não como padrão para memória durável.",
+        "ru": "Небольшая instruct-модель с хорошей поддержкой китайского для слабых Mac. Подходит для ответов питомца и легкого извлечения, но не как модель памяти по умолчанию."
+      },
+      "tier": "low",
+      "tasks": [
+        "pet",
+        "memory-lite"
+      ],
+      "recommended": false,
+      "fileName": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "byteCount": 491400032,
+      "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 8,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 3072,
+          "maxPredictionTokens": 512,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 120,
+          "temperature": 0.7
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/master/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen3-0.6b-q8-0",
+      "displayName": "Qwen3 0.6B Q8_0",
+      "description": {
+        "en": "Very small current-generation Qwen model for quick local tests and pet replies. Use it when latency matters more than extraction quality.",
+        "zh-Hans": "很小的新一代 Qwen 模型，适合快速本机测试和宠物短回复。延迟优先时使用，记忆提取质量不如 1.5B 以上模型。",
+        "zh-Hant": "很小的新一代 Qwen 模型，適合快速本機測試和寵物短回覆。延遲優先時使用，記憶擷取品質不如 1.5B 以上模型。",
+        "ja": "現行世代の非常に小さい Qwen モデルです。ローカルテストやペットの短い返信向けで、抽出品質より低遅延を優先する場合に使います。",
+        "ko": "빠른 로컬 테스트와 펫 짧은 답변에 맞는 매우 작은 최신 Qwen 모델입니다. 추출 품질보다 지연 시간이 중요할 때 사용합니다.",
+        "fr": "Très petit modèle Qwen de génération actuelle pour les tests locaux rapides et les réponses du compagnon. À utiliser quand la latence compte plus que la qualité d’extraction.",
+        "de": "Sehr kleines aktuelles Qwen-Modell für schnelle lokale Tests und Pet-Antworten. Nutzen, wenn Latenz wichtiger ist als Extraktionsqualität.",
+        "es": "Modelo Qwen actual muy pequeño para pruebas locales rápidas y respuestas de la mascota. Úsalo cuando importe más la latencia que la calidad de extracción.",
+        "pt-BR": "Modelo Qwen atual muito pequeno para testes locais rápidos e respostas do pet. Use quando a latência for mais importante que a qualidade da extração.",
+        "ru": "Очень маленькая актуальная модель Qwen для быстрых локальных тестов и коротких ответов питомца. Используйте, когда задержка важнее качества извлечения."
+      },
+      "tier": "low",
+      "tasks": [
+        "pet",
+        "memory-lite",
+        "smoke-test"
+      ],
+      "recommended": false,
+      "fileName": "Qwen3-0.6B-Q8_0.gguf",
+      "byteCount": 639446688,
+      "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 8,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 3072,
+          "maxPredictionTokens": 512,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 120,
+          "temperature": 0.7
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q8_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "gemma3-1b-it-q4-0",
+      "displayName": "Gemma 3 1B IT Q4_0",
+      "description": {
+        "en": "Small official Google Gemma model for international English-heavy pet replies and assistant-lite tasks. Use Qwen for Chinese memory by default.",
+        "zh-Hans": "Google 官方小型 Gemma 模型，适合国际化、英文偏多的宠物回复和轻量辅助。中文记忆默认仍建议 Qwen。",
+        "zh-Hant": "Google 官方小型 Gemma 模型，適合國際化、英文偏多的寵物回覆和輕量輔助。中文記憶預設仍建議 Qwen。",
+        "ja": "Google 公式の小型 Gemma モデルです。英語中心の国際向けペット返信や軽い支援に向きます。中国語の記憶抽出は既定では Qwen を推奨します。",
+        "ko": "Google 공식 소형 Gemma 모델입니다. 영어 중심의 국제용 펫 답변과 가벼운 보조 작업에 적합합니다. 중국어 메모리는 기본적으로 Qwen을 권장합니다.",
+        "fr": "Petit modèle officiel Google Gemma pour les réponses du compagnon et l’assistance légère, surtout en anglais. Pour la mémoire en chinois, Qwen reste recommandé par défaut.",
+        "de": "Kleines offizielles Google-Gemma-Modell für internationale, englischlastige Pet-Antworten und leichte Assistenz. Für chinesische Erinnerung bleibt Qwen der Standard.",
+        "es": "Modelo Gemma oficial y pequeño de Google para respuestas internacionales, sobre todo en inglés, y asistencia ligera. Para memoria en chino se recomienda Qwen por defecto.",
+        "pt-BR": "Modelo Gemma oficial pequeno do Google para respostas internacionais, especialmente em inglês, e assistência leve. Para memória em chinês, Qwen continua recomendado por padrão.",
+        "ru": "Небольшая официальная модель Google Gemma для международных, преимущественно английских ответов питомца и легкой помощи. Для китайской памяти по умолчанию лучше Qwen."
+      },
+      "tier": "low",
+      "tasks": [
+        "pet",
+        "assistant-lite",
+        "international"
+      ],
+      "recommended": false,
+      "fileName": "gemma-3-1b-it-q4_0.gguf",
+      "byteCount": 1003541152,
+      "sha256": "95e5b8d891cd6a794f66c2a6fb59a41e9562b4660560b854274eceffb628b22a",
+      "contextLength": 4096,
+      "chatTemplate": "gemma",
+      "minimumMemoryGB": 8,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 512,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 140,
+          "temperature": 0.7
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/google/gemma-3-1b-it-qat-q4_0-gguf/resolve/master/gemma-3-1b-it-q4_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/google/gemma-3-1b-it-qat-q4_0-gguf/resolve/main/gemma-3-1b-it-q4_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-1.5b-instruct-q4-k-m",
+      "displayName": "Qwen2.5 1.5B Instruct Q4_K_M",
+      "description": {
+        "en": "Recommended default for local memory extraction. It balances Chinese understanding, JSON stability, download size, and Mac battery use.",
+        "zh-Hans": "本机记忆提取的推荐默认模型。中文理解、JSON 稳定性、下载体积和 Mac 能耗比较均衡。",
+        "zh-Hant": "本機記憶擷取的推薦預設模型。中文理解、JSON 穩定性、下載體積和 Mac 能耗比較均衡。",
+        "ja": "ローカル記憶抽出の推奨既定モデルです。中国語理解、JSON の安定性、ダウンロードサイズ、Mac の消費電力のバランスが良好です。",
+        "ko": "로컬 메모리 추출의 권장 기본 모델입니다. 중국어 이해, JSON 안정성, 다운로드 크기, Mac 전력 사용의 균형이 좋습니다.",
+        "fr": "Modèle par défaut recommandé pour l’extraction de mémoire locale. Il équilibre compréhension du chinois, stabilité JSON, taille de téléchargement et autonomie du Mac.",
+        "de": "Empfohlenes Standardmodell für lokale Erinnerungsextraktion. Es balanciert Chinesischverständnis, JSON-Stabilität, Downloadgröße und Mac-Akkunutzung.",
+        "es": "Modelo predeterminado recomendado para extracción local de memoria. Equilibra comprensión del chino, estabilidad JSON, tamaño de descarga y batería del Mac.",
+        "pt-BR": "Modelo padrão recomendado para extração local de memória. Equilibra compreensão de chinês, estabilidade de JSON, tamanho do download e bateria do Mac.",
+        "ru": "Рекомендуемая модель по умолчанию для локального извлечения памяти. Балансирует понимание китайского, стабильность JSON, размер загрузки и расход батареи Mac."
+      },
+      "tier": "balanced",
+      "tasks": [
+        "memory",
+        "pet",
+        "assistant-lite"
+      ],
+      "recommended": true,
+      "fileName": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "byteCount": 1117320736,
+      "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 8,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 140,
+          "temperature": 0.7
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/master/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen3-1.7b-q8-0",
+      "displayName": "Qwen3 1.7B Q8_0",
+      "description": {
+        "en": "Current-generation Qwen model for local memory extraction, pet replies, and lightweight assistant work. It keeps strong Chinese support while remaining practical on smaller Macs.",
+        "zh-Hans": "新一代 Qwen 本机模型，适合记忆提取、宠物回复和轻量辅助。中文支持强，同时在较低配置 Mac 上也比较实用。",
+        "zh-Hant": "新一代 Qwen 本機模型，適合記憶擷取、寵物回覆和輕量輔助。中文支援強，同時在較低配置 Mac 上也比較實用。",
+        "ja": "現行世代の Qwen ローカルモデルです。記憶抽出、ペット返信、軽いアシスタント用途に向き、中国語対応を保ちながら小型 Mac でも扱いやすい構成です。",
+        "ko": "최신 세대 Qwen 로컬 모델입니다. 메모리 추출, 펫 답변, 가벼운 보조 작업에 적합하며 중국어 지원이 강하고 낮은 사양의 Mac에서도 실용적입니다.",
+        "fr": "Modèle Qwen local de génération actuelle pour l’extraction de mémoire, les réponses du compagnon et l’assistance légère. Il garde une forte prise en charge du chinois tout en restant pratique sur les petits Mac.",
+        "de": "Aktuelles lokales Qwen-Modell für Erinnerungsextraktion, Pet-Antworten und leichte Assistenz. Es bietet starke Chinesischunterstützung und bleibt auf kleineren Macs praktikabel.",
+        "es": "Modelo Qwen local de generación actual para extracción de memoria, respuestas de la mascota y asistencia ligera. Mantiene buen soporte de chino y sigue siendo práctico en Mac modestos.",
+        "pt-BR": "Modelo Qwen local de geração atual para extração de memória, respostas do pet e assistência leve. Mantém forte suporte a chinês e continua prático em Macs menores.",
+        "ru": "Локальная модель Qwen текущего поколения для извлечения памяти, ответов питомца и легкой помощи. Хорошо поддерживает китайский и остается практичной на небольших Mac."
+      },
+      "tier": "balanced",
+      "tasks": [
+        "memory",
+        "pet",
+        "assistant-lite"
+      ],
+      "recommended": false,
+      "fileName": "Qwen3-1.7B-Q8_0.gguf",
+      "byteCount": 1834426016,
+      "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 8,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 160,
+          "temperature": 0.7
+        },
+        "assistant": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q8_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-coder-1.5b-instruct-q4-k-m",
+      "displayName": "Qwen2.5 Coder 1.5B Instruct Q4_K_M",
+      "description": {
+        "en": "Qwen Coder model for repository summaries, code review, and technical memory extraction. It is the preferred local family when code understanding matters.",
+        "zh-Hans": "Qwen Coder 模型，适合仓库总结、代码 review 和技术类记忆提取。需要理解代码时优先选这个本机系列。",
+        "zh-Hant": "Qwen Coder 模型，適合倉庫總結、程式碼 review 和技術類記憶擷取。需要理解程式碼時優先選這個本機系列。",
+        "ja": "リポジトリ要約、コードレビュー、技術系の記憶抽出に向く Qwen Coder モデルです。コード理解が重要な場合に優先するローカル系列です。",
+        "ko": "저장소 요약, 코드 리뷰, 기술 메모리 추출에 적합한 Qwen Coder 모델입니다. 코드 이해가 중요할 때 우선 선택할 로컬 계열입니다.",
+        "fr": "Modèle Qwen Coder pour les résumés de dépôt, la revue de code et l’extraction de mémoire technique. C’est la famille locale à privilégier quand la compréhension du code compte.",
+        "de": "Qwen-Coder-Modell für Repository-Zusammenfassungen, Code-Review und technische Erinnerungsextraktion. Die bevorzugte lokale Familie, wenn Codeverständnis wichtig ist.",
+        "es": "Modelo Qwen Coder para resúmenes de repositorios, revisión de código y extracción de memoria técnica. Es la familia local preferida cuando importa entender código.",
+        "pt-BR": "Modelo Qwen Coder para resumos de repositório, revisão de código e extração de memória técnica. É a família local preferida quando entender código é importante.",
+        "ru": "Модель Qwen Coder для резюме репозиториев, code review и извлечения технической памяти. Это предпочтительное локальное семейство, когда важно понимать код."
+      },
+      "tier": "balanced",
+      "tasks": [
+        "code-review",
+        "assistant-lite",
+        "memory-lite"
+      ],
+      "recommended": false,
+      "fileName": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+      "byteCount": 1117320768,
+      "sha256": "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 8,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/master/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+        }
+      ]
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-1.5b-q4-k-m",
+      "displayName": "DeepSeek R1 Distill Qwen 1.5B Q4_K_M",
+      "description": {
+        "en": "DeepSeek R1 distilled Qwen GGUF for reasoning-heavy checks and review. It can be verbose, so Qwen remains the safer default for strict JSON memory extraction.",
+        "zh-Hans": "DeepSeek R1 蒸馏 Qwen GGUF，适合偏推理的检查和 review。它可能输出较长思考内容，严格 JSON 记忆提取仍建议默认 Qwen。",
+        "zh-Hant": "DeepSeek R1 蒸餾 Qwen GGUF，適合偏推理的檢查和 review。它可能輸出較長思考內容，嚴格 JSON 記憶擷取仍建議預設 Qwen。",
+        "ja": "推論重視の確認やレビュー向けの DeepSeek R1 蒸留 Qwen GGUF です。出力が長くなりやすいため、厳密な JSON 記憶抽出では Qwen を既定にする方が安全です。",
+        "ko": "추론 중심 점검과 리뷰에 적합한 DeepSeek R1 증류 Qwen GGUF입니다. 출력이 길어질 수 있어 엄격한 JSON 메모리 추출은 Qwen을 기본값으로 두는 편이 안전합니다.",
+        "fr": "GGUF DeepSeek R1 distillé de Qwen pour les contrôles et revues orientés raisonnement. Il peut être verbeux, donc Qwen reste le choix plus sûr pour une extraction JSON stricte.",
+        "de": "DeepSeek-R1-distilliertes Qwen-GGUF für reasoning-lastige Prüfungen und Reviews. Es kann ausführlich sein, daher bleibt Qwen für strikte JSON-Erinnerungsextraktion sicherer.",
+        "es": "GGUF DeepSeek R1 destilado de Qwen para comprobaciones y revisiones con mucho razonamiento. Puede ser verboso, así que Qwen sigue siendo más seguro para extracción JSON estricta.",
+        "pt-BR": "GGUF DeepSeek R1 destilado de Qwen para verificações e revisões com mais raciocínio. Pode ser verboso, então Qwen continua mais seguro para extração JSON estrita.",
+        "ru": "DeepSeek R1 distilled Qwen GGUF для проверок и ревью с акцентом на рассуждения. Может быть многословной, поэтому для строгого JSON-извлечения памяти безопаснее Qwen."
+      },
+      "tier": "balanced",
+      "tasks": [
+        "reasoning",
+        "memory-review",
+        "assistant-lite"
+      ],
+      "recommended": false,
+      "fileName": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+      "byteCount": 1117321312,
+      "sha256": "f3bdf9cf31dee4b57ae4e455a1cb0d01b5c2c1b50d72d3112141c195506c2840",
+      "contextLength": 4096,
+      "chatTemplate": "deepseek-r1",
+      "minimumMemoryGB": 8,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "reasoning": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.2
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/master/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-3b-instruct-q4-k-m",
+      "displayName": "Qwen2.5 3B Instruct Q4_K_M",
+      "description": {
+        "en": "Higher quality Chinese memory extractor for Macs with more memory. Use it when extraction quality matters more than speed.",
+        "zh-Hans": "面向较高配置 Mac 的中文记忆提取模型。需要更好的提取质量且能接受更高耗时时使用。",
+        "zh-Hant": "面向較高配置 Mac 的中文記憶擷取模型。需要更好的擷取品質且能接受更高耗時時使用。",
+        "ja": "メモリに余裕のある Mac 向けの高品質な中国語記憶抽出モデルです。速度より抽出品質を優先する場合に使います。",
+        "ko": "메모리가 더 많은 Mac용 고품질 중국어 메모리 추출 모델입니다. 속도보다 추출 품질이 중요할 때 사용합니다.",
+        "fr": "Modèle d’extraction de mémoire en chinois de meilleure qualité pour les Mac avec plus de mémoire. À utiliser quand la qualité prime sur la vitesse.",
+        "de": "Hochwertigeres Modell für chinesische Erinnerungsextraktion auf Macs mit mehr Speicher. Nutzen, wenn Qualität wichtiger ist als Geschwindigkeit.",
+        "es": "Modelo de mayor calidad para extraer memoria en chino en Mac con más memoria. Úsalo cuando la calidad importe más que la velocidad.",
+        "pt-BR": "Modelo de maior qualidade para extração de memória em chinês em Macs com mais memória. Use quando a qualidade for mais importante que a velocidade.",
+        "ru": "Более качественная модель для извлечения памяти на китайском на Mac с большим объемом памяти. Используйте, когда качество важнее скорости."
+      },
+      "tier": "balanced",
+      "tasks": [
+        "memory",
+        "assistant-lite"
+      ],
+      "recommended": false,
+      "fileName": "qwen2.5-3b-instruct-q4_k_m.gguf",
+      "byteCount": 2104932768,
+      "sha256": "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 12,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 140,
+          "temperature": 0.7
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/master/qwen2.5-3b-instruct-q4_k_m.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+        }
+      ]
+    },
+    {
+      "id": "llama3.2-3b-instruct-q4-k-m",
+      "displayName": "Llama 3.2 3B Instruct Q4_K_M",
+      "description": {
+        "en": "Llama 3 community GGUF for international chat and review. It broadens model choice beyond Qwen, with weaker Chinese memory support than Qwen.",
+        "zh-Hans": "Llama 3 社区 GGUF，适合国际化聊天和 review。它补充 Qwen 之外的选择，但中文记忆支持弱于 Qwen。",
+        "zh-Hant": "Llama 3 社群 GGUF，適合國際化聊天和 review。它補充 Qwen 之外的選擇，但中文記憶支援弱於 Qwen。",
+        "ja": "国際向けチャットやレビューに使える Llama 3 コミュニティ GGUF です。Qwen 以外の選択肢を増やしますが、中国語記憶の対応は Qwen より弱めです。",
+        "ko": "국제용 채팅과 리뷰에 적합한 Llama 3 커뮤니티 GGUF입니다. Qwen 외 선택지를 넓히지만 중국어 메모리 지원은 Qwen보다 약합니다.",
+        "fr": "GGUF communautaire Llama 3 pour le chat et la revue internationaux. Il élargit le choix au-delà de Qwen, avec un support de la mémoire chinoise plus faible que Qwen.",
+        "de": "Community-GGUF von Llama 3 für internationalen Chat und Review. Es erweitert die Auswahl neben Qwen, hat aber schwächere chinesische Erinnerungsunterstützung.",
+        "es": "GGUF comunitario Llama 3 para chat y revisión internacional. Amplía la elección más allá de Qwen, con peor soporte de memoria china que Qwen.",
+        "pt-BR": "GGUF comunitário Llama 3 para chat e revisão internacional. Amplia a escolha além do Qwen, com suporte de memória em chinês mais fraco que Qwen.",
+        "ru": "Community GGUF Llama 3 для международного чата и ревью. Расширяет выбор помимо Qwen, но поддержка китайской памяти слабее, чем у Qwen."
+      },
+      "tier": "balanced",
+      "tasks": [
+        "assistant-lite",
+        "international",
+        "pet"
+      ],
+      "recommended": false,
+      "fileName": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "byteCount": 2019377696,
+      "sha256": "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
+      "contextLength": 4096,
+      "chatTemplate": "llama3",
+      "minimumMemoryGB": 16,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 160,
+          "temperature": 0.7
+        },
+        "assistant": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/master/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "phi3-mini-4k-instruct-q4",
+      "displayName": "Phi-3 Mini 4K Instruct Q4",
+      "description": {
+        "en": "Microsoft Phi GGUF for compact English-heavy chat, review, and assistant tasks. It is useful internationally but not the best default for Chinese memory.",
+        "zh-Hans": "Microsoft Phi GGUF，适合英文偏多的紧凑聊天、review 和辅助任务。国际化可用，但不作为中文记忆默认模型。",
+        "zh-Hant": "Microsoft Phi GGUF，適合英文偏多的緊湊聊天、review 和輔助任務。國際化可用，但不作為中文記憶預設模型。",
+        "ja": "英語中心のコンパクトなチャット、レビュー、アシスタント用途に向く Microsoft Phi GGUF です。国際向けには有用ですが、中国語記憶の既定にはしません。",
+        "ko": "영어 중심의 간단한 채팅, 리뷰, 보조 작업에 적합한 Microsoft Phi GGUF입니다. 국제용으로 유용하지만 중국어 메모리 기본값은 아닙니다.",
+        "fr": "GGUF Microsoft Phi pour le chat, la revue et l’assistance compacte surtout en anglais. Utile à l’international, mais pas le meilleur choix par défaut pour la mémoire en chinois.",
+        "de": "Microsoft-Phi-GGUF für kompakten englischlastigen Chat, Review und Assistenz. International nützlich, aber nicht der beste Standard für chinesische Erinnerung.",
+        "es": "GGUF Microsoft Phi para chat, revisión y asistencia compacta con mucho inglés. Es útil internacionalmente, pero no el mejor valor por defecto para memoria en chino.",
+        "pt-BR": "GGUF Microsoft Phi para chat, revisão e assistência compacta com mais inglês. É útil internacionalmente, mas não é o melhor padrão para memória em chinês.",
+        "ru": "Microsoft Phi GGUF для компактного преимущественно английского чата, ревью и помощи. Полезна международно, но не лучший выбор по умолчанию для китайской памяти."
+      },
+      "tier": "balanced",
+      "tasks": [
+        "assistant-lite",
+        "international",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "Phi-3-mini-4k-instruct-q4.gguf",
+      "byteCount": 2393231072,
+      "sha256": "8a83c7fb9049a9b2e92266fa7ad04933bb53aa1e85136b7b30f1b8000ff2edef",
+      "contextLength": 4096,
+      "chatTemplate": "phi3",
+      "minimumMemoryGB": 16,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/master/Phi-3-mini-4k-instruct-q4.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-coder-3b-instruct-q4-k-m",
+      "displayName": "Qwen2.5 Coder 3B Instruct Q4_K_M",
+      "description": {
+        "en": "Qwen Coder model for repository summaries, code review, and technical memory extraction. It is the preferred local family when code understanding matters.",
+        "zh-Hans": "Qwen Coder 模型，适合仓库总结、代码 review 和技术类记忆提取。需要理解代码时优先选这个本机系列。",
+        "zh-Hant": "Qwen Coder 模型，適合倉庫總結、程式碼 review 和技術類記憶擷取。需要理解程式碼時優先選這個本機系列。",
+        "ja": "リポジトリ要約、コードレビュー、技術系の記憶抽出に向く Qwen Coder モデルです。コード理解が重要な場合に優先するローカル系列です。",
+        "ko": "저장소 요약, 코드 리뷰, 기술 메모리 추출에 적합한 Qwen Coder 모델입니다. 코드 이해가 중요할 때 우선 선택할 로컬 계열입니다.",
+        "fr": "Modèle Qwen Coder pour les résumés de dépôt, la revue de code et l’extraction de mémoire technique. C’est la famille locale à privilégier quand la compréhension du code compte.",
+        "de": "Qwen-Coder-Modell für Repository-Zusammenfassungen, Code-Review und technische Erinnerungsextraktion. Die bevorzugte lokale Familie, wenn Codeverständnis wichtig ist.",
+        "es": "Modelo Qwen Coder para resúmenes de repositorios, revisión de código y extracción de memoria técnica. Es la familia local preferida cuando importa entender código.",
+        "pt-BR": "Modelo Qwen Coder para resumos de repositório, revisão de código e extração de memória técnica. É a família local preferida quando entender código é importante.",
+        "ru": "Модель Qwen Coder для резюме репозиториев, code review и извлечения технической памяти. Это предпочтительное локальное семейство, когда важно понимать код."
+      },
+      "tier": "high",
+      "tasks": [
+        "code-review",
+        "assistant-lite",
+        "memory-lite"
+      ],
+      "recommended": false,
+      "fileName": "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+      "byteCount": 2104932800,
+      "sha256": "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 16,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/master/qwen2.5-coder-3b-instruct-q4_k_m.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen3-4b-q4-k-m",
+      "displayName": "Qwen3 4B Q4_K_M",
+      "description": {
+        "en": "Current-generation Qwen model with better reasoning for memory cleanup and future assistant features. Recommended for newer Macs.",
+        "zh-Hans": "新一代 Qwen 模型，适合更复杂的记忆清洗和后续辅助能力。推荐新款 Mac 使用。",
+        "zh-Hant": "新一代 Qwen 模型，適合更複雜的記憶清洗和後續輔助能力。推薦新款 Mac 使用。",
+        "ja": "現行世代の Qwen モデルで、記憶の整理や今後のアシスタント機能に向いた推論力があります。新しい Mac に推奨します。",
+        "ko": "메모리 정리와 향후 보조 기능에 더 나은 추론을 제공하는 최신 Qwen 모델입니다. 최신 Mac에 권장합니다.",
+        "fr": "Modèle Qwen de génération actuelle avec un meilleur raisonnement pour nettoyer la mémoire et alimenter les futures fonctions d’assistant. Recommandé pour les Mac récents.",
+        "de": "Aktuelles Qwen-Modell mit besserem Reasoning für Speicherbereinigung und künftige Assistentenfunktionen. Für neuere Macs empfohlen.",
+        "es": "Modelo Qwen actual con mejor razonamiento para limpiar memoria y futuras funciones de asistente. Recomendado para Mac recientes.",
+        "pt-BR": "Modelo Qwen atual com melhor raciocínio para limpeza de memória e futuras funções de assistente. Recomendado para Macs recentes.",
+        "ru": "Актуальная модель Qwen с лучшими рассуждениями для очистки памяти и будущих функций ассистента. Рекомендуется для новых Mac."
+      },
+      "tier": "high",
+      "tasks": [
+        "memory",
+        "assistant"
+      ],
+      "recommended": false,
+      "fileName": "Qwen3-4B-Q4_K_M.gguf",
+      "byteCount": 2497280256,
+      "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 16,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 140,
+          "temperature": 0.7
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "gemma3-4b-it-q4-0",
+      "displayName": "Gemma 3 4B IT Q4_0",
+      "description": {
+        "en": "Official Google Gemma model for international assistant behavior and English-heavy pet replies. It is larger than 1B but still practical on newer Macs.",
+        "zh-Hans": "Google 官方 Gemma 模型，适合国际化辅助能力和英文偏多的宠物回复。比 1B 更大，但新款 Mac 上仍可实用运行。",
+        "zh-Hant": "Google 官方 Gemma 模型，適合國際化輔助能力和英文偏多的寵物回覆。比 1B 更大，但新款 Mac 上仍可實用執行。",
+        "ja": "Google 公式の Gemma モデルです。国際向けのアシスタント動作や英語中心のペット返信に向きます。1B より大きいですが新しい Mac なら実用的です。",
+        "ko": "Google 공식 Gemma 모델입니다. 국제용 보조 기능과 영어 중심 펫 답변에 적합합니다. 1B보다 크지만 최신 Mac에서는 실용적으로 실행할 수 있습니다.",
+        "fr": "Modèle officiel Google Gemma pour l’assistance internationale et les réponses du compagnon surtout en anglais. Plus grand que 1B, mais encore pratique sur les Mac récents.",
+        "de": "Offizielles Google-Gemma-Modell für internationale Assistenz und englischlastige Pet-Antworten. Größer als 1B, aber auf neueren Macs noch praktikabel.",
+        "es": "Modelo Gemma oficial de Google para asistencia internacional y respuestas de la mascota con mucho inglés. Es mayor que 1B, pero práctico en Mac recientes.",
+        "pt-BR": "Modelo Gemma oficial do Google para assistência internacional e respostas do pet com mais inglês. É maior que 1B, mas ainda prático em Macs recentes.",
+        "ru": "Официальная модель Google Gemma для международной помощи и преимущественно английских ответов питомца. Она крупнее 1B, но практична на новых Mac."
+      },
+      "tier": "high",
+      "tasks": [
+        "assistant",
+        "pet",
+        "international"
+      ],
+      "recommended": false,
+      "fileName": "gemma-3-4b-it-q4_0.gguf",
+      "byteCount": 3155051328,
+      "sha256": "76aed0a8285b83102f18b5d60e53c70d09eb4e9917a20ce8956bd546452b56e2",
+      "contextLength": 4096,
+      "chatTemplate": "gemma",
+      "minimumMemoryGB": 16,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 4096,
+          "maxPredictionTokens": 768,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 160,
+          "temperature": 0.7
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/google/gemma-3-4b-it-qat-q4_0-gguf/resolve/master/gemma-3-4b-it-q4_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/google/gemma-3-4b-it-qat-q4_0-gguf/resolve/main/gemma-3-4b-it-q4_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-coder-7b-instruct-q4-0",
+      "displayName": "Qwen2.5 Coder 7B Instruct Q4_0",
+      "description": {
+        "en": "Qwen Coder model for repository summaries, code review, and technical memory extraction. It is the preferred local family when code understanding matters.",
+        "zh-Hans": "Qwen Coder 模型，适合仓库总结、代码 review 和技术类记忆提取。需要理解代码时优先选这个本机系列。",
+        "zh-Hant": "Qwen Coder 模型，適合倉庫總結、程式碼 review 和技術類記憶擷取。需要理解程式碼時優先選這個本機系列。",
+        "ja": "リポジトリ要約、コードレビュー、技術系の記憶抽出に向く Qwen Coder モデルです。コード理解が重要な場合に優先するローカル系列です。",
+        "ko": "저장소 요약, 코드 리뷰, 기술 메모리 추출에 적합한 Qwen Coder 모델입니다. 코드 이해가 중요할 때 우선 선택할 로컬 계열입니다.",
+        "fr": "Modèle Qwen Coder pour les résumés de dépôt, la revue de code et l’extraction de mémoire technique. C’est la famille locale à privilégier quand la compréhension du code compte.",
+        "de": "Qwen-Coder-Modell für Repository-Zusammenfassungen, Code-Review und technische Erinnerungsextraktion. Die bevorzugte lokale Familie, wenn Codeverständnis wichtig ist.",
+        "es": "Modelo Qwen Coder para resúmenes de repositorios, revisión de código y extracción de memoria técnica. Es la familia local preferida cuando importa entender código.",
+        "pt-BR": "Modelo Qwen Coder para resumos de repositório, revisão de código e extração de memória técnica. É a família local preferida quando entender código é importante.",
+        "ru": "Модель Qwen Coder для резюме репозиториев, code review и извлечения технической памяти. Это предпочтительное локальное семейство, когда важно понимать код."
+      },
+      "tier": "high",
+      "tasks": [
+        "code-review",
+        "assistant",
+        "memory"
+      ],
+      "recommended": false,
+      "fileName": "qwen2.5-coder-7b-instruct-q4_0.gguf",
+      "byteCount": 4431390720,
+      "sha256": "8561411b4705cbf2d105cf8e2084c6d6f1bcaba415249ce65fc5f21230d4961b",
+      "contextLength": 8192,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 24,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/master/qwen2.5-coder-7b-instruct-q4_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen3-8b-q4-k-m",
+      "displayName": "Qwen3 8B Q4_K_M",
+      "description": {
+        "en": "High-quality local model for stronger memory extraction and assistant behavior. Best for Apple Silicon Macs with 24 GB memory or more.",
+        "zh-Hans": "高质量本机模型，适合更强的记忆提取和辅助能力。建议 24GB 及以上内存的 Apple Silicon Mac 使用。",
+        "zh-Hant": "高品質本機模型，適合更強的記憶擷取和輔助能力。建議 24GB 及以上記憶體的 Apple Silicon Mac 使用。",
+        "ja": "より強い記憶抽出とアシスタント動作向けの高品質ローカルモデルです。24GB 以上の Apple Silicon Mac に最適です。",
+        "ko": "더 강한 메모리 추출과 보조 동작을 위한 고품질 로컬 모델입니다. 24GB 이상 Apple Silicon Mac에 가장 적합합니다.",
+        "fr": "Modèle local de haute qualité pour une extraction de mémoire plus forte et un meilleur comportement d’assistant. Idéal pour les Mac Apple Silicon avec 24 Go ou plus.",
+        "de": "Hochwertiges lokales Modell für stärkere Erinnerungsextraktion und Assistentenverhalten. Am besten für Apple-Silicon-Macs mit mindestens 24 GB Speicher.",
+        "es": "Modelo local de alta calidad para extracción de memoria más fuerte y mejor comportamiento de asistente. Ideal para Mac Apple Silicon con 24 GB o más.",
+        "pt-BR": "Modelo local de alta qualidade para extração de memória mais forte e melhor comportamento de assistente. Ideal para Macs Apple Silicon com 24 GB ou mais.",
+        "ru": "Качественная локальная модель для более сильного извлечения памяти и поведения ассистента. Лучше всего для Apple Silicon Mac с 24 ГБ памяти и больше."
+      },
+      "tier": "high",
+      "tasks": [
+        "memory",
+        "assistant",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "Qwen3-8B-Q4_K_M.gguf",
+      "byteCount": 5027783488,
+      "sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 24,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 160,
+          "temperature": 0.7
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-7b-q4-k-m",
+      "displayName": "DeepSeek R1 Distill Qwen 7B Q4_K_M",
+      "description": {
+        "en": "DeepSeek R1 distilled Qwen GGUF for reasoning-heavy checks and review. It can be verbose, so Qwen remains the safer default for strict JSON memory extraction.",
+        "zh-Hans": "DeepSeek R1 蒸馏 Qwen GGUF，适合偏推理的检查和 review。它可能输出较长思考内容，严格 JSON 记忆提取仍建议默认 Qwen。",
+        "zh-Hant": "DeepSeek R1 蒸餾 Qwen GGUF，適合偏推理的檢查和 review。它可能輸出較長思考內容，嚴格 JSON 記憶擷取仍建議預設 Qwen。",
+        "ja": "推論重視の確認やレビュー向けの DeepSeek R1 蒸留 Qwen GGUF です。出力が長くなりやすいため、厳密な JSON 記憶抽出では Qwen を既定にする方が安全です。",
+        "ko": "추론 중심 점검과 리뷰에 적합한 DeepSeek R1 증류 Qwen GGUF입니다. 출력이 길어질 수 있어 엄격한 JSON 메모리 추출은 Qwen을 기본값으로 두는 편이 안전합니다.",
+        "fr": "GGUF DeepSeek R1 distillé de Qwen pour les contrôles et revues orientés raisonnement. Il peut être verbeux, donc Qwen reste le choix plus sûr pour une extraction JSON stricte.",
+        "de": "DeepSeek-R1-distilliertes Qwen-GGUF für reasoning-lastige Prüfungen und Reviews. Es kann ausführlich sein, daher bleibt Qwen für strikte JSON-Erinnerungsextraktion sicherer.",
+        "es": "GGUF DeepSeek R1 destilado de Qwen para comprobaciones y revisiones con mucho razonamiento. Puede ser verboso, así que Qwen sigue siendo más seguro para extracción JSON estricta.",
+        "pt-BR": "GGUF DeepSeek R1 destilado de Qwen para verificações e revisões com mais raciocínio. Pode ser verboso, então Qwen continua mais seguro para extração JSON estrita.",
+        "ru": "DeepSeek R1 distilled Qwen GGUF для проверок и ревью с акцентом на рассуждения. Может быть многословной, поэтому для строгого JSON-извлечения памяти безопаснее Qwen."
+      },
+      "tier": "high",
+      "tasks": [
+        "reasoning",
+        "code-review",
+        "memory-review"
+      ],
+      "recommended": false,
+      "fileName": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+      "byteCount": 4683073248,
+      "sha256": "78272d8d32084548bd450394a560eb2d70de8232ab96a725769b1f9171235c1c",
+      "contextLength": 8192,
+      "chatTemplate": "deepseek-r1",
+      "minimumMemoryGB": 24,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "reasoning": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.2
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/master/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "llama3.1-8b-instruct-q4-k-m",
+      "displayName": "Llama 3.1 8B Instruct Q4_K_M",
+      "description": {
+        "en": "Llama 3 community GGUF for international chat and review. It broadens model choice beyond Qwen, with weaker Chinese memory support than Qwen.",
+        "zh-Hans": "Llama 3 社区 GGUF，适合国际化聊天和 review。它补充 Qwen 之外的选择，但中文记忆支持弱于 Qwen。",
+        "zh-Hant": "Llama 3 社群 GGUF，適合國際化聊天和 review。它補充 Qwen 之外的選擇，但中文記憶支援弱於 Qwen。",
+        "ja": "国際向けチャットやレビューに使える Llama 3 コミュニティ GGUF です。Qwen 以外の選択肢を増やしますが、中国語記憶の対応は Qwen より弱めです。",
+        "ko": "국제용 채팅과 리뷰에 적합한 Llama 3 커뮤니티 GGUF입니다. Qwen 외 선택지를 넓히지만 중국어 메모리 지원은 Qwen보다 약합니다.",
+        "fr": "GGUF communautaire Llama 3 pour le chat et la revue internationaux. Il élargit le choix au-delà de Qwen, avec un support de la mémoire chinoise plus faible que Qwen.",
+        "de": "Community-GGUF von Llama 3 für internationalen Chat und Review. Es erweitert die Auswahl neben Qwen, hat aber schwächere chinesische Erinnerungsunterstützung.",
+        "es": "GGUF comunitario Llama 3 para chat y revisión internacional. Amplía la elección más allá de Qwen, con peor soporte de memoria china que Qwen.",
+        "pt-BR": "GGUF comunitário Llama 3 para chat e revisão internacional. Amplia a escolha além do Qwen, com suporte de memória em chinês mais fraco que Qwen.",
+        "ru": "Community GGUF Llama 3 для международного чата и ревью. Расширяет выбор помимо Qwen, но поддержка китайской памяти слабее, чем у Qwen."
+      },
+      "tier": "high",
+      "tasks": [
+        "assistant",
+        "international",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "byteCount": 4920739232,
+      "sha256": "7b064f5842bf9532c91456deda288a1b672397a54fa729aa665952863033557c",
+      "contextLength": 8192,
+      "chatTemplate": "llama3",
+      "minimumMemoryGB": 24,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/master/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "phi4-q4-0",
+      "displayName": "Phi-4 Q4_0",
+      "description": {
+        "en": "Microsoft Phi GGUF for compact English-heavy chat, review, and assistant tasks. It is useful internationally but not the best default for Chinese memory.",
+        "zh-Hans": "Microsoft Phi GGUF，适合英文偏多的紧凑聊天、review 和辅助任务。国际化可用，但不作为中文记忆默认模型。",
+        "zh-Hant": "Microsoft Phi GGUF，適合英文偏多的緊湊聊天、review 和輔助任務。國際化可用，但不作為中文記憶預設模型。",
+        "ja": "英語中心のコンパクトなチャット、レビュー、アシスタント用途に向く Microsoft Phi GGUF です。国際向けには有用ですが、中国語記憶の既定にはしません。",
+        "ko": "영어 중심의 간단한 채팅, 리뷰, 보조 작업에 적합한 Microsoft Phi GGUF입니다. 국제용으로 유용하지만 중국어 메모리 기본값은 아닙니다.",
+        "fr": "GGUF Microsoft Phi pour le chat, la revue et l’assistance compacte surtout en anglais. Utile à l’international, mais pas le meilleur choix par défaut pour la mémoire en chinois.",
+        "de": "Microsoft-Phi-GGUF für kompakten englischlastigen Chat, Review und Assistenz. International nützlich, aber nicht der beste Standard für chinesische Erinnerung.",
+        "es": "GGUF Microsoft Phi para chat, revisión y asistencia compacta con mucho inglés. Es útil internacionalmente, pero no el mejor valor por defecto para memoria en chino.",
+        "pt-BR": "GGUF Microsoft Phi para chat, revisão e assistência compacta com mais inglês. É útil internacionalmente, mas não é o melhor padrão para memória em chinês.",
+        "ru": "Microsoft Phi GGUF для компактного преимущественно английского чата, ревью и помощи. Полезна международно, но не лучший выбор по умолчанию для китайской памяти."
+      },
+      "tier": "pro",
+      "tasks": [
+        "assistant",
+        "international",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "phi-4-Q4_0.gguf",
+      "byteCount": 8383418560,
+      "sha256": "367a3576b66530fac1cee6c3f47b52e7bbfb003de6cc18e2e2c9a2cc2ad89fe6",
+      "contextLength": 8192,
+      "chatTemplate": "phi4",
+      "minimumMemoryGB": 32,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/microsoft/phi-4-gguf/resolve/master/phi-4-Q4_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/microsoft/phi-4-gguf/resolve/main/phi-4-Q4_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "gemma3-12b-it-q4-0",
+      "displayName": "Gemma 3 12B IT Q4_0",
+      "description": {
+        "en": "Official Google Gemma GGUF for international assistant behavior and English-heavy pet replies. Use Qwen first for Chinese memory extraction.",
+        "zh-Hans": "Google 官方 Gemma GGUF，适合国际化辅助能力和英文偏多的宠物回复。中文记忆提取仍优先使用 Qwen。",
+        "zh-Hant": "Google 官方 Gemma GGUF，適合國際化輔助能力和英文偏多的寵物回覆。中文記憶擷取仍優先使用 Qwen。",
+        "ja": "Google 公式の Gemma GGUF です。国際向けアシスタント動作や英語中心のペット返信に向きます。中国語の記憶抽出では Qwen を優先します。",
+        "ko": "Google 공식 Gemma GGUF입니다. 국제용 보조 기능과 영어 중심 펫 답변에 적합합니다. 중국어 메모리 추출은 Qwen을 우선 사용합니다.",
+        "fr": "GGUF officiel Google Gemma pour l’assistance internationale et les réponses du compagnon surtout en anglais. Pour la mémoire en chinois, Qwen reste prioritaire.",
+        "de": "Offizielles Google-Gemma-GGUF für internationale Assistenz und englischlastige Pet-Antworten. Für chinesische Erinnerungsextraktion zuerst Qwen verwenden.",
+        "es": "GGUF oficial de Google Gemma para asistencia internacional y respuestas de mascota con mucho inglés. Para memoria en chino, usa Qwen primero.",
+        "pt-BR": "GGUF oficial Google Gemma para assistência internacional e respostas do pet com mais inglês. Para memória em chinês, use Qwen primeiro.",
+        "ru": "Официальный Google Gemma GGUF для международного ассистента и преимущественно английских ответов питомца. Для китайской памяти сначала используйте Qwen."
+      },
+      "tier": "pro",
+      "tasks": [
+        "assistant",
+        "pet",
+        "international"
+      ],
+      "recommended": false,
+      "fileName": "gemma-3-12b-it-q4_0.gguf",
+      "byteCount": 8074473920,
+      "sha256": "dd53172ff3a7b1b16c8fb3d944b87f42a6228ff2de3825b8813ae90d988434cd",
+      "contextLength": 8192,
+      "chatTemplate": "gemma",
+      "minimumMemoryGB": 32,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 160,
+          "temperature": 0.7
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/google/gemma-3-12b-it-qat-q4_0-gguf/resolve/master/gemma-3-12b-it-q4_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-gguf/resolve/main/gemma-3-12b-it-q4_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-coder-14b-instruct-q4-0",
+      "displayName": "Qwen2.5 Coder 14B Instruct Q4_0",
+      "description": {
+        "en": "Qwen Coder model for repository summaries, code review, and technical memory extraction. It is the preferred local family when code understanding matters.",
+        "zh-Hans": "Qwen Coder 模型，适合仓库总结、代码 review 和技术类记忆提取。需要理解代码时优先选这个本机系列。",
+        "zh-Hant": "Qwen Coder 模型，適合倉庫總結、程式碼 review 和技術類記憶擷取。需要理解程式碼時優先選這個本機系列。",
+        "ja": "リポジトリ要約、コードレビュー、技術系の記憶抽出に向く Qwen Coder モデルです。コード理解が重要な場合に優先するローカル系列です。",
+        "ko": "저장소 요약, 코드 리뷰, 기술 메모리 추출에 적합한 Qwen Coder 모델입니다. 코드 이해가 중요할 때 우선 선택할 로컬 계열입니다.",
+        "fr": "Modèle Qwen Coder pour les résumés de dépôt, la revue de code et l’extraction de mémoire technique. C’est la famille locale à privilégier quand la compréhension du code compte.",
+        "de": "Qwen-Coder-Modell für Repository-Zusammenfassungen, Code-Review und technische Erinnerungsextraktion. Die bevorzugte lokale Familie, wenn Codeverständnis wichtig ist.",
+        "es": "Modelo Qwen Coder para resúmenes de repositorios, revisión de código y extracción de memoria técnica. Es la familia local preferida cuando importa entender código.",
+        "pt-BR": "Modelo Qwen Coder para resumos de repositório, revisão de código e extração de memória técnica. É a família local preferida quando entender código é importante.",
+        "ru": "Модель Qwen Coder для резюме репозиториев, code review и извлечения технической памяти. Это предпочтительное локальное семейство, когда важно понимать код."
+      },
+      "tier": "pro",
+      "tasks": [
+        "code-review",
+        "assistant",
+        "memory"
+      ],
+      "recommended": false,
+      "fileName": "qwen2.5-coder-14b-instruct-q4_0.gguf",
+      "byteCount": 8517725568,
+      "sha256": "561c8955089ad330dff56a40a001eb8bb4e12746354e76d0262bd65ab4640864",
+      "contextLength": 8192,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 32,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/master/qwen2.5-coder-14b-instruct-q4_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/qwen2.5-coder-14b-instruct-q4_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen3-14b-q4-k-m",
+      "displayName": "Qwen3 14B Q4_K_M",
+      "description": {
+        "en": "Large local Qwen option for high-end Macs. Keep it optional because download size, memory pressure, and latency are much higher.",
+        "zh-Hans": "面向高配 Mac 的大型本机 Qwen 选项。下载体积、内存压力和延迟都明显更高，因此只作为可选高配模型。",
+        "zh-Hant": "面向高配 Mac 的大型本機 Qwen 選項。下載體積、記憶體壓力和延遲都明顯更高，因此只作為可選高配模型。",
+        "ja": "ハイエンド Mac 向けの大型ローカル Qwen です。ダウンロードサイズ、メモリ負荷、遅延が大きいため任意の上位モデルとして扱います。",
+        "ko": "고사양 Mac용 대형 로컬 Qwen 옵션입니다. 다운로드 크기, 메모리 부담, 지연 시간이 훨씬 크므로 선택형 고사양 모델로 둡니다.",
+        "fr": "Grande option Qwen locale pour les Mac haut de gamme. Elle reste optionnelle, car taille de téléchargement, pression mémoire et latence sont beaucoup plus élevées.",
+        "de": "Große lokale Qwen-Option für High-End-Macs. Optional, da Downloadgröße, Speicherdruck und Latenz deutlich höher sind.",
+        "es": "Opción Qwen local grande para Mac de gama alta. Se mantiene opcional porque descarga, presión de memoria y latencia son mucho mayores.",
+        "pt-BR": "Opção Qwen local grande para Macs de ponta. Fica opcional porque download, pressão de memória e latência são bem maiores.",
+        "ru": "Большой локальный вариант Qwen для мощных Mac. Оставлен опциональным из-за большого размера загрузки, нагрузки на память и задержки."
+      },
+      "tier": "pro",
+      "tasks": [
+        "memory",
+        "assistant",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "Qwen3-14B-Q4_K_M.gguf",
+      "byteCount": 9001752960,
+      "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
+      "contextLength": 4096,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 32,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "pet": {
+          "contextTokens": 2048,
+          "maxPredictionTokens": 160,
+          "temperature": 0.7
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen3-14B-GGUF/resolve/master/Qwen3-14B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-14b-q4-k-m",
+      "displayName": "DeepSeek R1 Distill Qwen 14B Q4_K_M",
+      "description": {
+        "en": "DeepSeek R1 distilled Qwen GGUF for reasoning-heavy checks and review. It can be verbose, so Qwen remains the safer default for strict JSON memory extraction.",
+        "zh-Hans": "DeepSeek R1 蒸馏 Qwen GGUF，适合偏推理的检查和 review。它可能输出较长思考内容，严格 JSON 记忆提取仍建议默认 Qwen。",
+        "zh-Hant": "DeepSeek R1 蒸餾 Qwen GGUF，適合偏推理的檢查和 review。它可能輸出較長思考內容，嚴格 JSON 記憶擷取仍建議預設 Qwen。",
+        "ja": "推論重視の確認やレビュー向けの DeepSeek R1 蒸留 Qwen GGUF です。出力が長くなりやすいため、厳密な JSON 記憶抽出では Qwen を既定にする方が安全です。",
+        "ko": "추론 중심 점검과 리뷰에 적합한 DeepSeek R1 증류 Qwen GGUF입니다. 출력이 길어질 수 있어 엄격한 JSON 메모리 추출은 Qwen을 기본값으로 두는 편이 안전합니다.",
+        "fr": "GGUF DeepSeek R1 distillé de Qwen pour les contrôles et revues orientés raisonnement. Il peut être verbeux, donc Qwen reste le choix plus sûr pour une extraction JSON stricte.",
+        "de": "DeepSeek-R1-distilliertes Qwen-GGUF für reasoning-lastige Prüfungen und Reviews. Es kann ausführlich sein, daher bleibt Qwen für strikte JSON-Erinnerungsextraktion sicherer.",
+        "es": "GGUF DeepSeek R1 destilado de Qwen para comprobaciones y revisiones con mucho razonamiento. Puede ser verboso, así que Qwen sigue siendo más seguro para extracción JSON estricta.",
+        "pt-BR": "GGUF DeepSeek R1 destilado de Qwen para verificações e revisões com mais raciocínio. Pode ser verboso, então Qwen continua mais seguro para extração JSON estrita.",
+        "ru": "DeepSeek R1 distilled Qwen GGUF для проверок и ревью с акцентом на рассуждения. Может быть многословной, поэтому для строгого JSON-извлечения памяти безопаснее Qwen."
+      },
+      "tier": "pro",
+      "tasks": [
+        "reasoning",
+        "code-review",
+        "memory-review"
+      ],
+      "recommended": false,
+      "fileName": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+      "byteCount": 8988109984,
+      "sha256": "67a7933cf2ad596a393c8e13b30bc4da2d50b283e250b78554aed18817eca31c",
+      "contextLength": 8192,
+      "chatTemplate": "deepseek-r1",
+      "minimumMemoryGB": 32,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "reasoning": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.2
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/master/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "mistral-small-24b-instruct-2501-q4-k-m",
+      "displayName": "Mistral Small 24B Instruct 2501 Q4_K_M",
+      "description": {
+        "en": "Mistral Small community GGUF for international assistant and review work. It is a strong English and European-language option for larger Macs.",
+        "zh-Hans": "Mistral Small 社区 GGUF，适合国际化辅助和 review。它是大内存 Mac 上较强的英文和欧洲语言选项。",
+        "zh-Hant": "Mistral Small 社群 GGUF，適合國際化輔助和 review。它是大記憶體 Mac 上較強的英文和歐洲語言選項。",
+        "ja": "国際向けアシスタントとレビューに使える Mistral Small コミュニティ GGUF です。大容量メモリの Mac で英語と欧州言語に強い選択肢です。",
+        "ko": "국제용 보조와 리뷰에 적합한 Mistral Small 커뮤니티 GGUF입니다. 대용량 Mac에서 영어와 유럽 언어에 강한 선택지입니다.",
+        "fr": "GGUF communautaire Mistral Small pour l’assistance internationale et la revue. C’est une option solide en anglais et langues européennes sur les grands Mac.",
+        "de": "Community-GGUF von Mistral Small für internationale Assistenz und Review. Eine starke Option für Englisch und europäische Sprachen auf größeren Macs.",
+        "es": "GGUF comunitario Mistral Small para asistencia internacional y revisión. Es una opción sólida en inglés y lenguas europeas para Mac grandes.",
+        "pt-BR": "GGUF comunitário Mistral Small para assistência internacional e revisão. É uma opção forte em inglês e idiomas europeus em Macs maiores.",
+        "ru": "Community GGUF Mistral Small для международной помощи и ревью. Сильный вариант для английского и европейских языков на больших Mac."
+      },
+      "tier": "max",
+      "tasks": [
+        "assistant",
+        "international",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf",
+      "byteCount": 14333908672,
+      "sha256": "d1a6d049f09730c3f8ba26cf6b0b60c89790b5fdafa9a59c819acdfe93fffd1b",
+      "contextLength": 8192,
+      "chatTemplate": "mistral-small",
+      "minimumMemoryGB": 64,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/bartowski/Mistral-Small-24B-Instruct-2501-GGUF/resolve/master/Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/bartowski/Mistral-Small-24B-Instruct-2501-GGUF/resolve/main/Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "gemma3-27b-it-q4-0",
+      "displayName": "Gemma 3 27B IT Q4_0",
+      "description": {
+        "en": "Official Google Gemma GGUF for international assistant behavior and English-heavy pet replies. Use Qwen first for Chinese memory extraction.",
+        "zh-Hans": "Google 官方 Gemma GGUF，适合国际化辅助能力和英文偏多的宠物回复。中文记忆提取仍优先使用 Qwen。",
+        "zh-Hant": "Google 官方 Gemma GGUF，適合國際化輔助能力和英文偏多的寵物回覆。中文記憶擷取仍優先使用 Qwen。",
+        "ja": "Google 公式の Gemma GGUF です。国際向けアシスタント動作や英語中心のペット返信に向きます。中国語の記憶抽出では Qwen を優先します。",
+        "ko": "Google 공식 Gemma GGUF입니다. 국제용 보조 기능과 영어 중심 펫 답변에 적합합니다. 중국어 메모리 추출은 Qwen을 우선 사용합니다.",
+        "fr": "GGUF officiel Google Gemma pour l’assistance internationale et les réponses du compagnon surtout en anglais. Pour la mémoire en chinois, Qwen reste prioritaire.",
+        "de": "Offizielles Google-Gemma-GGUF für internationale Assistenz und englischlastige Pet-Antworten. Für chinesische Erinnerungsextraktion zuerst Qwen verwenden.",
+        "es": "GGUF oficial de Google Gemma para asistencia internacional y respuestas de mascota con mucho inglés. Para memoria en chino, usa Qwen primero.",
+        "pt-BR": "GGUF oficial Google Gemma para assistência internacional e respostas do pet com mais inglês. Para memória em chinês, use Qwen primeiro.",
+        "ru": "Официальный Google Gemma GGUF для международного ассистента и преимущественно английских ответов питомца. Для китайской памяти сначала используйте Qwen."
+      },
+      "tier": "max",
+      "tasks": [
+        "assistant",
+        "international",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "gemma-3-27b-it-q4_0.gguf",
+      "byteCount": 17229630496,
+      "sha256": "7b131f721b95bd06ef4066e18ed2febed15ad6620f61c6eaf37832837ca109fe",
+      "contextLength": 8192,
+      "chatTemplate": "gemma",
+      "minimumMemoryGB": 64,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/google/gemma-3-27b-it-qat-q4_0-gguf/resolve/master/gemma-3-27b-it-q4_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/google/gemma-3-27b-it-qat-q4_0-gguf/resolve/main/gemma-3-27b-it-q4_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen3-30b-a3b-q4-k-m",
+      "displayName": "Qwen3 30B-A3B Q4_K_M",
+      "description": {
+        "en": "High-end Qwen local model for stronger memory cleanup, chat, and code review. Use it on larger-memory Apple Silicon Macs when quality matters more than latency.",
+        "zh-Hans": "高配 Qwen 本机模型，适合更强的记忆清洗、聊天和代码 review。适合大内存 Apple Silicon Mac，质量优先于延迟时使用。",
+        "zh-Hant": "高配 Qwen 本機模型，適合更強的記憶清洗、聊天和程式碼 review。適合大記憶體 Apple Silicon Mac，品質優先於延遲時使用。",
+        "ja": "上位構成向けの Qwen ローカルモデルです。より強い記憶整理、チャット、コードレビューに向き、遅延より品質を優先する大容量メモリの Apple Silicon Mac で使います。",
+        "ko": "고사양 Qwen 로컬 모델입니다. 더 강한 메모리 정리, 채팅, 코드 리뷰에 적합하며 지연 시간보다 품질이 중요할 때 대용량 Apple Silicon Mac에서 사용합니다.",
+        "fr": "Modèle Qwen local haut de gamme pour un meilleur nettoyage de mémoire, le chat et la revue de code. À utiliser sur les Mac Apple Silicon avec beaucoup de mémoire quand la qualité prime sur la latence.",
+        "de": "Lokales High-End-Qwen-Modell für stärkere Speicherbereinigung, Chat und Code-Review. Für Apple-Silicon-Macs mit viel Speicher, wenn Qualität wichtiger ist als Latenz.",
+        "es": "Modelo Qwen local de gama alta para mejor limpieza de memoria, chat y revisión de código. Úsalo en Mac Apple Silicon con mucha memoria cuando la calidad importe más que la latencia.",
+        "pt-BR": "Modelo Qwen local de alto desempenho para melhor limpeza de memória, chat e revisão de código. Use em Macs Apple Silicon com bastante memória quando a qualidade for mais importante que a latência.",
+        "ru": "Локальная модель Qwen высокого класса для более сильной очистки памяти, чата и code review. Используйте на Apple Silicon Mac с большим объемом памяти, когда качество важнее задержки."
+      },
+      "tier": "max",
+      "tasks": [
+        "memory",
+        "assistant",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "Qwen3-30B-A3B-Q4_K_M.gguf",
+      "byteCount": 18556685824,
+      "sha256": "0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5",
+      "contextLength": 8192,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 64,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen3-30B-A3B-GGUF/resolve/master/Qwen3-30B-A3B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-coder-32b-instruct-q4-0",
+      "displayName": "Qwen2.5 Coder 32B Instruct Q4_0",
+      "description": {
+        "en": "Qwen Coder model for repository summaries, code review, and technical memory extraction. It is the preferred local family when code understanding matters.",
+        "zh-Hans": "Qwen Coder 模型，适合仓库总结、代码 review 和技术类记忆提取。需要理解代码时优先选这个本机系列。",
+        "zh-Hant": "Qwen Coder 模型，適合倉庫總結、程式碼 review 和技術類記憶擷取。需要理解程式碼時優先選這個本機系列。",
+        "ja": "リポジトリ要約、コードレビュー、技術系の記憶抽出に向く Qwen Coder モデルです。コード理解が重要な場合に優先するローカル系列です。",
+        "ko": "저장소 요약, 코드 리뷰, 기술 메모리 추출에 적합한 Qwen Coder 모델입니다. 코드 이해가 중요할 때 우선 선택할 로컬 계열입니다.",
+        "fr": "Modèle Qwen Coder pour les résumés de dépôt, la revue de code et l’extraction de mémoire technique. C’est la famille locale à privilégier quand la compréhension du code compte.",
+        "de": "Qwen-Coder-Modell für Repository-Zusammenfassungen, Code-Review und technische Erinnerungsextraktion. Die bevorzugte lokale Familie, wenn Codeverständnis wichtig ist.",
+        "es": "Modelo Qwen Coder para resúmenes de repositorios, revisión de código y extracción de memoria técnica. Es la familia local preferida cuando importa entender código.",
+        "pt-BR": "Modelo Qwen Coder para resumos de repositório, revisão de código e extração de memória técnica. É a família local preferida quando entender código é importante.",
+        "ru": "Модель Qwen Coder для резюме репозиториев, code review и извлечения технической памяти. Это предпочтительное локальное семейство, когда важно понимать код."
+      },
+      "tier": "max",
+      "tasks": [
+        "code-review",
+        "assistant",
+        "memory"
+      ],
+      "recommended": false,
+      "fileName": "qwen2.5-coder-32b-instruct-q4_0.gguf",
+      "byteCount": 18640230592,
+      "sha256": "c10b33fc96ef02b47c73dd90020c9bc7686d4163862495dc342f476614b545fd",
+      "contextLength": 8192,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 64,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/master/qwen2.5-coder-32b-instruct-q4_0.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/main/qwen2.5-coder-32b-instruct-q4_0.gguf"
+        }
+      ]
+    },
+    {
+      "id": "qwen3-32b-q4-k-m",
+      "displayName": "Qwen3 32B Q4_K_M",
+      "description": {
+        "en": "High-end Qwen local model for stronger memory cleanup, chat, and code review. Use it on larger-memory Apple Silicon Macs when quality matters more than latency.",
+        "zh-Hans": "高配 Qwen 本机模型，适合更强的记忆清洗、聊天和代码 review。适合大内存 Apple Silicon Mac，质量优先于延迟时使用。",
+        "zh-Hant": "高配 Qwen 本機模型，適合更強的記憶清洗、聊天和程式碼 review。適合大記憶體 Apple Silicon Mac，品質優先於延遲時使用。",
+        "ja": "上位構成向けの Qwen ローカルモデルです。より強い記憶整理、チャット、コードレビューに向き、遅延より品質を優先する大容量メモリの Apple Silicon Mac で使います。",
+        "ko": "고사양 Qwen 로컬 모델입니다. 더 강한 메모리 정리, 채팅, 코드 리뷰에 적합하며 지연 시간보다 품질이 중요할 때 대용량 Apple Silicon Mac에서 사용합니다.",
+        "fr": "Modèle Qwen local haut de gamme pour un meilleur nettoyage de mémoire, le chat et la revue de code. À utiliser sur les Mac Apple Silicon avec beaucoup de mémoire quand la qualité prime sur la latence.",
+        "de": "Lokales High-End-Qwen-Modell für stärkere Speicherbereinigung, Chat und Code-Review. Für Apple-Silicon-Macs mit viel Speicher, wenn Qualität wichtiger ist als Latenz.",
+        "es": "Modelo Qwen local de gama alta para mejor limpieza de memoria, chat y revisión de código. Úsalo en Mac Apple Silicon con mucha memoria cuando la calidad importe más que la latencia.",
+        "pt-BR": "Modelo Qwen local de alto desempenho para melhor limpeza de memória, chat e revisão de código. Use em Macs Apple Silicon com bastante memória quando a qualidade for mais importante que a latência.",
+        "ru": "Локальная модель Qwen высокого класса для более сильной очистки памяти, чата и code review. Используйте на Apple Silicon Mac с большим объемом памяти, когда качество важнее задержки."
+      },
+      "tier": "max",
+      "tasks": [
+        "memory",
+        "assistant",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "Qwen3-32B-Q4_K_M.gguf",
+      "byteCount": 19762149024,
+      "sha256": "efd971561896866f0e910cce52761ca77b1b138090c7f15fe284676d57d1f689",
+      "contextLength": 8192,
+      "chatTemplate": "qwen",
+      "minimumMemoryGB": 64,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/Qwen/Qwen3-32B-GGUF/resolve/master/Qwen3-32B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/Qwen/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-32b-q4-k-m",
+      "displayName": "DeepSeek R1 Distill Qwen 32B Q4_K_M",
+      "description": {
+        "en": "DeepSeek R1 distilled Qwen GGUF for reasoning-heavy checks and review. It can be verbose, so Qwen remains the safer default for strict JSON memory extraction.",
+        "zh-Hans": "DeepSeek R1 蒸馏 Qwen GGUF，适合偏推理的检查和 review。它可能输出较长思考内容，严格 JSON 记忆提取仍建议默认 Qwen。",
+        "zh-Hant": "DeepSeek R1 蒸餾 Qwen GGUF，適合偏推理的檢查和 review。它可能輸出較長思考內容，嚴格 JSON 記憶擷取仍建議預設 Qwen。",
+        "ja": "推論重視の確認やレビュー向けの DeepSeek R1 蒸留 Qwen GGUF です。出力が長くなりやすいため、厳密な JSON 記憶抽出では Qwen を既定にする方が安全です。",
+        "ko": "추론 중심 점검과 리뷰에 적합한 DeepSeek R1 증류 Qwen GGUF입니다. 출력이 길어질 수 있어 엄격한 JSON 메모리 추출은 Qwen을 기본값으로 두는 편이 안전합니다.",
+        "fr": "GGUF DeepSeek R1 distillé de Qwen pour les contrôles et revues orientés raisonnement. Il peut être verbeux, donc Qwen reste le choix plus sûr pour une extraction JSON stricte.",
+        "de": "DeepSeek-R1-distilliertes Qwen-GGUF für reasoning-lastige Prüfungen und Reviews. Es kann ausführlich sein, daher bleibt Qwen für strikte JSON-Erinnerungsextraktion sicherer.",
+        "es": "GGUF DeepSeek R1 destilado de Qwen para comprobaciones y revisiones con mucho razonamiento. Puede ser verboso, así que Qwen sigue siendo más seguro para extracción JSON estricta.",
+        "pt-BR": "GGUF DeepSeek R1 destilado de Qwen para verificações e revisões com mais raciocínio. Pode ser verboso, então Qwen continua mais seguro para extração JSON estrita.",
+        "ru": "DeepSeek R1 distilled Qwen GGUF для проверок и ревью с акцентом на рассуждения. Может быть многословной, поэтому для строгого JSON-извлечения памяти безопаснее Qwen."
+      },
+      "tier": "max",
+      "tasks": [
+        "reasoning",
+        "code-review",
+        "memory-review"
+      ],
+      "recommended": false,
+      "fileName": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+      "byteCount": 19851335584,
+      "sha256": "ca171ca03554ee20cf67ad6b540610ae7eabb95af00c0abd36bb73542e140fb5",
+      "contextLength": 8192,
+      "chatTemplate": "deepseek-r1",
+      "minimumMemoryGB": 64,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "reasoning": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.2
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/master/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf"
+        }
+      ]
+    },
+    {
+      "id": "llama3.3-70b-instruct-q4-k-m",
+      "displayName": "Llama 3.3 70B Instruct Q4_K_M",
+      "description": {
+        "en": "Llama 3 community GGUF for international chat and review. It broadens model choice beyond Qwen, with weaker Chinese memory support than Qwen.",
+        "zh-Hans": "Llama 3 社区 GGUF，适合国际化聊天和 review。它补充 Qwen 之外的选择，但中文记忆支持弱于 Qwen。",
+        "zh-Hant": "Llama 3 社群 GGUF，適合國際化聊天和 review。它補充 Qwen 之外的選擇，但中文記憶支援弱於 Qwen。",
+        "ja": "国際向けチャットやレビューに使える Llama 3 コミュニティ GGUF です。Qwen 以外の選択肢を増やしますが、中国語記憶の対応は Qwen より弱めです。",
+        "ko": "국제용 채팅과 리뷰에 적합한 Llama 3 커뮤니티 GGUF입니다. Qwen 외 선택지를 넓히지만 중국어 메모리 지원은 Qwen보다 약합니다.",
+        "fr": "GGUF communautaire Llama 3 pour le chat et la revue internationaux. Il élargit le choix au-delà de Qwen, avec un support de la mémoire chinoise plus faible que Qwen.",
+        "de": "Community-GGUF von Llama 3 für internationalen Chat und Review. Es erweitert die Auswahl neben Qwen, hat aber schwächere chinesische Erinnerungsunterstützung.",
+        "es": "GGUF comunitario Llama 3 para chat y revisión internacional. Amplía la elección más allá de Qwen, con peor soporte de memoria china que Qwen.",
+        "pt-BR": "GGUF comunitário Llama 3 para chat e revisão internacional. Amplia a escolha além do Qwen, com suporte de memória em chinês mais fraco que Qwen.",
+        "ru": "Community GGUF Llama 3 для международного чата и ревью. Расширяет выбор помимо Qwen, но поддержка китайской памяти слабее, чем у Qwen."
+      },
+      "tier": "max",
+      "tasks": [
+        "assistant",
+        "international",
+        "code-review"
+      ],
+      "recommended": false,
+      "fileName": "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+      "byteCount": 42520398816,
+      "sha256": "32df3baccb556f9840059b2528b2dee4d3d516b24afdfb9d0c56ff5f63e3a664",
+      "contextLength": 8192,
+      "chatTemplate": "llama3",
+      "minimumMemoryGB": 128,
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        },
+        "assistant": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.4
+        },
+        "codeReview": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1536,
+          "temperature": 0.1
+        }
+      },
+      "downloadSources": [
+        {
+          "id": "modelscope",
+          "region": "cn",
+          "url": "https://www.modelscope.cn/models/bartowski/Llama-3.3-70B-Instruct-GGUF/resolve/master/Llama-3.3-70B-Instruct-Q4_K_M.gguf"
+        },
+        {
+          "id": "huggingface",
+          "region": "global",
+          "url": "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF/resolve/main/Llama-3.3-70B-Instruct-Q4_K_M.gguf"
+        }
+      ]
+    }
+  ],
+  "serverModels": [
+    {
+      "id": "qwen3.6-35b-a3b",
+      "displayName": "Qwen3.6 35B-A3B",
+      "description": {
+        "en": "Latest Qwen3.6 open-weight option with strong coding and agent behavior. Treat it as an API or server model until a validated GGUF path is added.",
+        "zh-Hans": "较新的 Qwen3.6 开源权重模型，代码和 Agent 能力更强。当前作为 API 或服务器模型推荐，等验证 GGUF 路径后再加入本机安装。",
+        "zh-Hant": "較新的 Qwen3.6 開源權重模型，程式碼和 Agent 能力更強。當前作為 API 或伺服器模型推薦，等驗證 GGUF 路徑後再加入本機安裝。",
+        "ja": "強いコーディング能力とエージェント動作を持つ新しい Qwen3.6 オープンウェイトモデルです。検証済み GGUF が追加されるまでは API またはサーバーモデルとして扱います。",
+        "ko": "강한 코딩과 에이전트 동작을 제공하는 최신 Qwen3.6 오픈 웨이트 모델입니다. 검증된 GGUF 경로가 추가되기 전까지 API 또는 서버 모델로 취급합니다.",
+        "fr": "Modèle open-weight Qwen3.6 récent avec de fortes capacités de code et d’agent. À traiter comme modèle API ou serveur jusqu’à l’ajout d’un GGUF validé.",
+        "de": "Aktuelles Qwen3.6-Open-Weight-Modell mit starker Coding- und Agentenleistung. Bis zu einem validierten GGUF-Pfad als API- oder Servermodell behandeln.",
+        "es": "Modelo open-weight Qwen3.6 reciente con gran capacidad de código y agente. Trátalo como API o servidor hasta añadir un GGUF validado.",
+        "pt-BR": "Modelo open-weight Qwen3.6 recente com forte capacidade de código e agente. Trate como modelo de API ou servidor até existir um GGUF validado.",
+        "ru": "Новая open-weight модель Qwen3.6 с сильным кодингом и агентным поведением. До проверенного GGUF используйте как API или серверную модель."
+      },
+      "tasks": [
+        "assistant",
+        "coding",
+        "agent"
+      ],
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        }
+      },
+      "sourceURL": "https://huggingface.co/Qwen/Qwen3.6-35B-A3B"
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "displayName": "DeepSeek V4 Flash",
+      "description": {
+        "en": "Fast DeepSeek V4 family model for server-side assistant and long-context workloads. Keep it out of local one-click install until an official, validated GGUF entry exists.",
+        "zh-Hans": "DeepSeek V4 系列的高速模型，适合服务器侧辅助和长上下文任务。没有官方验证 GGUF 前，不放入本机一键安装。",
+        "zh-Hant": "DeepSeek V4 系列的高速模型，適合伺服器側輔助和長上下文任務。沒有官方驗證 GGUF 前，不放入本機一鍵安裝。",
+        "ja": "サーバー側のアシスタントや長文脈処理に向く高速な DeepSeek V4 系モデルです。公式で検証済みの GGUF が出るまではローカル一括インストールに入れません。",
+        "ko": "서버 측 보조와 긴 컨텍스트 작업에 적합한 빠른 DeepSeek V4 계열 모델입니다. 공식 검증 GGUF가 생기기 전까지 로컬 원클릭 설치에는 넣지 않습니다.",
+        "fr": "Modèle rapide de la famille DeepSeek V4 pour l’assistance serveur et les longues fenêtres de contexte. Exclu de l’installation locale tant qu’aucun GGUF officiel validé n’existe.",
+        "de": "Schnelles Modell der DeepSeek-V4-Familie für serverseitige Assistenz und lange Kontexte. Nicht in die lokale Ein-Klick-Installation aufnehmen, bis ein offizieller validierter GGUF existiert.",
+        "es": "Modelo rápido de la familia DeepSeek V4 para asistencia en servidor y contexto largo. No se incluye en instalación local hasta tener un GGUF oficial validado.",
+        "pt-BR": "Modelo rápido da família DeepSeek V4 para assistência no servidor e contexto longo. Não entra na instalação local até haver GGUF oficial validado.",
+        "ru": "Быстрая модель семейства DeepSeek V4 для серверной помощи и длинного контекста. Не включается в локальную установку до официального проверенного GGUF."
+      },
+      "tasks": [
+        "assistant",
+        "long-context"
+      ],
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        }
+      },
+      "sourceURL": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash"
+    },
+    {
+      "id": "glm-5",
+      "displayName": "GLM-5",
+      "description": {
+        "en": "Current GLM family server model with Chinese and English support. Use through API or a server runtime before adding a local installer entry.",
+        "zh-Hans": "当前 GLM 系列服务器模型，支持中文和英文。建议先走 API 或服务器运行时，后续验证本机 GGUF 后再加入安装列表。",
+        "zh-Hant": "當前 GLM 系列伺服器模型，支援中文和英文。建議先走 API 或伺服器執行時，後續驗證本機 GGUF 後再加入安裝列表。",
+        "ja": "中国語と英語をサポートする現行 GLM 系サーバーモデルです。ローカルインストーラーへ追加する前に API またはサーバー実行で使います。",
+        "ko": "중국어와 영어를 지원하는 최신 GLM 계열 서버 모델입니다. 로컬 설치 항목에 추가하기 전에는 API 또는 서버 런타임으로 사용합니다.",
+        "fr": "Modèle serveur actuel de la famille GLM avec prise en charge du chinois et de l’anglais. À utiliser via API ou serveur avant une entrée locale.",
+        "de": "Aktuelles GLM-Servermodell mit Chinesisch- und Englischunterstützung. Vor einem lokalen Installer-Eintrag per API oder Serverlaufzeit nutzen.",
+        "es": "Modelo servidor actual de la familia GLM con soporte de chino e inglés. Úsalo por API o servidor antes de añadir instalación local.",
+        "pt-BR": "Modelo servidor atual da família GLM com suporte a chinês e inglês. Use por API ou servidor antes de adicionar instalação local.",
+        "ru": "Текущая серверная модель семейства GLM с поддержкой китайского и английского. Используйте через API или сервер до добавления локальной установки."
+      },
+      "tasks": [
+        "assistant",
+        "long-context"
+      ],
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        }
+      },
+      "sourceURL": "https://huggingface.co/zai-org/GLM-5"
+    },
+    {
+      "id": "kimi-k2.6",
+      "displayName": "Kimi K2.6",
+      "description": {
+        "en": "Current Kimi family server model for agent and long-context tasks. It is not a small local GGUF model, so Codux should use it through API or server runtime.",
+        "zh-Hans": "当前 Kimi 系列服务器模型，适合 Agent 和长上下文任务。它不是小型本机 GGUF 模型，Codux 应通过 API 或服务器运行时使用。",
+        "zh-Hant": "當前 Kimi 系列伺服器模型，適合 Agent 和長上下文任務。它不是小型本機 GGUF 模型，Codux 應透過 API 或伺服器執行時使用。",
+        "ja": "エージェントと長文脈タスク向けの現行 Kimi 系サーバーモデルです。小型ローカル GGUF ではないため、Codux では API またはサーバー実行で使います。",
+        "ko": "에이전트와 긴 컨텍스트 작업용 최신 Kimi 계열 서버 모델입니다. 작은 로컬 GGUF 모델이 아니므로 Codux에서는 API 또는 서버 런타임으로 사용합니다.",
+        "fr": "Modèle serveur actuel de la famille Kimi pour les agents et les longs contextes. Ce n’est pas un petit GGUF local, donc Codux doit l’utiliser via API ou serveur.",
+        "de": "Aktuelles Kimi-Servermodell für Agenten und lange Kontexte. Kein kleines lokales GGUF-Modell, daher sollte Codux es per API oder Serverlaufzeit nutzen.",
+        "es": "Modelo servidor actual de la familia Kimi para agentes y contexto largo. No es un GGUF local pequeño, así que Codux debe usarlo por API o servidor.",
+        "pt-BR": "Modelo servidor atual da família Kimi para agentes e contexto longo. Não é um GGUF local pequeno, então o Codux deve usar por API ou servidor.",
+        "ru": "Текущая серверная модель семейства Kimi для агентных задач и длинного контекста. Это не маленький локальный GGUF, поэтому Codux должен использовать API или сервер."
+      },
+      "tasks": [
+        "assistant",
+        "agent",
+        "long-context"
+      ],
+      "recommendedConfig": {
+        "memory": {
+          "contextTokens": 8192,
+          "maxPredictionTokens": 1024,
+          "temperature": 0.1
+        }
+      },
+      "sourceURL": "https://huggingface.co/moonshotai/Kimi-K2.6"
+    }
+  ]
+}

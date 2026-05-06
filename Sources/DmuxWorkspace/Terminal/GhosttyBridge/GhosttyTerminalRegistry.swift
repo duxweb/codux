@@ -308,16 +308,6 @@ final class GhosttyTerminalRegistry {
         containers.values.contains { $0.ownsResponder(responder) }
     }
 
-    func debugSnapshot() -> String {
-        containers
-            .map { sessionID, container in
-                let shellPID = container.terminalShellPID.map(String.init) ?? "nil"
-                let focused = container.isTerminalFocused ? "focused" : "blurred"
-                return "\(sessionID.uuidString):\(shellPID):\(focused)"
-            }
-            .sorted()
-            .joined(separator: ", ")
-    }
 }
 
 extension GhosttyTerminalRegistry: DmuxTerminalBackendRegistry {}

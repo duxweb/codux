@@ -172,6 +172,7 @@ private final class AppDebugLogBackend: @unchecked Sendable {
             return !message.contains(" file mode=unchanged ")
         case "runtime-socket":
             return !message.hasPrefix("received kind=")
+                && !message.contains(" reason=dedupe")
         case "activity":
             return message.contains("phase=running:")
                 || message.contains("phase=completed:")
@@ -182,8 +183,23 @@ private final class AppDebugLogBackend: @unchecked Sendable {
                 || message.contains("phase=failed:")
                 || message.contains("source=runtime")
         case "runtime-ingress":
+            if message.hasPrefix("apply ai-hook ") {
+                return message.contains(" kind=needsInput ")
+                    || message.contains(" kind=turnCompleted ")
+                    || message.contains(" kind=sessionEnded ")
+            }
             return !message.hasPrefix("receive ai-hook ")
                 && !message.hasPrefix("skip ai-hook ")
+        case "ai-session-store":
+            if message.hasPrefix("apply ")
+                && message.contains(" kind=promptSubmitted ")
+                && message.contains(" state=responding ") {
+                return false
+            }
+            return true
+        case "pet-refresh":
+            return message.hasPrefix("reason=bootstrap")
+                || message.hasPrefix("reason=claim")
         case "notifications":
             return message.contains("failed")
                 || message.contains("error=")

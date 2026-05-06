@@ -224,6 +224,26 @@ private struct TitlebarMemoryStatusView: View {
         snapshot.status == .queued || snapshot.status == .processing
     }
 
+    private var isProviderConfigurationFailure: Bool {
+        snapshot.status == .failed
+            && snapshot.lastError == AIProviderError.unavailableProvider.localizedDescription
+    }
+
+    private var isLocalContextWindowFailure: Bool {
+        snapshot.status == .failed
+            && (snapshot.lastError?.contains("Local model prompt exceeds the configured context window.") ?? false)
+    }
+
+    private var isLocalMalformedResponseFailure: Bool {
+        guard snapshot.status == .failed, let error = snapshot.lastError else {
+            return false
+        }
+        return error.contains("Memory extraction provider returned malformed memory JSON.")
+            || error.contains("Memory extraction provider did not return a valid JSON object.")
+            || error.contains("格式不正确")
+            || error.contains("correct format")
+    }
+
     private var statusColor: Color {
         switch snapshot.status {
         case .processing:
@@ -231,6 +251,9 @@ private struct TitlebarMemoryStatusView: View {
         case .queued:
             return AppTheme.warning
         case .failed:
+            if isProviderConfigurationFailure || isLocalContextWindowFailure || isLocalMalformedResponseFailure {
+                return AppTheme.warning
+            }
             return Color(hex: 0xFF5E6C)
         case .idle:
             return AppTheme.textSecondary
@@ -244,6 +267,15 @@ private struct TitlebarMemoryStatusView: View {
         case .queued:
             return String(localized: "memory.status.queued", defaultValue: "Memory queued", bundle: .module)
         case .failed:
+            if isProviderConfigurationFailure {
+                return String(localized: "memory.status.needs_setup", defaultValue: "Memory setup needed", bundle: .module)
+            }
+            if isLocalContextWindowFailure {
+                return String(localized: "memory.status.input_too_long", defaultValue: "Memory input too long", bundle: .module)
+            }
+            if isLocalMalformedResponseFailure {
+                return String(localized: "memory.status.retry_needed", defaultValue: "Memory retry needed", bundle: .module)
+            }
             return String(localized: "memory.status.failed", defaultValue: "Memory failed", bundle: .module)
         case .idle:
             return String(localized: "memory.status.idle", defaultValue: "Memory idle", bundle: .module)
@@ -282,6 +314,27 @@ private struct TitlebarMemoryStatusView: View {
     }
 
     private var tooltipText: String {
+        if isProviderConfigurationFailure {
+            return String(
+                localized: "memory.status.provider_configuration_needed",
+                defaultValue: "Memory needs an enabled AI channel. In Settings > AI, enable a provider and turn on Use For Memory Extraction.",
+                bundle: .module
+            )
+        }
+        if isLocalContextWindowFailure {
+            return String(
+                localized: "memory.status.local_input_too_long_detail",
+                defaultValue: "Memory input exceeded the local model context window. Codux will compact and retry it after the next restart or AI channel refresh.",
+                bundle: .module
+            )
+        }
+        if isLocalMalformedResponseFailure {
+            return String(
+                localized: "memory.status.local_malformed_response_detail",
+                defaultValue: "The local model returned memory JSON in a loose format. Codux will normalize it and retry a small batch after restart or AI channel refresh.",
+                bundle: .module
+            )
+        }
         if snapshot.status == .failed, let error = snapshot.lastError, !error.isEmpty {
             return "\(statusText): \(error)"
         }

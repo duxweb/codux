@@ -1181,6 +1181,12 @@ final class AISessionStore {
         if let model = session.model ?? event.model {
             payload["model"] = model
         }
+        if let notificationType = normalizedNonEmptyString(event.metadata?.notificationType) {
+            payload["notificationType"] = notificationType
+        }
+        if let targetToolName = normalizedNonEmptyString(event.metadata?.targetToolName) {
+            payload["targetToolName"] = targetToolName
+        }
         for (key, value) in extra {
             payload[key] = value
         }

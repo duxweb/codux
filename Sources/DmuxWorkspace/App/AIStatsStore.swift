@@ -67,7 +67,6 @@ final class AIStatsStore {
     var automaticRefreshInterval: TimeInterval = 180
     var backgroundRefreshInterval: TimeInterval = 600
     var onRenderVersionChange: (@MainActor () -> Void)?
-    let debugAIFocus = ProcessInfo.processInfo.environment["DMUX_DEBUG_AI_FOCUS"] == "1"
 
     init(
         aiUsageStore: AIUsageStore = AIUsageStore(),
@@ -83,11 +82,6 @@ final class AIStatsStore {
 
     func effectiveSessionID(_ selectedSessionID: UUID?) -> UUID? {
         let focusedSessionID = DmuxTerminalBackend.shared.registry.focusedSessionID()
-        let resolvedSessionID = focusedSessionID ?? selectedSessionID
-        if debugAIFocus {
-            let registrySnapshot = DmuxTerminalBackend.shared.registry.debugSnapshot()
-            print("[AIStats] focusedSessionID=\(focusedSessionID?.uuidString ?? "nil") selectedSessionID=\(selectedSessionID?.uuidString ?? "nil") resolvedSessionID=\(resolvedSessionID?.uuidString ?? "nil") registry=[\(registrySnapshot)]")
-        }
-        return resolvedSessionID
+        return focusedSessionID ?? selectedSessionID
     }
 }

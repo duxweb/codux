@@ -85,6 +85,8 @@ final class AppModel {
         updatedAt: Date()
     )
     var aiProviderTestStates: [String: AIProviderTestState] = [:]
+    var localLlamaModels: [LocalLlamaModelDescriptor] = LocalLlamaModelCatalog.models
+    var localLlamaModelInstallStates: [String: LocalLlamaModelInstallState] = [:]
     let aiSessionStore = AISessionStore.shared
     let aiStatsStore = AIStatsStore()
     let petStore = PetStore.shared
@@ -103,6 +105,7 @@ final class AppModel {
     @ObservationIgnored lazy var remoteHostService = RemoteHostService(model: self)
     private let runtimeBridgeService = AIRuntimeBridgeService()
     let memoryCoordinator = MemoryCoordinator()
+    let localLlamaModelStore = LocalLlamaModelStore()
     let sleepPreventionService = SleepPreventionService.shared
     let runtimeIngressService = AIRuntimeIngressService.shared
     private let runtimePollingService = AIRuntimePollingService.shared
@@ -116,6 +119,7 @@ final class AppModel {
     var memoryExtractionStatusObserver: NSObjectProtocol?
     var pendingActivityRefreshTask: Task<Void, Never>?
     var pendingActivityRefreshShouldNotify = false
+    var pendingMemorySessionSnapshotTask: Task<Void, Never>?
     var activityCacheByProjectID: [UUID: ProjectActivityCache] = [:]
     var isSystemUIReady = false
     private var isTerminalStartupUnlocked = false
@@ -157,6 +161,7 @@ final class AppModel {
         DmuxTerminalBackend.shared.configure(using: appSettings)
         remoteHostService.applySettings()
         sleepPreventionService.configure(mode: appSettings.sleepPreventionMode)
+        refreshLocalLlamaModelCatalog()
 
         refreshGitState()
         resetActivityState()
@@ -228,7 +233,7 @@ final class AppModel {
             }
         )
         aiSessionStore.onSpeechEvent = { [weak self] event in
-            self?.petSpeechCoordinator.notify(event)
+            self?.handleAISessionSpeechEvent(event)
         }
         petStore.onSpeechEvent = { [weak self] event in
             self?.petSpeechCoordinator.notify(event)
@@ -241,16 +246,7 @@ final class AppModel {
                 return
             }
             self.petRefreshCoordinator.scheduleRefresh(reason: .aiSession)
-            let sessions = Array(self.aiSessionStore.terminalSessionsByID.values)
-            let projects = self.projects
-            let aiSettings = self.appSettings.ai
-            Task {
-                await self.memoryCoordinator.handleSessionSnapshots(
-                    sessions,
-                    settings: aiSettings,
-                    projects: projects
-                )
-            }
+            self.scheduleMemorySessionSnapshotHandling()
         }
         petSpeechCoordinator.start()
         petRefreshCoordinator.start()

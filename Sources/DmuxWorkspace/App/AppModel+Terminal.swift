@@ -7,7 +7,11 @@ extension AppModel {
     }
 
     func updateRightPanelWidth(_ width: CGFloat) {
-        rightPanelWidth = min(max(width, 280), 560)
+        let clamped = min(max(width, 280), 560)
+        guard abs(rightPanelWidth - clamped) > 0.5 else {
+            return
+        }
+        rightPanelWidth = clamped
     }
 
     func updateBottomPaneHeight(_ height: CGFloat, for projectID: UUID, availableHeight: CGFloat) {
@@ -18,6 +22,9 @@ extension AppModel {
             return
         }
 
+        guard abs(workspaces[index].bottomPaneHeight - clamped) > 0.5 else {
+            return
+        }
         workspaces[index].bottomPaneHeight = clamped
         persist()
     }
@@ -176,10 +183,27 @@ extension AppModel {
     }
 
     func updateTopPaneRatios(_ ratios: [CGFloat]) {
-        mutateSelectedWorkspace { workspace, _ in
-            guard ratios.count == workspace.topSessionIDs.count, !ratios.isEmpty else { return }
-            workspace.topPaneRatios = ratios
+        guard let selectedProjectID,
+              let index = workspaces.firstIndex(where: { $0.projectID == selectedProjectID }) else {
+            return
         }
+        guard let normalizedRatios = Self.normalizedTopPaneRatios(
+            ratios,
+            expectedCount: workspaces[index].topSessionIDs.count
+        ) else {
+            return
+        }
+        guard Self.topPaneRatiosDiffer(
+            normalizedRatios,
+            workspaces[index].resolvedTopPaneRatios()
+        ) else {
+            return
+        }
+
+        var updatedWorkspaces = workspaces
+        updatedWorkspaces[index].topPaneRatios = normalizedRatios
+        workspaces = updatedWorkspaces
+        persist()
     }
 
     func consumeTerminalFocusRequest(_ sessionID: UUID) {
@@ -395,6 +419,32 @@ extension AppModel {
         transform(&updatedWorkspaces[index])
         workspaces = updatedWorkspaces
         persist()
+    }
+
+    private static func normalizedTopPaneRatios(
+        _ ratios: [CGFloat],
+        expectedCount: Int
+    ) -> [CGFloat]? {
+        guard ratios.count == expectedCount, !ratios.isEmpty else {
+            return nil
+        }
+        let positiveRatios = ratios.map { max(0, $0) }
+        let total = positiveRatios.reduce(0, +)
+        guard total > 0 else {
+            return nil
+        }
+        return positiveRatios.map { $0 / total }
+    }
+
+    private static func topPaneRatiosDiffer(
+        _ lhs: [CGFloat],
+        _ rhs: [CGFloat],
+        tolerance: CGFloat = 0.002
+    ) -> Bool {
+        guard lhs.count == rhs.count else {
+            return true
+        }
+        return zip(lhs, rhs).contains { abs($0 - $1) > tolerance }
     }
 
     func createSplitTerminal(command: String, axis: PaneAxis) -> UUID? {

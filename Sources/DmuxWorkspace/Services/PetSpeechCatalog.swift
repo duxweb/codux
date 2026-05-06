@@ -80,9 +80,9 @@ final class PetSpeechCatalog {
 
     private func ttl(for tier: PetSpeechTier) -> TimeInterval {
         switch tier {
-        case .daily: return 6
-        case .rhythm: return 8
-        case .milestone: return 10
+        case .daily: return 10
+        case .rhythm: return 12
+        case .milestone: return 14
         }
     }
 

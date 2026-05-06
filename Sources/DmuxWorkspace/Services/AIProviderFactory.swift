@@ -7,6 +7,8 @@ struct AIProviderFactory: Sendable {
             return OpenAICompatibleProviderClient()
         case .anthropic:
             return AnthropicProviderClient()
+        case .localLlama:
+            return LocalLlamaProviderClient()
         }
     }
 }

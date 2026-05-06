@@ -835,6 +835,109 @@ struct MemoryStore: Sendable {
         try updateTaskStatus(taskID: taskID, status: "failed", error: error, incrementAttempts: false)
     }
 
+    @discardableResult
+    func requeueFailedExtractionTasks(
+        errorMessages: [String],
+        errorSubstrings: [String] = [],
+        requeueLimit: Int? = nil
+    ) throws -> Int {
+        let normalizedErrors = errorMessages
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let normalizedSubstrings = errorSubstrings
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !normalizedErrors.isEmpty || !normalizedSubstrings.isEmpty else {
+            return 0
+        }
+
+        var clauses: [String] = []
+        var bindings: [SQLiteBinding] = []
+        if !normalizedErrors.isEmpty {
+            let placeholders = Array(repeating: "?", count: normalizedErrors.count).joined(
+                separator: ", ")
+            clauses.append("error IN (\(placeholders))")
+            bindings.append(contentsOf: normalizedErrors.map { .text($0) })
+        }
+        for substring in normalizedSubstrings {
+            clauses.append("error LIKE ?")
+            bindings.append(.text("%\(substring)%"))
+        }
+        let errorClause = clauses.joined(separator: " OR ")
+
+        return try withDatabase { db in
+            if let requeueLimit {
+                let clampedLimit = max(0, requeueLimit)
+                guard clampedLimit > 0 else {
+                    return 0
+                }
+                let joinedIDs = try fetchScalarText(
+                    db: db,
+                    sql: """
+                    SELECT group_concat(id, char(10))
+                    FROM (
+                        SELECT id
+                        FROM memory_extraction_queue
+                        WHERE status = 'failed'
+                          AND (\(errorClause))
+                        ORDER BY enqueued_at DESC
+                        LIMIT ?
+                    );
+                    """,
+                    bindings: bindings + [.int64(Int64(clampedLimit))]
+                )
+                let ids = (joinedIDs ?? "")
+                    .split(separator: "\n")
+                    .map(String.init)
+                    .filter { !$0.isEmpty }
+                guard !ids.isEmpty else {
+                    return 0
+                }
+                let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+                try execute(
+                    db,
+                    sql: """
+                    UPDATE memory_extraction_queue
+                    SET status = 'pending',
+                        attempts = 0,
+                        error = NULL
+                    WHERE id IN (\(placeholders));
+                    """,
+                    bindings: ids.map { .text($0) }
+                )
+                return ids.count
+            }
+
+            let count = try fetchScalarInt(
+                db: db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_extraction_queue
+                WHERE status = 'failed'
+                  AND (\(errorClause));
+                """,
+                bindings: bindings
+            ) ?? 0
+            guard count > 0 else {
+                return 0
+            }
+
+            try execute(
+                db,
+                sql: """
+                UPDATE memory_extraction_queue
+                SET status = 'pending',
+                    attempts = 0,
+                    error = NULL
+                WHERE status = 'failed'
+                  AND (\(errorClause));
+                """,
+                bindings: bindings
+            )
+            return count
+        }
+    }
+
     func extractionStatusSnapshot() throws -> MemoryExtractionStatusSnapshot {
         try withDatabase { db in
             let pendingCount = try fetchScalarInt(

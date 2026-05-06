@@ -106,6 +106,74 @@ final class PetSpeechCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.displayLine?.text, "codex needs input")
     }
 
+    func testPermissionActivityStatusUsesAttentionToneAndStaysVisible() {
+        let coordinator = PetSpeechCoordinator()
+        let settings = AppAIPetSettings()
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.updatePermissionActivityStatus(
+            tool: "codex",
+            targetToolName: "Bash"
+        )
+
+        XCTAssertNil(coordinator.currentLine)
+        XCTAssertEqual(coordinator.currentActivityLine?.key, "permission:codex:Bash:")
+        XCTAssertNotNil(coordinator.currentActivityLine?.expiresAt)
+        XCTAssertEqual(coordinator.displayLine?.isActivityStatus, true)
+        XCTAssertEqual(coordinator.displayLine?.tone, .attention)
+        XCTAssertEqual(coordinator.displayLine?.text, "codex needs permission for Bash")
+    }
+
+    func testPermissionActivityStatusIsNotOverwrittenByRunningStatus() {
+        let coordinator = PetSpeechCoordinator()
+        let settings = AppAIPetSettings()
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.updatePermissionActivityStatus(
+            tool: "codex",
+            targetToolName: "Bash"
+        )
+        coordinator.updateActivityStatus(.running(tool: "codex"))
+
+        XCTAssertEqual(coordinator.currentActivityLine?.key, "permission:codex:Bash:")
+        XCTAssertEqual(coordinator.displayLine?.tone, .attention)
+        XCTAssertEqual(coordinator.displayLine?.text, "codex needs permission for Bash")
+    }
+
+    func testPermissionActivityStatusRestoresDeferredRunningStatusAfterTTL() async {
+        let coordinator = PetSpeechCoordinator()
+        let settings = AppAIPetSettings()
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.updatePermissionActivityStatus(
+            tool: "codex",
+            targetToolName: "Bash",
+            now: Date().addingTimeInterval(-20)
+        )
+        coordinator.updateActivityStatus(.running(tool: "codex"))
+
+        XCTAssertEqual(coordinator.currentActivityLine?.key, "permission:codex:Bash:")
+        XCTAssertEqual(coordinator.displayLine?.tone, .attention)
+
+        try? await Task.sleep(nanoseconds: 1_000_000)
+
+        XCTAssertEqual(coordinator.currentActivityLine?.key, "running:codex")
+        XCTAssertEqual(coordinator.displayLine?.tone, .normal)
+        XCTAssertEqual(coordinator.displayLine?.text, "codex is running")
+    }
+
     func testSpeechTemporarilyOverridesActivityStatus() {
         let coordinator = PetSpeechCoordinator()
         var settings = AppAIPetSettings()
@@ -125,6 +193,44 @@ final class PetSpeechCoordinatorTests: XCTestCase {
         XCTAssertEqual(activityLine?.isActivityStatus, true)
         XCTAssertEqual(coordinator.displayLine?.isActivityStatus, false)
         XCTAssertEqual(coordinator.currentActivityLine?.key, "running:codex")
+    }
+
+    func testAttentionActivityStatusOverridesSpeechLine() {
+        let coordinator = PetSpeechCoordinator()
+        var settings = AppAIPetSettings()
+        settings.speechMode = .encourage
+        settings.speechFrequency = .lively
+        settings.speechQuietDuringWork = false
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.updateActivityStatus(.waitingInput(tool: "codex"))
+        coordinator.notify(PetSpeechEvent(kind: .petLevelUp, payload: ["level": "2"]))
+
+        XCTAssertEqual(coordinator.displayLine?.isActivityStatus, true)
+        XCTAssertEqual(coordinator.displayLine?.tone, .attention)
+        XCTAssertEqual(coordinator.displayLine?.text, "codex needs input")
+        XCTAssertEqual(coordinator.currentLine?.eventKind, .petLevelUp)
+    }
+
+    func testCompletedActivityStatusUsesSuccessTone() {
+        let coordinator = PetSpeechCoordinator()
+        let settings = AppAIPetSettings()
+        coordinator.configure(
+            settings: { settings },
+            petName: { "测试宠" },
+            activitySnapshots: { [] }
+        )
+
+        coordinator.updateActivityStatus(.completed(tool: "codex", finishedAt: Date(), exitCode: nil))
+
+        XCTAssertEqual(coordinator.currentActivityLine?.key, "completed:codex")
+        XCTAssertEqual(coordinator.displayLine?.isActivityStatus, true)
+        XCTAssertEqual(coordinator.displayLine?.tone, .success)
+        XCTAssertEqual(coordinator.displayLine?.text, "codex completed")
     }
 
     func testModeOffStillAllowsReminderEvents() {
@@ -173,6 +279,26 @@ final class PetSpeechCoordinatorTests: XCTestCase {
         coordinator.notify(PetSpeechEvent(kind: .reminderHydration, payload: ["durationMin": "120"]))
         XCTAssertNotNil(coordinator.currentLine)
         XCTAssertEqual(coordinator.currentLine?.eventKind, .reminderHydration)
+    }
+
+    func testReminderEventsUseWarningTone() {
+        for kind in [PetSpeechEventKind.reminderHydration, .reminderSedentary, .reminderLateNight] {
+            let coordinator = PetSpeechCoordinator()
+            var settings = AppAIPetSettings()
+            settings.speechMode = .encourage
+            settings.speechFrequency = .quiet
+            coordinator.configure(
+                settings: { settings },
+                petName: { "测试宠" },
+                activitySnapshots: { [] }
+            )
+
+            coordinator.notify(PetSpeechEvent(kind: kind, payload: ["durationMin": "120"]))
+
+            XCTAssertEqual(coordinator.currentLine?.eventKind, kind)
+            XCTAssertEqual(coordinator.displayLine?.isActivityStatus, false)
+            XCTAssertEqual(coordinator.displayLine?.tone, .warning)
+        }
     }
 
     func testTurnFamilyCooldownSuppressesRapidFollowUp() {

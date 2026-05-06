@@ -3,7 +3,7 @@ import Foundation
 struct AIProviderSelectionService: Sendable {
     func preferredPetSpeechProvider(in settings: AppAISettings) -> AppAIProviderConfiguration? {
         let enabledProviders = settings.providers
-            .filter { $0.isEnabled && $0.kind.supportsAPICompletion }
+            .filter { $0.isEnabled && $0.kind.supportsPetSpeech }
             .sorted { lhs, rhs in
                 if lhs.priority == rhs.priority {
                     return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
@@ -15,7 +15,7 @@ struct AIProviderSelectionService: Sendable {
         if settings.pet.speechProviderID != AppAIPetSettings.automaticSpeechProviderID {
             if let selected = settings.provider(withID: settings.pet.speechProviderID),
                selected.isEnabled,
-               selected.kind.supportsAPICompletion {
+               selected.kind.supportsPetSpeech {
                 return selected
             }
             return enabledProviders.first
@@ -35,7 +35,7 @@ struct AIProviderSelectionService: Sendable {
     {
         _ = tool
         let enabledProviders = settings.providers
-            .filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsAPICompletion }
+            .filter { $0.isEnabled && $0.useForMemoryExtraction && $0.kind.supportsMemoryExtraction }
             .sorted { lhs, rhs in
                 if lhs.priority == rhs.priority {
                     return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
@@ -50,7 +50,7 @@ struct AIProviderSelectionService: Sendable {
             if let selected = settings.provider(withID: settings.memory.defaultExtractorProviderID),
                 selected.isEnabled,
                 selected.useForMemoryExtraction,
-                selected.kind.supportsAPICompletion
+                selected.kind.supportsMemoryExtraction
             {
                 return [selected]
             }

@@ -159,6 +159,10 @@ enum PetSpeechEventKind: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    var displayTone: PetActivityStatusLine.Tone {
+        isReminder ? .warning : .normal
+    }
+
     var isTurnFamily: Bool {
         switch self {
         case .turnStarted, .turnCompleted, .turnCompletedFast, .turnCompletedLong, .turnNeedsInput, .turnInterrupted, .toolSwitched:
@@ -218,6 +222,8 @@ struct PetActivityStatusLine: Identifiable, Equatable, Sendable {
     enum Tone: String, Codable, Sendable {
         case normal
         case attention
+        case success
+        case warning
     }
 
     let id = UUID()
