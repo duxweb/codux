@@ -12,6 +12,9 @@ actor MemoryCoordinator {
     private let providerSelectionService = AIProviderSelectionService()
     private let debugLog = AppDebugLog.shared
     private var isProcessingQueue = false
+    private var lastEnqueuedAtBySession: [String: Date] = [:]
+    private var transcriptLineLimit = 80
+    private var transcriptTokenLimit = 8000
 
     init(
         store: MemoryStore = MemoryStore()
@@ -49,9 +52,12 @@ actor MemoryCoordinator {
         }
 
         let projectByID = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
+        transcriptLineLimit = settings.memory.maxExtractionTranscriptLines
+        transcriptTokenLimit = settings.memory.maxExtractionTranscriptTokens
         for session in sessions {
             guard session.state == .idle,
                 session.hasCompletedTurn,
+                shouldExtract(session: session, settings: settings),
                 let project = projectByID[session.projectID],
                 let source = resolveTranscriptSource(for: session, project: project)
             else {
@@ -68,6 +74,7 @@ actor MemoryCoordinator {
                     sourceFingerprint: fingerprint
                 )
                 if didEnqueue {
+                    rememberExtractionEnqueue(for: session)
                     debugLog.log(
                         "memory-extraction",
                         "queued project=\(project.name) projectID=\(project.id.uuidString) tool=\(session.tool) session=\(normalizedNonEmptyString(session.aiSessionID) ?? session.terminalID.uuidString) transcript=\(source.location)"
@@ -256,7 +263,7 @@ actor MemoryCoordinator {
                     scope: scope,
                     projectID: scope == .project ? task.projectID : nil,
                     toolID: nil,
-                    tier: .working,
+                    tier: item.tier ?? .working,
                     kind: item.kind,
                     content: item.content,
                     rationale: item.rationale,
@@ -268,10 +275,9 @@ actor MemoryCoordinator {
             newWorkingIDs.append(entry.id)
         }
 
-        var mergedIDs = response.mergedEntryIDs.compactMap { UUID(uuidString: $0) }
-        mergedIDs.append(contentsOf: newWorkingIDs)
+        let mergedIDs = response.mergedEntryIDs.compactMap { UUID(uuidString: $0) }
 
-        if let content = normalizedNonEmptyString(response.userSummary) {
+        if let content = validSummaryContent(response.userSummary) {
             let summary = try store.upsertSummary(
                 scope: .user,
                 content: content,
@@ -279,9 +285,14 @@ actor MemoryCoordinator {
                 maxVersions: settings.memory.maxSummaryVersions
             )
             try store.markEntriesMerged(mergedIDs, summaryID: summary.id)
+            try store.mergeStaleWorkingEntries(
+                scope: .user,
+                maxActive: settings.memory.maxActiveWorkingEntries,
+                summaryID: summary.id
+            )
         }
 
-        if let content = normalizedNonEmptyString(response.projectSummary) {
+        if let content = validSummaryContent(response.projectSummary) {
             let summary = try store.upsertSummary(
                 scope: .project,
                 projectID: task.projectID,
@@ -290,6 +301,12 @@ actor MemoryCoordinator {
                 maxVersions: settings.memory.maxSummaryVersions
             )
             try store.markEntriesMerged(mergedIDs, summaryID: summary.id)
+            try store.mergeStaleWorkingEntries(
+                scope: .project,
+                projectID: task.projectID,
+                maxActive: settings.memory.maxActiveWorkingEntries,
+                summaryID: summary.id
+            )
         }
 
         let archiveIDs = response.workingArchive.compactMap { UUID(uuidString: $0) }
@@ -348,7 +365,7 @@ actor MemoryCoordinator {
         {
           "user_summary": "merged durable user memory, or empty string to keep unchanged",
           "project_summary": "merged durable project memory, or empty string to keep unchanged",
-          "working_add": [{"scope":"user|project","kind":"preference|convention|decision|fact|bug_lesson","content":"...","rationale":"..."}],
+          "working_add": [{"scope":"user|project","tier":"core|working","kind":"preference|convention|decision|fact|bug_lesson","content":"...","rationale":"..."}],
           "working_archive": ["uuid"],
           "merged_entry_ids": ["uuid"]
         }
@@ -375,7 +392,10 @@ actor MemoryCoordinator {
         - Merge old summary + useful transcript facts into a concise total summary; do not append a changelog.
         - user_summary contains only durable cross-project developer habits and preferences.
         - project_summary contains only durable repository-specific memory for this project.
-        - working_add is only for fresh short-lived facts that may be useful in the next few sessions before compaction.
+        - working_add is for extracted atomic memories that should remain browseable after extraction.
+        - Set working_add.tier to "core" only for stable preferences, conventions, accepted decisions, source-of-truth paths, and reusable bug lessons. Use "working" for fresh short-lived facts that may be useful in the next few sessions before compaction.
+        - The app automatically compacts active memories into summaries; do not include newly added working_add ids in merged_entry_ids.
+        - merged_entry_ids should include only older active memory ids already represented by the returned summary.
         - Do not mention or request file scans, shell commands, or external tools; use only the transcript and existing memory above.
         - Keep each summary under about \(settings.memory.summaryTargetTokenBudget) tokens.
         - If a summary should stay unchanged, return an empty string for that summary.
@@ -423,6 +443,16 @@ actor MemoryCoordinator {
         }
         throw AIProviderError.requestFailure(
             "Memory extraction provider did not return a valid JSON object.")
+    }
+
+    private func validSummaryContent(_ text: String?) -> String? {
+        guard let content = normalizedNonEmptyString(text) else {
+            return nil
+        }
+        if content.range(of: #"^version=\d+$"#, options: .regularExpression) != nil {
+            return nil
+        }
+        return content
     }
 
     private func resolveTranscriptForTask(_ task: MemoryExtractionTask, project: Project) throws
@@ -573,8 +603,11 @@ actor MemoryCoordinator {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
             return nil
         }
-        let lines = text.components(separatedBy: .newlines).suffix(160)
-        let trimmed = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = text.components(separatedBy: .newlines).suffix(transcriptLineLimit)
+        let trimmed = trimMemoryText(
+            lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+            maxTokens: transcriptTokenLimit
+        )
         return trimmed.isEmpty ? nil : trimmed
     }
 
@@ -637,7 +670,52 @@ actor MemoryCoordinator {
         }
         let text = lines.suffix(120).joined(separator: "\n").trimmingCharacters(
             in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
+        let trimmed = trimMemoryText(text, maxTokens: transcriptTokenLimit)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func shouldExtract(
+        session: AISessionStore.TerminalSessionState,
+        settings: AppAISettings
+    ) -> Bool {
+        let now = Date()
+        if settings.memory.extractionIdleDelaySeconds > 0,
+            now.timeIntervalSince1970 - session.updatedAt
+                < Double(settings.memory.extractionIdleDelaySeconds)
+        {
+            return false
+        }
+
+        let key = extractionSessionKey(for: session)
+        if let last = lastEnqueuedAtBySession[key],
+            settings.memory.sessionExtractionCooldownSeconds > 0,
+            now.timeIntervalSince(last) < Double(settings.memory.sessionExtractionCooldownSeconds)
+        {
+            return false
+        }
+        return true
+    }
+
+    private func rememberExtractionEnqueue(for session: AISessionStore.TerminalSessionState) {
+        lastEnqueuedAtBySession[extractionSessionKey(for: session)] = Date()
+    }
+
+    private func extractionSessionKey(for session: AISessionStore.TerminalSessionState) -> String {
+        [
+            session.projectID.uuidString,
+            session.tool.lowercased(),
+            normalizedNonEmptyString(session.aiSessionID) ?? session.terminalID.uuidString,
+        ].joined(separator: "|")
+    }
+
+    private func trimMemoryText(_ text: String, maxTokens: Int) -> String {
+        let maxCharacters = max(200, maxTokens * 4)
+        guard text.count > maxCharacters else {
+            return text
+        }
+        let index = text.index(text.startIndex, offsetBy: maxCharacters)
+        return String(text[..<index]).trimmingCharacters(in: .whitespacesAndNewlines)
+            + "\n[Memory extraction input truncated]"
     }
 
     private func sha256(_ value: String) -> String {
@@ -648,6 +726,7 @@ actor MemoryCoordinator {
 private struct MemoryExtractionResponse: Decodable {
     struct Item: Decodable {
         var scope: MemoryScope?
+        var tier: MemoryTier?
         var kind: MemoryKind
         var content: String
         var rationale: String?

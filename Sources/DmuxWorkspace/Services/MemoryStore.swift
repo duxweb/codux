@@ -500,24 +500,65 @@ struct MemoryStore: Sendable {
             return
         }
         try withDatabase { db in
-            let now = Date().timeIntervalSince1970
-            for entryID in entryIDs {
-                try execute(
-                    db,
-                    sql: """
-                    UPDATE memory_entries
-                    SET status = ?, merged_summary_id = ?, merged_at = ?, updated_at = ?
-                    WHERE id = ? AND status = 'active';
-                    """,
-                    bindings: [
-                        .text(MemoryEntryStatus.merged.rawValue),
-                        .text(summaryID.uuidString),
-                        .double(now),
-                        .double(now),
-                        .text(entryID.uuidString),
-                    ]
-                )
-            }
+            try markWorkingEntriesMerged(db: db, entryIDs: entryIDs, summaryID: summaryID)
+        }
+    }
+
+    func mergeStaleWorkingEntries(
+        scope: MemoryScope,
+        projectID: UUID? = nil,
+        maxActive: Int,
+        summaryID: UUID
+    ) throws {
+        guard maxActive >= 0 else {
+            return
+        }
+        try withDatabase { db in
+            let entries = try fetchEntries(
+                db: db,
+                sql: """
+                SELECT \(Self.entrySelectColumns)
+                FROM memory_entries
+                WHERE scope = ?
+                  AND COALESCE(project_id, '') = COALESCE(?, '')
+                  AND tier = ?
+                  AND status = 'active'
+                ORDER BY updated_at DESC
+                LIMIT -1 OFFSET ?;
+                """,
+                bindings: [
+                    .text(scope.rawValue),
+                    .nullableText(projectID?.uuidString),
+                    .text(MemoryTier.working.rawValue),
+                    .int64(Int64(maxActive)),
+                ]
+            )
+            try markWorkingEntriesMerged(db: db, entryIDs: entries.map(\.id), summaryID: summaryID)
+        }
+    }
+
+    private func markWorkingEntriesMerged(db: OpaquePointer, entryIDs: [UUID], summaryID: UUID) throws {
+        guard !entryIDs.isEmpty else {
+            return
+        }
+        let now = Date().timeIntervalSince1970
+        for entryID in entryIDs {
+            try execute(
+                db,
+                sql: """
+                UPDATE memory_entries
+                SET status = ?, merged_summary_id = ?, merged_at = ?, updated_at = ?
+                WHERE id = ? AND status = 'active' AND tier = ?;
+                """,
+                bindings: [
+                    .text(MemoryEntryStatus.merged.rawValue),
+                    .text(summaryID.uuidString),
+                    .double(now),
+                    .double(now),
+                    .text(entryID.uuidString),
+                    .text(MemoryTier.working.rawValue),
+                ]
+            )
         }
     }
 
@@ -586,7 +627,7 @@ struct MemoryStore: Sendable {
                     .nullableText(projectID?.uuidString),
                     .nullableText(toolID),
                 ]
-            )
+            ).flatMap { isUsefulSummaryContent($0.content) ? $0 : nil }
         }
     }
 
@@ -987,6 +1028,19 @@ struct MemoryStore: Sendable {
             "CREATE INDEX IF NOT EXISTS idx_memory_queue_status_time ON memory_extraction_queue(status, enqueued_at);",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_summaries_scope_project_tool ON memory_summaries(scope, COALESCE(project_id, ''), COALESCE(tool_id, ''));",
             "CREATE INDEX IF NOT EXISTS idx_memory_summary_versions_summary ON memory_summary_versions(summary_id, version);",
+            """
+            DELETE FROM memory_summary_versions
+            WHERE summary_id IN (
+                SELECT id FROM memory_summaries
+                WHERE content GLOB 'version=[0-9]*'
+                  AND length(content) <= 24
+            );
+            """,
+            """
+            DELETE FROM memory_summaries
+            WHERE content GLOB 'version=[0-9]*'
+              AND length(content) <= 24;
+            """,
         ]
         for statement in statements {
             let result = sqlite3_exec(db, statement, nil, nil, nil)
@@ -1331,6 +1385,14 @@ struct MemoryStore: Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .lowercased()
+    }
+
+    private func isUsefulSummaryContent(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.range(of: #"^version=\d+$"#, options: .regularExpression) != nil {
+            return false
+        }
+        return true
     }
 
     private func sha256(_ value: String) -> String {

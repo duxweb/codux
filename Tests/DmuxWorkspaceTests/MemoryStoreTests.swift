@@ -175,6 +175,126 @@ final class MemoryStoreTests: XCTestCase {
         XCTAssertTrue(activeEntries.isEmpty)
     }
 
+    func testCoreEntriesAreNotMarkedMergedBySummaryCompaction() throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+        let projectID = UUID()
+        let core = try store.upsert(
+            MemoryCandidate(
+                scope: .project,
+                projectID: projectID,
+                toolID: nil,
+                tier: .core,
+                kind: .convention,
+                content: "Use app-private memory workspaces instead of writing project roots.",
+                rationale: nil,
+                sourceTool: "codex",
+                sourceSessionID: "session-core",
+                sourceFingerprint: "fp-core"
+            )
+        )
+        let working = try store.upsert(
+            MemoryCandidate(
+                scope: .project,
+                projectID: projectID,
+                toolID: nil,
+                tier: .working,
+                kind: .fact,
+                content: "Recent extraction should stay browseable until automatic compaction.",
+                rationale: nil,
+                sourceTool: "codex",
+                sourceSessionID: "session-working",
+                sourceFingerprint: "fp-working"
+            )
+        )
+        let summary = try store.upsertSummary(
+            scope: .project,
+            projectID: projectID,
+            content: "Project memory summary",
+            sourceEntryIDs: [core.id, working.id],
+            maxVersions: 3
+        )
+
+        try store.markEntriesMerged([core.id, working.id], summaryID: summary.id)
+
+        let activeCore = try store.listEntries(
+            scope: .project,
+            projectID: projectID,
+            tiers: [.core],
+            limit: 10
+        )
+        let activeWorking = try store.listEntries(
+            scope: .project,
+            projectID: projectID,
+            tiers: [.working],
+            limit: 10
+        )
+        XCTAssertEqual(activeCore.map(\.id), [core.id])
+        XCTAssertTrue(activeWorking.isEmpty)
+    }
+
+    func testMergeStaleWorkingEntriesKeepsRecentWorkingEntriesActive() throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+        let projectID = UUID()
+        var entries: [MemoryEntry] = []
+        for index in 0..<3 {
+            entries.append(
+                try store.upsert(
+                    MemoryCandidate(
+                        scope: .project,
+                        projectID: projectID,
+                        toolID: nil,
+                        tier: .working,
+                        kind: .fact,
+                        content: "Working memory \(index)",
+                        rationale: nil,
+                        sourceTool: "codex",
+                        sourceSessionID: "session-\(index)",
+                        sourceFingerprint: "fp-\(index)"
+                    )
+                )
+            )
+        }
+        let summary = try store.upsertSummary(
+            scope: .project,
+            projectID: projectID,
+            content: "Project memory summary",
+            sourceEntryIDs: entries.map(\.id),
+            maxVersions: 3
+        )
+
+        try store.mergeStaleWorkingEntries(
+            scope: .project,
+            projectID: projectID,
+            maxActive: 2,
+            summaryID: summary.id
+        )
+
+        let activeWorking = try store.listEntries(
+            scope: .project,
+            projectID: projectID,
+            tiers: [.working],
+            limit: 10
+        )
+        XCTAssertEqual(activeWorking.count, 2)
+    }
+
+    func testInvalidVersionOnlySummaryIsIgnoredAndCleanedUp() throws {
+        let store = MemoryStore(databaseURL: databaseURL)
+
+        _ = try store.upsertSummary(
+            scope: .user,
+            content: "version=781",
+            sourceEntryIDs: [],
+            maxVersions: 3
+        )
+
+        XCTAssertNil(try store.currentSummary(scope: .user))
+
+        let reopened = MemoryStore(databaseURL: databaseURL)
+        XCTAssertNil(try reopened.currentSummary(scope: .user))
+        XCTAssertTrue(try reopened.listSummariesForManagement(scope: .user).isEmpty)
+    }
+
     func testManagementQueriesListProjectsAndDeleteEntries() throws {
         let store = MemoryStore(databaseURL: databaseURL)
         let projectID = UUID()

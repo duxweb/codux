@@ -289,4 +289,53 @@ final class MemoryCoordinatorTests: XCTestCase {
                         "Parser tolerates braces like {value} inside JSON strings.")
             })
     }
+
+    func testMemorySettingsDefaultsFavorCompactExtractionAndInjection() throws {
+        let settings = AppMemorySettings()
+
+        XCTAssertEqual(settings.maxInjectedUserWorkingMemories, 4)
+        XCTAssertEqual(settings.maxInjectedProjectWorkingMemories, 6)
+        XCTAssertEqual(settings.summaryTargetTokenBudget, 900)
+        XCTAssertEqual(settings.maxInjectedSummaryTokens, 900)
+        XCTAssertEqual(settings.extractionIdleDelaySeconds, 120)
+        XCTAssertEqual(settings.sessionExtractionCooldownSeconds, 900)
+        XCTAssertEqual(settings.maxExtractionTranscriptLines, 80)
+        XCTAssertEqual(settings.maxExtractionTranscriptTokens, 8000)
+    }
+
+    func testMemorySettingsMigratesOldNoisyDefaultsToCompactDefaults() throws {
+        let data = Data(
+            """
+            {
+              "maxInjectedUserWorkingMemories": 8,
+              "maxInjectedProjectWorkingMemories": 12,
+              "summaryTargetTokenBudget": 1800
+            }
+            """.utf8
+        )
+
+        let settings = try JSONDecoder().decode(AppMemorySettings.self, from: data)
+
+        XCTAssertEqual(settings.maxInjectedUserWorkingMemories, 4)
+        XCTAssertEqual(settings.maxInjectedProjectWorkingMemories, 6)
+        XCTAssertEqual(settings.summaryTargetTokenBudget, 900)
+    }
+
+    func testMemorySettingsPreservesUserCustomizedBudgets() throws {
+        let data = Data(
+            """
+            {
+              "maxInjectedUserWorkingMemories": 3,
+              "maxInjectedProjectWorkingMemories": 5,
+              "summaryTargetTokenBudget": 1200
+            }
+            """.utf8
+        )
+
+        let settings = try JSONDecoder().decode(AppMemorySettings.self, from: data)
+
+        XCTAssertEqual(settings.maxInjectedUserWorkingMemories, 3)
+        XCTAssertEqual(settings.maxInjectedProjectWorkingMemories, 5)
+        XCTAssertEqual(settings.summaryTargetTokenBudget, 1200)
+    }
 }

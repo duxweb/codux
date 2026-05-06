@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Reduced AI memory token pressure with smaller default injection budgets, summary truncation, transcript extraction limits, and per-session extraction cooldowns.
+
+### Fixed
+
+- Fixed AI memory compaction so newly extracted working memories stay browseable, stable items can be promoted to core memory, and only stale working entries are automatically merged into summaries.
+- Cleaned invalid version-only memory summaries so broken extraction responses no longer leave empty summary panels.
+
 ## [0.9.1] - 2026-05-06
 
 ### Changed

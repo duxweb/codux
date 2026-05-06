@@ -213,8 +213,12 @@ struct MemoryContextService: Sendable {
         return MemoryContextPayload(
             projectName: projectName,
             globalPrompt: globalPrompt,
-            userSummary: normalizedNonEmptyString(userSummary?.content),
-            projectSummary: normalizedNonEmptyString(projectSummary?.content),
+            userSummary: trimmedMemoryText(
+                normalizedNonEmptyString(userSummary?.content),
+                maxTokens: settings.memory.maxInjectedSummaryTokens),
+            projectSummary: trimmedMemoryText(
+                normalizedNonEmptyString(projectSummary?.content),
+                maxTokens: settings.memory.maxInjectedSummaryTokens),
             userCoreFallback: uniqueOrderedEntries(userCoreFallback),
             projectCoreFallback: uniqueOrderedEntries(projectCoreFallback),
             userWorking: uniqueOrderedEntries(userWorking),
@@ -414,6 +418,19 @@ struct MemoryContextService: Sendable {
             return text
         }
         return lines.prefix(maxLines - 1).joined(separator: "\n") + "\n[Memory index truncated]"
+    }
+
+    private func trimmedMemoryText(_ text: String?, maxTokens: Int) -> String? {
+        guard let text = normalizedNonEmptyString(text) else {
+            return nil
+        }
+        let maxCharacters = max(200, maxTokens * 4)
+        guard text.count > maxCharacters else {
+            return text
+        }
+        let index = text.index(text.startIndex, offsetBy: maxCharacters)
+        return String(text[..<index]).trimmingCharacters(in: .whitespacesAndNewlines)
+            + "\n[Memory summary truncated]"
     }
 
     private func documentToolName(_ tool: String) -> String {

@@ -172,11 +172,16 @@ struct AppMemorySettings: Codable, Equatable, Sendable {
     var automaticExtractionEnabled = true
     var allowCrossProjectUserRecall = true
     var defaultExtractorProviderID = Self.automaticExtractorProviderID
-    var maxInjectedUserWorkingMemories = 8
-    var maxInjectedProjectWorkingMemories = 12
+    var maxInjectedUserWorkingMemories = 4
+    var maxInjectedProjectWorkingMemories = 6
     var maxActiveWorkingEntries = 50
     var maxSummaryVersions = 10
-    var summaryTargetTokenBudget = 1800
+    var summaryTargetTokenBudget = 900
+    var maxInjectedSummaryTokens = 900
+    var extractionIdleDelaySeconds = 120
+    var sessionExtractionCooldownSeconds = 900
+    var maxExtractionTranscriptLines = 80
+    var maxExtractionTranscriptTokens = 8000
 
     init() {}
 
@@ -191,6 +196,11 @@ struct AppMemorySettings: Codable, Equatable, Sendable {
         case maxActiveWorkingEntries
         case maxSummaryVersions
         case summaryTargetTokenBudget
+        case maxInjectedSummaryTokens
+        case extractionIdleDelaySeconds
+        case sessionExtractionCooldownSeconds
+        case maxExtractionTranscriptLines
+        case maxExtractionTranscriptTokens
     }
 
     init(from decoder: Decoder) throws {
@@ -205,19 +215,21 @@ struct AppMemorySettings: Codable, Equatable, Sendable {
         defaultExtractorProviderID =
             try container.decodeIfPresent(String.self, forKey: .defaultExtractorProviderID)
             ?? Self.automaticExtractorProviderID
+        let decodedUserWorkingLimit =
+            try container.decodeIfPresent(Int.self, forKey: .maxInjectedUserWorkingMemories)
         maxInjectedUserWorkingMemories = max(
             0,
             min(
                 24,
-                try container.decodeIfPresent(Int.self, forKey: .maxInjectedUserWorkingMemories)
-                    ?? 8)
+                decodedUserWorkingLimit == 8 ? 4 : decodedUserWorkingLimit ?? 4)
         )
+        let decodedProjectWorkingLimit =
+            try container.decodeIfPresent(Int.self, forKey: .maxInjectedProjectWorkingMemories)
         maxInjectedProjectWorkingMemories = max(
             0,
             min(
                 32,
-                try container.decodeIfPresent(Int.self, forKey: .maxInjectedProjectWorkingMemories)
-                    ?? 12))
+                decodedProjectWorkingLimit == 12 ? 6 : decodedProjectWorkingLimit ?? 6))
         maxActiveWorkingEntries = max(
             5,
             min(
@@ -225,11 +237,45 @@ struct AppMemorySettings: Codable, Equatable, Sendable {
             ))
         maxSummaryVersions = max(
             1, min(50, try container.decodeIfPresent(Int.self, forKey: .maxSummaryVersions) ?? 10))
+        let decodedSummaryTarget =
+            try container.decodeIfPresent(Int.self, forKey: .summaryTargetTokenBudget)
         summaryTargetTokenBudget = max(
             400,
             min(
-                6000,
-                try container.decodeIfPresent(Int.self, forKey: .summaryTargetTokenBudget) ?? 1800))
+                3000,
+                decodedSummaryTarget == 1800 ? 900 : decodedSummaryTarget ?? 900))
+        maxInjectedSummaryTokens = max(
+            200,
+            min(
+                2000,
+                try container.decodeIfPresent(Int.self, forKey: .maxInjectedSummaryTokens) ?? 900))
+        extractionIdleDelaySeconds = max(
+            0,
+            min(
+                900,
+                try container.decodeIfPresent(Int.self, forKey: .extractionIdleDelaySeconds) ?? 120
+            ))
+        sessionExtractionCooldownSeconds = max(
+            0,
+            min(
+                7200,
+                try container.decodeIfPresent(Int.self, forKey: .sessionExtractionCooldownSeconds)
+                    ?? 900
+            ))
+        maxExtractionTranscriptLines = max(
+            20,
+            min(
+                200,
+                try container.decodeIfPresent(Int.self, forKey: .maxExtractionTranscriptLines)
+                    ?? 80
+            ))
+        maxExtractionTranscriptTokens = max(
+            2000,
+            min(
+                20000,
+                try container.decodeIfPresent(Int.self, forKey: .maxExtractionTranscriptTokens)
+                    ?? 8000
+            ))
     }
 }
 
