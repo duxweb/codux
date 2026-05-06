@@ -377,6 +377,61 @@ final class AISessionStoreTests: XCTestCase {
         XCTAssertEqual(store.projectPhase(projectID: projectID), .idle)
     }
 
+    func testOutOfProjectSessionStartedDoesNotClearRunningProjectSession() throws {
+        let terminalID = UUID()
+        let projectID = UUID()
+        let projectPath = "/tmp/codux-project"
+        let otherPath = "/tmp/out-of-project-cwd"
+        let now = Date().timeIntervalSince1970
+
+        XCTAssertTrue(
+            store.apply(
+                AIHookEvent(
+                    kind: .promptSubmitted,
+                    terminalID: terminalID,
+                    terminalInstanceID: "instance-1",
+                    projectID: projectID,
+                    projectName: "Codux",
+                    projectPath: projectPath,
+                    sessionTitle: "Terminal",
+                    tool: "codex",
+                    aiSessionID: "project-session",
+                    model: "gpt-5.5",
+                    totalTokens: 128,
+                    updatedAt: now,
+                    metadata: .init(source: "user-input", cwd: projectPath)
+                )
+            )
+        )
+
+        XCTAssertFalse(
+            store.apply(
+                AIHookEvent(
+                    kind: .sessionStarted,
+                    terminalID: terminalID,
+                    terminalInstanceID: "instance-1",
+                    projectID: projectID,
+                    projectName: "Codux",
+                    projectPath: projectPath,
+                    sessionTitle: "Out Of Project",
+                    tool: "codex",
+                    aiSessionID: "out-of-project-session",
+                    model: "gpt-5.4",
+                    totalTokens: nil,
+                    updatedAt: now + 1,
+                    metadata: .init(source: "user-input", cwd: otherPath)
+                )
+            )
+        )
+
+        let session = try XCTUnwrap(store.session(for: terminalID))
+        XCTAssertEqual(session.aiSessionID, "project-session")
+        XCTAssertEqual(session.projectPath, projectPath)
+        XCTAssertEqual(session.state, .responding)
+        XCTAssertEqual(session.updatedAt, now)
+        XCTAssertEqual(store.projectPhase(projectID: projectID), .running(tool: "codex"))
+    }
+
     func testCompletedTurnRemainsVisibleAsLiveSnapshotDuringCompletionWindow() throws {
         let terminalID = UUID()
         let projectID = UUID()

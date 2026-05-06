@@ -555,7 +555,9 @@ case "${action}" in
       "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
       "" \
       "" \
-      "$(extract_first_hook_field source)"
+      "$(extract_first_hook_field source)" \
+      "" \
+      "$(extract_first_hook_field cwd current_working_directory working_directory)"
     exit 0
     ;;
   codex-prompt-submit)

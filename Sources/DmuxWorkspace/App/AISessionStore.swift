@@ -230,10 +230,12 @@ final class AISessionStore {
         let previousLogicalKey = terminalSessionsByID[event.terminalID]?.logicalSessionKey
         let previousState = terminalSessionsByID[event.terminalID]
 
-        if shouldIgnoreInternalCodexEvent(event: event) {
+        if shouldIgnoreOutOfProjectRuntimeEvent(event: event)
+            || shouldIgnoreInternalCodexEvent(event: event)
+        {
             logger.log(
                 "ai-session-store",
-                "ignore terminal=\(event.terminalID.uuidString) tool=\(normalizedTool) kind=\(event.kind.rawValue) reason=internal-codex-memory-session"
+                "ignore terminal=\(event.terminalID.uuidString) tool=\(normalizedTool) kind=\(event.kind.rawValue) reason=out-of-project-cwd"
             )
             return false
         }
@@ -982,19 +984,25 @@ final class AISessionStore {
         normalizedNonEmptyString(event.metadata?.source) == "tool-use"
     }
 
+    private func shouldIgnoreOutOfProjectRuntimeEvent(event: AIHookEvent) -> Bool {
+        guard let cwdPath = normalizedProjectPath(event.metadata?.cwd),
+              let projectPath = normalizedProjectPath(event.projectPath) else {
+            return false
+        }
+        if cwdPath == projectPath || cwdPath.hasPrefix(projectPath + "/") {
+            return false
+        }
+        return true
+    }
+
     private func shouldIgnoreInternalCodexEvent(event: AIHookEvent) -> Bool {
         guard normalizedNonEmptyString(event.tool)?.lowercased() == "codex" else {
             return false
         }
-
-        let memoriesPath = codexMemoriesRootPath
-        if let cwdPath = normalizedProjectPath(event.metadata?.cwd),
-           cwdPath == memoriesPath || cwdPath.hasPrefix(memoriesPath + "/") {
-            return true
-        }
         guard let projectPath = normalizedProjectPath(event.projectPath) else {
             return false
         }
+        let memoriesPath = codexMemoriesRootPath
         return projectPath == memoriesPath || projectPath.hasPrefix(memoriesPath + "/")
     }
 
@@ -1159,15 +1167,15 @@ final class AISessionStore {
         return "\(max(1, tokens / 1000))K"
     }
 
+    private func normalizedProjectPath(_ path: String?) -> String? {
+        normalizedComparablePath(path)
+    }
+
     private var codexMemoriesRootPath: String {
         URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             .appendingPathComponent(".codex/memories", isDirectory: true)
             .standardizedFileURL
             .path
-    }
-
-    private func normalizedProjectPath(_ path: String?) -> String? {
-        normalizedComparablePath(path)
     }
 
     private func shouldResetSessionState(
