@@ -494,6 +494,7 @@ enum GitFileDiffWindowPresenter {
         let hostingController = NSHostingController(rootView: contentView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = entry.path
+        window.identifier = AppWindowIdentifier.gitDiff
         window.setContentSize(NSSize(width: 1080, height: 680))
         window.minSize = NSSize(width: 760, height: 420)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -580,44 +581,56 @@ private struct GitSideBySideDiffView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let contentWidth = max(proxy.size.width, preferredContentWidth)
-            ScrollView(.horizontal) {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        GitDiffColumnHeader(title: preview.newTitle, symbol: "plus.square.fill", color: AppTheme.success, side: .new)
-                        Rectangle()
-                            .fill(AppTheme.separator.opacity(0.6))
-                            .frame(width: 1)
-                        GitDiffColumnHeader(title: preview.oldTitle, symbol: "minus.square.fill", color: AppTheme.warning, side: .old)
-                    }
-                    .frame(width: contentWidth, height: 32)
+            let columnWidth = max(260, (proxy.size.width - GitDiffColumnLayout.separatorWidth) / 2)
+            let textViewportWidth = max(0, columnWidth - GitDiffColumnLayout.lineNumberWidth - GitDiffColumnLayout.markerWidth)
+            let newContentWidth = max(textViewportWidth, textContentWidth(for: .new))
+            let oldContentWidth = max(textViewportWidth, textContentWidth(for: .old))
 
-                    GitPanelSeparator()
-
-                    ScrollView(.vertical) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(preview.rows) { row in
-                                GitDiffRowView(row: row)
-                            }
-                        }
-                        .frame(width: contentWidth, alignment: .leading)
-                        .padding(.vertical, 4)
-                    }
-                    .frame(width: contentWidth, height: max(0, proxy.size.height - 33))
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    GitDiffColumnHeader(title: preview.newTitle, symbol: "plus.square.fill", color: AppTheme.success, side: .new)
+                        .frame(width: columnWidth, height: GitDiffColumnLayout.headerHeight)
+                    Rectangle()
+                        .fill(AppTheme.separator.opacity(0.6))
+                        .frame(width: GitDiffColumnLayout.separatorWidth)
+                    GitDiffColumnHeader(title: preview.oldTitle, symbol: "minus.square.fill", color: AppTheme.warning, side: .old)
+                        .frame(width: columnWidth, height: GitDiffColumnLayout.headerHeight)
                 }
-                .frame(width: contentWidth, height: proxy.size.height, alignment: .top)
+                .frame(width: proxy.size.width, height: GitDiffColumnLayout.headerHeight)
+
+                GitPanelSeparator()
+
+                ScrollView(.vertical) {
+                    HStack(alignment: .top, spacing: 0) {
+                        GitDiffColumnPane(rows: preview.rows, side: .new, columnWidth: columnWidth, textContentWidth: newContentWidth)
+                        Rectangle()
+                            .fill(AppTheme.separator.opacity(0.5))
+                            .frame(width: GitDiffColumnLayout.separatorWidth, height: bodyContentHeight)
+                        GitDiffColumnPane(rows: preview.rows, side: .old, columnWidth: columnWidth, textContentWidth: oldContentWidth)
+                    }
+                    .padding(.vertical, GitDiffColumnLayout.bodyVerticalPadding)
+                }
+                .frame(width: proxy.size.width, height: max(0, proxy.size.height - GitDiffColumnLayout.headerHeight - 1))
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             .background(Color(nsColor: .textBackgroundColor).opacity(0.4))
         }
     }
 
-    private var preferredContentWidth: CGFloat {
-        let maxLineLength = preview.rows.reduce(0) { partial, row in
-            max(partial, row.newLine?.text.count ?? 0, row.oldLine?.text.count ?? 0)
+    private var bodyContentHeight: CGFloat {
+        CGFloat(preview.rows.count) * GitDiffColumnLayout.rowHeight
+    }
+
+    private func textContentWidth(for side: GitDiffLineSide) -> CGFloat {
+        let font = NSFont.monospacedSystemFont(ofSize: GitDiffColumnLayout.fontSize, weight: .regular)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let maxTextWidth = preview.rows.reduce(CGFloat(0)) { partial, row in
+            guard let text = row.line(for: side)?.text else {
+                return partial
+            }
+            return max(partial, ceil((text as NSString).size(withAttributes: attributes).width))
         }
-        let estimatedTextWidth = CGFloat(min(maxLineLength, 260)) * 7.2
-        let columnWidth = max(360, 52 + 2 + 20 + estimatedTextWidth)
-        return columnWidth * 2 + 1
+        return maxTextWidth + GitDiffColumnLayout.textLeadingPadding + GitDiffColumnLayout.textTrailingPadding
     }
 }
 
@@ -645,58 +658,77 @@ private struct GitDiffColumnHeader: View {
     }
 }
 
-private struct GitDiffRowView: View {
-    let row: GitFileDiffRow
-
-    var body: some View {
-        HStack(spacing: 0) {
-            GitDiffLinePane(line: row.newLine, kind: row.kind, side: .new)
-            Rectangle()
-                .fill(AppTheme.separator.opacity(0.5))
-                .frame(width: 1)
-            GitDiffLinePane(line: row.oldLine, kind: row.kind, side: .old)
-        }
-        .frame(minHeight: 20)
-    }
-}
-
 private enum GitDiffLineSide {
     case new
     case old
 }
 
-private struct GitDiffLinePane: View {
+private enum GitDiffColumnLayout {
+    static let headerHeight: CGFloat = 32
+    static let rowHeight: CGFloat = 20
+    static let lineNumberWidth: CGFloat = 52
+    static let markerWidth: CGFloat = 2
+    static let separatorWidth: CGFloat = 1
+    static let fontSize: CGFloat = 12
+    static let textLeadingPadding: CGFloat = 7
+    static let textTrailingPadding: CGFloat = 10
+    static let bodyVerticalPadding: CGFloat = 4
+}
+
+private struct GitDiffColumnPane: View {
+    let rows: [GitFileDiffRow]
+    let side: GitDiffLineSide
+    let columnWidth: CGFloat
+    let textContentWidth: CGFloat
+
+    var body: some View {
+        let textViewportWidth = max(0, columnWidth - GitDiffColumnLayout.lineNumberWidth - GitDiffColumnLayout.markerWidth)
+
+        HStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
+                ForEach(rows) { row in
+                    GitDiffLineNumberCell(line: row.line(for: side), kind: row.kind, side: side)
+                }
+            }
+            .frame(width: GitDiffColumnLayout.lineNumberWidth, alignment: .top)
+
+            LazyVStack(spacing: 0) {
+                ForEach(rows) { row in
+                    GitDiffMarkerCell(kind: row.kind, side: side)
+                }
+            }
+            .frame(width: GitDiffColumnLayout.markerWidth, alignment: .top)
+
+            ScrollView(.horizontal) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(rows) { row in
+                        GitDiffLineTextCell(line: row.line(for: side), kind: row.kind, side: side, width: textContentWidth)
+                    }
+                }
+                .frame(width: textContentWidth, alignment: .leading)
+            }
+            .frame(width: textViewportWidth)
+        }
+        .frame(width: columnWidth, alignment: .leading)
+    }
+}
+
+private struct GitDiffLineNumberCell: View {
     let line: GitFileDiffLine?
     let kind: GitFileDiffRowKind
     let side: GitDiffLineSide
 
     var body: some View {
-        HStack(spacing: 0) {
-            ZStack {
-                Color(nsColor: .controlBackgroundColor).opacity(0.5)
-                Text(lineNumberText)
-                    .font(.system(size: 10.5, weight: .regular, design: .monospaced))
-                    .foregroundStyle(AppTheme.textMuted.opacity(0.7))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.trailing, 10)
-            }
-            .frame(width: 52)
-
-            Rectangle()
-                .fill(markerColor)
-                .frame(width: 2)
-
-            Text(line?.text ?? "")
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundStyle(AppTheme.textPrimary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 7)
+        ZStack {
+            backgroundColor
+            Color(nsColor: .controlBackgroundColor).opacity(0.5)
+            Text(lineNumberText)
+                .font(.system(size: 10.5, weight: .regular, design: .monospaced))
+                .foregroundStyle(AppTheme.textMuted.opacity(0.7))
+                .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 10)
-                .padding(.vertical, 1)
         }
-        .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
-        .background(backgroundColor)
+        .frame(width: GitDiffColumnLayout.lineNumberWidth, height: GitDiffColumnLayout.rowHeight)
     }
 
     private var lineNumberText: String {
@@ -704,6 +736,33 @@ private struct GitDiffLinePane: View {
             return ""
         }
         return "\(number)"
+    }
+
+    private var backgroundColor: Color {
+        switch (kind, side) {
+        case (.added, .new):
+            return Color(nsColor: .systemGreen).opacity(0.18)
+        case (.removed, .old):
+            return Color(nsColor: .systemRed).opacity(0.18)
+        case (.modified, .new):
+            return Color(nsColor: .systemGreen).opacity(0.14)
+        case (.modified, .old):
+            return Color(nsColor: .systemOrange).opacity(0.18)
+        default:
+            return Color.clear
+        }
+    }
+}
+
+private struct GitDiffMarkerCell: View {
+    let kind: GitFileDiffRowKind
+    let side: GitDiffLineSide
+
+    var body: some View {
+        Rectangle()
+            .fill(markerColor)
+            .frame(width: GitDiffColumnLayout.markerWidth, height: GitDiffColumnLayout.rowHeight)
+            .background(backgroundColor)
     }
 
     private var backgroundColor: Color {
@@ -733,6 +792,52 @@ private struct GitDiffLinePane: View {
             return Color(nsColor: .systemOrange).opacity(0.6)
         default:
             return Color.clear
+        }
+    }
+}
+
+private struct GitDiffLineTextCell: View {
+    let line: GitFileDiffLine?
+    let kind: GitFileDiffRowKind
+    let side: GitDiffLineSide
+    let width: CGFloat
+
+    var body: some View {
+        Text(line?.text ?? "")
+            .font(.system(size: GitDiffColumnLayout.fontSize, weight: .regular, design: .monospaced))
+            .foregroundStyle(AppTheme.textPrimary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.leading, GitDiffColumnLayout.textLeadingPadding)
+            .padding(.trailing, GitDiffColumnLayout.textTrailingPadding)
+            .padding(.vertical, 1)
+            .frame(width: width, height: GitDiffColumnLayout.rowHeight, alignment: .leading)
+            .background(backgroundColor)
+    }
+
+    private var backgroundColor: Color {
+        switch (kind, side) {
+        case (.added, .new):
+            return Color(nsColor: .systemGreen).opacity(0.18)
+        case (.removed, .old):
+            return Color(nsColor: .systemRed).opacity(0.18)
+        case (.modified, .new):
+            return Color(nsColor: .systemGreen).opacity(0.14)
+        case (.modified, .old):
+            return Color(nsColor: .systemOrange).opacity(0.18)
+        default:
+            return Color.clear
+        }
+    }
+}
+
+private extension GitFileDiffRow {
+    func line(for side: GitDiffLineSide) -> GitFileDiffLine? {
+        switch side {
+        case .new:
+            return newLine
+        case .old:
+            return oldLine
         }
     }
 }

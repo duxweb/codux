@@ -60,7 +60,7 @@ private struct WorkspaceProjectView: View {
                             showsInactiveOverlay: hasMultipleVisibleTerminalPanes
                         )
                         .frame(
-                            minHeight: workspace.hasBottomTabs ? 160 : BottomTabbedPaneView.statusBarHeight,
+                            minHeight: workspace.hasBottomTabs ? ProjectWorkspace.minimumBottomPaneHeight : BottomTabbedPaneView.statusBarHeight,
                             idealHeight: workspace.hasBottomTabs ? workspace.bottomPaneHeight : BottomTabbedPaneView.statusBarHeight,
                             maxHeight: .infinity
                         )

@@ -249,4 +249,14 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
             )
         }
     }
+
+    func testToolConfigFileURLIsIsolatedDuringTests() {
+        let service = AIRuntimeBridgeService()
+        let hooksURL = service.codexHooksFileURL()
+        let realHomeCodexURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            .appendingPathComponent(".codex", isDirectory: true)
+
+        XCTAssertFalse(hooksURL.path.hasPrefix(realHomeCodexURL.path + "/"))
+        XCTAssertTrue(hooksURL.path.contains("external-tool-configs/.codex/hooks.json"))
+    }
 }

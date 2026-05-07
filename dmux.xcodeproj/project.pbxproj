@@ -16,6 +16,8 @@
 		F11000000000000000000002 /* ProjectFileBrowserService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000002 /* ProjectFileBrowserService.swift */; };
 		F11000000000000000000003 /* FileBrowserPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000003 /* FileBrowserPanelView.swift */; };
 		F11000000000000000000004 /* FilePreviewWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000004 /* FilePreviewWindow.swift */; };
+		F11000000000000000000005 /* CodeMirrorTextPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000005 /* CodeMirrorTextPreview.swift */; };
+		F11000000000000000000006 /* CodeMirror in Resources */ = {isa = PBXBuildFile; fileRef = F12000000000000000000006 /* CodeMirror */; };
 		011BED1E652A34A9642CEDEA /* Package.swift in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8AF9CB866BDB2AF3ECA35178 /* Package.swift */; };
 		0677DA593A0554DAC639D0A3 /* AppReleaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6E2D396499849AD4FC84FC /* AppReleaseService.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* AppUpdaterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5E /* AppUpdaterService.swift */; };
@@ -103,6 +105,7 @@
 		7CCD1507CB75EB49877C6C30 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B57CE529E3ABCD870DDA44AA /* AppModel.swift */; };
 		832966AE5D44C7932DAF4305 /* XcodeBundleModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFFC0183E1E7E02211891AD /* XcodeBundleModule.swift */; };
 		94E74A9C02052D31600A15A8 /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8257AFB3A285E940A6A4A3DD /* UniformTypeIdentifiers.framework */; };
+		94E74A9C02052D31600A15A9 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8257AFB3A285E940A6A4A3DE /* WebKit.framework */; };
 		9893EF570C98097E5D246808 /* AppDialogTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75C0F73DC8B618C9F40F85B /* AppDialogTypes.swift */; };
 		B10000000000000000000001 /* WorkspacePaneLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000001 /* WorkspacePaneLayout.swift */; };
 		B10000000000000000000002 /* WorkspaceTerminalPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000002 /* WorkspaceTerminalPaneView.swift */; };
@@ -249,6 +252,7 @@
 		7CE3698E3236F68192D0C53C /* GitCredentialDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitCredentialDialog.swift; sourceTree = "<group>"; };
 		812A0EDEE4527FA414569297 /* PersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceService.swift; sourceTree = "<group>"; };
 		8257AFB3A285E940A6A4A3DD /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
+		8257AFB3A285E940A6A4A3DE /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		88EA7F3568E80A7CE3A272F8 /* AppDebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDebugLog.swift; sourceTree = "<group>"; };
 		8AF9CB866BDB2AF3ECA35178 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 		8F6676C32385770B36A6B87D /* AIRuntimeBridgeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRuntimeBridgeService.swift; sourceTree = "<group>"; };
@@ -360,6 +364,8 @@
 		F12000000000000000000002 /* ProjectFileBrowserService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFileBrowserService.swift; sourceTree = "<group>"; };
 		F12000000000000000000003 /* FileBrowserPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserPanelView.swift; sourceTree = "<group>"; };
 		F12000000000000000000004 /* FilePreviewWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewWindow.swift; sourceTree = "<group>"; };
+		F12000000000000000000005 /* CodeMirrorTextPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeMirrorTextPreview.swift; sourceTree = "<group>"; };
+		F12000000000000000000006 /* CodeMirror */ = {isa = PBXFileReference; lastKnownFileType = folder; path = CodeMirror; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -375,6 +381,7 @@
 				BEEF00000000000000000001 /* LiveKitWebRTC in Frameworks */,
 				B0C0D0E0F1029384756A0001 /* MarkdownUI in Frameworks */,
 				94E74A9C02052D31600A15A8 /* UniformTypeIdentifiers.framework in Frameworks */,
+				94E74A9C02052D31600A15A9 /* WebKit.framework in Frameworks */,
 				7CC77BFB4230078241327312 /* Carbon.framework in Frameworks */,
 				41CEA0910EEBD49E51352696 /* IOKit.framework in Frameworks */,
 				41CEA0910EEBD49E51352695 /* libsqlite3.tbd in Frameworks */,
@@ -498,6 +505,7 @@
 				D48B542546FE32FD237D7576 /* IOKit.framework */,
 				D48B542546FE32FD237D7575 /* libsqlite3.tbd */,
 				8257AFB3A285E940A6A4A3DD /* UniformTypeIdentifiers.framework */,
+				8257AFB3A285E940A6A4A3DE /* WebKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -588,6 +596,7 @@
 			children = (
 				CDEB30421E61195A008FD00E /* Localizable.xcstrings */,
 				240000000000000000000003 /* local-llama-models.json */,
+				F12000000000000000000006 /* CodeMirror */,
 				5F0A9C1D7E2B4A5C8D9E0F13 /* Pets */,
 			);
 			path = Resources;
@@ -735,6 +744,7 @@
 			children = (
 				F12000000000000000000003 /* FileBrowserPanelView.swift */,
 				F12000000000000000000004 /* FilePreviewWindow.swift */,
+				F12000000000000000000005 /* CodeMirrorTextPreview.swift */,
 			);
 			path = FileBrowser;
 			sourceTree = "<group>";
@@ -834,6 +844,7 @@
 			files = (
 				0D664E0A08F199B7A97D0BA2 /* Localizable.xcstrings in Resources */,
 				240000000000000000000203 /* local-llama-models.json in Resources */,
+				F11000000000000000000006 /* CodeMirror in Resources */,
 				5F0A9C1D7E2B4A5C8D9E0F12 /* Pets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -966,6 +977,7 @@
 				D0D0C0DE0000000000000104 /* PetSpeechLLMService.swift in Sources */,
 				F11000000000000000000003 /* FileBrowserPanelView.swift in Sources */,
 				F11000000000000000000004 /* FilePreviewWindow.swift in Sources */,
+				F11000000000000000000005 /* CodeMirrorTextPreview.swift in Sources */,
 				230000000000000000000101 /* MemoryManagerWindow.swift in Sources */,
 				B10000000000000000000055 /* TaskMemoPanelView.swift in Sources */,
 				B10000000000000000000057 /* SSHProfileDialog.swift in Sources */,
@@ -1040,7 +1052,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 45;
+				CURRENT_PROJECT_VERSION = 46;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1053,7 +1065,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.5;
+				MARKETING_VERSION = 0.9.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1114,7 +1126,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 45;
+				CURRENT_PROJECT_VERSION = 46;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1133,7 +1145,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.5;
+				MARKETING_VERSION = 0.9.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

@@ -46,4 +46,8 @@ final class AppRuntimePathsTests: XCTestCase {
         XCTAssertTrue(devRoot.lastPathComponent == "codux-dev")
         XCTAssertNotEqual(releaseRoot, devRoot)
     }
+
+    func testRunningUnderXCTestIsDetectedFromEnvironment() {
+        XCTAssertTrue(AppRuntimePaths.isRunningUnderXCTest())
+    }
 }

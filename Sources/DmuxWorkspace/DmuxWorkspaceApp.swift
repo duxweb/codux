@@ -45,6 +45,7 @@ enum AppWindowIdentifier {
     static let desktopPet = NSUserInterfaceItemIdentifier("dmux.desktopPet")
     static let memoryManager = NSUserInterfaceItemIdentifier("dmux.memoryManager")
     static let filePreview = NSUserInterfaceItemIdentifier("dmux.filePreview")
+    static let gitDiff = NSUserInterfaceItemIdentifier("dmux.gitDiff")
     static let detachedTerminalPrefix = "dmux.detached-terminal."
 
     static func detachedTerminal(_ sessionID: UUID) -> NSUserInterfaceItemIdentifier {
@@ -83,7 +84,7 @@ func isStandardChromeWindow(_ window: NSWindow) -> Bool {
             || id == AppWindowIdentifier.agreement.rawValue
             || id == AppWindowIdentifier.petDex.rawValue
             || id == AppWindowIdentifier.memoryManager.rawValue
-            || id == AppWindowIdentifier.filePreview.rawValue {
+            || id == AppWindowIdentifier.gitDiff.rawValue {
             return true
         }
         if id.contains("Settings") || id.contains("settings") {
@@ -91,6 +92,11 @@ func isStandardChromeWindow(_ window: NSWindow) -> Bool {
         }
     }
     return false
+}
+
+@MainActor
+func isFilePreviewWindow(_ window: NSWindow) -> Bool {
+    window.identifier == AppWindowIdentifier.filePreview
 }
 
 @MainActor
@@ -120,7 +126,25 @@ func applyMainWorkspaceWindowChrome(_ window: NSWindow) {
 }
 
 @MainActor
+func applyFilePreviewWindowChrome(_ window: NSWindow) {
+    applyImmersiveWindowChrome(window)
+    window.titlebarSeparatorStyle = .none
+    window.isMovableByWindowBackground = true
+    repositionFilePreviewTrafficLights(in: window)
+}
+
+@MainActor
 func repositionMainWorkspaceTrafficLights(in window: NSWindow) {
+    repositionTrafficLights(in: window, centerYFromTop: 22)
+}
+
+@MainActor
+func repositionFilePreviewTrafficLights(in window: NSWindow) {
+    repositionTrafficLights(in: window, centerYFromTop: 22)
+}
+
+@MainActor
+private func repositionTrafficLights(in window: NSWindow, centerYFromTop: CGFloat) {
     guard !(window is NSPanel) else {
         return
     }
@@ -136,10 +160,11 @@ func repositionMainWorkspaceTrafficLights(in window: NSWindow) {
     }
 
     let buttons = [closeButton, miniaturizeButton, zoomButton]
-    let centerYFromTop: CGFloat = 22
     let targetCenterY = buttonContainer.bounds.height - centerYFromTop
 
     for button in buttons {
+        button.isHidden = false
+        button.alphaValue = 1
         var frame = button.frame
         frame.origin.y = targetCenterY - frame.height / 2
         button.setFrameOrigin(frame.origin)
@@ -309,7 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return event
         }
 
-        if isStandardChromeWindow(window) || isDetachedTerminalWindow(window) {
+        if isStandardChromeWindow(window) || isFilePreviewWindow(window) || isDetachedTerminalWindow(window) {
             window.performClose(nil)
             return nil
         }
@@ -356,7 +381,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
-              !isStandardChromeWindow(window) else {
+              !isStandardChromeWindow(window),
+              !isFilePreviewWindow(window) else {
             return false
         }
 
@@ -405,6 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         guard !isStandardChromeWindow(window),
+              !isFilePreviewWindow(window),
               !isDetachedTerminalWindow(window) else {
             return
         }
@@ -459,6 +486,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private func restoreTerminalFocusIfNeeded(for window: NSWindow) {
         guard !(window is NSPanel),
               !isStandardChromeWindow(window),
+              !isFilePreviewWindow(window),
               !isDetachedTerminalWindow(window) else {
             return
         }

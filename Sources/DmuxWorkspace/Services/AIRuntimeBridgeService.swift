@@ -152,7 +152,7 @@ struct AIRuntimeBridgeService {
         let originalPath = processEnvironment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin"
         let opencodeSessionMapDirectoryPath = preparedOpencodeSessionMapDirectoryPath()
         let claudeSessionMapDirectoryPath = preparedClaudeSessionMapDirectoryPath()
-        let shellHookPaths = preparedShellHookPaths()
+        let shellHookPaths = AppRuntimePaths.isRunningUnderXCTest() ? nil : preparedShellHookPaths()
         let logFilePath = AppDebugLog.shared.logFileURL().path
         let runtimeOwner = runtimeOwnerID()
         let appSupportRootPath = AppRuntimePaths.appSupportRootURL(fileManager: fileManager)!.path
@@ -265,6 +265,10 @@ struct AIRuntimeBridgeService {
     }
 
     private func scheduleManagedHookBootstrapIfNeeded() {
+        guard AppRuntimePaths.isRunningUnderXCTest() == false else {
+            debugLog.log("runtime-hooks", "bootstrap skipped reason=xctest")
+            return
+        }
         guard Self.managedHookBootstrapCoordinator.schedule({
             let service = AIRuntimeBridgeService()
             service.debugLog.log("runtime-hooks", "bootstrap start")

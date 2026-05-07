@@ -327,6 +327,7 @@ struct ProjectWorkspace: Identifiable, Codable, Hashable {
     var sessions: [TerminalSession]
 
     static let maxTopPanes = 6
+    static let minimumBottomPaneHeight: CGFloat = 160
 
     var hasBottomTabs: Bool {
         !bottomTabSessionIDs.isEmpty

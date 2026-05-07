@@ -424,7 +424,6 @@ final class SplitViewController<Top: View, Bottom: View>: NSViewController, NSSp
     private var isApplyingLayout = false
     private var hasCommittedInitialBottomLayout = false
     private let minimumTopHeight: CGFloat = 220
-    private let minimumBottomHeight: CGFloat = 160
     private let bottomStatusBarHeight = BottomTabbedPaneView.statusBarHeight
     init(model: AppModel, workspace: ProjectWorkspace, dividerColor: NSColor, hasBottomRegion: Bool, bottomHeight: CGFloat, top: Top, bottom: Bottom) {
         self.model = model
@@ -506,7 +505,7 @@ final class SplitViewController<Top: View, Bottom: View>: NSViewController, NSSp
         }
 
         let totalHeight = splitView.bounds.height
-        let requestedMinimumBottomHeight = currentWorkspace.hasBottomTabs ? minimumBottomHeight : bottomStatusBarHeight
+        let requestedMinimumBottomHeight = currentWorkspace.hasBottomTabs ? ProjectWorkspace.minimumBottomPaneHeight : bottomStatusBarHeight
         let clampedBottomHeight = min(
             max(bottomHeight, requestedMinimumBottomHeight),
             max(requestedMinimumBottomHeight, totalHeight - minimumTopHeight)
@@ -530,7 +529,7 @@ final class SplitViewController<Top: View, Bottom: View>: NSViewController, NSSp
         guard currentWorkspace.hasBottomTabs else {
             return splitView.bounds.height - bottomStatusBarHeight
         }
-        let requestedMinimumBottomHeight = currentWorkspace.hasBottomTabs ? minimumBottomHeight : bottomStatusBarHeight
+        let requestedMinimumBottomHeight = currentWorkspace.hasBottomTabs ? ProjectWorkspace.minimumBottomPaneHeight : bottomStatusBarHeight
         return splitView.bounds.height - requestedMinimumBottomHeight
     }
 

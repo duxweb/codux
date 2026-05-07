@@ -133,6 +133,19 @@ enum AppSupportLinks {
 }
 
 enum AppRuntimePaths {
+    static func isRunningUnderXCTest(
+        processInfo: ProcessInfo = .processInfo,
+        bundle: Bundle = .main
+    ) -> Bool {
+        if processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return true
+        }
+        if bundle.bundleURL.pathExtension == "xctest" {
+            return true
+        }
+        return appDisplayName(bundle: bundle).lowercased() == "xctest"
+    }
+
     static func appDisplayName(bundle: Bundle = .main) -> String {
         if let displayName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String {
             let sanitized = appSupportFolderName(appDisplayName: displayName)

@@ -210,25 +210,16 @@ private final class MemoryManagerViewModel {
             case .summary:
                 summaries = try store.listSummariesForManagement(scope: scope, projectID: projectID)
                 entries = []
-            case .core:
+            case .active:
                 summaries = []
                 entries = try store.listEntriesForManagement(
                     scope: scope,
                     projectID: projectID,
-                    tiers: [.core],
+                    tiers: [.core, .working],
                     statuses: [.active],
                     limit: 500
                 )
-            case .working:
-                summaries = []
-                entries = try store.listEntriesForManagement(
-                    scope: scope,
-                    projectID: projectID,
-                    tiers: [.working],
-                    statuses: [.active],
-                    limit: 500
-                )
-            case .archive:
+            case .history:
                 summaries = []
                 entries = try store.listEntriesForManagement(
                     scope: scope,
@@ -581,18 +572,17 @@ private struct MemoryManagerContent: View {
             } else if entries.isEmpty {
                 MemoryManagerEmptyState(
                     symbol: "tray",
-                    title: memoryL("memory.manager.empty.entries", "No memories in this view"),
-                    detail: memoryL("memory.manager.empty.entries.detail", "Try another type tab or wait for memory extraction to complete.")
+                    title: tab.emptyTitle,
+                    detail: tab.emptyDetail
                 )
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(entries) { entry in
-                            MemoryEntryCard(
-                                entry: entry,
-                                canArchive: entry.status == .active,
-                                onArchive: { onArchiveEntry(entry.id) },
-                                onDelete: { onDeleteEntry(entry.id) }
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        ForEach(groupedEntries) { group in
+                            MemoryEntryGroupSection(
+                                group: group,
+                                onArchiveEntry: onArchiveEntry,
+                                onDeleteEntry: onDeleteEntry
                             )
                         }
                     }
@@ -602,6 +592,14 @@ private struct MemoryManagerContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.primary.opacity(0.012))
+    }
+
+    private var groupedEntries: [MemoryEntryGroup] {
+        MemoryKind.allCases.compactMap { kind in
+            let items = entries.filter { $0.kind == kind }
+            guard !items.isEmpty else { return nil }
+            return MemoryEntryGroup(kind: kind, entries: items)
+        }
     }
 }
 
@@ -717,6 +715,51 @@ private struct MemoryEntryCard: View {
     }
 }
 
+private struct MemoryEntryGroupSection: View {
+    let group: MemoryEntryGroup
+    let onArchiveEntry: (UUID) -> Void
+    let onDeleteEntry: (UUID) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(group.kind.color)
+                    .frame(width: 7, height: 7)
+                Text(group.kind.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                Text("\(group.entries.count)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(group.kind.color)
+                    .monospacedDigit()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(group.kind.color.opacity(0.11)))
+                Spacer(minLength: 0)
+            }
+
+            LazyVStack(spacing: 12) {
+                ForEach(group.entries) { entry in
+                    MemoryEntryCard(
+                        entry: entry,
+                        canArchive: entry.status == .active,
+                        onArchive: { onArchiveEntry(entry.id) },
+                        onDelete: { onDeleteEntry(entry.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct MemoryEntryGroup: Identifiable {
+    let kind: MemoryKind
+    let entries: [MemoryEntry]
+
+    var id: String { kind.rawValue }
+}
+
 private struct MemoryManagerBadge: View {
     let text: String
     let color: Color
@@ -810,9 +853,8 @@ private enum MemoryManagerTarget: Hashable {
 
 private enum MemoryManagerTab: String, CaseIterable, Identifiable {
     case summary
-    case core
-    case working
-    case archive
+    case active
+    case history
 
     var id: String { rawValue }
 
@@ -820,12 +862,32 @@ private enum MemoryManagerTab: String, CaseIterable, Identifiable {
         switch self {
         case .summary:
             return memoryL("memory.manager.tab.summary", "Summary")
-        case .core:
-            return memoryL("memory.manager.tab.core", "Core")
-        case .working:
-            return memoryL("memory.manager.tab.working", "Working")
-        case .archive:
-            return memoryL("memory.manager.tab.archive", "Archive")
+        case .active:
+            return memoryL("memory.manager.tab.active", "Memories")
+        case .history:
+            return memoryL("memory.manager.tab.history", "History")
+        }
+    }
+
+    var emptyTitle: String {
+        switch self {
+        case .summary:
+            return memoryL("memory.manager.empty.summary", "No summary memory")
+        case .active:
+            return memoryL("memory.manager.empty.active", "No active memories")
+        case .history:
+            return memoryL("memory.manager.empty.history", "No memory history")
+        }
+    }
+
+    var emptyDetail: String {
+        switch self {
+        case .summary:
+            return memoryL("memory.manager.empty.summary.detail", "Summaries appear after extraction has enough useful context.")
+        case .active:
+            return memoryL("memory.manager.empty.active.detail", "Fresh extracted memories appear here before they are compacted into summaries. Older compacted items remain in History.")
+        case .history:
+            return memoryL("memory.manager.empty.history.detail", "Merged and archived memories appear here after extraction compacts older entries.")
         }
     }
 }

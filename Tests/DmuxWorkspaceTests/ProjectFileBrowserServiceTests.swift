@@ -31,7 +31,7 @@ final class ProjectFileBrowserServiceTests: XCTestCase {
         XCTAssertFalse(children[3].isDirectory)
     }
 
-    func testPreviewRejectsBinaryAndHighlightsText() throws {
+    func testPreviewRejectsBinaryAndReadsText() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -54,6 +54,101 @@ final class ProjectFileBrowserServiceTests: XCTestCase {
         } else {
             XCTFail("Expected binary message")
         }
+    }
+
+    func testPreviewAllowsEmptyTextFiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileURL = root.appendingPathComponent("empty.txt")
+        try Data().write(to: fileURL)
+
+        if case let .text(text) = ProjectFileBrowserService().preview(for: fileURL, rootURL: root).state {
+            XCTAssertEqual(text.string, "")
+        } else {
+            XCTFail("Expected empty text preview")
+        }
+    }
+
+    func testPreviewKeepsMediumLargeTextEditable() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileURL = root.appendingPathComponent("Large.swift")
+        try "struct Demo { let value = 1 }\n".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let preview = ProjectFileBrowserService(maxPreviewBytes: 1_024)
+            .preview(for: fileURL, rootURL: root)
+
+        if case let .text(text) = preview.state {
+            XCTAssertTrue(text.string.contains("struct Demo"))
+        } else {
+            XCTFail("Expected editable text preview")
+        }
+    }
+
+    func testPreviewUsesVirtualReadOnlyPreviewAboveMaximumEditableSize() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileURL = root.appendingPathComponent("Huge.log")
+        try "line 1\nline 2\nline 3\n".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let preview = ProjectFileBrowserService(maxPreviewBytes: 8)
+            .preview(for: fileURL, rootURL: root)
+
+        if case let .largeText(metadata) = preview.state {
+            XCTAssertGreaterThan(metadata.totalBytes, 8)
+            XCTAssertGreaterThan(metadata.estimatedLineCount, 0)
+        } else {
+            XCTFail("Expected large text virtual preview")
+        }
+    }
+
+    func testSaveTextWritesOriginalFileInsideProjectRoot() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fileURL = root.appendingPathComponent("Notes.md")
+        try "old".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        try ProjectFileBrowserService().saveText("new\ncontent", to: fileURL, rootURL: root)
+
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "new\ncontent")
+    }
+
+    func testSaveTextRejectsFileOutsideProjectRoot() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let outsideRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outsideRoot, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: outsideRoot)
+        }
+
+        let outsideFileURL = outsideRoot.appendingPathComponent("Notes.md")
+        try "old".write(to: outsideFileURL, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(
+            try ProjectFileBrowserService().saveText("new", to: outsideFileURL, rootURL: root)
+        )
+        XCTAssertEqual(try String(contentsOf: outsideFileURL, encoding: .utf8), "old")
+    }
+
+    func testSaveTextRejectsDirectory() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        XCTAssertThrowsError(
+            try ProjectFileBrowserService().saveText("new", to: root, rootURL: root)
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.path))
     }
 
     func testMarkdownPreviewUsesSplitLayoutForMarkdownExtensions() {

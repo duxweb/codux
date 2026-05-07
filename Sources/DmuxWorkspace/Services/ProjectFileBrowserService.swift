@@ -10,9 +10,13 @@ enum ProjectFileOpenMode {
 struct ProjectFileBrowserService {
     private let fileManager: FileManager
     private let maxPreviewBytes: UInt64
+    private let largePreviewSampleBytes: Int = 96 * 1024
     typealias ConflictResolver = (_ sourceURL: URL, _ destinationURL: URL, _ suggestedName: String) -> String?
 
-    init(fileManager: FileManager = .default, maxPreviewBytes: UInt64 = 1_500_000) {
+    init(
+        fileManager: FileManager = .default,
+        maxPreviewBytes: UInt64 = 100 * 1024 * 1024
+    ) {
         self.fileManager = fileManager
         self.maxPreviewBytes = maxPreviewBytes
     }
@@ -144,16 +148,12 @@ struct ProjectFileBrowserService {
         }
 
         let byteCount = UInt64(values.fileSize ?? 0)
-        guard byteCount <= maxPreviewBytes else {
-            return ProjectFilePreview(
+        if byteCount > maxPreviewBytes {
+            return largeTextPreview(
+                for: standardizedURL,
                 title: title,
                 subtitle: subtitle,
-                state: .message(
-                    String(
-                        format: String(localized: "files.preview.too_large_format", defaultValue: "This file is too large to preview safely (%@).", bundle: .module),
-                        ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file)
-                    )
-                )
+                byteCount: byteCount
             )
         }
 
@@ -165,11 +165,11 @@ struct ProjectFileBrowserService {
             )
         }
 
-        guard data.isEmpty == false else {
+        if data.isEmpty {
             return ProjectFilePreview(
                 title: title,
                 subtitle: subtitle,
-                state: .message(String(localized: "files.preview.empty", defaultValue: "This file is empty.", bundle: .module))
+                state: .text(NSAttributedString(string: ""))
             )
         }
 
@@ -185,8 +185,72 @@ struct ProjectFileBrowserService {
         return ProjectFilePreview(
             title: title,
             subtitle: subtitle,
-            state: .text(ProjectFileSyntaxHighlighter.highlight(text: text, fileExtension: standardizedURL.pathExtension))
+            state: .text(NSAttributedString(string: text))
         )
+    }
+
+    private func largeTextPreview(for fileURL: URL, title: String, subtitle: String, byteCount: UInt64) -> ProjectFilePreview {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
+            return ProjectFilePreview(
+                title: title,
+                subtitle: subtitle,
+                state: .message(String(localized: "files.preview.read_error", defaultValue: "Could not read this file.", bundle: .module))
+            )
+        }
+        defer { try? handle.close() }
+
+        let sampleData = (try? handle.read(upToCount: largePreviewSampleBytes)) ?? Data()
+        guard sampleData.isEmpty == false,
+              sampleData.contains(0) == false,
+              let sampleText = String(data: sampleData, encoding: .utf8) ?? String(data: sampleData, encoding: .utf16) else {
+            return ProjectFilePreview(
+                title: title,
+                subtitle: subtitle,
+                state: .message(String(localized: "files.preview.binary", defaultValue: "Binary files cannot be previewed here.", bundle: .module))
+            )
+        }
+
+        let sampledLineBreaks = sampleText.utf16.reduce(0) { partial, codeUnit in
+            partial + (codeUnit == 10 ? 1 : 0)
+        }
+        let sampledLines = max(1, sampledLineBreaks + 1)
+        let averageBytesPerLine = max(16, Double(sampleData.count) / Double(sampledLines))
+        let estimatedLineCount = max(1, Int(ceil(Double(byteCount) / averageBytesPerLine)))
+        let formattedSize = ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file)
+
+        return ProjectFilePreview(
+            title: title,
+            subtitle: subtitle,
+            state: .largeText(ProjectLargeFilePreview(
+                totalBytes: byteCount,
+                estimatedLineCount: estimatedLineCount,
+                averageBytesPerLine: averageBytesPerLine,
+                message: String(
+                    format: String(localized: "files.preview.large_virtual_format", defaultValue: "Large file virtual preview (%@). Editing is disabled.", bundle: .module),
+                    formattedSize
+                )
+            ))
+        )
+    }
+
+    func saveText(_ text: String, to fileURL: URL, rootURL: URL) throws {
+        let standardizedURL = fileURL.standardizedFileURL
+        guard isWithinRoot(standardizedURL, rootURL: rootURL) else {
+            throw NSError(
+                domain: "CoduxFileBrowser",
+                code: 403,
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "files.preview.save_outside_project", defaultValue: "This file is outside the project folder.", bundle: .module)]
+            )
+        }
+        let values = try standardizedURL.resourceValues(forKeys: [.isDirectoryKey])
+        guard values.isDirectory != true else {
+            throw NSError(
+                domain: "CoduxFileBrowser",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "files.preview.save_directory", defaultValue: "Folders cannot be saved as text files.", bundle: .module)]
+            )
+        }
+        try text.write(to: standardizedURL, atomically: true, encoding: .utf8)
     }
 
     func relativePathForDisplay(url: URL, rootURL: URL) -> String {
@@ -220,6 +284,12 @@ struct ProjectFileBrowserService {
         let index = path.index(path.startIndex, offsetBy: rootPath.count)
         let suffix = path[index...].trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return suffix.isEmpty ? url.lastPathComponent : suffix
+    }
+
+    private func isWithinRoot(_ url: URL, rootURL: URL) -> Bool {
+        let rootPath = rootURL.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        return path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
     private enum TransferMode {
@@ -336,66 +406,4 @@ struct ProjectFileBrowserService {
         "aac", "aiff", "flac", "m4a", "mp3", "ogg", "wav",
         "doc", "docx", "key", "numbers", "pages", "pdf", "ppt", "pptx", "xls", "xlsx",
     ]
-}
-
-enum ProjectFileSyntaxHighlighter {
-    static func highlight(text: String, fileExtension: String) -> NSAttributedString {
-        let attributed = NSMutableAttributedString(
-            string: text,
-            attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-                .foregroundColor: NSColor.labelColor,
-            ]
-        )
-        let fullRange = NSRange(location: 0, length: attributed.length)
-        let normalizedExtension = fileExtension.lowercased()
-
-        apply(pattern: #"(?m)//.*$|#.*$"#, to: attributed, range: fullRange, color: .secondaryLabelColor)
-        apply(pattern: #""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'"#, to: attributed, range: fullRange, color: NSColor.systemGreen)
-        apply(pattern: #"\b\d+(?:\.\d+)?\b"#, to: attributed, range: fullRange, color: NSColor.systemOrange)
-
-        let keywords = keywords(for: normalizedExtension)
-        if keywords.isEmpty == false {
-            let pattern = "\\b(" + keywords.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|") + ")\\b"
-            apply(pattern: pattern, to: attributed, range: fullRange, color: NSColor.systemBlue, fontWeight: .semibold)
-        }
-
-        return attributed
-    }
-
-    private static func keywords(for fileExtension: String) -> [String] {
-        switch fileExtension {
-        case "swift":
-            return ["actor", "class", "enum", "extension", "func", "import", "let", "private", "protocol", "return", "static", "struct", "var"]
-        case "js", "jsx", "ts", "tsx":
-            return ["async", "await", "class", "const", "export", "from", "function", "import", "interface", "let", "return", "type"]
-        case "php":
-            return ["class", "echo", "extends", "function", "namespace", "private", "protected", "public", "return", "use"]
-        case "rb":
-            return ["class", "def", "do", "end", "module", "private", "require", "return"]
-        case "sh", "bash", "zsh":
-            return ["case", "do", "done", "elif", "else", "esac", "fi", "for", "function", "if", "in", "then", "while"]
-        default:
-            return []
-        }
-    }
-
-    private static func apply(
-        pattern: String,
-        to attributed: NSMutableAttributedString,
-        range: NSRange,
-        color: NSColor,
-        fontWeight: NSFont.Weight? = nil
-    ) {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return
-        }
-        let matches = regex.matches(in: attributed.string, range: range)
-        for match in matches {
-            attributed.addAttribute(.foregroundColor, value: color, range: match.range)
-            if let fontWeight {
-                attributed.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 12, weight: fontWeight), range: match.range)
-            }
-        }
-    }
 }

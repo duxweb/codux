@@ -40,6 +40,7 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedFramework("UniformTypeIdentifiers"),
+                .linkedFramework("WebKit"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("IOKit"),
                 .linkedLibrary("sqlite3"),

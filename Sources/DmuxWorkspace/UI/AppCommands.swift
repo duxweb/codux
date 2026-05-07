@@ -152,7 +152,7 @@ struct AppCommands: Commands {
         guard let activeWindow else {
             return false
         }
-        return isStandardChromeWindow(activeWindow)
+        return isStandardChromeWindow(activeWindow) || isFilePreviewWindow(activeWindow)
     }
 
     private var canHandleCloseCommand: Bool {

@@ -425,7 +425,19 @@ extension AIRuntimeBridgeService {
     }
 
     func toolConfigFileURL(directoryName: String, filename: String) -> URL {
-        URL(fileURLWithPath: NSHomeDirectory())
+        let rootURL: URL
+        if AppRuntimePaths.isRunningUnderXCTest() {
+            rootURL = AppRuntimePaths
+                .temporaryRootURL(
+                    fileManager: fileManager,
+                    appDisplayName: "CoduxTests",
+                    bundleIdentifier: "com.duxweb.codux.tests"
+                )
+                .appendingPathComponent("external-tool-configs", isDirectory: true)
+        } else {
+            rootURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        }
+        return rootURL
             .appendingPathComponent(directoryName, isDirectory: true)
             .appendingPathComponent(filename, isDirectory: false)
     }

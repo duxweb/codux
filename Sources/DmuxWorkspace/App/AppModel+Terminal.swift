@@ -15,8 +15,8 @@ extension AppModel {
     }
 
     func updateBottomPaneHeight(_ height: CGFloat, for projectID: UUID, availableHeight: CGFloat) {
-        let maxHeight = max(180, availableHeight - 180)
-        let clamped = min(max(height, 160), maxHeight)
+        let maxHeight = max(ProjectWorkspace.minimumBottomPaneHeight, availableHeight - 180)
+        let clamped = min(max(height, ProjectWorkspace.minimumBottomPaneHeight), maxHeight)
 
         guard let index = workspaces.firstIndex(where: { $0.projectID == projectID }) else {
             return

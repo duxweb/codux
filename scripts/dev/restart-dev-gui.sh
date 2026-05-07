@@ -64,11 +64,23 @@ normalize_package_artifact_paths() {
   print -- "[dev] normalized SwiftPM binary artifact paths"
 }
 
+stop_dev_app_instances() {
+  /usr/bin/osascript -e 'tell application id "com.duxweb.codux.dev" to quit' >/dev/null 2>&1 || true
+  sleep 1
+
+  local stale_pids
+  stale_pids="$(pgrep -f "${app_dir}/Contents/MacOS/Codux" 2>/dev/null || true)"
+  if [[ -n "${stale_pids}" ]]; then
+    kill ${=stale_pids} >/dev/null 2>&1 || true
+    sleep 1
+  fi
+}
+
 build_app() {
   mkdir -p "${build_dir}"
   normalize_package_artifact_paths
   rm -rf "${build_dir}/Build" "${build_dir}/Logs"
-  rm -rf "${built_app_dir}" "${app_dir}"
+  rm -rf "${built_app_dir}"
   mkdir -p "${build_products_dir}"
 
   xcodebuild \
@@ -98,7 +110,7 @@ build_app() {
 }
 
 install_dev_bundle() {
-  pkill -x Codux >/dev/null 2>&1 || true
+  stop_dev_app_instances
   mkdir -p "${dev_apps_dir}"
   rm -rf "${app_dir}"
   cp -R "${built_app_dir}" "${app_dir}"

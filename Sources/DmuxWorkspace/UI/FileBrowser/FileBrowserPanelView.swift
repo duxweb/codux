@@ -127,24 +127,29 @@ final class ProjectFileBrowserStore {
         pendingDeletePaths.count
     }
 
-    func openPreview(_ item: ProjectFileItem) {
+    func openPreview(_ item: ProjectFileItem, editorTheme: ProjectFileEditorTheme) {
         guard item.isDirectory == false else { return }
         selectedPath = item.id
         switch service.openMode(for: item.url) {
         case .codePreview:
-            ProjectFilePreviewWindowPresenter.show(fileURL: item.url, rootURL: rootURL ?? item.url.deletingLastPathComponent())
+            ProjectFilePreviewWindowPresenter.show(
+                fileURL: item.url,
+                rootURL: rootURL ?? item.url.deletingLastPathComponent(),
+                editorTheme: editorTheme
+            )
         case .systemApplication:
             NSWorkspace.shared.open(item.url)
         }
     }
 
-    func edit(_ item: ProjectFileItem) {
+    func edit(_ item: ProjectFileItem, editorTheme: ProjectFileEditorTheme) {
         guard item.isDirectory == false else { return }
         selectedPath = item.id
         ProjectFilePreviewWindowPresenter.show(
             fileURL: item.url,
             rootURL: rootURL ?? item.url.deletingLastPathComponent(),
-            startsEditing: true
+            startsEditing: true,
+            editorTheme: editorTheme
         )
     }
 
@@ -480,6 +485,13 @@ struct FileBrowserPanelView: View {
     @State private var isKeyboardActive = false
     @State private var keyboardFocusToken = 0
 
+    private var currentEditorTheme: ProjectFileEditorTheme {
+        ProjectFileEditorTheme(
+            appearance: model.terminalAppearance,
+            fontSize: model.appSettings.terminalFontSize
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -604,8 +616,8 @@ struct FileBrowserPanelView: View {
                             focus: { activateFileBrowserKeyboard() },
                             select: { store.select(row.item) },
                             toggle: { store.toggle(row.item) },
-                            openPreview: { store.openPreview(row.item) },
-                            edit: { store.edit(row.item) },
+                            openPreview: { store.openPreview(row.item, editorTheme: currentEditorTheme) },
+                            edit: { store.edit(row.item, editorTheme: currentEditorTheme) },
                             insertPathIntoTerminal: { model.insertPathIntoCurrentTerminal(row.item.url) },
                             copyPath: { store.copyPath(row.item) },
                             copyFile: { store.copyFile(row.item) },

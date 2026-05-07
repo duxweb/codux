@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-05-07
+
+### Added
+
+- Added an editable CodeMirror-based file preview window with syntax highlighting, save/copy/paste/undo/redo/find controls, unsaved-change protection, and theme-aware chrome.
+- Added virtual read-only preview support for very large text files so large files can be opened without rendering the entire file into SwiftUI.
+
+### Changed
+
+- Refined the memory manager tabs into Summary, Memories, and History, with memory entries grouped by type so compacted memories remain visible instead of making core/working views look empty.
+- Improved Git side-by-side diff previews so long lines scroll inside each column, without whole-window horizontal scrolling or line-number drift.
+- Shared the terminal minimum bottom-pane height through one model constant to keep split layout restoration consistent.
+- Isolated AI hook configuration writes during tests so test runs no longer touch the user's real tool configuration files.
+
+### Fixed
+
+- Fixed file preview editing so files open directly in editable mode and save back to the original project file.
+- Fixed diff preview windows so `Command-W` closes them like normal app windows.
+- Removed the obsolete file preview "Edit Mode" localization after the editor became always editable.
+
 ## [0.9.5] - 2026-05-06
 
 ### Added

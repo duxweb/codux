@@ -424,7 +424,7 @@ struct PersistenceService {
             topSessionIDs: finalTopSessionIDs,
             topPaneRatios: workspace.topPaneRatios,
             bottomTabSessionIDs: finalBottomSessionIDs,
-            bottomPaneHeight: max(180, workspace.bottomPaneHeight),
+            bottomPaneHeight: max(ProjectWorkspace.minimumBottomPaneHeight, workspace.bottomPaneHeight),
             selectedSessionID: selectedSessionID,
             selectedBottomTabSessionID: selectedBottomTabSessionID,
             sessions: sessions

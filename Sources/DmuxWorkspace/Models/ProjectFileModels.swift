@@ -17,6 +17,7 @@ struct ProjectFileRow: Identifiable, Equatable {
 
 enum ProjectFilePreviewState: Equatable {
     case text(NSAttributedString)
+    case largeText(ProjectLargeFilePreview)
     case message(String)
 }
 
@@ -24,4 +25,11 @@ struct ProjectFilePreview {
     var title: String
     var subtitle: String
     var state: ProjectFilePreviewState
+}
+
+struct ProjectLargeFilePreview: Equatable {
+    var totalBytes: UInt64
+    var estimatedLineCount: Int
+    var averageBytesPerLine: Double
+    var message: String
 }
