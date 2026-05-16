@@ -47,6 +47,18 @@ struct WorktreeTaskDialogResult: Equatable {
     var taskTitle: String
 }
 
+struct AgentSplitDialogState: Equatable {
+    var title: String
+    var message: String
+    var confirmTitle: String
+    var tools: [AgentToolKind]
+    var selectedTool: AgentToolKind
+}
+
+struct AgentSplitDialogResult: Equatable {
+    var tool: AgentToolKind
+}
+
 enum ConfirmDialogResult {
     case primary
     case secondary
@@ -119,6 +131,14 @@ enum WorktreeTaskPanelPresenter {
     @MainActor
     static func present(dialog: WorktreeTaskDialogState, parentWindow: NSWindow, completion: @escaping (WorktreeTaskDialogResult?) -> Void) {
         let controller = WorktreeTaskPanelController(dialog: dialog)
+        controller.beginSheet(for: parentWindow, completion: completion)
+    }
+}
+
+enum AgentSplitDialogPresenter {
+    @MainActor
+    static func present(dialog: AgentSplitDialogState, parentWindow: NSWindow, completion: @escaping (AgentSplitDialogResult?) -> Void) {
+        let controller = AgentSplitPanelController(dialog: dialog)
         controller.beginSheet(for: parentWindow, completion: completion)
     }
 }

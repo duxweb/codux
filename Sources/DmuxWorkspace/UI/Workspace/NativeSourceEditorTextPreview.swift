@@ -70,6 +70,7 @@ struct NativeSourceEditorTextPreview: View {
             coordinators: [coordinator]
         )
         .background(Color(nsColor: editorTheme.sourceEditorTheme.background))
+        .clipped()
         .onAppear {
             coordinator.configure(onFocused: onFocused, onSaveRequested: onSaveRequested)
             onDirtyChanged(false)
@@ -137,6 +138,7 @@ private final class NativeSourceEditorCoordinator: NSObject, @preconcurrency Tex
 
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
+        constrainLoadedEditorToBounds(controller)
         if let pendingText {
             replaceText(pendingText)
             self.pendingText = nil
@@ -149,6 +151,7 @@ private final class NativeSourceEditorCoordinator: NSObject, @preconcurrency Tex
 
     func controllerDidAppear(controller: TextViewController) {
         self.controller = controller
+        constrainLoadedEditorToBounds(controller)
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
@@ -215,6 +218,24 @@ private final class NativeSourceEditorCoordinator: NSObject, @preconcurrency Tex
     private func copyText(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+    }
+
+    private func constrainLoadedEditorToBounds(_ controller: TextViewController) {
+        guard controller.isViewLoaded else {
+            return
+        }
+        let views: [NSView] = [
+            controller.view,
+            controller.scrollView,
+            controller.scrollView.contentView,
+            controller.scrollView.documentView
+        ].compactMap { $0 }
+
+        for view in views {
+            view.clipsToBounds = true
+            view.wantsLayer = true
+            view.layer?.masksToBounds = true
+        }
     }
 }
 

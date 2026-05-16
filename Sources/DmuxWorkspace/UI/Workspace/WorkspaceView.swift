@@ -92,11 +92,13 @@ private struct WorkspaceFilesContentView: View {
                                 .allowsHitTesting(isSelected)
                         }
                     }
+                    .clipped()
                 } else {
                     WorkspaceFilesEmptyStateView(model: model)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
         .background(model.terminalChromeColor)
     }

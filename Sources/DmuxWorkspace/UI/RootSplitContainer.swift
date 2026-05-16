@@ -115,6 +115,7 @@ final class TerminalHorizontalSplitController: NSViewController, NSSplitViewDele
     private var rightPanelWidthConstraint: NSLayoutConstraint?
     private var isApplyingLayout = false
     private var lastAppliedLayoutSignature: AppliedLayoutSignature?
+    private var lastPanelVisibility: Bool?
     private var collapsedRightPanelSize = NSSize(width: 0, height: 0)
     private let workspaceCornerRadius: CGFloat = 22
 
@@ -270,10 +271,14 @@ final class TerminalHorizontalSplitController: NSViewController, NSSplitViewDele
         workspaceBorderView.strokeColor = .separatorColor
         rightPanelTopBorder.lineColor = .separatorColor
         let isPanelVisible = rightPanel != nil
+        let panelVisibilityChanged = lastPanelVisibility != isPanelVisible
+        if isPanelVisible {
+            rightPanelContainer.isHidden = false
+            rightPanelHosting.view.isHidden = false
+        }
         splitView.customDividerColor = isPanelVisible ? .separatorColor : .clear
         splitView.showsCustomDivider = isPanelVisible
         splitView.isDividerInteractive = isPanelVisible
-        rightPanelHosting.view.alphaValue = isPanelVisible ? 1 : 0
         rightPanelTopBorder.isHidden = !isPanelVisible
         rightPanelLeftBorder.isHidden = true
 
@@ -307,6 +312,10 @@ final class TerminalHorizontalSplitController: NSViewController, NSSplitViewDele
 
         guard shouldApplyFrames else {
             splitView.needsDisplay = true
+            if panelVisibilityChanged {
+                splitView.window?.invalidateCursorRects(for: splitView)
+            }
+            lastPanelVisibility = isPanelVisible
             return
         }
 
@@ -316,10 +325,16 @@ final class TerminalHorizontalSplitController: NSViewController, NSSplitViewDele
         if !isPanelVisible {
             collapsedRightPanelSize.height = splitView.bounds.height
             rightPanelContainer.setFrameSize(collapsedRightPanelSize)
+            rightPanelHosting.view.isHidden = true
+            rightPanelContainer.isHidden = true
         }
 
         splitView.adjustSubviews()
         splitView.needsDisplay = true
+        if panelVisibilityChanged {
+            splitView.window?.invalidateCursorRects(for: splitView)
+        }
+        lastPanelVisibility = isPanelVisible
         lastAppliedLayoutSignature = signature
     }
 
@@ -343,16 +358,31 @@ final class TerminalHorizontalSplitController: NSViewController, NSSplitViewDele
     }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        guard model.rightPanel != nil else {
+            return splitView.bounds.width
+        }
         let totalWidth = splitView.bounds.width
         return max(520, totalWidth - 560)
     }
 
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        splitView.bounds.width - 280
+        guard model.rightPanel != nil else {
+            return splitView.bounds.width
+        }
+        return splitView.bounds.width - 280
     }
 
     func splitView(_ splitView: NSSplitView, additionalEffectiveRectOfDividerAt dividerIndex: Int) -> NSRect {
-        splitView.coduxExpandedDividerRect(at: dividerIndex)
+        guard model.rightPanel != nil,
+              let splitView = splitView as? DividerStyledHorizontalSplitView,
+              splitView.isDividerInteractive else {
+            return .zero
+        }
+        return splitView.coduxExpandedDividerRect(at: dividerIndex)
+    }
+
+    func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
+        model.rightPanel == nil
     }
 }
 
@@ -510,6 +540,10 @@ final class DividerStyledHorizontalSplitView: NSSplitView, CoduxSplitDividerHitR
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
+        guard isDividerInteractive else {
+            let hitView = super.hitTest(point)
+            return hitView === self ? nil : hitView
+        }
         if isDividerInteractive, pointIsInsideExpandedDivider(point) {
             return self
         }
@@ -517,6 +551,9 @@ final class DividerStyledHorizontalSplitView: NSSplitView, CoduxSplitDividerHitR
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard isDividerInteractive else {
+            return
+        }
         let point = convert(event.locationInWindow, from: nil)
         guard isDividerInteractive, pointIsInsideExpandedDivider(point) else {
             super.mouseDown(with: event)
@@ -529,6 +566,10 @@ final class DividerStyledHorizontalSplitView: NSSplitView, CoduxSplitDividerHitR
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard isDividerInteractive else {
+            NSCursor.arrow.set()
+            return
+        }
         let point = convert(event.locationInWindow, from: nil)
         if isDividerInteractive, pointIsInsideExpandedDivider(point) {
             dividerCursor.set()
@@ -538,6 +579,10 @@ final class DividerStyledHorizontalSplitView: NSSplitView, CoduxSplitDividerHitR
     }
 
     override func cursorUpdate(with event: NSEvent) {
+        guard isDividerInteractive else {
+            NSCursor.arrow.set()
+            return
+        }
         let point = convert(event.locationInWindow, from: nil)
         if isDividerInteractive, pointIsInsideExpandedDivider(point) {
             dividerCursor.set()
@@ -547,6 +592,9 @@ final class DividerStyledHorizontalSplitView: NSSplitView, CoduxSplitDividerHitR
     }
 
     override func resetCursorRects() {
+        guard isDividerInteractive else {
+            return
+        }
         super.resetCursorRects()
         for region in coduxSplitDividerHitRegions() {
             addCursorRect(region.rect, cursor: region.cursor)

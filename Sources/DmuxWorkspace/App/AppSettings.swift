@@ -53,6 +53,7 @@ struct AppSettings: Codable, Equatable {
     var aiStatisticsDisplayMode: AppAIStatisticsDisplayMode = .normalized
     var sleepPreventionMode: AppSleepPreventionMode = .off
     var developer = AppDeveloperSettings()
+    var experiments = AppExperimentalSettings()
     var shortcuts = AppShortcutConfiguration.defaults
     var pet = AppPetSettings()
     var remote = AppRemoteSettings()
@@ -76,6 +77,7 @@ struct AppSettings: Codable, Equatable {
         case aiStatisticsDisplayMode
         case sleepPreventionMode
         case developer
+        case experiments
         case shortcuts
         case pet
         case remote
@@ -105,6 +107,7 @@ struct AppSettings: Codable, Equatable {
         aiStatisticsDisplayMode = try container.decodeIfPresent(AppAIStatisticsDisplayMode.self, forKey: .aiStatisticsDisplayMode) ?? .normalized
         sleepPreventionMode = try container.decodeIfPresent(AppSleepPreventionMode.self, forKey: .sleepPreventionMode) ?? .off
         developer = try container.decodeIfPresent(AppDeveloperSettings.self, forKey: .developer) ?? .init()
+        experiments = try container.decodeIfPresent(AppExperimentalSettings.self, forKey: .experiments) ?? .init()
         shortcuts = (try container.decodeIfPresent(AppShortcutConfiguration.self, forKey: .shortcuts) ?? .defaults)
             .migratedFromLegacyDefaultsIfNeeded()
         pet = try container.decodeIfPresent(AppPetSettings.self, forKey: .pet) ?? .init()
@@ -129,6 +132,7 @@ struct AppSettings: Codable, Equatable {
         try container.encode(aiStatisticsDisplayMode, forKey: .aiStatisticsDisplayMode)
         try container.encode(sleepPreventionMode, forKey: .sleepPreventionMode)
         try container.encode(developer, forKey: .developer)
+        try container.encode(experiments, forKey: .experiments)
         try container.encode(shortcuts, forKey: .shortcuts)
         try container.encode(pet, forKey: .pet)
         try container.encode(remote, forKey: .remote)

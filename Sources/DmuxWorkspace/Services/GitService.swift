@@ -472,6 +472,44 @@ struct GitService {
         }
     }
 
+    func discardWorktreeReviewFile(_ filePath: String, at path: String) throws {
+        let trimmedPath = filePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else {
+            return
+        }
+        _ = try safeRepositoryFileURL(relativePath: trimmedPath, repositoryPath: path)
+        guard let state = try repositoryState(at: path) else {
+            throw GitServiceError.commandFailed(
+                String(localized: "git.empty.not_repository", defaultValue: "Current Directory Is Not a Git Repository", bundle: .module)
+            )
+        }
+
+        let entries = (state.staged + state.changes + state.untracked).filter { $0.path == trimmedPath }
+        guard !entries.isEmpty else {
+            return
+        }
+        if entries.contains(where: { $0.kind == .staged || $0.kind == .changed }) {
+            _ = try runGit(["restore", "--staged", "--worktree", "--", trimmedPath], at: path, allowEmptyOutput: true)
+        }
+        if entries.contains(where: { $0.kind == .untracked }) {
+            _ = try runGit(["clean", "-fd", "--", trimmedPath], at: path, allowEmptyOutput: true)
+        }
+    }
+
+    func discardWorkingTreeChanges(at path: String) throws {
+        guard let state = try repositoryState(at: path) else {
+            throw GitServiceError.commandFailed(
+                String(localized: "git.empty.not_repository", defaultValue: "Current Directory Is Not a Git Repository", bundle: .module)
+            )
+        }
+        if state.hasStagedChanges || !state.changes.isEmpty {
+            _ = try runGit(["restore", "--staged", "--worktree", "--", "."], at: path, allowEmptyOutput: true)
+        }
+        if !state.untracked.isEmpty {
+            _ = try runGit(["clean", "-fd"], at: path, allowEmptyOutput: true)
+        }
+    }
+
     func appendToGitignore(_ paths: [String], at repositoryPath: String) throws {
         guard !paths.isEmpty else { return }
         let gitignoreURL = URL(fileURLWithPath: repositoryPath).appendingPathComponent(".gitignore")

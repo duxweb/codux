@@ -645,6 +645,64 @@ extension AppModel {
         mergeReviewedWorktree(removeAfterMerge: removeAfterMerge, deleteBranchAfterMerge: false)
     }
 
+    func discardSelectedReviewFile() {
+        guard let worktreeID = selectedWorktreeReviewID,
+              let worktree = worktrees.first(where: { $0.id == worktreeID }),
+              let filePath = selectedWorktreeReviewFileID else {
+            statusMessage = String(localized: "worktree.review.select_file", defaultValue: "Select a changed file to compare.", bundle: .module)
+            return
+        }
+        guard let parentWindow = presentationWindow() else {
+            statusMessage = String(localized: "app.window.main_missing", defaultValue: "Unable to find the main window.", bundle: .module)
+            return
+        }
+
+        let dialog = ConfirmDialogState(
+            title: String(localized: "agent.discard_file.title", defaultValue: "Discard File Change", bundle: .module),
+            message: String(
+                format: String(localized: "agent.discard_file.message_format", defaultValue: "Discard uncommitted changes in %@?", bundle: .module),
+                filePath
+            ),
+            icon: "arrow.uturn.backward.circle",
+            iconColor: AppTheme.warning,
+            primaryTitle: String(localized: "git.files.discard_changes", defaultValue: "Discard Changes", bundle: .module),
+            primaryTint: AppTheme.warning,
+            cancelTitle: String(localized: "common.cancel", defaultValue: "Cancel", bundle: .module)
+        )
+
+        ConfirmDialogPresenter.present(dialog: dialog, parentWindow: parentWindow) { [weak self] result in
+            guard let self, result == .primary else { return }
+            self.performDiscardReviewFile(filePath, worktree: worktree)
+        }
+    }
+
+    func discardAllReviewChanges() {
+        guard let worktreeID = selectedWorktreeReviewID,
+              let worktree = worktrees.first(where: { $0.id == worktreeID }) else {
+            statusMessage = String(localized: "worktree.not_found", defaultValue: "Worktree not found.", bundle: .module)
+            return
+        }
+        guard let parentWindow = presentationWindow() else {
+            statusMessage = String(localized: "app.window.main_missing", defaultValue: "Unable to find the main window.", bundle: .module)
+            return
+        }
+
+        let dialog = ConfirmDialogState(
+            title: String(localized: "agent.discard_all.title", defaultValue: "Discard All Changes", bundle: .module),
+            message: String(localized: "agent.discard_all.message", defaultValue: "Discard all uncommitted changes in this worktree?", bundle: .module),
+            icon: "arrow.uturn.backward.circle",
+            iconColor: AppTheme.warning,
+            primaryTitle: String(localized: "git.files.discard_all", defaultValue: "Discard All", bundle: .module),
+            primaryTint: AppTheme.warning,
+            cancelTitle: String(localized: "common.cancel", defaultValue: "Cancel", bundle: .module)
+        )
+
+        ConfirmDialogPresenter.present(dialog: dialog, parentWindow: parentWindow) { [weak self] result in
+            guard let self, result == .primary else { return }
+            self.performDiscardAllReviewChanges(worktree: worktree)
+        }
+    }
+
     func mergeReviewedWorktree(removeAfterMerge: Bool, deleteBranchAfterMerge: Bool) {
         guard let worktreeID = selectedWorktreeReviewID,
               let worktree = worktrees.first(where: { $0.id == worktreeID }),
@@ -721,6 +779,48 @@ extension AppModel {
                     removeAfterMerge: false,
                     deleteBranchAfterMerge: false
                 )
+            }
+        }
+    }
+
+    private func performDiscardReviewFile(_ filePath: String, worktree: ProjectWorktree) {
+        statusMessage = String(localized: "agent.discard.running", defaultValue: "Discarding changes.", bundle: .module)
+        Task.detached(priority: .userInitiated) {
+            let service = GitService()
+            do {
+                try service.discardWorktreeReviewFile(filePath, at: worktree.path)
+                await MainActor.run {
+                    self.refreshGitState()
+                    self.refreshWorktreeGitSummaries()
+                    self.refreshWorktreeReview()
+                    self.statusMessage = String(localized: "agent.discard_file.success", defaultValue: "Discarded file change.", bundle: .module)
+                }
+            } catch {
+                await MainActor.run {
+                    self.statusMessage = error.localizedDescription
+                    self.refreshWorktreeReview()
+                }
+            }
+        }
+    }
+
+    private func performDiscardAllReviewChanges(worktree: ProjectWorktree) {
+        statusMessage = String(localized: "agent.discard.running", defaultValue: "Discarding changes.", bundle: .module)
+        Task.detached(priority: .userInitiated) {
+            let service = GitService()
+            do {
+                try service.discardWorkingTreeChanges(at: worktree.path)
+                await MainActor.run {
+                    self.refreshGitState()
+                    self.refreshWorktreeGitSummaries()
+                    self.refreshWorktreeReview()
+                    self.statusMessage = String(localized: "agent.discard_all.success", defaultValue: "Discarded all changes.", bundle: .module)
+                }
+            } catch {
+                await MainActor.run {
+                    self.statusMessage = error.localizedDescription
+                    self.refreshWorktreeReview()
+                }
             }
         }
     }

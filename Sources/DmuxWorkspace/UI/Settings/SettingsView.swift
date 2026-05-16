@@ -9,6 +9,7 @@ enum SettingsSectionTab: String, CaseIterable, Identifiable {
     case notifications
     case remote
     case shortcuts
+    case experiments
     case developer
 
     var id: String { rawValue }
@@ -22,6 +23,7 @@ enum SettingsSectionTab: String, CaseIterable, Identifiable {
         case .notifications: return "bell.badge"
         case .remote: return "iphone.radiowaves.left.and.right"
         case .shortcuts: return "keyboard"
+        case .experiments: return "flask"
         case .developer: return "wrench.and.screwdriver"
         }
     }
@@ -42,6 +44,8 @@ enum SettingsSectionTab: String, CaseIterable, Identifiable {
             return 640
         case .shortcuts:
             return 320
+        case .experiments:
+            return 240
         case .developer:
             return 220
         }
@@ -145,6 +149,12 @@ struct SettingsView: View {
                     Label(String(localized: "settings.tab.shortcuts", defaultValue: "Shortcuts", bundle: .module), systemImage: SettingsSectionTab.shortcuts.symbol)
                 }
                 .tag(SettingsSectionTab.shortcuts)
+
+            ExperimentSettingsPane(model: model)
+                .tabItem {
+                    Label(String(localized: "settings.tab.experiments", defaultValue: "Experiments", bundle: .module), systemImage: SettingsSectionTab.experiments.symbol)
+                }
+                .tag(SettingsSectionTab.experiments)
 
             DeveloperSettingsPane(model: model)
                 .tabItem {

@@ -180,7 +180,9 @@ final class TaskMemoTests: XCTestCase {
             cwd: project.path,
             shell: project.shell,
             command: project.shell,
-            previewLines: []
+            previewLines: [],
+            launchMode: .terminal,
+            agentTool: nil
         )
     }
 }

@@ -195,6 +195,7 @@ struct WorkspaceFileEditorView: View {
                 onSaveRequested: requestSave
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         case .largeText(_):
             VStack(spacing: 10) {
                 Image(systemName: "doc.text.magnifyingglass")

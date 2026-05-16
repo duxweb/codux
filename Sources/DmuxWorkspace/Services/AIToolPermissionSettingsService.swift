@@ -17,7 +17,8 @@ struct AIToolPermissionSettingsService {
             codexModel: settings.codexModel,
             claudeCodeModel: settings.claudeCodeModel,
             geminiModel: settings.geminiModel,
-            opencodeModel: settings.opencodeModel
+            opencodeModel: settings.opencodeModel,
+            codexEffort: settings.codexEffort.codexValue
         )
 
         do {
@@ -45,5 +46,6 @@ struct AIToolPermissionSettingsService {
         let claudeCodeModel: String
         let geminiModel: String
         let opencodeModel: String
+        let codexEffort: String
     }
 }

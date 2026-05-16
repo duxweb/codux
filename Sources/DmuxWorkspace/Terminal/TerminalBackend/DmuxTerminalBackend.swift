@@ -51,6 +51,7 @@ protocol DmuxTerminalBackendRegistry: AnyObject {
     func forwardScrollWheel(_ event: NSEvent, responder: NSResponder?) -> Bool
     func focusedSessionID() -> UUID?
     func clearFocusedSession()
+    func resignFocusedTerminal(in window: NSWindow?)
     func clearFocusedSessionIfOutside(_ sessionIDs: Set<UUID>, in window: NSWindow?)
     func ownsResponder(_ responder: NSResponder?) -> Bool
 }

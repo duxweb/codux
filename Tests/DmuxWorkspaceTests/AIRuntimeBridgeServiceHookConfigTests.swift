@@ -71,7 +71,7 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
         XCTAssertFalse(commands.contains(where: { $0.contains("'codux-dev'") }))
     }
 
-    func testStrippedManagedHookGroupsStripsLegacyGeminiHookForDifferentOwner() {
+    func testStrippedManagedHookGroupsPreservesLegacyGeminiHookForDifferentOwner() {
         let service = AIRuntimeBridgeService()
         let helperURL = URL(fileURLWithPath: "/tmp/new-runtime-hooks/dmux-ai-state.sh")
         let existingValue: [[String: Any]] = [[
@@ -104,7 +104,48 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
         let hooks = stripped.first?["hooks"] as? [[String: Any]]
         let commands = hooks?.compactMap { $0["command"] as? String } ?? []
 
-        XCTAssertEqual(commands, ["echo user-hook"])
+        XCTAssertEqual(commands.count, 2)
+        XCTAssertTrue(commands.contains("echo user-hook"))
+        XCTAssertTrue(commands.contains(where: { $0.contains("'codux'") }))
+    }
+
+    func testStrippedManagedHookGroupsPreservesHookForOtherOwnerWhenOwnerArgumentExists() {
+        let service = AIRuntimeBridgeService()
+        let helperURL = URL(fileURLWithPath: "/tmp/new-runtime-hooks/dmux-ai-state.sh")
+        let existingValue: [[String: Any]] = [[
+            "matcher": "",
+            "hooks": [
+                [
+                    "type": "command",
+                    "command": "'/tmp/old-runtime-hooks/dmux-ai-state.sh' 'codex-session-start' 'codux' 'codex'",
+                    "statusMessage": "dmux codex live",
+                    "timeout": 1000,
+                ],
+                [
+                    "type": "command",
+                    "command": "'/tmp/new-runtime-hooks/dmux-ai-state.sh' 'codex-session-start' 'codux-dev' 'codex'",
+                    "statusMessage": "dmux codex live",
+                    "timeout": 1000,
+                ],
+            ],
+        ]]
+
+        let stripped = service.strippedManagedHookGroups(
+            existingValue: existingValue,
+            action: "codex-session-start",
+            tool: "codex",
+            owner: "codux-dev",
+            helperScriptURL: helperURL,
+            statusMessage: "dmux codex live",
+            stripAnyManagedHookForAction: true
+        )
+
+        let hooks = stripped.first?["hooks"] as? [[String: Any]]
+        let commands = hooks?.compactMap { $0["command"] as? String } ?? []
+
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertTrue(commands.first?.contains("'codux'") == true)
+        XCTAssertFalse(commands.contains(where: { $0.contains("'codux-dev'") }))
     }
 
     func testStrippedManagedHookGroupsDoesNotStripLegacyHookForOtherTool() {
@@ -275,7 +316,7 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
 
     func testCodexCommandHookTrustHashMatchesCodexCanonicalHash() {
         let service = AIRuntimeBridgeService()
-        let helperPath = "/Users/lixinhua/Library/Application Support/Codux-dev/runtime-support/runtime-hooks/dmux-ai-state.sh"
+        let helperPath = "/Users/example/Library/Application Support/Codux-dev/runtime-support/runtime-hooks/dmux-ai-state.sh"
         let permissionCommand = "'\(helperPath)' 'codex-permission-request' 'codux-dev' 'codex'"
 
         let permissionHash = service.codexCommandHookTrustHash(
@@ -288,7 +329,7 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
 
         XCTAssertEqual(
             permissionHash,
-            "sha256:5751fbd5c0791a1f73c1e753ef07003ef86c311f7fc665d484578d6ad088a553"
+            "sha256:c1df5e75c4a97ad94cb14fa27127c615a62a88971f9aa833b9b7917405c322c6"
         )
 
         let stopHash = service.codexCommandHookTrustHash(
@@ -300,7 +341,7 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
         )
         XCTAssertEqual(
             stopHash,
-            "sha256:fa7a60c7aeccf818931c78e2495ddcb603af0ef12968a49eea1833d175eff9ef"
+            "sha256:62d4094e4a52a3cd77fcac387e3852a40703b1c00285dac61f3052289da0a936"
         )
 
         let promptHash = service.codexCommandHookTrustHash(
@@ -312,7 +353,7 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
         )
         XCTAssertEqual(
             promptHash,
-            "sha256:c769c7426f00b21431139a62f27940030523341468a4c9b08564ddacecd4730d"
+            "sha256:f9f2220dfc797239e828bea9cf3af841b905e00d733169d6df92b6e69b1c9294"
         )
     }
 
@@ -360,6 +401,59 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
         XCTAssertTrue(labels.contains(where: { $0.contains(":user_prompt_submit:") }))
         XCTAssertFalse(labels.contains(where: { $0.contains(":session_end:") }))
         XCTAssertTrue(states.allSatisfy { $0.trustedHash.hasPrefix("sha256:") })
+    }
+
+    func testManagedCodexHookTrustStatesIncludesOtherManagedOwners() {
+        let service = AIRuntimeBridgeService()
+        let helperURL = URL(fileURLWithPath: "/tmp/runtime-hooks/dmux-ai-state.sh")
+        let root: [String: Any] = [
+            "hooks": [
+                "SessionStart": [[
+                    "matcher": "",
+                    "hooks": [
+                        [
+                            "type": "command",
+                            "command": service.hookCommand(
+                                helperScriptURL: helperURL,
+                                action: "codex-session-start",
+                                owner: "codux",
+                                tool: "codex"
+                            ),
+                            "statusMessage": "dmux codex live",
+                            "timeout": 1000,
+                        ],
+                        [
+                            "type": "command",
+                            "command": service.hookCommand(
+                                helperScriptURL: helperURL,
+                                action: "codex-session-start",
+                                owner: "codux-dev",
+                                tool: "codex"
+                            ),
+                            "statusMessage": "dmux codex live",
+                            "timeout": 1000,
+                        ],
+                        [
+                            "type": "command",
+                            "command": "echo user-hook",
+                            "timeout": 1000,
+                        ],
+                    ],
+                ]],
+            ],
+        ]
+
+        let states = service.managedCodexHookTrustStates(from: root)
+        let labels = states.map(\.key).sorted()
+
+        XCTAssertEqual(states.count, 2)
+        XCTAssertEqual(
+            labels,
+            [
+                "\(service.codexHooksFileURL().path):session_start:0:0",
+                "\(service.codexHooksFileURL().path):session_start:0:1",
+            ]
+        )
     }
 
     func testInstallCodexHooksIncludesLifecyclePermissionEventsAndRemovesToolHooks() {
@@ -422,8 +516,10 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
         XCTAssertNil(hooksObject["SessionEnd"])
     }
 
-    func testInstallCodexHooksStripsLegacyManagedHooksForOtherOwners() {
+    func testInstallCodexHooksPreservesOtherOwnersAndUpdatesCurrentOwner() {
         let service = AIRuntimeBridgeService()
+        let currentOwner = AppRuntimePaths.runtimeOwnerID()
+        let otherOwner = currentOwner == "codux" ? "codux-dev" : "codux"
         var root: [String: Any] = [
             "hooks": [
                 "SessionStart": [[
@@ -431,7 +527,13 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
                     "hooks": [
                         [
                             "type": "command",
-                            "command": "'/tmp/old-runtime-hooks/dmux-ai-state.sh' 'codex-session-start' 'codux' 'codex'",
+                            "command": "'/tmp/old-runtime-hooks/dmux-ai-state.sh' 'codex-session-start' '\(otherOwner)' 'codex'",
+                            "statusMessage": "dmux codex live",
+                            "timeout": 1000,
+                        ],
+                        [
+                            "type": "command",
+                            "command": "'/tmp/old-runtime-hooks/dmux-ai-state.sh' 'codex-session-start' '\(currentOwner)' 'codex'",
                             "statusMessage": "dmux codex live",
                             "timeout": 1000,
                         ],
@@ -454,8 +556,15 @@ final class AIRuntimeBridgeServiceHookConfigTests: XCTestCase {
             .compactMap { $0["command"] as? String } ?? []
 
         XCTAssertTrue(commands.contains("echo user-hook"))
-        XCTAssertEqual(commands.filter { $0.contains("'codex-session-start'") }.count, 1)
-        XCTAssertFalse(commands.contains(where: { $0.contains("/tmp/old-runtime-hooks/dmux-ai-state.sh") }))
+        XCTAssertEqual(commands.filter { $0.contains("'codex-session-start'") }.count, 2)
+        XCTAssertTrue(commands.contains(where: { command in
+            command.contains("'\(otherOwner)'")
+                && command.contains("/tmp/old-runtime-hooks/dmux-ai-state.sh")
+        }))
+        XCTAssertTrue(commands.contains(where: { command in
+            command.contains("'\(currentOwner)'")
+                && command.contains("/tmp/old-runtime-hooks/dmux-ai-state.sh") == false
+        }))
     }
 
     func testToolConfigFileURLIsIsolatedDuringTests() {

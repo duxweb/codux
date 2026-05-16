@@ -899,3 +899,28 @@ struct DeveloperSettingsPane: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
+
+struct ExperimentSettingsPane: View {
+    let model: AppModel
+
+    var body: some View {
+        Form {
+            Section(String(localized: "settings.experiments.section.split", defaultValue: "Split Panes", bundle: .module)) {
+                Toggle(
+                    String(localized: "settings.experiments.agent_split", defaultValue: "Agent Split", bundle: .module),
+                    isOn: Binding(
+                        get: { model.appSettings.experiments.agentSplitEnabled },
+                        set: { model.updateAgentSplitExperimentEnabled($0) }
+                    )
+                )
+
+                Text(String(localized: "settings.experiments.agent_split.help", defaultValue: "When enabled, creating a split lets you choose Terminal or Agent. When disabled, splits are created as normal terminal panes.", bundle: .module))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}

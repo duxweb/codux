@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-05-16
+
+### Added
+
+- Added multi-worktree task workspaces with clearer main-task and subtask activity indicators, worktree review mode, merge/review actions, and safe discard controls for changed files.
+- Added an immersive file workspace backed by the native source editor, with top-level Terminal, Files, and Review view switching instead of opening edited files in separate windows.
+- Added an experimental structured Agent split option, disabled by default, for Codex, Claude Code, and OpenCode protocol-driven chat panes.
+
+### Changed
+
+- Refined split-pane layout behavior so launch defaults are stable, bottom pane sizing resets cleanly on startup, and user drags are kept in memory during the session.
+- Improved review comparison layout with three equal columns, editor clipping, clearer typography, and full-container sizing.
+- Reduced runtime polling and session refresh work while AI tasks are running, lowering repeated background updates during Codex sessions.
+
+### Fixed
+
+- Fixed shortcut and focus routing so file editor shortcuts stay with the editor, terminal shortcuts stay with terminals, and Agent input focus releases correctly when another split is selected.
+- Fixed divider hit areas and cursor behavior around horizontal, vertical, and hidden side panels.
+- Fixed Codex hook ownership handling so formal and dev builds do not overwrite each other's managed hooks while still updating the current owner.
+
 ## [0.9.10] - 2026-05-08
 
 ### Fixed

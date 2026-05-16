@@ -147,6 +147,53 @@ final class GitWatcherTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: nestedURL.path))
     }
 
+    func testDiscardWorktreeReviewFileDiscardsTrackedAndUntrackedChanges() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try runGit(["init"], at: root)
+        try runGit(["config", "user.name", "Codux Tests"], at: root)
+        try runGit(["config", "user.email", "codux-tests@example.com"], at: root)
+        try runGit(["checkout", "-b", "main"], at: root)
+        try "one\n".write(to: root.appendingPathComponent("Demo.txt"), atomically: true, encoding: .utf8)
+        try runGit(["add", "Demo.txt"], at: root)
+        try runGit(["commit", "-m", "Initial"], at: root)
+        try "two\n".write(to: root.appendingPathComponent("Demo.txt"), atomically: true, encoding: .utf8)
+        try "new\n".write(to: root.appendingPathComponent("New.txt"), atomically: true, encoding: .utf8)
+
+        let service = GitService()
+        try service.discardWorktreeReviewFile("Demo.txt", at: root.path)
+        try service.discardWorktreeReviewFile("New.txt", at: root.path)
+
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("Demo.txt"), encoding: .utf8), "one\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("New.txt").path))
+        XCTAssertEqual(try service.repositoryState(at: root.path)?.totalChanges, 0)
+    }
+
+    func testDiscardWorkingTreeChangesDiscardsAllTrackedAndUntrackedChanges() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try runGit(["init"], at: root)
+        try runGit(["config", "user.name", "Codux Tests"], at: root)
+        try runGit(["config", "user.email", "codux-tests@example.com"], at: root)
+        try runGit(["checkout", "-b", "main"], at: root)
+        try "one\n".write(to: root.appendingPathComponent("Demo.txt"), atomically: true, encoding: .utf8)
+        try runGit(["add", "Demo.txt"], at: root)
+        try runGit(["commit", "-m", "Initial"], at: root)
+        try "two\n".write(to: root.appendingPathComponent("Demo.txt"), atomically: true, encoding: .utf8)
+        try "new\n".write(to: root.appendingPathComponent("New.txt"), atomically: true, encoding: .utf8)
+
+        let service = GitService()
+        try service.discardWorkingTreeChanges(at: root.path)
+
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("Demo.txt"), encoding: .utf8), "one\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("New.txt").path))
+        XCTAssertEqual(try service.repositoryState(at: root.path)?.totalChanges, 0)
+    }
+
     func testWorktreeMergeConflictPreflightFindsConflictingPath() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

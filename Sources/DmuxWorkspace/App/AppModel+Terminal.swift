@@ -151,6 +151,7 @@ extension AppModel {
     }
 
     func selectSession(_ sessionID: UUID) {
+        let isAgentSession = selectedWorkspace?.session(for: sessionID)?.launchMode == .agent
         guard Self.shouldRefreshSelectionFocus(
             requestedSessionID: sessionID,
             selectedSessionID: selectedSessionID,
@@ -159,11 +160,51 @@ extension AppModel {
         ) else {
             return
         }
+        if isAgentSession {
+            selectAgentSession(sessionID)
+            return
+        }
         mutateSelectedWorkspace { workspace, _ in
             workspace.selectedSessionID = sessionID
+            resignTextResponderIfNeeded()
             terminalFocusRequestID = sessionID
             FileBrowserKeyboardFocusState.activateTerminal()
         }
+    }
+
+    func selectAgentSession(_ sessionID: UUID) {
+        guard let workspace = selectedWorkspace,
+              workspace.containsVisibleSession(sessionID),
+              workspace.session(for: sessionID)?.launchMode == .agent else {
+            return
+        }
+
+        let isBottomTab = workspace.bottomTabSessionIDs.contains(sessionID)
+        let isAlreadySelected = workspace.selectedSessionID == sessionID
+            && (!isBottomTab || workspace.selectedBottomTabSessionID == sessionID)
+            && terminalFocusRequestID == nil
+            && DmuxTerminalBackend.shared.registry.focusedSessionID() == nil
+        if isAlreadySelected {
+            FileBrowserKeyboardFocusState.clearFileBrowserIfNeeded()
+            FileBrowserKeyboardFocusState.clearWorkspaceFileEditor(tabID: nil)
+            DmuxTerminalBackend.shared.registry.resignFocusedTerminal(in: NSApp.keyWindow ?? NSApp.mainWindow)
+            return
+        }
+
+        if workspace.selectedSessionID != sessionID || (isBottomTab && workspace.selectedBottomTabSessionID != sessionID) {
+            mutateSelectedWorkspace { workspace, _ in
+                workspace.selectedSessionID = sessionID
+                if isBottomTab {
+                    workspace.selectedBottomTabSessionID = sessionID
+                }
+            }
+        }
+
+        terminalFocusRequestID = nil
+        FileBrowserKeyboardFocusState.clearFileBrowserIfNeeded()
+        FileBrowserKeyboardFocusState.clearWorkspaceFileEditor(tabID: nil)
+        DmuxTerminalBackend.shared.registry.resignFocusedTerminal(in: NSApp.keyWindow ?? NSApp.mainWindow)
+        terminalFocusRenderVersion &+= 1
     }
 
     func requestTerminalFocus(_ sessionID: UUID) {
@@ -176,6 +217,7 @@ extension AppModel {
     func selectBottomTabSession(_ sessionID: UUID) {
         guard let workspace = selectedWorkspace else { return }
         guard workspace.bottomTabSessionIDs.contains(sessionID) else { return }
+        let isAgentSession = workspace.session(for: sessionID)?.launchMode == .agent
         guard Self.shouldRefreshBottomTabSelection(
             requestedSessionID: sessionID,
             selectedSessionID: workspace.selectedSessionID,
@@ -185,9 +227,14 @@ extension AppModel {
         ) else {
             return
         }
+        if isAgentSession {
+            selectAgentSession(sessionID)
+            return
+        }
         mutateSelectedWorkspace { workspace, _ in
             workspace.selectedBottomTabSessionID = sessionID
             workspace.selectedSessionID = sessionID
+            resignTextResponderIfNeeded()
             terminalFocusRequestID = sessionID
             FileBrowserKeyboardFocusState.activateTerminal()
         }
@@ -359,6 +406,19 @@ extension AppModel {
     }
 
     func closeSession(_ sessionID: UUID) {
+        let sessionToClose = workspaces
+            .lazy
+            .compactMap { $0.session(for: sessionID) }
+            .first
+        let closesAgentSession = sessionToClose?.launchMode == .agent
+        if closesAgentSession {
+            stopAgentRun(sessionID: sessionID)
+            pendingAgentDriverEventFlushTasks[sessionID]?.cancel()
+            pendingAgentDriverEventFlushTasks.removeValue(forKey: sessionID)
+            pendingAgentDriverEvents.removeValue(forKey: sessionID)
+            agentSessionStates.removeValue(forKey: sessionID)
+            agentInputDrafts.removeValue(forKey: sessionID)
+        }
         noteTerminalLoadingState(sessionID, isLoading: false)
         removeTaskMemos(forSessionID: sessionID)
         if let placement = detachedTerminalPlacementBySessionID.removeValue(forKey: sessionID) {
@@ -376,7 +436,9 @@ extension AppModel {
                 projects: projects,
                 selectedSessionID: selectedSessionID
             )
-            DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
+            if closesAgentSession == false {
+                DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
+            }
             clearTerminalRecoveryState(for: sessionID)
             DetachedTerminalWindowPresenter.dismiss(sessionID: sessionID, restoreOnClose: false)
             statusMessage = String(localized: "terminal.closed", defaultValue: "Closed terminal.", bundle: .module)
@@ -422,7 +484,9 @@ extension AppModel {
             projects: projects,
             selectedSessionID: selectedSessionID
         )
-        DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
+        if closesAgentSession == false {
+            DmuxTerminalBackend.shared.registry.release(sessionID: sessionID)
+        }
         clearTerminalRecoveryState(for: sessionID)
         if didCreateReplacementSession == false {
             terminalFocusRenderVersion &+= 1
@@ -483,7 +547,15 @@ extension AppModel {
         persist()
     }
 
-    private func mutateSelectedWorkspace(_ transform: (inout ProjectWorkspace, Project) -> Void) {
+    private func resignTextResponderIfNeeded() {
+        let window = NSApp.keyWindow ?? NSApp.mainWindow
+        guard window?.firstResponder is NSTextView else {
+            return
+        }
+        window?.makeFirstResponder(nil)
+    }
+
+    func mutateSelectedWorkspace(_ transform: (inout ProjectWorkspace, Project) -> Void) {
         guard let selectedWorktreeID,
               let project = selectedProject,
               let index = workspaces.firstIndex(where: { $0.projectID == selectedWorktreeID }) else {
@@ -496,7 +568,7 @@ extension AppModel {
         persist()
     }
 
-    private func mutateWorkspace(projectID: UUID, _ transform: (inout ProjectWorkspace) -> Void) {
+    func mutateWorkspace(projectID: UUID, _ transform: (inout ProjectWorkspace) -> Void) {
         guard let index = workspaces.firstIndex(where: { $0.projectID == projectID }) else {
             return
         }

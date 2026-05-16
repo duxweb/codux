@@ -700,7 +700,9 @@ struct PersistenceService {
             cwd: sanitizedCWD,
             shell: sanitizedShell,
             command: session.command,
-            previewLines: session.previewLines
+            previewLines: session.previewLines,
+            launchMode: session.launchMode,
+            agentTool: session.agentTool
         )
     }
 

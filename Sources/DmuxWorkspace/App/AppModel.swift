@@ -116,6 +116,7 @@ final class AppModel {
     private let runtimePollingService = AIRuntimePollingService.shared
     private let terminalProcessInspector = TerminalProcessInspector()
     let toolDriverFactory = AIToolDriverFactory.shared
+    let agentDriverFactory = AgentDriverFactory.shared
     let debugLog = AppDebugLog.shared
     var selectedProjectIDChangeSource = "init"
     var appActivationObservers: [NSObjectProtocol] = []
@@ -150,6 +151,11 @@ final class AppModel {
     var selectedWorktreeReviewFileID: String?
     var worktreeReviewSnapshot: WorktreeReviewSnapshot?
     var isLoadingWorktreeReview = false
+    var agentSessionStates: [UUID: AgentSessionState] = [:]
+    var agentRunTasks: [UUID: Task<Void, Never>] = [:]
+    var agentInputDrafts: [UUID: String] = [:]
+    @ObservationIgnored var pendingAgentDriverEvents: [UUID: [AgentDriverEvent]] = [:]
+    @ObservationIgnored var pendingAgentDriverEventFlushTasks: [UUID: Task<Void, Never>] = [:]
 
     init(snapshot: AppSnapshot?, persistenceService: PersistenceService, startupIssues: [PersistenceLoadIssue] = []) {
         self.persistenceService = persistenceService
@@ -1041,6 +1047,9 @@ final class AppModel {
         pendingMemorySessionSnapshotTask = nil
         pendingWorktreeGitSummaryRefreshTask?.cancel()
         pendingWorktreeGitSummaryRefreshTask = nil
+        pendingAgentDriverEventFlushTasks.values.forEach { $0.cancel() }
+        pendingAgentDriverEventFlushTasks.removeAll()
+        pendingAgentDriverEvents.removeAll()
         petSpeechCoordinator.stop()
     }
 

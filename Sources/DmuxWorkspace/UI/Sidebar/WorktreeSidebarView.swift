@@ -7,6 +7,12 @@ private let worktreeStatusOrder: [ProjectWorktreeTaskStatus] = [
 
 private let worktreeActiveIndicatorColor = Color.orange
 
+private enum WorktreeSidebarMetrics {
+    static let taskRowHeight: CGFloat = 52
+    static let statusColumnWidth: CGFloat = 16
+    static let statusColumnHeight: CGFloat = 20
+}
+
 private struct WorktreeActiveIndicator: View {
     var body: some View {
         ZStack {
@@ -199,6 +205,10 @@ private struct BaseWorkspaceCard: View {
         } label: {
             HStack(alignment: .center, spacing: 10) {
                 statusIndicator
+                    .frame(
+                        width: WorktreeSidebarMetrics.statusColumnWidth,
+                        height: WorktreeSidebarMetrics.statusColumnHeight
+                    )
                 VStack(alignment: .leading, spacing: 3) {
                     Text(mainTaskTitle)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -224,6 +234,7 @@ private struct BaseWorkspaceCard: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
+            .frame(height: WorktreeSidebarMetrics.taskRowHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -324,6 +335,10 @@ private struct WorktreeRowCompact: View {
         } label: {
             HStack(alignment: .center, spacing: 10) {
                 statusIndicator
+                    .frame(
+                        width: WorktreeSidebarMetrics.statusColumnWidth,
+                        height: WorktreeSidebarMetrics.statusColumnHeight
+                    )
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(taskTitleText)
@@ -352,6 +367,7 @@ private struct WorktreeRowCompact: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
+            .frame(height: WorktreeSidebarMetrics.taskRowHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 ZStack(alignment: .trailing) {

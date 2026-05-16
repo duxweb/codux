@@ -18,6 +18,36 @@ enum AppAIToolPermissionMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum AppAICodexReasoningEffort: String, Codable, CaseIterable, Identifiable, Sendable {
+    case none
+    case minimal
+    case low
+    case medium
+    case high
+    case xhigh
+
+    var id: String { rawValue }
+
+    var codexValue: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .none:
+            return String(localized: "agent.effort.none", defaultValue: "None", bundle: .module)
+        case .minimal:
+            return String(localized: "agent.effort.minimal", defaultValue: "Minimal", bundle: .module)
+        case .low:
+            return String(localized: "agent.effort.low", defaultValue: "Low", bundle: .module)
+        case .medium:
+            return String(localized: "agent.effort.medium", defaultValue: "Medium", bundle: .module)
+        case .high:
+            return String(localized: "agent.effort.high", defaultValue: "High", bundle: .module)
+        case .xhigh:
+            return String(localized: "agent.effort.xhigh", defaultValue: "XHigh", bundle: .module)
+        }
+    }
+}
+
 struct AppAIToolPermissionSettings: Codable, Equatable, Sendable {
     var codex: AppAIToolPermissionMode = .default
     var claudeCode: AppAIToolPermissionMode = .default
@@ -27,6 +57,34 @@ struct AppAIToolPermissionSettings: Codable, Equatable, Sendable {
     var claudeCodeModel: String = ""
     var geminiModel: String = ""
     var opencodeModel: String = ""
+    var codexEffort: AppAICodexReasoningEffort = .medium
+
+    init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case codex
+        case claudeCode
+        case gemini
+        case opencode
+        case codexModel
+        case claudeCodeModel
+        case geminiModel
+        case opencodeModel
+        case codexEffort
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        codex = try container.decodeIfPresent(AppAIToolPermissionMode.self, forKey: .codex) ?? .default
+        claudeCode = try container.decodeIfPresent(AppAIToolPermissionMode.self, forKey: .claudeCode) ?? .default
+        gemini = try container.decodeIfPresent(AppAIToolPermissionMode.self, forKey: .gemini) ?? .default
+        opencode = try container.decodeIfPresent(AppAIToolPermissionMode.self, forKey: .opencode) ?? .default
+        codexModel = try container.decodeIfPresent(String.self, forKey: .codexModel) ?? ""
+        claudeCodeModel = try container.decodeIfPresent(String.self, forKey: .claudeCodeModel) ?? ""
+        geminiModel = try container.decodeIfPresent(String.self, forKey: .geminiModel) ?? ""
+        opencodeModel = try container.decodeIfPresent(String.self, forKey: .opencodeModel) ?? ""
+        codexEffort = try container.decodeIfPresent(AppAICodexReasoningEffort.self, forKey: .codexEffort) ?? .medium
+    }
 
     func model(for tool: AppSupportedAITool) -> String {
         switch tool {
@@ -315,6 +373,12 @@ struct AppDeveloperSettings: Codable, Equatable {
             try container.decodeIfPresent(TimeInterval.self, forKey: .performanceMonitorSamplingInterval) ?? 3
         )
     }
+}
+
+struct AppExperimentalSettings: Codable, Equatable, Sendable {
+    var agentSplitEnabled = false
+
+    init() {}
 }
 
 enum AppLanguage: String, Codable, CaseIterable, Identifiable {

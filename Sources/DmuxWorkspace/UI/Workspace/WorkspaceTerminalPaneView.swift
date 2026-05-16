@@ -42,7 +42,18 @@ struct TerminalPaneView: View {
             }
 
             Group {
-                if let recoveryIssue {
+                if session.launchMode == .agent {
+                    AgentPaneView(
+                        model: model,
+                        session: session,
+                        isFocused: isFocused,
+                        isVisible: isVisible,
+                        showsInactiveOverlay: showsInactiveOverlay,
+                        onSelect: onSelect,
+                        onClose: onClose,
+                        showsCloseButton: showsCloseButton
+                    )
+                } else if let recoveryIssue {
                     TerminalRecoveryFallbackView(
                         model: model,
                         session: session,
@@ -73,7 +84,7 @@ struct TerminalPaneView: View {
     }
 
     private var showsPaneControls: Bool {
-        showsCloseButton || onDetach != nil
+        session.launchMode != .agent && (showsCloseButton || onDetach != nil)
     }
 
     private var paneControlsPreferredWidth: CGFloat {

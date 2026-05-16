@@ -293,6 +293,11 @@ struct WorkspaceContentState: Codable, Hashable, Sendable {
 }
 
 struct TerminalSession: Identifiable, Codable, Hashable, Sendable {
+    enum LaunchMode: String, Codable, Hashable, Sendable {
+        case terminal
+        case agent
+    }
+
     var id: UUID
     var projectID: UUID
     var projectName: String
@@ -302,6 +307,22 @@ struct TerminalSession: Identifiable, Codable, Hashable, Sendable {
     var shell: String
     var command: String
     var previewLines: [String]
+    var launchMode: LaunchMode
+    var agentTool: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case projectID
+        case projectName
+        case title
+        case tabTitle
+        case cwd
+        case shell
+        case command
+        case previewLines
+        case launchMode
+        case agentTool
+    }
 
     static func make(project: Project, command: String) -> TerminalSession {
         let promptCommand = command.isEmpty ? project.shell : command
@@ -318,8 +339,137 @@ struct TerminalSession: Identifiable, Codable, Hashable, Sendable {
                 "Launching \(project.shell) in \(project.path)",
                 command.isEmpty ? "No default command configured." : "$ \(command)",
                 "Codux terminal bridge is ready for native terminal embedding.",
-            ]
+            ],
+            launchMode: .terminal,
+            agentTool: nil
         )
+    }
+
+    static func makeAgent(project: Project, tool: AgentToolKind) -> TerminalSession {
+        TerminalSession(
+            id: UUID(),
+            projectID: project.id,
+            projectName: project.name,
+            title: tool.displayName,
+            tabTitle: tool.displayName,
+            cwd: project.path,
+            shell: project.shell,
+            command: "",
+            previewLines: [
+                "Starting \(tool.displayName) agent in \(project.path)",
+                "Codux agent bridge is ready for structured events.",
+            ],
+            launchMode: .agent,
+            agentTool: tool.rawValue
+        )
+    }
+
+    init(
+        id: UUID,
+        projectID: UUID,
+        projectName: String,
+        title: String,
+        tabTitle: String?,
+        cwd: String,
+        shell: String,
+        command: String,
+        previewLines: [String],
+        launchMode: LaunchMode,
+        agentTool: String?
+    ) {
+        self.id = id
+        self.projectID = projectID
+        self.projectName = projectName
+        self.title = title
+        self.tabTitle = tabTitle
+        self.cwd = cwd
+        self.shell = shell
+        self.command = command
+        self.previewLines = previewLines
+        self.launchMode = launchMode
+        self.agentTool = agentTool
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        projectID = try container.decode(UUID.self, forKey: .projectID)
+        projectName = try container.decode(String.self, forKey: .projectName)
+        title = try container.decode(String.self, forKey: .title)
+        tabTitle = try container.decodeIfPresent(String.self, forKey: .tabTitle)
+        cwd = try container.decode(String.self, forKey: .cwd)
+        shell = try container.decode(String.self, forKey: .shell)
+        command = try container.decode(String.self, forKey: .command)
+        previewLines = try container.decodeIfPresent([String].self, forKey: .previewLines) ?? []
+        launchMode = try container.decodeIfPresent(LaunchMode.self, forKey: .launchMode) ?? .terminal
+        agentTool = try container.decodeIfPresent(String.self, forKey: .agentTool)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(projectID, forKey: .projectID)
+        try container.encode(projectName, forKey: .projectName)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(tabTitle, forKey: .tabTitle)
+        try container.encode(cwd, forKey: .cwd)
+        try container.encode(shell, forKey: .shell)
+        try container.encode(command, forKey: .command)
+        try container.encode(previewLines, forKey: .previewLines)
+        try container.encode(launchMode, forKey: .launchMode)
+        try container.encodeIfPresent(agentTool, forKey: .agentTool)
+    }
+}
+
+enum AgentToolKind: String, CaseIterable, Codable, Hashable, Sendable, Identifiable {
+    case codex
+    case claude
+    case opencode
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .codex:
+            return "Codex"
+        case .claude:
+            return "Claude Code"
+        case .opencode:
+            return "OpenCode"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .codex:
+            return "sparkles"
+        case .claude:
+            return "wand.and.stars"
+        case .opencode:
+            return "curlybraces"
+        }
+    }
+
+    var supportedAITool: AppSupportedAITool {
+        switch self {
+        case .codex:
+            return .codex
+        case .claude:
+            return .claudeCode
+        case .opencode:
+            return .opencode
+        }
+    }
+
+    var modelPresets: [String] {
+        switch self {
+        case .codex:
+            return ["gpt-5.5", "gpt-5.5-codex", "gpt-5", "gpt-5-codex", "gpt-4.1"]
+        case .claude:
+            return ["sonnet", "opus", "haiku"]
+        case .opencode:
+            return []
+        }
     }
 }
 

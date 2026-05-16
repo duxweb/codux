@@ -22,7 +22,7 @@ struct TitlebarOverlayView: View {
                     }
 
                     TitlebarGlyphButton(symbol: "rectangle.split.2x1", help: String(localized: "titlebar.split", defaultValue: "Split", bundle: .module)) {
-                        model.splitSelectedPane(axis: .horizontal)
+                        model.presentCreateSplitDialog()
                     }
 
                     if model.appSettings.developer.showsPerformanceMonitor {

@@ -12,6 +12,8 @@ final class RemoteP2PHostTransport: NSObject, @unchecked Sendable {
   var onMessage: ((String, Data) -> Void)?
   var onState: ((String, String) -> Void)?
 
+  fileprivate static let uploadChannelLabel = "codux-upload"
+
   private let factory: LKRTCPeerConnectionFactory
   private var peers: [String: Peer] = [:]
 
@@ -44,9 +46,9 @@ final class RemoteP2PHostTransport: NSObject, @unchecked Sendable {
   }
 
   @discardableResult
-  func send(data: Data, deviceID: String?) -> Bool {
+  func send(data: Data, deviceID: String?, lane: Lane = .terminal) -> Bool {
     guard let deviceID, let peer = peers[deviceID], peer.isOpen else { return false }
-    return peer.send(data: data)
+    return peer.send(data: data, lane: lane)
   }
 
   func handleOffer(deviceID: String, payload: [String: Any]) {
@@ -177,6 +179,13 @@ final class RemoteP2PHostTransport: NSObject, @unchecked Sendable {
   }
 }
 
+extension RemoteP2PHostTransport {
+  enum Lane {
+    case terminal
+    case upload
+  }
+}
+
 private enum RemoteP2PIceServers {
   private static let domesticSTUNURLs = [
     "stun:stun.miwifi.com:3478"
@@ -197,11 +206,17 @@ private enum RemoteP2PIceServers {
   }
 }
 
-private final class Peer: NSObject, LKRTCPeerConnectionDelegate, LKRTCDataChannelDelegate, @unchecked Sendable {
+private final class Peer: NSObject, LKRTCPeerConnectionDelegate, LKRTCDataChannelDelegate,
+  @unchecked Sendable
+{
+  private static let terminalBufferedAmountHighWatermark: UInt64 = 192 * 1024
+  private static let uploadBufferedAmountHighWatermark: UInt64 = 512 * 1024
+
   let deviceID: String
   let connection: LKRTCPeerConnection
   weak var owner: RemoteP2PHostTransport?
-  private var channel: LKRTCDataChannel?
+  private var terminalChannel: LKRTCDataChannel?
+  private var uploadChannel: LKRTCDataChannel?
 
   init(deviceID: String, connection: LKRTCPeerConnection, owner: RemoteP2PHostTransport) {
     self.deviceID = deviceID
@@ -211,51 +226,88 @@ private final class Peer: NSObject, LKRTCPeerConnectionDelegate, LKRTCDataChanne
   }
 
   var isOpen: Bool {
-    channel?.readyState == .open
+    terminalChannel?.readyState == .open
   }
 
-  func send(data: Data) -> Bool {
-    guard let channel, channel.readyState == .open else { return false }
+  func send(data: Data, lane: RemoteP2PHostTransport.Lane) -> Bool {
+    guard let channel = channel(for: lane), channel.readyState == .open else {
+      return false
+    }
+    guard channel.bufferedAmount < highWatermark(for: channel) else { return false }
     channel.sendData(LKRTCDataBuffer(data: data, isBinary: false))
     return true
   }
 
   func close() {
-    channel?.close()
-    channel = nil
+    terminalChannel?.close()
+    uploadChannel?.close()
+    terminalChannel = nil
+    uploadChannel = nil
     connection.close()
   }
 
-  func peerConnection(_ peerConnection: LKRTCPeerConnection, didChange stateChanged: LKRTCSignalingState) {}
+  private func channel(for lane: RemoteP2PHostTransport.Lane) -> LKRTCDataChannel? {
+    if lane == .upload, uploadChannel?.readyState == .open {
+      return uploadChannel
+    }
+    return terminalChannel
+  }
+
+  private func highWatermark(for channel: LKRTCDataChannel) -> UInt64 {
+    if channel === uploadChannel {
+      return Self.uploadBufferedAmountHighWatermark
+    }
+    return Self.terminalBufferedAmountHighWatermark
+  }
+
+  func peerConnection(
+    _ peerConnection: LKRTCPeerConnection, didChange stateChanged: LKRTCSignalingState
+  ) {}
   func peerConnection(_ peerConnection: LKRTCPeerConnection, didAdd stream: LKRTCMediaStream) {}
   func peerConnection(_ peerConnection: LKRTCPeerConnection, didRemove stream: LKRTCMediaStream) {}
   func peerConnectionShouldNegotiate(_ peerConnection: LKRTCPeerConnection) {}
-  func peerConnection(_ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCIceConnectionState) {}
-  func peerConnection(_ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCIceGatheringState) {}
-  func peerConnection(_ peerConnection: LKRTCPeerConnection, didRemove candidates: [LKRTCIceCandidate]) {}
+  func peerConnection(
+    _ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCIceConnectionState
+  ) {}
+  func peerConnection(
+    _ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCIceGatheringState
+  ) {}
+  func peerConnection(
+    _ peerConnection: LKRTCPeerConnection, didRemove candidates: [LKRTCIceCandidate]
+  ) {}
 
-  func peerConnection(_ peerConnection: LKRTCPeerConnection, didGenerate candidate: LKRTCIceCandidate) {
+  func peerConnection(
+    _ peerConnection: LKRTCPeerConnection, didGenerate candidate: LKRTCIceCandidate
+  ) {
     owner?.handleCandidate(deviceID: deviceID, candidate: candidate)
   }
 
-  func peerConnection(_ peerConnection: LKRTCPeerConnection, didOpen dataChannel: LKRTCDataChannel) {
-    channel = dataChannel
+  func peerConnection(_ peerConnection: LKRTCPeerConnection, didOpen dataChannel: LKRTCDataChannel)
+  {
+    switch dataChannel.label {
+    case RemoteP2PHostTransport.uploadChannelLabel:
+      uploadChannel = dataChannel
+    default:
+      terminalChannel = dataChannel
+    }
     dataChannel.delegate = self
     if dataChannel.readyState == .open {
-      owner?.handleOpen(deviceID: deviceID)
+      handleDataChannelOpen(dataChannel)
     }
   }
 
-  func peerConnection(_ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCPeerConnectionState) {
+  func peerConnection(
+    _ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCPeerConnectionState
+  ) {
     owner?.handleConnectionState(deviceID: deviceID, state: newState)
   }
 
   func dataChannelDidChangeState(_ dataChannel: LKRTCDataChannel) {
     switch dataChannel.readyState {
     case .open:
-      owner?.handleOpen(deviceID: deviceID)
+      handleDataChannelOpen(dataChannel)
     case .closed:
-      owner?.handleClosed(deviceID: deviceID)
+      handleDataChannelClosed(dataChannel)
     default:
       break
     }
@@ -263,5 +315,20 @@ private final class Peer: NSObject, LKRTCPeerConnectionDelegate, LKRTCDataChanne
 
   func dataChannel(_ dataChannel: LKRTCDataChannel, didReceiveMessageWith buffer: LKRTCDataBuffer) {
     owner?.handleMessage(deviceID: deviceID, data: buffer.data)
+  }
+
+  private func handleDataChannelOpen(_ dataChannel: LKRTCDataChannel) {
+    if dataChannel === terminalChannel {
+      owner?.handleOpen(deviceID: deviceID)
+    }
+  }
+
+  private func handleDataChannelClosed(_ dataChannel: LKRTCDataChannel) {
+    if dataChannel === terminalChannel {
+      terminalChannel = nil
+      owner?.handleClosed(deviceID: deviceID)
+    } else if dataChannel === uploadChannel {
+      uploadChannel = nil
+    }
   }
 }

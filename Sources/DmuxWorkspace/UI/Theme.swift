@@ -152,7 +152,10 @@ struct AppMultilineInputArea: View {
             font: font,
             horizontalInset: horizontalInset,
             verticalInset: verticalInset,
-            enablesSpellChecking: enablesSpellChecking
+            enablesSpellChecking: enablesSpellChecking,
+            allowsProgrammaticFocus: true,
+            resignsOnExternalMouseDown: false,
+            onFocusRequest: nil
         )
         .padding(2)
         .appInputSurface(isFocused: isFocused, isHovered: isHovered)
@@ -169,6 +172,9 @@ struct AppMultilineEditor: NSViewRepresentable {
     let horizontalInset: CGFloat
     let verticalInset: CGFloat
     let enablesSpellChecking: Bool
+    let allowsProgrammaticFocus: Bool
+    let resignsOnExternalMouseDown: Bool
+    let onFocusRequest: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, isFocused: $isFocused, isComposing: $isComposing)
@@ -191,6 +197,7 @@ struct AppMultilineEditor: NSViewRepresentable {
         textStorage.addLayoutManager(layoutManager)
 
         let textView = AppCompositionAwareTextView(frame: .zero, textContainer: textContainer)
+        textView.onFocusRequest = onFocusRequest
         textView.onCompositionChange = { isComposing in
             DispatchQueue.main.async {
                 context.coordinator.isComposing = isComposing
@@ -231,6 +238,7 @@ struct AppMultilineEditor: NSViewRepresentable {
         textView.font = font
         textView.textColor = NSColor.labelColor
         textView.placeholder = placeholder
+        textView.resignsOnExternalMouseDown = resignsOnExternalMouseDown
         textView.string = text
 
         scrollView.documentView = textView
@@ -258,9 +266,11 @@ struct AppMultilineEditor: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: horizontalInset, height: verticalInset)
         textView.isContinuousSpellCheckingEnabled = enablesSpellChecking
         textView.placeholder = placeholder
-        textView.needsDisplay = true
+        textView.resignsOnExternalMouseDown = resignsOnExternalMouseDown
+        textView.onFocusRequest = onFocusRequest
 
-        if isFocused,
+        if allowsProgrammaticFocus,
+           isFocused,
            textView.window?.firstResponder !== textView,
            !context.coordinator.didRequestInitialFocus {
             context.coordinator.didRequestInitialFocus = true
@@ -269,6 +279,9 @@ struct AppMultilineEditor: NSViewRepresentable {
             }
         } else if !isFocused {
             context.coordinator.didRequestInitialFocus = false
+            if textView.ownsResponder(textView.window?.firstResponder) {
+                textView.window?.makeFirstResponder(nil)
+            }
         }
     }
 
@@ -293,6 +306,33 @@ final class AppCompositionAwareTextView: NSTextView {
     var onCompositionChange: ((Bool) -> Void)?
     var onTextChange: ((String) -> Void)?
     var onFocusChange: ((Bool) -> Void)?
+    var onFocusRequest: (() -> Void)?
+    var resignsOnExternalMouseDown = false {
+        didSet {
+            updateExternalMouseDownMonitor()
+        }
+    }
+    private var externalMouseDownMonitor: Any?
+
+    func ownsResponder(_ responder: NSResponder?) -> Bool {
+        guard let responder else {
+            return false
+        }
+        if responder === self {
+            return true
+        }
+        if let view = responder as? NSView, view.isDescendant(of: self) {
+            return true
+        }
+        var next = responder.nextResponder
+        while let current = next {
+            if current === self {
+                return true
+            }
+            next = current.nextResponder
+        }
+        return false
+    }
 
     override var string: String {
         didSet {
@@ -307,10 +347,16 @@ final class AppCompositionAwareTextView: NSTextView {
         needsDisplay = true
     }
 
+    override func mouseDown(with event: NSEvent) {
+        onFocusRequest?()
+        super.mouseDown(with: event)
+    }
+
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         if accepted {
             onFocusChange?(true)
+            updateExternalMouseDownMonitor()
             needsDisplay = true
         }
         return accepted
@@ -320,9 +366,56 @@ final class AppCompositionAwareTextView: NSTextView {
         let accepted = super.resignFirstResponder()
         if accepted {
             onFocusChange?(false)
+            uninstallExternalMouseDownMonitor()
             needsDisplay = true
         }
         return accepted
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            uninstallExternalMouseDownMonitor()
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateExternalMouseDownMonitor()
+    }
+
+    private func updateExternalMouseDownMonitor() {
+        guard resignsOnExternalMouseDown, window?.firstResponder === self else {
+            uninstallExternalMouseDownMonitor()
+            return
+        }
+        installExternalMouseDownMonitorIfNeeded()
+    }
+
+    private func installExternalMouseDownMonitorIfNeeded() {
+        guard externalMouseDownMonitor == nil else { return }
+        externalMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            guard let self,
+                  event.window === self.window,
+                  !self.containsMouseEvent(event) else {
+                return event
+            }
+            self.window?.makeFirstResponder(nil)
+            return event
+        }
+    }
+
+    private func uninstallExternalMouseDownMonitor() {
+        if let externalMouseDownMonitor {
+            NSEvent.removeMonitor(externalMouseDownMonitor)
+            self.externalMouseDownMonitor = nil
+        }
+    }
+
+    private func containsMouseEvent(_ event: NSEvent) -> Bool {
+        let targetView = enclosingScrollView ?? self
+        let point = targetView.convert(event.locationInWindow, from: nil)
+        return targetView.bounds.contains(point)
     }
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {

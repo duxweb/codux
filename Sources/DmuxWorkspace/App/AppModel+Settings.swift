@@ -101,6 +101,14 @@ extension AppModel {
         persist()
     }
 
+    func updateCodexReasoningEffort(_ effort: AppAICodexReasoningEffort) {
+        var settings = appSettings
+        settings.ai.runtimeTools.codexEffort = effort
+        appSettings = settings
+        toolPermissionSettingsService.sync(settings.ai.runtimeTools)
+        persist()
+    }
+
     func updateAIGlobalPrompt(_ prompt: String) {
         var settings = appSettings
         settings.ai.globalPrompt = prompt
@@ -662,6 +670,13 @@ extension AppModel {
         applyPerformanceMonitorSettings { developer in
             developer.performanceMonitorSamplingInterval = normalizedInterval
         }
+    }
+
+    func updateAgentSplitExperimentEnabled(_ enabled: Bool) {
+        var settings = appSettings
+        settings.experiments.agentSplitEnabled = enabled
+        appSettings = settings
+        persist()
     }
 
     func openURL(_ url: URL) {

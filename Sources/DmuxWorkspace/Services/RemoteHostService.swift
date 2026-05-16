@@ -69,15 +69,18 @@ final class RemoteHostService: ObservableObject {
   private var pendingTerminalOutput: [String: PendingTerminalOutput] = [:]
   private var terminalViewersBySession: [String: Set<String>] = [:]
   private var recentTerminalInputIDs: [String: [String]] = [:]
+  private var terminalUploadSessions: [String: TerminalUploadSession] = [:]
+  private var terminalOutputSeqBySession: [String: Int64] = [:]
   private var sendSeqByDevice: [String: Int64] = [:]
   private var receiveSeqByDevice: [String: Int64] = [:]
   private var e2eKeyCache: [String: SymmetricKey] = [:]
   private let p2pTransport = RemoteP2PHostTransport()
   private let terminalEnvironmentService = AIRuntimeBridgeService()
   private let maxTerminalBufferCharacters = 2_000_000
-  private let terminalOutputFlushInterval: TimeInterval = 0.05
-  private let terminalOutputFlushByteLimit = 32 * 1024
+  private let terminalOutputFlushInterval: TimeInterval = 0.012
+  private let terminalOutputFlushByteLimit = 12 * 1024
   private let terminalOutputCompressionThreshold = 4 * 1024
+  private let terminalUploadMaxBytes = 100 * 1024 * 1024
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
   @Published private(set) var snapshot = Snapshot()
@@ -168,6 +171,8 @@ final class RemoteHostService: ObservableObject {
     snapshot.pendingPairings.removeAll()
     flushAllPendingTerminalOutput()
     terminalViewersBySession.removeAll()
+    terminalUploadSessions.removeAll()
+    terminalOutputSeqBySession.removeAll()
     sendSeqByDevice.removeAll()
     receiveSeqByDevice.removeAll()
     e2eKeyCache.removeAll()
@@ -584,7 +589,9 @@ final class RemoteHostService: ObservableObject {
       _ = handleP2PTerminalEnvelope(envelope)
     case "terminal.resize":
       _ = handleP2PTerminalEnvelope(envelope)
-    case "terminal.upload":
+    case "terminal.upload", "terminal.upload.start", "terminal.upload.chunk",
+      "terminal.upload.finish",
+      "terminal.upload.cancel":
       _ = handleP2PTerminalEnvelope(envelope)
     case "terminal.close":
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)) {
@@ -593,6 +600,7 @@ final class RemoteHostService: ObservableObject {
         if didCloseSharedSession {
           terminalOutputBuffer.removeValue(forKey: sessionID.uuidString)
           terminalViewersBySession.removeValue(forKey: sessionID.uuidString)
+          terminalOutputSeqBySession.removeValue(forKey: sessionID.uuidString)
           recentTerminalInputIDs = recentTerminalInputIDs.filter {
             !$0.key.hasSuffix(":\(sessionID.uuidString)")
           }
@@ -651,7 +659,9 @@ final class RemoteHostService: ObservableObject {
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)),
         let data = envelope.payload?["data"] as? String
       {
-        guard shouldAcceptTerminalInput(envelope: envelope, sessionID: sessionID) else {
+        let accepted = shouldAcceptTerminalInput(envelope: envelope, sessionID: sessionID)
+        sendTerminalInputAck(envelope, sessionID: sessionID.uuidString, accepted: accepted)
+        guard accepted else {
           return true
         }
         logger.log(
@@ -670,6 +680,8 @@ final class RemoteHostService: ObservableObject {
             ])
         }
       }
+      return true
+    case "terminal.output.ack":
       return true
     case "terminal.resize":
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)),
@@ -699,6 +711,18 @@ final class RemoteHostService: ObservableObject {
       return true
     case "terminal.upload":
       handleTerminalUpload(envelope)
+      return true
+    case "terminal.upload.start":
+      handleTerminalUploadStart(envelope)
+      return true
+    case "terminal.upload.chunk":
+      handleTerminalUploadChunk(envelope)
+      return true
+    case "terminal.upload.finish":
+      handleTerminalUploadFinish(envelope)
+      return true
+    case "terminal.upload.cancel":
+      handleTerminalUploadCancel(envelope)
       return true
     case "terminal.signal":
       if let sessionID = envelope.sessionID.flatMap(UUID.init(uuidString:)) {
@@ -821,9 +845,7 @@ final class RemoteHostService: ObservableObject {
     }
     let rawName = (payload["name"] as? String) ?? "upload.png"
     let safeName = sanitizedUploadFileName(rawName)
-    let directory = FileManager.default.temporaryDirectory
-      .appendingPathComponent("CoduxUploads", isDirectory: true)
-      .appendingPathComponent(sessionID, isDirectory: true)
+    let directory = terminalUploadDirectory(sessionID: sessionID)
     do {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       let url = uniqueUploadURL(directory: directory, fileName: safeName)
@@ -841,6 +863,180 @@ final class RemoteHostService: ObservableObject {
         type: "error", deviceID: envelope.deviceID, sessionID: sessionID,
         payload: ["message": "Upload failed: \(error.localizedDescription)"])
     }
+  }
+
+  private func handleTerminalUploadStart(_ envelope: RemoteEnvelope) {
+    guard let sessionID = envelope.sessionID,
+      let payload = envelope.payload,
+      let uploadID = payload["uploadId"] as? String,
+      uploadID.isEmpty == false
+    else {
+      sendTerminalUploadAck(envelope, stage: "start", ok: false, message: "Invalid upload start")
+      return
+    }
+    let totalBytes = intValue(payload["totalBytes"])
+    let totalChunks = intValue(payload["totalChunks"])
+    guard totalBytes > 0, totalBytes <= terminalUploadMaxBytes, totalChunks > 0 else {
+      sendTerminalUploadAck(
+        envelope, stage: "start", ok: false, message: "Upload size is not supported")
+      return
+    }
+
+    let safeName = sanitizedUploadFileName((payload["name"] as? String) ?? "upload.png")
+    let directory = terminalUploadDirectory(sessionID: sessionID)
+    do {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let finalURL = uniqueUploadURL(directory: directory, fileName: safeName)
+      let partialURL = finalURL.appendingPathExtension("part-\(uploadID)")
+      if FileManager.default.fileExists(atPath: partialURL.path) {
+        try FileManager.default.removeItem(at: partialURL)
+      }
+      FileManager.default.createFile(atPath: partialURL.path, contents: nil)
+      terminalUploadSessions[uploadID] = TerminalUploadSession(
+        uploadID: uploadID,
+        sessionID: sessionID,
+        deviceID: envelope.deviceID,
+        name: safeName,
+        mime: payload["mime"] as? String,
+        totalBytes: totalBytes,
+        totalChunks: totalChunks,
+        partialURL: partialURL,
+        finalURL: finalURL
+      )
+      sendTerminalUploadAck(envelope, stage: "start", ok: true)
+    } catch {
+      terminalUploadSessions.removeValue(forKey: uploadID)
+      sendTerminalUploadAck(
+        envelope, stage: "start", ok: false,
+        message: "Upload start failed: \(error.localizedDescription)")
+    }
+  }
+
+  private func handleTerminalUploadChunk(_ envelope: RemoteEnvelope) {
+    guard let payload = envelope.payload,
+      let uploadID = payload["uploadId"] as? String,
+      var session = terminalUploadSessions[uploadID],
+      let base64Value = payload["data"] as? String,
+      let chunkData = Data(base64Encoded: base64Value)
+    else {
+      sendTerminalUploadAck(envelope, stage: "chunk", ok: false, message: "Invalid upload chunk")
+      return
+    }
+    let chunkIndex = intValue(payload["chunkIndex"])
+    let offset = intValue(payload["offset"])
+    guard chunkIndex >= 0, chunkIndex < session.totalChunks else {
+      sendTerminalUploadAck(
+        envelope, stage: "chunk", chunkIndex: chunkIndex, ok: false,
+        message: "Invalid upload chunk index")
+      return
+    }
+    guard offset >= 0, offset + chunkData.count <= session.totalBytes else {
+      sendTerminalUploadAck(
+        envelope, stage: "chunk", chunkIndex: chunkIndex, ok: false,
+        message: "Invalid upload chunk offset")
+      return
+    }
+    do {
+      let handle = try FileHandle(forWritingTo: session.partialURL)
+      defer { try? handle.close() }
+      try handle.seek(toOffset: UInt64(offset))
+      try handle.write(contentsOf: chunkData)
+      session.receivedChunks.insert(chunkIndex)
+      session.receivedBytes += chunkData.count
+      terminalUploadSessions[uploadID] = session
+      sendTerminalUploadAck(envelope, stage: "chunk", chunkIndex: chunkIndex, ok: true)
+    } catch {
+      sendTerminalUploadAck(
+        envelope, stage: "chunk", chunkIndex: chunkIndex, ok: false,
+        message: "Upload chunk failed: \(error.localizedDescription)")
+    }
+  }
+
+  private func handleTerminalUploadFinish(_ envelope: RemoteEnvelope) {
+    guard let payload = envelope.payload,
+      let uploadID = payload["uploadId"] as? String,
+      let session = terminalUploadSessions[uploadID]
+    else {
+      sendTerminalUploadAck(envelope, stage: "finish", ok: false, message: "Upload not found")
+      return
+    }
+    guard session.receivedChunks.count == session.totalChunks else {
+      sendTerminalUploadAck(
+        envelope, stage: "finish", ok: false, message: "Upload is missing chunks")
+      return
+    }
+    do {
+      let attributes = try FileManager.default.attributesOfItem(atPath: session.partialURL.path)
+      let fileSize = (attributes[.size] as? NSNumber)?.intValue ?? 0
+      guard fileSize == session.totalBytes else {
+        sendTerminalUploadAck(
+          envelope, stage: "finish", ok: false, message: "Upload size mismatch")
+        return
+      }
+      if FileManager.default.fileExists(atPath: session.finalURL.path) {
+        try FileManager.default.removeItem(at: session.finalURL)
+      }
+      try FileManager.default.moveItem(at: session.partialURL, to: session.finalURL)
+      terminalUploadSessions.removeValue(forKey: uploadID)
+      sendTerminalUploadAck(envelope, stage: "finish", ok: true)
+      let fileData = try Data(contentsOf: session.finalURL)
+      let insertion = insertUploadedImage(
+        url: session.finalURL, data: fileData, mime: session.mime, sessionID: session.sessionID)
+      sendTerminalData(
+        type: "terminal.uploaded",
+        deviceID: session.deviceID,
+        sessionID: session.sessionID,
+        payload: [
+          "path": session.finalURL.path, "name": session.finalURL.lastPathComponent,
+          "mode": insertion.mode, "tool": insertion.tool as Any, "inserted": true,
+        ]
+      )
+    } catch {
+      terminalUploadSessions.removeValue(forKey: uploadID)
+      sendTerminalUploadAck(
+        envelope, stage: "finish", ok: false,
+        message: "Upload finish failed: \(error.localizedDescription)")
+    }
+  }
+
+  private func handleTerminalUploadCancel(_ envelope: RemoteEnvelope) {
+    guard let uploadID = envelope.payload?["uploadId"] as? String else { return }
+    if let session = terminalUploadSessions.removeValue(forKey: uploadID) {
+      try? FileManager.default.removeItem(at: session.partialURL)
+    }
+    sendTerminalUploadAck(envelope, stage: "cancel", ok: true)
+  }
+
+  private func sendTerminalUploadAck(
+    _ envelope: RemoteEnvelope,
+    stage: String,
+    chunkIndex: Int? = nil,
+    ok: Bool,
+    message: String? = nil
+  ) {
+    var payload: [String: Any] = [
+      "uploadId": envelope.payload?["uploadId"] as Any,
+      "stage": stage,
+      "ok": ok,
+    ]
+    if let chunkIndex {
+      payload["chunkIndex"] = chunkIndex
+    } else if let payloadIndex = envelope.payload?["chunkIndex"] {
+      payload["chunkIndex"] = payloadIndex
+    }
+    if let message { payload["message"] = message }
+    sendTerminalData(
+      type: "terminal.upload.ack",
+      deviceID: envelope.deviceID,
+      sessionID: envelope.sessionID,
+      payload: payload
+    )
+  }
+
+  private func terminalUploadDirectory(sessionID: String) -> URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("CoduxUploads", isDirectory: true)
+      .appendingPathComponent(sessionID, isDirectory: true)
   }
 
   private func insertUploadedImage(url: URL, data: Data, mime: String?, sessionID: String) -> (
@@ -1096,6 +1292,26 @@ final class RemoteHostService: ObservableObject {
     return true
   }
 
+  private func sendTerminalInputAck(
+    _ envelope: RemoteEnvelope,
+    sessionID: String,
+    accepted: Bool
+  ) {
+    guard let inputID = envelope.payload?["inputId"] as? String, inputID.isEmpty == false else {
+      return
+    }
+    sendTerminalData(
+      type: "terminal.input.ack",
+      deviceID: envelope.deviceID,
+      sessionID: sessionID,
+      payload: [
+        "inputId": inputID,
+        "ok": true,
+        "accepted": accepted,
+      ]
+    )
+  }
+
   private func canResizeTerminal(sessionID: UUID, deviceID: String?) -> Bool {
     model?.remoteDesktopTerminals().contains(where: { $0.id == sessionID }) == true
   }
@@ -1150,7 +1366,8 @@ final class RemoteHostService: ObservableObject {
         text: chunk,
         isBuffer: true,
         offset: offset,
-        bufferCharacters: data.count
+        bufferCharacters: data.count,
+        outputSeq: nil
       ))
   }
 
@@ -1206,7 +1423,8 @@ final class RemoteHostService: ObservableObject {
         text: pending.text,
         isBuffer: false,
         offset: nil,
-        bufferCharacters: pending.bufferCharacters
+        bufferCharacters: pending.bufferCharacters,
+        outputSeq: nextTerminalOutputSeq(sessionID: sessionID)
       )
     )
   }
@@ -1227,7 +1445,7 @@ final class RemoteHostService: ObservableObject {
     guard let data = try? JSONSerialization.data(withJSONObject: envelope.dictionary) else {
       return false
     }
-    if p2pTransport.send(data: data, deviceID: deviceID) {
+    if p2pTransport.send(data: data, deviceID: deviceID, lane: p2pLane(for: type)) {
       return true
     }
     if type != "terminal.output" {
@@ -1247,6 +1465,15 @@ final class RemoteHostService: ObservableObject {
     }
   }
 
+  private func p2pLane(for type: String) -> RemoteP2PHostTransport.Lane {
+    switch type {
+    case "terminal.upload.ack", "terminal.uploaded":
+      return .upload
+    default:
+      return .terminal
+    }
+  }
+
   private func requestedTerminalBufferOffset(from payload: [String: Any]?) -> Int {
     let value = payload?["offset"]
     if let intValue = value as? Int { return intValue }
@@ -1255,16 +1482,33 @@ final class RemoteHostService: ObservableObject {
     return 0
   }
 
+  private func intValue(_ value: Any?) -> Int {
+    if let intValue = value as? Int { return intValue }
+    if let doubleValue = value as? Double { return Int(doubleValue) }
+    if let stringValue = value as? String, let intValue = Int(stringValue) { return intValue }
+    return 0
+  }
+
+  private func nextTerminalOutputSeq(sessionID: String) -> Int64 {
+    let next = (terminalOutputSeqBySession[sessionID] ?? 0) + 1
+    terminalOutputSeqBySession[sessionID] = next
+    return next
+  }
+
   private func terminalOutputPayload(
     text: String,
     isBuffer: Bool,
     offset: Int?,
-    bufferCharacters: Int
+    bufferCharacters: Int,
+    outputSeq: Int64?
   ) -> [String: Any] {
     var payload: [String: Any] = [
       "data": text,
       "bufferLength": bufferCharacters,
     ]
+    if let outputSeq {
+      payload["outputSeq"] = outputSeq
+    }
     if isBuffer {
       payload["buffer"] = true
       payload["offset"] = offset ?? 0
@@ -1862,6 +2106,20 @@ private struct PendingTerminalOutput {
   var text: String = ""
   var bufferCharacters: Int = 0
   var flushTimer: Timer?
+}
+
+private struct TerminalUploadSession {
+  var uploadID: String
+  var sessionID: String
+  var deviceID: String?
+  var name: String
+  var mime: String?
+  var totalBytes: Int
+  var totalChunks: Int
+  var partialURL: URL
+  var finalURL: URL
+  var receivedChunks: Set<Int> = []
+  var receivedBytes: Int = 0
 }
 
 private enum JSONValue: Decodable {

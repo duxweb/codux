@@ -293,12 +293,10 @@ extension AIRuntimeBridgeService {
         }
 
         let expectedActionsByEvent = codexManagedHookActionsByEvent()
-        let expectedCommands = codexManagedHookCommandsByEvent()
         var states: [CodexHookTrustState] = []
 
         for (eventKey, eventLabel) in codexHookEventLabelsByKey() {
             guard let expectedAction = expectedActionsByEvent[eventKey],
-                  let expectedCommand = expectedCommands[eventKey],
                   let groups = hooksObject[eventKey] as? [[String: Any]] else {
                 continue
             }
@@ -307,7 +305,8 @@ extension AIRuntimeBridgeService {
                 let hooks = group["hooks"] as? [[String: Any]] ?? []
                 for (handlerIndex, hook) in hooks.enumerated() {
                     guard (hook["type"] as? String) == "command",
-                          (hook["command"] as? String) == expectedCommand else {
+                          let command = hook["command"] as? String,
+                          isCodexManagedHookCommand(command, action: expectedAction) else {
                         continue
                     }
 
@@ -317,7 +316,7 @@ extension AIRuntimeBridgeService {
                     let hash = codexCommandHookTrustHash(
                         eventLabel: eventLabel,
                         matcher: matcher,
-                        command: expectedCommand,
+                        command: command,
                         timeout: max(timeout, 1),
                         statusMessage: statusMessage
                     )
@@ -359,6 +358,12 @@ extension AIRuntimeBridgeService {
                 tool: "codex"
             )
         }
+    }
+
+    func isCodexManagedHookCommand(_ command: String, action: String) -> Bool {
+        command.contains("dmux-ai-state.sh")
+            && commandContainsShellArgument(command, argument: action)
+            && commandContainsShellArgument(command, argument: "codex")
     }
 
     func codexHookEventLabelsByKey() -> [String: String] {
@@ -537,7 +542,8 @@ extension AIRuntimeBridgeService {
             helperScriptURL: helperScriptURL,
             statusMessage: statusMessage,
             tool: tool,
-            stripAnyManagedHookForAction: stripAnyManagedHookForAction
+            stripAnyManagedHookForAction: stripAnyManagedHookForAction,
+            preserveOtherManagedOwners: false
         )
         let specs = managedHookSpecs(
             tool: tool,
@@ -578,7 +584,8 @@ extension AIRuntimeBridgeService {
         helperScriptURL: URL,
         statusMessage: String,
         tool: String? = nil,
-        stripAnyManagedHookForAction: Bool = false
+        stripAnyManagedHookForAction: Bool = false,
+        preserveOtherManagedOwners: Bool = true
     ) {
         for definition in definitions {
             let strippedGroups = strippedManagedHookGroups(
@@ -588,7 +595,8 @@ extension AIRuntimeBridgeService {
                 owner: owner,
                 helperScriptURL: helperScriptURL,
                 statusMessage: statusMessage,
-                stripAnyManagedHookForAction: stripAnyManagedHookForAction
+                stripAnyManagedHookForAction: stripAnyManagedHookForAction,
+                preserveOtherManagedOwners: preserveOtherManagedOwners
             )
 
             if strippedGroups.isEmpty {
@@ -606,7 +614,7 @@ extension AIRuntimeBridgeService {
         stripAnyManagedHookForAction: Bool = false
     ) {
         for spec in specs {
-            hooksObject[spec.eventKey] = mergedManagedHookGroups(
+            hooksObject[spec.eventKey] = upsertManagedHookGroups(
                 existingValue: hooksObject[spec.eventKey],
                 spec: spec,
                 helperScriptURL: helperScriptURL,
@@ -640,23 +648,64 @@ extension AIRuntimeBridgeService {
         }
     }
 
-    func mergedManagedHookGroups(
+    func upsertManagedHookGroups(
         existingValue: Any?,
         spec: ManagedHookSpec,
         helperScriptURL: URL,
-        stripAnyManagedHookForAction: Bool = false
+        stripAnyManagedHookForAction: Bool = false,
+        preserveOtherManagedOwners: Bool = true
     ) -> [[String: Any]] {
         let owner = AppRuntimePaths.runtimeOwnerID()
-        let nextGroups = strippedManagedHookGroups(
-            existingValue: existingValue,
-            action: spec.action,
-            tool: spec.tool,
-            owner: owner,
-            helperScriptURL: helperScriptURL,
-            statusMessage: spec.statusMessage,
-            stripAnyManagedHookForAction: stripAnyManagedHookForAction
-        )
+        let replacementHook = managedHookDictionary(for: spec)
+        let existingGroups = existingValue as? [[String: Any]] ?? []
+        var didReplace = false
+        var result: [[String: Any]] = []
 
+        for group in existingGroups {
+            let hooks = group["hooks"] as? [[String: Any]] ?? []
+            var nextHooks: [[String: Any]] = []
+
+            for hook in hooks {
+                if isManagedHook(
+                    hook,
+                    action: spec.action,
+                    tool: spec.tool,
+                    owner: owner,
+                    helperScriptURL: helperScriptURL,
+                    statusMessage: spec.statusMessage,
+                    stripAnyManagedHookForAction: stripAnyManagedHookForAction,
+                    preserveOtherManagedOwners: preserveOtherManagedOwners
+                ) {
+                    if didReplace == false {
+                        nextHooks.append(replacementHook)
+                        didReplace = true
+                    }
+                    continue
+                }
+
+                nextHooks.append(hook)
+            }
+
+            guard nextHooks.isEmpty == false else {
+                continue
+            }
+
+            var nextGroup = group
+            nextGroup["hooks"] = nextHooks
+            result.append(nextGroup)
+        }
+
+        if didReplace == false {
+            result.append([
+                "matcher": "",
+                "hooks": [replacementHook],
+            ])
+        }
+
+        return result
+    }
+
+    func managedHookDictionary(for spec: ManagedHookSpec) -> [String: Any] {
         var hook: [String: Any] = [
             "type": "command",
             "command": spec.command,
@@ -666,11 +715,7 @@ extension AIRuntimeBridgeService {
         if spec.async {
             hook["async"] = true
         }
-
-        return nextGroups + [[
-            "matcher": "",
-            "hooks": [hook],
-        ]]
+        return hook
     }
 
     func strippedManagedHookGroups(
@@ -680,7 +725,8 @@ extension AIRuntimeBridgeService {
         owner: String,
         helperScriptURL: URL,
         statusMessage: String,
-        stripAnyManagedHookForAction: Bool = false
+        stripAnyManagedHookForAction: Bool = false,
+        preserveOtherManagedOwners: Bool = true
     ) -> [[String: Any]] {
         let existingGroups = existingValue as? [[String: Any]] ?? []
         return existingGroups.compactMap { group in
@@ -693,7 +739,8 @@ extension AIRuntimeBridgeService {
                     owner: owner,
                     helperScriptURL: helperScriptURL,
                     statusMessage: statusMessage,
-                    stripAnyManagedHookForAction: stripAnyManagedHookForAction
+                    stripAnyManagedHookForAction: stripAnyManagedHookForAction,
+                    preserveOtherManagedOwners: preserveOtherManagedOwners
                 )
             }
 
@@ -714,7 +761,8 @@ extension AIRuntimeBridgeService {
         owner: String,
         helperScriptURL: URL,
         statusMessage expectedStatusMessage: String,
-        stripAnyManagedHookForAction: Bool = false
+        stripAnyManagedHookForAction: Bool = false,
+        preserveOtherManagedOwners: Bool = true
     ) -> Bool {
         guard let type = hook["type"] as? String,
               type == "command",
@@ -731,6 +779,13 @@ extension AIRuntimeBridgeService {
            hook["statusMessage"] as? String == expectedStatusMessage,
            let tool,
            commandContainsShellArgument(command, argument: tool) {
+            if commandContainsShellArgument(command, argument: owner) {
+                return true
+            }
+            if preserveOtherManagedOwners,
+               commandHasManagedOwnerArgument(command, action: action, tool: tool) {
+                return false
+            }
             return true
         }
 
@@ -743,6 +798,22 @@ extension AIRuntimeBridgeService {
         }
 
         return false
+    }
+
+    func commandHasManagedOwnerArgument(_ command: String, action: String, tool: String) -> Bool {
+        let actionToken = shellQuoted(action)
+        let toolToken = shellQuoted(tool)
+        guard let actionRange = command.range(of: actionToken) else {
+            return false
+        }
+        let tail = command[actionRange.upperBound...].trimmingCharacters(in: .whitespaces)
+        guard tail.isEmpty == false else {
+            return false
+        }
+        if tail == toolToken || tail.hasPrefix("\(toolToken) ") {
+            return false
+        }
+        return tail.contains(toolToken)
     }
 
     func commandContainsShellArgument(_ command: String, argument: String) -> Bool {

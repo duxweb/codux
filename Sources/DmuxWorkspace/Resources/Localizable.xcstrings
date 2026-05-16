@@ -25946,6 +25946,71 @@
         }
       }
     },
+    "settings.tab.experiments": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experiments"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实验"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "實驗"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimente"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimentos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expériences"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "実験"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실험"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimentos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эксперименты"
+          }
+        }
+      }
+    },
     "settings.tab.general": {
       "extractionState": "manual",
       "localizations": {
@@ -38414,6 +38479,201 @@
           "stringUnit": {
             "state": "translated",
             "value": "Интервал монитора производительности"
+          }
+        }
+      }
+    },
+    "settings.experiments.agent_split": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent Split"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 分屏"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 分屏"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent-Split"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "División de agente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fractionnement Agent"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 分割"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 분할"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divisao de agente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разделение агента"
+          }
+        }
+      }
+    },
+    "settings.experiments.agent_split.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When enabled, creating a split lets you choose Terminal or Agent. When disabled, splits are created as normal terminal panes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后，创建分屏时可选择终端或 Agent；关闭后直接创建普通终端分屏。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟後，建立分屏時可選擇終端或 Agent；關閉後直接建立一般終端分屏。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn aktiviert, kann beim Erstellen eines Splits Terminal oder Agent gewählt werden. Wenn deaktiviert, werden normale Terminal-Splits erstellt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al activarlo, crear una división permite elegir Terminal o Agente. Al desactivarlo, se crean divisiones normales de terminal."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une fois activé, la création d'un fractionnement permet de choisir Terminal ou Agent. Sinon, des volets de terminal normaux sont créés."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有効にすると、分割作成時にターミナルまたは Agent を選べます。無効時は通常のターミナル分割を作成します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "켜면 분할 생성 시 터미널 또는 Agent를 선택할 수 있습니다. 끄면 일반 터미널 분할이 생성됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando ativado, criar uma divisao permite escolher Terminal ou Agente. Quando desativado, sao criadas divisoes normais de terminal."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если включено, при создании разделения можно выбрать Terminal или Agent. Если выключено, создаются обычные терминальные панели."
+          }
+        }
+      }
+    },
+    "settings.experiments.section.split": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split Panes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分屏"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分屏"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geteilte Fenster"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paneles divididos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volets fractionnés"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分割ペイン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "분할 패널"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paineis divididos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разделенные панели"
           }
         }
       }
@@ -63928,6 +64188,3621 @@
           "stringUnit": {
             "state": "translated",
             "value": "閒置事件：%@\n目前時間：%@\n最近工具：%@ / 模型：%@\n專案暱稱：%@"
+          }
+        }
+      }
+    },
+    "agent.bottom_split.created": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent-Bereich unten erstellt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Created the bottom agent area."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Área inferior de agente creada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zone agent inférieure créée."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下部エージェント領域を作成しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "하단 에이전트 영역을 만들었습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Área inferior de agente criada."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нижняя область агента создана."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已创建底部 Agent 区域。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已建立底部 Agent 區域。"
+          }
+        }
+      }
+    },
+    "agent.bottom_tab.created": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuen Agent-Tab hinzugefügt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Added a new agent tab."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se agregó una nueva pestaña de agente."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouvel onglet agent ajouté."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいエージェントタブを追加しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 에이전트 탭을 추가했습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nova aba de agente adicionada."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавлена новая вкладка агента."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加新的 Agent 标签。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已新增新的 Agent 標籤。"
+          }
+        }
+      }
+    },
+    "agent.create": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェント"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Агент"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
+          }
+        }
+      }
+    },
+    "agent.create.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle den AI-CLI-Treiber für strukturierte Protokollereignisse."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select the AI CLI driver to run with structured protocol events."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selecciona el controlador CLI de IA para eventos de protocolo estructurados."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sélectionnez le pilote CLI IA pour les événements de protocole structurés."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "構造化プロトコルイベントで実行する AI CLI ドライバーを選択します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "구조화된 프로토콜 이벤트로 실행할 AI CLI 드라이버를 선택합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selecione o driver CLI de IA para eventos de protocolo estruturados."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите CLI-драйвер ИИ для структурированных событий протокола."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择要使用结构化协议事件运行的 AI CLI 驱动。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選擇要使用結構化協議事件執行的 AI CLI 驅動。"
+          }
+        }
+      }
+    },
+    "agent.create.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer Agent-Split"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Agent Split"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva división de agente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau split agent"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいエージェント分割"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 에이전트 분할"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nova divisão de agente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новая область агента"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建 Agent 分屏"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增 Agent 分屏"
+          }
+        }
+      }
+    },
+    "agent.discard.running": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anderungen werden verworfen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discarding changes."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartando cambios."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annulation des modifications."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "変更を破棄しています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "변경을 버리는 중입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartando alteracoes."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отмена изменений."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在撤销更改。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在撤銷更改。"
+          }
+        }
+      }
+    },
+    "agent.discard_all.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle nicht gespeicherten Anderungen in diesem Worktree verwerfen?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard all uncommitted changes in this worktree?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar todos los cambios sin confirmar en este worktree?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler toutes les modifications non validees dans ce worktree ?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この worktree の未コミット変更をすべて破棄しますか？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 worktree의 커밋되지 않은 변경을 모두 버릴까요?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar todas as alteracoes nao commitadas neste worktree?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить все незакоммиченные изменения в этом worktree?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销此工作树中的全部未提交更改？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤銷此工作樹中的全部未提交更改？"
+          }
+        }
+      }
+    },
+    "agent.discard_all.success": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle Anderungen verworfen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discarded all changes."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos los cambios descartados."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toutes les modifications ont ete annulees."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての変更を破棄しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 변경을 버렸습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todas as alteracoes foram descartadas."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все изменения отменены."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已撤销全部更改。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已撤銷全部更改。"
+          }
+        }
+      }
+    },
+    "agent.discard_all.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle Anderungen verwerfen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard All Changes"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar todos los cambios"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler toutes les modifications"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての変更を破棄"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 변경 버리기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar todas as alteracoes"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить все изменения"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销全部更改"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤銷全部更改"
+          }
+        }
+      }
+    },
+    "agent.discard_file.message_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht gespeicherte Anderungen in %@ verwerfen?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard uncommitted changes in %@?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar los cambios sin confirmar en %@?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler les modifications non validees dans %@ ?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ の未コミット変更を破棄しますか？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@의 커밋되지 않은 변경을 버릴까요?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar alteracoes nao commitadas em %@?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить незакоммиченные изменения в %@?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销 %@ 中的未提交更改？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤銷 %@ 中的未提交更改？"
+          }
+        }
+      }
+    },
+    "agent.discard_file.success": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dateianderung verworfen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discarded file change."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambio de archivo descartado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modification du fichier annulee."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル変更を破棄しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 변경을 버렸습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alteracao do arquivo descartada."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменение файла отменено."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已撤销文件更改。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已撤銷檔案更改。"
+          }
+        }
+      }
+    },
+    "agent.discard_file.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dateianderung verwerfen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard File Change"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar cambio de archivo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler la modification du fichier"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル変更を破棄"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 변경 버리기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar alteracao do arquivo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить изменение файла"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销文件更改"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤銷檔案更改"
+          }
+        }
+      }
+    },
+    "agent.empty.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sende eine Aufgabe. Codux rendert strukturierte Ereignisse des gewählten CLI-Treibers hier."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send a task. Codux will render structured events from the selected CLI driver here."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envía una tarea. Codux mostrará aquí los eventos estructurados del controlador CLI seleccionado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyez une tâche. Codux affichera ici les événements structurés du pilote CLI sélectionné."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タスクを送信してください。選択した CLI ドライバーの構造化イベントをここに表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "작업을 보내세요. 선택한 CLI 드라이버의 구조화된 이벤트가 여기에 표시됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envie uma tarefa. O Codux exibirá aqui os eventos estruturados do driver CLI selecionado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправьте задачу. Codux покажет здесь структурированные события выбранного CLI-драйвера."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送一个任务，Codux 会在这里渲染所选 CLI 驱动的结构化事件。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "傳送一個任務，Codux 會在這裡渲染所選 CLI 驅動的結構化事件。"
+          }
+        }
+      }
+    },
+    "agent.empty.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent bereit"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent Ready"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agente listo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent prêt"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェント準備完了"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트 준비됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agente pronto"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Агент готов"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 已就绪"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 已就緒"
+          }
+        }
+      }
+    },
+    "agent.composer.effort.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denkaufwand"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reasoning effort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esfuerzo de razonamiento"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Effort de raisonnement"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推論強度"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "추론 강도"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esforço de raciocínio"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Усилие рассуждения"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推理强度"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推理強度"
+          }
+        }
+      }
+    },
+    "agent.composer.model.default": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standardmodell"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default Model"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo predeterminado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèle par défaut"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デフォルトモデル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "기본 모델"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo padrão"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Модель по умолчанию"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "預設模型"
+          }
+        }
+      }
+    },
+    "agent.composer.model.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modell"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèle"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モデル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모델"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Модель"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型"
+          }
+        }
+      }
+    },
+    "agent.composer.model.placeholder": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standardmodell"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default model"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo predeterminado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèle par défaut"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デフォルトモデル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "기본 모델"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo padrão"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Модель по умолчанию"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "預設模型"
+          }
+        }
+      }
+    },
+    "agent.composer.permission.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berechtigungsmodus"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permission mode"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modo de permisos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mode d’autorisation"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "権限モード"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "권한 모드"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modo de permissão"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Режим разрешений"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "权限模式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "權限模式"
+          }
+        }
+      }
+    },
+    "agent.effort.high": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hoch"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "High"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Élevé"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "높음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alto"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Высокий"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高"
+          }
+        }
+      }
+    },
+    "agent.effort.low": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niedrig"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Low"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bajo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Faible"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "低"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "낮음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baixo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Низкий"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "低"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "低"
+          }
+        }
+      }
+    },
+    "agent.effort.medium": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mittel"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medium"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medio"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moyen"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "중간"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Médio"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Средний"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中"
+          }
+        }
+      }
+    },
+    "agent.effort.minimal": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimal"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimal"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mínimo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimal"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最小"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "최소"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mínimo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Минимальный"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最小"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最小"
+          }
+        }
+      }
+    },
+    "agent.effort.none": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguno"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "なし"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "없음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無"
+          }
+        }
+      }
+    },
+    "agent.effort.xhigh": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sehr hoch"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "XHigh"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muy alto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Très élevé"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最高"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "매우 높음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muito alto"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очень высокий"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "极高"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "極高"
+          }
+        }
+      }
+    },
+    "agent.error.exit_detail_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wurde mit Code %@ beendet.\n%@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ exited with code %@.\n%@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ salió con el código %@.\n%@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ s'est terminé avec le code %@.\n%@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ はコード %@ で終了しました。\n%@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@이(가) 코드 %@로 종료되었습니다.\n%@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ saiu com o código %@.\n%@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ завершился с кодом %@.\n%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已退出，代码 %@。\n%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已結束，代碼 %@。\n%@"
+          }
+        }
+      }
+    },
+    "agent.error.exit_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wurde mit Code %@ beendet."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ exited with code %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ salió con el código %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ s'est terminé avec le code %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ はコード %@ で終了しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@이(가) 코드 %@로 종료되었습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ saiu com o código %@."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ завершился с кодом %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已退出，代码 %@。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已結束，代碼 %@。"
+          }
+        }
+      }
+    },
+    "agent.error.unsupported_tool_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wird noch nicht unterstützt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is not supported yet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ aún no es compatible."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ n'est pas encore pris en charge."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ はまだサポートされていません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@은(는) 아직 지원되지 않습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ainda não é compatível."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ пока не поддерживается."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂不支持 %@。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暫不支援 %@。"
+          }
+        }
+      }
+    },
+    "agent.files.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dateianderungen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Changes"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambios de archivos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifications de fichiers"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイル変更"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 변경"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alteracoes de arquivos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменения файлов"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件更改"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檔案更改"
+          }
+        }
+      }
+    },
+    "agent.elapsed.minutes_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Läuft seit %@m %@s" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Elapsed %@m %@s" } },
+        "es": { "stringUnit": { "state": "translated", "value": "En curso %@m %@s" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "En cours %@m %@s" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "実行 %@分%@秒" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@분 %@초 실행 중" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Em execução %@m %@s" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "В работе %@м %@с" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已运行 %@分 %@秒" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已執行 %@分 %@秒" } }
+      }
+    },
+    "agent.elapsed.seconds_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Läuft seit %@s" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Elapsed %@s" } },
+        "es": { "stringUnit": { "state": "translated", "value": "En curso %@s" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "En cours %@s" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "実行 %@秒" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@초 실행 중" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Em execução %@s" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "В работе %@с" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已运行 %@秒" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已執行 %@秒" } }
+      }
+    },
+    "agent.files.edited_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ Dateien bearbeitet" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Edited %@ files" } },
+        "es": { "stringUnit": { "state": "translated", "value": "%@ archivos editados" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ fichiers modifiés" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@個のファイルを編集" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@개 파일 편집됨" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "%@ arquivos editados" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Изменено файлов: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已编辑 %@ 个文件" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已編輯 %@ 個檔案" } }
+      }
+    },
+    "agent.files.edited_file_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ bearbeitet" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Edited %@" } },
+        "es": { "stringUnit": { "state": "translated", "value": "%@ editado" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ modifié" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@ を編集" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@ 편집됨" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "%@ editado" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Изменено %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已编辑 %@" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已編輯 %@" } }
+      }
+    },
+    "agent.files.details": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Details" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Details" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Detalles" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Détails" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "詳細" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "세부 정보" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Detalhes" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Подробности" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "详情" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "詳情" } }
+      }
+    },
+    "agent.files.revert": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Zurücksetzen" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Revert" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Revertir" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Annuler" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "戻す" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "되돌리기" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Reverter" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Откатить" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "撤销" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "撤銷" } }
+      }
+    },
+    "agent.input.placeholder": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitte den Agenten, an diesem Projekt zu arbeiten..."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask the agent to work on this project..."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pide al agente que trabaje en este proyecto..."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demandez à l'agent de travailler sur ce projet..."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロジェクトで作業するようエージェントに依頼..."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트에게 이 프로젝트 작업을 요청..."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peça ao agente para trabalhar neste projeto..."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Попросите агента работать над этим проектом..."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让 Agent 处理这个项目中的任务..."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讓 Agent 處理這個專案中的任務..."
+          }
+        }
+      }
+    },
+    "agent.role.assistant": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assistant"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assistant"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asistente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assistant"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アシスタント"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "어시스턴트"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assistente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ассистент"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "助手"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "助手"
+          }
+        }
+      }
+    },
+    "agent.role.error": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fehler"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Error"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Error"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erreur"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エラー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "오류"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erro"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ошибка"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "错误"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "錯誤"
+          }
+        }
+      }
+    },
+    "agent.role.system": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistema"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Système"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システム"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시스템"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistema"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Система"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系統"
+          }
+        }
+      }
+    },
+    "agent.role.tool": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Herramienta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outil"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ツール"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "도구"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ferramenta"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Инструмент"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具"
+          }
+        }
+      }
+    },
+    "agent.role.user": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tú"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "あなた"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "나"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вы"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你"
+          }
+        }
+      }
+    },
+    "agent.send": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보내기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправить"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "傳送"
+          }
+        }
+      }
+    },
+    "agent.activity.command_count_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ Befehle" } },
+        "en": { "stringUnit": { "state": "translated", "value": "%@ commands" } },
+        "es": { "stringUnit": { "state": "translated", "value": "%@ comandos" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ commandes" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@件のコマンド" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@개 명령" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "%@ comandos" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "команд: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@ 条命令" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "%@ 條命令" } }
+      }
+    },
+    "agent.activity.command_summary_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ ausgeführt" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Ran %@" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Ejecutó %@" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ exécuté" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@ を実行" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@ 실행" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Executou %@" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Выполнено %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已运行 %@" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已執行 %@" } }
+      }
+    },
+    "agent.activity.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Fehlgeschlagen" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Failed" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Falló" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Échec" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "失敗" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "실패" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Falhou" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Ошибка" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "处理失败" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "處理失敗" } }
+      }
+    },
+    "agent.activity.file_count_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ Dateien" } },
+        "en": { "stringUnit": { "state": "translated", "value": "%@ files" } },
+        "es": { "stringUnit": { "state": "translated", "value": "%@ archivos" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ fichiers" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@個のファイル" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@개 파일" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "%@ arquivos" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "файлов: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@ 个文件" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "%@ 個檔案" } }
+      }
+    },
+    "agent.activity.file_summary_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ bearbeitet" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Edited %@" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Editó %@" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ modifié" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@ を編集" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@ 편집" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Editou %@" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Изменено %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已编辑 %@" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已編輯 %@" } }
+      }
+    },
+    "agent.activity.plan_summary": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Plan aktualisiert" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Updated plan" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Plan actualizado" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Plan mis à jour" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "計画を更新" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "계획 업데이트" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Plano atualizado" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "План обновлён" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已更新计划" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已更新計劃" } }
+      }
+    },
+    "agent.activity.processed": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Verarbeitet" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Processed" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Procesado" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Traité" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "処理済み" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "처리됨" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Processado" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Обработано" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已处理" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已處理" } }
+      }
+    },
+    "agent.activity.processing": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Verarbeitung läuft" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Processing" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Procesando" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Traitement" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "処理中" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "처리 중" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Processando" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Обработка" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在处理" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "正在處理" } }
+      }
+    },
+    "agent.activity.reasoning_count_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ Notizen" } },
+        "en": { "stringUnit": { "state": "translated", "value": "%@ notes" } },
+        "es": { "stringUnit": { "state": "translated", "value": "%@ notas" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ notes" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@件のメモ" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@개 메모" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "%@ notas" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "заметок: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@ 条记录" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "%@ 條記錄" } }
+      }
+    },
+    "agent.activity.reasoning_summary": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Kontext durchdacht" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Thought through context" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Analizó el contexto" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Contexte analysé" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "文脈を検討" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "컨텍스트 검토" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Analisou o contexto" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Контекст продуман" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已分析上下文" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已分析上下文" } }
+      }
+    },
+    "agent.activity.tool_count_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ Tools" } },
+        "en": { "stringUnit": { "state": "translated", "value": "%@ tools" } },
+        "es": { "stringUnit": { "state": "translated", "value": "%@ herramientas" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ outils" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@件のツール" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@개 도구" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "%@ ferramentas" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "инструментов: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@ 个工具" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "%@ 個工具" } }
+      }
+    },
+    "agent.activity.tool_summary_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ verwendet" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Used %@" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Usó %@" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ utilisé" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@ を使用" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@ 사용" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Usou %@" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Использовано %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已使用 %@" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已使用 %@" } }
+      }
+    },
+    "agent.timeline.command": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Befehl" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Command" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Comando" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Commande" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "コマンド" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "명령" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Comando" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Команда" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "命令" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "命令" } }
+      }
+    },
+    "agent.timeline.file_change": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Dateiänderung" } },
+        "en": { "stringUnit": { "state": "translated", "value": "File Change" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Cambio de archivo" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Modification de fichier" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ファイル変更" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "파일 변경" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Alteração de arquivo" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Изменение файла" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "文件更改" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "檔案更改" } }
+      }
+    },
+    "agent.timeline.plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Plan" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Plan" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Plan" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Plan" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "計画" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "계획" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Plano" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "План" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "计划" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "計劃" } }
+      }
+    },
+    "agent.timeline.reasoning": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Begründung" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Reasoning" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Razonamiento" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Raisonnement" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "推論" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "추론" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Raciocínio" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Рассуждение" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "推理" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "推理" } }
+      }
+    },
+    "agent.timeline.tool": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Tool" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Tool" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Herramienta" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Outil" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ツール" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "도구" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Ferramenta" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Инструмент" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "工具" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "工具" } }
+      }
+    },
+    "agent.working": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Arbeitet" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Working" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Trabajando" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "En cours" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "処理中" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "작업 중" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Trabalhando" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Работаю" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "处理中" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "處理中" } }
+      }
+    },
+    "agent.code.copy": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Kopieren" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Copy" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Copiar" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Copier" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "コピー" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "복사" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Copiar" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Скопировать" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "复制" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "複製" } }
+      }
+    },
+    "agent.code.show_less": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Weniger anzeigen" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Show less" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Mostrar menos" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Afficher moins" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "折りたたむ" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "간략히" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Mostrar menos" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Свернуть" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "收起" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "收起" } }
+      }
+    },
+    "agent.code.show_more_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ weitere Zeilen anzeigen" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Show %@ more lines" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Mostrar %@ líneas más" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Afficher %@ lignes de plus" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@ 行を表示" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@ 줄 더 보기" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Mostrar mais %@ linhas" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Показать ещё %@ строк" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "展开 %@ 行" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "展開 %@ 行" } }
+      }
+    },
+    "agent.message.show_more_characters_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "%@ weitere Zeichen anzeigen" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Show %@ more characters" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Mostrar %@ caracteres más" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Afficher %@ caractères de plus" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@ 文字を表示" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "%@자 더 보기" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Mostrar mais %@ caracteres" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Показать ещё %@ символов" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "展开 %@ 个字符" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "展開 %@ 個字元" } }
+      }
+    },
+    "agent.split.created": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent-Split erstellt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Created an agent split."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "División de agente creada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split agent créé."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェント分割を作成しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트 분할을 만들었습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divisão de agente criada."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Область агента создана."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已创建 Agent 分屏。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已建立 Agent 分屏。"
+          }
+        }
+      }
+    },
+    "agent.status.thinking": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Denkt nach" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Thinking" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Pensando" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Réflexion" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "思考中" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "생각 중" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Pensando" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Думает" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "思考中" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "思考中" } }
+      }
+    },
+    "agent.status.thinking_live": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Denkt nach..." } },
+        "en": { "stringUnit": { "state": "translated", "value": "Thinking..." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Pensando..." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Réflexion..." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "思考中..." } },
+        "ko": { "stringUnit": { "state": "translated", "value": "생각 중..." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Pensando..." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Думает..." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "思考中..." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "思考中..." } }
+      }
+    },
+    "agent.status.running_command": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Befehl läuft" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Running command" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Ejecutando comando" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Commande en cours" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "コマンド実行中" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "명령 실행 중" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Executando comando" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Выполняет команду" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在运行命令" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "正在執行命令" } }
+      }
+    },
+    "agent.status.editing_files": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Bearbeitet Dateien" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Editing files" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Editando archivos" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Modification des fichiers" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ファイル編集中" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "파일 편집 중" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Editando arquivos" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Редактирует файлы" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在编辑文件" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "正在編輯檔案" } }
+      }
+    },
+    "agent.status.completed": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abgeschlossen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminé"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完了"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "완료됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Concluído"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завершено"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成"
+          }
+        }
+      }
+    },
+    "agent.status.exit_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beendet %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exited %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salió %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sortie %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "終了 %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "종료됨 %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saiu %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завершено %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已退出 %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已結束 %@"
+          }
+        }
+      }
+    },
+    "agent.status.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fehlgeschlagen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Error"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Échec"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "失敗"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실패"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Falhou"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ошибка"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "失败"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "失敗"
+          }
+        }
+      }
+    },
+    "agent.status.running": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Läuft"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ejecutando"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En cours"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "実行中"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실행 중"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Executando"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выполняется"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "執行中"
+          }
+        }
+      }
+    },
+    "agent.status.running_live": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": { "stringUnit": { "state": "translated", "value": "Läuft..." } },
+        "en": { "stringUnit": { "state": "translated", "value": "Running..." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Ejecutando..." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "En cours..." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "実行中..." } },
+        "ko": { "stringUnit": { "state": "translated", "value": "실행 중..." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Executando..." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Выполняется..." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "运行中..." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "執行中..." } }
+      }
+    },
+    "agent.status.stopped": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gestoppt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detenido"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrêté"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "중지됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parado"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Остановлено"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已停止"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已停止"
+          }
+        }
+      }
+    },
+    "agent.stop": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopp"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detener"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrêter"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "중지"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Остановить"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止"
+          }
+        }
+      }
+    },
+    "agent.tasks.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aufgaben"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tasks"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tareas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taches"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タスク"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "작업"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarefas"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Задачи"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任务"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任務"
+          }
+        }
+      }
+    },
+    "workspace.create_split.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle einen Terminal-Split oder einen strukturierten Agent-Chat-Split."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a terminal split or a structured agent chat split."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige una división de terminal o una división de chat de agente estructurado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez un split de terminal ou un split de chat agent structuré."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナル分割または構造化エージェントチャット分割を選択します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널 분할 또는 구조화된 에이전트 채팅 분할을 선택합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha uma divisão de terminal ou uma divisão de chat de agente estruturado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите разделение терминала или структурированный чат агента."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择终端分屏或结构化 Agent 聊天分屏。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選擇終端分屏或結構化 Agent 聊天分屏。"
+          }
+        }
+      }
+    },
+    "workspace.create_split.terminal": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "터미널"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Терминал"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "終端"
+          }
+        }
+      }
+    },
+    "workspace.create_split.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split erstellen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create Split"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crear división"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créer un split"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分割を作成"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "분할 만들기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Criar divisão"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Создать разделение"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建分屏"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "建立分屏"
+          }
+        }
+      }
+    },
+    "agent.discard_session.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle von diesem Agent gemeldeten Dateianderungen verwerfen?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard all file changes reported by this agent?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar todos los cambios de archivos informados por este agente?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler toutes les modifications de fichiers signalees par cet agent ?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このエージェントが報告したすべてのファイル変更を破棄しますか？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 에이전트가 보고한 모든 파일 변경을 버릴까요?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar todas as alteracoes de arquivo relatadas por este agente?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить все изменения файлов, сообщенные этим агентом?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销此 Agent 上报的全部文件更改？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤銷此 Agent 上報的全部檔案更改？"
           }
         }
       }

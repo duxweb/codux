@@ -102,7 +102,7 @@ struct AppCommands: Commands {
                 title: String(localized: "menu.view.create_split", defaultValue: "Create Split", bundle: .module),
                 shortcut: model.appSettings.shortcuts.splitPane
             ) {
-                model.splitSelectedPane(axis: .horizontal)
+                model.presentCreateSplitDialog()
             }
 
             ShortcutCommandButton(
