@@ -157,14 +157,10 @@ struct AIRuntimeBridgeService {
         let runtimeOwner = runtimeOwnerID()
         let appSupportRootPath = AppRuntimePaths.appSupportRootURL(fileManager: fileManager)!.path
         let toolPermissionSettingsFilePath = toolPermissionSettingsFileURL().path
-        let memoryArtifacts = aiSettings.flatMap {
-            MemoryContextService().prepareLaunchArtifacts(
-                projectID: session.projectID,
-                projectName: session.projectName,
-                projectPath: session.cwd,
-                settings: $0
-            )
-        }
+        let memoryArtifactPaths = expectedMemoryLaunchArtifactPaths(
+            projectID: session.projectID,
+            settings: aiSettings
+        )
         let signature = environmentCacheSignature(
             session: session,
             processEnvironment: processEnvironment,
@@ -178,13 +174,22 @@ struct AIRuntimeBridgeService {
             appSupportRootPath: appSupportRootPath,
             toolPermissionSettingsFilePath: toolPermissionSettingsFilePath,
             globalPrompt: aiSettings?.globalPrompt,
-            memoryWorkspaceRootPath: memoryArtifacts?.workspaceRootURL.path,
-            memoryWorkspaceLinkPath: memoryArtifacts?.workspaceLinkURL.path,
-            memoryPromptFilePath: memoryArtifacts?.promptFileURL.path
+            memoryWorkspaceRootPath: memoryArtifactPaths?.workspaceRootPath,
+            memoryWorkspaceLinkPath: memoryArtifactPaths?.workspaceLinkPath,
+            memoryPromptFilePath: memoryArtifactPaths?.promptFilePath
         )
 
         if let cached = Self.environmentCacheCoordinator.value(for: session.id, signature: signature) {
             return EnvironmentResolution(pairs: cached, isCacheHit: true)
+        }
+
+        let memoryArtifacts = aiSettings.flatMap {
+            MemoryContextService().prepareLaunchArtifacts(
+                projectID: session.projectID,
+                projectName: session.projectName,
+                projectPath: session.cwd,
+                settings: $0
+            )
         }
 
         debugLog.log(
@@ -376,6 +381,28 @@ struct AIRuntimeBridgeService {
     private func toolPermissionSettingsFileURL() -> URL {
         AppRuntimePaths.appSupportRootURL(fileManager: fileManager)!
             .appendingPathComponent("tool-permissions.json", isDirectory: false)
+    }
+
+    private func expectedMemoryLaunchArtifactPaths(
+        projectID: UUID,
+        settings: AppAISettings?
+    ) -> (workspaceRootPath: String, workspaceLinkPath: String, promptFilePath: String)? {
+        guard let settings,
+              (normalizedNonEmptyString(settings.globalPrompt) != nil
+                  || (settings.memory.enabled && settings.memory.automaticInjectionEnabled)),
+              let runtimeRoot = AppRuntimePaths.runtimeSupportRootURL(fileManager: fileManager)
+        else {
+            return nil
+        }
+
+        let rootURL = runtimeRoot
+            .appendingPathComponent("memory-workspaces", isDirectory: true)
+            .appendingPathComponent(projectID.uuidString, isDirectory: true)
+        return (
+            workspaceRootPath: rootURL.path,
+            workspaceLinkPath: rootURL.appendingPathComponent("workspace", isDirectory: true).path,
+            promptFilePath: rootURL.appendingPathComponent("memory-prompt.txt", isDirectory: false).path
+        )
     }
 
     private func environmentCacheSignature(

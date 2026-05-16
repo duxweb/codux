@@ -646,7 +646,7 @@ final class RemoteHostService: ObservableObject {
     case "terminal.buffer":
       if let sessionID = envelope.sessionID {
         if let uuid = UUID(uuidString: sessionID) {
-          ensureRemoteTerminalStarted(sessionID: uuid)
+          ensureRemoteTerminalStartedIfNeeded(sessionID: uuid)
         }
         sendTerminalBuffer(
           sessionID: sessionID,
@@ -669,7 +669,7 @@ final class RemoteHostService: ObservableObject {
           "p2p input session=\(sessionID.uuidString) bytes=\(data.utf8.count)"
         )
         registerTerminalViewer(sessionID: sessionID.uuidString, deviceID: envelope.deviceID)
-        ensureRemoteTerminalStarted(sessionID: sessionID)
+        ensureRemoteTerminalStartedIfNeeded(sessionID: sessionID)
         let sent = DmuxTerminalBackend.shared.registry.sendText(data, to: sessionID)
         if sent == false {
           send(
@@ -691,7 +691,7 @@ final class RemoteHostService: ObservableObject {
         let cols = UInt16(clamping: UInt((colsValue as? Int) ?? Int((colsValue as? Double) ?? 0)))
         let rows = UInt16(clamping: UInt((rowsValue as? Int) ?? Int((rowsValue as? Double) ?? 0)))
         if cols > 0, rows > 0 {
-          ensureRemoteTerminalStarted(sessionID: sessionID)
+          ensureRemoteTerminalStartedIfNeeded(sessionID: sessionID)
           guard canResizeTerminal(sessionID: sessionID, deviceID: envelope.deviceID) else {
             logger.log(
               "remote-terminal",
@@ -1168,6 +1168,14 @@ final class RemoteHostService: ObservableObject {
       return false
     }
     return ensureRemoteTerminalStarted(session: session)
+  }
+
+  @discardableResult
+  private func ensureRemoteTerminalStartedIfNeeded(sessionID: UUID) -> Bool {
+    guard GhosttyTerminalRegistry.shared.hasRunningProcess(for: sessionID) == false else {
+      return false
+    }
+    return ensureRemoteTerminalStarted(sessionID: sessionID)
   }
 
   @discardableResult

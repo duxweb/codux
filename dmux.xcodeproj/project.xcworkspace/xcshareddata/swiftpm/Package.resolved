@@ -1,5 +1,5 @@
 {
-  "originHash" : "68063030c68b5bb51e2b737964308504c8a2100c446ca8bdfdf0b5adc817639d",
+  "originHash" : "d0fd33726e46d7b231eb56f1a999771ad3329b4117d4f41d1bf182a302118ad7",
   "pins" : [
     {
       "identity" : "codeeditlanguages",
@@ -16,7 +16,7 @@
       "location" : "https://github.com/Lakr233/libghostty-spm",
       "state" : {
         "branch" : "main",
-        "revision" : "f10e02dd829271be3e361dcde56a6e33a79fa080"
+        "revision" : "96697997a308ee2d8585bf9ecb4003a24ec3eed6"
       }
     },
     {

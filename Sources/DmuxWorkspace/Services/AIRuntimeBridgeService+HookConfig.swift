@@ -146,7 +146,7 @@ extension AIRuntimeBridgeService {
                     removalIndices.append(legacyHooksIndex)
                 }
             } else if let legacyHooksIndex {
-                lines[legacyHooksIndex] = "codex_hooks = true"
+                lines[legacyHooksIndex] = hooksFeatureLine
             } else {
                 var insertionIndex = sectionEnd
                 while insertionIndex > featuresIndex + 1,

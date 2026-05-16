@@ -55,6 +55,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
     private var viewportRefreshWorkItem: DispatchWorkItem?
     private var lastViewportRefreshSignature = ""
     private var needsRemoteOutputReplayOnVisible = false
+    private var hasReplayedRemoteOutputOnVisibleSurface = false
     private let startupDelay: TimeInterval = 0.18
     private let startupWatchdogDelay: TimeInterval = 3.5
     private let viewportRefreshDebounceDelay: TimeInterval = 0.16
@@ -136,14 +137,18 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         self.onLoadingStateChanged = onLoadingStateChanged
         lastShowsInactiveOverlay = showsInactiveOverlay
 
+        var needsViewportRefresh = false
+
         if self.terminalBackgroundPreset != terminalBackgroundPreset || self.backgroundColorPreset != backgroundColorPreset {
             self.backgroundColorPreset = backgroundColorPreset
             applyTerminalBackgroundPreset(terminalBackgroundPreset)
+            needsViewportRefresh = true
         }
 
         if self.terminalFontSize != terminalFontSize {
             self.terminalFontSize = terminalFontSize
             terminalView.configuration = surfaceOptions()
+            needsViewportRefresh = true
         }
 
         if configuredSession.id != session.id {
@@ -159,14 +164,17 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
             lastAppliedVisibleState = nil
             lastViewportRefreshSignature = ""
             needsRemoteOutputReplayOnVisible = false
+            hasReplayedRemoteOutputOnVisibleSurface = false
             updateLoadingShieldVisibility()
             terminalView.configuration = surfaceOptions()
+            needsViewportRefresh = true
         } else {
             configuredSession = session
         }
 
         let focusChanged = lastAppliedFocusedState != isFocused
         let visibilityChanged = lastAppliedVisibleState != isVisible
+        needsViewportRefresh = needsViewportRefresh || focusChanged || visibilityChanged
         lastAppliedFocusedState = isFocused
         lastAppliedVisibleState = isVisible
         if visibilityChanged {
@@ -175,7 +183,9 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
 
         if isVisible {
             scheduleProcessStartIfPossible(reason: isFocused ? "update-focused" : "update-visible")
-            scheduleViewportRefresh(reason: "update-session", coalescing: true)
+            if needsViewportRefresh {
+                scheduleViewportRefresh(reason: "update-session", coalescing: true)
+            }
         }
 
         let showsDimOverlay = showsInactiveOverlay && isVisible && !isFocused
@@ -247,13 +257,18 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         processBridge.outputHistoryText()
     }
 
+    var hasRunningProcess: Bool {
+        hasStartedProcess && terminalShellPID != nil
+    }
+
     func terminateProcessTree() {
         processBridge.terminateProcessTree()
     }
 
     func startProcessForRemoteIfNeeded(environment: [(String, String)]) {
         configuredEnvironment = environment
-        if window == nil || lastAppliedVisibleState != true {
+        if hasReplayedRemoteOutputOnVisibleSurface == false,
+           window == nil || lastAppliedVisibleState != true {
             needsRemoteOutputReplayOnVisible = true
         }
         startProcessIfPossible(trigger: "remote-background", requiresWindow: false)
@@ -820,6 +835,7 @@ final class GhosttyTerminalContainerView: NSView, TerminalSurfaceFocusDelegate, 
         terminalView.configuration = surfaceOptions()
         processBridge.terminalSession.receive(history)
         needsRemoteOutputReplayOnVisible = false
+        hasReplayedRemoteOutputOnVisibleSurface = true
         logger.log(
             "ghostty-process",
             "replay-remote-history session=\(configuredSession.id.uuidString) bytes=\(history.count) reason=\(reason)"

@@ -9,6 +9,9 @@ private let worktreeActiveIndicatorColor = Color.orange
 
 private enum WorktreeSidebarMetrics {
     static let taskRowHeight: CGFloat = 52
+    static let cardHorizontalInset: CGFloat = 10
+    static let rowHorizontalPadding: CGFloat = 10
+    static let cardCornerRadius: CGFloat = 8
     static let statusColumnWidth: CGFloat = 16
     static let statusColumnHeight: CGFloat = 20
 }
@@ -76,7 +79,7 @@ struct WorktreeSidebarView: View {
                         isSelected: defaultWorktree.id == model.selectedWorktreeID
                     )
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, WorktreeSidebarMetrics.cardHorizontalInset)
                 .padding(.top, 12)
                 .padding(.bottom, 10)
 
@@ -93,7 +96,7 @@ struct WorktreeSidebarView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, WorktreeSidebarMetrics.cardHorizontalInset)
                 .padding(.top, 4)
                 .padding(.bottom, 10)
             }
@@ -232,19 +235,19 @@ private struct BaseWorkspaceCard: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, WorktreeSidebarMetrics.rowHorizontalPadding)
             .padding(.vertical, 8)
             .frame(height: WorktreeSidebarMetrics.taskRowHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: WorktreeSidebarMetrics.cardCornerRadius, style: .continuous)
                     .fill(cardBackground)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: WorktreeSidebarMetrics.cardCornerRadius, style: .continuous)
                     .stroke(cardBorder, lineWidth: 0.5)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: WorktreeSidebarMetrics.cardCornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -365,15 +368,15 @@ private struct WorktreeRowCompact: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, WorktreeSidebarMetrics.rowHorizontalPadding)
             .padding(.vertical, 6)
             .frame(height: WorktreeSidebarMetrics.taskRowHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 ZStack(alignment: .trailing) {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: WorktreeSidebarMetrics.cardCornerRadius, style: .continuous)
                         .fill(statusVisual.background)
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: WorktreeSidebarMetrics.cardCornerRadius, style: .continuous)
                         .fill(rowInteractionBackground)
                     Text(statusVisual.watermark)
                         .font(.system(size: 32, weight: .black, design: .rounded))
@@ -383,9 +386,9 @@ private struct WorktreeRowCompact: View {
                         .accessibilityHidden(true)
                         .allowsHitTesting(false)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: WorktreeSidebarMetrics.cardCornerRadius, style: .continuous))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: WorktreeSidebarMetrics.cardCornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
         .contextMenu {

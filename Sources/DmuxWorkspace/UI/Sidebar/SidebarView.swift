@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -470,7 +471,6 @@ private struct ProjectBadge: View {
 private struct ActivityBadgeView: View {
     let phase: ProjectActivityPhase
     let count: Int?
-    @State private var rotation = 0.0
 
     var body: some View {
         Group {
@@ -495,52 +495,23 @@ private struct ActivityBadgeView: View {
     }
 
     private var badgeSize: CGFloat {
-        12
+        displayCount == nil ? 12 : 14
     }
 
     private var solidBadgeSize: CGFloat {
-        12
+        displayCount == nil ? 12 : 14
     }
 
     private var countFontSize: CGFloat {
-        displayCount?.count == 2 ? 5.4 : 6.2
+        displayCount?.count == 2 ? 7.2 : 8.0
     }
 
     private var runningBadge: some View {
-        Circle()
-            .fill(displayCount == nil ? Color.clear : AppTheme.warning)
-            .overlay(
-                Circle()
-                    .stroke(Color.white.opacity(0.16), lineWidth: 1.6)
-            )
-            .overlay(
-                Circle()
-                    .trim(from: 0.14, to: 0.76)
-                    .stroke(Color.white, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
-                    .rotationEffect(.degrees(rotation))
-            )
-            .overlay {
-                if let displayCount {
-                    Text(displayCount)
-                        .font(.system(size: countFontSize, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.white)
-                        .minimumScaleFactor(0.7)
-                } else {
-                    Circle()
-                        .fill(AppTheme.warning)
-                        .frame(width: 5, height: 5)
-                }
-            }
+        RunningActivityBadgeIndicator(
+            displayCount: displayCount,
+            countFontSize: countFontSize
+        )
             .frame(width: badgeSize, height: badgeSize)
-            .background(Color.black.opacity(0.28))
-            .clipShape(Circle())
-            .onAppear {
-                rotation = 0
-                withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
-                    rotation = 360
-                }
-            }
     }
 
     private func solidBadge(color: Color) -> some View {
@@ -559,6 +530,145 @@ private struct ActivityBadgeView: View {
                         .minimumScaleFactor(0.7)
                 }
             }
+    }
+}
+
+private struct RunningActivityBadgeIndicator: NSViewRepresentable {
+    let displayCount: String?
+    let countFontSize: CGFloat
+
+    func makeNSView(context: Context) -> RunningActivityBadgeView {
+        let view = RunningActivityBadgeView(frame: .zero)
+        view.configure(displayCount: displayCount, countFontSize: countFontSize)
+        return view
+    }
+
+    func updateNSView(_ nsView: RunningActivityBadgeView, context: Context) {
+        nsView.configure(displayCount: displayCount, countFontSize: countFontSize)
+    }
+}
+
+private final class RunningActivityBadgeView: NSView {
+    private static let rotationAnimationKey = "codux-sidebar-activity-rotation"
+
+    private let backgroundLayer = CAShapeLayer()
+    private let trackLayer = CAShapeLayer()
+    private let arcLayer = CAShapeLayer()
+    private let dotLayer = CAShapeLayer()
+    private let countLabel = CATextLayer()
+    private var displayCount: String?
+    private var countFontSize: CGFloat = 6.2
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.masksToBounds = false
+
+        backgroundLayer.fillColor = NSColor.black.withAlphaComponent(0.28).cgColor
+        trackLayer.fillColor = NSColor.clear.cgColor
+        trackLayer.strokeColor = NSColor.white.withAlphaComponent(0.16).cgColor
+        trackLayer.lineWidth = 1.6
+        arcLayer.fillColor = NSColor.clear.cgColor
+        arcLayer.strokeColor = NSColor.white.cgColor
+        arcLayer.lineWidth = 1.8
+        arcLayer.lineCap = .round
+        dotLayer.fillColor = NSColor(calibratedRed: 1.0, green: 0.64, blue: 0.18, alpha: 1).cgColor
+        countLabel.alignmentMode = .center
+        countLabel.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        countLabel.foregroundColor = NSColor.white.cgColor
+        countLabel.truncationMode = .end
+
+        layer?.addSublayer(backgroundLayer)
+        layer?.addSublayer(trackLayer)
+        layer?.addSublayer(arcLayer)
+        layer?.addSublayer(dotLayer)
+        layer?.addSublayer(countLabel)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func configure(displayCount: String?, countFontSize: CGFloat) {
+        guard self.displayCount != displayCount || self.countFontSize != countFontSize else {
+            return
+        }
+        self.displayCount = displayCount
+        self.countFontSize = countFontSize
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        let circleRect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let radius = max(1, min(circleRect.width, circleRect.height) / 2)
+
+        backgroundLayer.frame = bounds
+        backgroundLayer.path = CGPath(ellipseIn: bounds, transform: nil)
+
+        trackLayer.frame = bounds
+        trackLayer.path = CGPath(ellipseIn: circleRect.insetBy(dx: 1.1, dy: 1.1), transform: nil)
+
+        let arcPath = CGMutablePath()
+        arcPath.addArc(
+            center: center,
+            radius: max(1, radius - 1.4),
+            startAngle: CGFloat.pi * 0.15,
+            endAngle: CGFloat.pi * 1.52,
+            clockwise: false
+        )
+        arcLayer.frame = bounds
+        arcLayer.path = arcPath
+
+        if let displayCount {
+            backgroundLayer.fillColor = NSColor(calibratedRed: 1.0, green: 0.64, blue: 0.18, alpha: 1).cgColor
+            trackLayer.isHidden = true
+            arcLayer.isHidden = true
+            dotLayer.isHidden = true
+            countLabel.isHidden = false
+            countLabel.string = displayCount
+            countLabel.font = NSFont.monospacedDigitSystemFont(ofSize: countFontSize, weight: .bold)
+            countLabel.fontSize = countFontSize
+            countLabel.frame = CGRect(x: bounds.minX, y: bounds.midY - countFontSize * 0.68, width: bounds.width, height: countFontSize * 1.5)
+        } else {
+            backgroundLayer.fillColor = NSColor.black.withAlphaComponent(0.28).cgColor
+            trackLayer.isHidden = false
+            arcLayer.isHidden = false
+            dotLayer.isHidden = false
+            countLabel.isHidden = true
+            dotLayer.frame = CGRect(x: bounds.midX - 2.5, y: bounds.midY - 2.5, width: 5, height: 5)
+            dotLayer.path = CGPath(ellipseIn: dotLayer.bounds, transform: nil)
+        }
+
+        CATransaction.commit()
+        ensureRotationAnimation()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            arcLayer.removeAnimation(forKey: Self.rotationAnimationKey)
+        } else {
+            ensureRotationAnimation()
+        }
+    }
+
+    private func ensureRotationAnimation() {
+        guard window != nil, bounds.width > 0, arcLayer.animation(forKey: Self.rotationAnimationKey) == nil else {
+            return
+        }
+        let animation = CABasicAnimation(keyPath: "transform.rotation.z")
+        animation.fromValue = 0
+        animation.toValue = Double.pi * 2
+        animation.duration = 1.1
+        animation.repeatCount = .infinity
+        animation.isRemovedOnCompletion = false
+        arcLayer.add(animation, forKey: Self.rotationAnimationKey)
     }
 }
 

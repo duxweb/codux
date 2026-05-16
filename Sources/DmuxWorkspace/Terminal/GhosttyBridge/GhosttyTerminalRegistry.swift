@@ -122,6 +122,10 @@ final class GhosttyTerminalRegistry {
         containers[sessionID]?.terminalOutputHistory
     }
 
+    func hasRunningProcess(for sessionID: UUID) -> Bool {
+        containers[sessionID]?.hasRunningProcess == true
+    }
+
     @discardableResult
     func ensureStartedForRemote(
         session: TerminalSession,

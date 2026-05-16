@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-05-17
+
+### Changed
+
+- Updated the bundled GhosttyKit package to the latest upstream main revision for terminal rendering fixes.
+- Reduced terminal and AI runtime background refresh work while sessions are active, including avoiding redundant remote terminal starts and memory artifact preparation on cached launches.
+- Reworked project activity loading badges to use a lower-overhead native animation and a clearer orange count badge when multiple tasks are running.
+
+### Fixed
+
+- Fixed Codex config migration so legacy `codex_hooks` entries are rewritten to the current `hooks` feature flag, removing the deprecated-feature warning in managed launches.
+- Fixed worktree sidebar row spacing so main tasks and subtasks keep matching height, radius, and activity-dot alignment.
+
 ## [0.10.1] - 2026-05-16
 
 ### Added
