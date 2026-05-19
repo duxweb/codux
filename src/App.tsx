@@ -571,6 +571,10 @@ function App() {
           setShortcutFocusScope("workspace");
           requestTerminalFocus();
         }
+        if (command.type === "open-right-panel") {
+          setRightPanel(command.panel);
+          setShortcutFocusScope("right-sidebar");
+        }
       }),
     [requestTerminalFocus],
   );

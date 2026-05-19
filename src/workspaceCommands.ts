@@ -33,6 +33,10 @@ export type WorkspaceCommand =
     }
   | {
       type: "close-active";
+    }
+  | {
+      type: "open-right-panel";
+      panel: "git" | "files" | "ai" | "ssh";
     };
 
 const WORKSPACE_COMMAND_EVENT = "codux:workspace-command";
