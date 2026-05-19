@@ -477,23 +477,48 @@ function GlyphButton({
 
 function MemoryStatusButton() {
   const snapshot = useMemoryExtractionStatus();
+  const isProcessing = snapshot.status === "processing";
+  const isQueued = snapshot.status === "queued";
+  const isFailed = snapshot.status === "failed";
+  const isActive = isProcessing || isQueued || isFailed;
   const tone =
-    snapshot.status === "processing"
+    isProcessing
       ? "text-brand-blue"
-      : snapshot.status === "queued"
+      : isQueued
         ? "text-brand-amber"
-        : snapshot.status === "failed"
+        : isFailed
           ? "text-brand-red"
           : "text-ink-soft";
+  const activeSurface = isProcessing
+    ? "border-brand-blue/45 bg-brand-blue/14 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-blue)_18%,transparent)]"
+    : isQueued
+      ? "border-brand-amber/45 bg-brand-amber/12 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-amber)_18%,transparent)]"
+      : isFailed
+        ? "border-brand-red/45 bg-brand-red/12 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-red)_18%,transparent)]"
+        : "border-line bg-fill/[0.06]";
   return (
     <Tooltip label={<MemoryStatusTooltip snapshot={snapshot} />} placement="bottom">
       <button
         type="button"
         aria-label={tm("memory.manager.window.title", "Memory Manager")}
-        className={`no-drag inline-grid h-[30px] w-[30px] place-items-center rounded-[8px] border border-line bg-fill/[0.06] outline-none transition-colors hover:border-line-strong hover:bg-fill/10 ${tone}`}
+        className={`no-drag relative inline-grid h-[30px] w-[30px] place-items-center rounded-[8px] border outline-none transition-colors hover:border-line-strong hover:bg-fill/10 ${activeSurface} ${tone}`}
+        data-active={isActive ? "true" : "false"}
         onClick={() => void openAppWindow("memory-manager")}
       >
         <BrainCog size={16} strokeWidth={1.85} />
+        {isProcessing ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-chrome border-t-brand-blue bg-surface-chrome motion-safe:animate-spin"
+            aria-hidden="true"
+          />
+        ) : isActive ? (
+          <span
+            className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-chrome ${
+              isQueued ? "bg-brand-amber" : "bg-brand-red"
+            }`}
+            aria-hidden="true"
+          />
+        ) : null}
       </button>
     </Tooltip>
   );
