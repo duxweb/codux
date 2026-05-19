@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Dropdown } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Code2, Folder, SquareTerminal } from "../icons";
+import { Box, ChevronDown, Code2, Folder, SquareTerminal } from "../icons";
 import {
   listProjectOpenApplications,
   openProjectInApplication,
@@ -156,14 +156,18 @@ function ApplicationIcon({
     .toUpperCase();
   return (
     <span
-      className="grid place-items-center rounded-[4px] text-[8px] font-bold leading-none text-white shadow-sm"
+      className="grid place-items-center rounded-[4px] text-white shadow-sm"
       style={{
         width: size,
         height: size,
         background: `linear-gradient(135deg, ${color}, color-mix(in oklab, ${color} 68%, black))`,
       }}
     >
-      {initials || <Code2 size={Math.max(10, size - 3)} />}
+      {initials ? (
+        <span className="text-[7px] font-bold leading-none">{initials}</span>
+      ) : (
+        <Box size={Math.max(10, size - 3)} strokeWidth={2} />
+      )}
     </span>
   );
 }

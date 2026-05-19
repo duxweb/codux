@@ -1851,37 +1851,26 @@ fn project_open_application_icon_path(spec: &ProjectOpenApplicationSpec) -> Opti
         let icon_dir = paths::runtime_temp_dir().join("app-icons");
         fs::create_dir_all(&icon_dir).ok()?;
         let icon_path = icon_dir.join(format!("{}.png", spec.id));
-        let info_path = PathBuf::from(&app_path).join("Contents").join("Info");
-        let icon_name = Command::new("defaults")
-            .args(["read", &info_path.display().to_string(), "CFBundleIconFile"])
-            .output()
-            .ok()
-            .and_then(|output| {
-                if !output.status.success() {
-                    return None;
-                }
-                let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if value.is_empty() {
-                    None
-                } else if value.ends_with(".icns") {
-                    Some(value)
-                } else {
-                    Some(format!("{value}.icns"))
-                }
-            })?;
-        let source_icon = PathBuf::from(&app_path)
-            .join("Contents")
-            .join("Resources")
-            .join(icon_name);
-        if Command::new("sips")
-            .args([
-                "-s",
-                "format",
-                "png",
-                &source_icon.display().to_string(),
-                "--out",
-                &icon_path.display().to_string(),
-            ])
+        let script = r#"
+use framework "AppKit"
+use framework "Foundation"
+on run argv
+  set appPath to item 1 of argv
+  set outPath to item 2 of argv
+  set ws to current application's NSWorkspace's sharedWorkspace()
+  set icon to ws's iconForFile:appPath
+  icon's setSize:(current application's NSMakeSize(64, 64))
+  set tiffData to icon's TIFFRepresentation()
+  set bitmap to current application's NSBitmapImageRep's imageRepWithData:tiffData
+  set pngData to bitmap's representationUsingType:(current application's NSBitmapImageFileTypePNG) |properties|:(missing value)
+  pngData's writeToFile:outPath atomically:true
+end run
+"#;
+        if Command::new("osascript")
+            .arg("-e")
+            .arg(script)
+            .arg(&app_path)
+            .arg(icon_path.display().to_string())
             .status()
             .ok()?
             .success()

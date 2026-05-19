@@ -963,17 +963,16 @@ function ModeSwitcher({
     >
       <Tabs.List className="flex h-[30px] items-center gap-0.5 rounded-full border border-line bg-fill/[0.055] p-[3px]">
         {items.map(({ id, icon: Icon, label }) => (
-          <Tooltip key={id} label={label} placement="bottom">
-            <Tabs.Tab
-              id={id}
-              className="h-[24px] min-w-[78px] rounded-full px-3 text-xs font-semibold text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink data-[selected]:bg-brand-blue/18 data-[selected]:text-ink"
-            >
-              <span className="inline-flex items-center justify-center gap-1.5">
-                <Icon size={12} strokeWidth={2.2} />
-                <span>{label}</span>
-              </span>
-            </Tabs.Tab>
-          </Tooltip>
+          <Tabs.Tab
+            key={id}
+            id={id}
+            className="h-[24px] min-w-[78px] rounded-full px-3 text-xs font-semibold text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink data-[selected]:bg-brand-blue/18 data-[selected]:text-ink"
+          >
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <Icon size={12} strokeWidth={2.2} />
+              <span>{label}</span>
+            </span>
+          </Tabs.Tab>
         ))}
       </Tabs.List>
     </Tabs>
