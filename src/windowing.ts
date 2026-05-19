@@ -1,5 +1,5 @@
 import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { Effect, EffectState, LogicalPosition, getCurrentWindow, type Effects } from "@tauri-apps/api/window";
+import { LogicalPosition, getCurrentWindow } from "@tauri-apps/api/window";
 import { formatI18n, tm } from "./i18n";
 
 export type AppWindowKind =
@@ -112,12 +112,7 @@ const windowConfig: Record<AppWindowKind, WindowConfig> = {
   },
 };
 
-const appWindowEffects: Effects = {
-  effects: [Effect.Sidebar, Effect.Mica, Effect.Acrylic],
-  state: EffectState.Active,
-  radius: 12,
-  color: [34, 38, 46, 58],
-};
+const opaqueAppWindowBackground = "#22262e";
 
 export async function openAppWindow(kind: AppWindowKind) {
   if (!window.__TAURI_INTERNALS__) {
@@ -145,14 +140,13 @@ export async function openAppWindow(kind: AppWindowKind) {
     minWidth: config.minWidth,
     minHeight: config.minHeight,
     resizable: kind === "desktop-pet" || kind === "pet-claim" || kind === "pet-custom-install" ? false : true,
-    transparent: true,
+    transparent: kind === "desktop-pet",
     decorations: kind === "desktop-pet" ? false : true,
     titleBarStyle: kind === "desktop-pet" ? undefined : "overlay",
     hiddenTitle: kind === "desktop-pet" ? undefined : true,
     acceptFirstMouse: true,
     trafficLightPosition: kind === "desktop-pet" ? undefined : new LogicalPosition(14, 22),
-    backgroundColor: "#00000000",
-    windowEffects: kind === "desktop-pet" ? undefined : appWindowEffects,
+    backgroundColor: kind === "desktop-pet" ? "#00000000" : opaqueAppWindowBackground,
     visible: false,
     focus: false,
     skipTaskbar: kind === "desktop-pet" ? true : undefined,
@@ -233,14 +227,13 @@ export async function openGitDiffWindow(options: GitDiffWindowOptions) {
     minWidth: 760,
     minHeight: 480,
     resizable: true,
-    transparent: true,
+    transparent: false,
     decorations: true,
     titleBarStyle: "overlay",
     hiddenTitle: true,
     acceptFirstMouse: true,
     trafficLightPosition: new LogicalPosition(14, 22),
-    backgroundColor: "#00000000",
-    windowEffects: appWindowEffects,
+    backgroundColor: opaqueAppWindowBackground,
     visible: false,
     focus: false,
   });

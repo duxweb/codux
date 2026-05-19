@@ -51,7 +51,6 @@ export type BackgroundColorOption = {
 };
 
 type ResolvedBackgroundTint = {
-  color: string;
   rgb: [number, number, number];
 };
 
@@ -777,9 +776,8 @@ function applyBackgroundOverride(root: HTMLElement, background: string) {
   const option = backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalizeThemeName(background));
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
   if (!option || normalizeThemeName(option.label) === "auto") {
-    const base = appTheme === "light" ? "rgb(246 249 253)" : "rgb(34 38 46)";
-    root.style.setProperty("--surface-window-tint", `color-mix(in oklab, ${base} 20%, transparent)`);
-    root.style.setProperty("--surface-window-glass", `color-mix(in oklab, ${base} 12%, transparent)`);
+    root.style.setProperty("--surface-window-tint", "color-mix(in oklab, var(--terminal-bg) 28%, transparent)");
+    root.style.setProperty("--surface-window-glass", "color-mix(in oklab, var(--terminal-bg) 16%, transparent)");
     return;
   }
   const color = option.color;
@@ -798,11 +796,11 @@ function applyBackgroundOverride(root: HTMLElement, background: string) {
 function resolveBackgroundTint(root: HTMLElement, background: string): ResolvedBackgroundTint {
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
   const option = backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalizeThemeName(background));
-  const color = option && normalizeThemeName(option.label) !== "auto" ? option.color : appTheme === "light" ? "#f6f9fd" : "#22262e";
+  const terminalBg = root.style.getPropertyValue("--terminal-bg").trim() || getComputedStyle(root).getPropertyValue("--terminal-bg").trim();
+  const color = option && normalizeThemeName(option.label) !== "auto" ? option.color : terminalBg || (appTheme === "light" ? "#fbfcfe" : "#171b22");
   const parsed = parseHexColor(color);
   return {
-    color,
-    rgb: parsed ? [parsed.r, parsed.g, parsed.b] : appTheme === "light" ? [246, 249, 253] : [34, 38, 46],
+    rgb: parsed ? [parsed.r, parsed.g, parsed.b] : appTheme === "light" ? [251, 252, 254] : [23, 27, 34],
   };
 }
 
@@ -810,7 +808,7 @@ function applyNativeWindowTheme(settings: AppSettings, appTheme: AppTheme) {
   if (!window.__TAURI_INTERNALS__) return;
 
   const route = window.location.hash.replace(/^#/, "");
-  if (route === "/desktop-pet" || route.startsWith("/terminal")) return;
+  if (route || route.startsWith("/terminal")) return;
 
   const currentWindow = getCurrentWindow();
   const nativeTheme: Theme | null = resolveTerminalThemeProfile(settings.theme).appTheme === "system" ? null : appTheme === "light" ? "light" : "dark";

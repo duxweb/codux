@@ -35,7 +35,8 @@
         "windowEffects": {
           "effects": ["sidebar", "mica", "acrylic"],
           "state": "active",
-          "radius": 12
+          "radius": 12,
+          "color": "#171b223a"
         }
       }
     ],
