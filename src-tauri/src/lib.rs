@@ -571,7 +571,7 @@ fn start_desktop_pet_hit_test_loop(app: tauri::AppHandle) {
                 let _ = window.set_ignore_cursor_events(click_through);
                 last_click_through = click_through;
             }
-            thread::sleep(Duration::from_millis(80));
+            thread::sleep(Duration::from_millis(if click_through { 220 } else { 80 }));
         }
     });
 }

@@ -3,8 +3,8 @@ import {
   Box,
   Bug,
   Download,
-  FileArchive,
   FileText,
+  Folder,
   Info,
   MoreHorizontal,
   Plus,
@@ -25,7 +25,7 @@ import {
   toggleDeveloperTools,
 } from "../appActions";
 import { CODUX_GITHUB_URL, CODUX_WEBSITE_URL } from "../appLinks";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   listProjectOpenApplications,
   openProjectInApplication,
@@ -70,7 +70,7 @@ function projectBadgeColors(color: string) {
 
 const projectBadgeIcons: Record<string, AppIcon> = {
   terminal: TerminalSquare,
-  folder: FileArchive,
+  folder: Folder,
   shippingbox: Box,
   "shippingbox.fill": Box,
   hammer: Bug,
@@ -100,18 +100,20 @@ export function ProjectSidebar({
 }: Props) {
   const width = isExpanded ? 248 : 70;
   const [openApplications, setOpenApplications] = useState<ProjectOpenApplication[]>([]);
+  const [openApplicationsLoaded, setOpenApplicationsLoaded] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadOpenApplications = useCallback(() => {
+    if (openApplicationsLoaded) return;
+    setOpenApplicationsLoaded(true);
     void listProjectOpenApplications()
       .then((items) => {
-        if (!cancelled) setOpenApplications(items.filter((item) => item.installed && item.category === "ide"));
+        setOpenApplications(items.filter((item) => item.installed && item.category === "ide"));
       })
-      .catch((error) => console.error("failed to load installed applications", error));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      .catch((error) => {
+        setOpenApplicationsLoaded(false);
+        console.error("failed to load installed applications", error);
+      });
+  }, [openApplicationsLoaded]);
 
   return (
     <nav
@@ -141,6 +143,7 @@ export function ProjectSidebar({
               isExpanded={isExpanded}
               onPress={() => onSelect(project.id)}
               openApplications={openApplications}
+              onLoadOpenApplications={loadOpenApplications}
               onCreateWorktree={() => onCreateWorktree?.(project)}
               onReveal={() => void revealProjectInFileManager(project.path)}
               onOpenApplication={(applicationId) => void openProjectInApplication(project.path, applicationId)}
@@ -198,6 +201,7 @@ function ProjectRow({
   isExpanded,
   onPress,
   openApplications,
+  onLoadOpenApplications,
   onCreateWorktree,
   onReveal,
   onOpenApplication,
@@ -210,6 +214,7 @@ function ProjectRow({
   isExpanded: boolean;
   onPress: () => void;
   openApplications: ProjectOpenApplication[];
+  onLoadOpenApplications: () => void;
   onCreateWorktree?: () => void;
   onReveal?: () => void;
   onOpenApplication?: (applicationId: string) => void;
@@ -225,7 +230,10 @@ function ProjectRow({
     <>
       <PressableButton
         onPressUp={onPress}
-        onContextMenu={contextMenu.openMenu}
+        onContextMenu={(event) => {
+          onLoadOpenApplications();
+          contextMenu.openMenu(event);
+        }}
         aria-busy={project.aiState === "running"}
         className={`w-full rounded-[12px] outline-none focus:outline-none focus-visible:outline-none transition-colors ${
           isSelected ? "bg-fill/[0.085]" : "hover:bg-fill/[0.04]"
@@ -425,48 +433,33 @@ function HelpMenuButton({
       trigger={trigger}
     >
       <DesktopMenuItem label={tm("menu.app.about_format", "About %@").replace("%@", "Codux")} onSelect={() => void showAbout()}>
-        <MenuItem icon={Info} label={tm("menu.app.about_format", "About %@").replace("%@", "Codux")} />
+        {tm("menu.app.about_format", "About %@").replace("%@", "Codux")}
       </DesktopMenuItem>
       <DesktopMenuItem label={tm("about.updates", "Check for Updates")} onSelect={() => void checkForUpdates()}>
-        <MenuItem icon={Download} label={tm("about.updates", "Check for Updates")} />
+        {tm("about.updates", "Check for Updates")}
       </DesktopMenuItem>
       <DesktopMenuItem label={tm("menu.help.export_diagnostics", "Export Diagnostics...")} onSelect={() => void exportDiagnostics()}>
-        <MenuItem icon={FileArchive} label={tm("menu.help.export_diagnostics", "Export Diagnostics...")} />
+        {tm("menu.help.export_diagnostics", "Export Diagnostics...")}
       </DesktopMenuItem>
       <DesktopMenuSeparator />
       <DesktopMenuItem label={tm("menu.help.open_runtime_log", "Open Runtime Log")} onSelect={() => void openRuntimeLog()}>
-        <MenuItem icon={FileText} label={tm("menu.help.open_runtime_log", "Open Runtime Log")} />
+        {tm("menu.help.open_runtime_log", "Open Runtime Log")}
       </DesktopMenuItem>
       <DesktopMenuItem label={tm("menu.help.open_live_log", "Open Live Log")} onSelect={() => void openLiveLog()}>
-        <MenuItem icon={Bug} label={tm("menu.help.open_live_log", "Open Live Log")} />
+        {tm("menu.help.open_live_log", "Open Live Log")}
       </DesktopMenuItem>
       {import.meta.env.DEV && (
         <DesktopMenuItem label={tm("menu.help.developer_tools", "Developer Tools")} onSelect={() => void toggleDeveloperTools()}>
-          <MenuItem icon={Bug} label={tm("menu.help.developer_tools", "Developer Tools")} />
+          {tm("menu.help.developer_tools", "Developer Tools")}
         </DesktopMenuItem>
       )}
       <DesktopMenuSeparator />
       <DesktopMenuItem label={tm("menu.help.website", "Website")} onSelect={() => void openExternalUrl(CODUX_WEBSITE_URL)}>
-        <MenuItem icon={ArrowTopRight} label={tm("menu.help.website", "Website")} />
+        {tm("menu.help.website", "Website")}
       </DesktopMenuItem>
       <DesktopMenuItem label={tm("menu.help.github", "GitHub")} onSelect={() => void openExternalUrl(CODUX_GITHUB_URL)}>
-        <MenuItem icon={ArrowTopRight} label={tm("menu.help.github", "GitHub")} />
+        {tm("menu.help.github", "GitHub")}
       </DesktopMenuItem>
     </DesktopMenu>
-  );
-}
-
-function MenuItem({
-  icon: Icon,
-  label,
-}: {
-  icon: typeof Info;
-  label: string;
-}) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <Icon size={13} strokeWidth={2} />
-      <span>{label}</span>
-    </span>
   );
 }

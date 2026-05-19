@@ -131,26 +131,44 @@ export function useMemoryExtractionStatus(refreshMs = 5000) {
   const [snapshot, setSnapshot] = useState<MemoryExtractionStatusSnapshot>(idleSnapshot);
 
   useEffect(() => {
+    if (!window.__TAURI_INTERNALS__) {
+      setSnapshot(idleSnapshot);
+      return;
+    }
     let cancelled = false;
     let timer: number | undefined;
 
     const load = () => {
       void readMemoryExtractionStatus()
         .then((next) => {
-          if (!cancelled) setSnapshot(next);
+          if (cancelled) return;
+          setSnapshot((current) => (memoryStatusEquals(current, next) ? current : next));
+          const isActive = next.status === "queued" || next.status === "processing";
+          const nextRefreshMs = isActive ? refreshMs : Math.max(refreshMs * 6, 30_000);
+          timer = window.setTimeout(load, nextRefreshMs);
         })
         .catch((error) => {
           console.error("failed to load memory status", error);
+          if (!cancelled) timer = window.setTimeout(load, Math.max(refreshMs * 6, 30_000));
         });
     };
 
     load();
-    timer = window.setInterval(load, refreshMs);
     return () => {
       cancelled = true;
-      if (timer) window.clearInterval(timer);
+      if (timer) window.clearTimeout(timer);
     };
   }, [refreshMs]);
 
   return snapshot;
+}
+
+function memoryStatusEquals(left: MemoryExtractionStatusSnapshot, right: MemoryExtractionStatusSnapshot) {
+  return (
+    left.status === right.status &&
+    left.pendingCount === right.pendingCount &&
+    left.runningCount === right.runningCount &&
+    left.lastError === right.lastError &&
+    left.updatedAt === right.updatedAt
+  );
 }

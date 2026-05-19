@@ -25,6 +25,7 @@ export function DesktopMenu({
   placement = "bottom-end",
   trigger,
 }: DesktopMenuProps) {
+  const width = "min(240px, calc(100vw - 24px))";
   return (
     <DesktopMenuContext.Provider
       value={{
@@ -35,8 +36,8 @@ export function DesktopMenu({
         {renderMenuTrigger(trigger, ariaLabel)}
         <Dropdown.Popover
           placement={toHeroPlacement(placement)}
-          className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl"
-          style={{ width: "min(284px, calc(100vw - 24px))" }}
+          className="w-[240px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl"
+          style={{ width }}
         >
           <Dropdown.Menu aria-label={ariaLabel} className="grid gap-0.5" shouldCloseOnSelect={false}>
             {children}
@@ -108,8 +109,8 @@ export function DesktopSubmenu({
         </Dropdown.Item>
         <Dropdown.Popover
           placement="right top"
-          className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl"
-          style={{ width: "min(284px, calc(100vw - 24px))" }}
+          className="w-[240px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl"
+          style={{ width: "min(240px, calc(100vw - 24px))" }}
         >
           <Dropdown.Menu aria-label={label} className="grid gap-0.5" shouldCloseOnSelect={false}>
             {children}

@@ -84,7 +84,8 @@ export function Titlebar({
 }: Props) {
   const [settings, setSettings] = useState(readAppSettings);
   const [activePopover, setActivePopover] = useState<TitlebarPopoverKey | null>(null);
-  const globalHistory = useAIGlobalHistorySnapshot(projects);
+  const [historyEnabled, setHistoryEnabled] = useState(false);
+  const globalHistory = useAIGlobalHistorySnapshot(projects, { enabled: historyEnabled });
   const { globalTotals } = useAIRuntimeSnapshot();
   const todayLevelTokens = Math.max(
     0,
@@ -93,6 +94,10 @@ export function Titlebar({
 
   useEffect(() => subscribeAppSettings(setSettings), []);
   useEffect(() => setActivePopover(null), [mainView]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHistoryEnabled(true), 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const setPopoverOpen = (key: TitlebarPopoverKey, isOpen: boolean) => {
     setActivePopover(isOpen ? key : null);

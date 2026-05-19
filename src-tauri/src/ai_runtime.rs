@@ -24,7 +24,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 const RUNNING_STALE_SECONDS: f64 = 90.0;
-const POLL_INTERVAL_SECONDS: u64 = 6;
+const POLL_INTERVAL_SECONDS: u64 = 12;
 const RUNNING_STATE_RENEWAL_SECONDS: f64 = 30.0;
 const CODEX_INTERVAL_POLL_MINIMUM_SECONDS: f64 = 60.0;
 

@@ -777,3 +777,9 @@ html.standalone-window:not(.terminal-window):not(.desktop-pet-window) .app-shell
 .minimap-stripes {
   background: var(--minimap-stripes);
 }
+
+@keyframes pet-sprite-play {
+  to {
+    transform: translateX(calc(var(--pet-frame-width) * var(--pet-frame-count) * -1));
+  }
+}

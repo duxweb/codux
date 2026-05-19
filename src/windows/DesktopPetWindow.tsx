@@ -28,7 +28,6 @@ export function DesktopPetWindow() {
   const [line, setLine] = useState("");
   const [activityLine, setActivityLine] = useState("");
   const [aiVersion, setAIVersion] = useState(0);
-  const [clockTick, setClockTick] = useState(0);
   const [side, setSide] = useState<DesktopPetSide>("left");
 
   useEffect(() => {
@@ -84,13 +83,16 @@ export function DesktopPetWindow() {
 
   useEffect(() => aiRuntime.subscribe(() => setAIVersion((current) => current + 1)), []);
   useEffect(() => {
-    const interval = window.setInterval(() => setClockTick((current) => current + 1), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    setActivityLine(desktopPetActivityLine(aiRuntime.snapshots(), Date.now() / 1000));
-  }, [aiVersion, clockTick]);
+    const sessions = aiRuntime.snapshots();
+    const now = Date.now() / 1000;
+    setActivityLine(desktopPetActivityLine(sessions, now));
+    const refreshMs = nextDesktopPetActivityRefreshMs(sessions, now);
+    if (refreshMs == null) return;
+    const timer = window.setTimeout(() => {
+      setActivityLine(desktopPetActivityLine(aiRuntime.snapshots(), Date.now() / 1000));
+    }, refreshMs);
+    return () => window.clearTimeout(timer);
+  }, [aiVersion]);
 
   const state: PetAnimationState = useMemo(() => {
     if (!pet.snapshot.claimedAt) return "waiting";
@@ -272,6 +274,16 @@ function desktopPetActivityLine(sessions: AISessionSnapshot[], now: number) {
   }
 
   return "";
+}
+
+function nextDesktopPetActivityRefreshMs(sessions: AISessionSnapshot[], now: number) {
+  const nextExpiry = sessions
+    .filter((session) => session.hasCompletedTurn && session.state !== "responding" && session.state !== "needsInput")
+    .map((session) => session.updatedAt + DESKTOP_PET_COMPLETED_STATUS_SECONDS)
+    .filter((expiresAt) => expiresAt > now)
+    .sort((left, right) => left - right)[0];
+  if (!nextExpiry) return null;
+  return Math.max(250, Math.ceil((nextExpiry - now) * 1000));
 }
 
 function compareUpdatedDesc(left: AISessionSnapshot, right: AISessionSnapshot) {
