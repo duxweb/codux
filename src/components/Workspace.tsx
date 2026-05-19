@@ -1,5 +1,7 @@
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Copy,
   FileCode2,
   FileText,
@@ -1600,8 +1602,13 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
   const review = useGitReviewSnapshot(project?.path, baseBranch);
   const snapshot = review.snapshot;
   const [selectedPath, setSelectedPath] = useState("");
+  const [expandedReviewPaths, setExpandedReviewPaths] = useState<Set<string>>(new Set());
   const [diff, setDiff] = useState("");
   const [diffError, setDiffError] = useState<string | null>(null);
+  const reviewTree = useMemo(() => buildReviewTree(snapshot.files), [snapshot.files]);
+  const reviewDirectoryPaths = useMemo(() => collectReviewDirectoryPaths(reviewTree), [reviewTree]);
+  const reviewTreeInitializedRef = useRef(false);
+  const previousReviewDirectoryPathsRef = useRef<Set<string>>(new Set());
   const selectedFile = useMemo(() => {
     if (snapshot.files.length === 0) return undefined;
     return snapshot.files.find((file) => file.path === selectedPath) ?? snapshot.files[0];
@@ -1618,6 +1625,34 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
   const modeLabel = snapshot.mode === "taskBranch"
     ? tm("worktree.task.branch", "Task Branch")
     : tm("worktree.review.check.audit_changes", "Uncommitted Changes");
+
+  useEffect(() => {
+    reviewTreeInitializedRef.current = false;
+    previousReviewDirectoryPathsRef.current = new Set();
+    setExpandedReviewPaths(new Set());
+  }, [project?.path, snapshot.baseBranch, snapshot.mode]);
+
+  useEffect(() => {
+    const validPaths = new Set(reviewDirectoryPaths);
+    const previousPaths = previousReviewDirectoryPathsRef.current;
+    setExpandedReviewPaths((current) => {
+      if (!reviewTreeInitializedRef.current) {
+        reviewTreeInitializedRef.current = true;
+        return validPaths;
+      }
+      const next = new Set<string>();
+      for (const path of current) {
+        if (validPaths.has(path)) next.add(path);
+      }
+      for (const path of validPaths) {
+        if (!previousPaths.has(path)) {
+          next.add(path);
+        }
+      }
+      return next;
+    });
+    previousReviewDirectoryPathsRef.current = validPaths;
+  }, [reviewDirectoryPaths]);
 
   useEffect(() => {
     setSelectedPath((current) => {
@@ -1673,13 +1708,26 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
       <div className="min-h-0 grid grid-cols-[280px_minmax(0,1fr)_220px]">
         <div className="min-h-0 overflow-y-auto scrollbar-overlay border-r border-line bg-fill/[0.018] p-2">
           {snapshot.files.length > 0 ? (
-            snapshot.files.map((file) => (
-              <ReviewFileRow
-                key={`${file.status}:${file.path}`}
-                file={file}
+            reviewTree.map((node) => (
+              <ReviewTreeRow
+                key={`${node.kind}:${node.path}`}
+                node={node}
+                depth={0}
                 projectPath={project?.path}
-                selected={selectedFile?.path === file.path}
-                onSelect={() => setSelectedPath(file.path)}
+                selectedPath={selectedFile?.path}
+                expandedPaths={expandedReviewPaths}
+                onToggleDirectory={(path) => {
+                  setExpandedReviewPaths((current) => {
+                    const next = new Set(current);
+                    if (next.has(path)) {
+                      next.delete(path);
+                    } else {
+                      next.add(path);
+                    }
+                    return next;
+                  });
+                }}
+                onSelectFile={setSelectedPath}
               />
             ))
           ) : (
@@ -1784,13 +1832,117 @@ function ReviewInfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+type ReviewTreeNode = ReviewTreeDirectory | ReviewTreeFile;
+
+type ReviewTreeDirectory = {
+  kind: "directory";
+  path: string;
+  name: string;
+  additions: number;
+  deletions: number;
+  children: ReviewTreeNode[];
+};
+
+type ReviewTreeFile = {
+  kind: "file";
+  path: string;
+  name: string;
+  file: GitReviewFile;
+};
+
+function ReviewTreeRow({
+  node,
+  depth,
+  projectPath,
+  selectedPath,
+  expandedPaths,
+  onToggleDirectory,
+  onSelectFile,
+}: {
+  node: ReviewTreeNode;
+  depth: number;
+  projectPath?: string;
+  selectedPath?: string;
+  expandedPaths: Set<string>;
+  onToggleDirectory: (path: string) => void;
+  onSelectFile: (path: string) => void;
+}) {
+  if (node.kind === "file") {
+    return (
+      <ReviewFileRow
+        file={node.file}
+        displayName={node.name}
+        depth={depth}
+        projectPath={projectPath}
+        selected={selectedPath === node.path}
+        onSelect={() => onSelectFile(node.path)}
+      />
+    );
+  }
+  const expanded = expandedPaths.has(node.path);
+  return (
+    <>
+      <ReviewDirectoryRow node={node} depth={depth} expanded={expanded} onToggle={() => onToggleDirectory(node.path)} />
+      {expanded && node.children.map((child) => (
+        <ReviewTreeRow
+          key={`${child.kind}:${child.path}`}
+          node={child}
+          depth={depth + 1}
+          projectPath={projectPath}
+          selectedPath={selectedPath}
+          expandedPaths={expandedPaths}
+          onToggleDirectory={onToggleDirectory}
+          onSelectFile={onSelectFile}
+        />
+      ))}
+    </>
+  );
+}
+
+function ReviewDirectoryRow({
+  node,
+  depth,
+  expanded,
+  onToggle,
+}: {
+  node: ReviewTreeDirectory;
+  depth: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Tooltip label={node.path} placement="right" triggerClassName="block w-full">
+      <PressableButton
+        className="w-full h-8 grid grid-cols-[18px_16px_minmax(0,1fr)_auto] items-center gap-1.5 pr-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] hover:text-ink"
+        style={{ paddingLeft: `${8 + depth * 14}px` }}
+        onPressUp={onToggle}
+      >
+        {expanded ? <ChevronDown size={12} className="text-ink-faint" /> : <ChevronRight size={12} className="text-ink-faint" />}
+        <Folder size={13} className="text-brand-blue/85" />
+        <span className="min-w-0 truncate text-left text-xs font-medium">{node.name}</span>
+        {(node.additions > 0 || node.deletions > 0) && (
+          <span className="text-xs tabular-nums">
+            <span className="text-brand-green">+{node.additions}</span>
+            <span className="mx-1 text-ink-faint">/</span>
+            <span className="text-brand-red">-{node.deletions}</span>
+          </span>
+        )}
+      </PressableButton>
+    </Tooltip>
+  );
+}
+
 function ReviewFileRow({
   file,
+  displayName,
+  depth = 0,
   projectPath,
   selected,
   onSelect,
 }: {
   file: GitReviewFile;
+  displayName?: string;
+  depth?: number;
   projectPath?: string;
   selected?: boolean;
   onSelect?: () => void;
@@ -1799,9 +1951,10 @@ function ReviewFileRow({
   return (
     <Tooltip label={file.path} placement="right" triggerClassName="block w-full">
       <PressableButton
-        className={`w-full h-9 grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-center gap-2.5 px-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] ${
+        className={`w-full h-8 grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-center gap-2.5 pr-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] ${
           selected ? "bg-brand-blue/12 text-ink" : ""
         }`}
+        style={{ paddingLeft: `${8 + depth * 14}px` }}
         onPressUp={onSelect}
         onDoubleClick={() => {
           if (!projectPath) return;
@@ -1813,7 +1966,7 @@ function ReviewFileRow({
         }}
       >
         <FileCode2 size={13} className="text-ink-mute" />
-        <span className="min-w-0 truncate text-right" dir="rtl">{file.path}</span>
+        <span className="min-w-0 truncate text-right text-xs" dir="rtl">{displayName ?? file.path}</span>
         {(file.additions > 0 || file.deletions > 0) && (
           <span className="text-xs tabular-nums">
             <span className="text-brand-green">+{file.additions}</span>
@@ -1844,4 +1997,90 @@ function reviewFileStatusBadge(status: GitReviewFile["status"]): { label: string
     default:
       return { label: "?", tone: "text-ink-faint" };
   }
+}
+
+function buildReviewTree(files: GitReviewFile[]): ReviewTreeNode[] {
+  type MutableDirectory = {
+    kind: "directory";
+    path: string;
+    name: string;
+    additions: number;
+    deletions: number;
+    children: Map<string, MutableDirectory | ReviewTreeFile>;
+  };
+  const root: MutableDirectory = {
+    kind: "directory",
+    path: "",
+    name: "",
+    additions: 0,
+    deletions: 0,
+    children: new Map(),
+  };
+
+  for (const file of files) {
+    const parts = file.path.split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+    let directory = root;
+    directory.additions += file.additions;
+    directory.deletions += file.deletions;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const name = parts[index];
+      const path = parts.slice(0, index + 1).join("/");
+      const existing = directory.children.get(path);
+      let nextDirectory: MutableDirectory;
+      if (existing?.kind === "directory") {
+        nextDirectory = existing;
+      } else {
+        nextDirectory = {
+          kind: "directory",
+          path,
+          name,
+          additions: 0,
+          deletions: 0,
+          children: new Map(),
+        };
+        directory.children.set(path, nextDirectory);
+      }
+      nextDirectory.additions += file.additions;
+      nextDirectory.deletions += file.deletions;
+      directory = nextDirectory;
+    }
+    directory.children.set(file.path, {
+      kind: "file",
+      path: file.path,
+      name: parts[parts.length - 1],
+      file,
+    });
+  }
+
+  const materialize = (directory: MutableDirectory): ReviewTreeNode[] =>
+    Array.from(directory.children.values())
+      .sort((left, right) => {
+        if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      })
+      .map((node) => {
+        if (node.kind === "file") return node;
+        return {
+          kind: "directory",
+          path: node.path,
+          name: node.name,
+          additions: node.additions,
+          deletions: node.deletions,
+          children: materialize(node),
+        };
+      });
+
+  return materialize(root);
+}
+
+function collectReviewDirectoryPaths(nodes: ReviewTreeNode[]) {
+  const paths: string[] = [];
+  const visit = (node: ReviewTreeNode) => {
+    if (node.kind !== "directory") return;
+    paths.push(node.path);
+    node.children.forEach(visit);
+  };
+  nodes.forEach(visit);
+  return paths;
 }
