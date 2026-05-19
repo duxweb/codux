@@ -6,6 +6,7 @@ import {
   sanitizeGitRepositorySnapshot,
   type GitRepositoryChangeEvent,
 } from "./status";
+import type { GitCommitAction, GitStatusSnapshot } from "./status";
 
 export interface GitReviewFile {
   path: string;
@@ -177,6 +178,27 @@ export async function loadGitReviewFileContent(projectPath: string, path: string
       projectPath,
       path,
       baseBranch,
+    },
+  });
+}
+
+export async function stageGitReviewChanges(projectPath: string, paths: string[] = []) {
+  if (!window.__TAURI_INTERNALS__) return null;
+  return invoke<GitStatusSnapshot>("git_stage", {
+    request: {
+      projectPath,
+      paths,
+    },
+  });
+}
+
+export async function commitGitReviewChanges(projectPath: string, message: string, action: GitCommitAction = "commit") {
+  if (!window.__TAURI_INTERNALS__) return null;
+  return invoke<GitStatusSnapshot>("git_commit_action", {
+    request: {
+      projectPath,
+      message,
+      action,
     },
   });
 }

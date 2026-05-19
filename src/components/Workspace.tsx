@@ -16,6 +16,7 @@ import {
   X,
 } from "../icons";
 import { listen } from "@tauri-apps/api/event";
+import { Dropdown } from "@heroui/react";
 import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
@@ -24,11 +25,14 @@ import { TabStrip } from "./TabStrip";
 import { TerminalView } from "./TerminalView";
 import { Tooltip } from "./Tooltip";
 import {
+  commitGitReviewChanges,
   loadGitReviewFileContent,
+  stageGitReviewChanges,
   useGitReviewSnapshot,
   type GitReviewContentSnapshot,
   type GitReviewFile,
 } from "../git/review";
+import type { GitCommitAction } from "../git/status";
 import type { CodeEditorLineHighlight } from "./CodeEditor";
 import { isConfiguredShortcut, registerShortcutHandler } from "../shortcuts";
 import {
@@ -1638,6 +1642,10 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
   const reviewDirectoryPaths = useMemo(() => collectReviewDirectoryPaths(reviewTree), [reviewTree]);
   const reviewTreeInitializedRef = useRef(false);
   const previousReviewDirectoryPathsRef = useRef<Set<string>>(new Set());
+  const [commitMessage, setCommitMessage] = useState("");
+  const [commitAction, setCommitAction] = useState<GitCommitAction>("commit");
+  const [isSubmittingReview, setSubmittingReview] = useState(false);
+  const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const selectedFile = useMemo(() => {
     if (snapshot.files.length === 0) return undefined;
     return snapshot.files.find((file) => file.path === selectedPath) ?? snapshot.files[0];
@@ -1651,6 +1659,7 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
       : project?.path ?? tm("worktree.review.audit_working_tree", "Working Tree");
   const totalAdditions = snapshot.files.reduce((sum, file) => sum + file.additions, 0);
   const totalDeletions = snapshot.files.reduce((sum, file) => sum + file.deletions, 0);
+  const canCommitReview = snapshot.mode === "workingTreeAudit" && snapshot.files.length > 0 && commitMessage.trim().length > 0 && !isSubmittingReview;
   const language = languageForPath(selectedFile?.path ?? "");
   const addedReviewLineHighlights = useMemo(() => addedLineHighlights(content), [content]);
   const deletedReviewLineHighlights = useMemo(() => deletedLineHighlights(content), [content]);
@@ -1724,6 +1733,22 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
     setReviewScrollTop(info.scrollTop);
   }, []);
 
+  const submitReviewCommit = useCallback(async () => {
+    if (!project?.path || !canCommitReview) return;
+    setSubmittingReview(true);
+    setReviewActionError(null);
+    try {
+      await stageGitReviewChanges(project.path);
+      await commitGitReviewChanges(project.path, commitMessage.trim(), commitAction);
+      setCommitMessage("");
+      await review.refresh();
+    } catch (error) {
+      setReviewActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSubmittingReview(false);
+    }
+  }, [canCommitReview, commitAction, commitMessage, project?.path, review]);
+
   return (
     <div className="h-full min-h-0 grid grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-editor">
       <section className="flex items-center justify-between gap-4 border-b border-line bg-fill/[0.025] px-5 py-3.5">
@@ -1740,8 +1765,20 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
         </div>
         <div className="hidden md:flex items-center gap-2 text-xs text-ink-faint">
           <ReviewMetric label={tm("worktree.review.changed_files", "Changed Files")} value={snapshot.files.length} />
-          <ReviewMetric label="+" value={totalAdditions} tone="green" />
-          <ReviewMetric label="-" value={totalDeletions} tone="red" />
+          <ReviewMetric label={tm("worktree.review.added_lines", "Added Lines")} value={totalAdditions} tone="green" prefix="+" />
+          <ReviewMetric label={tm("worktree.review.deleted_lines", "Deleted Lines")} value={totalDeletions} tone="red" prefix="-" />
+          {snapshot.mode === "workingTreeAudit" && (
+            <ReviewCommitBox
+              message={commitMessage}
+              action={commitAction}
+              disabled={!canCommitReview}
+              busy={isSubmittingReview}
+              error={reviewActionError}
+              onMessageChange={setCommitMessage}
+              onActionChange={setCommitAction}
+              onSubmit={() => void submitReviewCommit()}
+            />
+          )}
         </div>
       </section>
       <div className="min-h-0 grid grid-cols-[280px_minmax(0,1fr)]">
@@ -1869,20 +1906,100 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
 function ReviewMetric({
   label,
   value,
+  prefix = "",
   tone = "neutral",
 }: {
   label: string;
   value: number;
+  prefix?: string;
   tone?: "neutral" | "green" | "red";
 }) {
   const toneClass =
     tone === "green" ? "text-brand-green" : tone === "red" ? "text-brand-red" : "text-ink-soft";
   return (
-    <div className="h-7 min-w-[58px] rounded-[7px] border border-line bg-fill/[0.025] px-2 grid content-center">
-      <span className={`text-sm font-semibold leading-none tabular-nums ${toneClass}`}>{value}</span>
-      <span className="mt-0.5 text-[10px] leading-none text-ink-faint">{label}</span>
+    <div className="h-12 min-w-[92px] rounded-[8px] border border-line bg-fill/[0.035] px-3 py-2 flex flex-col justify-center">
+      <span className={`text-[20px] font-semibold leading-5 tabular-nums ${toneClass}`}>{prefix}{value}</span>
+      <span className="mt-1 text-[11px] leading-3 text-ink-faint">{label}</span>
     </div>
   );
+}
+
+function ReviewCommitBox({
+  message,
+  action,
+  disabled,
+  busy,
+  error,
+  onMessageChange,
+  onActionChange,
+  onSubmit,
+}: {
+  message: string;
+  action: GitCommitAction;
+  disabled: boolean;
+  busy: boolean;
+  error?: string | null;
+  onMessageChange: (message: string) => void;
+  onActionChange: (action: GitCommitAction) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="ml-2 w-[300px] rounded-[8px] border border-line bg-fill/[0.035] p-2">
+      <div className="flex items-stretch gap-2">
+        <textarea
+          value={message}
+          onChange={(event) => onMessageChange(event.target.value)}
+          placeholder={tm("git.commit.message.placeholder", "Commit message")}
+          className="h-12 min-w-0 flex-1 resize-none rounded-[7px] border border-line bg-surface-chrome px-2.5 py-1.5 text-xs leading-4 text-ink outline-none placeholder:text-ink-faint focus:border-brand-blue/55"
+        />
+        <div className="flex w-[116px] rounded-[7px] shadow-sm">
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={disabled}
+            className="h-12 min-w-0 flex-1 rounded-l-[7px] rounded-r-none border-r border-white/15 px-2 text-xs font-semibold"
+            onPress={onSubmit}
+          >
+            {busy ? tm("common.processing", "Processing") : reviewCommitActionLabel(action)}
+          </Button>
+          <Dropdown>
+            <Dropdown.Trigger
+              isDisabled={disabled}
+              className="grid h-12 w-8 min-w-8 place-items-center rounded-l-none rounded-r-[7px] bg-brand-blue px-0 text-on-brand transition-colors hover:bg-brand-blue/90 disabled:cursor-default disabled:opacity-50"
+              aria-label={tm("git.commit.options", "Commit Options")}
+            >
+              <ChevronDown size={13} strokeWidth={2.4} />
+            </Dropdown.Trigger>
+            <Dropdown.Popover placement="bottom end" className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome p-1 shadow-pop backdrop-blur-2xl">
+              <Dropdown.Menu
+                aria-label={tm("git.commit.options", "Commit Options")}
+                selectedKeys={[action]}
+                selectionMode="single"
+                onAction={(key) => onActionChange(String(key) as GitCommitAction)}
+                className="grid gap-0.5"
+              >
+                <Dropdown.Item id="commit" className="menu-item">{tm("git.commit.action", "Commit")}</Dropdown.Item>
+                <Dropdown.Item id="commitAndPush" className="menu-item">{tm("git.commit.action_push", "Commit and Push")}</Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown.Popover>
+          </Dropdown>
+        </div>
+      </div>
+      {error && <div className="mt-1.5 truncate text-[11px] leading-3 text-brand-red">{error}</div>}
+    </div>
+  );
+}
+
+function reviewCommitActionLabel(action: GitCommitAction) {
+  switch (action) {
+    case "commitAndPush":
+      return tm("git.commit.action_push", "Commit and Push");
+    case "commitAndSync":
+      return tm("git.commit.action_sync", "Commit and Sync");
+    case "commit":
+    default:
+      return tm("git.commit.action", "Commit");
+  }
 }
 
 function ReviewCodeColumn({

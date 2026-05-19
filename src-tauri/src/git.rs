@@ -1,11 +1,13 @@
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
+
+const REVIEW_UNTRACKED_LINE_COUNT_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1414,24 +1416,20 @@ pub fn git_review(project_path: String, base_branch: Option<String>) -> GitRevie
         };
     }
 
-    let status = git_status(root);
-    let files = status
-        .staged
-        .iter()
-        .map(|file| review_file_from_status(file, "staged"))
-        .chain(
-            status
-                .unstaged
-                .iter()
-                .map(|file| review_file_from_status(file, "modified")),
-        )
-        .chain(
-            status
-                .untracked
-                .iter()
-                .map(|file| review_file_from_status(file, "added")),
-        )
-        .collect::<Vec<_>>();
+    let status = git_status(root.clone());
+    let root_path = Path::new(&root);
+    let stats = working_tree_review_stats(root_path);
+    let mut seen_paths = HashSet::new();
+    let mut files = Vec::new();
+    for file in &status.staged {
+        push_review_file_from_status(&mut files, &mut seen_paths, file, "staged", &stats, root_path);
+    }
+    for file in &status.unstaged {
+        push_review_file_from_status(&mut files, &mut seen_paths, file, "modified", &stats, root_path);
+    }
+    for file in &status.untracked {
+        push_review_file_from_status(&mut files, &mut seen_paths, file, "added", &stats, root_path);
+    }
     GitReviewSnapshot {
         mode: "workingTreeAudit".to_string(),
         title: "Uncommitted Audit".to_string(),
@@ -1690,7 +1688,66 @@ fn parse_numstat(value: &str) -> std::collections::HashMap<String, (i64, i64)> {
         .collect()
 }
 
-fn review_file_from_status(file: &GitFileStatus, fallback: &str) -> GitReviewFile {
+fn working_tree_review_stats(root: &Path) -> HashMap<String, (i64, i64)> {
+    let mut stats = parse_numstat(
+        &git_output(root, &["diff", "--cached", "--numstat"]).unwrap_or_default(),
+    );
+    merge_numstat(
+        &mut stats,
+        &parse_numstat(&git_output(root, &["diff", "--numstat"]).unwrap_or_default()),
+    );
+    stats
+}
+
+fn merge_numstat(target: &mut HashMap<String, (i64, i64)>, source: &HashMap<String, (i64, i64)>) {
+    for (path, (additions, deletions)) in source {
+        let entry = target.entry(path.clone()).or_insert((0, 0));
+        entry.0 += additions;
+        entry.1 += deletions;
+    }
+}
+
+fn push_review_file_from_status(
+    files: &mut Vec<GitReviewFile>,
+    seen_paths: &mut HashSet<String>,
+    file: &GitFileStatus,
+    fallback: &str,
+    stats: &HashMap<String, (i64, i64)>,
+    root: &Path,
+) {
+    if !seen_paths.insert(file.path.clone()) {
+        return;
+    }
+    let mut review_file = review_file_from_status(file, fallback, stats);
+    if file.index_status == "?" && file.worktree_status == "?" && review_file.additions == 0 {
+        review_file.additions = count_untracked_file_lines(root, &file.path).unwrap_or(0);
+    }
+    files.push(review_file);
+}
+
+fn count_untracked_file_lines(root: &Path, path: &str) -> Option<i64> {
+    let root = root.canonicalize().ok()?;
+    let full_path = root.join(path).canonicalize().ok()?;
+    if !full_path.starts_with(&root) || !full_path.is_file() {
+        return None;
+    }
+    let metadata = std::fs::metadata(&full_path).ok()?;
+    if metadata.len() > REVIEW_UNTRACKED_LINE_COUNT_LIMIT_BYTES {
+        return None;
+    }
+    let data = std::fs::read(full_path).ok()?;
+    if data.contains(&0) {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&data);
+    Some(text.lines().count() as i64)
+}
+
+fn review_file_from_status(
+    file: &GitFileStatus,
+    fallback: &str,
+    stats: &HashMap<String, (i64, i64)>,
+) -> GitReviewFile {
     let status = if file.index_status == "?" && file.worktree_status == "?" {
         "added".to_string()
     } else {
@@ -1705,11 +1762,12 @@ fn review_file_from_status(file: &GitFileStatus, fallback: &str) -> GitReviewFil
                 .unwrap_or(fallback),
         )
     };
+    let (additions, deletions) = stats.get(&file.path).copied().unwrap_or((0, 0));
     GitReviewFile {
         path: file.path.clone(),
         status,
-        additions: 0,
-        deletions: 0,
+        additions,
+        deletions,
     }
 }
 
