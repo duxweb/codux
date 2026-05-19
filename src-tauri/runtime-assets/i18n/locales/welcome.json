@@ -1,0 +1,54 @@
+{
+  "strings": {
+    "de": {
+      "welcome.subtitle": "Erstellen Sie zunächst ein Projekt in der Seitenleiste",
+      "welcome.title_format": "Willkommen bei %@",
+      "welcome.open_project": "Projekt öffnen"
+    },
+    "en": {
+      "welcome.subtitle": "Create a project in the sidebar to get started",
+      "welcome.title_format": "Welcome to %@",
+      "welcome.open_project": "Open Project"
+    },
+    "es": {
+      "welcome.subtitle": "Crea un proyecto en la barra lateral para comenzar",
+      "welcome.title_format": "Bienvenido a %@",
+      "welcome.open_project": "Abrir proyecto"
+    },
+    "fr": {
+      "welcome.subtitle": "Créez un projet dans la barre latérale pour commencer",
+      "welcome.title_format": "Bienvenue sur %@",
+      "welcome.open_project": "Ouvrir le projet"
+    },
+    "ja": {
+      "welcome.subtitle": "サイドバーでプロジェクトを作成して開始してください",
+      "welcome.title_format": "%@ へようこそ",
+      "welcome.open_project": "プロジェクトを開く"
+    },
+    "ko": {
+      "welcome.subtitle": "시작하려면 사이드바에서 프로젝트를 만드세요.",
+      "welcome.title_format": "%@에 오신 것을 환영합니다.",
+      "welcome.open_project": "프로젝트 열기"
+    },
+    "pt-BR": {
+      "welcome.subtitle": "Crie um projeto na barra lateral para começar",
+      "welcome.title_format": "Bem-vindo ao %@",
+      "welcome.open_project": "Abrir projeto"
+    },
+    "ru": {
+      "welcome.subtitle": "Чтобы начать работу, создайте проект на боковой панели.",
+      "welcome.title_format": "Добро пожаловать в %@",
+      "welcome.open_project": "Открыть проект"
+    },
+    "zh-Hans": {
+      "welcome.subtitle": "在侧栏中新建项目后即可开始使用",
+      "welcome.title_format": "欢迎使用 %@",
+      "welcome.open_project": "打开项目"
+    },
+    "zh-Hant": {
+      "welcome.subtitle": "在側邊欄中建立一個項目以開始使用",
+      "welcome.title_format": "歡迎來到%@",
+      "welcome.open_project": "打開專案"
+    }
+  }
+}

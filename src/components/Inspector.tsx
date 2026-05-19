@@ -1,0 +1,3196 @@
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FileText,
+  Folder,
+  FolderPlus,
+  KeyRound,
+  Minus,
+  MoreHorizontal,
+  PencilSquare,
+  Plus,
+  RefreshCw,
+  Server,
+  Sparkles,
+  Undo2,
+  X,
+} from "../icons";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { Button as HeroButton, ProgressBar, Spinner } from "@heroui/react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from "react";
+import { useAIHistorySnapshot, type AIHeatmapDay, type AIHistorySessionSummary, type AITimeBucket, type AIUsageBreakdownItem } from "../ai/history";
+import { aiIndexingPresentation, liveSessionTotalTokens } from "../ai/panelPresentation";
+import { useAIRuntimeSnapshot, type AISessionSnapshot } from "../ai/runtime";
+import {
+  copyFile,
+  createDirectory,
+  createFile,
+  deleteFile,
+  importExternalFiles,
+  listFileChildren,
+  renameFile,
+  unwatchProjectFiles,
+  watchProjectFiles,
+  type FileChangeEvent,
+  type FileEntry,
+} from "../files/api";
+import { useGitStatusSnapshot, type GitCommitAction, type GitCommitSummary, type GitFileStatus, type GitStatusSnapshot } from "../git/status";
+import { Button } from "./Button";
+import {
+  DesktopMenu,
+  DesktopMenuItem,
+  DesktopMenuSectionLabel,
+  DesktopMenuSeparator,
+  DesktopSubmenu,
+} from "./DesktopMenu";
+import { Select, Textarea, TextInput } from "./Form";
+import { PressableButton } from "./PressableButton";
+import {
+  PanelButton,
+  PanelCard,
+  PanelEmptyState,
+  PanelHeader,
+  PanelIconButton,
+  PanelSection,
+  PanelStatusBar,
+} from "./PanelKit";
+import { Tooltip } from "./Tooltip";
+import type { RightPanelKind, WorkspaceProject } from "../types";
+import { broadcastWorkspaceCommand } from "../workspaceCommands";
+import { openGitDiffWindow } from "../windowing";
+import { systemConfirm } from "../systemDialog";
+import { formatI18n, tm } from "../i18n";
+
+type Props = {
+  panel: RightPanelKind;
+  selectedProject?: WorkspaceProject;
+};
+
+export function Inspector({ panel, selectedProject }: Props) {
+  return (
+    <aside className="h-full min-w-0 flex flex-col bg-surface-chrome/35 backdrop-blur-md">
+      {panel === "git" && <GitPanel project={selectedProject} />}
+      {panel === "files" && <FilesPanel project={selectedProject} />}
+      {panel === "ai" && <AIPanel project={selectedProject} />}
+      {panel === "ssh" && <SSHPanel project={selectedProject} />}
+    </aside>
+  );
+}
+
+function SectionHeader({
+  open,
+  setOpen,
+  title,
+  count,
+  actions,
+}: {
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  title: string;
+  count?: number;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="sticky top-0 z-10 h-[34px] flex items-center justify-between border-b border-line/80 bg-fill/[0.055] px-3.5 text-xs text-ink-soft">
+      <button
+        onClick={() => setOpen(!open)}
+        className="min-w-0 h-full flex flex-1 items-center gap-2 text-left transition-colors hover:text-ink"
+      >
+        {open ? (
+          <ChevronDown size={12} className="flex-shrink-0 text-ink-mute" />
+        ) : (
+          <ChevronRight size={12} className="flex-shrink-0 text-ink-mute" />
+        )}
+        <span className="truncate font-semibold">{title}</span>
+      </button>
+      <div className="flex items-center gap-1">
+        {actions}
+        {count != null && (
+          <span className="min-w-4 text-right text-xs text-ink-faint tabular-nums">{count}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HeaderActionButton({
+  icon: Icon,
+  label,
+  disabled,
+  onPress,
+}: {
+  icon: (props: { size?: number; strokeWidth?: number; className?: string }) => ReactNode;
+  label: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Tooltip label={label} placement="bottom">
+      <HeroButton
+        size="sm"
+        variant="ghost"
+        isIconOnly
+        isDisabled={disabled}
+        className="h-5 w-5 min-w-5 rounded px-0 text-ink-faint hover:text-ink"
+        onPress={onPress}
+      >
+        <Icon size={11} strokeWidth={2.2} />
+      </HeroButton>
+    </Tooltip>
+  );
+}
+
+const MIN_REFRESH_FEEDBACK_MS = 650;
+const AI_REFRESH_FEEDBACK_MS = 1000;
+const FILE_TREE_WATCH_DEBOUNCE_MS = 220;
+
+function useRefreshFeedback(refresh: () => Promise<unknown>, minVisibleMs = MIN_REFRESH_FEEDBACK_MS) {
+  const [isRefreshing, setRefreshing] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const run = useCallback(async () => {
+    const startedAt = Date.now();
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      const remaining = minVisibleMs - elapsed;
+      if (remaining > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, remaining));
+      }
+      if (mountedRef.current) {
+        setRefreshing(false);
+      }
+    }
+  }, [minVisibleMs, refresh]);
+
+  return [isRefreshing, run] as const;
+}
+
+type GitInputState = {
+  title: string;
+  message?: string;
+  label: string;
+  value: string;
+  secondaryLabel?: string;
+  secondaryValue?: string;
+  multiline?: boolean;
+  onSubmit: (value: string, secondaryValue: string) => Promise<void>;
+};
+
+function GitInputPanel({
+  input,
+  onChange,
+  onCancel,
+  onSubmit,
+}: {
+  input: GitInputState;
+  onChange: (input: GitInputState) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  const canSubmit = input.value.trim().length > 0 && (input.secondaryLabel ? (input.secondaryValue ?? "").trim().length > 0 : true);
+  const controlClass = "w-full rounded-md border border-line bg-surface-chrome/65 px-2 text-xs text-ink outline-none focus:border-brand-blue/60";
+
+  return (
+    <div className="mx-3 mt-3 rounded-[10px] border border-line bg-fill/[0.04] p-3">
+      <div className="text-xs font-semibold text-ink">{input.title}</div>
+      {input.message ? (
+        <div className="mt-1 text-[11px] leading-relaxed text-ink-faint">{input.message}</div>
+      ) : null}
+      <form
+        className="mt-2 grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) onSubmit();
+        }}
+      >
+        <label className="grid gap-1">
+          <span className="text-[11px] font-semibold text-ink-soft">{input.label}</span>
+          {input.multiline ? (
+            <textarea
+              className={`${controlClass} min-h-[72px] py-1.5 resize-none`}
+              value={input.value}
+              autoFocus
+              onChange={(event) => onChange({ ...input, value: event.currentTarget.value })}
+            />
+          ) : (
+            <input
+              className={`${controlClass} h-7`}
+              value={input.value}
+              autoFocus
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) => onChange({ ...input, value: event.currentTarget.value })}
+            />
+          )}
+        </label>
+        {input.secondaryLabel && (
+          <label className="grid gap-1">
+            <span className="text-[11px] font-semibold text-ink-soft">{input.secondaryLabel}</span>
+            <input
+              className={`${controlClass} h-7`}
+              value={input.secondaryValue ?? ""}
+              onChange={(event) => onChange({ ...input, secondaryValue: event.currentTarget.value })}
+            />
+          </label>
+        )}
+        <div className="mt-1 flex justify-end gap-1.5">
+          <PressableButton
+            className="h-6 rounded-md px-2 text-xs font-semibold text-ink-soft hover:bg-fill/8 hover:text-ink"
+            onPressUp={onCancel}
+          >
+            {tm("common.cancel", "Cancel")}
+          </PressableButton>
+          <PressableButton
+            className="h-6 rounded-md bg-brand-blue px-2 text-xs font-semibold text-on-brand disabled:opacity-50"
+            disabled={!canSubmit}
+            type="submit"
+          >
+            {tm("common.continue", "Continue")}
+          </PressableButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function GitPanel({ project }: { project?: WorkspaceProject }) {
+  const [stagedOpen, setStagedOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(true);
+  const [untrackedOpen, setUntrackedOpen] = useState(true);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [commitAction, setCommitAction] = useState<GitCommitAction>("commit");
+  const [selectedFileId, setSelectedFileId] = useState("");
+  const [gitInput, setGitInput] = useState<GitInputState | null>(null);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [commitMenuOpen, setCommitMenuOpen] = useState(false);
+  const git = useGitStatusSnapshot(project);
+  const [isManualRefreshing, refreshGit] = useRefreshFeedback(git.refresh);
+  const isRefreshingGit = git.isLoading || isManualRefreshing;
+  const snapshot = git.snapshot;
+  const hasUpstream = Boolean(snapshot.upstream);
+  const totalChanges =
+    snapshot.staged.length + snapshot.unstaged.length + snapshot.untracked.length;
+  const canCommit = snapshot.staged.length > 0 && commitMessage.trim().length > 0;
+  const statusLabel = !snapshot.isRepository
+    ? tm("git.repository.not_repository", "Current project is not a Git repository.")
+    : hasUpstream
+      ? snapshot.behind === 0 && snapshot.ahead === 0
+        ? tm("git.remote.status.synced", "Remote Is Synced")
+        : tm("git.remote.status.has_updates", "Remote Has Updates")
+      : tm("git.remote.status.no_remote_branch", "No Remote Branch");
+  const statusTone = snapshot.isRepository && hasUpstream ? "info" : "neutral";
+  const statusButtonTone = statusTone === "info" ? "ghost" : "neutral";
+  const commitActionLabel = gitCommitActionLabel(commitAction);
+  const remoteBranchesByRemote = useMemo(() => {
+    return groupRemoteBranches(snapshot.remoteBranches);
+  }, [snapshot.remoteBranches]);
+  const localMergeCandidates = useMemo(
+    () => snapshot.branches.filter((branch) => branch.name !== snapshot.branch),
+    [snapshot.branch, snapshot.branches],
+  );
+  const remotePushBranchesByRemote = useMemo(() => {
+    const upstream = snapshot.upstream;
+    const targets = [...snapshot.remoteBranches];
+    if (upstream && !targets.includes(upstream)) {
+      targets.unshift(upstream);
+    }
+    return groupRemoteBranches(targets, upstream);
+  }, [snapshot.remoteBranches, snapshot.upstream]);
+  const openGitInput = (input: GitInputState) => setGitInput(input);
+  const closeGitInput = () => setGitInput(null);
+  const submitGitInput = async () => {
+    if (!gitInput) return;
+    const primary = gitInput.value.trim();
+    const secondary = gitInput.secondaryValue?.trim() ?? "";
+    if (!primary) return;
+    setGitInput(null);
+    await gitInput.onSubmit(primary, secondary);
+  };
+  const createBranch = () => {
+    const seed = `task/${new Date().toISOString().slice(0, 10)}`;
+    openGitInput({
+      title: tm("git.branch.new", "New Branch"),
+      message: tm("git.branch.new.message", "Enter a new branch name."),
+      label: tm("git.branch.new", "New Branch"),
+      value: seed,
+      onSubmit: async (branch) => {
+        await git.createBranch(branch, true);
+      },
+    });
+  };
+  const createBranchFromCommit = (commit: GitCommitSummary) => {
+    openGitInput({
+      title: tm("git.branch.create_from_commit.title", "Create Branch from Commit"),
+      label: tm("git.branch.new", "New Branch"),
+      value: `restore/${commit.hash.slice(0, 7)}`,
+      onSubmit: async (branch) => {
+        await git.createBranch(branch, true, commit.hash);
+      },
+    });
+  };
+  const addRemote = () => {
+    openGitInput({
+      title: tm("git.remote.add", "Add Remote"),
+      label: tm("git.remote.name", "Remote Name"),
+      value: "origin",
+      secondaryLabel: tm("git.remote.add.url_message", "Remote URL"),
+      secondaryValue: "",
+      onSubmit: async (name, url) => {
+        if (url) await git.addRemote(name, url);
+      },
+    });
+  };
+  const removeRemote = () => {
+    openGitInput({
+      title: tm("git.remote.remove", "Remove Remote"),
+      message: snapshot.remotes.map((remote) => remote.name).join(", "),
+      label: tm("git.remote.name", "Remote Name"),
+      value: snapshot.remotes[0]?.name ?? "",
+      onSubmit: async (name) => {
+        if (await systemConfirm(formatI18n(tm("git.remote.remove.confirm_format", "Remove remote %@?"), name), {
+          title: tm("git.remote.remove", "Remove Remote"),
+          kind: "warning",
+          okLabel: tm("common.delete", "Delete"),
+          cancelLabel: tm("common.cancel", "Cancel"),
+        })) await git.removeRemote(name);
+      },
+    });
+  };
+  const pushRemote = () => {
+    openGitInput({
+      title: tm("git.remote.push_to", "Push To..."),
+      message: snapshot.remotes.map((remote) => remote.name).join(", "),
+      label: tm("git.remote.name", "Remote Name"),
+      value: snapshot.remotes[0]?.name ?? "origin",
+      onSubmit: async (remote) => {
+        await git.pushRemote(remote);
+      },
+    });
+  };
+  const runBranchAction = async (key: Key) => {
+    const rawKey = String(key);
+    if (rawKey.startsWith("checkoutLocal:")) {
+      const branch = rawKey.slice("checkoutLocal:".length);
+      if (branch && branch !== snapshot.branch) await git.checkoutBranch(branch);
+      return;
+    }
+    if (rawKey.startsWith("checkoutRemote:")) {
+      const branch = rawKey.slice("checkoutRemote:".length);
+      if (branch) await git.checkoutRemoteBranch(branch);
+      return;
+    }
+    if (rawKey.startsWith("pushRemote:")) {
+      const remote = rawKey.slice("pushRemote:".length);
+      if (remote) await git.pushRemote(remote);
+      return;
+    }
+    if (rawKey.startsWith("pushRemoteBranch:")) {
+      const remoteBranch = rawKey.slice("pushRemoteBranch:".length);
+      if (remoteBranch) await git.pushRemoteBranch(remoteBranch, snapshot.branch);
+      return;
+    }
+    if (rawKey.startsWith("mergeLocal:")) {
+      const branch = rawKey.slice("mergeLocal:".length);
+      if (branch) await git.mergeBranch(branch);
+      return;
+    }
+    if (rawKey.startsWith("squashLocal:")) {
+      const branch = rawKey.slice("squashLocal:".length);
+      if (branch) await git.squashMergeBranch(branch);
+      return;
+    }
+    if (rawKey.startsWith("deleteLocal:")) {
+      const branch = rawKey.slice("deleteLocal:".length);
+      if (!branch || branch === snapshot.branch) return;
+      const force = await systemConfirm(formatI18n(tm("git.branch.delete.confirm_format", "Delete local branch %@?"), branch), {
+        title: tm("git.branch.delete_local", "Delete Local Branch"),
+        kind: "warning",
+        okLabel: tm("common.delete", "Delete"),
+        cancelLabel: tm("common.cancel", "Cancel"),
+      });
+      if (force) await git.deleteBranch(branch, false);
+      return;
+    }
+    switch (String(key)) {
+      case "create":
+        createBranch();
+        return;
+      case "fetch":
+        await git.fetch();
+        return;
+      case "addRemote":
+        addRemote();
+        return;
+      case "removeRemote":
+        removeRemote();
+        return;
+      case "pushRemote":
+        pushRemote();
+        return;
+    }
+  };
+  const previewDiff = async (file: GitFileStatus, staged: boolean) => {
+    setSelectedFileId(`${staged ? "staged" : file.indexStatus === "?" ? "untracked" : "unstaged"}:${file.path}`);
+    if (!project?.path) return;
+    await openGitDiffWindow({
+      projectPath: project.path,
+      path: file.path,
+      staged,
+    });
+  };
+  const submitCommit = async () => {
+    const message = commitMessage.trim();
+    if (!message) return;
+    await git.commitAction(message, commitAction);
+    setCommitMessage("");
+  };
+  const runCommitAction = async (commit: GitCommitSummary, key: Key) => {
+    switch (String(key)) {
+      case "copy":
+        await navigator.clipboard?.writeText(commit.hash);
+        return;
+      case "checkout":
+        if (await systemConfirm(formatI18n(tm("git.history.checkout.message_format", "Check out commit %@?"), commit.hash.slice(0, 7)), {
+          title: tm("git.history.checkout_commit", "Check Out This Commit"),
+          kind: "warning",
+          okLabel: tm("git.history.checkout_commit", "Check Out"),
+          cancelLabel: tm("common.cancel", "Cancel"),
+        })) await git.checkoutCommit(commit.hash);
+        return;
+      case "branch":
+        createBranchFromCommit(commit);
+        return;
+      case "undo": {
+        const pushed = await git.headCommitPushed();
+        if (pushed && !(await systemConfirm(tm("git.history.undo_last_commit.remote_notice", "The last commit may already be pushed. Continue?"), {
+          title: tm("git.history.undo_last_commit", "Undo Last Commit"),
+          kind: "warning",
+          okLabel: tm("common.continue", "Continue"),
+          cancelLabel: tm("common.cancel", "Cancel"),
+        }))) return;
+        await git.undoLastCommit();
+        return;
+      }
+      case "amend": {
+        const current = await git.lastCommitMessage();
+        openGitInput({
+          title: tm("git.history.edit_last_commit_message", "Edit Last Commit Message"),
+          label: tm("git.commit.message.placeholder", "Enter Commit Message"),
+          value: current,
+          multiline: true,
+          onSubmit: async (message) => {
+            const pushed = await git.headCommitPushed();
+            if (pushed && !(await systemConfirm(tm("git.commit.edit_last_message.remote_notice", "The last commit may already be pushed. Continue?"), {
+              title: tm("git.history.edit_last_commit_message", "Edit Last Commit Message"),
+              kind: "warning",
+              okLabel: tm("common.continue", "Continue"),
+              cancelLabel: tm("common.cancel", "Cancel"),
+            }))) return;
+            await git.amendLastCommitMessage(message);
+          },
+        });
+        return;
+      }
+      case "revert":
+        if (await systemConfirm(formatI18n(tm("git.history.revert.message_format", "Revert commit %@?"), commit.hash.slice(0, 7)), {
+          title: tm("git.history.revert_commit", "Revert This Commit"),
+          kind: "warning",
+          okLabel: tm("git.history.revert_commit", "Revert"),
+          cancelLabel: tm("common.cancel", "Cancel"),
+        })) await git.revertCommit(commit.hash);
+        return;
+      case "restoreLocal":
+        if (await systemConfirm(formatI18n(tm("git.history.restore_local.message_format", "Reset the current branch locally to %@?"), commit.hash.slice(0, 7)), {
+          title: tm("git.history.restore_local", "Restore Locally"),
+          kind: "warning",
+          okLabel: tm("git.history.restore_local.action", "Restore Locally"),
+          cancelLabel: tm("common.cancel", "Cancel"),
+        })) await git.restoreCommit(commit.hash, false);
+        return;
+      case "restoreRemote":
+        if (await systemConfirm(formatI18n(tm("git.history.restore_remote.message_format", "Reset the current branch and remote to %@?"), commit.hash.slice(0, 7)), {
+          title: tm("git.history.restore_remote", "Restore Remote"),
+          kind: "warning",
+          okLabel: tm("git.history.restore_remote.action", "Restore Remote"),
+          cancelLabel: tm("common.cancel", "Cancel"),
+        })) await git.restoreCommit(commit.hash, true);
+        return;
+    }
+  };
+
+  return (
+    <>
+      <PanelHeader
+        title={
+          <DesktopMenu
+            ariaLabel={tm("git.branch.actions", "Git Branch Actions")}
+            isOpen={branchMenuOpen}
+            onOpenChange={setBranchMenuOpen}
+            placement="bottom-start"
+            trigger={
+              <button type="button" className="inline-flex items-center gap-1.5 text-sm font-semibold hover:text-ink/90">
+              <span className="truncate">{snapshot.branch || project?.branch || "master"}</span>
+              <ChevronDown size={12} className="flex-shrink-0 text-ink-mute" />
+              </button>
+            }
+          >
+                <DesktopMenuItem label={tm("git.branch.create_and_switch", "New Branch")} onSelect={() => void runBranchAction("create")}>{tm("git.branch.create_and_switch", "New Branch")}</DesktopMenuItem>
+                {snapshot.branches.length > 0 && (
+                  <>
+                    <DesktopMenuSeparator />
+                    <DesktopMenuSectionLabel>{tm("git.branch.local", "Local Branches")}</DesktopMenuSectionLabel>
+                    {snapshot.branches.map((branch) => (
+                      <DesktopMenuItem key={`checkoutLocal:${branch.name}`} label={branch.name} onSelect={() => void runBranchAction(`checkoutLocal:${branch.name}`)}>
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <span className={`h-1.5 w-1.5 rounded-full ${branch.isCurrent ? "bg-brand-blue" : "bg-ink-faint/55"}`} />
+                          <span className="truncate">{branch.name}</span>
+                        </span>
+                      </DesktopMenuItem>
+                    ))}
+                  </>
+                )}
+                {remoteBranchesByRemote.length > 0 && (
+                  <>
+                    <DesktopMenuSeparator />
+                    <DesktopMenuSectionLabel>{tm("git.remote.branches", "Remote Branches")}</DesktopMenuSectionLabel>
+                    {remoteBranchesByRemote.map(({ remote, branches }) => (
+                      <DesktopSubmenu key={remote} label={remote}>
+                            {branches.map((branch) => (
+                              <DesktopMenuItem
+                                key={`checkoutRemote:${remote}/${branch.name}`}
+                                label={branch.name}
+                                onSelect={() => void runBranchAction(`checkoutRemote:${remote}/${branch.name}`)}
+                              >
+                                {branch.name}
+                              </DesktopMenuItem>
+                            ))}
+                      </DesktopSubmenu>
+                    ))}
+                  </>
+                )}
+                {localMergeCandidates.length > 0 && (
+                  <>
+                    <DesktopMenuSeparator />
+                    <DesktopSubmenu label={tm("git.branch.merge.title", "Merge Branch")}>
+                          {localMergeCandidates.map((branch) => (
+                            <DesktopMenuItem key={`mergeLocal:${branch.name}`} label={branch.name} onSelect={() => void runBranchAction(`mergeLocal:${branch.name}`)}>
+                              {branch.name}
+                            </DesktopMenuItem>
+                          ))}
+                    </DesktopSubmenu>
+                    <DesktopSubmenu label={tm("git.branch.squash_merge", "Squash Merge Branch")}>
+                          {localMergeCandidates.map((branch) => (
+                            <DesktopMenuItem key={`squashLocal:${branch.name}`} label={branch.name} onSelect={() => void runBranchAction(`squashLocal:${branch.name}`)}>
+                              {branch.name}
+                            </DesktopMenuItem>
+                          ))}
+                    </DesktopSubmenu>
+                    <DesktopSubmenu label={tm("git.branch.delete_local", "Delete Local Branch")}>
+                          {localMergeCandidates.map((branch) => (
+                            <DesktopMenuItem key={`deleteLocal:${branch.name}`} label={branch.name} onSelect={() => void runBranchAction(`deleteLocal:${branch.name}`)}>
+                              {branch.name}
+                            </DesktopMenuItem>
+                          ))}
+                    </DesktopSubmenu>
+                  </>
+                )}
+                <DesktopMenuSeparator />
+                <DesktopMenuItem label={tm("git.remote.fetch", "Fetch")} onSelect={() => void runBranchAction("fetch")}>{tm("git.remote.fetch", "Fetch")}</DesktopMenuItem>
+                {remotePushBranchesByRemote.length > 0 && (
+                  <>
+                    <DesktopSubmenu label={tm("git.remote.branch.push_here", "Push to Remote Branch")}>
+                          {remotePushBranchesByRemote.map(({ remote, branches }) => (
+                            <DesktopSubmenu key={remote} label={remote}>
+                                  {branches.map((branch) => (
+                                    <DesktopMenuItem
+                                      key={`pushRemoteBranch:${remote}/${branch.name}`}
+                                      label={branch.name}
+                                      onSelect={() => void runBranchAction(`pushRemoteBranch:${remote}/${branch.name}`)}
+                                    >
+                                      <span className="inline-flex min-w-0 items-center gap-2">
+                                        <span className={`h-1.5 w-1.5 rounded-full ${branch.isUpstream ? "bg-brand-blue" : "bg-ink-faint/55"}`} />
+                                        <span className="truncate">{branch.name}</span>
+                                      </span>
+                                    </DesktopMenuItem>
+                                  ))}
+                            </DesktopSubmenu>
+                          ))}
+                    </DesktopSubmenu>
+                  </>
+                )}
+                {snapshot.remotes.map((remote) => (
+                  <DesktopMenuItem key={`pushRemote:${remote.name}`} label={remote.name} onSelect={() => void runBranchAction(`pushRemote:${remote.name}`)}>
+                    {formatI18n(tm("git.remote.push_to_format", "Push to %@"), remote.name)}
+                  </DesktopMenuItem>
+                ))}
+                {snapshot.remotes.length === 0 && <DesktopMenuItem label={tm("git.remote.push_set_upstream", "Push and Set Remote")} onSelect={() => void runBranchAction("pushRemote")}>{tm("git.remote.push_set_upstream", "Push and Set Remote")}</DesktopMenuItem>}
+                <DesktopMenuItem label={tm("git.remote.add", "Add Remote")} onSelect={() => void runBranchAction("addRemote")}>{tm("git.remote.add", "Add Remote")}</DesktopMenuItem>
+                <DesktopMenuItem label={tm("git.remote.remove", "Remove Remote")} onSelect={() => void runBranchAction("removeRemote")}>{tm("git.remote.remove", "Remove Remote")}</DesktopMenuItem>
+          </DesktopMenu>
+        }
+        trailing={
+          <>
+            <PanelIconButton
+              icon={Sparkles}
+              tooltip={tm("git.commit.generate_message", "Generate Commit Message")}
+              onClick={() => setCommitMessage(generateCommitMessage(snapshot))}
+            />
+            <PanelIconButton
+              icon={RefreshCw}
+              tooltip={isRefreshingGit ? tm("git.empty.reading_status", "Reading Git Status") : tm("git.status.refresh", "Refresh Git Status")}
+              busy={isRefreshingGit}
+              disabled={isRefreshingGit}
+              onClick={() => void refreshGit()}
+            />
+          </>
+        }
+      />
+      {gitInput && (
+        <GitInputPanel
+          input={gitInput}
+          onChange={setGitInput}
+          onCancel={closeGitInput}
+          onSubmit={() => void submitGitInput()}
+        />
+      )}
+
+      {!snapshot.isRepository ? (
+        <PanelEmptyState
+          icon={Folder}
+          title={tm("git.empty.not_repository", "Current Directory Is Not a Git Repository")}
+          description={git.error ?? snapshot.error ?? tm("git.empty.description", "Initialize a repository or clone a remote repository to view commits, diffs, and branches here.")}
+          tone="warning"
+          action={
+            <div className="flex items-center gap-2">
+              <HeroButton size="sm" variant="primary" onPress={() => void git.init()}>
+                {tm("git.empty.initialize_repository", "Initialize Repository")}
+              </HeroButton>
+              <HeroButton
+                size="sm"
+                variant="secondary"
+                onPress={() => openGitInput({
+                  title: tm("git.empty.clone_remote_repository", "Clone Remote Repository"),
+                  label: tm("git.remote.add.url_message", "Remote URL"),
+                  value: "",
+                  onSubmit: async (remoteUrl) => {
+                    await git.cloneRepository(remoteUrl);
+                  },
+                })}
+              >
+                {tm("git.empty.clone_remote_repository", "Clone Remote Repository")}
+              </HeroButton>
+            </div>
+          }
+        />
+      ) : (
+        <div className="min-h-0 flex-1 flex flex-col">
+          <div className="flex-shrink-0 border-b border-line/80 p-3">
+            <Textarea
+              placeholder={tm("git.commit.message.placeholder", "Commit message")}
+              value={commitMessage}
+              onChange={(event) => setCommitMessage(event.target.value)}
+              fullWidth
+              variant="secondary"
+              className="h-[78px] resize-none text-sm"
+            />
+            <div className="mt-2.5 flex gap-px">
+              <Button
+                variant="primary"
+                size="sm"
+                block
+                disabled={!canCommit}
+                className="h-[34px] rounded-r-none text-sm font-semibold"
+                onPress={() => void submitCommit()}
+              >
+                {commitActionLabel}{snapshot.staged.length > 0 ? ` ${snapshot.staged.length}` : ""}
+              </Button>
+              <DesktopMenu
+                ariaLabel={tm("git.commit.options", "Commit Options")}
+                isOpen={commitMenuOpen}
+                onOpenChange={setCommitMenuOpen}
+                trigger={
+                  <button
+                    type="button"
+                    disabled={!canCommit}
+                    className="grid h-[34px] w-8 min-w-8 place-items-center rounded-l-none rounded-r-md bg-brand-blue px-0 text-on-brand disabled:cursor-default disabled:opacity-50"
+                    aria-label={tm("git.commit.options", "Commit Options")}
+                  >
+                    <ChevronDown size={13} strokeWidth={2.4} />
+                  </button>
+                }
+              >
+                <DesktopMenuItem label={tm("git.commit.action", "Commit")} onSelect={() => setCommitAction("commit")}>{tm("git.commit.action", "Commit")}</DesktopMenuItem>
+                <DesktopMenuItem label={tm("git.commit.action_push", "Commit and Push")} onSelect={() => setCommitAction("commitAndPush")}>{tm("git.commit.action_push", "Commit and Push")}</DesktopMenuItem>
+                <DesktopMenuItem label={tm("git.commit.action_sync", "Commit and Sync")} onSelect={() => setCommitAction("commitAndSync")}>{tm("git.commit.action_sync", "Commit and Sync")}</DesktopMenuItem>
+              </DesktopMenu>
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay">
+            <SectionHeader
+              open={stagedOpen}
+              setOpen={setStagedOpen}
+              title={tm("git.files.staged", "Staged")}
+              count={snapshot.staged.length}
+              actions={
+                <HeaderActionButton
+                  icon={Minus}
+                  label={tm("git.files.unstage_all", "Unstage All")}
+                  disabled={snapshot.staged.length === 0}
+                  onPress={() => void git.unstage(snapshot.staged.map((file) => file.path))}
+                />
+              }
+            />
+            {stagedOpen && (
+              <GitFileSection
+                files={snapshot.staged}
+                emptyLabel={tm("git.files.staged.empty", "No staged changes")}
+                kind="staged"
+                selectedId={selectedFileId}
+                primaryLabel={tm("git.files.unstage", "Unstage")}
+                onPrimary={(file) => void git.unstage([file.path])}
+                onSelect={(file) => void previewDiff(file, true)}
+                onDiscard={(file) => {
+                  void systemConfirm(formatI18n(tm("git.files.discard.confirm_format", "Discard changes in %@?"), file.path), {
+                    title: tm("git.files.discard_changes", "Discard Changes"),
+                    kind: "warning",
+                    okLabel: tm("git.files.discard_changes", "Discard"),
+                    cancelLabel: tm("common.cancel", "Cancel"),
+                  }).then((confirmed) => {
+                    if (confirmed) void git.discard([file.path]);
+                  });
+                }}
+              />
+            )}
+
+            <SectionHeader
+              open={changesOpen}
+              setOpen={setChangesOpen}
+              title={tm("git.files.changes", "Changes")}
+              count={snapshot.unstaged.length}
+              actions={
+                <>
+                  <HeaderActionButton
+                    icon={Plus}
+                    label={tm("git.files.stage_all", "Stage All")}
+                    disabled={snapshot.unstaged.length === 0}
+                    onPress={() => void git.stage(snapshot.unstaged.map((file) => file.path))}
+                  />
+                  <HeaderActionButton
+                    icon={Undo2}
+                    label={tm("git.files.discard_all", "Discard All")}
+                    disabled={snapshot.unstaged.length === 0}
+                    onPress={() => {
+                      void systemConfirm(tm("git.files.discard_all.confirm", "Discard all worktree changes?"), {
+                        title: tm("git.files.discard_all", "Discard All"),
+                        kind: "warning",
+                        okLabel: tm("git.files.discard_all", "Discard All"),
+                        cancelLabel: tm("common.cancel", "Cancel"),
+                      }).then((confirmed) => {
+                        if (confirmed) void git.discard(snapshot.unstaged.map((file) => file.path));
+                      });
+                    }}
+                  />
+                </>
+              }
+            />
+            {changesOpen && (
+              <GitFileSection
+                files={snapshot.unstaged}
+                emptyLabel={tm("git.files.changes.empty", "No worktree changes")}
+                kind="unstaged"
+                selectedId={selectedFileId}
+                primaryLabel={tm("git.files.stage", "Stage")}
+                onPrimary={(file) => void git.stage([file.path])}
+                onSelect={(file) => void previewDiff(file, false)}
+                onDiscard={(file) => {
+                  void systemConfirm(formatI18n(tm("git.files.discard.confirm_format", "Discard changes in %@?"), file.path), {
+                    title: tm("git.files.discard_changes", "Discard Changes"),
+                    kind: "warning",
+                    okLabel: tm("git.files.discard_changes", "Discard"),
+                    cancelLabel: tm("common.cancel", "Cancel"),
+                  }).then((confirmed) => {
+                    if (confirmed) void git.discard([file.path]);
+                  });
+                }}
+              />
+            )}
+
+            <SectionHeader
+              open={untrackedOpen}
+              setOpen={setUntrackedOpen}
+              title={tm("git.files.untracked", "Untracked")}
+              count={snapshot.untracked.length}
+              actions={
+                <>
+                  <HeaderActionButton
+                    icon={Plus}
+                    label={tm("git.files.stage_all", "Stage All")}
+                    disabled={snapshot.untracked.length === 0}
+                    onPress={() => void git.stage(snapshot.untracked.map((file) => file.path))}
+                  />
+                  <HeaderActionButton
+                    icon={X}
+                    label={tm("git.ignore.add_all", "Add All to .gitignore")}
+                    disabled={snapshot.untracked.length === 0}
+                    onPress={() => void git.appendGitignore(snapshot.untracked.map((file) => file.path))}
+                  />
+                </>
+              }
+            />
+            {untrackedOpen && (
+              <GitFileSection
+                files={snapshot.untracked}
+                emptyLabel={tm("git.files.untracked.empty", "No untracked files")}
+                kind="untracked"
+                selectedId={selectedFileId}
+                primaryLabel={tm("git.files.stage", "Stage")}
+                onPrimary={(file) => void git.stage([file.path])}
+                onSelect={(file) => void previewDiff(file, false)}
+                onIgnore={(file) => void git.appendGitignore([file.path])}
+                onDiscard={(file) => {
+                  void systemConfirm(formatI18n(tm("git.files.delete_untracked.confirm_format", "Delete untracked file %@?"), file.path), {
+                    title: tm("git.files.delete_file", "Delete File"),
+                    kind: "warning",
+                    okLabel: tm("common.delete", "Delete"),
+                    cancelLabel: tm("common.cancel", "Cancel"),
+                  }).then((confirmed) => {
+                    if (confirmed) void git.discard([file.path]);
+                  });
+                }}
+              />
+            )}
+
+            {git.error && (
+              <div className="mx-3 mt-2 rounded-md border border-brand-red/30 bg-brand-red/10 px-2.5 py-2 text-xs text-brand-red">
+                {git.error}
+              </div>
+            )}
+
+          </div>
+
+          <div className="h-[190px] flex-shrink-0 border-t border-line/80 bg-surface-chrome/25">
+            <PanelSection title={tm("git.history.title", "Git History")} className="h-full flex flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay pb-3">
+                {snapshot.commits.length > 0 ? (
+                  snapshot.commits.map((commit) => (
+                    <CommitRow
+                      key={commit.hash}
+                      commit={commit}
+                      isHead={snapshot.commits[0]?.hash === commit.hash}
+                      onAction={(key) => void runCommitAction(commit, key)}
+                    />
+                  ))
+                ) : (
+                  <div className="px-3.5 py-3 text-xs text-ink-faint">
+                    {git.isLoading ? tm("git.empty.reading_status", "Reading Git Status") : tm("git.history.empty", "No Commit History")}
+                  </div>
+                )}
+              </div>
+            </PanelSection>
+          </div>
+        </div>
+      )}
+
+      <PanelStatusBar
+        tone={statusTone}
+        leading={
+          <span className="flex min-w-0 items-center gap-1.5 truncate">
+            {isRefreshingGit ? (
+              <Spinner size="sm" color="current" className="text-current/90" />
+            ) : (
+              <ChevronRight size={12} className="opacity-0" />
+            )}
+            <span>{isRefreshingGit ? tm("git.empty.reading_status", "Reading Git Status") : statusLabel}</span>
+            {isRefreshingGit && (
+              <ProgressBar
+                aria-label={tm("git.status.refresh.progress", "Git refresh progress")}
+                isIndeterminate
+                size="sm"
+                className="w-14"
+              >
+                <ProgressBar.Track className="h-1 bg-current/20">
+                  <ProgressBar.Fill className="h-full bg-current/75" />
+                </ProgressBar.Track>
+              </ProgressBar>
+            )}
+          </span>
+        }
+        trailing={
+          <>
+            <PanelButton tone={statusButtonTone} leading={ArrowDownToLine} onClick={hasUpstream ? () => void git.pull() : undefined}>
+              {tm("git.remote.pull", "Pull")}{snapshot.behind > 0 ? ` ${snapshot.behind}` : ""}
+            </PanelButton>
+            <PanelButton
+              tone={statusButtonTone}
+              leading={ArrowUpFromLine}
+              onClick={hasUpstream ? () => void git.push() : () => void pushRemote()}
+            >
+              {tm("git.remote.push", "Push")}{snapshot.ahead > 0 ? ` ${snapshot.ahead}` : ""}
+            </PanelButton>
+          </>
+        }
+      />
+    </>
+  );
+}
+
+function FileRow({
+  path,
+  tag,
+  tone,
+  selected,
+  primaryIcon: PrimaryIcon,
+  onSelect,
+  onPrimary,
+  primaryLabel,
+  onDiscard,
+  onIgnore,
+}: {
+  path: string;
+  tag: string;
+  tone: "amber" | "green" | "blue";
+  selected?: boolean;
+  primaryIcon?: (props: { size?: number; strokeWidth?: number; className?: string }) => ReactNode;
+  onSelect?: () => void;
+  onPrimary?: () => void;
+  primaryLabel?: string;
+  onDiscard?: () => void;
+  onIgnore?: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const toneClass =
+    tone === "amber"
+      ? "text-brand-amber"
+      : tone === "green"
+        ? "text-brand-green"
+        : "text-brand-blue";
+  return (
+    <Tooltip label={path} placement="left" triggerClassName="block w-full">
+      <div
+        className={`group relative w-full h-[28px] px-3 flex items-center gap-1.5 transition-colors text-xs text-ink-soft ${
+          selected ? "bg-brand-blue/12 text-ink" : "hover:bg-fill/[0.04]"
+        }`}
+      >
+        <PressableButton
+          className="min-w-0 flex-1 h-full flex items-center gap-2 pr-10 text-left"
+          onPressUp={onSelect}
+        >
+          <span className="truncate flex-1">{path}</span>
+          <span className={`flex-shrink-0 text-xs font-bold ${toneClass}`}>{tag}</span>
+        </PressableButton>
+        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded bg-surface-chrome/95 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto">
+          {onPrimary && primaryLabel && PrimaryIcon && (
+            <Tooltip label={primaryLabel} placement="bottom">
+              <HeroButton
+                size="sm"
+                variant="ghost"
+                isIconOnly
+                className="h-5 w-5 min-w-5 rounded px-0 text-ink-faint hover:text-ink"
+                onPress={onPrimary}
+              >
+                <PrimaryIcon size={11} strokeWidth={2.2} />
+              </HeroButton>
+            </Tooltip>
+          )}
+          <DesktopMenu
+            ariaLabel={formatI18n(tm("git.files.actions_format", "%@ Actions"), path)}
+            isOpen={menuOpen}
+            onOpenChange={setMenuOpen}
+            trigger={
+              <button
+                type="button"
+                className="grid h-5 w-5 place-items-center rounded text-ink-faint hover:bg-fill/8 hover:text-ink"
+                aria-label={formatI18n(tm("git.files.actions_format", "%@ Actions"), path)}
+              >
+                <MoreHorizontal size={12} />
+              </button>
+            }
+          >
+            <DesktopMenuItem label={tm("git.files.copy_path", "Copy Path")} onSelect={() => void navigator.clipboard?.writeText(path)}>{tm("git.files.copy_path", "Copy Path")}</DesktopMenuItem>
+            {onIgnore && <DesktopMenuItem label={tm("git.ignore.add", "Add to .gitignore")} onSelect={onIgnore}>{tm("git.ignore.add", "Add to .gitignore")}</DesktopMenuItem>}
+            {onDiscard && <DesktopMenuItem label={tm("git.files.discard_or_delete", "Discard / Delete")} onSelect={onDiscard}>{tm("git.files.discard_or_delete", "Discard / Delete")}</DesktopMenuItem>}
+          </DesktopMenu>
+        </div>
+      </div>
+    </Tooltip>
+  );
+}
+
+function GitFileSection({
+  files,
+  emptyLabel,
+  kind,
+  selectedId,
+  primaryLabel,
+  onSelect,
+  onPrimary,
+  onDiscard,
+  onIgnore,
+}: {
+  files: GitFileStatus[];
+  emptyLabel: string;
+  kind: "staged" | "unstaged" | "untracked";
+  selectedId?: string;
+  primaryLabel?: string;
+  onSelect?: (file: GitFileStatus) => void;
+  onPrimary?: (file: GitFileStatus) => void;
+  onDiscard?: (file: GitFileStatus) => void;
+  onIgnore?: (file: GitFileStatus) => void;
+}) {
+  if (files.length === 0) {
+    return <div className="px-3.5 py-2.5 text-xs text-ink-faint">{emptyLabel}</div>;
+  }
+  return (
+    <div className="pb-1">
+      {files.map((file) => {
+        const meta = gitFileBadge(file, kind);
+        const id = `${kind}:${file.path}`;
+        const PrimaryIcon = kind === "staged" ? Minus : Plus;
+        return (
+          <FileRow
+            key={id}
+            path={file.path}
+            tag={meta.tag}
+            tone={meta.tone}
+            selected={selectedId === id}
+            primaryIcon={PrimaryIcon}
+            primaryLabel={primaryLabel}
+            onSelect={() => onSelect?.(file)}
+            onPrimary={onPrimary ? () => onPrimary(file) : undefined}
+            onDiscard={onDiscard ? () => onDiscard(file) : undefined}
+            onIgnore={onIgnore ? () => onIgnore(file) : undefined}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function gitFileBadge(
+  file: GitFileStatus,
+  kind: "staged" | "unstaged" | "untracked",
+): { tag: string; tone: "amber" | "green" | "blue" } {
+  if (kind === "untracked") return { tag: "U", tone: "green" };
+  const raw = kind === "staged" ? file.indexStatus : file.worktreeStatus;
+  const status = raw.trim();
+  if (status === "A") return { tag: "A", tone: "green" };
+  if (status === "D") return { tag: "D", tone: "blue" };
+  if (status === "R") return { tag: "R", tone: "blue" };
+  if (status === "C") return { tag: "C", tone: "blue" };
+  return { tag: status || "M", tone: "amber" };
+}
+
+function formatDecorations(value?: string | null) {
+  if (!value) return undefined;
+  return value
+    .replace(/\btag: /g, "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" · ");
+}
+
+function generateCommitMessage(snapshot: GitStatusSnapshot) {
+  const files = [...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked]
+    .map((file) => file.path)
+    .filter(Boolean);
+  if (files.length === 0) return "";
+  const summary = Array.from(new Set(files))
+    .slice(0, 3)
+    .map((path) => path.split("/").pop() || path)
+    .join(", ");
+  const suffix =
+    files.length > 3
+      ? formatI18n(tm("git.commit.generate.more_files_format", " and %@ more files"), String(files.length - 3))
+      : "";
+  return formatI18n(tm("git.commit.generate.simple_summary_format", "Update %@%@"), summary, suffix);
+}
+
+function gitCommitActionLabel(action: GitCommitAction) {
+  switch (action) {
+    case "commitAndPush":
+      return tm("git.commit.action_push", "Commit and Push");
+    case "commitAndSync":
+      return tm("git.commit.action_sync", "Commit and Sync");
+    case "commit":
+    default:
+      return tm("git.commit.action", "Commit");
+  }
+}
+
+function groupRemoteBranches(values: string[], upstream?: string | null) {
+  const groups = new Map<string, Array<{ name: string; isUpstream: boolean }>>();
+  for (const value of values) {
+    const [remote, ...rest] = value.split("/");
+    const branchName = rest.join("/");
+    if (!remote || !branchName || branchName === "HEAD") continue;
+    const branches = groups.get(remote) ?? [];
+    if (!branches.some((branch) => branch.name === branchName)) {
+      branches.push({ name: branchName, isUpstream: value === upstream });
+    }
+    groups.set(remote, branches);
+  }
+  return [...groups.entries()]
+    .map(([remote, branches]) => ({
+      remote,
+      branches: branches.sort((left, right) => {
+        if (left.isUpstream) return -1;
+        if (right.isUpstream) return 1;
+        return left.name.localeCompare(right.name);
+      }),
+    }))
+    .sort((left, right) => left.remote.localeCompare(right.remote));
+}
+
+function CommitRow({
+  commit,
+  isHead,
+  onAction,
+}: {
+  commit: GitCommitSummary;
+  isHead?: boolean;
+  onAction: (key: Key) => void;
+}) {
+  const head = formatDecorations(commit.decorations);
+  const [menuOpen, setMenuOpen] = useState(false);
+  return (
+    <div className="group relative h-[34px] flex items-center gap-2 px-3.5 hover:bg-fill/[0.03] text-xs">
+      {isHead && (
+        <span className="absolute left-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-brand-blue/85" />
+      )}
+      <Tooltip
+        placement="top"
+        triggerClassName="min-w-0 flex-1"
+        contentClassName="max-w-[360px] px-2.5 py-2 text-left"
+        label={
+          <div className="grid gap-1">
+            <div className="font-semibold leading-snug text-ink">{commit.title}</div>
+            <div className="font-mono text-[10.5px] text-ink-faint">{commit.hash}</div>
+            <div className="text-ink-mute">{commit.author} · {commit.relativeTime}</div>
+            {head && <div className="text-brand-blue">{head}</div>}
+          </div>
+        }
+      >
+        <span className={`block min-w-0 truncate text-ink-soft ${isHead ? "pl-1" : ""}`}>
+          {commit.title}
+        </span>
+      </Tooltip>
+      {head && (
+        <span className="max-w-[104px] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 h-[18px] inline-flex flex-shrink-0 items-center text-xs font-semibold rounded-sm bg-brand-blue/18 text-brand-blue">
+          {head}
+        </span>
+      )}
+      <span className="hidden max-w-[58px] flex-shrink truncate text-xs text-ink-faint sm:inline">{commit.author}</span>
+      <span className="flex-shrink-0 text-xs text-ink-faint whitespace-nowrap">{commit.relativeTime}</span>
+      <DesktopMenu
+        ariaLabel={tm("git.history.actions", "Commit History Actions")}
+        isOpen={menuOpen}
+        onOpenChange={setMenuOpen}
+        trigger={
+          <button
+            type="button"
+            className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded bg-surface-chrome/90 text-ink-faint opacity-0 pointer-events-none transition-opacity hover:bg-fill/8 hover:text-ink group-hover:opacity-100 group-hover:pointer-events-auto data-[pressed]:opacity-100"
+            aria-label={formatI18n(tm("git.history.commit_actions_format", "%@ Actions"), commit.hash.slice(0, 7))}
+          >
+            <MoreHorizontal size={12} />
+          </button>
+        }
+      >
+            <DesktopMenuItem label={tm("git.history.copy_commit_hash", "Copy Commit Hash")} onSelect={() => onAction("copy")}>
+              <span className="inline-flex items-center gap-2">
+                <Copy size={12} />
+                {tm("git.history.copy_commit_hash", "Copy Commit Hash")}
+              </span>
+            </DesktopMenuItem>
+            <DesktopMenuItem label={tm("git.history.checkout_commit", "Check Out This Commit")} onSelect={() => onAction("checkout")}>{tm("git.history.checkout_commit", "Check Out This Commit")}</DesktopMenuItem>
+            <DesktopMenuItem label={tm("git.history.create_branch_from_commit", "Create Branch from This Commit")} onSelect={() => onAction("branch")}>{tm("git.history.create_branch_from_commit", "Create Branch from This Commit")}</DesktopMenuItem>
+            {isHead && <DesktopMenuItem label={tm("git.history.undo_last_commit", "Undo Last Commit")} onSelect={() => onAction("undo")}>{tm("git.history.undo_last_commit", "Undo Last Commit")}</DesktopMenuItem>}
+            {isHead && <DesktopMenuItem label={tm("git.history.edit_last_commit_message", "Edit Last Commit Message")} onSelect={() => onAction("amend")}>{tm("git.history.edit_last_commit_message", "Edit Last Commit Message")}</DesktopMenuItem>}
+            <DesktopMenuItem label={tm("git.history.revert_commit", "Revert This Commit")} onSelect={() => onAction("revert")}>{tm("git.history.revert_commit", "Revert This Commit")}</DesktopMenuItem>
+            <DesktopMenuItem label={tm("git.history.restore_local", "Restore Locally")} onSelect={() => onAction("restoreLocal")}>{tm("git.history.restore_local", "Restore Locally")}</DesktopMenuItem>
+            <DesktopMenuItem label={tm("git.history.restore_remote", "Restore Remote")} onSelect={() => onAction("restoreRemote")}>{tm("git.history.restore_remote", "Restore Remote")}</DesktopMenuItem>
+      </DesktopMenu>
+    </div>
+  );
+}
+
+function FilesPanel({ project }: { project?: WorkspaceProject }) {
+  const rootPath = project?.path ?? "";
+  const [childrenByPath, setChildrenByPath] = useState<Record<string, FileEntry[]>>({});
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [selectedPath, setSelectedPath] = useState("");
+  const [copiedPath, setCopiedPath] = useState("");
+  const [fileStatus, setFileStatus] = useState<{ tone: "neutral" | "success" | "warning" | "danger"; message: string }>({
+    tone: "neutral",
+    message: tm("files.panel.status.ready", "Ready"),
+  });
+  const [isDraggingExternalFiles, setDraggingExternalFiles] = useState(false);
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [inlineEdit, setInlineEdit] = useState<FileInlineEdit | null>(null);
+  const expandedPathsRef = useRef(expandedPaths);
+  const fileTreeRef = useRef<HTMLDivElement | null>(null);
+
+  const updateStatus = useCallback((message: string, tone: "neutral" | "success" | "warning" | "danger" = "neutral") => {
+    setFileStatus({ tone, message });
+  }, []);
+
+  const handleFileError = useCallback((nextError: unknown) => {
+    const message = nextError instanceof Error ? nextError.message : String(nextError);
+    setError(message);
+    updateStatus(message, "danger");
+  }, [updateStatus]);
+
+  useEffect(() => {
+    expandedPathsRef.current = expandedPaths;
+  }, [expandedPaths]);
+
+  const loadChildren = useCallback(
+    async (directoryPath?: string) => {
+      if (!rootPath) return false;
+      const key = directoryPath || rootPath;
+      setLoadingPaths((current) => new Set(current).add(key));
+      setError(null);
+      try {
+        const children = await listFileChildren(rootPath, directoryPath);
+        setChildrenByPath((current) => ({
+          ...current,
+          [key]: children,
+        }));
+        return true;
+      } catch (nextError) {
+        handleFileError(nextError);
+        return false;
+      } finally {
+        setLoadingPaths((current) => {
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [handleFileError, rootPath],
+  );
+
+  useEffect(() => {
+    setChildrenByPath({});
+    setSelectedPath("");
+    setCopiedPath("");
+    setError(null);
+    if (!rootPath) {
+      setExpandedPaths(new Set());
+      updateStatus(tm("files.panel.no_project", "No Project Selected"));
+      return;
+    }
+    setExpandedPaths(new Set([rootPath]));
+    updateStatus(tm("files.panel.status.ready", "Ready"));
+    void loadChildren();
+  }, [loadChildren, rootPath, updateStatus]);
+
+  const rows = useMemo(
+    () => flattenFileRows(rootPath, childrenByPath, expandedPaths),
+    [childrenByPath, expandedPaths, rootPath],
+  );
+  const fileTreeLabels = useMemo<FileTreeLabels>(() => ({
+    open: tm("files.panel.open", "Open"),
+    copy: tm("files.panel.copy", "Copy"),
+    pasteHere: tm("files.panel.paste_here", "Paste Here"),
+    importHere: tm("files.panel.import_here", "Import Files Here"),
+    rename: tm("common.rename", "Rename"),
+    delete: tm("files.panel.delete", "Move to Trash"),
+    actions: tm("files.panel.actions", "Actions"),
+  }), []);
+  const selectedEntry = useMemo(
+    () => rows.find((row) => row.entry.path === selectedPath)?.entry,
+    [rows, selectedPath],
+  );
+
+  const refresh = useCallback(() => {
+    if (!rootPath) return;
+    const remembered = new Set(expandedPaths);
+    setChildrenByPath({});
+    setExpandedPaths(remembered.size ? remembered : new Set([rootPath]));
+    updateStatus(tm("files.panel.status.refreshing", "Refreshing files"));
+    const loads = [loadChildren()];
+    for (const path of remembered) {
+      if (path !== rootPath) loads.push(loadChildren(path));
+    }
+    void Promise.all(loads).then((results) => {
+      if (results.every(Boolean)) {
+        setError(null);
+        updateStatus(tm("files.panel.status.refreshed", "Files refreshed"), "success");
+      }
+    });
+  }, [expandedPaths, loadChildren, rootPath, updateStatus]);
+
+  const targetDirectory = selectedEntry?.isDirectory
+    ? selectedEntry.path
+    : selectedPath
+      ? parentPath(selectedPath, rootPath)
+      : rootPath;
+
+  const createItem = async (kind: "file" | "directory") => {
+    if (!rootPath) return;
+    setInlineEdit({
+      mode: "create",
+      kind,
+      parentPath: targetDirectory,
+      value: kind === "file" ? "untitled" : "New Folder",
+    });
+  };
+
+  const submitInlineEdit = async () => {
+    if (!rootPath || !inlineEdit) return;
+    const name = inlineEdit.value.trim();
+    if (!name) {
+      setInlineEdit(null);
+      return;
+    }
+    try {
+      if (inlineEdit.mode === "rename") {
+        if (name === inlineEdit.entry.name) {
+          setInlineEdit(null);
+          return;
+        }
+        const next = await renameFile(rootPath, inlineEdit.entry.path, name);
+        setSelectedPath(next.path);
+        setError(null);
+        setInlineEdit(null);
+        updateStatus(formatI18n(tm("files.panel.status.renamed_format", "Renamed to %@"), next.name), "success");
+        await loadChildren(parentPath(next.path, rootPath));
+        return;
+      }
+
+      let entry: FileEntry;
+      if (inlineEdit.kind === "file") {
+        entry = await createFile(rootPath, inlineEdit.parentPath, name);
+      } else {
+        entry = await createDirectory(rootPath, inlineEdit.parentPath, name);
+      }
+      setExpandedPaths((current) => new Set(current).add(inlineEdit.parentPath));
+      setSelectedPath(entry.path);
+      setError(null);
+      setInlineEdit(null);
+      updateStatus(formatI18n(tm("files.panel.status.created_format", "Created %@"), entry.name), "success");
+      await loadChildren(inlineEdit.parentPath);
+    } catch (nextError) {
+      handleFileError(nextError);
+    }
+  };
+
+  const renameEntry = async (entry?: FileEntry) => {
+    const target = entry ?? selectedEntry;
+    if (!rootPath || !target) return;
+    setInlineEdit({
+      mode: "rename",
+      entry: target,
+      parentPath: parentPath(target.path, rootPath),
+      value: target.name,
+    });
+  };
+
+  const deleteEntry = async (entry?: FileEntry) => {
+    const target = entry ?? selectedEntry;
+    if (!rootPath || !target) return;
+    if (
+      !(await systemConfirm(formatI18n(tm("files.panel.delete.confirm_message_format", "Move \"%@\" to Trash?"), target.name), {
+        title: tm("files.panel.delete.confirm_title", "Move to Trash"),
+        kind: "warning",
+        okLabel: tm("files.panel.delete", "Move to Trash"),
+        cancelLabel: tm("common.cancel", "Cancel"),
+      }))
+    ) return;
+    try {
+      const parent = parentPath(target.path, rootPath);
+      await deleteFile(rootPath, target.path);
+      if (selectedPath === target.path) {
+        setSelectedPath("");
+      }
+      setError(null);
+      updateStatus(formatI18n(tm("files.panel.status.trashed_format", "Moved %@ to Trash"), target.name), "warning");
+      await loadChildren(parent);
+    } catch (nextError) {
+      handleFileError(nextError);
+    }
+  };
+
+  const pasteCopiedPath = async () => {
+    if (!rootPath || !copiedPath) return;
+    try {
+      const entry = await copyFile(rootPath, copiedPath, targetDirectory);
+      setExpandedPaths((current) => new Set(current).add(targetDirectory));
+      setSelectedPath(entry.path);
+      setError(null);
+      updateStatus(formatI18n(tm("files.panel.status.pasted_format", "Pasted %@"), entry.name), "success");
+      await loadChildren(targetDirectory);
+    } catch (nextError) {
+      handleFileError(nextError);
+    }
+  };
+
+  const importFilesIntoTarget = useCallback(
+    async (paths: string[], targetDirectoryPath = targetDirectory) => {
+      if (!rootPath || paths.length === 0) return;
+      try {
+        const imported = await importExternalFiles(rootPath, paths, targetDirectoryPath);
+        setExpandedPaths((current) => new Set(current).add(targetDirectoryPath));
+        setSelectedPath(imported[0]?.path ?? "");
+        setError(null);
+        updateStatus(formatI18n(tm("files.panel.status.imported_count_format", "Imported %d item(s)"), imported.length), "success");
+        await loadChildren(targetDirectoryPath);
+      } catch (nextError) {
+        handleFileError(nextError);
+      }
+    },
+    [handleFileError, loadChildren, rootPath, targetDirectory, updateStatus],
+  );
+
+  useEffect(() => {
+    if (!rootPath || !window.__TAURI_INTERNALS__) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWindow().onDragDropEvent((event) => {
+      if (disposed) return;
+      if (event.payload.type === "enter" || event.payload.type === "over") {
+        setDraggingExternalFiles(true);
+        updateStatus(tm("files.panel.status.drop_ready", "Release to copy into the current project"));
+        return;
+      }
+      if (event.payload.type === "leave") {
+        setDraggingExternalFiles(false);
+        return;
+      }
+      if (event.payload.type === "drop") {
+        setDraggingExternalFiles(false);
+        void importFilesIntoTarget(event.payload.paths);
+      }
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten();
+      } else {
+        unlisten = nextUnlisten;
+      }
+    }).catch((nextError) => {
+      handleFileError(nextError);
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [handleFileError, importFilesIntoTarget, rootPath, updateStatus]);
+
+  useEffect(() => {
+    if (!rootPath || !window.__TAURI_INTERNALS__) return;
+    const projectPath = rootPath;
+    let cancelled = false;
+    let debounceTimer: number | undefined;
+    let unlisten: (() => void) | undefined;
+    let didUnlisten = false;
+    const stopListening = (nextUnlisten: () => void) => {
+      if (didUnlisten) return;
+      didUnlisten = true;
+      nextUnlisten();
+    };
+
+    const unlistenPromise = listen<FileChangeEvent>("file:changed", (event) => {
+      if (cancelled || !fileEventTouchesRoot(event.payload, projectPath)) return;
+      if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        for (const path of expandedPathsRef.current) {
+          void loadChildren(path === projectPath ? undefined : path);
+        }
+      }, FILE_TREE_WATCH_DEBOUNCE_MS);
+    });
+
+    unlistenPromise
+      .then((nextUnlisten) => {
+        if (cancelled) {
+          stopListening(nextUnlisten);
+          return;
+        }
+        unlisten = () => stopListening(nextUnlisten);
+      })
+      .catch((nextError) => {
+        handleFileError(nextError);
+      });
+
+    void watchProjectFiles(projectPath).catch((nextError) => {
+      if (cancelled) return;
+      handleFileError(nextError);
+    });
+
+    return () => {
+      cancelled = true;
+      if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
+      if (unlisten) {
+        unlisten();
+      } else {
+        void unlistenPromise.then((nextUnlisten) => stopListening(nextUnlisten)).catch(() => undefined);
+      }
+      void unwatchProjectFiles(projectPath).catch(() => undefined);
+    };
+  }, [handleFileError, loadChildren, rootPath]);
+
+  const openEntry = (entry: FileEntry) => {
+    setSelectedPath(entry.path);
+    if (entry.isDirectory) {
+      setExpandedPaths((current) => {
+        const next = new Set(current);
+        if (next.has(entry.path)) {
+          next.delete(entry.path);
+        } else {
+          next.add(entry.path);
+          if (!childrenByPath[entry.path]) void loadChildren(entry.path);
+        }
+        return next;
+      });
+      return;
+    }
+    broadcastWorkspaceCommand({
+      type: "open-file",
+      rootPath,
+      path: entry.path,
+    });
+  };
+
+  const handleFileKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!selectedEntry) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      openEntry(selectedEntry);
+      return;
+    }
+    if (event.key === "F2") {
+      event.preventDefault();
+      void renameEntry();
+      return;
+    }
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      void deleteEntry();
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      if (selectedEntry) {
+        setCopiedPath(selectedEntry.path);
+        void navigator.clipboard?.writeText(selectedEntry.path);
+        updateStatus(formatI18n(tm("files.panel.status.copied_format", "Copied %@"), selectedEntry.name), "success");
+      }
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
+      event.preventDefault();
+      void pasteCopiedPath();
+    }
+  };
+
+  return (
+    <>
+      <PanelHeader
+        title={
+          <div className="flex items-center gap-2">
+            <Folder size={13} className="text-ink-mute" />
+            <span>{tm("files.panel.title", "Files")}</span>
+          </div>
+        }
+        trailing={
+          <>
+            <PanelIconButton icon={FileText} tooltip={tm("files.panel.new_file", "New File")} onClick={() => void createItem("file")} />
+            <PanelIconButton icon={FolderPlus} tooltip={tm("files.panel.new_folder", "New Folder")} onClick={() => void createItem("directory")} />
+            <PanelIconButton icon={RefreshCw} tooltip={tm("files.panel.refresh", "Refresh Files")} onClick={refresh} />
+          </>
+        }
+      />
+      <div className="px-3 pt-2 pb-1 text-xs text-ink-mute font-medium truncate">
+        {project?.path?.split("/").pop() ?? tm("titlebar.projects", "Projects")}
+      </div>
+      <div
+        ref={fileTreeRef}
+        className={`relative flex-1 overflow-y-auto scrollbar-overlay px-1.5 pb-3 text-sm ${isDraggingExternalFiles ? "bg-brand-blue/8" : ""}`}
+        tabIndex={-1}
+        onPointerDown={() => fileTreeRef.current?.focus({ preventScroll: true })}
+        onKeyDown={handleFileKeyDown}
+        data-drop-zone
+      >
+        {!rootPath ? (
+          <div className="px-2 py-3 text-xs text-ink-faint">{tm("files.panel.no_project", "No Project Selected")}</div>
+        ) : rows.length > 0 || inlineEdit ? (
+          <>
+            {inlineEdit?.mode === "create" && inlineEdit.parentPath === rootPath && (
+              <FileInlineEditRow edit={inlineEdit} depth={0} onChange={setInlineEdit} onCancel={() => setInlineEdit(null)} onSubmit={() => void submitInlineEdit()} />
+            )}
+            {rows.map((row) => (
+              <FileTreeFragment
+                key={row.entry.path}
+                row={row}
+                rootPath={rootPath}
+                inlineEdit={inlineEdit}
+                selected={selectedPath === row.entry.path}
+                expanded={expandedPaths.has(row.entry.path)}
+                loading={loadingPaths.has(row.entry.path)}
+                labels={fileTreeLabels}
+                onInlineChange={setInlineEdit}
+                onInlineCancel={() => setInlineEdit(null)}
+                onInlineSubmit={() => void submitInlineEdit()}
+                onOpen={() => openEntry(row.entry)}
+                onRename={() => {
+                  setSelectedPath(row.entry.path);
+                  void renameEntry(row.entry);
+                }}
+                onDelete={() => {
+                  setSelectedPath(row.entry.path);
+                  void deleteEntry(row.entry);
+                }}
+                onCopy={() => {
+                  setSelectedPath(row.entry.path);
+                  setCopiedPath(row.entry.path);
+                  void navigator.clipboard?.writeText(row.entry.path);
+                  updateStatus(formatI18n(tm("files.panel.status.copied_format", "Copied %@"), row.entry.name), "success");
+                }}
+                onPaste={copiedPath ? () => {
+                  setSelectedPath(row.entry.path);
+                  void copyFile(rootPath, copiedPath, row.entry.isDirectory ? row.entry.path : parentPath(row.entry.path, rootPath))
+                    .then((entry) => {
+                      const parent = parentPath(entry.path, rootPath);
+                      setSelectedPath(entry.path);
+                      setExpandedPaths((current) => new Set(current).add(parent));
+                      setError(null);
+                      updateStatus(formatI18n(tm("files.panel.status.pasted_format", "Pasted %@"), entry.name), "success");
+                      return loadChildren(parent);
+                    })
+                    .catch((nextError) => {
+                      handleFileError(nextError);
+                    });
+                } : undefined}
+                onImport={(paths) => void importFilesIntoTarget(paths, row.entry.isDirectory ? row.entry.path : parentPath(row.entry.path, rootPath))}
+              />
+            ))}
+          </>
+        ) : (
+          <div className="px-2 py-3 text-xs text-ink-faint">
+            {loadingPaths.has(rootPath) ? tm("files.panel.loading", "Reading files") : tm("files.panel.empty", "No Files")}
+          </div>
+        )}
+        {error && (
+          <div className="mx-1 mt-2 rounded-md border border-brand-red/30 bg-brand-red/10 px-2.5 py-2 text-xs text-brand-red">
+            {error}
+          </div>
+        )}
+        {isDraggingExternalFiles && (
+          <div className="pointer-events-none absolute inset-2 grid place-items-center rounded-md border border-dashed border-brand-blue/55 bg-brand-blue/12 text-xs font-semibold text-brand-blue">
+            {tm("files.panel.drop_to_copy", "Release to copy into the current project")}
+          </div>
+        )}
+      </div>
+      <PanelStatusBar
+        tone={fileStatus.tone}
+        leading={
+          <>
+            {loadingPaths.size > 0 ? <Spinner size="sm" color="current" /> : <FileText size={12} />}
+            <span className="truncate">{error ?? fileStatus.message}</span>
+          </>
+        }
+        trailing={
+          copiedPath ? (
+            <span className="max-w-[118px] truncate text-current/80">
+              {formatI18n(tm("files.panel.status.clipboard_format", "Clipboard: %@"), fileNameFromPath(copiedPath))}
+            </span>
+          ) : (
+            <span className="tabular-nums text-current/75">{rows.length}</span>
+          )
+        }
+      />
+    </>
+  );
+}
+
+type FileRowModel = {
+  entry: FileEntry;
+  depth: number;
+};
+
+type FileInlineEdit = (
+  | {
+      mode: "create";
+      kind: "file" | "directory";
+      parentPath: string;
+      value: string;
+    }
+  | {
+      mode: "rename";
+      entry: FileEntry;
+      parentPath: string;
+      value: string;
+    }
+);
+
+type FileTreeLabels = {
+  open: string;
+  copy: string;
+  pasteHere: string;
+  importHere: string;
+  rename: string;
+  delete: string;
+  actions: string;
+};
+
+function FileTreeFragment({
+  row,
+  rootPath,
+  inlineEdit,
+  selected,
+  expanded,
+  loading,
+  labels,
+  onInlineChange,
+  onInlineCancel,
+  onInlineSubmit,
+  onOpen,
+  onRename,
+  onDelete,
+  onCopy,
+  onPaste,
+  onImport,
+}: {
+  row: FileRowModel;
+  rootPath: string;
+  inlineEdit: FileInlineEdit | null;
+  selected: boolean;
+  expanded: boolean;
+  loading: boolean;
+  labels: FileTreeLabels;
+  onInlineChange: (edit: FileInlineEdit) => void;
+  onInlineCancel: () => void;
+  onInlineSubmit: () => void;
+  onOpen: () => void;
+  onRename?: () => void;
+  onDelete?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
+  onImport?: (paths: string[]) => void;
+}) {
+  const editAfter =
+    inlineEdit?.mode === "create" &&
+    inlineEdit.parentPath === row.entry.path &&
+    row.entry.isDirectory;
+  const isRenaming =
+    inlineEdit?.mode === "rename" &&
+    inlineEdit.entry.path === row.entry.path;
+
+  return (
+    <>
+      {isRenaming && inlineEdit ? (
+        <FileInlineEditRow
+          edit={inlineEdit}
+          depth={row.depth}
+          onChange={onInlineChange}
+          onCancel={onInlineCancel}
+          onSubmit={onInlineSubmit}
+        />
+      ) : (
+        <FileTreeRow
+          row={row}
+          selected={selected}
+          expanded={expanded}
+          loading={loading}
+          labels={labels}
+          onOpen={onOpen}
+          onRename={onRename}
+          onDelete={onDelete}
+          onCopy={onCopy}
+          onPaste={onPaste}
+          onImport={onImport}
+        />
+      )}
+      {editAfter && inlineEdit && (
+        <FileInlineEditRow
+          edit={inlineEdit}
+          depth={row.depth + 1}
+          onChange={onInlineChange}
+          onCancel={onInlineCancel}
+          onSubmit={onInlineSubmit}
+        />
+      )}
+    </>
+  );
+}
+
+function FileInlineEditRow({
+  edit,
+  depth,
+  onChange,
+  onCancel,
+  onSubmit,
+}: {
+  edit: FileInlineEdit;
+  depth: number;
+  onChange: (edit: FileInlineEdit) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  const isDirectory = edit.mode === "create" ? edit.kind === "directory" : edit.entry.isDirectory;
+  return (
+    <form
+      className="h-[26px] flex items-center rounded-md bg-fill/[0.065] text-ink"
+      style={{ paddingLeft: `${8 + depth * 14}px` }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <span className="w-[11px]" />
+      {isDirectory ? (
+        <Folder size={12} className="mr-1.5 text-brand-blue/85" />
+      ) : (
+        <FileText size={12} className="mr-1.5 text-ink-mute" />
+      )}
+      <input
+        className="h-5 min-w-0 flex-1 rounded border border-brand-blue/55 bg-surface-chrome px-1.5 text-xs outline-none"
+        value={edit.value}
+        autoFocus
+        onFocus={(event) => event.currentTarget.select()}
+        onChange={(event) => onChange({ ...edit, value: event.currentTarget.value })}
+        onBlur={onSubmit}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            onCancel();
+          }
+        }}
+      />
+    </form>
+  );
+}
+
+function FileTreeRow({
+  row,
+  selected,
+  expanded,
+  loading,
+  onOpen,
+  onRename,
+  onDelete,
+  onCopy,
+  onPaste,
+  onImport,
+  labels,
+}: {
+  row: FileRowModel;
+  selected: boolean;
+  expanded: boolean;
+  loading: boolean;
+  labels: FileTreeLabels;
+  onOpen: () => void;
+  onRename?: () => void;
+  onDelete?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
+  onImport?: (paths: string[]) => void;
+}) {
+  const entry = row.entry;
+  const [menuOpen, setMenuOpen] = useState(false);
+  return (
+    <Tooltip label={entry.relativePath || entry.name} placement="left" triggerClassName="block w-full">
+      <div
+        className={`group relative w-full h-[26px] flex items-center rounded-md transition-colors ${
+          selected ? "bg-fill/[0.075] text-ink" : "text-ink-soft hover:bg-fill/[0.045] hover:text-ink"
+        }`}
+      >
+        <PressableButton
+          className="min-w-0 h-full flex-1 inline-flex items-center gap-1.5 pr-11 text-left"
+          style={{ paddingLeft: `${8 + row.depth * 14}px` }}
+          onPressUp={onOpen}
+          onDoubleClick={onOpen}
+        >
+          {entry.isDirectory ? (
+            <>
+              {expanded ? (
+                <ChevronDown size={11} className="text-ink-faint" />
+              ) : (
+                <ChevronRight size={11} className="text-ink-faint" />
+              )}
+              <Folder size={12} className="text-brand-blue/85" />
+            </>
+          ) : (
+            <>
+              <span className="w-[11px]" />
+              <FileText size={12} className="text-ink-mute" />
+            </>
+          )}
+          <span className="truncate text-xs">{entry.name}</span>
+          {loading && <Spinner size="sm" color="current" className="ml-1 text-ink-faint" />}
+        </PressableButton>
+        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded bg-surface-chrome/95 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto">
+          <PressableButton
+            className="w-5 h-5 grid place-items-center rounded text-ink-faint hover:text-ink hover:bg-fill/8"
+            onPressUp={(event) => {
+              event.continuePropagation();
+              onRename?.();
+            }}
+            aria-label={labels.rename}
+          >
+            <PencilSquare size={11} />
+          </PressableButton>
+          <DesktopMenu
+            ariaLabel={`${entry.name} ${labels.actions}`}
+            isOpen={menuOpen}
+            onOpenChange={setMenuOpen}
+            trigger={
+              <button
+                type="button"
+                className="grid h-5 w-5 place-items-center rounded text-ink-faint hover:bg-fill/8 hover:text-ink"
+                aria-label={`${entry.name} ${labels.actions}`}
+              >
+                <MoreHorizontal size={12} />
+              </button>
+            }
+          >
+            <DesktopMenuItem label={labels.open} onSelect={onOpen}>{labels.open}</DesktopMenuItem>
+            <DesktopMenuItem label={labels.copy} onSelect={onCopy}>{labels.copy}</DesktopMenuItem>
+            {onPaste && <DesktopMenuItem label={labels.pasteHere} onSelect={onPaste}>{labels.pasteHere}</DesktopMenuItem>}
+            <DesktopMenuItem
+              label={labels.importHere}
+              onSelect={() => {
+                void pickImportFiles().then((paths) => {
+                  if (paths.length > 0) onImport?.(paths);
+                });
+              }}
+            >
+              {labels.importHere}
+            </DesktopMenuItem>
+            <DesktopMenuItem label={labels.rename} onSelect={onRename}>{labels.rename}</DesktopMenuItem>
+            <DesktopMenuItem label={labels.delete} onSelect={onDelete}>{labels.delete}</DesktopMenuItem>
+          </DesktopMenu>
+        </div>
+      </div>
+    </Tooltip>
+  );
+}
+
+function flattenFileRows(
+  rootPath: string,
+  childrenByPath: Record<string, FileEntry[]>,
+  expandedPaths: Set<string>,
+) {
+  if (!rootPath) return [];
+  const rows: FileRowModel[] = [];
+  const visit = (directoryPath: string, depth: number) => {
+    const children = childrenByPath[directoryPath] ?? [];
+    for (const entry of children) {
+      rows.push({ entry, depth });
+      if (entry.isDirectory && expandedPaths.has(entry.path)) {
+        visit(entry.path, depth + 1);
+      }
+    }
+  };
+  visit(rootPath, 0);
+  return rows;
+}
+
+function parentPath(path: string, rootPath: string) {
+  if (!path || path === rootPath) return rootPath;
+  const index = path.lastIndexOf("/");
+  if (index <= 0) return rootPath;
+  const parent = path.slice(0, index);
+  return parent.startsWith(rootPath) ? parent : rootPath;
+}
+
+function fileNameFromPath(path: string) {
+  const normalized = normalizeInspectorPath(path);
+  return normalized.split("/").filter(Boolean).pop() || normalized || path;
+}
+
+function normalizeInspectorPath(value: string) {
+  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function fileEventTouchesRoot(event: FileChangeEvent, rootPath: string) {
+  const root = normalizeInspectorPath(rootPath);
+  const project = normalizeInspectorPath(event.projectPath);
+  if (project !== root && !project.startsWith(`${root}/`) && !root.startsWith(`${project}/`)) {
+    return false;
+  }
+  return event.changedPaths.some((path) => {
+    const normalized = normalizeInspectorPath(path);
+    return normalized === root || normalized.startsWith(`${root}/`);
+  });
+}
+
+async function pickImportFiles() {
+  if (!window.__TAURI_INTERNALS__) return [];
+  const selected = await openDialog({
+    title: tm("files.panel.import_dialog_title", "Choose files to import"),
+    multiple: true,
+    directory: false,
+  });
+  if (!selected) return [];
+  return Array.isArray(selected) ? selected : [selected];
+}
+
+function AIPanel({ project }: { project?: WorkspaceProject }) {
+  const { sessions, projectTotals, globalTotals } = useAIRuntimeSnapshot(project?.id);
+  const history = useAIHistorySnapshot(project);
+  const [isManualRefreshFeedbackVisible, setManualRefreshFeedbackVisible] = useState(false);
+  const manualRefreshStartedAtRef = useRef(0);
+  const isRefreshingAIHistory = history.isLoading || isManualRefreshFeedbackVisible;
+  const isForegroundAIIndexing = history.isForegroundLoading || isManualRefreshFeedbackVisible;
+  const displayedProgress =
+    isManualRefreshFeedbackVisible && !history.isLoading ? 1 : history.progress;
+  const historySnapshot = history.snapshot;
+  const liveProjectTokens = projectTotals.totalTokens;
+  const liveTodayTokens = globalTotals.totalTokens;
+  const projectTotalTokens = historySnapshot.projectSummary.projectTotalTokens + liveProjectTokens;
+  const todayTotalTokens = historySnapshot.projectSummary.todayTotalTokens + liveTodayTokens;
+  const toolRankingRows = toolRows(sessions, historySnapshot.toolBreakdown);
+  const modelRankingRows = modelRows(sessions, historySnapshot.modelBreakdown);
+  const refreshAIHistory = useCallback(async () => {
+    manualRefreshStartedAtRef.current = Date.now();
+    setManualRefreshFeedbackVisible(true);
+    await history.refresh();
+  }, [history.refresh]);
+
+  useEffect(() => {
+    if (!isManualRefreshFeedbackVisible || history.isLoading) return;
+    const elapsed = Date.now() - manualRefreshStartedAtRef.current;
+    const timer = window.setTimeout(
+      () => setManualRefreshFeedbackVisible(false),
+      Math.max(0, AI_REFRESH_FEEDBACK_MS - elapsed),
+    );
+    return () => window.clearTimeout(timer);
+  }, [history.isLoading, isManualRefreshFeedbackVisible]);
+
+  useEffect(() => {
+    manualRefreshStartedAtRef.current = 0;
+    setManualRefreshFeedbackVisible(false);
+  }, [project?.id]);
+
+  return (
+    <>
+      <PanelHeader
+        title={tm("ai.panel.title", "AI Assistant")}
+        trailing={
+          <PanelIconButton
+            icon={RefreshCw}
+            tooltip={isRefreshingAIHistory ? tm("ai.action.stop_refresh", "Stop the current AI stats refresh.") : tm("ai.action.refresh_current_project", "Refresh AI stats for the current project.")}
+            busy={isRefreshingAIHistory}
+            disabled={isRefreshingAIHistory}
+            onClick={() => void refreshAIHistory()}
+          />
+        }
+      />
+      <div className="flex-1 overflow-y-auto scrollbar-overlay p-3 flex flex-col gap-3">
+        <PanelCard title={tm("ai.live_sessions", "Current Session Totals")}>
+          {sessions.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {sessions.map((session) => (
+                <LiveSessionRow key={session.terminalId} session={session} />
+              ))}
+            </div>
+          ) : (
+            <div className="min-h-12 grid place-items-center text-xs font-medium text-ink-faint">
+              {tm("ai.live_sessions.empty", "There are no current AI sessions right now")}
+            </div>
+          )}
+        </PanelCard>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Tooltip label={tm("ai.summary.current_project", "Current Project")} placement="bottom" triggerClassName="block w-full">
+            <PanelCard>
+              <div className="text-xs text-ink-mute">{tm("ai.summary.current_project", "Current Project")}</div>
+              <div className="text-lg font-semibold mt-1 tabular-nums">
+                {formatTokens(projectTotalTokens)}
+              </div>
+            </PanelCard>
+          </Tooltip>
+          <Tooltip label={tm("ai.summary.today_total", "Today's Total")} placement="bottom" triggerClassName="block w-full">
+            <PanelCard>
+              <div className="text-xs text-ink-mute">{tm("ai.summary.today_total", "Today's Total")}</div>
+              <div className="text-lg font-semibold mt-1 tabular-nums">
+                {formatTokens(todayTotalTokens)}
+              </div>
+            </PanelCard>
+          </Tooltip>
+        </div>
+
+        <PanelCard title={tm("ai.today_usage", "Today's Usage")}>
+          <BarsRow sessions={sessions} buckets={historySnapshot.todayTimeBuckets} />
+          <div className="flex justify-between mt-1 text-xs text-ink-faint">
+            <span>00:00</span>
+            <span>06:00</span>
+            <span>12:00</span>
+            <span>18:00</span>
+            <span>23:59</span>
+          </div>
+        </PanelCard>
+
+        <PanelCard title={tm("ai.recent_usage", "Recent Usage")}>
+          <HeatmapGrid sessions={sessions} days={historySnapshot.heatmap} />
+        </PanelCard>
+
+        <PanelCard title={tm("ai.breakdown.tool_ranking", "Tool Ranking")}>
+          {toolRankingRows.map((row) => (
+            <RankRow
+              key={row.name}
+              name={row.name}
+              value={formatTokens(row.total)}
+              pct={row.pct}
+              tooltip={formatI18n(tm("ai.metric.usage_format", "%@ used %@ tokens"), row.name, formatTokens(row.total))}
+            />
+          ))}
+          {toolRankingRows.length === 0 && <EmptyMetricRow label={tm("ai.empty.no_stats", "No AI Stats Yet")} />}
+        </PanelCard>
+
+        <PanelCard title={tm("ai.breakdown.model_ranking", "Model Ranking")}>
+          {modelRankingRows.map((row) => (
+            <RankRow
+              key={row.name}
+              name={row.name}
+              value={formatTokens(row.total)}
+              pct={row.pct}
+              tooltip={formatI18n(tm("ai.metric.usage_format", "%@ used %@ tokens"), row.name, formatTokens(row.total))}
+            />
+          ))}
+          {modelRankingRows.length === 0 && <EmptyMetricRow label={tm("ai.empty.no_stats", "No AI Stats Yet")} />}
+        </PanelCard>
+
+        <PanelCard
+          title={
+            <span>
+              {tm("ai.sessions.history", "Session History")}{" "}
+              <span className="text-ink-faint font-normal ml-1">Recent 20</span>
+            </span>
+          }
+          bodyPadding={false}
+        >
+          {sessions.slice(0, 20).map((session) => (
+            <SessionRow
+              key={session.terminalId}
+              query={session.sessionTitle}
+              tool={session.tool}
+              right={sessionRightLabel(session)}
+              sub={formatTokens(sessionDeltaTokens(session))}
+            />
+          ))}
+          {historySnapshot.sessions.slice(0, Math.max(0, 20 - sessions.length)).map((session) => (
+            <SessionRow
+              key={session.sessionId}
+              query={session.sessionTitle}
+              tool={session.lastTool ?? "unknown"}
+              right={historySessionRightLabel(session)}
+              sub={formatTokens(session.totalTokens)}
+            />
+          ))}
+          {sessions.length === 0 && historySnapshot.sessions.length === 0 && (
+            <div className="px-3 py-3 text-xs text-ink-faint">
+              {history.isLoading
+                ? tm("ai.indexing.reading_sources", "Reading index.")
+                : history.error
+                  ? tm("ai.session.storage.open_failed", "Unable to open session storage.")
+                  : tm("ai.sessions.empty", "No Session History")}
+            </div>
+          )}
+        </PanelCard>
+      </div>
+
+      <AIIndexingStatusBar
+        error={history.error}
+        isLoading={isRefreshingAIHistory}
+        isForegroundIndexing={isForegroundAIIndexing}
+        statusDetail={history.detail}
+        progress={displayedProgress}
+        indexedAt={historySnapshot.indexedAt}
+        onRefresh={() => void refreshAIHistory()}
+      />
+    </>
+  );
+}
+
+function AIIndexingStatusBar({
+  error,
+  isLoading,
+  isForegroundIndexing,
+  statusDetail,
+  progress,
+  indexedAt,
+  onRefresh,
+}: {
+  error: string | null;
+  isLoading: boolean;
+  isForegroundIndexing: boolean;
+  statusDetail: string;
+  progress: number | null;
+  indexedAt: number;
+  onRefresh: () => void;
+}) {
+  const status = aiIndexingPresentation({
+    error,
+    isLoading,
+    isForegroundIndexing,
+    statusDetail,
+    progress,
+    indexedAt,
+  });
+  const isFailed = Boolean(error);
+  const actionLabel = isFailed ? tm("common.retry", "Retry") : tm("common.refresh", "Refresh");
+  const actionTooltip = isFailed
+    ? tm("ai.action.reload_current_project", "Reload AI stats for the current project.")
+    : tm("ai.action.refresh_current_project", "Refresh AI stats for the current project.");
+
+  return (
+    <PanelStatusBar
+      tone={status.tone}
+      leading={
+        <div className="min-w-0 flex items-center gap-2 font-semibold">
+          {status.indicator === "spinner" ? (
+            <Spinner size="sm" color="current" className="text-current/95" />
+          ) : status.indicator === "progress" ? (
+            <div className="w-[42px]">
+              <ProgressBar
+                aria-label={status.text}
+                value={status.progressValue}
+                maxValue={100}
+                size="sm"
+                color="warning"
+                className="w-full"
+              >
+                <ProgressBar.Track className="h-1 bg-white/25">
+                  <ProgressBar.Fill className="h-full bg-white/90" />
+                </ProgressBar.Track>
+              </ProgressBar>
+            </div>
+          ) : (
+            <CheckCircle2 size={14} />
+          )}
+          <span className="truncate">{status.text}</span>
+        </div>
+      }
+      trailing={
+        status.showRefreshAction ? (
+          <Tooltip label={actionTooltip} placement="top">
+            <HeroButton
+              size="sm"
+              variant="ghost"
+              className="h-7 min-w-0 px-2 text-xs text-current/90 hover:text-current hover:bg-white/14"
+              onPress={onRefresh}
+            >
+              <RefreshCw size={12} strokeWidth={2} />
+              <span className="text-xs font-semibold">{actionLabel}</span>
+            </HeroButton>
+          </Tooltip>
+        ) : null
+      }
+    />
+  );
+}
+
+function EmptyMetricRow({ label }: { label: string }) {
+  return <div className="text-xs text-ink-faint">{label}</div>;
+}
+
+function LiveSessionRow({ session }: { session: AISessionSnapshot }) {
+  const model = session.model || "-";
+  return (
+    <Tooltip label={session.sessionTitle} placement="left" triggerClassName="block w-full">
+      <div className="flex items-start justify-between gap-3 rounded-lg bg-fill/[0.06] px-2.5 py-2">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-ink truncate">{session.tool || "-"}</div>
+          <div className="mt-0.5 text-xs font-medium text-ink-soft truncate">{model}</div>
+        </div>
+        <div className="flex-shrink-0 text-right">
+          <div className="text-base font-semibold tabular-nums text-ink leading-none">
+            {formatTokens(liveSessionTotalTokens(session))}
+          </div>
+          <div className="mt-1 text-xs text-ink-faint">{tm("ai.metric.session_total", "Session Total")}</div>
+        </div>
+      </div>
+    </Tooltip>
+  );
+}
+
+function toolRows(sessions: AISessionSnapshot[], historyRows: AIUsageBreakdownItem[]) {
+  return rankRows(sessions, historyRows, (session) => session.tool);
+}
+
+function modelRows(sessions: AISessionSnapshot[], historyRows: AIUsageBreakdownItem[]) {
+  return rankRows(sessions, historyRows, (session) => session.model || "unknown");
+}
+
+function rankRows(
+  sessions: AISessionSnapshot[],
+  historyRows: AIUsageBreakdownItem[],
+  keyOf: (session: AISessionSnapshot) => string,
+) {
+  const totals = new Map<string, number>();
+  for (const row of historyRows) {
+    totals.set(row.key, (totals.get(row.key) ?? 0) + row.totalTokens);
+  }
+  for (const session of sessions) {
+    const key = keyOf(session);
+    const value = sessionDeltaTokens(session);
+    totals.set(key, (totals.get(key) ?? 0) + value);
+  }
+  const max = Math.max(...totals.values(), 1);
+  return [...totals.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 4)
+    .map(([name, total]) => ({
+      name,
+      total,
+      pct: Math.round((total / max) * 100),
+    }));
+}
+
+function formatTokens(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(Math.max(0, Math.floor(value)));
+}
+
+function sessionDeltaTokens(session: AISessionSnapshot) {
+  return Math.max(0, session.totalTokens - session.baselineTotalTokens);
+}
+
+function sessionRightLabel(session: AISessionSnapshot) {
+  if (session.state === "responding") return tm("agent.status.running", "Running");
+  if (session.state === "needsInput") return tm("project.activity.input_required", "Action required");
+  if (session.wasInterrupted) return tm("ai.notification.task_interrupted", "Task interrupted");
+  if (session.hasCompletedTurn) return tm("agent.status.completed", "Completed");
+  return tm("ai.session.status.idle", "Idle");
+}
+
+function historySessionRightLabel(session: AIHistorySessionSummary) {
+  if (session.requestCount > 0) return formatI18n(tm("common.requests_format", "Requests %@"), session.requestCount);
+  return tm("ai.sessions.history", "Session History");
+}
+
+function BarsRow({ sessions, buckets }: { sessions: AISessionSnapshot[]; buckets: AITimeBucket[] }) {
+  const data = useMemo(() => {
+    const today = startOfLocalDay(new Date());
+    const todayEnd = endOfLocalDay(today);
+    const values = Array.from({ length: 48 }, (_, index) => {
+      const start = new Date(today);
+      start.setMinutes(index * 30, 0, 0);
+      const end = index === 47 ? todayEnd : new Date(today);
+      if (index !== 47) {
+        end.setMinutes((index + 1) * 30, 0, 0);
+      }
+      return { index, start, end, value: 0, requestCount: 0 };
+    });
+    for (const bucket of buckets) {
+      const date = new Date(bucket.start * 1000);
+      if (startOfLocalDay(date).getTime() !== today.getTime()) continue;
+      const index = todayBucketIndex(date);
+      values[index].value += bucket.totalTokens;
+      values[index].requestCount += bucket.requestCount;
+    }
+    for (const session of sessions) {
+      const date = new Date(session.updatedAt * 1000);
+      if (startOfLocalDay(date).getTime() !== today.getTime()) continue;
+      values[todayBucketIndex(date)].value += sessionDeltaTokens(session);
+    }
+    return values;
+  }, [buckets, sessions]);
+  const max = Math.max(...data.map((d) => d.value), 1);
+  return (
+    <div className="flex items-end gap-px h-[64px]">
+      {data.map((d) => {
+        const hasValue = d.value > 0;
+        const h = hasValue ? Math.max(2, Math.round((d.value / max) * 56)) : 2;
+        return (
+          <Tooltip
+            key={d.index}
+            label={
+              <span>
+                {formatTime(d.start)} - {formatBucketEndTime(d.end, d.index)} · {formatTokens(d.value)}
+                {d.requestCount > 0 ? ` · ${formatI18n(tm("common.requests_format", "Requests %@"), d.requestCount)}` : ""}
+              </span>
+            }
+            placement="top"
+            triggerClassName="flex flex-1 h-full min-w-0"
+          >
+            <div className="flex items-end h-full w-full">
+              <div
+                className={`w-full rounded-[3px] transition-colors ${
+                  hasValue
+                    ? "bg-brand-blue/70 hover:bg-brand-blue"
+                    : "bg-brand-blue/18 hover:bg-brand-blue/35"
+                }`}
+                style={{ height: `${h}px` }}
+              />
+            </div>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
+const HEATMAP_GAP = 3;
+const HEATMAP_BASE_CELL = 9;
+const HEATMAP_DEFAULT_LAYOUT = { columns: 15, cellSize: 9 };
+
+function HeatmapGrid({ sessions, days }: { sessions: AISessionSnapshot[]; days: AIHeatmapDay[] }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [layout, setLayout] = useState(HEATMAP_DEFAULT_LAYOUT);
+  const { columns, cellSize } = layout;
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    const updateLayout = () => {
+      const width = host.clientWidth;
+      if (width <= 0) return;
+
+      const nextColumns = Math.max(2, Math.floor((width + HEATMAP_GAP) / (HEATMAP_BASE_CELL + HEATMAP_GAP)));
+      const nextCellSize = Math.max(
+        8,
+        Math.min(
+          10,
+          Math.floor((width - HEATMAP_GAP * Math.max(nextColumns - 1, 0)) / nextColumns),
+        ),
+      );
+
+      setLayout((current) =>
+        current.columns === nextColumns && current.cellSize === nextCellSize
+          ? current
+          : { columns: nextColumns, cellSize: nextCellSize },
+      );
+    };
+
+    updateLayout();
+    if (typeof ResizeObserver === "undefined") return;
+    const resizeObserver = new ResizeObserver(updateLayout);
+    resizeObserver.observe(host);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  const data = useMemo(() => {
+    const today = startOfLocalDay(new Date());
+    const firstDay = new Date(today);
+    firstDay.setDate(today.getDate() - (columns * 7 - 1));
+    const values = new Map<number, { value: number; requestCount: number }>();
+    for (const day of days) {
+      values.set(startOfLocalDay(new Date(day.day * 1000)).getTime(), {
+        value: day.totalTokens,
+        requestCount: day.requestCount,
+      });
+    }
+    for (const session of sessions) {
+      const day = startOfLocalDay(new Date(session.updatedAt * 1000));
+      const existing = values.get(day.getTime()) ?? { value: 0, requestCount: 0 };
+      values.set(day.getTime(), {
+        value: existing.value + sessionDeltaTokens(session),
+        requestCount: existing.requestCount,
+      });
+    }
+    const cells = Array.from({ length: columns }, (_, col) =>
+      Array.from({ length: 7 }, (_, row) => {
+        const day = new Date(firstDay);
+        day.setDate(firstDay.getDate() + col * 7 + row);
+        const item = values.get(day.getTime());
+        return {
+          day,
+          value: item?.value ?? 0,
+          requestCount: item?.requestCount ?? 0,
+          isKnown: item !== undefined,
+        };
+      }),
+    );
+    const nonZero = cells.flat().map((item) => item.value).filter((value) => value > 0).sort((a, b) => a - b);
+    return { cells, nonZero };
+  }, [columns, days, sessions]);
+
+  const intensity = (v: number) => {
+    if (v <= 0) return 0.14;
+    if (data.nonZero.length <= 1) return 1;
+    const upper = data.nonZero.findIndex((value) => value > v);
+    const rank = Math.max(0, (upper === -1 ? data.nonZero.length : upper) - 1);
+    const ratio = rank / Math.max(data.nonZero.length - 1, 1);
+    if (ratio < 0.1) return 0.14;
+    if (ratio < 0.2) return 0.22;
+    if (ratio < 0.32) return 0.3;
+    if (ratio < 0.44) return 0.4;
+    if (ratio < 0.56) return 0.52;
+    if (ratio < 0.68) return 0.64;
+    if (ratio < 0.8) return 0.76;
+    if (ratio < 0.92) return 0.88;
+    return 1;
+  };
+  const gridWidth = columns * cellSize + Math.max(columns - 1, 0) * HEATMAP_GAP;
+  const gridHeight = 7 * cellSize + 6 * HEATMAP_GAP;
+
+  return (
+    <div ref={hostRef} className="w-full overflow-hidden">
+      <div
+        className="grid grid-flow-col"
+        style={{
+          gap: `${HEATMAP_GAP}px`,
+          gridTemplateRows: `repeat(7, ${cellSize}px)`,
+          gridAutoColumns: `${cellSize}px`,
+          width: `${gridWidth}px`,
+          height: `${gridHeight}px`,
+        }}
+      >
+        {data.cells.flatMap((column, colIdx) =>
+          column.map((item, rowIdx) => {
+            const alpha = intensity(item.value);
+            return (
+              <Tooltip
+                key={`${colIdx}-${rowIdx}`}
+                label={
+                  <span>
+                    {formatHeatmapDate(item.day)} · {formatTokens(item.value)}
+                    {item.requestCount > 0 ? ` · ${formatI18n(tm("common.requests_format", "Requests %@"), item.requestCount)}` : ""}
+                  </span>
+                }
+                placement="top"
+                triggerClassName="block"
+              >
+                <div
+                  className="rounded-[3px] transition-colors"
+                  style={{
+                    width: `${cellSize}px`,
+                    height: `${cellSize}px`,
+                    background: item.isKnown
+                      ? `color-mix(in oklab, var(--color-brand-blue) ${Math.round(alpha * 100)}%, transparent)`
+                      : "color-mix(in oklab, var(--color-fill) 12%, transparent)",
+                  }}
+                />
+              </Tooltip>
+            );
+          }),
+        )}
+      </div>
+    </div>
+  );
+}
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function endOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function todayBucketIndex(date: Date) {
+  return Math.min(47, Math.max(0, date.getHours() * 2 + (date.getMinutes() >= 30 ? 1 : 0)));
+}
+
+function formatTime(date: Date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatBucketEndTime(date: Date, bucketIndex: number) {
+  if (bucketIndex !== 47) return formatTime(date);
+  return `${formatTime(date)}:${String(date.getSeconds()).padStart(2, "0")}`;
+}
+
+function formatHeatmapDate(date: Date) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  }).format(date);
+}
+
+function RankRow({
+  name,
+  value,
+  pct,
+  tooltip,
+}: {
+  name: string;
+  value: string;
+  pct: number;
+  tooltip?: string;
+}) {
+  const body = (
+    <div className="py-1.5 cursor-default">
+      <div className="flex items-center justify-between gap-3 text-[13px] leading-5">
+        <span className="text-ink font-medium truncate">{name}</span>
+        <span className="flex items-center gap-2">
+          <span className="tabular-nums text-ink-soft font-semibold">{value}</span>
+          <span className="text-ink-faint w-9 text-right text-[11px] tabular-nums">{pct}%</span>
+        </span>
+      </div>
+      <div className="mt-1.5 h-1 rounded-full bg-fill/[0.08] overflow-hidden">
+        <div
+          className="h-full rounded-full bg-brand-blue/65"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+  if (tooltip) {
+    return (
+      <Tooltip label={tooltip} placement="left" triggerClassName="block w-full">
+        {body}
+      </Tooltip>
+    );
+  }
+  return body;
+}
+
+function SessionRow({
+  query,
+  tool,
+  right,
+  sub,
+}: {
+  query: string;
+  tool: string;
+  right: string;
+  sub: string;
+}) {
+  return (
+    <div className="px-3 py-2 flex items-center justify-between text-xs border-b border-line last:border-b-0 hover:bg-fill/[0.03]">
+      <div className="min-w-0">
+        <div className="text-ink truncate">{query}</div>
+        <div className="text-xs text-ink-faint mt-0.5">{tool}</div>
+      </div>
+      <div className="text-right ml-3">
+        <div className="text-xs text-ink-faint">{right}</div>
+        {sub && <div className="text-xs text-ink-mute mt-0.5 tabular-nums">{sub}</div>}
+      </div>
+    </div>
+  );
+}
+
+type SSHCredentialKind = "none" | "password" | "privateKey";
+
+type SSHConnectionProfile = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  credentialKind: SSHCredentialKind;
+  privateKeyPath: string;
+  updatedAt: number;
+  password?: string | null;
+  keyPassphrase?: string | null;
+};
+
+type SSHProfilesSnapshot = {
+  profiles: SSHConnectionProfile[];
+};
+
+type SSHLaunchCommand = {
+  command: string;
+  logCommand: string;
+};
+
+function SSHPanel({ project }: { project?: WorkspaceProject }) {
+  const [profiles, setProfiles] = useState<SSHConnectionProfile[]>([]);
+  const [isLoading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<SSHProfileDraft | null>(null);
+  const [isSaving, setSaving] = useState(false);
+  const [sshStatus, setSshStatus] = useState<{ tone: "neutral" | "success" | "warning" | "danger"; message: string }>({
+    tone: "neutral",
+    message: tm("ssh.panel.status.ready", "Ready"),
+  });
+  const sshRowLabels = useMemo<SSHRowLabels>(() => ({
+    connect: tm("ssh.profile.connect", "Connect"),
+    copy: tm("common.copy", "Copy"),
+    edit: tm("ssh.profile.edit", "Edit SSH Connection"),
+    remove: tm("common.remove", "Remove"),
+    actions: tm("files.panel.actions", "Actions"),
+  }), []);
+
+  const updateSshStatus = useCallback((message: string, tone: "neutral" | "success" | "warning" | "danger" = "neutral") => {
+    setSshStatus({ tone, message });
+  }, []);
+
+  const handleSshError = useCallback((nextError: unknown) => {
+    const message = nextError instanceof Error ? nextError.message : String(nextError);
+    setError(message);
+    updateSshStatus(message, "danger");
+  }, [updateSshStatus]);
+
+  const refresh = useCallback(async () => {
+    if (!window.__TAURI_INTERNALS__) {
+      setProfiles([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const snapshot = await invoke<SSHProfilesSnapshot>("ssh_profiles");
+      setProfiles(snapshot.profiles);
+      updateSshStatus(tm("ssh.panel.status.refreshed", "SSH connections refreshed"), "success");
+    } catch (nextError) {
+      handleSshError(nextError);
+    } finally {
+      setLoading(false);
+    }
+  }, [handleSshError, updateSshStatus]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const startProfileEdit = (profile?: SSHConnectionProfile) => {
+    setError(null);
+    setDraft(profileToDraft(profile));
+  };
+
+  const pickPrivateKey = async () => {
+    if (!window.__TAURI_INTERNALS__) return;
+    const selected = await openDialog({
+      title: tm("ssh.profile.private_key", "Private Key"),
+      multiple: false,
+      directory: false,
+    });
+    if (!selected || Array.isArray(selected)) return;
+    setDraft((current) => current ? { ...current, privateKeyPath: selected } : current);
+  };
+
+  const upsertProfile = async (nextDraft: SSHProfileDraft) => {
+    const host = nextDraft.host.trim();
+    const username = nextDraft.username.trim();
+    if (!host || !username) return;
+    const port = Math.max(1, Math.min(65535, Number(nextDraft.port || 22) || 22));
+    try {
+      setSaving(true);
+      const snapshot = await invoke<SSHProfilesSnapshot>("ssh_profile_upsert", {
+        request: {
+          id: nextDraft.id ?? null,
+          name: nextDraft.name.trim(),
+          host,
+          port,
+          username,
+          credentialKind: nextDraft.credentialKind,
+          privateKeyPath: nextDraft.credentialKind === "privateKey" ? nextDraft.privateKeyPath.trim() : "",
+          password: nextDraft.credentialKind === "password" ? nextDraft.password.trim() : "",
+          keyPassphrase: nextDraft.credentialKind === "privateKey" ? nextDraft.keyPassphrase.trim() : "",
+        },
+      });
+      setProfiles(snapshot.profiles);
+      setDraft(null);
+      setError(null);
+      updateSshStatus(tm("ssh.profile.saved", "Saved SSH connection."), "success");
+    } catch (nextError) {
+      handleSshError(nextError);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteProfile = async (profile: SSHConnectionProfile) => {
+    if (
+      !(await systemConfirm(formatI18n(tm("ssh.profile.delete.message_format", "Delete %@? The saved local credential will also be removed."), sshDisplayName(profile)), {
+        title: tm("ssh.profile.delete", "Delete SSH Connection"),
+        kind: "warning",
+        okLabel: tm("common.delete", "Delete"),
+        cancelLabel: tm("common.cancel", "Cancel"),
+      }))
+    ) return;
+    try {
+      const snapshot = await invoke<SSHProfilesSnapshot>("ssh_profile_delete", {
+        profileId: profile.id,
+      });
+      setProfiles(snapshot.profiles);
+      setError(null);
+      updateSshStatus(tm("ssh.profile.deleted", "Deleted SSH connection."), "warning");
+    } catch (nextError) {
+      handleSshError(nextError);
+    }
+  };
+
+  const connectProfile = async (profile: SSHConnectionProfile) => {
+    if (!project) {
+      updateSshStatus(tm("ssh.panel.status.no_project", "Select a project before connecting."), "warning");
+      return;
+    }
+    try {
+      const launch = await invoke<SSHLaunchCommand>("ssh_launch_command", {
+        profileId: profile.id,
+      });
+      broadcastWorkspaceCommand({
+        type: "add-bottom-terminal-tab",
+        label: sshDisplayName(profile),
+        command: launch.command,
+      });
+      setError(null);
+      updateSshStatus(formatI18n(tm("ssh.profile.connecting_format", "Connecting to %@."), sshDisplayName(profile)), "success");
+    } catch (nextError) {
+      handleSshError(nextError);
+    }
+  };
+
+  return (
+    <>
+      <PanelHeader
+        title={
+          <div className="flex items-center gap-2">
+            <Server size={13} className="text-ink-mute" />
+            <span>{tm("ssh.panel.title", "SSH")}</span>
+          </div>
+        }
+        trailing={
+          <>
+            <PanelIconButton icon={Plus} tooltip={tm("ssh.profile.add", "Add SSH Connection")} onClick={() => startProfileEdit()} />
+            <PanelIconButton icon={RefreshCw} tooltip={tm("common.refresh", "Refresh")} onClick={() => void refresh()} />
+          </>
+        }
+      />
+      {profiles.length === 0 && !draft ? (
+        <PanelEmptyState
+          icon={Server}
+          title={isLoading ? tm("ssh.panel.loading", "Reading SSH connections") : tm("ssh.panel.empty.title", "No SSH Connections")}
+          description={tm("ssh.panel.empty.help", "Add a global SSH profile and double-click it to connect in a terminal.")}
+          action={
+            <HeroButton size="sm" variant="primary" onPress={() => startProfileEdit()}>
+              {tm("ssh.profile.add", "Add SSH Connection")}
+            </HeroButton>
+          }
+        />
+      ) : (
+        <div className="flex-1 overflow-y-auto scrollbar-overlay p-3 grid auto-rows-min gap-2">
+          {draft && (
+            <SSHProfileEditor
+              draft={draft}
+              isSaving={isSaving}
+              onChange={setDraft}
+              onCancel={() => setDraft(null)}
+              onPickPrivateKey={() => void pickPrivateKey()}
+              onSubmit={() => void upsertProfile(draft)}
+            />
+          )}
+          {profiles.map((profile) => (
+            <SSHProfileRow
+              key={profile.id}
+              profile={profile}
+              disabled={!project}
+              labels={sshRowLabels}
+              onConnect={() => void connectProfile(profile)}
+              onCopy={() => {
+                updateSshStatus(formatI18n(tm("files.panel.status.copied_format", "Copied %@"), sshDisplayName(profile)), "success");
+              }}
+              onEdit={() => startProfileEdit(profile)}
+              onDelete={() => void deleteProfile(profile)}
+            />
+          ))}
+        </div>
+      )}
+      {error && (
+        <div className="mx-3 mb-3 rounded-md border border-brand-red/30 bg-brand-red/10 px-2.5 py-2 text-xs text-brand-red">
+          {error}
+        </div>
+      )}
+      <PanelStatusBar
+        tone={error ? "danger" : sshStatus.tone}
+        leading={
+          <>
+            {isLoading ? <Spinner size="sm" color="current" /> : <Server size={12} />}
+            <span className="truncate">{error ?? sshStatus.message}</span>
+          </>
+        }
+        trailing={<span className="tabular-nums text-current/75">{profiles.length}</span>}
+      />
+    </>
+  );
+}
+
+type SSHProfileDraft = {
+  id?: string;
+  name: string;
+  host: string;
+  port: string;
+  username: string;
+  credentialKind: SSHCredentialKind;
+  privateKeyPath: string;
+  password: string;
+  keyPassphrase: string;
+};
+
+function SSHProfileEditor({
+  draft,
+  isSaving,
+  onChange,
+  onCancel,
+  onPickPrivateKey,
+  onSubmit,
+}: {
+  draft: SSHProfileDraft;
+  isSaving: boolean;
+  onChange: (draft: SSHProfileDraft) => void;
+  onCancel: () => void;
+  onPickPrivateKey: () => void;
+  onSubmit: () => void;
+}) {
+  const canSubmit = draft.host.trim().length > 0 && draft.username.trim().length > 0 && !isSaving;
+  const set = <DraftKey extends keyof SSHProfileDraft>(key: DraftKey, value: SSHProfileDraft[DraftKey]) => {
+    onChange({ ...draft, [key]: value });
+  };
+
+  return (
+    <PanelCard
+      title={draft.id ? tm("ssh.profile.edit", "Edit SSH Connection") : tm("ssh.profile.add", "Add SSH Connection")}
+      divider
+      className="bg-fill/[0.045]"
+    >
+      <form
+        className="grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) onSubmit();
+        }}
+      >
+        <SSHFormField label={tm("ssh.profile.name", "Name")}>
+          <TextInput
+            value={draft.name}
+            onChange={(event) => set("name", event.currentTarget.value)}
+            className="h-8 text-xs"
+          />
+        </SSHFormField>
+        <div className="grid grid-cols-[minmax(0,1fr)_72px] gap-2">
+          <SSHFormField label={tm("ssh.profile.host", "Host")} required>
+            <TextInput
+              value={draft.host}
+              onChange={(event) => set("host", event.currentTarget.value)}
+              className="h-8 text-xs"
+              required
+            />
+          </SSHFormField>
+          <SSHFormField label={tm("ssh.profile.port", "Port")}>
+            <TextInput
+              value={draft.port}
+              inputMode="numeric"
+              onChange={(event) => set("port", event.currentTarget.value.replace(/[^\d]/g, ""))}
+              className="h-8 text-xs"
+            />
+          </SSHFormField>
+        </div>
+        <SSHFormField label={tm("ssh.profile.username", "Username")} required>
+          <TextInput
+            value={draft.username}
+            onChange={(event) => set("username", event.currentTarget.value)}
+            className="h-8 text-xs"
+            required
+          />
+        </SSHFormField>
+        <SSHFormField label={tm("ssh.profile.credential", "Credential")}>
+          <Select
+            value={draft.credentialKind}
+            onChange={(value) => set("credentialKind", normalizeCredentialKind(value))}
+            options={[
+              { value: "none", label: tm("common.none", "None") },
+              { value: "password", label: tm("ssh.profile.password", "Password") },
+              { value: "privateKey", label: tm("ssh.profile.private_key", "Private Key") },
+            ]}
+            ariaLabel={tm("ssh.profile.credential", "Credential")}
+            className="w-full"
+          />
+        </SSHFormField>
+        {draft.credentialKind === "password" && (
+          <SSHFormField label={tm("ssh.profile.password", "Password")}>
+            <TextInput
+              value={draft.password}
+              type="password"
+              onChange={(event) => set("password", event.currentTarget.value)}
+              className="h-8 text-xs"
+            />
+          </SSHFormField>
+        )}
+        {draft.credentialKind === "privateKey" && (
+          <>
+            <SSHFormField label={tm("ssh.profile.private_key", "Private Key")}>
+              <div className="flex gap-1.5">
+                <TextInput
+                  value={draft.privateKeyPath}
+                  onChange={(event) => set("privateKeyPath", event.currentTarget.value)}
+                  className="h-8 text-xs"
+                />
+                <HeroButton
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 min-w-0 px-2 text-xs"
+                  onPress={onPickPrivateKey}
+                >
+                  {tm("common.choose", "Choose")}
+                </HeroButton>
+              </div>
+            </SSHFormField>
+            <SSHFormField label={tm("ssh.profile.key_passphrase", "Key Passphrase")}>
+              <TextInput
+                value={draft.keyPassphrase}
+                type="password"
+                onChange={(event) => set("keyPassphrase", event.currentTarget.value)}
+                className="h-8 text-xs"
+              />
+            </SSHFormField>
+          </>
+        )}
+        <div className="mt-1 flex justify-end gap-1.5">
+          <HeroButton size="sm" variant="ghost" className="h-8 min-w-0 px-3 text-xs" onPress={onCancel}>
+            {tm("common.cancel", "Cancel")}
+          </HeroButton>
+          <HeroButton
+            size="sm"
+            variant="primary"
+            className="h-8 min-w-0 px-3 text-xs"
+            type="submit"
+            isDisabled={!canSubmit}
+          >
+            {isSaving ? tm("common.processing", "Processing") : tm("common.save", "Save")}
+          </HeroButton>
+        </div>
+      </form>
+    </PanelCard>
+  );
+}
+
+function SSHFormField({
+  label,
+  required,
+  children,
+}: {
+  label: ReactNode;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-[11px] font-semibold text-ink-soft">
+        {label}
+        {required ? <span className="ml-0.5 text-brand-red">*</span> : null}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function SSHProfileRow({
+  profile,
+  disabled,
+  labels,
+  onConnect,
+  onCopy,
+  onEdit,
+  onDelete,
+}: {
+  profile: SSHConnectionProfile;
+  disabled: boolean;
+  labels: SSHRowLabels;
+  onConnect: () => void;
+  onCopy: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const tint =
+    profile.credentialKind === "privateKey"
+      ? "text-brand-blue bg-brand-blue/14"
+      : profile.credentialKind === "password"
+        ? "text-brand-amber bg-brand-amber/14"
+        : "text-ink-mute bg-fill/[0.055]";
+  return (
+    <div
+      className="group relative rounded-[8px] border border-line bg-fill/[0.035] p-2.5 pr-10 grid grid-cols-[30px_minmax(0,1fr)] items-center gap-2.5 hover:bg-fill/[0.055] transition-colors"
+      onDoubleClick={() => {
+        if (!disabled) onConnect();
+      }}
+    >
+      <span className={`w-[30px] h-[30px] rounded-[7px] grid place-items-center ${tint}`}>
+        {profile.credentialKind === "privateKey" ? <KeyRound size={13} /> : <Server size={13} />}
+      </span>
+      <div className="min-w-0">
+        <div className="text-xs font-semibold text-ink truncate">{sshDisplayName(profile)}</div>
+        <div className="text-xs text-ink-faint truncate">
+          {profile.username}@{profile.host}:{profile.port}
+        </div>
+      </div>
+      <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded bg-surface-chrome/95 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto">
+        <PressableButton
+          className="h-6 rounded-md px-2 text-xs font-semibold text-ink-soft hover:bg-fill/8 hover:text-ink disabled:opacity-45"
+          disabled={disabled}
+          onPressUp={onConnect}
+        >
+          {labels.connect}
+        </PressableButton>
+        <DesktopMenu
+          ariaLabel={`${sshDisplayName(profile)} ${labels.actions}`}
+          isOpen={menuOpen}
+          onOpenChange={setMenuOpen}
+          trigger={
+            <button
+              type="button"
+              className="grid h-6 w-6 place-items-center rounded text-ink-faint hover:bg-fill/8 hover:text-ink"
+              aria-label={`${sshDisplayName(profile)} ${labels.actions}`}
+            >
+              <MoreHorizontal size={13} />
+            </button>
+          }
+        >
+          <DesktopMenuItem disabled={disabled} label={labels.connect} onSelect={onConnect}>{labels.connect}</DesktopMenuItem>
+          <DesktopMenuItem
+            label={labels.copy}
+            onSelect={() => {
+              void navigator.clipboard?.writeText(`${profile.username}@${profile.host}:${profile.port}`);
+              onCopy();
+            }}
+          >
+            {labels.copy}
+          </DesktopMenuItem>
+          <DesktopMenuItem label={labels.edit} onSelect={onEdit}>{labels.edit}</DesktopMenuItem>
+          <DesktopMenuItem label={labels.remove} onSelect={onDelete}>{labels.remove}</DesktopMenuItem>
+        </DesktopMenu>
+      </div>
+    </div>
+  );
+}
+
+type SSHRowLabels = {
+  connect: string;
+  copy: string;
+  edit: string;
+  remove: string;
+  actions: string;
+};
+
+function normalizeCredentialKind(value?: string): SSHCredentialKind {
+  if (value === "password" || value === "privateKey") return value;
+  return "none";
+}
+
+function profileToDraft(profile?: SSHConnectionProfile): SSHProfileDraft {
+  return {
+    id: profile?.id,
+    name: profile?.name ?? "",
+    host: profile?.host ?? "",
+    port: String(profile?.port ?? 22),
+    username: profile?.username ?? "root",
+    credentialKind: profile?.credentialKind ?? "none",
+    privateKeyPath: profile?.privateKeyPath ?? "",
+    password: profile?.password ?? "",
+    keyPassphrase: profile?.keyPassphrase ?? "",
+  };
+}
+
+function sshDisplayName(profile: SSHConnectionProfile) {
+  return profile.name.trim() || `${profile.username}@${profile.host}`;
+}

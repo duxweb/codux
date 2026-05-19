@@ -1,0 +1,123 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TerminalRuntime } from "./runtime";
+import type { TerminalEvent } from "../types";
+
+const invokeMock = vi.hoisted(() => vi.fn());
+const listenMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: listenMock,
+}));
+
+describe("terminal runtime", () => {
+  let eventHandler: ((event: { payload: TerminalEvent }) => void) | undefined;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    eventHandler = undefined;
+    invokeMock.mockReset();
+    listenMock.mockReset();
+    listenMock.mockImplementation((_eventName: string, handler: typeof eventHandler) => {
+      eventHandler = handler;
+      return Promise.resolve(() => undefined);
+    });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "terminal_create") {
+        return Promise.resolve("backend-1");
+      }
+      return Promise.resolve(undefined);
+    });
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(callback, 0),
+        setTimeout,
+        __TAURI_INTERNALS__: {},
+      },
+    });
+    Object.defineProperty(globalThis.window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+  });
+
+  it("emits state events to subscribers asynchronously via microtask", async () => {
+    const runtime = new TerminalRuntime();
+    const session = runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "原始标题",
+      cwd: "/project",
+    });
+
+    const events: string[] = [];
+    runtime.subscribe(session.id, (event) => {
+      events.push(`${event.type}:${event.type === "closed" ? "" : event.session.title}`);
+    });
+    events.length = 0;
+
+    runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "新标题",
+      cwd: "/project",
+    });
+
+    expect(events).toEqual([]);
+
+    await Promise.resolve();
+    expect(events).toEqual(["state:新标题"]);
+  });
+
+  it("does not write input until the backend has produced initial output", async () => {
+    const runtime = new TerminalRuntime();
+    const session = runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "分屏 1",
+      cwd: "/project",
+    });
+
+    expect(session.projectId).toBe("project-a");
+    expect(session.slotId).toBe("top-1");
+    expect(session.id).toMatch(/^term-/);
+
+    runtime.resize(session.id, 100, 30);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(invokeMock).toHaveBeenCalledWith("terminal_create", {
+      config: expect.objectContaining({
+        projectId: "project-a",
+        slotId: "top-1",
+        terminalId: session.id,
+        sessionKey: "project-a:top-1",
+      }),
+    });
+    expect(runtime.getSession(session.id)?.backendId).toBe("backend-1");
+    expect(runtime.getSession(session.id)?.state).toBe("starting");
+
+    runtime.write(session.id, "11133333");
+    expect(invokeMock).not.toHaveBeenCalledWith("terminal_write", expect.anything());
+
+    eventHandler?.({
+      payload: {
+        kind: "output",
+        sessionId: "backend-1",
+        data: "➜  project git:(main) ",
+      },
+    });
+    expect(runtime.getSession(session.id)?.state).toBe("running");
+
+    runtime.write(session.id, "11133333");
+    expect(invokeMock).toHaveBeenCalledWith("terminal_write", {
+      sessionId: "backend-1",
+      data: "11133333",
+    });
+  });
+});

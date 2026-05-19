@@ -1,0 +1,53 @@
+#!/bin/zsh
+set -euo pipefail
+
+profile_id="${1:-}"
+profiles_file="${CODUX_SSH_PROFILES_FILE:-$HOME/Library/Application Support/Codux Tauri/ssh_profiles.json}"
+
+if [[ -z "$profile_id" ]]; then
+  echo "usage: codux-ssh <profile-id>" >&2
+  exit 64
+fi
+
+exec python3 - "$profile_id" "$profiles_file" <<'PY'
+import json
+import os
+import shlex
+import sys
+
+profile_id = sys.argv[1]
+profiles_file = sys.argv[2]
+
+try:
+    with open(profiles_file, "r", encoding="utf-8") as handle:
+        profiles = json.load(handle)
+except FileNotFoundError:
+    print(f"codux-ssh: profile store not found: {profiles_file}", file=sys.stderr)
+    sys.exit(66)
+except Exception as exc:
+    print(f"codux-ssh: failed to read profiles: {exc}", file=sys.stderr)
+    sys.exit(65)
+
+profile = next((item for item in profiles if item.get("id") == profile_id), None)
+if not profile:
+    print(f"codux-ssh: profile not found: {profile_id}", file=sys.stderr)
+    sys.exit(67)
+
+host = str(profile.get("host") or "").strip()
+username = str(profile.get("username") or "").strip()
+port = int(profile.get("port") or 22)
+credential_kind = str(profile.get("credentialKind") or "none")
+key_path = str(profile.get("privateKeyPath") or "").strip()
+
+if not host or not username:
+    print("codux-ssh: profile is missing host or username", file=sys.stderr)
+    sys.exit(65)
+
+args = ["ssh", "-p", str(max(1, min(port, 65535)))]
+if credential_kind == "privateKey" and key_path:
+    args.extend(["-i", key_path])
+args.append(f"{username}@{host}")
+
+print("+ " + " ".join(shlex.quote(arg) for arg in args), flush=True)
+os.execvp("ssh", args)
+PY

@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark" data-main="terminal" data-panel="ai">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UI Test · 四栏智能终端</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --top: 42px;
+        --status: 28px;
+        --projects: 76px;
+        --worktrees: 268px;
+        --right: 304px;
+
+        --bg: #0b0f14;
+        --panel: #10161d;
+        --panel-2: #141b23;
+        --terminal: #090d12;
+        --line: #25303b;
+        --line-soft: #1a222b;
+        --text: #e4eaf1;
+        --soft: #9aa7b6;
+        --muted: #687586;
+        --faint: #465261;
+        --accent: #7aa7f8;
+        --ok: #73c891;
+        --warn: #d1a45c;
+        --bad: #d97878;
+        --radius: 7px;
+
+        font-family: "Geist", "PingFang SC", system-ui, sans-serif;
+        font-size: 13px;
+      }
+
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #eef2f6;
+        --panel: #fbfcfe;
+        --panel-2: #f2f5f8;
+        --terminal: #ffffff;
+        --line: #ced8e4;
+        --line-soft: #e3e9f1;
+        --text: #1b2633;
+        --soft: #536273;
+        --muted: #788697;
+        --faint: #a0abb8;
+        --accent: #2f66c9;
+        --ok: #257a55;
+        --warn: #93671e;
+        --bad: #b44949;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        letter-spacing: 0;
+      }
+
+      button {
+        border: 0;
+        padding: 0;
+        color: inherit;
+        background: transparent;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .icon {
+        width: 15px;
+        height: 15px;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.9;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .app {
+        height: 100%;
+        display: grid;
+        grid-template-rows: var(--top) minmax(0, 1fr) var(--status);
+        background: var(--bg);
+      }
+
+      .topbar {
+        display: grid;
+        grid-template-columns: var(--projects) var(--worktrees) minmax(0, 1fr) var(--right);
+        align-items: center;
+        gap: 1px;
+        border-bottom: 1px solid var(--line);
+        background: var(--line);
+      }
+
+      .brand,
+      .top-worktree,
+      .top-center,
+      .top-actions {
+        min-width: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        background: var(--panel);
+      }
+
+      .brand {
+        justify-content: center;
+        padding: 0;
+      }
+
+      .mark {
+        width: 27px;
+        height: 27px;
+        display: grid;
+        place-items: center;
+        border-radius: var(--radius);
+        background: var(--text);
+        color: var(--bg);
+        font-weight: 800;
+      }
+
+      .top-worktree strong {
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .top-worktree span,
+      .crumb,
+      .muted {
+        color: var(--muted);
+      }
+
+      .top-worktree span {
+        white-space: nowrap;
+      }
+
+      .top-center {
+        justify-content: space-between;
+      }
+
+      .top-center-actions,
+      .top-tools {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+
+      .crumb {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+      }
+
+      .top-actions {
+        justify-content: flex-end;
+      }
+
+      .main {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: var(--projects) var(--worktrees) minmax(0, 1fr) var(--right);
+        gap: 1px;
+        background: var(--line);
+      }
+
+      .col {
+        min-width: 0;
+        min-height: 0;
+        background: var(--panel);
+      }
+
+      .projects {
+        display: grid;
+        grid-template-rows: 38px minmax(0, 1fr) auto;
+      }
+
+      .worktrees,
+      .right {
+        display: grid;
+        grid-template-rows: 38px minmax(0, 1fr);
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) 36px;
+        background: var(--panel);
+      }
+
+      .head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-width: 0;
+        height: 38px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .head-title {
+        min-width: 0;
+        color: var(--soft);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .icon-btn,
+      .chip {
+        height: 27px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--panel-2);
+        color: var(--soft);
+      }
+
+      .icon-btn {
+        width: 27px;
+      }
+
+      .chip {
+        gap: 6px;
+        padding: 0 8px;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .icon-btn:hover,
+      .chip:hover,
+      .chip.active {
+        color: var(--text);
+        border-color: var(--muted);
+      }
+
+      .list {
+        min-height: 0;
+        overflow: auto;
+      }
+
+      .project-btn {
+        width: 100%;
+        display: grid;
+        place-items: center;
+        padding: 9px 0;
+        border-bottom: 1px solid var(--line-soft);
+        color: var(--muted);
+      }
+
+      .project-icon {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--bg);
+        color: var(--soft);
+        font-weight: 800;
+      }
+
+      .project-btn.active .project-icon {
+        background: var(--text);
+        color: var(--bg);
+      }
+
+      .project-btn small {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      .row {
+        width: 100%;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        min-height: 56px;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line-soft);
+        text-align: left;
+        color: var(--soft);
+      }
+
+      .row:hover,
+      .row.active {
+        background: var(--panel-2);
+      }
+
+      .row-name {
+        color: var(--text);
+        font-weight: 650;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .row-sub {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 21px;
+        padding: 0 7px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--bg);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .tag.ok {
+        color: var(--ok);
+      }
+
+      .tag.warn {
+        color: var(--warn);
+      }
+
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--faint);
+        flex: 0 0 auto;
+      }
+
+      .dot.ok {
+        background: var(--ok);
+      }
+
+      .dot.warn {
+        background: var(--warn);
+      }
+
+      .dot.bad {
+        background: var(--bad);
+      }
+
+      .switcher {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .switcher button {
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 8px;
+        border: 1px solid transparent;
+        border-radius: var(--radius);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 650;
+      }
+
+      .switcher button:hover,
+      .switcher button.active {
+        border-color: var(--line);
+        background: var(--panel-2);
+        color: var(--text);
+      }
+
+      .view {
+        display: none;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      :root[data-main="terminal"] .view.terminal,
+      :root[data-main="files"] .view.files,
+      :root[data-main="git"] .view.git {
+        display: block;
+      }
+
+      .terminal-grid {
+        height: 100%;
+        display: grid;
+        grid-template-columns: minmax(0, 1.42fr) minmax(320px, 0.9fr);
+        grid-template-rows: minmax(0, 1fr) minmax(170px, 0.55fr);
+        gap: 1px;
+        background: var(--line);
+      }
+
+      .pane {
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--terminal);
+      }
+
+      .pane.primary {
+        grid-row: span 2;
+      }
+
+      .pane-head {
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line-soft);
+        background: var(--panel);
+      }
+
+      .pane-name {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+
+      .pane-meta {
+        color: var(--muted);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+
+      .term {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 14px 16px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        line-height: 1.72;
+      }
+
+      .line {
+        min-height: 20px;
+        white-space: pre-wrap;
+      }
+
+      .dim {
+        color: var(--faint);
+      }
+
+      .soft {
+        color: var(--muted);
+      }
+
+      .cmd {
+        color: var(--text);
+      }
+
+      .ok {
+        color: var(--ok);
+      }
+
+      .warn {
+        color: var(--warn);
+      }
+
+      .bad {
+        color: var(--bad);
+      }
+
+      .ai-line {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        margin: 4px 0;
+        color: var(--soft);
+      }
+
+      .ai-name {
+        height: 21px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        font-size: 10px;
+        font-weight: 700;
+      }
+
+      .ai-name.ok {
+        color: var(--ok);
+      }
+
+      .ai-name.warn {
+        color: var(--warn);
+      }
+
+      .caret {
+        display: inline-block;
+        width: 7px;
+        height: 14px;
+        margin-left: 4px;
+        vertical-align: -2px;
+        background: var(--text);
+        animation: blink 1s steps(2, start) infinite;
+      }
+
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+
+      .simple-grid {
+        height: 100%;
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 1px;
+        background: var(--line);
+      }
+
+      .simple-list,
+      .simple-detail {
+        min-height: 0;
+        overflow: auto;
+        background: var(--terminal);
+      }
+
+      .simple-row {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--line-soft);
+        color: var(--soft);
+        white-space: nowrap;
+      }
+
+      .simple-row.active,
+      .simple-row:hover {
+        background: var(--panel);
+        color: var(--text);
+      }
+
+      .code {
+        padding: 16px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        line-height: 1.75;
+        color: var(--soft);
+      }
+
+      .tabs {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 8px;
+        border-top: 1px solid var(--line-soft);
+      }
+
+      .tab-group {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        overflow: hidden;
+      }
+
+      .tab {
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 9px;
+        border: 1px solid transparent;
+        border-radius: var(--radius);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+
+      .tab.active,
+      .tab:hover {
+        border-color: var(--line);
+        background: var(--panel-2);
+        color: var(--text);
+      }
+
+      .right .head {
+        padding-right: 8px;
+      }
+
+      .panel-switch {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+
+      .panel-switch button {
+        width: 27px;
+        height: 27px;
+        display: grid;
+        place-items: center;
+        border: 1px solid transparent;
+        border-radius: var(--radius);
+        color: var(--muted);
+      }
+
+      .panel-switch button.active,
+      .panel-switch button:hover {
+        border-color: var(--line);
+        background: var(--panel-2);
+        color: var(--text);
+      }
+
+      .panel {
+        display: none;
+        min-height: 0;
+        overflow: auto;
+      }
+
+      :root[data-panel="ai"] .panel.ai,
+      :root[data-panel="files"] .panel.files,
+      :root[data-panel="git"] .panel.git,
+      :root[data-panel="ssh"] .panel.ssh {
+        display: block;
+      }
+
+      .section {
+        padding: 12px 10px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .section-title {
+        margin-bottom: 9px;
+        color: var(--text);
+        font-weight: 650;
+      }
+
+      .status-line {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 28px;
+        color: var(--soft);
+        font-size: 12px;
+      }
+
+      .statusbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0 10px;
+        border-top: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .status-left,
+      .status-right {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .status-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+
+      .status-item strong {
+        color: var(--soft);
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 600;
+      }
+
+      @media (max-width: 1180px) {
+        :root {
+          --worktrees: 236px;
+          --right: 268px;
+        }
+
+        .optional,
+        .pane-meta {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position:absolute">
+      <symbol id="i-terminal" viewBox="0 0 24 24"><path d="M4 6h16v12H4z" /><path d="m8 10 3 2-3 2" /><path d="M14 15h3" /></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 7h7l2 2h7v10H4z" /></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 4h7l4 4v12H7z" /><path d="M14 4v5h5" /></symbol>
+      <symbol id="i-git" viewBox="0 0 24 24"><path d="M7 5v8a4 4 0 0 0 4 4h6" /><path d="M7 9h8" /><circle cx="7" cy="5" r="2" /><circle cx="15" cy="9" r="2" /><circle cx="17" cy="17" r="2" /></symbol>
+      <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z" /></symbol>
+      <symbol id="i-ssh" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14" /><path d="M9 7v10" /></symbol>
+      <symbol id="i-memory" viewBox="0 0 24 24"><path d="M6 8h12v8H6z" /><path d="M9 5v3M12 5v3M15 5v3M9 16v3M12 16v3M15 16v3" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></symbol>
+      <symbol id="i-split" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1" /><path d="M12 5v14" /></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></symbol>
+    </svg>
+
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">C</div>
+        </div>
+        <div class="top-worktree">
+          <strong>Codux Terminal</strong>
+          <span>四栏工作台</span>
+        </div>
+        <div class="top-center">
+          <div class="crumb">codux-tauri / ui shell / main + wt/ui-shell</div>
+          <div class="top-center-actions">
+            <div class="top-tools" aria-label="工作区操作">
+              <button class="icon-btn" title="搜索"><svg class="icon"><use href="#i-search" /></svg></button>
+              <button class="icon-btn" title="分屏"><svg class="icon"><use href="#i-split" /></svg></button>
+              <button class="icon-btn" title="新终端"><svg class="icon"><use href="#i-plus" /></svg></button>
+            </div>
+            <nav class="switcher" aria-label="主视图">
+              <button data-main="terminal"><svg class="icon"><use href="#i-terminal" /></svg>终端</button>
+              <button data-main="files"><svg class="icon"><use href="#i-folder" /></svg>文件</button>
+              <button data-main="git"><svg class="icon"><use href="#i-git" /></svg>Git</button>
+            </nav>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="chip"><span class="dot ok"></span>AI CLI 4</span>
+          <span class="chip optional">日 Lv.13</span>
+          <span class="chip optional">宠 Lv.7</span>
+          <span class="chip">Remote</span>
+          <button class="icon-btn" data-theme-toggle title="切换主题">
+            <svg class="icon"><use href="#i-sun" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <aside class="col projects" aria-label="项目">
+          <div class="head">
+            <div class="head-title">项目</div>
+          </div>
+          <div class="list">
+            <button class="project-btn active">
+              <span class="project-icon">CT</span>
+              <small>active</small>
+            </button>
+            <button class="project-btn">
+              <span class="project-icon">DX</span>
+              <small>review</small>
+            </button>
+            <button class="project-btn">
+              <span class="project-icon">API</span>
+              <small>idle</small>
+            </button>
+          </div>
+          <div class="head">
+            <button class="icon-btn" title="新建项目"><svg class="icon"><use href="#i-plus" /></svg></button>
+          </div>
+        </aside>
+
+        <aside class="col worktrees" aria-label="Worktree">
+          <div class="head">
+            <div class="head-title">Worktree / 任务</div>
+            <button class="icon-btn" title="搜索"><svg class="icon"><use href="#i-search" /></svg></button>
+          </div>
+          <div class="list">
+            <button class="row active">
+              <span>
+                <span class="row-name">ui shell</span>
+                <span class="row-sub">main + wt/ui-shell · Codex</span>
+              </span>
+              <span class="tag ok">运行</span>
+            </button>
+            <button class="row">
+              <span>
+                <span class="row-name">git cleanup</span>
+                <span class="row-sub">main + wt/git-clean · Claude</span>
+              </span>
+              <span class="tag warn">输入</span>
+            </button>
+            <button class="row">
+              <span>
+                <span class="row-name">test rescue</span>
+                <span class="row-sub">wt/e2e-fix · Gemini</span>
+              </span>
+              <span class="tag">看护</span>
+            </button>
+            <button class="row">
+              <span>
+                <span class="row-name">memory sync</span>
+                <span class="row-sub">wt/memory-sync · Retome</span>
+              </span>
+              <span class="tag">记忆</span>
+            </button>
+          </div>
+        </aside>
+
+        <section class="col workspace" aria-label="主工作区">
+          <section class="view terminal">
+            <div class="terminal-grid">
+              <article class="pane primary">
+                <div class="pane-head">
+                  <div class="pane-name"><span class="dot ok"></span>main</div>
+                  <div class="pane-meta">zsh · /Volumes/Web/codux-tauri</div>
+                </div>
+                <div class="term">
+                  <div class="line"><span class="dim">12:04:11</span> <span class="cmd">pnpm dev</span> <span class="ok">ready</span> in 412 ms</div>
+                  <div class="line"><span class="dim">12:04:12</span> Local: <span class="cmd">http://localhost:5173</span></div>
+                  <div class="ai-line">
+                    <span class="ai-name ok">codex</span>
+                    <span><span class="cmd">tool_use</span> editing ui-test/index.html</span>
+                    <span class="dim">now</span>
+                  </div>
+                  <div class="line"><span class="dim">12:06:18</span> split layout saved for <span class="cmd">ui shell</span></div>
+                  <div class="ai-line">
+                    <span class="ai-name warn">claude</span>
+                    <span><span class="cmd">needs_input</span> wait for task workspace decision</span>
+                    <span class="dim">1m</span>
+                  </div>
+                  <div class="line"></div>
+                  <div class="line"><span class="soft">~/Web/codux-tauri</span> <span class="ok">main</span> <span class="soft">❯</span><span class="caret"></span></div>
+                </div>
+              </article>
+
+              <article class="pane">
+                <div class="pane-head">
+                  <div class="pane-name"><span class="dot warn"></span>worktree</div>
+                  <div class="pane-meta">wt/ui-shell</div>
+                </div>
+                <div class="term">
+                  <div class="line"><span class="soft">$</span> git worktree list</div>
+                  <div class="line"><span class="ok">main</span> /Volumes/Web/codux-tauri</div>
+                  <div class="line"><span class="warn">wt/ui-shell</span> /worktrees/ui-shell</div>
+                  <div class="line"></div>
+                  <div class="line"><span class="soft">$</span> pnpm test ui</div>
+                  <div class="line"><span class="ok">PASS</span> terminal shell layout</div>
+                </div>
+              </article>
+
+              <article class="pane">
+                <div class="pane-head">
+                  <div class="pane-name"><span class="dot ok"></span>ai monitor</div>
+                  <div class="pane-meta">stdout · stderr · exit</div>
+                </div>
+                <div class="term">
+                  <div class="ai-line"><span class="ai-name ok">codex</span><span>running · patch static UI</span><span class="dim">12s</span></div>
+                  <div class="ai-line"><span class="ai-name warn">claude</span><span>input required · worktree layout</span><span class="dim">1m</span></div>
+                  <div class="ai-line"><span class="ai-name">gemini</span><span>observing · tests pane</span><span class="dim">4m</span></div>
+                  <div class="ai-line"><span class="ai-name">retome</span><span>memory index · 3 pending</span><span class="dim">idle</span></div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="view files">
+            <div class="simple-grid">
+              <div class="simple-list">
+                <div class="simple-row active"><svg class="icon"><use href="#i-file" /></svg>ui-test/index.html</div>
+                <div class="simple-row"><svg class="icon"><use href="#i-folder" /></svg>src</div>
+                <div class="simple-row"><svg class="icon"><use href="#i-folder" /></svg>src-tauri</div>
+                <div class="simple-row"><svg class="icon"><use href="#i-file" /></svg>package.json</div>
+              </div>
+              <div class="simple-detail">
+                <div class="code">
+                  <div><span class="dim">001</span> projects | worktrees | workspace | sidebar</div>
+                  <div><span class="dim">002</span> terminal remains the primary surface</div>
+                  <div><span class="dim">003</span> files are a secondary main view</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="view git">
+            <div class="simple-grid">
+              <div class="simple-list">
+                <div class="simple-row active"><span class="dot ok"></span>feature/ui-shell</div>
+                <div class="simple-row"><span class="dot"></span>main</div>
+                <div class="simple-row"><span class="dot warn"></span>wt/git-clean</div>
+              </div>
+              <div class="simple-detail">
+                <div class="code">
+                  <div><span class="ok">M</span> ui-test/index.html</div>
+                  <div><span class="warn">?</span> worktrees/ui-shell</div>
+                  <div></div>
+                  <div><span class="dim">HEAD</span> four column terminal shell</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="tabs">
+            <div class="tab-group">
+              <button class="tab active"><span class="dot ok"></span>main</button>
+              <button class="tab"><span class="dot warn"></span>worktree</button>
+              <button class="tab"><span class="dot ok"></span>ai monitor</button>
+            </div>
+            <div class="tab-group">
+              <button class="tab"><svg class="icon"><use href="#i-split" /></svg>split</button>
+              <button class="tab"><svg class="icon"><use href="#i-plus" /></svg>terminal</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="col right" aria-label="右侧栏">
+          <div class="head">
+            <div class="head-title">右侧栏</div>
+            <nav class="panel-switch" aria-label="右侧栏切换">
+              <button data-panel="ai" title="AI"><svg class="icon"><use href="#i-ai" /></svg></button>
+              <button data-panel="files" title="文件"><svg class="icon"><use href="#i-folder" /></svg></button>
+              <button data-panel="git" title="Git"><svg class="icon"><use href="#i-git" /></svg></button>
+              <button data-panel="ssh" title="SSH"><svg class="icon"><use href="#i-ssh" /></svg></button>
+            </nav>
+          </div>
+
+          <section class="panel ai">
+            <div class="section">
+              <div class="section-title">AI CLI</div>
+              <div class="status-line"><span>Codex</span><span class="tag ok">running</span></div>
+              <div class="status-line"><span>Claude</span><span class="tag warn">input</span></div>
+              <div class="status-line"><span>Gemini</span><span class="tag">watch</span></div>
+              <div class="status-line"><span>Retome</span><span class="tag">memory</span></div>
+            </div>
+            <div class="section">
+              <div class="section-title">等级</div>
+              <div class="status-line"><span>每日</span><span>Lv.13</span></div>
+              <div class="status-line"><span>宠物</span><span>Lv.7</span></div>
+              <div class="status-line"><span>记忆</span><span>84%</span></div>
+            </div>
+          </section>
+
+          <section class="panel files">
+            <div class="section">
+              <div class="section-title">文件</div>
+              <div class="status-line"><span>ui-test/index.html</span><span>M</span></div>
+              <div class="status-line"><span>src</span><span>dir</span></div>
+              <div class="status-line"><span>src-tauri</span><span>dir</span></div>
+            </div>
+          </section>
+
+          <section class="panel git">
+            <div class="section">
+              <div class="section-title">Git</div>
+              <div class="status-line"><span>branch</span><span>feature/ui-shell</span></div>
+              <div class="status-line"><span>changes</span><span>12</span></div>
+              <div class="status-line"><span>worktree</span><span>2</span></div>
+            </div>
+          </section>
+
+          <section class="panel ssh">
+            <div class="section">
+              <div class="section-title">SSH</div>
+              <div class="status-line"><span>prod-edge</span><span class="tag ok">22ms</span></div>
+              <div class="status-line"><span>staging</span><span class="tag warn">auth</span></div>
+              <div class="status-line"><span>lab-mac</span><span class="tag">sleep</span></div>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="statusbar">
+        <div class="status-left">
+          <span class="status-item"><span class="dot ok"></span>codux-tauri</span>
+          <span class="status-item">task <strong>ui shell</strong></span>
+          <span class="status-item">main + wt/ui-shell</span>
+          <span class="status-item">AI <strong>4</strong></span>
+        </div>
+        <div class="status-right">
+          <span class="status-item">CPU <strong>18%</strong></span>
+          <span class="status-item">MEM <strong>1.24G</strong></span>
+          <span class="status-item">Remote <strong>online</strong></span>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      const root = document.documentElement;
+      const state = {
+        main: localStorage.getItem("ui-test-main") || "terminal",
+        panel: localStorage.getItem("ui-test-panel") || "ai",
+        theme:
+          localStorage.getItem("ui-test-theme") ||
+          (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"),
+      };
+
+      function sync() {
+        root.dataset.main = state.main;
+        root.dataset.panel = state.panel;
+        root.dataset.theme = state.theme;
+
+        document.querySelectorAll("[data-main]").forEach((button) => {
+          button.classList.toggle("active", button.dataset.main === state.main);
+        });
+        document.querySelectorAll("[data-panel]").forEach((button) => {
+          button.classList.toggle("active", button.dataset.panel === state.panel);
+        });
+
+        localStorage.setItem("ui-test-main", state.main);
+        localStorage.setItem("ui-test-panel", state.panel);
+        localStorage.setItem("ui-test-theme", state.theme);
+      }
+
+      document.querySelectorAll("[data-main]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.main = button.dataset.main;
+          sync();
+        });
+      });
+
+      document.querySelectorAll("[data-panel]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.panel = button.dataset.panel;
+          sync();
+        });
+      });
+
+      document.querySelector("[data-theme-toggle]").addEventListener("click", () => {
+        state.theme = state.theme === "dark" ? "light" : "dark";
+        sync();
+      });
+
+      sync();
+    </script>
+  </body>
+</html>

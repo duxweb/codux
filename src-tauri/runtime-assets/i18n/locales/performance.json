@@ -1,0 +1,54 @@
+{
+  "strings": {
+    "de": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "Speicher %@",
+      "performance.monitor.graphics_format": "Grafik %@"
+    },
+    "en": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "MEM %@",
+      "performance.monitor.graphics_format": "GFX %@"
+    },
+    "es": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "Memoria %@",
+      "performance.monitor.graphics_format": "Gráficos %@"
+    },
+    "fr": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "Mémoire %@",
+      "performance.monitor.graphics_format": "Graphiques %@"
+    },
+    "ja": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "メモリ %@",
+      "performance.monitor.graphics_format": "グラフィック %@"
+    },
+    "ko": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "메모리 %@",
+      "performance.monitor.graphics_format": "그래픽 %@"
+    },
+    "pt-BR": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "Memória %@",
+      "performance.monitor.graphics_format": "Gráficos %@"
+    },
+    "ru": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "Память %@",
+      "performance.monitor.graphics_format": "Графика %@"
+    },
+    "zh-Hans": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "内存 %@",
+      "performance.monitor.graphics_format": "图形 %@"
+    },
+    "zh-Hant": {
+      "performance.monitor.cpu_format": "CPU %@",
+      "performance.monitor.memory_format": "記憶體 %@",
+      "performance.monitor.graphics_format": "圖形 %@"
+    }
+  }
+}

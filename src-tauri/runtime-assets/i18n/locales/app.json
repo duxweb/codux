@@ -1,0 +1,54 @@
+{
+  "strings": {
+    "de": {
+      "app.live_log.opened": "Live-Protokoll geoffnet.",
+      "app.runtime_log.opened": "Laufzeitprotokoll geoffnet.",
+      "app.window.main_missing": "Unable to find the main window."
+    },
+    "en": {
+      "app.live_log.opened": "Opened live log.",
+      "app.runtime_log.opened": "Opened runtime log.",
+      "app.window.main_missing": "Unable to find the main window."
+    },
+    "es": {
+      "app.live_log.opened": "Registro en vivo abierto.",
+      "app.runtime_log.opened": "Registro de ejecucion abierto.",
+      "app.window.main_missing": "Unable to find the main window."
+    },
+    "fr": {
+      "app.live_log.opened": "Journal live ouvert.",
+      "app.runtime_log.opened": "Journal d'execution ouvert.",
+      "app.window.main_missing": "Unable to find the main window."
+    },
+    "ja": {
+      "app.live_log.opened": "ライブログを開きました。",
+      "app.runtime_log.opened": "実行ログを開きました。",
+      "app.window.main_missing": "Unable to find the main window."
+    },
+    "ko": {
+      "app.live_log.opened": "라이브 로그를 열었습니다.",
+      "app.runtime_log.opened": "런타임 로그를 열었습니다.",
+      "app.window.main_missing": "Unable to find the main window."
+    },
+    "pt-BR": {
+      "app.live_log.opened": "Log ao vivo aberto.",
+      "app.runtime_log.opened": "Log de execucao aberto.",
+      "app.window.main_missing": "Unable to find the main window."
+    },
+    "ru": {
+      "app.live_log.opened": "Открыт live-журнал.",
+      "app.runtime_log.opened": "Открыт журнал выполнения.",
+      "app.window.main_missing": "Unable to find the main window."
+    },
+    "zh-Hans": {
+      "app.live_log.opened": "已打开监听日志。",
+      "app.runtime_log.opened": "已打开运行日志。",
+      "app.window.main_missing": "无法找到主窗口。"
+    },
+    "zh-Hant": {
+      "app.live_log.opened": "已開啟監聽日誌。",
+      "app.runtime_log.opened": "已開啟執行日誌。",
+      "app.window.main_missing": "找不到主視窗。"
+    }
+  }
+}

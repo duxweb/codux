@@ -1,0 +1,44 @@
+[package]
+name = "codux-tauri"
+version = "0.1.0"
+description = "Codux Tauri desktop workspace"
+authors = ["Codux"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "codux_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.1", features = [] }
+
+[dependencies]
+anyhow = "1.0"
+aes-gcm = "0.10"
+base64 = "0.22"
+chrono = "0.4"
+core-foundation-sys = "0.8"
+libc = "0.2"
+notify = "8.2.0"
+percent-encoding = "2.3"
+portable-pty = "0.9"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+sys-locale = "0.3"
+tauri = { version = "2.9.3", features = ["macos-private-api"] }
+tauri-plugin-dialog = "2.0.0-rc.8"
+tauri-plugin-notification = "2.0.0-rc.5"
+tauri-plugin-opener = "2.5.0"
+thiserror = "2.0"
+uuid = { version = "1.11", features = ["serde", "v4", "v5"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_SystemServices", "Win32_System_Threading"] }
+url = "2.5.7"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2.0.0-rc.4"

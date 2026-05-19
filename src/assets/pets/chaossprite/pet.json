@@ -1,0 +1,6 @@
+{
+  "id": "chaossprite-default",
+  "displayName": "chaossprite",
+  "description": "Codux bundled pet atlas.",
+  "spritesheetPath": "spritesheet.png"
+}

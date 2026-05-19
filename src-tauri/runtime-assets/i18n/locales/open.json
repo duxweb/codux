@@ -1,0 +1,124 @@
+{
+  "strings": {
+    "de": {
+      "open.application.format": "In %@ öffnen",
+      "open.finder": "Im Finder öffnen",
+      "open.ghostty": "In Ghostty öffnen",
+      "open.ide": "In IDE öffnen",
+      "open.iterm2": "In iTerm2 öffnen",
+      "open.project.finder": "Öffnen Sie das Projekt in Finder",
+      "open.project.vscode": "Öffnen Sie das Projekt in VS Code",
+      "open.terminal": "Im Terminal öffnen",
+      "open.vscode": "In VS Code öffnen",
+      "open.xcode": "In Xcode öffnen"
+    },
+    "en": {
+      "open.application.format": "Open in %@",
+      "open.finder": "Open in Finder",
+      "open.ghostty": "Open in Ghostty",
+      "open.ide": "Open in IDE",
+      "open.iterm2": "Open in iTerm2",
+      "open.project.finder": "Open Project in Finder",
+      "open.project.vscode": "Open Project in VS Code",
+      "open.terminal": "Open in Terminal",
+      "open.vscode": "Open in VS Code",
+      "open.xcode": "Open in Xcode"
+    },
+    "es": {
+      "open.application.format": "Abrir en %@",
+      "open.finder": "Abrir en Finder",
+      "open.ghostty": "Abrir en Ghostty",
+      "open.ide": "Abrir en IDE",
+      "open.iterm2": "Abrir en iTerm2",
+      "open.project.finder": "Abrir proyecto en Finder",
+      "open.project.vscode": "Abrir proyecto en VS Code",
+      "open.terminal": "Abrir en Terminal",
+      "open.vscode": "Abrir en VS Code",
+      "open.xcode": "Abrir en Xcode"
+    },
+    "fr": {
+      "open.application.format": "Ouvrir dans %@",
+      "open.finder": "Ouvrir dans Finder",
+      "open.ghostty": "Ouvrir dans Ghostty",
+      "open.ide": "Ouvrir dans IDE",
+      "open.iterm2": "Ouvrir dans iTerm2",
+      "open.project.finder": "Projet ouvert dans Finder",
+      "open.project.vscode": "Projet ouvert dans VS Code",
+      "open.terminal": "Ouvrir dans le terminal",
+      "open.vscode": "Ouvrir dans VS Code",
+      "open.xcode": "Ouvrir dans Xcode"
+    },
+    "ja": {
+      "open.application.format": "%@で開く",
+      "open.finder": "Finderで開く",
+      "open.ghostty": "Ghosttyで開く",
+      "open.ide": "IDEで開く",
+      "open.iterm2": "iTerm2で開く",
+      "open.project.finder": "Finder でプロジェクトを開く",
+      "open.project.vscode": "VS Code でプロジェクトを開く",
+      "open.terminal": "ターミナルで開く",
+      "open.vscode": "VS Codeで開く",
+      "open.xcode": "Xcodeで開く"
+    },
+    "ko": {
+      "open.application.format": "%@에서 열기",
+      "open.finder": "Finder에서 열기",
+      "open.ghostty": "Ghostty에서 열기",
+      "open.ide": "IDE에서 열기",
+      "open.iterm2": "iTerm2에서 열기",
+      "open.project.finder": "Finder에서 프로젝트 열기",
+      "open.project.vscode": "VS Code에서 프로젝트 열기",
+      "open.terminal": "터미널에서 열기",
+      "open.vscode": "VS Code에서 열기",
+      "open.xcode": "Xcode에서 열기"
+    },
+    "pt-BR": {
+      "open.application.format": "Abrir em %@",
+      "open.finder": "Abrir em Finder",
+      "open.ghostty": "Abrir em Ghostty",
+      "open.ide": "Abrir em IDE",
+      "open.iterm2": "Abrir em iTerm2",
+      "open.project.finder": "Abra o projeto em Finder",
+      "open.project.vscode": "Abra o projeto em VS Code",
+      "open.terminal": "Abrir no Terminal",
+      "open.vscode": "Abrir em VS Code",
+      "open.xcode": "Abrir em Xcode"
+    },
+    "ru": {
+      "open.application.format": "Открыть в %@",
+      "open.finder": "Открыть в Finder",
+      "open.ghostty": "Открыть в Ghostty",
+      "open.ide": "Открыть в IDE",
+      "open.iterm2": "Открыть в iTerm2",
+      "open.project.finder": "Открыть проект в Finder",
+      "open.project.vscode": "Открыть проект в VS Code",
+      "open.terminal": "Открыть в терминале",
+      "open.vscode": "Открыть в VS Code",
+      "open.xcode": "Открыть в Xcode"
+    },
+    "zh-Hans": {
+      "open.application.format": "使用 %@ 打开",
+      "open.finder": "使用访达打开",
+      "open.ghostty": "使用 Ghostty 打开",
+      "open.ide": "使用 IDE 打开",
+      "open.iterm2": "使用 iTerm2 打开",
+      "open.project.finder": "使用访达打开项目",
+      "open.project.vscode": "使用 VS Code 打开项目",
+      "open.terminal": "使用终端打开",
+      "open.vscode": "使用 VS Code 打开",
+      "open.xcode": "使用 Xcode 打开"
+    },
+    "zh-Hant": {
+      "open.application.format": "在 %@ 中開啟",
+      "open.finder": "在 Finder 中開啟",
+      "open.ghostty": "在 Ghostty 中開啟",
+      "open.ide": "在 IDE 中開啟",
+      "open.iterm2": "在 iTerm2 中開啟",
+      "open.project.finder": "在 Finder 中開啟項目",
+      "open.project.vscode": "在 VS Code 中開啟項目",
+      "open.terminal": "使用終端機打開",
+      "open.vscode": "在 VS Code 中開啟",
+      "open.xcode": "在 Xcode 中開啟"
+    }
+  }
+}

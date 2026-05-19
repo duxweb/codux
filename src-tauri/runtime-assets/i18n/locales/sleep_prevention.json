@@ -1,0 +1,34 @@
+{
+  "strings": {
+    "de": {
+      "sleep_prevention.assertion_reason": "Codux halt diesen Mac wach."
+    },
+    "en": {
+      "sleep_prevention.assertion_reason": "Codux is keeping this Mac awake."
+    },
+    "es": {
+      "sleep_prevention.assertion_reason": "Codux mantiene este Mac activo."
+    },
+    "fr": {
+      "sleep_prevention.assertion_reason": "Codux maintient ce Mac actif."
+    },
+    "ja": {
+      "sleep_prevention.assertion_reason": "CoduxがこのMacを起動状態に保っています。"
+    },
+    "ko": {
+      "sleep_prevention.assertion_reason": "Codux가 이 Mac을 깨어 있게 유지합니다."
+    },
+    "pt-BR": {
+      "sleep_prevention.assertion_reason": "O Codux esta mantendo este Mac ativo."
+    },
+    "ru": {
+      "sleep_prevention.assertion_reason": "Codux не дает этому Mac перейти в сон."
+    },
+    "zh-Hans": {
+      "sleep_prevention.assertion_reason": "Codux 正在保持这台 Mac 唤醒。"
+    },
+    "zh-Hant": {
+      "sleep_prevention.assertion_reason": "Codux 正在保持這台 Mac 喚醒。"
+    }
+  }
+}

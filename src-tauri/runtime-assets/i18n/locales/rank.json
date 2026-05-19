@@ -1,0 +1,104 @@
+{
+  "strings": {
+    "de": {
+      "rank.bronze": "Leicht",
+      "rank.diamond": "Vollgas",
+      "rank.gold": "Fokus",
+      "rank.grandmaster": "Legende",
+      "rank.iron": "Leerlauf",
+      "rank.master": "Limit",
+      "rank.platinum": "Intensiv",
+      "rank.silver": "Aktiv"
+    },
+    "en": {
+      "rank.bronze": "Light",
+      "rank.diamond": "Grind",
+      "rank.gold": "Focus",
+      "rank.grandmaster": "Godlike",
+      "rank.iron": "Idle",
+      "rank.master": "Limit",
+      "rank.platinum": "Intense",
+      "rank.silver": "Active"
+    },
+    "es": {
+      "rank.bronze": "Ligero",
+      "rank.diamond": "A tope",
+      "rank.gold": "Enfoque",
+      "rank.grandmaster": "Legendario",
+      "rank.iron": "Reposo",
+      "rank.master": "Límite",
+      "rank.platinum": "Intenso",
+      "rank.silver": "Activo"
+    },
+    "fr": {
+      "rank.bronze": "Léger",
+      "rank.diamond": "Turbo",
+      "rank.gold": "Focus",
+      "rank.grandmaster": "Légende",
+      "rank.iron": "Veille",
+      "rank.master": "Limite",
+      "rank.platinum": "Intense",
+      "rank.silver": "Actif"
+    },
+    "ja": {
+      "rank.bronze": "軽量",
+      "rank.diamond": "修羅場",
+      "rank.gold": "集中",
+      "rank.grandmaster": "神域",
+      "rank.iron": "待機",
+      "rank.master": "限界",
+      "rank.platinum": "高負荷",
+      "rank.silver": "アクティブ"
+    },
+    "ko": {
+      "rank.bronze": "경량",
+      "rank.diamond": "풀가동",
+      "rank.gold": "집중",
+      "rank.grandmaster": "신급",
+      "rank.iron": "대기",
+      "rank.master": "한계",
+      "rank.platinum": "고강도",
+      "rank.silver": "활성"
+    },
+    "pt-BR": {
+      "rank.bronze": "Leve",
+      "rank.diamond": "Virado",
+      "rank.gold": "Foco",
+      "rank.grandmaster": "Lendário",
+      "rank.iron": "Inativo",
+      "rank.master": "Limite",
+      "rank.platinum": "Intenso",
+      "rank.silver": "Ativo"
+    },
+    "ru": {
+      "rank.bronze": "Легкий",
+      "rank.diamond": "Аврал",
+      "rank.gold": "Фокус",
+      "rank.grandmaster": "Легенда",
+      "rank.iron": "Простой",
+      "rank.master": "Предел",
+      "rank.platinum": "Интенсив",
+      "rank.silver": "Актив"
+    },
+    "zh-Hans": {
+      "rank.bronze": "轻量",
+      "rank.diamond": "爆肝",
+      "rank.gold": "专注",
+      "rank.grandmaster": "封神",
+      "rank.iron": "待机",
+      "rank.master": "极限",
+      "rank.platinum": "高强度",
+      "rank.silver": "活跃"
+    },
+    "zh-Hant": {
+      "rank.bronze": "輕量",
+      "rank.diamond": "爆肝",
+      "rank.gold": "專注",
+      "rank.grandmaster": "封神",
+      "rank.iron": "待機",
+      "rank.master": "極限",
+      "rank.platinum": "高強度",
+      "rank.silver": "活躍"
+    }
+  }
+}

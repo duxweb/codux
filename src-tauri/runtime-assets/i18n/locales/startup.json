@@ -1,0 +1,18 @@
+{
+  "strings": {
+    "en": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
+    },
+    "zh-Hans": {
+      "startup.recovery.invalid_state": "检测到已保存的应用配置无效，现已恢复为默认配置。",
+      "startup.recovery.invalid_state.backup_format": "检测到已保存的应用配置无效，现已恢复为默认配置，并已备份为 %@。",
+      "startup.recovery.sanitized": "部分已保存的项目或终端布局数据存在异常，现已自动修复。",
+      "startup.recovery.status": "已恢复异常的应用保存数据。",
+      "startup.recovery.title": "已恢复应用数据"
+    }
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "strings": {
+    "de": {
+      "sidebar.footer.add_project": "Projekt hinzufügen",
+      "sidebar.footer.help": "Hilfe",
+      "sidebar.footer.settings": "Einstellungen",
+      "sidebar.project.edit": "Projekt bearbeiten",
+      "sidebar.project.open_folder": "Ordner öffnen",
+      "sidebar.project.remove": "Projekt entfernen",
+      "sidebar.workspace": "Arbeitsbereich"
+    },
+    "en": {
+      "sidebar.footer.add_project": "Add Project",
+      "sidebar.footer.help": "Help",
+      "sidebar.footer.settings": "Settings",
+      "sidebar.project.edit": "Edit Project",
+      "sidebar.project.open_folder": "Open Folder",
+      "sidebar.project.remove": "Remove Project",
+      "sidebar.workspace": "Workspace"
+    },
+    "es": {
+      "sidebar.footer.add_project": "Agregar proyecto",
+      "sidebar.footer.help": "Ayuda",
+      "sidebar.footer.settings": "Ajustes",
+      "sidebar.project.edit": "Editar proyecto",
+      "sidebar.project.open_folder": "Abrir carpeta",
+      "sidebar.project.remove": "Eliminar proyecto",
+      "sidebar.workspace": "Espacio de trabajo"
+    },
+    "fr": {
+      "sidebar.footer.add_project": "Ajouter un projet",
+      "sidebar.footer.help": "Aide",
+      "sidebar.footer.settings": "Paramètres",
+      "sidebar.project.edit": "Modifier le projet",
+      "sidebar.project.open_folder": "Ouvrir le dossier",
+      "sidebar.project.remove": "Supprimer le projet",
+      "sidebar.workspace": "Espace de travail"
+    },
+    "ja": {
+      "sidebar.footer.add_project": "プロジェクトの追加",
+      "sidebar.footer.help": "ヘルプ",
+      "sidebar.footer.settings": "設定",
+      "sidebar.project.edit": "プロジェクトの編集",
+      "sidebar.project.open_folder": "フォルダーを開く",
+      "sidebar.project.remove": "プロジェクトの削除",
+      "sidebar.workspace": "ワークスペース"
+    },
+    "ko": {
+      "sidebar.footer.add_project": "프로젝트 추가",
+      "sidebar.footer.help": "도움말",
+      "sidebar.footer.settings": "설정",
+      "sidebar.project.edit": "프로젝트 편집",
+      "sidebar.project.open_folder": "폴더 열기",
+      "sidebar.project.remove": "프로젝트 제거",
+      "sidebar.workspace": "워크스페이스"
+    },
+    "pt-BR": {
+      "sidebar.footer.add_project": "Adicionar projeto",
+      "sidebar.footer.help": "Ajuda",
+      "sidebar.footer.settings": "Configurações",
+      "sidebar.project.edit": "Editar projeto",
+      "sidebar.project.open_folder": "Abrir pasta",
+      "sidebar.project.remove": "Remover projeto",
+      "sidebar.workspace": "Espaço de trabalho"
+    },
+    "ru": {
+      "sidebar.footer.add_project": "Добавить проект",
+      "sidebar.footer.help": "Помощь",
+      "sidebar.footer.settings": "Настройки",
+      "sidebar.project.edit": "Редактировать проект",
+      "sidebar.project.open_folder": "Открыть папку",
+      "sidebar.project.remove": "Удалить проект",
+      "sidebar.workspace": "Рабочая область"
+    },
+    "zh-Hans": {
+      "sidebar.footer.add_project": "添加项目",
+      "sidebar.footer.help": "帮助",
+      "sidebar.footer.settings": "设置",
+      "sidebar.project.edit": "编辑项目",
+      "sidebar.project.open_folder": "打开文件夹",
+      "sidebar.project.remove": "移除项目",
+      "sidebar.workspace": "工作区"
+    },
+    "zh-Hant": {
+      "sidebar.footer.add_project": "新增項目",
+      "sidebar.footer.help": "幫助",
+      "sidebar.footer.settings": "設定",
+      "sidebar.project.edit": "編輯項目",
+      "sidebar.project.open_folder": "開啟資料夾",
+      "sidebar.project.remove": "刪除項目",
+      "sidebar.workspace": "工作區"
+    }
+  }
+}
