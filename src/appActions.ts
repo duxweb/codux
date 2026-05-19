@@ -185,6 +185,16 @@ export async function toggleDeveloperTools() {
 
 export async function openProjectFolderFromMenu() {
   if (!window.__TAURI_INTERNALS__) return null;
+  if (openProjectFolderRequest) return openProjectFolderRequest;
+  openProjectFolderRequest = openProjectFolderFromMenuUnsafe().finally(() => {
+    openProjectFolderRequest = null;
+  });
+  return openProjectFolderRequest;
+}
+
+let openProjectFolderRequest: Promise<ProjectListSnapshot | null> | null = null;
+
+async function openProjectFolderFromMenuUnsafe() {
   const selected = await openLocalizedDialog({
     directory: true,
     multiple: false,
@@ -201,6 +211,23 @@ export async function openProjectFolderFromMenu() {
       badgeSymbol: null,
       badgeColorHex: null,
     },
+  });
+}
+
+function installMenuListener<T>(
+  unlisteners: Array<() => void>,
+  isDisposed: () => boolean,
+  event: string,
+  handler: (payload: T) => void,
+) {
+  void listen<T>(event, ({ payload }) => {
+    if (!isDisposed()) handler(payload);
+  }).then((unlisten) => {
+    if (isDisposed()) {
+      unlisten();
+      return;
+    }
+    unlisteners.push(unlisten);
   });
 }
 
@@ -228,26 +255,12 @@ export function installAppMenuActions() {
   if (!window.__TAURI_INTERNALS__) return () => {};
   let disposed = false;
   const unlisteners: Array<() => void> = [];
-  void listen("app-menu:settings", () => void openAppWindow("settings")).then((unlisten) => {
-    if (disposed) unlisten();
-    else unlisteners.push(unlisten);
-  });
-  void listen("app-menu:project-create", () => void openAppWindow("project-create")).then((unlisten) => {
-    if (disposed) unlisten();
-    else unlisteners.push(unlisten);
-  });
-  void listen("app-menu:about", () => void showAbout()).then((unlisten) => {
-    if (disposed) unlisten();
-    else unlisteners.push(unlisten);
-  });
-  void listen("app-menu:check-updates", () => void checkForUpdates()).then((unlisten) => {
-    if (disposed) unlisten();
-    else unlisteners.push(unlisten);
-  });
-  void listen("app-menu:export-diagnostics", () => void exportDiagnostics()).then((unlisten) => {
-    if (disposed) unlisten();
-    else unlisteners.push(unlisten);
-  });
+  const isDisposed = () => disposed;
+  installMenuListener<void>(unlisteners, isDisposed, "app-menu:settings", () => void openAppWindow("settings"));
+  installMenuListener<void>(unlisteners, isDisposed, "app-menu:project-create", () => void openAppWindow("project-create"));
+  installMenuListener<void>(unlisteners, isDisposed, "app-menu:about", () => void showAbout());
+  installMenuListener<void>(unlisteners, isDisposed, "app-menu:check-updates", () => void checkForUpdates());
+  installMenuListener<void>(unlisteners, isDisposed, "app-menu:export-diagnostics", () => void exportDiagnostics());
   return () => {
     disposed = true;
     unlisteners.splice(0).forEach((unlisten) => unlisten());
@@ -267,11 +280,9 @@ export function installWorkspaceMenuActions(handlers: {
   if (!window.__TAURI_INTERNALS__) return () => {};
   let disposed = false;
   const unlisteners: Array<() => void> = [];
+  const isDisposed = () => disposed;
   const install = <T,>(event: string, handler: (payload: T) => void) => {
-    void listen<T>(event, ({ payload }) => handler(payload)).then((unlisten) => {
-      if (disposed) unlisten();
-      else unlisteners.push(unlisten);
-    });
+    installMenuListener(unlisteners, isDisposed, event, handler);
   };
 
   install<"terminal" | "files" | "review">("app-menu:view", handlers.setMainView);
