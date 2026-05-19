@@ -1716,7 +1716,7 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
     paste: tm("files.panel.paste", "Paste"),
     reveal: tm("files.panel.reveal_finder", "Reveal in Finder"),
     rename: tm("common.rename", "Rename"),
-    delete: tm("files.panel.delete", "Move to Trash"),
+    delete: tm("files.panel.delete", "Delete"),
     actions: tm("files.panel.actions", "Actions"),
   }), []);
   const selectedEntry = useMemo(
@@ -1873,8 +1873,8 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
       setError(null);
       updateStatus(
         targets.length === 1
-          ? formatI18n(tm("files.panel.status.trashed_format", "Moved %@ to Trash"), targets[0].name)
-          : formatI18n(tm("files.panel.status.trashed_count_format", "Moved %d item(s) to Trash"), targets.length),
+          ? formatI18n(tm("files.panel.status.trashed_format", "Deleted %@"), targets[0].name)
+          : formatI18n(tm("files.panel.status.trashed_count_format", "Deleted %d item(s)"), targets.length),
         "warning",
       );
       await Promise.all(Array.from(parentPaths).map((parent) => loadChildren(parent)));
@@ -2149,6 +2149,20 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
                 onInlineSubmit={() => void submitInlineEdit()}
                 onSelect={(modifiers) => selectEntry(row.entry, modifiers)}
                 onContextMenuOpen={() => focusContextEntry(row.entry)}
+                onKeyAction={(event) => {
+                  if (event.key !== "Enter" && event.key !== "F2" && event.key !== "Delete" && event.key !== "Backspace") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const targets = selectedPaths.has(row.entry.path) && selectedEntries.length > 1 ? selectedEntries : [row.entry];
+                  setSelectedPath(row.entry.path);
+                  setSelectedPaths(new Set(targets.map((entry) => entry.path)));
+                  setSelectionAnchorPath(row.entry.path);
+                  if (event.key === "Delete" || event.key === "Backspace") {
+                    stageDeleteEntries(targets);
+                  } else {
+                    void renameEntry(row.entry);
+                  }
+                }}
                 onOpen={() => openEntry(row.entry)}
                 onEdit={() => {
                   setSelectedPath(row.entry.path);
@@ -2321,6 +2335,7 @@ function FileTreeFragment({
   onInlineSubmit,
   onSelect,
   onContextMenuOpen,
+  onKeyAction,
   onOpen,
   onEdit,
   onInsertPathIntoTerminal,
@@ -2344,6 +2359,7 @@ function FileTreeFragment({
   onInlineSubmit: () => void;
   onSelect: (modifiers: FileSelectionModifiers) => void;
   onContextMenuOpen?: () => void;
+  onKeyAction?: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   onOpen: () => void;
   onEdit?: () => void;
   onInsertPathIntoTerminal?: () => void;
@@ -2382,6 +2398,7 @@ function FileTreeFragment({
           labels={labels}
           onSelect={onSelect}
           onContextMenuOpen={onContextMenuOpen}
+          onKeyAction={onKeyAction}
           onOpen={onOpen}
           onEdit={onEdit}
           onInsertPathIntoTerminal={onInsertPathIntoTerminal}
@@ -2462,6 +2479,7 @@ function FileTreeRow({
   loading,
   onSelect,
   onContextMenuOpen,
+  onKeyAction,
   onOpen,
   onEdit,
   onInsertPathIntoTerminal,
@@ -2481,6 +2499,7 @@ function FileTreeRow({
   labels: FileTreeLabels;
   onSelect: (modifiers: FileSelectionModifiers) => void;
   onContextMenuOpen?: () => void;
+  onKeyAction?: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   onOpen: () => void;
   onEdit?: () => void;
   onInsertPathIntoTerminal?: () => void;
@@ -2516,7 +2535,9 @@ function FileTreeRow({
             };
           }}
           onPressUp={() => onSelect(selectionModifiersRef.current)}
+          onKeyDownCapture={onKeyAction}
           onDoubleClick={entry.isDirectory ? undefined : onOpen}
+          excludeFromTabOrder={false}
         >
           {entry.isDirectory ? (
             <>

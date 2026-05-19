@@ -1,7 +1,7 @@
 import { useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { mergeProps, usePress, type PressEvent } from "react-aria";
 
-type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "onKeyDown" | "onKeyUp"> & {
+type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
   children?: ReactNode;
   excludeFromTabOrder?: boolean;
   onPress?: (event: PressEvent) => void;
