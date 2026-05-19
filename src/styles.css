@@ -77,6 +77,26 @@
   --terminal-bright-cyan: #8ee0e6;
   --terminal-bright-white: #eef4fb;
 
+  --editor-comment: var(--terminal-bright-black);
+  --editor-keyword: var(--terminal-magenta);
+  --editor-atom: var(--terminal-bright-magenta);
+  --editor-string: var(--terminal-green);
+  --editor-string2: var(--terminal-cyan);
+  --editor-number: var(--terminal-yellow);
+  --editor-variable: var(--terminal-fg);
+  --editor-variable2: var(--terminal-bright-cyan);
+  --editor-type: var(--terminal-blue);
+  --editor-class: var(--terminal-bright-yellow);
+  --editor-property: var(--terminal-cyan);
+  --editor-operator: var(--terminal-red);
+  --editor-punctuation: color-mix(in oklab, var(--terminal-fg) 72%, var(--terminal-bg));
+  --editor-meta: var(--terminal-bright-black);
+  --editor-link: var(--terminal-blue);
+  --editor-heading: var(--terminal-bright-blue);
+  --editor-inserted: var(--terminal-green);
+  --editor-deleted: var(--terminal-red);
+  --editor-invalid: var(--terminal-bright-red);
+
   font-family:
     -apple-system,
     BlinkMacSystemFont,
