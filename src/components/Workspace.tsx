@@ -398,6 +398,20 @@ function TerminalMode({
             tool: command.command ? "manual" : undefined,
           });
         }
+        if (command.type === "insert-terminal-text") {
+          const terminalId = resolveVisibleTerminalId(
+            {
+              topPanes,
+              tabs,
+              activeTabId,
+            },
+            activeTerminalId,
+          );
+          if (terminalId) {
+            terminalRuntime.write(terminalId, command.text);
+            activateTerminal(terminalId, { focus: true });
+          }
+        }
         if (command.type === "reattach-terminal-pane") {
           setTopPanes((current) =>
             current.map((pane) =>
@@ -408,7 +422,7 @@ function TerminalMode({
           );
         }
       }),
-    [addBottomTab, addTopPane],
+    [activateTerminal, activeTabId, activeTerminalId, addBottomTab, addTopPane, tabs, topPanes],
   );
 
   useEffect(() => {

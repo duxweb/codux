@@ -540,8 +540,13 @@ function App() {
           setMainView("terminal");
           setShortcutFocusScope("workspace");
         }
+        if (command.type === "insert-terminal-text") {
+          setMainView("terminal");
+          setShortcutFocusScope("workspace");
+          requestTerminalFocus();
+        }
       }),
-    [],
+    [requestTerminalFocus],
   );
 
   return (

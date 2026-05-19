@@ -1323,10 +1323,13 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
   );
   const fileTreeLabels = useMemo<FileTreeLabels>(() => ({
     open: tm("files.panel.open", "Open"),
+    edit: tm("files.panel.edit", "Edit"),
+    insertPathTerminal: tm("files.panel.insert_path_terminal", "Insert Path into Terminal"),
+    copyPath: tm("files.panel.copy_path", "Copy Path"),
     copy: tm("files.panel.copy", "Copy"),
-    reveal: tm("files.panel.reveal", "Reveal in File Manager"),
-    pasteHere: tm("files.panel.paste_here", "Paste Here"),
-    importHere: tm("files.panel.import_here", "Import Files Here"),
+    cut: tm("files.panel.cut", "Cut"),
+    paste: tm("files.panel.paste", "Paste"),
+    reveal: tm("files.panel.reveal_finder", "Reveal in Finder"),
     rename: tm("common.rename", "Rename"),
     delete: tm("files.panel.delete", "Move to Trash"),
     actions: tm("files.panel.actions", "Actions"),
@@ -1665,6 +1668,22 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
                 onInlineCancel={() => setInlineEdit(null)}
                 onInlineSubmit={() => void submitInlineEdit()}
                 onOpen={() => openEntry(row.entry)}
+                onEdit={() => {
+                  setSelectedPath(row.entry.path);
+                  openEntry(row.entry);
+                }}
+                onInsertPathIntoTerminal={() => {
+                  setSelectedPath(row.entry.path);
+                  broadcastWorkspaceCommand({
+                    type: "insert-terminal-text",
+                    text: shellQuote(row.entry.path),
+                  });
+                }}
+                onCopyPath={() => {
+                  setSelectedPath(row.entry.path);
+                  void navigator.clipboard?.writeText(row.entry.path);
+                  updateStatus(formatI18n(tm("files.panel.status.copied_format", "Copied %@"), row.entry.name), "success");
+                }}
                 onRename={() => {
                   setSelectedPath(row.entry.path);
                   void renameEntry(row.entry);
@@ -1700,7 +1719,6 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
                       handleFileError(nextError);
                     });
                 } : undefined}
-                onImport={(paths) => void importFilesIntoTarget(paths, row.entry.isDirectory ? row.entry.path : parentPath(row.entry.path, rootPath))}
               />
             ))}
           </>
@@ -1764,10 +1782,13 @@ type FileInlineEdit = (
 
 type FileTreeLabels = {
   open: string;
+  edit: string;
+  insertPathTerminal: string;
+  copyPath: string;
   copy: string;
+  cut: string;
+  paste: string;
   reveal: string;
-  pasteHere: string;
-  importHere: string;
   rename: string;
   delete: string;
   actions: string;
@@ -1785,12 +1806,14 @@ function FileTreeFragment({
   onInlineCancel,
   onInlineSubmit,
   onOpen,
+  onEdit,
+  onInsertPathIntoTerminal,
+  onCopyPath,
   onRename,
   onDelete,
   onCopy,
   onReveal,
   onPaste,
-  onImport,
 }: {
   row: FileRowModel;
   rootPath: string;
@@ -1803,12 +1826,14 @@ function FileTreeFragment({
   onInlineCancel: () => void;
   onInlineSubmit: () => void;
   onOpen: () => void;
+  onEdit?: () => void;
+  onInsertPathIntoTerminal?: () => void;
+  onCopyPath?: () => void;
   onRename?: () => void;
   onDelete?: () => void;
   onCopy?: () => void;
   onReveal?: () => void;
   onPaste?: () => void;
-  onImport?: (paths: string[]) => void;
 }) {
   const editAfter =
     inlineEdit?.mode === "create" &&
@@ -1836,12 +1861,14 @@ function FileTreeFragment({
           loading={loading}
           labels={labels}
           onOpen={onOpen}
+          onEdit={onEdit}
+          onInsertPathIntoTerminal={onInsertPathIntoTerminal}
+          onCopyPath={onCopyPath}
           onRename={onRename}
           onDelete={onDelete}
           onCopy={onCopy}
           onReveal={onReveal}
           onPaste={onPaste}
-          onImport={onImport}
         />
       )}
       {editAfter && inlineEdit && (
@@ -1911,12 +1938,14 @@ function FileTreeRow({
   expanded,
   loading,
   onOpen,
+  onEdit,
+  onInsertPathIntoTerminal,
+  onCopyPath,
   onRename,
   onDelete,
   onCopy,
   onReveal,
   onPaste,
-  onImport,
   labels,
 }: {
   row: FileRowModel;
@@ -1925,12 +1954,14 @@ function FileTreeRow({
   loading: boolean;
   labels: FileTreeLabels;
   onOpen: () => void;
+  onEdit?: () => void;
+  onInsertPathIntoTerminal?: () => void;
+  onCopyPath?: () => void;
   onRename?: () => void;
   onDelete?: () => void;
   onCopy?: () => void;
   onReveal?: () => void;
   onPaste?: () => void;
-  onImport?: (paths: string[]) => void;
 }) {
   const entry = row.entry;
   const contextMenu = useContextMenu();
@@ -1979,22 +2010,16 @@ function FileTreeRow({
           </PressableButton>
         </div>
         <ContextMenu ariaLabel={`${entry.name} ${labels.actions}`} menu={contextMenu.menu} onClose={contextMenu.closeMenu}>
-          <ContextMenuItem label={labels.open} onSelect={onOpen}>{labels.open}</ContextMenuItem>
+          <ContextMenuItem label={labels.open} disabled={entry.isDirectory} onSelect={onOpen}>{labels.open}</ContextMenuItem>
+          <ContextMenuItem label={labels.edit} disabled={entry.isDirectory} onSelect={onEdit}>{labels.edit}</ContextMenuItem>
+          <ContextMenuItem label={labels.insertPathTerminal} onSelect={onInsertPathIntoTerminal}>{labels.insertPathTerminal}</ContextMenuItem>
+          <ContextMenuItem label={labels.copyPath} onSelect={onCopyPath}>{labels.copyPath}</ContextMenuItem>
           <ContextMenuItem label={labels.copy} onSelect={onCopy}>{labels.copy}</ContextMenuItem>
-          <ContextMenuItem label={labels.reveal} onSelect={onReveal}>{labels.reveal}</ContextMenuItem>
-          {onPaste && <ContextMenuItem label={labels.pasteHere} onSelect={onPaste}>{labels.pasteHere}</ContextMenuItem>}
-          <ContextMenuItem
-            label={labels.importHere}
-            onSelect={() => {
-              void pickImportFiles().then((paths) => {
-                if (paths.length > 0) onImport?.(paths);
-              });
-            }}
-          >
-            {labels.importHere}
-          </ContextMenuItem>
-          <ContextMenuSeparator />
+          <ContextMenuItem label={labels.cut} disabled>{labels.cut}</ContextMenuItem>
           <ContextMenuItem label={labels.rename} onSelect={onRename}>{labels.rename}</ContextMenuItem>
+          <ContextMenuItem label={labels.paste} disabled={!onPaste} onSelect={onPaste}>{labels.paste}</ContextMenuItem>
+          <ContextMenuItem label={labels.reveal} onSelect={onReveal}>{labels.reveal}</ContextMenuItem>
+          <ContextMenuSeparator />
           <ContextMenuItem label={labels.delete} onSelect={onDelete}>{labels.delete}</ContextMenuItem>
         </ContextMenu>
       </div>
@@ -2051,15 +2076,8 @@ function fileEventTouchesRoot(event: FileChangeEvent, rootPath: string) {
   });
 }
 
-async function pickImportFiles() {
-  if (!window.__TAURI_INTERNALS__) return [];
-  const selected = await openDialog({
-    title: tm("files.panel.import_dialog_title", "Choose files to import"),
-    multiple: true,
-    directory: false,
-  });
-  if (!selected) return [];
-  return Array.isArray(selected) ? selected : [selected];
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function AIPanel({ project }: { project?: WorkspaceProject }) {

@@ -17,6 +17,10 @@ export type WorkspaceCommand =
       path: string;
     }
   | {
+      type: "insert-terminal-text";
+      text: string;
+    }
+  | {
       type: "reattach-terminal-pane";
       paneId: string;
       terminalId: string;
