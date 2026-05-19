@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Copy,
   FileText,
   Folder,
   FolderPlus,
@@ -1190,15 +1189,15 @@ function CommitRow({
   const contextMenu = useContextMenu();
   return (
     <div
-      className="group relative h-[34px] flex items-center gap-2 px-3.5 hover:bg-fill/[0.03] text-xs"
+      className="group relative min-h-[46px] px-3.5 py-1.5 hover:bg-fill/[0.03] text-xs"
       onContextMenu={contextMenu.openMenu}
     >
       {isHead && (
-        <span className="absolute left-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-brand-blue/85" />
+        <span className="absolute left-1.5 top-[15px] h-1.5 w-1.5 rounded-full bg-brand-blue/85" />
       )}
       <Tooltip
         placement="top"
-        triggerClassName="min-w-0 flex-1"
+        triggerClassName="block min-w-0"
         contentClassName="max-w-[360px] px-2.5 py-2 text-left"
         label={
           <div className="grid gap-1">
@@ -1209,27 +1208,31 @@ function CommitRow({
           </div>
         }
       >
-        <span className={`block min-w-0 truncate text-ink-soft ${isHead ? "pl-1" : ""}`}>
-          {commit.title}
-        </span>
+        <div className={`${isHead ? "pl-1" : ""}`}>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium leading-4 text-ink-soft">
+              {commit.title}
+            </span>
+            {head && (
+              <span className="max-w-[104px] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 h-[18px] inline-flex flex-shrink-0 items-center text-xs font-semibold rounded-sm bg-brand-blue/18 text-brand-blue">
+                {head}
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11.5px] leading-4 text-ink-faint">
+            <span className="min-w-0 truncate">{commit.author}</span>
+            <span className="text-ink-faint/70">·</span>
+            <span className="flex-shrink-0 whitespace-nowrap">{commit.relativeTime}</span>
+          </div>
+        </div>
       </Tooltip>
-      {head && (
-        <span className="max-w-[104px] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 h-[18px] inline-flex flex-shrink-0 items-center text-xs font-semibold rounded-sm bg-brand-blue/18 text-brand-blue">
-          {head}
-        </span>
-      )}
-      <span className="hidden max-w-[58px] flex-shrink truncate text-xs text-ink-faint sm:inline">{commit.author}</span>
-      <span className="flex-shrink-0 text-xs text-ink-faint whitespace-nowrap">{commit.relativeTime}</span>
       <ContextMenu
         ariaLabel={formatI18n(tm("git.history.commit_actions_format", "%@ Actions"), commit.hash.slice(0, 7))}
         menu={contextMenu.menu}
         onClose={contextMenu.closeMenu}
       >
         <ContextMenuItem label={tm("git.history.copy_commit_hash", "Copy Commit Hash")} onSelect={() => onAction("copy")}>
-          <span className="inline-flex items-center gap-2">
-            <Copy size={12} />
-            {tm("git.history.copy_commit_hash", "Copy Commit Hash")}
-          </span>
+          {tm("git.history.copy_commit_hash", "Copy Commit Hash")}
         </ContextMenuItem>
         <ContextMenuItem label={tm("git.history.checkout_commit", "Check Out This Commit")} onSelect={() => onAction("checkout")}>{tm("git.history.checkout_commit", "Check Out This Commit")}</ContextMenuItem>
         <ContextMenuItem label={tm("git.history.create_branch_from_commit", "Create Branch from This Commit")} onSelect={() => onAction("branch")}>{tm("git.history.create_branch_from_commit", "Create Branch from This Commit")}</ContextMenuItem>
