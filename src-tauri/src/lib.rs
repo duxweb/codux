@@ -4,6 +4,7 @@ mod ai_runtime;
 mod ai_usage_store;
 mod app_info;
 mod app_settings;
+mod dialog;
 mod files;
 mod git;
 mod i18n;
@@ -33,6 +34,10 @@ use app_info::{
 use app_settings::{
     locale_from_language_setting, sync_process_locale_preference, AIProviderSettings, AppSettings,
     AppSettingsStore,
+};
+use dialog::{
+    localized_open_dialog as open_localized_dialog, localized_save_dialog as save_localized_dialog,
+    LocalizedOpenDialogRequest, LocalizedSaveDialogRequest,
 };
 use files::{
     file_copy as copy_file_path, file_create_dir as create_file_dir,
@@ -953,6 +958,16 @@ fn app_settings_set(
     }
     let _ = app.emit("settings:updated", next.clone());
     Ok(next)
+}
+
+#[tauri::command]
+fn localized_open_dialog(request: LocalizedOpenDialogRequest) -> Result<Option<Vec<String>>, String> {
+    open_localized_dialog(request)
+}
+
+#[tauri::command]
+fn localized_save_dialog(request: LocalizedSaveDialogRequest) -> Result<Option<String>, String> {
+    save_localized_dialog(request)
 }
 
 #[tauri::command]
@@ -2830,6 +2845,8 @@ pub fn run() {
             ai_runtime_dismiss_completion,
             app_settings_get,
             app_settings_set,
+            localized_open_dialog,
+            localized_save_dialog,
             desktop_pet_placement,
             desktop_pet_set_bubble_visible,
             desktop_pet_start_drag,

@@ -3,6 +3,7 @@
     "en": {
       "diagnostics.export.error.title": "Unable to Export Diagnostics",
       "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
       "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
       "diagnostics.export.panel.title": "Export Diagnostics",
       "diagnostics.export.running": "Exporting diagnostics…",
@@ -11,6 +12,7 @@
     "zh-Hans": {
       "diagnostics.export.error.title": "无法导出诊断包",
       "diagnostics.export.failed": "导出诊断包失败。",
+      "diagnostics.export.filter.json": "JSON",
       "diagnostics.export.panel.message": "请选择诊断包的保存位置。",
       "diagnostics.export.panel.title": "导出诊断包",
       "diagnostics.export.running": "正在导出诊断包…",

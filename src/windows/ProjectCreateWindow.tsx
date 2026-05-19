@@ -17,12 +17,12 @@ import {
   Zap,
 } from "../icons";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button as HeroButton } from "@heroui/react";
 import { SettingsForm, TextInput } from "../components/Form";
 import { PressableButton } from "../components/PressableButton";
 import { tm } from "../i18n";
+import { openLocalizedDialog } from "../localizedDialog";
 import { closeCurrentAppWindow, revealCurrentAppWindow } from "../windowing";
 import { WindowFooterActions, WindowFrame } from "./WindowFrame";
 
@@ -86,10 +86,12 @@ export function ProjectCreateWindow() {
   const chooseDirectory = async () => {
     try {
       if (!window.__TAURI_INTERNALS__) return;
-      const selected = await open({
+      const selected = await openLocalizedDialog({
         directory: true,
         multiple: false,
         title: tm("project.editor.choose_directory.title", "Choose Project Directory"),
+        message: tm("project.editor.choose_directory.message", "Select a folder for this project."),
+        prompt: tm("project.editor.choose_directory.prompt", "Choose"),
       });
       if (typeof selected === "string") {
         setPath(selected);

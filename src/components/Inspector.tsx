@@ -20,7 +20,6 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Button as HeroButton, Dropdown, ProgressBar, Spinner } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Key, type ReactNode } from "react";
 import { useAIHistorySnapshot, type AIHeatmapDay, type AIHistorySessionSummary, type AITimeBucket, type AIUsageBreakdownItem } from "../ai/history";
@@ -67,6 +66,7 @@ import { broadcastWorkspaceCommand } from "../workspaceCommands";
 import { openGitDiffWindow } from "../windowing";
 import { systemConfirm } from "../systemDialog";
 import { formatI18n, localeFromSettings, tm } from "../i18n";
+import { openLocalizedDialog } from "../localizedDialog";
 
 type Props = {
   panel: RightPanelKind;
@@ -3535,8 +3535,10 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
 
   const pickPrivateKey = async () => {
     if (!window.__TAURI_INTERNALS__) return;
-    const selected = await openDialog({
-      title: tm("ssh.profile.private_key", "Private Key"),
+    const selected = await openLocalizedDialog({
+      title: tm("ssh.profile.choose_key.title", "Choose Private Key"),
+      message: tm("ssh.profile.choose_key.message", "Choose the private key used for this SSH connection."),
+      prompt: tm("common.choose", "Choose"),
       multiple: false,
       directory: false,
     });

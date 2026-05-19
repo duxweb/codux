@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
 import { tm } from "./i18n";
+import { openLocalizedDialog, saveLocalizedDialog } from "./localizedDialog";
 import { systemConfirm, systemMessage } from "./systemDialog";
 import type { ProjectListSnapshot, WorkspaceProject } from "./types";
 import { openAppWindow } from "./windowing";
@@ -137,10 +137,11 @@ export async function exportDiagnostics() {
     return;
   }
   const defaultPath = `codux-diagnostics-${timestampSlug()}.json`;
-  const destinationPath = await save({
+  const destinationPath = await saveLocalizedDialog({
     title: tm("diagnostics.export.panel.title", "Export Diagnostics"),
+    prompt: tm("common.save", "Save"),
     defaultPath,
-    filters: [{ name: "JSON", extensions: ["json"] }],
+    filters: [{ name: tm("diagnostics.export.filter.json", "JSON"), extensions: ["json"] }],
   });
   if (!destinationPath) return;
   const result = await invoke<DiagnosticsExportResult>("diagnostics_export", {
@@ -184,10 +185,12 @@ export async function toggleDeveloperTools() {
 
 export async function openProjectFolderFromMenu() {
   if (!window.__TAURI_INTERNALS__) return null;
-  const selected = await open({
+  const selected = await openLocalizedDialog({
     directory: true,
     multiple: false,
     title: tm("project.open_folder.title", "Open Folder"),
+    message: tm("project.open_folder.message", "Choose a project folder to import."),
+    prompt: tm("project.open_folder.prompt", "Open"),
   });
   if (typeof selected !== "string") return null;
   return invoke<ProjectListSnapshot>("project_create", {
