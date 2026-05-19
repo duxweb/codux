@@ -1,6 +1,5 @@
 import {
   CheckCircle2,
-  ChevronRight,
   Copy,
   FileCode2,
   FileText,
@@ -1796,54 +1795,53 @@ function ReviewFileRow({
   selected?: boolean;
   onSelect?: () => void;
 }) {
-  const statusLabel = reviewFileStatusLabel(file.status);
+  const badge = reviewFileStatusBadge(file.status);
   return (
-    <PressableButton
-      className={`w-full h-9 grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-center gap-2.5 px-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] ${
-        selected ? "bg-brand-blue/12 text-ink" : ""
-      }`}
-      onPressUp={onSelect}
-      onDoubleClick={() => {
-        if (!projectPath) return;
-        broadcastWorkspaceCommand({
-          type: "open-file",
-          rootPath: projectPath,
-          path: file.path,
-        });
-      }}
-    >
-      <FileCode2 size={13} className="text-ink-mute" />
-      <span className="truncate">{file.path}</span>
-      {(file.additions > 0 || file.deletions > 0) && (
-        <span className="text-xs tabular-nums">
-          <span className="text-brand-green">+{file.additions}</span>
-          <span className="mx-1 text-ink-faint">/</span>
-          <span className="text-brand-red">-{file.deletions}</span>
-        </span>
-      )}
-      <span className="inline-flex items-center gap-1 text-xs text-ink-faint">
-        <ChevronRight size={10} />
-        {statusLabel}
-      </span>
-    </PressableButton>
+    <Tooltip label={file.path} placement="right" triggerClassName="block w-full">
+      <PressableButton
+        className={`w-full h-9 grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-center gap-2.5 px-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] ${
+          selected ? "bg-brand-blue/12 text-ink" : ""
+        }`}
+        onPressUp={onSelect}
+        onDoubleClick={() => {
+          if (!projectPath) return;
+          broadcastWorkspaceCommand({
+            type: "open-file",
+            rootPath: projectPath,
+            path: file.path,
+          });
+        }}
+      >
+        <FileCode2 size={13} className="text-ink-mute" />
+        <span className="min-w-0 truncate text-right" dir="rtl">{file.path}</span>
+        {(file.additions > 0 || file.deletions > 0) && (
+          <span className="text-xs tabular-nums">
+            <span className="text-brand-green">+{file.additions}</span>
+            <span className="mx-1 text-ink-faint">/</span>
+            <span className="text-brand-red">-{file.deletions}</span>
+          </span>
+        )}
+        <span className={`text-xs font-bold ${badge.tone}`}>{badge.label}</span>
+      </PressableButton>
+    </Tooltip>
   );
 }
 
-function reviewFileStatusLabel(status: GitReviewFile["status"]) {
+function reviewFileStatusBadge(status: GitReviewFile["status"]): { label: string; tone: string } {
   switch (status) {
     case "added":
-      return tm("worktree.review.file.added", "Added");
+      return { label: "A", tone: "text-brand-green" };
     case "deleted":
-      return tm("worktree.review.file.deleted", "Deleted");
+      return { label: "D", tone: "text-brand-blue" };
     case "renamed":
-      return tm("worktree.review.file.renamed", "Renamed");
+      return { label: "R", tone: "text-brand-amber" };
     case "copied":
-      return tm("worktree.review.file.copied", "Copied");
+      return { label: "C", tone: "text-brand-blue" };
     case "typeChanged":
-      return tm("worktree.review.file.type_changed", "Type");
+      return { label: "T", tone: "text-brand-amber" };
     case "modified":
-      return tm("worktree.review.file.modified", "Modified");
+      return { label: "M", tone: "text-brand-amber" };
     default:
-      return tm("worktree.review.file.unknown", "Changed");
+      return { label: "?", tone: "text-ink-faint" };
   }
 }
