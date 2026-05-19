@@ -872,7 +872,7 @@ pub fn git_branches(project_path: String) -> GitBranchesSnapshot {
             Path::new(&root),
             &[
                 "for-each-ref",
-                "--format=%(refname:short)%x1f%(upstream:short)%x1f%(objectname:short)",
+                "--format=%(refname:short)%1f%(upstream:short)%1f%(objectname:short)",
                 "refs/heads",
             ],
         )
@@ -884,7 +884,7 @@ pub fn git_branches(project_path: String) -> GitBranchesSnapshot {
             Path::new(&root),
             &[
                 "for-each-ref",
-                "--format=%(refname:short)%x1f%(upstream:short)%x1f%(objectname:short)",
+                "--format=%(refname:short)%1f%(upstream:short)%1f%(objectname:short)",
                 "refs/remotes",
             ],
         )
@@ -1428,7 +1428,7 @@ fn local_branches(root: &Path, current: &str) -> Vec<GitBranchSummary> {
             root,
             &[
                 "for-each-ref",
-                "--format=%(refname:short)%x1f%(upstream:short)%x1f%(objectname:short)",
+                "--format=%(refname:short)%1f%(upstream:short)%1f%(objectname:short)",
                 "refs/heads",
             ],
         )
