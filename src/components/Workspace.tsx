@@ -1379,7 +1379,7 @@ function FileEditor({
 }) {
   const blockedMessage = tab.message || (tab.isBinary ? tm("files.preview.binary", "Binary files cannot be previewed here.") : "");
   const hasExternalChange = tab.externalModifiedAt != null || tab.externalSize != null;
-  const parentDirectory = relativeParentDirectory(tab.relativePath || tab.path, tab.name);
+  const parentDirectory = relativeParentDirectory(tab.relativePath || tab.path, tab.name) || "/";
   const [scrollInfo, setScrollInfo] = useState<CodeEditorScrollInfo>({
     ratio: 0,
     scrollTop: 0,
@@ -1402,7 +1402,7 @@ function FileEditor({
             {tab.name}
             {tab.dirty && <span className="ml-1 text-brand-amber">•</span>}
           </div>
-          <div className="text-xs text-ink-faint truncate">{parentDirectory || "."}</div>
+          <div className="text-xs text-ink-faint truncate">{parentDirectory}</div>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <EditorBtn icon={CheckCircle2} tooltip={tm("files.preview.save", "Save")} onPress={onSave} disabled={!tab.dirty || tab.readOnly || isBusy} />

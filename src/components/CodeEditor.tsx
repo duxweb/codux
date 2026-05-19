@@ -28,6 +28,7 @@ import { tags } from "@lezer/highlight";
 import { basicSetup } from "codemirror";
 import { openSearchPanel } from "@codemirror/search";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import { tm } from "../i18n";
 
 export type CodeEditorScrollInfo = {
   ratio: number;
@@ -64,6 +65,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
   const onChangeRef = useRef(onChange);
   const onScrollInfoChangeRef = useRef(onScrollInfoChange);
   const languageExtension = useMemo(() => extensionForLanguage(language), [language]);
+  const phrases = useMemo(() => codeMirrorPhrases(), []);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -133,6 +135,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
       basicSetup,
       coduxEditorTheme,
       syntaxHighlighting(coduxHighlightStyle),
+      EditorState.phrases.of(phrases),
       EditorState.readOnly.of(readOnly),
       EditorView.editable.of(!readOnly),
       EditorView.lineWrapping,
@@ -179,7 +182,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
         viewRef.current = null;
       }
     };
-  }, [documentKey, languageExtension, readOnly]);
+  }, [documentKey, languageExtension, phrases, readOnly]);
 
   return <div ref={hostRef} className="h-full min-h-0 min-w-0 overflow-hidden" />;
 });
@@ -241,6 +244,37 @@ function extensionForLanguage(language: string): Extension | null {
     default:
       return null;
   }
+}
+
+function codeMirrorPhrases() {
+  return {
+    Find: tm("files.preview.search.find", "Find"),
+    Replace: tm("files.preview.search.replace", "Replace"),
+    next: tm("files.preview.search.next", "Next"),
+    previous: tm("files.preview.search.previous", "Previous"),
+    all: tm("files.preview.search.all", "All"),
+    "match case": tm("files.preview.search.match_case", "Match case"),
+    regexp: tm("files.preview.search.regexp", "Regex"),
+    "by word": tm("files.preview.search.by_word", "Whole word"),
+    replace: tm("files.preview.search.replace_action", "Replace"),
+    "replace all": tm("files.preview.search.replace_all", "Replace all"),
+    close: tm("files.preview.search.close", "Close"),
+    "current match": tm("files.preview.search.current_match", "Current match"),
+    "on line": tm("files.preview.search.on_line", "on line"),
+    "replaced match on line $": tm("files.preview.search.replaced_match_on_line_format", "Replaced match on line $"),
+    "replaced $ matches": tm("files.preview.search.replaced_matches_format", "Replaced $ matches"),
+    "Go to line": tm("files.preview.search.go_to_line", "Go to line"),
+    go: tm("files.preview.search.go", "Go"),
+    "Selection deleted": tm("files.preview.selection_deleted", "Selection deleted"),
+    "Folded lines": tm("files.preview.folded_lines", "Folded lines"),
+    "Unfolded lines": tm("files.preview.unfolded_lines", "Unfolded lines"),
+    to: tm("files.preview.to", "to"),
+    "folded code": tm("files.preview.folded_code", "folded code"),
+    unfold: tm("files.preview.unfold", "unfold"),
+    "Fold line": tm("files.preview.fold_line", "Fold line"),
+    "Unfold line": tm("files.preview.unfold_line", "Unfold line"),
+    "Control character": tm("files.preview.control_character", "Control character"),
+  };
 }
 
 const coduxEditorTheme = EditorView.theme(
