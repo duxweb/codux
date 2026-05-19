@@ -273,6 +273,10 @@ struct DesktopPetHitState {
 const DESKTOP_PET_LABEL: &str = "desktop-pet";
 const DESKTOP_PET_BASE_WIDTH: f64 = 352.0;
 const DESKTOP_PET_BASE_HEIGHT: f64 = 218.0;
+const DESKTOP_PET_SPRITE_SIZE: f64 = 128.0;
+const DESKTOP_PET_SPRITE_VISIBLE_INSET_X: f64 = 18.0;
+const DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP: f64 = 12.0;
+const DESKTOP_PET_SPRITE_VISIBLE_INSET_BOTTOM: f64 = 4.0;
 const DESKTOP_PET_MARGIN: f64 = 24.0;
 const DESKTOP_PET_DEFAULT_BOTTOM_MARGIN: f64 = 110.0;
 const DESKTOP_PET_MUTE_30_MINUTES: &str = "desktop-pet:mute-30-minutes";
@@ -316,6 +320,8 @@ fn show_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings) -> ta
         let _ = window.set_max_size(Some(Size::Logical(LogicalSize::new(width, height))));
         let _ = window.set_always_on_top(true);
         let _ = window.set_focusable(false);
+        let _ = window.set_ignore_cursor_events(true);
+        start_desktop_pet_hit_test_loop(app.clone());
         if let (Some(position), Some(size)) = (previous_position, previous_size) {
             let next_position =
                 desktop_pet_clamped_position_for_window(app, position, size, width, height);
@@ -434,9 +440,20 @@ fn desktop_pet_local_point_is_hotspot(
     let width = f64::from(size.width) / scale_factor;
     let height = f64::from(size.height) / scale_factor;
     let side = desktop_pet_placement_for_window(window).side;
-    let sprite_x = if side == "right" { 24.0 } else { width - 24.0 - 128.0 };
-    let sprite_y = height - 8.0 - 128.0;
-    let in_sprite = x >= sprite_x && x <= sprite_x + 128.0 && y >= sprite_y && y <= sprite_y + 128.0;
+    let sprite_x = if side == "right" {
+        24.0 + DESKTOP_PET_SPRITE_VISIBLE_INSET_X
+    } else {
+        width - 24.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_X
+    };
+    let sprite_y = height - 8.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP;
+    let sprite_width = DESKTOP_PET_SPRITE_SIZE - DESKTOP_PET_SPRITE_VISIBLE_INSET_X * 2.0;
+    let sprite_height = DESKTOP_PET_SPRITE_SIZE
+        - DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP
+        - DESKTOP_PET_SPRITE_VISIBLE_INSET_BOTTOM;
+    let in_sprite = x >= sprite_x
+        && x <= sprite_x + sprite_width
+        && y >= sprite_y
+        && y <= sprite_y + sprite_height;
     let in_bubble = if has_bubble {
         let bubble_x = if side == "right" { width - 8.0 - 214.0 } else { 8.0 };
         let bubble_y = 56.0;

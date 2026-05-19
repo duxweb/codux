@@ -24,6 +24,9 @@ const isStandalone =
 if (isStandalone) {
   document.documentElement.classList.add("standalone-window");
 }
+if (route === "/desktop-pet") {
+  document.documentElement.classList.add("desktop-pet-window");
+}
 if (route.startsWith("/terminal")) {
   document.documentElement.classList.add("terminal-window");
 }

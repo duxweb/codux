@@ -441,6 +441,12 @@
     background: var(--terminal-bg);
   }
 
+  html.desktop-pet-window,
+  html.desktop-pet-window body,
+  html.desktop-pet-window #root {
+    background: transparent !important;
+  }
+
   button {
     border: 0;
     -webkit-app-region: no-drag;
