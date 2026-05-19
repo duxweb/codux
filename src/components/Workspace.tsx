@@ -862,9 +862,17 @@ type OpenFileTab = FileReadResult & {
   savedContent: string;
   dirty: boolean;
   version: number;
+  scrollTop?: number;
   externalModifiedAt?: number;
   externalSize?: number;
 };
+
+type FilesModeState = {
+  tabs: OpenFileTab[];
+  activePath: string;
+};
+
+const filesModeStateByProject = new Map<string, FilesModeState>();
 
 function normalizeFileEventPath(value: string) {
   return value.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -881,8 +889,9 @@ function fileChangeTouchesTab(event: FileChangeEvent, tab: OpenFileTab) {
 }
 
 function FilesMode({ project }: { project?: WorkspaceProject }) {
-  const [tabs, setTabs] = useState<OpenFileTab[]>([]);
-  const [activePath, setActivePath] = useState("");
+  const projectStateKey = project?.id ?? "";
+  const [tabs, setTabs] = useState<OpenFileTab[]>(() => filesModeStateByProject.get(projectStateKey)?.tabs ?? []);
+  const [activePath, setActivePath] = useState(() => filesModeStateByProject.get(projectStateKey)?.activePath ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setBusy] = useState(false);
   const editorRef = useRef<CodeEditorHandle | null>(null);
@@ -892,6 +901,18 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+
+  useEffect(() => {
+    const stored = filesModeStateByProject.get(projectStateKey);
+    setTabs(stored?.tabs ?? []);
+    setActivePath(stored?.activePath ?? "");
+    setError(null);
+  }, [projectStateKey]);
+
+  useEffect(() => {
+    if (!projectStateKey) return;
+    filesModeStateByProject.set(projectStateKey, { tabs, activePath });
+  }, [activePath, projectStateKey, tabs]);
 
   const replaceTabWithReadResult = useCallback((item: OpenFileTab, result: FileReadResult) => ({
     ...item,
@@ -1125,12 +1146,6 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
     }
   }, [replaceTabWithReadResult]);
 
-  useEffect(() => {
-    setTabs([]);
-    setActivePath("");
-    setError(null);
-  }, [project?.id]);
-
   useEffect(
     () =>
       listenWorkspaceCommand((command) => {
@@ -1303,6 +1318,15 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
           isBusy={isBusy}
           error={error}
           onChange={updateActiveContent}
+          onScrollChange={(scrollTop) => {
+            setTabs((current) =>
+              current.map((tab) =>
+                tab.path === active.path && tab.rootPath === active.rootPath
+                  ? { ...tab, scrollTop }
+                  : tab,
+              ),
+            );
+          }}
           onSave={() => void saveActive()}
           onReload={() => void reloadActive()}
           onReveal={() => void revealFile(active.rootPath, active.path)}
@@ -1324,6 +1348,7 @@ function FileEditor({
   isBusy,
   error,
   onChange,
+  onScrollChange,
   onSave,
   onReload,
   onReveal,
@@ -1334,6 +1359,7 @@ function FileEditor({
   isBusy: boolean;
   error: string | null;
   onChange: (value: string) => void;
+  onScrollChange: (scrollTop: number) => void;
   onSave: () => void;
   onReload: () => void;
   onReveal: () => void;
@@ -1407,7 +1433,11 @@ function FileEditor({
             language={tab.language}
             readOnly={tab.readOnly}
             onChange={onChange}
-            onScrollInfoChange={setScrollInfo}
+            initialScrollTop={tab.scrollTop ?? 0}
+            onScrollInfoChange={(info) => {
+              setScrollInfo(info);
+              onScrollChange(info.scrollTop);
+            }}
           />
         )}
         <EditorMinimap

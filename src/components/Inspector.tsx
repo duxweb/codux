@@ -997,27 +997,12 @@ function FileRow({
         }`}
       >
         <PressableButton
-          className="min-w-0 flex-1 h-full flex items-center gap-2 pr-10 text-left"
+          className="min-w-0 flex-1 h-full flex items-center gap-2 text-left"
           onPressUp={onSelect}
         >
-          <span className="truncate flex-1">{path}</span>
+          <span className="truncate flex-1 text-right" dir="rtl">{path}</span>
           <span className={`flex-shrink-0 text-xs font-bold ${toneClass}`}>{tag}</span>
         </PressableButton>
-        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded bg-surface-chrome/95 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto">
-          {onPrimary && primaryLabel && PrimaryIcon && (
-            <Tooltip label={primaryLabel} placement="bottom">
-              <HeroButton
-                size="sm"
-                variant="ghost"
-                isIconOnly
-                className="h-5 w-5 min-w-5 rounded px-0 text-ink-faint hover:text-ink"
-                onPress={onPrimary}
-              >
-                <PrimaryIcon size={11} strokeWidth={2.2} />
-              </HeroButton>
-            </Tooltip>
-          )}
-        </div>
         <ContextMenu
           ariaLabel={formatI18n(tm("git.files.actions_format", "%@ Actions"), path)}
           menu={contextMenu.menu}
@@ -1114,14 +1099,12 @@ function gitFileBadge(
 }
 
 function formatDecorations(value?: string | null) {
-  if (!value) return undefined;
+  if (!value) return [];
   return value
     .replace(/\btag: /g, "")
     .split(",")
     .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(" · ");
+    .filter(Boolean);
 }
 
 function generateCommitMessage(snapshot: GitStatusSnapshot) {
@@ -1185,7 +1168,7 @@ function CommitRow({
   isHead?: boolean;
   onAction: (key: Key) => void;
 }) {
-  const head = formatDecorations(commit.decorations);
+  const decorations = formatDecorations(commit.decorations);
   const contextMenu = useContextMenu();
   return (
     <div
@@ -1204,20 +1187,27 @@ function CommitRow({
             <div className="font-semibold leading-snug text-ink">{commit.title}</div>
             <div className="font-mono text-[10.5px] text-ink-faint">{commit.hash}</div>
             <div className="text-ink-mute">{commit.author} · {commit.relativeTime}</div>
-            {head && <div className="text-brand-blue">{head}</div>}
+            {decorations.length > 0 && <div className="text-brand-blue">{decorations.join(" · ")}</div>}
           </div>
         }
       >
         <div className={`${isHead ? "pl-1" : ""}`}>
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium leading-4 text-ink-soft">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <span className="min-w-[9ch] flex-1 truncate text-[12.5px] font-medium leading-4 text-ink-soft">
               {commit.title}
             </span>
-            {head && (
-              <span className="max-w-[104px] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 h-[18px] inline-flex flex-shrink-0 items-center text-xs font-semibold rounded-sm bg-brand-blue/18 text-brand-blue">
-                {head}
-              </span>
-            )}
+            <div className="min-w-0 flex-none max-w-[48%] overflow-hidden">
+              <div className="flex min-w-0 items-center justify-end gap-1 overflow-hidden">
+                {decorations.map((decoration) => (
+                  <span
+                    key={decoration}
+                    className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap px-1.5 h-[18px] inline-flex flex-shrink items-center text-xs font-semibold rounded-sm bg-brand-blue/18 text-brand-blue"
+                  >
+                    {decoration}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11.5px] leading-4 text-ink-faint">
             <span className="min-w-0 truncate">{commit.author}</span>
@@ -1263,6 +1253,7 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
   const [inlineEdit, setInlineEdit] = useState<FileInlineEdit | null>(null);
   const expandedPathsRef = useRef(expandedPaths);
   const fileTreeRef = useRef<HTMLDivElement | null>(null);
+  const fileTreeStateRef = useRef(new Map<string, { expandedPaths: Set<string>; selectedPath: string }>());
 
   const updateStatus = useCallback((message: string, tone: "neutral" | "success" | "warning" | "danger" = "neutral") => {
     setFileStatus({ tone, message });
@@ -1273,6 +1264,23 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
     setError(message);
     updateStatus(message, "danger");
   }, [updateStatus]);
+
+  useEffect(() => {
+    if (!rootPath) return;
+    const stored = fileTreeStateRef.current.get(rootPath);
+    if (stored) {
+      setExpandedPaths(new Set(stored.expandedPaths));
+      setSelectedPath(stored.selectedPath);
+    }
+  }, [rootPath]);
+
+  useEffect(() => {
+    if (!rootPath) return;
+    fileTreeStateRef.current.set(rootPath, {
+      expandedPaths: new Set(expandedPaths),
+      selectedPath,
+    });
+  }, [expandedPaths, rootPath, selectedPath]);
 
   useEffect(() => {
     expandedPathsRef.current = expandedPaths;
@@ -1306,8 +1314,9 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
   );
 
   useEffect(() => {
+    const stored = fileTreeStateRef.current.get(rootPath);
     setChildrenByPath({});
-    setSelectedPath("");
+    setSelectedPath(stored?.selectedPath ?? "");
     setCopiedPath("");
     setError(null);
     if (!rootPath) {
@@ -1315,9 +1324,15 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
       updateStatus(tm("files.panel.no_project", "No Project Selected"));
       return;
     }
-    setExpandedPaths(new Set([rootPath]));
+    const nextExpanded = stored?.expandedPaths.size ? new Set(stored.expandedPaths) : new Set([rootPath]);
+    setExpandedPaths(nextExpanded);
     updateStatus(tm("files.panel.status.ready", "Ready"));
-    void loadChildren();
+    void Promise.all([
+      loadChildren(),
+      ...Array.from(nextExpanded)
+        .filter((path) => path !== rootPath)
+        .map((path) => loadChildren(path)),
+    ]);
   }, [loadChildren, rootPath, updateStatus]);
 
   const rows = useMemo(

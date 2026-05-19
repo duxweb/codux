@@ -214,7 +214,8 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files."
+      "git.unstage.selected.success": "Unstaged selected files.",
+      "git.diff.open_file": "Datei öffnen"
     },
     "en": {
       "git.auth.cancelled": "Git authentication was cancelled.",
@@ -431,7 +432,8 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files."
+      "git.unstage.selected.success": "Unstaged selected files.",
+      "git.diff.open_file": "Open File"
     },
     "es": {
       "git.auth.cancelled": "Se canceló la autenticación Git.",
@@ -647,7 +649,8 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files."
+      "git.unstage.selected.success": "Unstaged selected files.",
+      "git.diff.open_file": "Abrir archivo"
     },
     "fr": {
       "git.auth.cancelled": "L'authentification Git a été annulée.",
@@ -863,7 +866,8 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files."
+      "git.unstage.selected.success": "Unstaged selected files.",
+      "git.diff.open_file": "Ouvrir le fichier"
     },
     "ja": {
       "git.auth.cancelled": "Git 認証がキャンセルされました。",
@@ -1079,7 +1083,8 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files."
+      "git.unstage.selected.success": "Unstaged selected files.",
+      "git.diff.open_file": "ファイルを開く"
     },
     "ko": {
       "git.auth.cancelled": "Git 인증이 취소되었습니다.",
@@ -1295,7 +1300,8 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files."
+      "git.unstage.selected.success": "Unstaged selected files.",
+      "git.diff.open_file": "파일 열기"
     },
     "pt-BR": {
       "git.auth.cancelled": "A autenticação Git foi cancelada.",
@@ -1511,7 +1517,8 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files."
+      "git.unstage.selected.success": "Unstaged selected files.",
+      "git.diff.open_file": "Abrir arquivo"
     },
     "ru": {
       "git.auth.cancelled": "Аутентификация Git отменена.",
@@ -1727,7 +1734,8 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files."
+      "git.unstage.selected.success": "Unstaged selected files.",
+      "git.diff.open_file": "Открыть файл"
     },
     "zh-Hans": {
       "git.auth.cancelled": "已取消 Git 鉴权。",
@@ -1944,7 +1952,8 @@
       "git.sync.conflict.title": "同步冲突",
       "git.unstage.file.success_format": "已取消暂存 %@。",
       "git.unstage.section.success": "已取消暂存这个分组中的文件。",
-      "git.unstage.selected.success": "已取消暂存选中的文件。"
+      "git.unstage.selected.success": "已取消暂存选中的文件。",
+      "git.diff.open_file": "打开文件"
     },
     "zh-Hant": {
       "git.auth.cancelled": "Git 驗證已取消。",
@@ -2161,7 +2170,8 @@
       "git.sync.conflict.title": "同步衝突",
       "git.unstage.file.success_format": "已取消暫存 %@。",
       "git.unstage.section.success": "已取消暫存這個分組中的檔案。",
-      "git.unstage.selected.success": "已取消暫存所選檔案。"
+      "git.unstage.selected.success": "已取消暫存所選檔案。",
+      "git.diff.open_file": "開啟檔案"
     }
   }
 }

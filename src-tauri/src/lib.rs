@@ -38,8 +38,8 @@ use files::{
     file_copy as copy_file_path, file_create_dir as create_file_dir,
     file_create_file as create_file_file, file_delete as delete_file_path,
     file_import_external as import_external_file_paths, file_list_children as list_file_children,
-    file_read as read_file_path, file_rename as rename_file_path, file_reveal as reveal_file_path,
-    file_write as write_file_path, FileChildrenRequest, FileCopyRequest, FileCreateRequest,
+    file_open as open_file_path, file_read as read_file_path, file_rename as rename_file_path,
+    file_reveal as reveal_file_path, file_write as write_file_path, FileChildrenRequest, FileCopyRequest, FileCreateRequest,
     FileEntry, FileExternalCopyRequest, FilePathRequest, FileReadResult, FileRenameRequest,
     FileWatchManager, FileWriteRequest,
 };
@@ -1465,6 +1465,11 @@ fn file_reveal(request: FilePathRequest) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn file_open(request: FilePathRequest) -> Result<(), String> {
+    open_file_path(request)
+}
+
+#[tauri::command]
 fn file_watch(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -2871,6 +2876,7 @@ pub fn run() {
             file_copy,
             file_import_external,
             file_reveal,
+            file_open,
             file_watch,
             file_unwatch,
             worktree_snapshot,

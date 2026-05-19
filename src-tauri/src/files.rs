@@ -396,6 +396,12 @@ pub fn file_reveal(request: FilePathRequest) -> Result<(), String> {
     reveal_path(&path)
 }
 
+pub fn file_open(request: FilePathRequest) -> Result<(), String> {
+    let root = canonical_root(&request.root_path)?;
+    let path = resolve_existing_path(&root, &request.path)?;
+    tauri_plugin_opener::open_path(path, None::<&str>).map_err(|error| error.to_string())
+}
+
 fn copy_entry_to_directory(
     root: &Path,
     source: &Path,

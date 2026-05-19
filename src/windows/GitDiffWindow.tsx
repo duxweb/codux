@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
-import { FileCode2, RefreshCw } from "../icons";
+import { ArrowTopRight, FileCode2 } from "../icons";
 import type { GitDiffSnapshot } from "../git/status";
 import { Button } from "../components/Button";
 import { closeCurrentAppWindow, revealCurrentAppWindow } from "../windowing";
 import { WindowFrame } from "./WindowFrame";
 import { tm } from "../i18n";
+import { openFileExternally } from "../files/api";
 
 type DiffRequest = {
   projectPath: string;
@@ -70,6 +71,10 @@ export function GitDiffWindow() {
   }, []);
 
   const diff = snapshot?.diff || "";
+  const openTargetFile = async () => {
+    if (!request.projectPath || !request.path) return;
+    await openFileExternally(request.projectPath, request.path);
+  };
 
   return (
     <WindowFrame
@@ -86,11 +91,11 @@ export function GitDiffWindow() {
           <Button
             variant="secondary"
             size="sm"
-            leading={RefreshCw}
-            disabled={isLoading}
-            onPress={() => void load()}
+            leading={ArrowTopRight}
+            disabled={!request.projectPath || !request.path}
+            onPress={() => void openTargetFile()}
           >
-            {tm("common.refresh", "Refresh")}
+            {tm("git.diff.open_file", "Open File")}
           </Button>
         </>
       }
@@ -134,7 +139,7 @@ function UnifiedDiffView({ diff }: { diff: string }) {
         {lines.map((line) => (
           <div
             key={line.id}
-            className={`grid grid-cols-[54px_54px_minmax(0,1fr)] ${
+            className={`grid grid-cols-[54px_54px_max-content] ${
               line.kind === "addition"
                 ? "bg-brand-green/10 text-ink"
                 : line.kind === "deletion"

@@ -111,13 +111,11 @@ export function Titlebar({
           <GlyphButton
             icon={isSidebarExpanded ? PanelLeftClose : PanelLeft}
             tooltip={t("projects", settings)}
-            active={isSidebarExpanded}
             onPress={toggleSidebar}
           />
           <GlyphButton
             icon={ListTree}
             tooltip={t("tasks", settings)}
-            active={isTaskSidebarExpanded}
             onPress={toggleTaskSidebar}
           />
           <GlyphButton

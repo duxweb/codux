@@ -29,6 +29,7 @@ export type CodeEditorHandle = {
   redo: () => void;
   openSearch: () => void;
   scrollToRatio: (ratio: number) => void;
+  scrollToTop: (scrollTop: number) => void;
 };
 
 type Props = {
@@ -38,10 +39,11 @@ type Props = {
   readOnly?: boolean;
   onChange: (value: string) => void;
   onScrollInfoChange?: (info: CodeEditorScrollInfo) => void;
+  initialScrollTop?: number;
 };
 
 export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor(
-  { value, documentKey, language, readOnly = false, onChange, onScrollInfoChange },
+  { value, documentKey, language, readOnly = false, onChange, onScrollInfoChange, initialScrollTop = 0 },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -80,6 +82,11 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
       if (!scrollDOM) return;
       const max = Math.max(0, scrollDOM.scrollHeight - scrollDOM.clientHeight);
       scrollDOM.scrollTop = clamp(ratio, 0, 1) * max;
+    },
+    scrollToTop: (scrollTop) => {
+      const scrollDOM = viewRef.current?.scrollDOM;
+      if (!scrollDOM) return;
+      scrollDOM.scrollTop = Math.max(0, scrollTop);
     },
   }));
 
@@ -140,7 +147,15 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
     const resizeObserver =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleScrollInfo);
     resizeObserver?.observe(view.scrollDOM);
-    scheduleScrollInfo();
+    if (initialScrollTop > 0) {
+      window.requestAnimationFrame(() => {
+        if (!view) return;
+        view.scrollDOM.scrollTop = initialScrollTop;
+        scheduleScrollInfo();
+      });
+    } else {
+      scheduleScrollInfo();
+    }
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       resizeObserver?.disconnect();

@@ -145,6 +145,15 @@ export async function revealFile(rootPath: string, path: string) {
   });
 }
 
+export async function openFileExternally(rootPath: string, path: string) {
+  return invoke<void>("file_open", {
+    request: {
+      rootPath,
+      path,
+    },
+  });
+}
+
 export async function watchProjectFiles(projectPath: string) {
   return invoke<FileWatchRegistration>("file_watch", { projectPath });
 }
@@ -156,16 +165,19 @@ export async function unwatchProjectFiles(projectPath: string) {
 export function languageForPath(path: string) {
   const name = path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
   const ext = name.includes(".") ? name.split(".").pop() ?? "" : "";
-  if (["ts", "tsx", "js", "jsx", "mjs", "cjs"].includes(ext)) return "javascript";
-  if (ext === "json" || name.endsWith(".jsonc")) return "json";
+  if (["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "vue", "svelte"].includes(ext)) return "javascript";
+  if (["json", "json5", "jsonl", "map"].includes(ext) || name.endsWith(".jsonc")) return "json";
   if (["css", "scss", "sass", "less"].includes(ext)) return "css";
-  if (["html", "htm"].includes(ext)) return "html";
-  if (["md", "markdown"].includes(ext)) return "markdown";
+  if (["html", "htm", "xhtml"].includes(ext)) return "html";
+  if (["md", "markdown", "mdx"].includes(ext)) return "markdown";
   if (["py", "pyw"].includes(ext)) return "python";
   if (ext === "rs") return "rust";
   if (ext === "go") return "go";
-  if (["xml", "svg"].includes(ext)) return "xml";
-  if (["sql"].includes(ext)) return "sql";
+  if (["xml", "svg", "plist", "xaml"].includes(ext)) return "xml";
+  if (["sql", "psql", "mysql"].includes(ext)) return "sql";
+  if (["yml", "yaml", "toml", "ini", "conf", "config", "env", "lock", "gitignore", "dockerignore", "editorconfig"].includes(ext) || name.startsWith(".env")) return "plain";
+  if (["sh", "bash", "zsh", "fish", "ps1", "bat", "cmd"].includes(ext)) return "plain";
+  if (["php", "rb", "java", "kt", "kts", "swift", "c", "h", "cpp", "cc", "cxx", "hpp", "cs", "dart", "lua", "r"].includes(ext)) return "plain";
   return "plain";
 }
 
