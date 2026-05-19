@@ -71,6 +71,9 @@ importers:
       '@heroui/styles':
         specifier: ^3.0.5
         version: 3.0.5(tailwind-merge@3.4.0)(tailwindcss@4.3.0)
+      '@lezer/highlight':
+        specifier: 1.2.3
+        version: 1.2.3
       '@tauri-apps/api':
         specifier: ^2.11.0
         version: 2.11.0

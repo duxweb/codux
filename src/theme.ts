@@ -29,6 +29,25 @@ type ManagedThemeVariable =
   | "--terminal-bright-magenta"
   | "--terminal-bright-cyan"
   | "--terminal-bright-white"
+  | "--editor-comment"
+  | "--editor-keyword"
+  | "--editor-atom"
+  | "--editor-string"
+  | "--editor-string2"
+  | "--editor-number"
+  | "--editor-variable"
+  | "--editor-variable2"
+  | "--editor-type"
+  | "--editor-class"
+  | "--editor-property"
+  | "--editor-operator"
+  | "--editor-punctuation"
+  | "--editor-meta"
+  | "--editor-link"
+  | "--editor-heading"
+  | "--editor-inserted"
+  | "--editor-deleted"
+  | "--editor-invalid"
   | "--surface-window-tint"
   | "--surface-window-glass"
   | "--surface-editor"
@@ -142,6 +161,25 @@ const managedThemeVariables: ManagedThemeVariable[] = [
   "--terminal-bright-magenta",
   "--terminal-bright-cyan",
   "--terminal-bright-white",
+  "--editor-comment",
+  "--editor-keyword",
+  "--editor-atom",
+  "--editor-string",
+  "--editor-string2",
+  "--editor-number",
+  "--editor-variable",
+  "--editor-variable2",
+  "--editor-type",
+  "--editor-class",
+  "--editor-property",
+  "--editor-operator",
+  "--editor-punctuation",
+  "--editor-meta",
+  "--editor-link",
+  "--editor-heading",
+  "--editor-inserted",
+  "--editor-deleted",
+  "--editor-invalid",
   "--surface-window-tint",
   "--surface-window-glass",
   "--surface-editor",
@@ -745,6 +783,25 @@ function terminalProfile(
       "--terminal-bright-magenta": palette.brightMagenta,
       "--terminal-bright-cyan": palette.brightCyan,
       "--terminal-bright-white": palette.brightWhite,
+      "--editor-comment": palette.brightBlack,
+      "--editor-keyword": palette.magenta,
+      "--editor-atom": palette.brightMagenta,
+      "--editor-string": palette.green,
+      "--editor-string2": palette.cyan,
+      "--editor-number": palette.yellow,
+      "--editor-variable": palette.foreground,
+      "--editor-variable2": palette.brightCyan,
+      "--editor-type": palette.blue,
+      "--editor-class": palette.brightYellow,
+      "--editor-property": palette.cyan,
+      "--editor-operator": palette.red,
+      "--editor-punctuation": mixColor(palette.foreground, palette.background, 0.28),
+      "--editor-meta": palette.brightBlack,
+      "--editor-link": palette.blue,
+      "--editor-heading": palette.brightBlue,
+      "--editor-inserted": palette.green,
+      "--editor-deleted": palette.red,
+      "--editor-invalid": palette.brightRed,
       "--color-surface-terminal": palette.background,
       "--surface-editor": palette.background,
       "--color-surface-editor": palette.background,

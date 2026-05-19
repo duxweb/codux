@@ -10,6 +10,7 @@ import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
 import { xml } from "@codemirror/lang-xml";
 import { yaml } from "@codemirror/lang-yaml";
+import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { c, cpp, csharp, dart, java, kotlin } from "@codemirror/legacy-modes/mode/clike";
 import { diff } from "@codemirror/legacy-modes/mode/diff";
 import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
@@ -20,10 +21,10 @@ import { ruby } from "@codemirror/legacy-modes/mode/ruby";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { swift } from "@codemirror/legacy-modes/mode/swift";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
-import { StreamLanguage } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 import { basicSetup } from "codemirror";
 import { openSearchPanel } from "@codemirror/search";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
@@ -131,6 +132,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
     const extensions: Extension[] = [
       basicSetup,
       coduxEditorTheme,
+      syntaxHighlighting(coduxHighlightStyle),
       EditorState.readOnly.of(readOnly),
       EditorView.editable.of(!readOnly),
       EditorView.lineWrapping,
@@ -258,7 +260,7 @@ const coduxEditorTheme = EditorView.theme(
     },
     ".cm-content": {
       padding: "14px 0 24px",
-      caretColor: "var(--color-brand-green)",
+      caretColor: "var(--terminal-cursor)",
       minHeight: "100%",
     },
     ".cm-line": {
@@ -274,14 +276,14 @@ const coduxEditorTheme = EditorView.theme(
       minWidth: "48px",
     },
     ".cm-activeLine": {
-      backgroundColor: "color-mix(in oklab, var(--color-fill) 4%, transparent)",
+      backgroundColor: "color-mix(in oklab, var(--terminal-selection) 22%, transparent)",
     },
     ".cm-activeLineGutter": {
-      backgroundColor: "color-mix(in oklab, var(--color-fill) 5%, transparent)",
+      backgroundColor: "color-mix(in oklab, var(--terminal-selection) 28%, transparent)",
       color: "var(--color-ink-mute)",
     },
     ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-      backgroundColor: "color-mix(in oklab, var(--color-brand-blue) 35%, transparent)",
+      backgroundColor: "color-mix(in oklab, var(--terminal-selection) 72%, transparent)",
     },
     ".cm-search": {
       backgroundColor: "var(--color-surface-panel)",
@@ -296,6 +298,32 @@ const coduxEditorTheme = EditorView.theme(
   },
   { dark: true },
 );
+
+const coduxHighlightStyle = HighlightStyle.define([
+  { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: "var(--editor-comment)", fontStyle: "italic" },
+  { tag: [tags.keyword, tags.controlKeyword, tags.definitionKeyword, tags.moduleKeyword, tags.modifier], color: "var(--editor-keyword)" },
+  { tag: [tags.atom, tags.bool, tags.null, tags.self], color: "var(--editor-atom)" },
+  { tag: [tags.string, tags.docString, tags.character, tags.attributeValue], color: "var(--editor-string)" },
+  { tag: [tags.regexp, tags.escape, tags.special(tags.string)], color: "var(--editor-string2)" },
+  { tag: [tags.number, tags.integer, tags.float], color: "var(--editor-number)" },
+  { tag: [tags.variableName, tags.name, tags.labelName], color: "var(--editor-variable)" },
+  { tag: [tags.special(tags.variableName), tags.local(tags.variableName)], color: "var(--editor-variable2)" },
+  { tag: [tags.definition(tags.variableName), tags.function(tags.variableName), tags.function(tags.propertyName)], color: "var(--editor-type)" },
+  { tag: [tags.typeName, tags.namespace, tags.macroName], color: "var(--editor-type)" },
+  { tag: [tags.className, tags.definition(tags.typeName)], color: "var(--editor-class)" },
+  { tag: [tags.propertyName, tags.attributeName, tags.definition(tags.propertyName)], color: "var(--editor-property)" },
+  { tag: [tags.operator, tags.operatorKeyword, tags.compareOperator, tags.logicOperator, tags.arithmeticOperator, tags.definitionOperator], color: "var(--editor-operator)" },
+  { tag: [tags.punctuation, tags.bracket, tags.separator], color: "var(--editor-punctuation)" },
+  { tag: [tags.meta, tags.documentMeta, tags.annotation, tags.processingInstruction], color: "var(--editor-meta)" },
+  { tag: [tags.link, tags.url], color: "var(--editor-link)", textDecoration: "underline" },
+  { tag: [tags.heading, tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], color: "var(--editor-heading)", fontWeight: "700" },
+  { tag: tags.strong, fontWeight: "700" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: tags.strikethrough, textDecoration: "line-through" },
+  { tag: tags.inserted, color: "var(--editor-inserted)" },
+  { tag: tags.deleted, color: "var(--editor-deleted)" },
+  { tag: tags.invalid, color: "var(--editor-invalid)", textDecoration: "underline wavy var(--editor-invalid)" },
+]);
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
