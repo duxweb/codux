@@ -52,6 +52,7 @@ export type BackgroundColorOption = {
 
 type ResolvedBackgroundTint = {
   rgb: [number, number, number];
+  alpha: number;
 };
 
 export type TerminalThemePreview = {
@@ -776,18 +777,18 @@ function applyBackgroundOverride(root: HTMLElement, background: string) {
   const option = backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalizeThemeName(background));
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
   if (!option || normalizeThemeName(option.label) === "auto") {
-    root.style.setProperty("--surface-window-tint", "color-mix(in oklab, var(--terminal-bg) 28%, transparent)");
-    root.style.setProperty("--surface-window-glass", "color-mix(in oklab, var(--terminal-bg) 16%, transparent)");
+    root.style.setProperty("--surface-window-tint", "color-mix(in oklab, var(--terminal-bg) 38%, transparent)");
+    root.style.setProperty("--surface-window-glass", "color-mix(in oklab, var(--terminal-bg) 26%, transparent)");
     return;
   }
   const color = option.color;
   const anchor = appTheme === "light" ? "rgb(255 255 255)" : "var(--terminal-bg)";
-  root.style.setProperty("--surface-window-tint", `color-mix(in oklab, ${color} ${appTheme === "light" ? "22%" : "24%"}, transparent)`);
-  root.style.setProperty("--surface-window-glass", `color-mix(in oklab, ${color} ${appTheme === "light" ? "13%" : "15%"}, transparent)`);
-  root.style.setProperty("--color-surface-glass", `color-mix(in oklab, ${color} ${appTheme === "light" ? "24%" : "58%"}, ${anchor})`);
-  root.style.setProperty("--color-surface-chrome", `color-mix(in oklab, ${color} ${appTheme === "light" ? "18%" : "42%"}, ${anchor})`);
-  root.style.setProperty("--color-surface-panel", `color-mix(in oklab, ${color} ${appTheme === "light" ? "12%" : "30%"}, ${anchor})`);
-  root.style.setProperty("--color-surface-card", `color-mix(in oklab, ${color} ${appTheme === "light" ? "8%" : "20%"}, ${anchor})`);
+  root.style.setProperty("--surface-window-tint", `color-mix(in oklab, ${color} ${appTheme === "light" ? "42%" : "46%"}, transparent)`);
+  root.style.setProperty("--surface-window-glass", `color-mix(in oklab, ${color} ${appTheme === "light" ? "28%" : "32%"}, transparent)`);
+  root.style.setProperty("--color-surface-glass", `color-mix(in oklab, ${color} ${appTheme === "light" ? "30%" : "62%"}, ${anchor})`);
+  root.style.setProperty("--color-surface-chrome", `color-mix(in oklab, ${color} ${appTheme === "light" ? "24%" : "48%"}, ${anchor})`);
+  root.style.setProperty("--color-surface-panel", `color-mix(in oklab, ${color} ${appTheme === "light" ? "16%" : "34%"}, ${anchor})`);
+  root.style.setProperty("--color-surface-card", `color-mix(in oklab, ${color} ${appTheme === "light" ? "10%" : "24%"}, ${anchor})`);
   root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
   root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
   root.style.setProperty("--surface-editor", "var(--terminal-bg)");
@@ -796,11 +797,13 @@ function applyBackgroundOverride(root: HTMLElement, background: string) {
 function resolveBackgroundTint(root: HTMLElement, background: string): ResolvedBackgroundTint {
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
   const option = backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalizeThemeName(background));
+  const isCustom = Boolean(option && normalizeThemeName(option.label) !== "auto");
   const terminalBg = root.style.getPropertyValue("--terminal-bg").trim() || getComputedStyle(root).getPropertyValue("--terminal-bg").trim();
-  const color = option && normalizeThemeName(option.label) !== "auto" ? option.color : terminalBg || (appTheme === "light" ? "#fbfcfe" : "#171b22");
+  const color = isCustom && option ? option.color : terminalBg || (appTheme === "light" ? "#fbfcfe" : "#171b22");
   const parsed = parseHexColor(color);
   return {
     rgb: parsed ? [parsed.r, parsed.g, parsed.b] : appTheme === "light" ? [251, 252, 254] : [23, 27, 34],
+    alpha: isCustom ? 104 : 78,
   };
 }
 
@@ -819,12 +822,12 @@ function applyNativeWindowTheme(settings: AppSettings, appTheme: AppTheme) {
     console.error("failed to apply transparent native window background", error);
   });
 
-  const { rgb } = resolveBackgroundTint(document.documentElement, settings.background);
+  const { rgb, alpha } = resolveBackgroundTint(document.documentElement, settings.background);
   const effects: Effects = {
     effects: appTheme === "light" ? [Effect.Sidebar, Effect.TabbedLight, Effect.Acrylic, Effect.Mica] : [Effect.Sidebar, Effect.TabbedDark, Effect.Acrylic, Effect.Mica],
     state: EffectState.Active,
     radius: 12,
-    color: [...rgb, appTheme === "light" ? 48 : 58],
+    color: [...rgb, alpha],
   };
   void currentWindow.setEffects(effects).catch((error) => {
     console.error("failed to apply native window effects", error);
