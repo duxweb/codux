@@ -2286,7 +2286,7 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
       </div>
       <div
         ref={fileTreeRef}
-        className={`relative flex-1 overflow-y-auto scrollbar-overlay px-1.5 pb-3 text-sm ${isDraggingExternalFiles ? "bg-brand-blue/8" : ""}`}
+        className={`relative flex-1 overflow-y-auto scrollbar-overlay px-1.5 pb-3 text-sm outline-none focus:outline-none focus-visible:outline-none ${isDraggingExternalFiles ? "bg-brand-blue/8" : ""}`}
         tabIndex={-1}
         onPointerDown={activateFilePanel}
         data-drop-zone
