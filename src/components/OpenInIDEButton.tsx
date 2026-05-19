@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Dropdown } from "@heroui/react";
-import { useEffect, useMemo, useState } from "react";
-import { Box, ChevronDown, Code2, Folder, SquareTerminal } from "../icons";
+import { useEffect, useState } from "react";
+import { ArrowTopRight, Box, ChevronDown, Folder, SquareTerminal } from "../icons";
 import {
   listProjectOpenApplications,
   openProjectInApplication,
@@ -50,12 +50,6 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
     };
   }, []);
 
-  const primary = applications.find((item) => item.id === "vscode") ?? applications[0];
-  const menuItems = useMemo(
-    () => applications.filter((item) => item.id !== primary?.id),
-    [applications, primary?.id],
-  );
-
   const openWith = (applicationId: string) => {
     if (!project?.path) return;
     void openProjectInApplication(project.path, applicationId).catch((error) =>
@@ -65,34 +59,17 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
 
   return (
     <div className="relative">
-      <div className="flex h-[26px] items-center rounded-pill border border-line bg-fill/[0.055] transition-colors hover:border-line-strong hover:bg-fill/10">
-        <Tooltip
-          label={
-            primary
-              ? formatOpenTitle(primary.label)
-              : tm("open.ide.none_installed", "No compatible app installed")
-          }
-          placement="bottom"
-        >
-          <button
-            type="button"
-            disabled={!enabled || !primary}
-            className="flex h-full w-[30px] items-center justify-center rounded-l-pill disabled:opacity-45"
-            onClick={() => primary && openWith(primary.id)}
-          >
-            {primary ? <ApplicationIcon application={primary} size={16} /> : <Code2 size={14} className="text-ink-soft" />}
-          </button>
-        </Tooltip>
-        <div className="h-3.5 w-px bg-line-strong/60" />
+      <Tooltip label={tm("open.ide", "Open in IDE")} placement="bottom">
         <Dropdown
           isOpen={open}
           onOpenChange={setOpen}
         >
           <Dropdown.Trigger
             isDisabled={!enabled}
-            className="flex h-full w-[22px] items-center justify-center rounded-r-pill disabled:opacity-45"
+            className="flex h-[26px] items-center gap-1 rounded-pill border border-line bg-fill/[0.055] px-2 text-ink-soft transition-colors hover:border-line-strong hover:bg-fill/10 hover:text-ink disabled:opacity-45"
             aria-label={tm("open.ide", "Open in IDE")}
           >
+            <ArrowTopRight size={13} strokeWidth={2.2} />
             <ChevronDown size={11} className="text-ink-mute" strokeWidth={2.4} />
           </Dropdown.Trigger>
           <Dropdown.Popover placement="bottom end" className="min-w-[210px] rounded-[10px] border border-line-strong bg-surface-chrome p-1 shadow-pop backdrop-blur-2xl">
@@ -112,7 +89,7 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
                 <Folder size={14} className="text-ink-mute" />
                 <span className="truncate">{tm("open.finder", "Open in Finder")}</span>
               </Dropdown.Item>
-              {menuItems.map((item) => (
+              {applications.map((item) => (
                 <Dropdown.Item key={item.id} id={item.id} className="menu-item" textValue={formatOpenTitle(item.label)}>
                   <ApplicationIcon application={item} size={14} />
                   <span className="truncate">{formatOpenTitle(item.label)}</span>
@@ -121,7 +98,7 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
             </Dropdown.Menu>
           </Dropdown.Popover>
         </Dropdown>
-      </div>
+      </Tooltip>
     </div>
   );
 }
