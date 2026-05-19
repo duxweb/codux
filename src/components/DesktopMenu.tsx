@@ -33,7 +33,11 @@ export function DesktopMenu({
     >
       <Dropdown isOpen={isOpen} onOpenChange={onOpenChange}>
         {renderMenuTrigger(trigger, ariaLabel)}
-        <Dropdown.Popover placement={toHeroPlacement(placement)} className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl">
+        <Dropdown.Popover
+          placement={toHeroPlacement(placement)}
+          className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl"
+          style={{ width: "min(284px, calc(100vw - 24px))" }}
+        >
           <Dropdown.Menu aria-label={ariaLabel} className="grid gap-0.5" shouldCloseOnSelect={false}>
             {children}
           </Dropdown.Menu>
@@ -64,14 +68,14 @@ export function DesktopMenuItem({
       id={id}
       textValue={label}
       isDisabled={disabled}
-      className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] font-medium text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink disabled:opacity-50"
+      className="flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-left text-[12.5px] font-medium text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink disabled:opacity-50"
       onAction={() => {
         if (disabled) return;
         onSelect?.();
         context.close();
       }}
     >
-      {children}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
     </Dropdown.Item>
   );
 }
@@ -97,12 +101,16 @@ export function DesktopSubmenu({
           id={id}
           textValue={label}
           isDisabled={disabled}
-          className="flex h-7 w-full items-center justify-between gap-3 rounded-md px-2 text-left text-[12.5px] font-medium text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink disabled:opacity-50"
+          className="flex h-7 w-full min-w-0 items-center justify-between gap-3 overflow-hidden rounded-md px-2 text-left text-[12.5px] font-medium text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink disabled:opacity-50"
         >
           <span className="min-w-0 truncate">{label}</span>
           <Dropdown.SubmenuIndicator className="text-ink-faint" />
         </Dropdown.Item>
-        <Dropdown.Popover placement="right top" className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl">
+        <Dropdown.Popover
+          placement="right top"
+          className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl"
+          style={{ width: "min(284px, calc(100vw - 24px))" }}
+        >
           <Dropdown.Menu aria-label={label} className="grid gap-0.5" shouldCloseOnSelect={false}>
             {children}
           </Dropdown.Menu>
@@ -120,7 +128,7 @@ export function DesktopMenuSectionLabel({ children }: { children: ReactNode }) {
       id={id}
       textValue={label}
       isDisabled
-      className="px-2 py-1 text-[11px] font-semibold text-ink-faint"
+      className="min-w-0 truncate px-2 py-1 text-[11px] font-semibold text-ink-faint"
     >
       {children}
     </Dropdown.Item>
