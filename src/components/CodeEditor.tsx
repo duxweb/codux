@@ -22,8 +22,8 @@ import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { swift } from "@codemirror/legacy-modes/mode/swift";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import type { Extension } from "@codemirror/state";
-import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorState, RangeSetBuilder } from "@codemirror/state";
+import { Decoration, EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { basicSetup } from "codemirror";
 import { openSearchPanel } from "@codemirror/search";
@@ -35,6 +35,11 @@ export type CodeEditorScrollInfo = {
   scrollTop: number;
   scrollHeight: number;
   clientHeight: number;
+};
+
+export type CodeEditorLineHighlight = {
+  line: number;
+  tone: "add" | "delete";
 };
 
 export type CodeEditorHandle = {
@@ -54,17 +59,21 @@ type Props = {
   onChange: (value: string) => void;
   onScrollInfoChange?: (info: CodeEditorScrollInfo) => void;
   initialScrollTop?: number;
+  silentScrollTop?: number;
+  lineHighlights?: CodeEditorLineHighlight[];
 };
 
 export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor(
-  { value, documentKey, language, readOnly = false, onChange, onScrollInfoChange, initialScrollTop = 0 },
+  { value, documentKey, language, readOnly = false, onChange, onScrollInfoChange, initialScrollTop = 0, silentScrollTop, lineHighlights = [] },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onScrollInfoChangeRef = useRef(onScrollInfoChange);
+  const suppressNextScrollInfoRef = useRef(false);
   const languageExtension = useMemo(() => extensionForLanguage(language), [language]);
+  const lineHighlightExtension = useMemo(() => extensionForLineHighlights(lineHighlights), [lineHighlights]);
   const phrases = useMemo(() => codeMirrorPhrases(), []);
 
   useEffect(() => {
@@ -114,6 +123,10 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
     let frame = 0;
     const emitScrollInfo = () => {
       if (!view) return;
+      if (suppressNextScrollInfoRef.current) {
+        suppressNextScrollInfoRef.current = false;
+        return;
+      }
       const scrollDOM = view.scrollDOM;
       const max = Math.max(0, scrollDOM.scrollHeight - scrollDOM.clientHeight);
       onScrollInfoChangeRef.current?.({
@@ -135,6 +148,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
       basicSetup,
       coduxEditorTheme,
       syntaxHighlighting(coduxHighlightStyle),
+      lineHighlightExtension,
       EditorState.phrases.of(phrases),
       EditorState.readOnly.of(readOnly),
       EditorView.editable.of(!readOnly),
@@ -182,7 +196,17 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
         viewRef.current = null;
       }
     };
-  }, [documentKey, languageExtension, phrases, readOnly]);
+  }, [documentKey, languageExtension, lineHighlightExtension, phrases, readOnly]);
+
+  useEffect(() => {
+    if (silentScrollTop === undefined) return;
+    const scrollDOM = viewRef.current?.scrollDOM;
+    if (!scrollDOM) return;
+    const next = Math.max(0, silentScrollTop);
+    if (Math.abs(scrollDOM.scrollTop - next) < 1) return;
+    suppressNextScrollInfoRef.current = true;
+    scrollDOM.scrollTop = next;
+  }, [silentScrollTop]);
 
   return <div ref={hostRef} className="h-full min-h-0 min-w-0 overflow-hidden" />;
 });
@@ -246,6 +270,29 @@ function extensionForLanguage(language: string): Extension | null {
   }
 }
 
+function extensionForLineHighlights(highlights: CodeEditorLineHighlight[]): Extension {
+  if (highlights.length === 0) return [];
+  const sorted = [...highlights]
+    .filter((highlight) => Number.isFinite(highlight.line) && highlight.line > 0)
+    .sort((left, right) => left.line - right.line);
+  return EditorView.decorations.compute(["doc"], (state) => {
+    const builder = new RangeSetBuilder<Decoration>();
+    let previousLine = 0;
+    for (const highlight of sorted) {
+      const line = Math.floor(highlight.line);
+      if (line === previousLine || line > state.doc.lines) continue;
+      previousLine = line;
+      const from = state.doc.line(line).from;
+      builder.add(
+        from,
+        from,
+        Decoration.line({ class: highlight.tone === "add" ? "cm-line-diff-add" : "cm-line-diff-delete" }),
+      );
+    }
+    return builder.finish();
+  });
+}
+
 function codeMirrorPhrases() {
   return {
     Find: tm("files.preview.search.find", "Find"),
@@ -299,6 +346,14 @@ const coduxEditorTheme = EditorView.theme(
     },
     ".cm-line": {
       padding: "0 18px 0 8px",
+    },
+    ".cm-line-diff-add": {
+      backgroundColor: "color-mix(in oklab, var(--color-brand-green) 13%, transparent)",
+      boxShadow: "inset 2px 0 0 color-mix(in oklab, var(--color-brand-green) 72%, transparent)",
+    },
+    ".cm-line-diff-delete": {
+      backgroundColor: "color-mix(in oklab, var(--color-brand-red) 13%, transparent)",
+      boxShadow: "inset 2px 0 0 color-mix(in oklab, var(--color-brand-red) 72%, transparent)",
     },
     ".cm-gutters": {
       backgroundColor: "var(--surface-editor)",

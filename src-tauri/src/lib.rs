@@ -64,6 +64,7 @@ use git::{
     git_restore_commit as perform_git_restore_commit,
     git_revert_commit as perform_git_revert_commit, git_review as load_git_review,
     git_review_diff_file as load_git_review_diff_file,
+    git_review_file_content as load_git_review_file_content,
     git_squash_merge_branch as perform_git_squash_merge_branch, git_stage as perform_git_stage,
     git_status as load_git_status, git_sync as perform_git_sync,
     git_undo_last_commit as perform_git_undo_last_commit, git_unstage as perform_git_unstage,
@@ -71,7 +72,8 @@ use git::{
     GitCommitRefRequest, GitCommitRequest, GitCreateBranchRequest, GitDeleteBranchRequest,
     GitDiffRequest, GitDiffSnapshot, GitPathsRequest, GitPushRemoteBranchRequest,
     GitPushRemoteRequest, GitRemoteRequest, GitRestoreCommitRequest, GitReviewDiffRequest,
-    GitReviewSnapshot, GitStatusSnapshot, GitWatchManager, GitWatchRegistration,
+    GitReviewContentRequest, GitReviewContentSnapshot, GitReviewSnapshot, GitStatusSnapshot,
+    GitWatchManager, GitWatchRegistration,
 };
 use i18n::I18nBundle;
 use llm::{
@@ -1412,6 +1414,11 @@ fn git_diff_file(request: GitDiffRequest) -> GitDiffSnapshot {
 #[tauri::command]
 fn git_review_diff_file(request: GitReviewDiffRequest) -> GitDiffSnapshot {
     load_git_review_diff_file(request)
+}
+
+#[tauri::command]
+fn git_review_file_content(request: GitReviewContentRequest) -> GitReviewContentSnapshot {
+    load_git_review_file_content(request)
 }
 
 #[tauri::command]
@@ -2878,6 +2885,7 @@ pub fn run() {
             git_append_gitignore,
             git_diff_file,
             git_review_diff_file,
+            git_review_file_content,
             git_watch,
             git_unwatch,
             file_list_children,

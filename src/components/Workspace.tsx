@@ -7,7 +7,6 @@ import {
   FileText,
   Folder,
   GitPullRequest,
-  Info,
   Maximize2,
   RotateCcw,
   Search,
@@ -24,7 +23,13 @@ import { PressableButton } from "./PressableButton";
 import { TabStrip } from "./TabStrip";
 import { TerminalView } from "./TerminalView";
 import { Tooltip } from "./Tooltip";
-import { loadGitReviewDiff, useGitReviewSnapshot, type GitReviewFile } from "../git/review";
+import {
+  loadGitReviewFileContent,
+  useGitReviewSnapshot,
+  type GitReviewContentSnapshot,
+  type GitReviewFile,
+} from "../git/review";
+import type { CodeEditorLineHighlight } from "./CodeEditor";
 import { isConfiguredShortcut, registerShortcutHandler } from "../shortcuts";
 import {
   countTopSplits,
@@ -1615,8 +1620,10 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
   const snapshot = review.snapshot;
   const [selectedPath, setSelectedPath] = useState("");
   const [expandedReviewPaths, setExpandedReviewPaths] = useState<Set<string>>(new Set());
-  const [diff, setDiff] = useState("");
+  const [content, setContent] = useState<GitReviewContentSnapshot | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
+  const [reviewScrollTop, setReviewScrollTop] = useState(0);
+  const reviewScrollSourceRef = useRef("");
   const reviewTree = useMemo(() => buildReviewTree(snapshot.files), [snapshot.files]);
   const reviewDirectoryPaths = useMemo(() => collectReviewDirectoryPaths(reviewTree), [reviewTree]);
   const reviewTreeInitializedRef = useRef(false);
@@ -1634,9 +1641,7 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
       : project?.path ?? tm("worktree.review.audit_working_tree", "Working Tree");
   const totalAdditions = snapshot.files.reduce((sum, file) => sum + file.additions, 0);
   const totalDeletions = snapshot.files.reduce((sum, file) => sum + file.deletions, 0);
-  const modeLabel = snapshot.mode === "taskBranch"
-    ? tm("worktree.task.branch", "Task Branch")
-    : tm("worktree.review.check.audit_changes", "Uncommitted Changes");
+  const language = languageForPath(selectedFile?.path ?? "");
 
   useEffect(() => {
     reviewTreeInitializedRef.current = false;
@@ -1675,27 +1680,37 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
 
   useEffect(() => {
     if (!project?.path || !selectedFile) {
-      setDiff("");
+      setContent(null);
       setDiffError(null);
       return;
     }
     let disposed = false;
     setDiffError(null);
-    void loadGitReviewDiff(project.path, selectedFile.path, snapshot.baseBranch)
-      .then((next) => {
+    void loadGitReviewFileContent(project.path, selectedFile.path, snapshot.baseBranch)
+      .then((nextContent) => {
         if (disposed) return;
-        setDiff(next.diff);
-        setDiffError(next.error ?? null);
+        setContent(nextContent);
+        setDiffError(nextContent.error ?? null);
       })
       .catch((reason) => {
         if (disposed) return;
-        setDiff("");
+        setContent(null);
         setDiffError(reason instanceof Error ? reason.message : String(reason));
       });
     return () => {
       disposed = true;
     };
   }, [project?.path, selectedFile, snapshot.baseBranch]);
+
+  useEffect(() => {
+    reviewScrollSourceRef.current = "";
+    setReviewScrollTop(0);
+  }, [selectedFile?.path, snapshot.baseBranch]);
+
+  const handleReviewColumnScroll = useCallback((source: string, info: CodeEditorScrollInfo) => {
+    reviewScrollSourceRef.current = source;
+    setReviewScrollTop(info.scrollTop);
+  }, []);
 
   return (
     <div className="h-full min-h-0 grid grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-editor">
@@ -1717,7 +1732,7 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
           <ReviewMetric label="-" value={totalDeletions} tone="red" />
         </div>
       </section>
-      <div className="min-h-0 grid grid-cols-[280px_minmax(0,1fr)_220px]">
+      <div className="min-h-0 grid grid-cols-[280px_minmax(0,1fr)]">
         <div className="min-h-0 overflow-y-auto scrollbar-overlay border-r border-line bg-fill/[0.018] p-2">
           {snapshot.files.length > 0 ? (
             reviewTree.map((node) => (
@@ -1771,14 +1786,55 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
           </div>
           {diffError ? (
             <EditorEmptyState title={tm("git.diff.empty", "No diff to display")} description={diffError} compact />
-          ) : diff ? (
-            <CodeEditor
-              documentKey={`${project?.path}:${selectedFile?.path}:${snapshot.baseBranch ?? "worktree"}:${diff.length}`}
-              value={diff}
-              language="plain"
-              readOnly
-              onChange={() => undefined}
-            />
+          ) : selectedFile ? (
+            <div className={`min-h-0 min-w-0 grid ${snapshot.mode === "taskBranch" ? "grid-cols-4" : "grid-cols-3"}`}>
+              <ReviewCodeColumn
+                id="original"
+                title={tm("worktree.review.column.original", "Original")}
+                subtitle={snapshot.mode === "taskBranch" ? snapshot.baseBranch ?? tm("worktree.task.base_branch", "Base Branch") : "HEAD"}
+                value={snapshot.mode === "taskBranch" ? content?.baseContent ?? "" : content?.headContent ?? ""}
+                language={language}
+                lineHighlights={deletedLineHighlights(content)}
+                scrollTop={reviewScrollTop}
+                scrollSource={reviewScrollSourceRef.current}
+                onScroll={handleReviewColumnScroll}
+              />
+              <ReviewCodeColumn
+                id="new"
+                title={tm("worktree.review.column.new", "New File")}
+                subtitle={content?.indexContent != null ? tm("git.files.staged", "Staged") : tm("worktree.review.audit_working_tree", "Working Tree")}
+                value={content?.indexContent ?? content?.worktreeContent ?? ""}
+                language={language}
+                lineHighlights={addedLineHighlights(content)}
+                scrollTop={reviewScrollTop}
+                scrollSource={reviewScrollSourceRef.current}
+                onScroll={handleReviewColumnScroll}
+              />
+              <ReviewCodeColumn
+                id="final"
+                title={tm("worktree.review.column.final", "Final File")}
+                subtitle={tm("worktree.review.audit_working_tree", "Working Tree")}
+                value={content?.worktreeContent ?? ""}
+                language={language}
+                lineHighlights={addedLineHighlights(content)}
+                scrollTop={reviewScrollTop}
+                scrollSource={reviewScrollSourceRef.current}
+                onScroll={handleReviewColumnScroll}
+              />
+              {snapshot.mode === "taskBranch" && (
+                <ReviewCodeColumn
+                  id="branch"
+                  title={tm("worktree.review.column.branch", "Branch")}
+                  subtitle={project?.branch ?? "HEAD"}
+                  value={content?.headContent ?? ""}
+                  language={language}
+                  lineHighlights={addedLineHighlights(content)}
+                  scrollTop={reviewScrollTop}
+                  scrollSource={reviewScrollSourceRef.current}
+                  onScroll={handleReviewColumnScroll}
+                />
+              )}
+            </div>
           ) : (
             <EditorEmptyState
               title={review.isLoading ? tm("git.diff.loading", "Loading diff...") : tm("git.diff.empty", "No diff to display")}
@@ -1787,26 +1843,6 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
             />
           )}
         </div>
-        <aside className="min-h-0 border-l border-line bg-fill/[0.014] px-3 py-3">
-          <div className="text-xs font-semibold text-ink-soft">{tm("worktree.review.audit_scope", "Scope")}</div>
-          <div className="mt-2 grid gap-2 text-xs">
-            <ReviewInfoRow label={tm("worktree.review.check.audit_branch", "Branch")} value={project?.branch ?? "HEAD"} />
-            <ReviewInfoRow label={modeLabel} value={snapshot.diffStat || `${snapshot.files.length}`} />
-            {snapshot.baseBranch && (
-              <ReviewInfoRow label={tm("worktree.task.base_branch", "Base Branch")} value={snapshot.baseBranch} />
-            )}
-            <ReviewInfoRow label={tm("worktree.review.check.diff", "Diff")} value={selectedFile?.path ?? tm("common.none", "None")} />
-          </div>
-          <div className="mt-4 rounded-[8px] border border-line bg-fill/[0.025] p-3 text-xs text-ink-faint">
-            <div className="mb-1.5 flex items-center gap-1.5 text-ink-soft">
-              <Info size={13} />
-              <span className="font-semibold">{tm("worktree.review.check.diff", "Diff")}</span>
-            </div>
-            {snapshot.mode === "taskBranch"
-              ? tm("worktree.review.check.diff_present", "Changes are available for review.")
-              : tm("worktree.review.check.audit_changes_found_format", "%@ file(s) need review.").replace("%@", String(snapshot.files.length))}
-          </div>
-        </aside>
       </div>
       <div className="h-[34px] flex items-center justify-between border-t border-line bg-fill/[0.025] px-3 text-xs text-ink-faint">
         <span className="truncate">{subtitle}</span>
@@ -1837,13 +1873,61 @@ function ReviewMetric({
   );
 }
 
-function ReviewInfoRow({ label, value }: { label: string; value: string }) {
+function ReviewCodeColumn({
+  id,
+  title,
+  subtitle,
+  value,
+  language,
+  lineHighlights = [],
+  scrollTop,
+  scrollSource,
+  onScroll,
+}: {
+  id: string;
+  title: string;
+  subtitle: string;
+  value: string;
+  language: string;
+  lineHighlights?: CodeEditorLineHighlight[];
+  scrollTop: number;
+  scrollSource: string;
+  onScroll: (source: string, info: CodeEditorScrollInfo) => void;
+}) {
   return (
-    <div className="grid gap-1 rounded-[7px] border border-line bg-fill/[0.02] px-2.5 py-2">
-      <span className="text-ink-faint">{label}</span>
-      <span className="truncate text-ink-soft">{value}</span>
+    <div className="min-h-0 min-w-0 grid grid-rows-[40px_minmax(0,1fr)] border-r border-line last:border-r-0 bg-surface-editor">
+      <div className="min-w-0 border-b border-line bg-fill/[0.02] px-2.5 py-1.5">
+        <div className="truncate text-xs font-semibold text-ink-soft">{title}</div>
+        <div className="truncate text-[10.5px] text-ink-faint">{subtitle}</div>
+      </div>
+      {value ? (
+        <CodeEditor
+          documentKey={`${id}:${language}:${value.length}:${value.slice(0, 80)}`}
+          value={value}
+          language={language}
+          readOnly
+          lineHighlights={lineHighlights}
+          onChange={() => undefined}
+          onScrollInfoChange={(info) => onScroll(id, info)}
+          silentScrollTop={scrollSource && scrollSource !== id ? scrollTop : undefined}
+        />
+      ) : (
+        <EditorEmptyState
+          title={tm("git.diff.empty", "No diff to display")}
+          description={tm("worktree.review.column.empty", "This version has no readable content.")}
+          compact
+        />
+      )}
     </div>
   );
+}
+
+function addedLineHighlights(content: GitReviewContentSnapshot | null): CodeEditorLineHighlight[] {
+  return (content?.addedLines ?? []).map((line) => ({ line, tone: "add" }));
+}
+
+function deletedLineHighlights(content: GitReviewContentSnapshot | null): CodeEditorLineHighlight[] {
+  return (content?.deletedLines ?? []).map((line) => ({ line, tone: "delete" }));
 }
 
 type ReviewTreeNode = ReviewTreeDirectory | ReviewTreeFile;

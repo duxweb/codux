@@ -224,6 +224,7 @@ pub fn file_list_children(request: FileChildrenRequest) -> Result<Vec<FileEntry>
     let mut entries = fs::read_dir(&directory)
         .map_err(|error| error.to_string())?
         .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_name().to_string_lossy() != ".git")
         .filter_map(|entry| file_entry(&root, entry.path()).ok())
         .collect::<Vec<_>>();
     entries.sort_by(compare_entries);

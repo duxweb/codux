@@ -26,6 +26,18 @@ export interface GitReviewDiffSnapshot {
   error?: string | null;
 }
 
+export interface GitReviewContentSnapshot {
+  path: string;
+  headContent: string;
+  baseContent?: string | null;
+  indexContent?: string | null;
+  worktreeContent: string;
+  addedLines: number[];
+  deletedLines: number[];
+  isRepository: boolean;
+  error?: string | null;
+}
+
 const emptyReviewSnapshot: GitReviewSnapshot = {
   mode: "workingTreeAudit",
   title: "Uncommitted Audit",
@@ -90,6 +102,29 @@ export async function loadGitReviewDiff(projectPath: string, path: string, baseB
     } satisfies GitReviewDiffSnapshot;
   }
   return invoke<GitReviewDiffSnapshot>("git_review_diff_file", {
+    request: {
+      projectPath,
+      path,
+      baseBranch,
+    },
+  });
+}
+
+export async function loadGitReviewFileContent(projectPath: string, path: string, baseBranch?: string | null) {
+  if (!window.__TAURI_INTERNALS__) {
+    return {
+      path,
+      headContent: "",
+      baseContent: null,
+      indexContent: null,
+      worktreeContent: "",
+      addedLines: [],
+      deletedLines: [],
+      isRepository: true,
+      error: null,
+    } satisfies GitReviewContentSnapshot;
+  }
+  return invoke<GitReviewContentSnapshot>("git_review_file_content", {
     request: {
       projectPath,
       path,

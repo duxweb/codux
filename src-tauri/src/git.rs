@@ -111,6 +111,20 @@ pub struct GitDiffSnapshot {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitReviewContentSnapshot {
+    pub path: String,
+    pub head_content: String,
+    pub base_content: Option<String>,
+    pub index_content: Option<String>,
+    pub worktree_content: String,
+    pub added_lines: Vec<i64>,
+    pub deleted_lines: Vec<i64>,
+    pub is_repository: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitPathsRequest {
@@ -152,6 +166,14 @@ pub struct GitDiffRequest {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitReviewDiffRequest {
+    pub project_path: String,
+    pub path: String,
+    pub base_branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitReviewContentRequest {
     pub project_path: String,
     pub path: String,
     pub base_branch: Option<String>,
@@ -1260,6 +1282,78 @@ pub fn git_review_diff_file(request: GitReviewDiffRequest) -> GitDiffSnapshot {
     }
 }
 
+pub fn git_review_file_content(request: GitReviewContentRequest) -> GitReviewContentSnapshot {
+    let root = match repository_root(&request.project_path) {
+        Ok(root) => root,
+        Err(error) => {
+            return GitReviewContentSnapshot {
+                path: request.path,
+                head_content: String::new(),
+                base_content: None,
+                index_content: None,
+                worktree_content: String::new(),
+                added_lines: Vec::new(),
+                deleted_lines: Vec::new(),
+                is_repository: false,
+                error: Some(error),
+            };
+        }
+    };
+    let path = request.path.trim();
+    if path.is_empty() {
+        return GitReviewContentSnapshot {
+            path: String::new(),
+            head_content: String::new(),
+            base_content: None,
+            index_content: None,
+            worktree_content: String::new(),
+            added_lines: Vec::new(),
+            deleted_lines: Vec::new(),
+            is_repository: true,
+            error: Some("File path cannot be empty.".to_string()),
+        };
+    }
+
+    let base = request
+        .base_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "current branch");
+    let head_content = git_blob_or_empty(&root, "HEAD", path);
+    let base_content = base.map(|reference| git_blob_or_empty(&root, reference, path));
+    let index_content = git_blob(&root, ":0", path).ok();
+    let worktree_content = read_worktree_file(Path::new(&root), path).unwrap_or_default();
+    let diff = if let Some(base) = base {
+        let range = format!("{base}...HEAD");
+        git_output_permissive(Path::new(&root), &["diff", "--unified=0", range.as_str(), "--", path])
+            .or_else(|_| git_output_permissive(Path::new(&root), &["diff", "--unified=0", base, "HEAD", "--", path]))
+            .unwrap_or_default()
+    } else {
+        let unstaged =
+            git_output_permissive(Path::new(&root), &["diff", "--unified=0", "--", path]).unwrap_or_default();
+        let staged = git_output_permissive(Path::new(&root), &["diff", "--unified=0", "--cached", "--", path])
+            .unwrap_or_default();
+        match (staged.trim().is_empty(), unstaged.trim().is_empty()) {
+            (true, _) => unstaged,
+            (_, true) => staged,
+            _ => format!("{staged}\n{unstaged}"),
+        }
+    };
+    let (deleted_lines, added_lines) = parse_diff_line_numbers(&diff);
+
+    GitReviewContentSnapshot {
+        path: path.to_string(),
+        head_content,
+        base_content,
+        index_content,
+        worktree_content,
+        added_lines,
+        deleted_lines,
+        is_repository: true,
+        error: None,
+    }
+}
+
 pub fn git_review(project_path: String, base_branch: Option<String>) -> GitReviewSnapshot {
     let root = match repository_root(&project_path) {
         Ok(root) => root,
@@ -1351,6 +1445,61 @@ pub fn git_review(project_path: String, base_branch: Option<String>) -> GitRevie
         is_repository: true,
         error: None,
     }
+}
+
+fn git_blob_or_empty(root: &str, reference: &str, path: &str) -> String {
+    git_blob(root, reference, path).unwrap_or_default()
+}
+
+fn git_blob(root: &str, reference: &str, path: &str) -> Result<String, String> {
+    let spec = if reference == ":0" {
+        format!(":0:{path}")
+    } else {
+        format!("{reference}:{path}")
+    };
+    git_output_permissive(Path::new(root), &["show", spec.as_str()])
+}
+
+fn read_worktree_file(root: &Path, path: &str) -> Result<String, String> {
+    let full_path = root.join(path);
+    let root = root.canonicalize().map_err(|error| error.to_string())?;
+    let full_path = full_path.canonicalize().map_err(|error| error.to_string())?;
+    if !full_path.starts_with(&root) || !full_path.is_file() {
+        return Ok(String::new());
+    }
+    std::fs::read_to_string(full_path).map_err(|error| error.to_string())
+}
+
+fn parse_diff_line_numbers(diff: &str) -> (Vec<i64>, Vec<i64>) {
+    let mut deleted = Vec::new();
+    let mut added = Vec::new();
+    for line in diff.lines() {
+        let Some(header) = line.strip_prefix("@@ ") else {
+            continue;
+        };
+        let Some(end) = header.find(" @@") else {
+            continue;
+        };
+        let hunk = &header[..end];
+        let mut parts = hunk.split_whitespace();
+        if let Some(old_range) = parts.next() {
+            deleted.extend(diff_range_lines(old_range.trim_start_matches('-')));
+        }
+        if let Some(new_range) = parts.next() {
+            added.extend(diff_range_lines(new_range.trim_start_matches('+')));
+        }
+    }
+    (deleted, added)
+}
+
+fn diff_range_lines(range: &str) -> Vec<i64> {
+    let mut parts = range.split(',');
+    let start = parts.next().and_then(|value| value.parse::<i64>().ok()).unwrap_or(0);
+    let count = parts.next().and_then(|value| value.parse::<i64>().ok()).unwrap_or(1);
+    if start <= 0 || count <= 0 {
+        return Vec::new();
+    }
+    (start..start + count).collect()
 }
 
 fn parse_porcelain_status(
