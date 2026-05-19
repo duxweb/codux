@@ -287,6 +287,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const [commitMessage, setCommitMessage] = useState("");
   const [commitAction, setCommitAction] = useState<GitCommitAction>("commit");
   const [selectedFileId, setSelectedFileId] = useState("");
+  const [selectedCommitHash, setSelectedCommitHash] = useState("");
   const [gitInput, setGitInput] = useState<GitInputState | null>(null);
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
@@ -332,6 +333,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
       unstaged: new Set(),
       untracked: new Set(),
     };
+    setSelectedCommitHash("");
     setExpandedGitFilePaths({
       staged: new Set(),
       unstaged: new Set(),
@@ -965,6 +967,8 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                       key={commit.hash}
                       commit={commit}
                       isHead={snapshot.commits[0]?.hash === commit.hash}
+                      selected={selectedCommitHash === commit.hash}
+                      onSelect={() => setSelectedCommitHash(commit.hash)}
                       onAction={(key) => void runCommitAction(commit, key)}
                     />
                   ))
@@ -1398,6 +1402,14 @@ function formatDecorations(value?: string | null) {
     .filter(Boolean);
 }
 
+function compactGitDecorations(decorations: string[]) {
+  return decorations.slice(0, 1).map((decoration) =>
+    decoration
+      .replace(/^HEAD -> /, "HEAD→")
+      .replace(/^origin\//, "o/"),
+  );
+}
+
 function generateCommitMessage(snapshot: GitStatusSnapshot) {
   const files = [...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked]
     .map((file) => file.path)
@@ -1453,19 +1465,34 @@ function groupRemoteBranches(values: string[], upstream?: string | null) {
 function CommitRow({
   commit,
   isHead,
+  selected,
+  onSelect,
   onAction,
 }: {
   commit: GitCommitSummary;
   isHead?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
   onAction: (key: Key) => void;
 }) {
-  const decorations = formatDecorations(commit.decorations);
+  const allDecorations = formatDecorations(commit.decorations);
+  const decorations = compactGitDecorations(allDecorations);
+  const overflowDecorationCount = Math.max(0, allDecorations.length - decorations.length);
   const contextMenu = useContextMenu();
   return (
     <div
-      className="group relative min-h-[46px] py-1.5 pl-px pr-3 hover:bg-fill/[0.03] text-xs"
-      onContextMenu={contextMenu.openMenu}
+      className={`group relative min-h-[46px] py-1.5 pl-px pr-3 text-xs transition-colors ${
+        selected ? "bg-brand-blue/12 text-ink" : "hover:bg-fill/[0.03]"
+      }`}
+      onPointerDown={(event) => {
+        if (event.button === 0) onSelect?.();
+      }}
+      onContextMenu={(event) => {
+        onSelect?.();
+        contextMenu.openMenu(event);
+      }}
     >
+      {selected && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-brand-blue" />}
       <div className="grid min-h-[34px] grid-cols-[14px_minmax(0,1fr)] items-center gap-1.5">
         <GitGraphPrefix prefix={commit.graphPrefix || (isHead ? "*" : "|")} />
         <Tooltip
@@ -1477,7 +1504,7 @@ function CommitRow({
               <div className="font-semibold leading-snug text-ink">{commit.title}</div>
               <div className="font-mono text-[10.5px] text-ink-faint">{commit.hash}</div>
               <div className="text-ink-mute">{commit.author} · {commit.relativeTime}</div>
-              {decorations.length > 0 && <div className="text-brand-blue">{decorations.join(" · ")}</div>}
+              {allDecorations.length > 0 && <div className="text-brand-blue">{allDecorations.join(" · ")}</div>}
             </div>
           }
         >
@@ -1496,6 +1523,11 @@ function CommitRow({
                       {decoration}
                     </span>
                   ))}
+                  {overflowDecorationCount > 0 && (
+                    <span className="h-[18px] inline-flex flex-shrink-0 items-center rounded-sm bg-fill/[0.07] px-1.5 text-xs font-semibold text-ink-faint">
+                      +{overflowDecorationCount}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -1615,6 +1647,10 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
   const [inlineEdit, setInlineEdit] = useState<FileInlineEdit | null>(null);
   const expandedPathsRef = useRef(expandedPaths);
   const fileTreeRef = useRef<HTMLDivElement | null>(null);
+  const filePanelActiveRef = useRef(false);
+  const selectedEntryRef = useRef<FileEntry | undefined>(undefined);
+  const selectedEntriesRef = useRef<FileEntry[]>([]);
+  const inlineEditRef = useRef<FileInlineEdit | null>(null);
   const fileTreeStateRef = useRef(new Map<string, { expandedPaths: Set<string>; selectedPath: string }>());
 
   const updateStatus = useCallback((message: string, tone: "neutral" | "success" | "warning" | "danger" = "neutral") => {
@@ -1735,6 +1771,15 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
     () => formatI18n(tm("files.panel.delete.pending_count_format", "%d item(s) marked for delete"), pendingDeletePaths.length),
     [pendingDeletePaths.length],
   );
+  useEffect(() => {
+    selectedEntryRef.current = selectedEntry;
+  }, [selectedEntry]);
+  useEffect(() => {
+    selectedEntriesRef.current = selectedEntries;
+  }, [selectedEntries]);
+  useEffect(() => {
+    inlineEditRef.current = inlineEdit;
+  }, [inlineEdit]);
 
   const refresh = useCallback(() => {
     if (!rootPath) return;
@@ -1827,6 +1872,11 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
   const stageDeleteEntries = (entries: FileEntry[]) => {
     if (!rootPath || entries.length === 0) return;
     setPendingDeletePaths(entries.map((entry) => entry.path));
+  };
+
+  const activateFilePanel = () => {
+    filePanelActiveRef.current = true;
+    fileTreeRef.current?.focus({ preventScroll: true });
   };
 
   const entriesForContextAction = (entry: FileEntry) => (
@@ -2066,37 +2116,53 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
     });
   };
 
-  const handleFileKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!selectedEntry) return;
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void renameEntry();
-      return;
+  const handleFileShortcutKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!filePanelActiveRef.current || inlineEditRef.current) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+      const tagName = target.tagName.toLowerCase();
+      if (target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select") return;
     }
-    if (event.key === "F2") {
+    const selected = selectedEntryRef.current;
+    if (!selected) return;
+    if (event.key === "Enter" || event.key === "F2") {
       event.preventDefault();
-      void renameEntry();
+      void renameEntry(selected);
       return;
     }
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      stageDeleteEntries(selectedEntries.length ? selectedEntries : [selectedEntry]);
+      const entries = selectedEntriesRef.current.length ? selectedEntriesRef.current : [selected];
+      stageDeleteEntries(entries);
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
       event.preventDefault();
-      if (selectedEntry) {
-        setCopiedPath(selectedEntry.path);
-        void navigator.clipboard?.writeText(selectedEntry.path);
-        updateStatus(formatI18n(tm("files.panel.status.copied_format", "Copied %@"), selectedEntry.name), "success");
-      }
+      setCopiedPath(selected.path);
+      void navigator.clipboard?.writeText(selected.path);
+      updateStatus(formatI18n(tm("files.panel.status.copied_format", "Copied %@"), selected.name), "success");
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
       event.preventDefault();
       void pasteCopiedPath();
     }
-  };
+  }, [pasteCopiedPath, renameEntry, stageDeleteEntries, updateStatus]);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleFileShortcutKeyDown);
+    return () => window.removeEventListener("keydown", handleFileShortcutKeyDown);
+  }, [handleFileShortcutKeyDown]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!fileTreeRef.current?.contains(event.target as Node | null)) {
+        filePanelActiveRef.current = false;
+      }
+    };
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    return () => window.removeEventListener("pointerdown", handlePointerDown, true);
+  }, []);
 
   return (
     <>
@@ -2122,8 +2188,7 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
         ref={fileTreeRef}
         className={`relative flex-1 overflow-y-auto scrollbar-overlay px-1.5 pb-3 text-sm ${isDraggingExternalFiles ? "bg-brand-blue/8" : ""}`}
         tabIndex={-1}
-        onPointerDown={() => fileTreeRef.current?.focus({ preventScroll: true })}
-        onKeyDown={handleFileKeyDown}
+        onPointerDown={activateFilePanel}
         data-drop-zone
       >
         {!rootPath ? (
@@ -2147,8 +2212,14 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
                 onInlineChange={setInlineEdit}
                 onInlineCancel={() => setInlineEdit(null)}
                 onInlineSubmit={() => void submitInlineEdit()}
-                onSelect={(modifiers) => selectEntry(row.entry, modifiers)}
-                onContextMenuOpen={() => focusContextEntry(row.entry)}
+                onSelect={(modifiers) => {
+                  activateFilePanel();
+                  selectEntry(row.entry, modifiers);
+                }}
+                onContextMenuOpen={() => {
+                  activateFilePanel();
+                  focusContextEntry(row.entry);
+                }}
                 onKeyAction={(event) => {
                   if (event.key !== "Enter" && event.key !== "F2" && event.key !== "Delete" && event.key !== "Backspace") return;
                   event.preventDefault();
