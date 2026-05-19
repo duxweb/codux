@@ -905,6 +905,14 @@ function fileChangeTouchesTab(event: FileChangeEvent, tab: OpenFileTab) {
   return event.changedPaths.some((path) => normalizeFileEventPath(path) === tabPath);
 }
 
+function displayableFileError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === "Path is outside the current project.") {
+    return null;
+  }
+  return message;
+}
+
 function FilesMode({ project }: { project?: WorkspaceProject }) {
   const projectStateKey = project?.id ?? "";
   const [tabs, setTabs] = useState<OpenFileTab[]>(() => filesModeStateByProject.get(projectStateKey)?.tabs ?? []);
@@ -970,7 +978,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
       });
       setActivePath(result.path);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(displayableFileError(nextError));
     } finally {
       setBusy(false);
     }
@@ -1050,7 +1058,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         ),
       );
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(displayableFileError(nextError));
     } finally {
       setBusy(false);
     }
@@ -1082,7 +1090,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         ),
       );
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(displayableFileError(nextError));
     } finally {
       setBusy(false);
     }
@@ -1159,7 +1167,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         ),
       );
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      setError(displayableFileError(nextError));
     }
   }, [replaceTabWithReadResult]);
 
@@ -1399,6 +1407,7 @@ function FileEditor({
       clientHeight: 0,
     });
   }, [tab.path, tab.version]);
+  const readOnlyMessage = !tab.isBinary && blockedMessage ? blockedMessage : "";
   return (
     <div className="relative h-full min-h-0 overflow-hidden">
       <div className="h-[56px] flex items-center justify-between gap-4 px-[18px] border-b border-line">
@@ -1440,6 +1449,12 @@ function FileEditor({
         </div>
       )}
 
+      {readOnlyMessage && !error && !hasExternalChange && (
+        <div className="absolute z-20 top-[64px] left-4 right-4 rounded-md border border-line bg-surface-panel/95 px-3 py-2 text-xs text-ink-mute shadow-pop">
+          {readOnlyMessage}
+        </div>
+      )}
+
       <div className="grid grid-cols-[minmax(0,1fr)_84px] h-[calc(100%-56px)] min-h-0">
         {tab.isBinary ? (
           <EditorEmptyState title={tm("files.preview.read_error", "Could not read this file.")} description={blockedMessage} compact />
@@ -1465,11 +1480,6 @@ function FileEditor({
           onJump={(ratio) => editorRef.current?.scrollToRatio(ratio)}
         />
       </div>
-      {blockedMessage && !tab.isBinary && (
-        <div className="absolute bottom-3 left-4 rounded-md border border-line bg-surface-panel/95 px-2.5 py-1.5 text-xs text-ink-mute shadow-pop">
-          {blockedMessage}
-        </div>
-      )}
     </div>
   );
 }
