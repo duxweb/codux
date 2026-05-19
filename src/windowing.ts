@@ -1,5 +1,5 @@
 import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { LogicalPosition, getCurrentWindow } from "@tauri-apps/api/window";
+import { Effect, EffectState, LogicalPosition, getCurrentWindow, type Effects } from "@tauri-apps/api/window";
 import { formatI18n, tm } from "./i18n";
 
 export type AppWindowKind =
@@ -38,40 +38,6 @@ type WindowConfig = {
   minHeight: number;
   route: string;
 };
-
-function resolveWindowBackgroundColor(fallback: string) {
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue("--color-surface-chrome")
-    .trim();
-  return cssColorToHex(value) ?? fallback;
-}
-
-function cssColorToHex(value: string) {
-  if (!value) return null;
-  const rgba = value
-    .replace(/\s+/g, " ")
-    .match(/^rgba?\(([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)(?:[, /]+([\d.]+))?\)$/i);
-  if (!rgba) return value.startsWith("#") ? value : null;
-
-  const clamp = (num: number) => Math.min(255, Math.max(0, Math.round(num)));
-  const toHex = (num: number) => clamp(num).toString(16).padStart(2, "0");
-  const r = Number(rgba[1]);
-  const g = Number(rgba[2]);
-  const b = Number(rgba[3]);
-  const a = rgba[4] !== undefined ? Math.max(0, Math.min(1, Number(rgba[4]))) : 1;
-
-  if (![r, g, b, a].every((num) => Number.isFinite(num))) {
-    return null;
-  }
-
-  if (a < 1) {
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}${toHex(a * 255)}`;
-  }
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
 
 const windowConfig: Record<AppWindowKind, WindowConfig> = {
   settings: {
@@ -146,6 +112,13 @@ const windowConfig: Record<AppWindowKind, WindowConfig> = {
   },
 };
 
+const appWindowEffects: Effects = {
+  effects: [Effect.Sidebar, Effect.Mica, Effect.Acrylic],
+  state: EffectState.Active,
+  radius: 12,
+  color: [34, 38, 46, 58],
+};
+
 export async function openAppWindow(kind: AppWindowKind) {
   if (!window.__TAURI_INTERNALS__) {
     window.location.hash = windowConfig[kind].route;
@@ -178,7 +151,8 @@ export async function openAppWindow(kind: AppWindowKind) {
     hiddenTitle: kind === "desktop-pet" ? undefined : true,
     acceptFirstMouse: true,
     trafficLightPosition: kind === "desktop-pet" ? undefined : new LogicalPosition(14, 22),
-    backgroundColor: kind === "desktop-pet" ? "#00000000" : resolveWindowBackgroundColor("#22262e"),
+    backgroundColor: "#00000000",
+    windowEffects: kind === "desktop-pet" ? undefined : appWindowEffects,
     visible: false,
     focus: false,
     skipTaskbar: kind === "desktop-pet" ? true : undefined,
@@ -265,7 +239,8 @@ export async function openGitDiffWindow(options: GitDiffWindowOptions) {
     hiddenTitle: true,
     acceptFirstMouse: true,
     trafficLightPosition: new LogicalPosition(14, 22),
-    backgroundColor: resolveWindowBackgroundColor("#22262e"),
+    backgroundColor: "#00000000",
+    windowEffects: appWindowEffects,
     visible: false,
     focus: false,
   });

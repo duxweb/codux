@@ -47,8 +47,8 @@
 
   --titlebar-height: 42px;
 
-  --surface-window-tint: color-mix(in oklab, rgb(34 38 46) 82%, transparent);
-  --surface-window-glass: color-mix(in oklab, var(--surface-window-tint) 76%, transparent);
+  --surface-window-tint: color-mix(in oklab, rgb(34 38 46) 20%, transparent);
+  --surface-window-glass: color-mix(in oklab, rgb(34 38 46) 12%, transparent);
   --surface-editor: color-mix(in oklab, var(--color-surface-editor) 65%, transparent);
   --minimap-stripes: repeating-linear-gradient(
     to bottom,
@@ -109,8 +109,8 @@
   --color-line: rgb(214 220 229);
   --color-line-strong: rgb(192 201 214);
 
-  --surface-window-tint: color-mix(in oklab, rgb(246 249 253) 88%, transparent);
-  --surface-window-glass: color-mix(in oklab, var(--surface-window-tint) 82%, transparent);
+  --surface-window-tint: color-mix(in oklab, rgb(246 249 253) 20%, transparent);
+  --surface-window-glass: color-mix(in oklab, rgb(246 249 253) 12%, transparent);
   --surface-editor: color-mix(in oklab, var(--color-surface-editor) 92%, transparent);
   --minimap-stripes: repeating-linear-gradient(
     to bottom,
@@ -424,7 +424,7 @@
     margin: 0;
     overflow: hidden;
     color: var(--color-ink);
-    background: var(--surface-window-tint);
+    background: transparent;
     font-size: 14px;
     line-height: 1.45;
     user-select: none;
@@ -532,17 +532,7 @@
 }
 
 .app-shell {
-  background:
-    linear-gradient(180deg, color-mix(in oklab, var(--surface-window-glass) 86%, transparent), var(--surface-window-tint)),
-    var(--surface-window-tint);
-  backdrop-filter: blur(28px) saturate(145%);
-  -webkit-backdrop-filter: blur(28px) saturate(145%);
-}
-
-html[data-theme="light"] .app-shell {
-  background:
-    linear-gradient(180deg, color-mix(in oklab, var(--surface-window-glass) 92%, transparent), var(--surface-window-tint)),
-    var(--surface-window-tint);
+  background: linear-gradient(180deg, var(--surface-window-glass), var(--surface-window-tint));
 }
 
 ::-webkit-scrollbar {
