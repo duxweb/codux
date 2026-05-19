@@ -37,7 +37,7 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
 
   return (
     <div className="relative">
-      <Tooltip label={tm("open.ide", "Open in IDE")} placement="bottom">
+      <Tooltip label={tm("open.ide", "Open in IDE")} placement="bottom" disabled={open}>
         <Dropdown
           isOpen={open}
           onOpenChange={setOpen}
