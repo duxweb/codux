@@ -879,6 +879,17 @@ function normalizeFileEventPath(value: string) {
   return value.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
+function relativeParentDirectory(path: string, fileName: string) {
+  const normalized = normalizeFileEventPath(path);
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 1) return "";
+  const lastPart = parts[parts.length - 1];
+  if (lastPart === fileName) {
+    parts.pop();
+  }
+  return parts.join("/");
+}
+
 function fileChangeTouchesTab(event: FileChangeEvent, tab: OpenFileTab) {
   const tabPath = normalizeFileEventPath(tab.path);
   const rootPath = normalizeFileEventPath(tab.rootPath);
@@ -1368,6 +1379,7 @@ function FileEditor({
 }) {
   const blockedMessage = tab.message || (tab.isBinary ? tm("files.preview.binary", "Binary files cannot be previewed here.") : "");
   const hasExternalChange = tab.externalModifiedAt != null || tab.externalSize != null;
+  const parentDirectory = relativeParentDirectory(tab.relativePath || tab.path, tab.name);
   const [scrollInfo, setScrollInfo] = useState<CodeEditorScrollInfo>({
     ratio: 0,
     scrollTop: 0,
@@ -1390,7 +1402,7 @@ function FileEditor({
             {tab.name}
             {tab.dirty && <span className="ml-1 text-brand-amber">•</span>}
           </div>
-          <div className="text-xs text-ink-faint truncate">{tab.relativePath}</div>
+          <div className="text-xs text-ink-faint truncate">{parentDirectory || "."}</div>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <EditorBtn icon={CheckCircle2} tooltip={tm("files.preview.save", "Save")} onPress={onSave} disabled={!tab.dirty || tab.readOnly || isBusy} />
