@@ -2076,7 +2076,7 @@ function ReviewFileRow({
         }}
       >
         <FileCode2 size={13} className="text-ink-mute" />
-        <span className="min-w-0 truncate text-right text-xs" dir="rtl">{displayName ?? file.path}</span>
+        <span className="min-w-0 truncate text-left text-xs">{displayName ?? file.path}</span>
         {(file.additions > 0 || file.deletions > 0) && (
           <span className="text-xs tabular-nums">
             <span className="text-brand-green">+{file.additions}</span>
