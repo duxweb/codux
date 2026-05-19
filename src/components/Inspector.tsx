@@ -274,6 +274,16 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const [stagedOpen, setStagedOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(true);
   const [untrackedOpen, setUntrackedOpen] = useState(true);
+  const [expandedGitFilePaths, setExpandedGitFilePaths] = useState<Record<string, Set<string>>>({
+    staged: new Set(),
+    unstaged: new Set(),
+    untracked: new Set(),
+  });
+  const previousGitDirectoryPathsRef = useRef<Record<GitFileSectionKind, Set<string>>>({
+    staged: new Set(),
+    unstaged: new Set(),
+    untracked: new Set(),
+  });
   const [commitMessage, setCommitMessage] = useState("");
   const [commitAction, setCommitAction] = useState<GitCommitAction>("commit");
   const [selectedFileId, setSelectedFileId] = useState("");
@@ -313,6 +323,43 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
     }
     return groupRemoteBranches(targets, upstream);
   }, [snapshot.remoteBranches, snapshot.upstream]);
+  useEffect(() => {
+    previousGitDirectoryPathsRef.current = {
+      staged: new Set(),
+      unstaged: new Set(),
+      untracked: new Set(),
+    };
+    setExpandedGitFilePaths({
+      staged: new Set(),
+      unstaged: new Set(),
+      untracked: new Set(),
+    });
+  }, [project?.path]);
+  useEffect(() => {
+    const nextAvailable = {
+      staged: collectGitDirectoryPaths(snapshot.staged),
+      unstaged: collectGitDirectoryPaths(snapshot.unstaged),
+      untracked: collectGitDirectoryPaths(snapshot.untracked),
+    };
+    const previousAvailable = previousGitDirectoryPathsRef.current;
+    setExpandedGitFilePaths((current) => ({
+      staged: mergeGitDirectoryPaths(current.staged, nextAvailable.staged, previousAvailable.staged),
+      unstaged: mergeGitDirectoryPaths(current.unstaged, nextAvailable.unstaged, previousAvailable.unstaged),
+      untracked: mergeGitDirectoryPaths(current.untracked, nextAvailable.untracked, previousAvailable.untracked),
+    }));
+    previousGitDirectoryPathsRef.current = nextAvailable;
+  }, [snapshot.staged, snapshot.unstaged, snapshot.untracked]);
+  const toggleGitDirectory = (kind: GitFileSectionKind, path: string) => {
+    setExpandedGitFilePaths((current) => {
+      const nextPaths = new Set(current[kind]);
+      if (nextPaths.has(path)) {
+        nextPaths.delete(path);
+      } else {
+        nextPaths.add(path);
+      }
+      return { ...current, [kind]: nextPaths };
+    });
+  };
   const openGitInput = (input: GitInputState) => setGitInput(input);
   const closeGitInput = () => setGitInput(null);
   const submitGitInput = async () => {
@@ -771,12 +818,14 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 files={snapshot.staged}
                 emptyLabel={tm("git.files.staged.empty", "No staged changes")}
                 kind="staged"
+                expandedPaths={expandedGitFilePaths.staged}
                 rootPath={project?.path}
                 selectedId={selectedFileId}
                 primaryLabel={tm("git.files.unstage", "Unstage")}
                 onPrimary={(file) => void git.unstage([file.path])}
                 onSelect={(file) => selectGitFile(file, true)}
                 onOpenDiff={(file) => void previewDiff(file, true)}
+                onToggleDirectory={(path) => toggleGitDirectory("staged", path)}
                 onDiscard={(file) => {
                   void systemConfirm(formatI18n(tm("git.files.discard.confirm_format", "Discard changes in %@?"), file.path), {
                     title: tm("git.files.discard_changes", "Discard Changes"),
@@ -826,12 +875,14 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 files={snapshot.unstaged}
                 emptyLabel={tm("git.files.changes.empty", "No worktree changes")}
                 kind="unstaged"
+                expandedPaths={expandedGitFilePaths.unstaged}
                 rootPath={project?.path}
                 selectedId={selectedFileId}
                 primaryLabel={tm("git.files.stage", "Stage")}
                 onPrimary={(file) => void git.stage([file.path])}
                 onSelect={(file) => selectGitFile(file, false)}
                 onOpenDiff={(file) => void previewDiff(file, false)}
+                onToggleDirectory={(path) => toggleGitDirectory("unstaged", path)}
                 onDiscard={(file) => {
                   void systemConfirm(formatI18n(tm("git.files.discard.confirm_format", "Discard changes in %@?"), file.path), {
                     title: tm("git.files.discard_changes", "Discard Changes"),
@@ -872,12 +923,14 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 files={snapshot.untracked}
                 emptyLabel={tm("git.files.untracked.empty", "No untracked files")}
                 kind="untracked"
+                expandedPaths={expandedGitFilePaths.untracked}
                 rootPath={project?.path}
                 selectedId={selectedFileId}
                 primaryLabel={tm("git.files.stage", "Stage")}
                 onPrimary={(file) => void git.stage([file.path])}
                 onSelect={(file) => selectGitFile(file, false)}
                 onOpenDiff={(file) => void previewDiff(file, false)}
+                onToggleDirectory={(path) => toggleGitDirectory("untracked", path)}
                 onIgnore={(file) => void git.appendGitignore([file.path])}
                 onDiscard={(file) => {
                   void systemConfirm(formatI18n(tm("git.files.delete_untracked.confirm_format", "Delete untracked file %@?"), file.path), {
@@ -968,10 +1021,11 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
 
 function FileRow({
   path,
+  displayName,
   tag,
   tone,
   selected,
-  primaryIcon: PrimaryIcon,
+  depth = 0,
   onSelect,
   onOpenDiff,
   onPrimary,
@@ -981,11 +1035,12 @@ function FileRow({
   onIgnore,
 }: {
   path: string;
+  displayName?: string;
   tag: string;
   tone: "amber" | "green" | "blue";
+  depth?: number;
   rootPath?: string;
   selected?: boolean;
-  primaryIcon?: (props: { size?: number; strokeWidth?: number; className?: string }) => ReactNode;
   onSelect?: () => void;
   onOpenDiff?: () => void;
   onPrimary?: () => void;
@@ -1004,16 +1059,19 @@ function FileRow({
     <Tooltip label={path} placement="left" triggerClassName="block w-full">
       <div
         onContextMenu={contextMenu.openMenu}
-        className={`group relative w-full h-[28px] px-3 flex items-center gap-1.5 transition-colors text-xs text-ink-soft ${
+        className={`group relative w-full h-[28px] pr-3 flex items-center gap-1.5 transition-colors text-xs text-ink-soft ${
           selected ? "bg-brand-blue/12 text-ink" : "hover:bg-fill/[0.04]"
         }`}
+        style={{ paddingLeft: `${12 + depth * 14}px` }}
       >
         <PressableButton
           className="min-w-0 flex-1 h-full flex items-center gap-2 text-left"
           onPressUp={onSelect}
           onDoubleClick={onOpenDiff}
         >
-          <span className="truncate flex-1 text-right" dir="rtl">{path}</span>
+          <span className="w-[13px] flex-shrink-0" />
+          <FileText size={13} className="flex-shrink-0 text-ink-mute" />
+          <span className="truncate flex-1 text-right" dir="rtl">{displayName ?? path}</span>
           <span className={`flex-shrink-0 text-xs font-bold ${toneClass}`}>{tag}</span>
         </PressableButton>
         <ContextMenu
@@ -1048,61 +1106,184 @@ function GitFileSection({
   files,
   emptyLabel,
   kind,
+  expandedPaths,
   rootPath,
   selectedId,
   primaryLabel,
   onSelect,
   onOpenDiff,
+  onToggleDirectory,
   onPrimary,
   onDiscard,
   onIgnore,
 }: {
   files: GitFileStatus[];
   emptyLabel: string;
-  kind: "staged" | "unstaged" | "untracked";
+  kind: GitFileSectionKind;
+  expandedPaths: Set<string>;
   rootPath?: string;
   selectedId?: string;
   primaryLabel?: string;
+  onSelect?: (file: GitFileStatus) => void;
+  onOpenDiff?: (file: GitFileStatus) => void;
+  onToggleDirectory: (path: string) => void;
+  onPrimary?: (file: GitFileStatus) => void;
+  onDiscard?: (file: GitFileStatus) => void;
+  onIgnore?: (file: GitFileStatus) => void;
+}) {
+  const tree = useMemo(() => buildGitFileTree(files), [files]);
+  if (files.length === 0) {
+    return <div className="px-3.5 py-2.5 text-xs text-ink-faint">{emptyLabel}</div>;
+  }
+  return (
+    <div className="pb-1">
+      {tree.map((node) => (
+        <GitFileTreeRow
+          key={`${node.kind}:${node.path}`}
+          node={node}
+          depth={0}
+          sectionKind={kind}
+          expandedPaths={expandedPaths}
+          rootPath={rootPath}
+          selectedId={selectedId}
+          primaryLabel={primaryLabel}
+          onToggleDirectory={onToggleDirectory}
+          onSelect={onSelect}
+          onOpenDiff={onOpenDiff}
+          onPrimary={onPrimary}
+          onDiscard={onDiscard}
+          onIgnore={onIgnore}
+        />
+      ))}
+    </div>
+  );
+}
+
+type GitFileSectionKind = "staged" | "unstaged" | "untracked";
+
+type GitFileTreeNode = GitFileTreeDirectory | GitFileTreeFile;
+
+type GitFileTreeDirectory = {
+  kind: "directory";
+  path: string;
+  name: string;
+  count: number;
+  children: GitFileTreeNode[];
+};
+
+type GitFileTreeFile = {
+  kind: "file";
+  path: string;
+  name: string;
+  file: GitFileStatus;
+};
+
+function GitFileTreeRow({
+  node,
+  depth,
+  sectionKind,
+  expandedPaths,
+  rootPath,
+  selectedId,
+  primaryLabel,
+  onToggleDirectory,
+  onSelect,
+  onOpenDiff,
+  onPrimary,
+  onDiscard,
+  onIgnore,
+}: {
+  node: GitFileTreeNode;
+  depth: number;
+  sectionKind: GitFileSectionKind;
+  expandedPaths: Set<string>;
+  rootPath?: string;
+  selectedId?: string;
+  primaryLabel?: string;
+  onToggleDirectory: (path: string) => void;
   onSelect?: (file: GitFileStatus) => void;
   onOpenDiff?: (file: GitFileStatus) => void;
   onPrimary?: (file: GitFileStatus) => void;
   onDiscard?: (file: GitFileStatus) => void;
   onIgnore?: (file: GitFileStatus) => void;
 }) {
-  if (files.length === 0) {
-    return <div className="px-3.5 py-2.5 text-xs text-ink-faint">{emptyLabel}</div>;
-  }
-  return (
-    <div className="pb-1">
-      {files.map((file) => {
-        const meta = gitFileBadge(file, kind);
-        const id = `${kind}:${file.path}`;
-        const PrimaryIcon = kind === "staged" ? Minus : Plus;
-        return (
-          <FileRow
-            key={id}
-            path={file.path}
-            tag={meta.tag}
-            tone={meta.tone}
+  if (node.kind === "directory") {
+    const expanded = expandedPaths.has(node.path);
+    return (
+      <>
+        <GitDirectoryRow node={node} depth={depth} expanded={expanded} onToggle={() => onToggleDirectory(node.path)} />
+        {expanded && node.children.map((child) => (
+          <GitFileTreeRow
+            key={`${child.kind}:${child.path}`}
+            node={child}
+            depth={depth + 1}
+            sectionKind={sectionKind}
+            expandedPaths={expandedPaths}
             rootPath={rootPath}
-            selected={selectedId === id}
-            primaryIcon={PrimaryIcon}
+            selectedId={selectedId}
             primaryLabel={primaryLabel}
-            onSelect={() => onSelect?.(file)}
-            onOpenDiff={() => onOpenDiff?.(file)}
-            onPrimary={onPrimary ? () => onPrimary(file) : undefined}
-            onDiscard={onDiscard ? () => onDiscard(file) : undefined}
-            onIgnore={onIgnore ? () => onIgnore(file) : undefined}
+            onToggleDirectory={onToggleDirectory}
+            onSelect={onSelect}
+            onOpenDiff={onOpenDiff}
+            onPrimary={onPrimary}
+            onDiscard={onDiscard}
+            onIgnore={onIgnore}
           />
-        );
-      })}
-    </div>
+        ))}
+      </>
+    );
+  }
+  const meta = gitFileBadge(node.file, sectionKind);
+  const id = `${sectionKind}:${node.file.path}`;
+  return (
+    <FileRow
+      path={node.file.path}
+      displayName={node.name}
+      tag={meta.tag}
+      tone={meta.tone}
+      depth={depth}
+      rootPath={rootPath}
+      selected={selectedId === id}
+      primaryLabel={primaryLabel}
+      onSelect={() => onSelect?.(node.file)}
+      onOpenDiff={() => onOpenDiff?.(node.file)}
+      onPrimary={onPrimary ? () => onPrimary(node.file) : undefined}
+      onDiscard={onDiscard ? () => onDiscard(node.file) : undefined}
+      onIgnore={onIgnore ? () => onIgnore(node.file) : undefined}
+    />
+  );
+}
+
+function GitDirectoryRow({
+  node,
+  depth,
+  expanded,
+  onToggle,
+}: {
+  node: GitFileTreeDirectory;
+  depth: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Tooltip label={node.path} placement="left" triggerClassName="block w-full">
+      <PressableButton
+        className="w-full h-[28px] flex items-center gap-1.5 pr-3 text-left text-xs text-ink-soft transition-colors hover:bg-fill/[0.04] hover:text-ink"
+        style={{ paddingLeft: `${12 + depth * 14}px` }}
+        onPressUp={onToggle}
+      >
+        {expanded ? <ChevronDown size={12} className="text-ink-faint" /> : <ChevronRight size={12} className="text-ink-faint" />}
+        <Folder size={13} className="text-brand-blue/85" />
+        <span className="min-w-0 flex-1 truncate font-medium">{node.name}</span>
+        <span className="text-[11px] text-ink-faint tabular-nums">{node.count}</span>
+      </PressableButton>
+    </Tooltip>
   );
 }
 
 function gitFileBadge(
   file: GitFileStatus,
-  kind: "staged" | "unstaged" | "untracked",
+  kind: GitFileSectionKind,
 ): { tag: string; tone: "amber" | "green" | "blue" } {
   if (kind === "untracked") return { tag: "U", tone: "green" };
   const raw = kind === "staged" ? file.indexStatus : file.worktreeStatus;
@@ -1112,6 +1293,97 @@ function gitFileBadge(
   if (status === "R") return { tag: "R", tone: "blue" };
   if (status === "C") return { tag: "C", tone: "blue" };
   return { tag: status || "M", tone: "amber" };
+}
+
+function buildGitFileTree(files: GitFileStatus[]): GitFileTreeNode[] {
+  type MutableDirectory = {
+    kind: "directory";
+    path: string;
+    name: string;
+    count: number;
+    children: Map<string, MutableDirectory | GitFileTreeFile>;
+  };
+  const root: MutableDirectory = {
+    kind: "directory",
+    path: "",
+    name: "",
+    count: 0,
+    children: new Map(),
+  };
+
+  for (const file of files) {
+    const parts = file.path.split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+    let directory = root;
+    directory.count += 1;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const name = parts[index];
+      const path = parts.slice(0, index + 1).join("/");
+      const existing = directory.children.get(path);
+      let nextDirectory: MutableDirectory;
+      if (existing?.kind === "directory") {
+        nextDirectory = existing;
+      } else {
+        nextDirectory = {
+          kind: "directory",
+          path,
+          name,
+          count: 0,
+          children: new Map(),
+        };
+        directory.children.set(path, nextDirectory);
+      }
+      nextDirectory.count += 1;
+      directory = nextDirectory;
+    }
+    directory.children.set(file.path, {
+      kind: "file",
+      path: file.path,
+      name: parts[parts.length - 1],
+      file,
+    });
+  }
+
+  const materialize = (directory: MutableDirectory): GitFileTreeNode[] =>
+    Array.from(directory.children.values())
+      .sort((left, right) => {
+        if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      })
+      .map((node) => {
+        if (node.kind === "file") return node;
+        return {
+          kind: "directory",
+          path: node.path,
+          name: node.name,
+          count: node.count,
+          children: materialize(node),
+        };
+      });
+
+  return materialize(root);
+}
+
+function collectGitDirectoryPaths(files: GitFileStatus[]) {
+  const paths = new Set<string>();
+  for (const file of files) {
+    const parts = file.path.split("/").filter(Boolean);
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      paths.add(parts.slice(0, index + 1).join("/"));
+    }
+  }
+  return paths;
+}
+
+function mergeGitDirectoryPaths(current: Set<string>, available: Set<string>, previousAvailable: Set<string>) {
+  const next = new Set<string>();
+  for (const path of current) {
+    if (available.has(path)) next.add(path);
+  }
+  for (const path of available) {
+    if (!previousAvailable.has(path)) next.add(path);
+  }
+  return next;
 }
 
 function formatDecorations(value?: string | null) {
