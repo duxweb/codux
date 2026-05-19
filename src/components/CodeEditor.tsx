@@ -9,6 +9,18 @@ import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
 import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
+import { c, cpp, csharp, dart, java, kotlin } from "@codemirror/legacy-modes/mode/clike";
+import { diff } from "@codemirror/legacy-modes/mode/diff";
+import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
+import { lua } from "@codemirror/legacy-modes/mode/lua";
+import { properties } from "@codemirror/legacy-modes/mode/properties";
+import { r } from "@codemirror/legacy-modes/mode/r";
+import { ruby } from "@codemirror/legacy-modes/mode/ruby";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { swift } from "@codemirror/legacy-modes/mode/swift";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
+import { StreamLanguage } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -192,6 +204,38 @@ function extensionForLanguage(language: string): Extension | null {
       return xml();
     case "sql":
       return sql();
+    case "yaml":
+      return yaml();
+    case "toml":
+      return StreamLanguage.define(toml);
+    case "properties":
+      return StreamLanguage.define(properties);
+    case "shell":
+      return StreamLanguage.define(shell);
+    case "dockerfile":
+      return StreamLanguage.define(dockerFile);
+    case "diff":
+      return StreamLanguage.define(diff);
+    case "ruby":
+      return StreamLanguage.define(ruby);
+    case "java":
+      return StreamLanguage.define(java);
+    case "kotlin":
+      return StreamLanguage.define(kotlin);
+    case "swift":
+      return StreamLanguage.define(swift);
+    case "c":
+      return StreamLanguage.define(c);
+    case "cpp":
+      return StreamLanguage.define(cpp);
+    case "csharp":
+      return StreamLanguage.define(csharp);
+    case "dart":
+      return StreamLanguage.define(dart);
+    case "lua":
+      return StreamLanguage.define(lua);
+    case "r":
+      return StreamLanguage.define(r);
     default:
       return null;
   }

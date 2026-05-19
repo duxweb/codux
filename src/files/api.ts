@@ -175,9 +175,23 @@ export function languageForPath(path: string) {
   if (ext === "go") return "go";
   if (["xml", "svg", "plist", "xaml"].includes(ext)) return "xml";
   if (["sql", "psql", "mysql"].includes(ext)) return "sql";
-  if (["yml", "yaml", "toml", "ini", "conf", "config", "env", "lock", "gitignore", "dockerignore", "editorconfig"].includes(ext) || name.startsWith(".env")) return "plain";
-  if (["sh", "bash", "zsh", "fish", "ps1", "bat", "cmd"].includes(ext)) return "plain";
-  if (["php", "rb", "java", "kt", "kts", "swift", "c", "h", "cpp", "cc", "cxx", "hpp", "cs", "dart", "lua", "r"].includes(ext)) return "plain";
+  if (["yml", "yaml"].includes(ext)) return "yaml";
+  if (ext === "toml") return "toml";
+  if (["ini", "conf", "config", "env", "lock", "gitignore", "dockerignore", "editorconfig"].includes(ext) || name.startsWith(".env")) return "properties";
+  if (name === "dockerfile" || name.endsWith(".dockerfile")) return "dockerfile";
+  if (["diff", "patch"].includes(ext)) return "diff";
+  if (["sh", "bash", "zsh", "fish", "ps1", "bat", "cmd"].includes(ext)) return "shell";
+  if (ext === "rb") return "ruby";
+  if (ext === "java") return "java";
+  if (["kt", "kts"].includes(ext)) return "kotlin";
+  if (ext === "swift") return "swift";
+  if (["c", "h"].includes(ext)) return "c";
+  if (["cpp", "cc", "cxx", "hpp"].includes(ext)) return "cpp";
+  if (ext === "cs") return "csharp";
+  if (ext === "dart") return "dart";
+  if (ext === "lua") return "lua";
+  if (ext === "r") return "r";
+  if (ext === "php") return "html";
   return "plain";
 }
 
