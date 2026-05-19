@@ -3,10 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowTopRight, FileCode2 } from "../icons";
 import type { GitDiffSnapshot } from "../git/status";
 import { Button } from "../components/Button";
-import { closeCurrentAppWindow, revealCurrentAppWindow } from "../windowing";
+import { closeCurrentAppWindow, revealCurrentAppWindow, revealMainAppWindow } from "../windowing";
 import { WindowFrame } from "./WindowFrame";
 import { tm } from "../i18n";
-import { openFileExternally } from "../files/api";
+import { broadcastWorkspaceCommand } from "../workspaceCommands";
 
 type DiffRequest = {
   projectPath: string;
@@ -73,7 +73,12 @@ export function GitDiffWindow() {
   const diff = snapshot?.diff || "";
   const openTargetFile = async () => {
     if (!request.projectPath || !request.path) return;
-    await openFileExternally(request.projectPath, request.path);
+    broadcastWorkspaceCommand({
+      type: "open-file",
+      rootPath: request.projectPath,
+      path: request.path,
+    });
+    await revealMainAppWindow();
   };
 
   return (

@@ -1799,7 +1799,7 @@ function ReviewFileRow({
   const statusLabel = reviewFileStatusLabel(file.status);
   return (
     <PressableButton
-      className={`h-9 grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-center gap-2.5 px-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] ${
+      className={`w-full h-9 grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-center gap-2.5 px-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] ${
         selected ? "bg-brand-blue/12 text-ink" : ""
       }`}
       onPressUp={onSelect}

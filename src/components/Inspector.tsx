@@ -446,8 +446,15 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
         return;
     }
   };
+  const gitFileSelectionId = (file: GitFileStatus, staged: boolean) =>
+    `${staged ? "staged" : file.indexStatus === "?" ? "untracked" : "unstaged"}:${file.path}`;
+
+  const selectGitFile = (file: GitFileStatus, staged: boolean) => {
+    setSelectedFileId(gitFileSelectionId(file, staged));
+  };
+
   const previewDiff = async (file: GitFileStatus, staged: boolean) => {
-    setSelectedFileId(`${staged ? "staged" : file.indexStatus === "?" ? "untracked" : "unstaged"}:${file.path}`);
+    selectGitFile(file, staged);
     if (!project?.path) return;
     await openGitDiffWindow({
       projectPath: project.path,
@@ -768,7 +775,8 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 selectedId={selectedFileId}
                 primaryLabel={tm("git.files.unstage", "Unstage")}
                 onPrimary={(file) => void git.unstage([file.path])}
-                onSelect={(file) => void previewDiff(file, true)}
+                onSelect={(file) => selectGitFile(file, true)}
+                onOpenDiff={(file) => void previewDiff(file, true)}
                 onDiscard={(file) => {
                   void systemConfirm(formatI18n(tm("git.files.discard.confirm_format", "Discard changes in %@?"), file.path), {
                     title: tm("git.files.discard_changes", "Discard Changes"),
@@ -822,7 +830,8 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 selectedId={selectedFileId}
                 primaryLabel={tm("git.files.stage", "Stage")}
                 onPrimary={(file) => void git.stage([file.path])}
-                onSelect={(file) => void previewDiff(file, false)}
+                onSelect={(file) => selectGitFile(file, false)}
+                onOpenDiff={(file) => void previewDiff(file, false)}
                 onDiscard={(file) => {
                   void systemConfirm(formatI18n(tm("git.files.discard.confirm_format", "Discard changes in %@?"), file.path), {
                     title: tm("git.files.discard_changes", "Discard Changes"),
@@ -867,7 +876,8 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 selectedId={selectedFileId}
                 primaryLabel={tm("git.files.stage", "Stage")}
                 onPrimary={(file) => void git.stage([file.path])}
-                onSelect={(file) => void previewDiff(file, false)}
+                onSelect={(file) => selectGitFile(file, false)}
+                onOpenDiff={(file) => void previewDiff(file, false)}
                 onIgnore={(file) => void git.appendGitignore([file.path])}
                 onDiscard={(file) => {
                   void systemConfirm(formatI18n(tm("git.files.delete_untracked.confirm_format", "Delete untracked file %@?"), file.path), {
@@ -963,6 +973,7 @@ function FileRow({
   selected,
   primaryIcon: PrimaryIcon,
   onSelect,
+  onOpenDiff,
   onPrimary,
   primaryLabel,
   rootPath,
@@ -976,6 +987,7 @@ function FileRow({
   selected?: boolean;
   primaryIcon?: (props: { size?: number; strokeWidth?: number; className?: string }) => ReactNode;
   onSelect?: () => void;
+  onOpenDiff?: () => void;
   onPrimary?: () => void;
   primaryLabel?: string;
   onDiscard?: () => void;
@@ -999,6 +1011,7 @@ function FileRow({
         <PressableButton
           className="min-w-0 flex-1 h-full flex items-center gap-2 text-left"
           onPressUp={onSelect}
+          onDoubleClick={onOpenDiff}
         >
           <span className="truncate flex-1 text-right" dir="rtl">{path}</span>
           <span className={`flex-shrink-0 text-xs font-bold ${toneClass}`}>{tag}</span>
@@ -1020,7 +1033,7 @@ function FileRow({
           {onPrimary && primaryLabel && (
             <ContextMenuItem label={primaryLabel} onSelect={onPrimary}>{primaryLabel}</ContextMenuItem>
           )}
-          <ContextMenuItem label={tm("git.diff.open", "Open Diff")} onSelect={onSelect}>
+          <ContextMenuItem label={tm("git.diff.open", "Open Diff")} onSelect={onOpenDiff}>
             {tm("git.diff.open", "Open Diff")}
           </ContextMenuItem>
           {onIgnore && <ContextMenuItem label={tm("git.ignore.add", "Add to .gitignore")} onSelect={onIgnore}>{tm("git.ignore.add", "Add to .gitignore")}</ContextMenuItem>}
@@ -1039,6 +1052,7 @@ function GitFileSection({
   selectedId,
   primaryLabel,
   onSelect,
+  onOpenDiff,
   onPrimary,
   onDiscard,
   onIgnore,
@@ -1050,6 +1064,7 @@ function GitFileSection({
   selectedId?: string;
   primaryLabel?: string;
   onSelect?: (file: GitFileStatus) => void;
+  onOpenDiff?: (file: GitFileStatus) => void;
   onPrimary?: (file: GitFileStatus) => void;
   onDiscard?: (file: GitFileStatus) => void;
   onIgnore?: (file: GitFileStatus) => void;
@@ -1074,6 +1089,7 @@ function GitFileSection({
             primaryIcon={PrimaryIcon}
             primaryLabel={primaryLabel}
             onSelect={() => onSelect?.(file)}
+            onOpenDiff={() => onOpenDiff?.(file)}
             onPrimary={onPrimary ? () => onPrimary(file) : undefined}
             onDiscard={onDiscard ? () => onDiscard(file) : undefined}
             onIgnore={onIgnore ? () => onIgnore(file) : undefined}

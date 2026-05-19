@@ -259,9 +259,10 @@ export async function revealCurrentAppWindow() {
 
 export async function revealMainAppWindow() {
   if (!window.__TAURI_INTERNALS__) return;
-  const currentWindow = getCurrentWebviewWindow();
-  await currentWindow.show();
-  await currentWindow.setFocus();
+  const mainWindow = await WebviewWindow.getByLabel("main");
+  if (!mainWindow) return;
+  await mainWindow.show();
+  await mainWindow.setFocus();
 }
 
 export async function closeCurrentAppWindow() {
