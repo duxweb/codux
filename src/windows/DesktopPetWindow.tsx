@@ -139,8 +139,20 @@ export function DesktopPetWindow() {
     settings.ai.pet.speechMode,
   ]);
 
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__) return;
+    void invoke("desktop_pet_set_bubble_visible", { visible: Boolean(bubbleText) }).catch((error) => {
+      console.error("failed to update desktop pet bubble hit state", error);
+    });
+    return () => {
+      void invoke("desktop_pet_set_bubble_visible", { visible: false }).catch(() => undefined);
+    };
+  }, [bubbleText]);
+
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !window.__TAURI_INTERNALS__) return;
+    event.preventDefault();
+    event.stopPropagation();
     void invoke("desktop_pet_start_drag").catch((error) => console.error("failed to drag desktop pet", error));
   };
   const openMenu = (event: MouseEvent<HTMLDivElement>) => {
@@ -152,13 +164,17 @@ export function DesktopPetWindow() {
 
   return (
     <div
-      className="h-screen w-screen overflow-hidden bg-transparent"
-      onPointerDown={startDrag}
-      onContextMenu={openMenu}
+      className="h-screen w-screen overflow-hidden bg-transparent pointer-events-none"
     >
       <div className="relative h-full w-full">
-        {bubbleText ? <DesktopPetSpeechBubble text={bubbleText} side={side} /> : null}
-        <div className={desktopPetSpriteClass(side)}>
+        {bubbleText ? (
+          <DesktopPetSpeechBubble text={bubbleText} side={side} onContextMenu={openMenu} />
+        ) : null}
+        <div
+          className={`${desktopPetSpriteClass(side)} pointer-events-auto cursor-grab active:cursor-grabbing`}
+          onPointerDown={startDrag}
+          onContextMenu={openMenu}
+        >
           <PetSprite
             species={pet.snapshot.species}
             src={pet.snapshot.customPet?.spritesheetDataUrl}
@@ -172,10 +188,19 @@ export function DesktopPetWindow() {
   );
 }
 
-function DesktopPetSpeechBubble({ text, side }: { text: string; side: DesktopPetSide }) {
+function DesktopPetSpeechBubble({
+  text,
+  side,
+  onContextMenu,
+}: {
+  text: string;
+  side: DesktopPetSide;
+  onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
+}) {
   return (
     <div
-      className={`absolute w-[214px] min-h-[58px] ${desktopPetBubbleClass(side)}`}
+      className={`pointer-events-auto absolute w-[214px] min-h-[58px] ${desktopPetBubbleClass(side)}`}
+      onContextMenu={onContextMenu}
     >
       <div className={`pixel-speech-bubble ${desktopPetTailClass(side)}`}>
         <div className="pixel-speech-bubble__text">{text}</div>

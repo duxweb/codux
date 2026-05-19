@@ -100,7 +100,9 @@ use project_store::{
 use ssh::{SSHLaunchCommand, SSHProfileUpsertRequest, SSHProfilesSnapshot, SSHStore};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::{thread, time::Duration};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::utils::config::Color;
 use tauri::Wry;
@@ -260,6 +262,12 @@ struct AppState {
     ssh: Arc<SSHStore>,
     git_watch: Arc<GitWatchManager>,
     file_watch: Arc<FileWatchManager>,
+    desktop_pet_hit_state: Arc<DesktopPetHitState>,
+}
+
+#[derive(Default)]
+struct DesktopPetHitState {
+    has_bubble: AtomicBool,
 }
 
 const DESKTOP_PET_LABEL: &str = "desktop-pet";
@@ -360,9 +368,83 @@ fn show_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings) -> ta
         }
     });
     let _ = window.set_visible_on_all_workspaces(true);
+    let _ = window.set_ignore_cursor_events(true);
     let _ = window.show();
+    start_desktop_pet_hit_test_loop(app.clone());
     desktop_pet_emit_placement(&window);
     Ok(())
+}
+
+fn start_desktop_pet_hit_test_loop(app: tauri::AppHandle) {
+    thread::spawn(move || {
+        let mut last_click_through = true;
+        loop {
+            let Some(window) = app.get_webview_window(DESKTOP_PET_LABEL) else {
+                break;
+            };
+            let hit_state = app
+                .try_state::<AppState>()
+                .map(|state| Arc::clone(&state.desktop_pet_hit_state));
+            let has_bubble = hit_state
+                .as_ref()
+                .is_some_and(|state| state.has_bubble.load(Ordering::Relaxed));
+            let click_through = desktop_pet_should_click_through(&window, has_bubble);
+            if click_through != last_click_through {
+                let _ = window.set_ignore_cursor_events(click_through);
+                last_click_through = click_through;
+            }
+            thread::sleep(Duration::from_millis(80));
+        }
+    });
+}
+
+fn desktop_pet_should_click_through(window: &tauri::WebviewWindow<Wry>, has_bubble: bool) -> bool {
+    let Ok(cursor) = window.cursor_position() else {
+        return true;
+    };
+    let Ok(position) = window.outer_position() else {
+        return true;
+    };
+    let Ok(size) = window.inner_size() else {
+        return true;
+    };
+    let scale_factor = window.scale_factor().unwrap_or(1.0).max(0.1);
+    let local_x = (cursor.x - f64::from(position.x)) / scale_factor;
+    let local_y = (cursor.y - f64::from(position.y)) / scale_factor;
+    if local_x < 0.0
+        || local_y < 0.0
+        || local_x > f64::from(size.width) / scale_factor
+        || local_y > f64::from(size.height) / scale_factor
+    {
+        return true;
+    }
+    !desktop_pet_local_point_is_hotspot(window, local_x, local_y, has_bubble)
+}
+
+fn desktop_pet_local_point_is_hotspot(
+    window: &tauri::WebviewWindow<Wry>,
+    x: f64,
+    y: f64,
+    has_bubble: bool,
+) -> bool {
+    let Ok(size) = window.inner_size() else {
+        return false;
+    };
+    let scale_factor = window.scale_factor().unwrap_or(1.0).max(0.1);
+    let width = f64::from(size.width) / scale_factor;
+    let height = f64::from(size.height) / scale_factor;
+    let side = desktop_pet_placement_for_window(window).side;
+    let sprite_x = if side == "right" { 24.0 } else { width - 24.0 - 128.0 };
+    let sprite_y = height - 8.0 - 128.0;
+    let in_sprite = x >= sprite_x && x <= sprite_x + 128.0 && y >= sprite_y && y <= sprite_y + 128.0;
+    let in_bubble = if has_bubble {
+        let bubble_x = if side == "right" { width - 8.0 - 214.0 } else { 8.0 };
+        let bubble_y = 56.0;
+        x >= bubble_x && x <= bubble_x + 214.0 && y >= bubble_y && y <= bubble_y + 88.0
+    } else {
+        false
+    };
+    in_sprite || in_bubble
 }
 
 fn desktop_pet_scale(settings: &AppSettings) -> f64 {
@@ -667,6 +749,17 @@ fn app_settings_set(
 #[tauri::command]
 fn desktop_pet_placement(window: tauri::WebviewWindow<Wry>) -> DesktopPetPlacementSnapshot {
     desktop_pet_placement_for_window(&window)
+}
+
+#[tauri::command]
+fn desktop_pet_set_bubble_visible(
+    state: tauri::State<'_, AppState>,
+    visible: bool,
+) {
+    state
+        .desktop_pet_hit_state
+        .has_bubble
+        .store(visible, Ordering::Relaxed);
 }
 
 #[tauri::command]
@@ -2351,6 +2444,7 @@ pub fn run() {
                 ssh: Arc::new(SSHStore::load_or_seed()),
                 git_watch: Arc::new(GitWatchManager::default()),
                 file_watch: Arc::new(FileWatchManager::default()),
+                desktop_pet_hit_state: Arc::new(DesktopPetHitState::default()),
             };
             state.ai_runtime.start_listener(app.handle().clone())?;
             let initial_settings = state.settings.snapshot();
@@ -2395,6 +2489,7 @@ pub fn run() {
             app_settings_get,
             app_settings_set,
             desktop_pet_placement,
+            desktop_pet_set_bubble_visible,
             desktop_pet_start_drag,
             desktop_pet_show_context_menu,
             i18n_bundle_get,
