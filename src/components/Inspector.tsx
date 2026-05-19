@@ -10,7 +10,6 @@ import {
   KeyRound,
   Minus,
   MoreHorizontal,
-  PencilSquare,
   Plus,
   RefreshCw,
   Server,
@@ -2698,7 +2697,7 @@ function FileTreeRow({
         }`}
       >
         <PressableButton
-          className="min-w-0 h-full flex-1 inline-flex items-center gap-1.5 pr-11 text-left"
+          className="min-w-0 h-full flex-1 inline-flex items-center gap-1.5 pr-2 text-left"
           style={{ paddingLeft: `${8 + row.depth * 14}px` }}
           onPointerDown={(event) => {
             selectionModifiersRef.current = {
@@ -2729,18 +2728,6 @@ function FileTreeRow({
           <span className="truncate text-xs">{entry.name}</span>
           {loading && <Spinner size="sm" color="current" className="ml-1 text-ink-faint" />}
         </PressableButton>
-        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded bg-surface-chrome/95 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto">
-          <PressableButton
-            className="w-5 h-5 grid place-items-center rounded text-ink-faint hover:text-ink hover:bg-fill/8"
-            onPressUp={(event) => {
-              event.continuePropagation();
-              onRename?.();
-            }}
-            aria-label={labels.rename}
-          >
-            <PencilSquare size={11} />
-          </PressableButton>
-        </div>
         <ContextMenu ariaLabel={`${entry.name} ${labels.actions}`} menu={contextMenu.menu} onClose={contextMenu.closeMenu}>
           <ContextMenuItem label={labels.open} disabled={entry.isDirectory || isMultiContext} onSelect={onOpen}>{labels.open}</ContextMenuItem>
           <ContextMenuItem label={labels.edit} disabled={entry.isDirectory || isMultiContext} onSelect={onEdit}>{labels.edit}</ContextMenuItem>
