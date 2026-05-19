@@ -307,6 +307,9 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
       : tm("git.remote.status.no_remote_branch", "No Remote Branch");
   const statusTone = snapshot.isRepository && hasUpstream ? "info" : "neutral";
   const statusButtonTone = statusTone === "info" ? "ghost" : "neutral";
+  const StatusIcon = snapshot.isRepository && hasUpstream && snapshot.behind === 0 && snapshot.ahead === 0
+    ? CheckCircle2
+    : ChevronRight;
   const commitActionLabel = gitCommitActionLabel(commitAction);
   const remoteBranchesByRemote = useMemo(() => {
     return groupRemoteBranches(snapshot.remoteBranches);
@@ -764,13 +767,13 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
               variant="secondary"
               className="h-[78px] resize-none text-sm"
             />
-            <div className="mt-2.5 flex rounded-md shadow-sm">
+            <div className="mt-2.5 flex rounded-lg shadow-sm">
               <Button
                 variant="primary"
                 size="sm"
                 block
                 disabled={!canCommit}
-                className="h-[34px] rounded-r-none border-r border-white/15 text-sm font-semibold"
+                className="h-[34px] rounded-l-lg rounded-r-none border-r border-white/15 text-sm font-semibold"
                 onPress={() => void submitCommit()}
               >
                 {commitActionLabel}{snapshot.staged.length > 0 ? ` ${snapshot.staged.length}` : ""}
@@ -778,7 +781,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
               <Dropdown isOpen={commitMenuOpen} onOpenChange={setCommitMenuOpen}>
                 <Dropdown.Trigger
                   isDisabled={!canCommit}
-                  className="grid h-[34px] w-8 min-w-8 place-items-center rounded-l-none rounded-r-md bg-brand-blue px-0 text-on-brand transition-colors hover:bg-brand-blue/90 disabled:cursor-default disabled:opacity-50"
+                  className="grid h-[34px] w-8 min-w-8 place-items-center rounded-l-none rounded-r-lg bg-brand-blue px-0 text-on-brand transition-colors hover:bg-brand-blue/90 disabled:cursor-default disabled:opacity-50"
                   aria-label={tm("git.commit.options", "Commit Options")}
                 >
                   <ChevronDown size={13} strokeWidth={2.4} />
@@ -983,7 +986,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
             {isRefreshingGit ? (
               <Spinner size="sm" color="current" className="text-current/90" />
             ) : (
-              <ChevronRight size={12} className="opacity-0" />
+              <StatusIcon size={12} className={snapshot.isRepository && hasUpstream ? "opacity-90" : "opacity-0"} />
             )}
             <span>{isRefreshingGit ? tm("git.empty.reading_status", "Reading Git Status") : statusLabel}</span>
             {isRefreshingGit && (
@@ -1463,7 +1466,7 @@ function CommitRow({
       className="group relative min-h-[46px] px-2 py-1.5 hover:bg-fill/[0.03] text-xs"
       onContextMenu={contextMenu.openMenu}
     >
-      <div className="grid min-h-[34px] grid-cols-[34px_minmax(0,1fr)] items-center gap-1.5">
+      <div className="grid min-h-[34px] grid-cols-[22px_minmax(0,1fr)] items-center gap-1">
         <GitGraphPrefix prefix={commit.graphPrefix || (isHead ? "*" : "|")} />
         <Tooltip
           placement="top"
@@ -1528,9 +1531,10 @@ function CommitRow({
 function GitGraphPrefix({ prefix }: { prefix: string }) {
   const chars = Array.from(prefix || "*");
   const columnWidth = 8;
-  const startX = Math.max(0, 34 - chars.length * columnWidth);
+  const width = 22;
+  const startX = Math.max(0, width - chars.length * columnWidth);
   return (
-    <div className="relative h-full min-h-[34px] w-[34px]" aria-hidden="true">
+    <div className="relative h-full min-h-[34px] w-[22px]" aria-hidden="true">
       {chars.map((char, index) => (
         <GitGraphToken
           key={`${char}:${index}`}

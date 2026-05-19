@@ -98,7 +98,7 @@ export function PanelStatusBar({
 }) {
   return (
     <div
-      className={`h-[44px] flex-shrink-0 px-3 flex items-center justify-between gap-3 text-xs ${toneClass[tone]}`}
+      className={`h-[36px] flex-shrink-0 px-3 flex items-center justify-between gap-2 text-xs ${toneClass[tone]}`}
     >
       <div className="flex items-center gap-1.5 min-w-0">{leading}</div>
       <div className="flex items-center gap-1 flex-shrink-0">{trailing}</div>

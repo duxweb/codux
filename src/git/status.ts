@@ -528,7 +528,7 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
       const seconds = Number(readAppSettings().gitRefresh);
       if (!Number.isFinite(seconds) || seconds <= 0) return;
       timer = window.setInterval(() => {
-        if (!disposed) void refresh({ silent: true });
+        if (!disposed) void fetch();
       }, Math.max(15, seconds) * 1000);
     };
 
@@ -539,7 +539,7 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
       unsubscribe();
       if (timer !== undefined) window.clearInterval(timer);
     };
-  }, [project?.path, refresh]);
+  }, [fetch, project?.path]);
 
   useEffect(() => {
     if (!project?.path || !window.__TAURI_INTERNALS__) return;
