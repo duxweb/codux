@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { readAppSettings, subscribeAppSettings } from "../settings";
 import type { WorkspaceProject } from "../types";
 
 export type AIProjectUsageSummary = {
@@ -116,6 +115,7 @@ type AIHistoryRefreshOptions = {
 };
 
 const projectHistoryRequests = new Map<string, Promise<AIHistoryProjectState>>();
+const projectStateRequests = new Map<string, Promise<AIHistoryProjectState>>();
 const globalHistoryRequests = new Map<string, Promise<AIGlobalHistorySnapshot>>();
 
 export function useAIHistorySnapshot(project?: WorkspaceProject) {
@@ -201,6 +201,47 @@ export function useAIHistorySnapshot(project?: WorkspaceProject) {
     }
   }, [applyProjectState, project?.id, project?.name, project?.path]);
 
+  const loadState = useCallback(async () => {
+    if (!project || !window.__TAURI_INTERNALS__) {
+      setSnapshot(emptyHistorySnapshot(project));
+      setIsLoading(false);
+      setError(null);
+      setDetail("idle");
+      setProgress(null);
+      stateVersionRef.current = 0;
+      foregroundProjectIdRef.current = null;
+      return;
+    }
+    try {
+      const requestKey = `${project.id}:${project.path}:${project.name}`;
+      let request = projectStateRequests.get(requestKey);
+      if (!request) {
+        request = invoke<AIHistoryProjectState>("ai_history_project_state", {
+          project: {
+            id: project.id,
+            name: project.name,
+            path: project.path,
+          },
+        }).finally(() => {
+          projectStateRequests.delete(requestKey);
+        });
+        projectStateRequests.set(requestKey, request);
+      }
+      const next = await request;
+      if (activeProjectIdRef.current !== project.id) return;
+      applyProjectState(next);
+    } catch (reason) {
+      if (activeProjectIdRef.current !== project.id) return;
+      console.error("failed to load ai history state", reason);
+      setError(reason instanceof Error ? reason.message : String(reason));
+      setSnapshot(emptyHistorySnapshot(project));
+      setIsLoading(false);
+      setDetail("failed");
+      setProgress(null);
+      foregroundProjectIdRef.current = null;
+    }
+  }, [applyProjectState, project?.id, project?.name, project?.path]);
+
   useEffect(() => {
     if (!project || !window.__TAURI_INTERNALS__) {
       void refresh();
@@ -240,37 +281,16 @@ export function useAIHistorySnapshot(project?: WorkspaceProject) {
         return;
       }
       unlisten = nextUnlisten;
-      void refresh();
+      void loadState();
     }).catch((reason) => {
       console.error("failed to listen ai history", reason);
-      if (!disposed) void refresh();
+      if (!disposed) void loadState();
     });
     return () => {
       disposed = true;
       unlisten?.();
     };
-  }, [applyProjectState, project?.id, refresh]);
-
-  useEffect(() => {
-    if (!project || !window.__TAURI_INTERNALS__) return;
-    let timer: number | undefined;
-
-    const schedule = () => {
-      if (timer !== undefined) window.clearInterval(timer);
-      const seconds = Number(readAppSettings().aiRefresh);
-      if (!Number.isFinite(seconds) || seconds <= 0) return;
-      timer = window.setInterval(() => {
-        void refresh({ mode: "silent" });
-      }, Math.max(60, seconds) * 1000);
-    };
-
-    schedule();
-    const unsubscribe = subscribeAppSettings(schedule);
-    return () => {
-      unsubscribe();
-      if (timer !== undefined) window.clearInterval(timer);
-    };
-  }, [project?.id, refresh]);
+  }, [applyProjectState, loadState, project?.id]);
 
   return useMemo(
     () => ({
@@ -305,18 +325,17 @@ export function useAIGlobalHistorySnapshot(
       setError(null);
       return;
     }
-    setIsLoading(true);
     setError(null);
     try {
       let request = globalHistoryRequests.get(projectKey);
       if (!request) {
-        request = invoke<AIGlobalHistorySnapshot>("ai_history_global_summary", {
+        request = invoke<AIGlobalHistorySnapshot | null>("ai_history_global_state", {
           projects: projects.map((project) => ({
             id: project.id,
             name: project.name,
             path: project.path,
           })),
-        }).finally(() => {
+        }).then((next) => next ?? emptyGlobalHistorySnapshot).finally(() => {
           globalHistoryRequests.delete(projectKey);
         });
         globalHistoryRequests.set(projectKey, request);
@@ -327,35 +346,12 @@ export function useAIGlobalHistorySnapshot(
       console.error("failed to load global ai history", reason);
       setError(reason instanceof Error ? reason.message : String(reason));
       setSnapshot(emptyGlobalHistorySnapshot);
-    } finally {
-      setIsLoading(false);
     }
   }, [enabled, projectKey]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    if (!window.__TAURI_INTERNALS__ || !enabled) return;
-    let timer: number | undefined;
-
-    const schedule = () => {
-      if (timer !== undefined) window.clearInterval(timer);
-      const seconds = Number(readAppSettings().aiBackgroundRefresh);
-      if (!Number.isFinite(seconds) || seconds <= 0) return;
-      timer = window.setInterval(() => {
-        void refresh();
-      }, Math.max(60, seconds) * 1000);
-    };
-
-    schedule();
-    const unsubscribe = subscribeAppSettings(schedule);
-    return () => {
-      unsubscribe();
-      if (timer !== undefined) window.clearInterval(timer);
-    };
-  }, [enabled, refresh]);
 
   useEffect(() => {
     if (!window.__TAURI_INTERNALS__ || !enabled) return;

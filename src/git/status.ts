@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { readAppSettings, subscribeAppSettings } from "../settings";
 import type { WorkspaceProject } from "../types";
 
 export interface GitFileStatus {
@@ -68,6 +67,13 @@ export interface GitRepositoryChangeEvent {
   changedPaths: string[];
 }
 
+export interface GitStatusEvent {
+  projectId: string;
+  projectName: string;
+  projectPath: string;
+  snapshot: GitStatusSnapshot;
+}
+
 export type GitCommitAction = "commit" | "commitAndPush" | "commitAndSync";
 
 const emptySnapshot: GitStatusSnapshot = {
@@ -123,6 +129,20 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
   useEffect(() => {
     projectPathRef.current = project?.path;
   }, [project?.path]);
+
+  useEffect(() => {
+    setSnapshot(
+      project?.path && !window.__TAURI_INTERNALS__
+        ? {
+            ...emptySnapshot,
+            isRepository: true,
+            branch: project.branch,
+          }
+        : emptySnapshot,
+    );
+    setError(null);
+    setLoading(false);
+  }, [project?.branch, project?.path]);
 
   const refresh = useCallback(async (options?: { silent?: boolean }) => {
     if (!project?.path) {
@@ -528,31 +548,31 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
   );
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
     if (!project?.path || !window.__TAURI_INTERNALS__) return;
+    const projectPath = project.path;
     let disposed = false;
-    let timer: number | undefined;
-
-    const schedule = () => {
-      if (timer !== undefined) window.clearInterval(timer);
-      const seconds = Number(readAppSettings().gitRefresh);
-      if (!Number.isFinite(seconds) || seconds <= 0) return;
-      timer = window.setInterval(() => {
-        if (!disposed) void fetch();
-      }, Math.max(15, seconds) * 1000);
-    };
-
-    schedule();
-    const unsubscribe = subscribeAppSettings(schedule);
+    let unlisten: (() => void) | undefined;
+    void listen<GitStatusEvent>("git:status", (event) => {
+      if (disposed || normalizeGitEventPath(event.payload.projectPath) !== normalizeGitEventPath(projectPath)) return;
+      const normalized = sanitizeGitRepositorySnapshot(event.payload.snapshot);
+      setSnapshot(normalized);
+      setError(normalized.error ?? null);
+      setLoading(false);
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten();
+        return;
+      }
+      unlisten = nextUnlisten;
+    }).catch((nextError) => {
+      const message = nextError instanceof Error ? nextError.message : String(nextError);
+      setError(message);
+    });
     return () => {
       disposed = true;
-      unsubscribe();
-      if (timer !== undefined) window.clearInterval(timer);
+      unlisten?.();
     };
-  }, [fetch, project?.path]);
+  }, [project?.path]);
 
   useEffect(() => {
     if (!project?.path || !window.__TAURI_INTERNALS__) return;

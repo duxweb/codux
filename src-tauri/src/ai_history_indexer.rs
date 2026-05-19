@@ -120,6 +120,30 @@ impl AIHistoryIndexer {
         Ok(project_state)
     }
 
+    pub async fn refresh_project(&self, project: AIHistoryProjectRequest) -> Result<(), String> {
+        let cached_snapshot = indexed_project_snapshot(project.clone()).await?;
+        let (project_state, should_enqueue) =
+            mark_project_queued(&self.state, &project, cached_snapshot)?;
+        emit_history_event(
+            &self.app,
+            AIHistoryEvent::ProjectState {
+                state: project_state.clone(),
+            },
+        );
+
+        if should_enqueue
+            && self
+                .tx
+                .send(AIHistoryJob::RefreshProject { project })
+                .await
+                .is_err()
+        {
+            return Err("AI history indexer stopped.".to_string());
+        }
+
+        Ok(())
+    }
+
     pub async fn project_state(
         &self,
         project: AIHistoryProjectRequest,
@@ -146,6 +170,23 @@ impl AIHistoryIndexer {
             .await
             .map_err(|_| "AI history indexer stopped.".to_string())?;
         receive_reply(result).await
+    }
+
+    pub async fn global_state(
+        &self,
+        projects: Vec<AIHistoryProjectRequest>,
+    ) -> Result<Option<AIGlobalHistorySnapshot>, String> {
+        indexed_global_snapshot(projects).await
+    }
+
+    pub async fn refresh_global(
+        &self,
+        projects: Vec<AIHistoryProjectRequest>,
+    ) -> Result<(), String> {
+        self.tx
+            .send(AIHistoryJob::RefreshGlobal { projects })
+            .await
+            .map_err(|_| "AI history indexer stopped.".to_string())
     }
 }
 

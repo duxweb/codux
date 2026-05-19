@@ -106,7 +106,7 @@ pub struct ProjectListSnapshot {
     pub selected_worktree_id_by_project: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
     pub id: String,
@@ -188,6 +188,16 @@ impl ProjectStore {
             .lock()
             .map(|value| value.projects.clone())
             .unwrap_or_default()
+    }
+
+    pub fn worktree_snapshot_by_id(&self, worktree_id: &str) -> Option<ProjectWorktreeRecord> {
+        self.snapshot.lock().ok().and_then(|snapshot| {
+            snapshot
+                .worktrees
+                .iter()
+                .find(|worktree| worktree.id == worktree_id)
+                .cloned()
+        })
     }
 
     pub fn create_project(

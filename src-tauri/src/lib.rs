@@ -15,6 +15,7 @@ mod paths;
 mod performance;
 mod pet;
 mod power;
+mod project_activity;
 mod project_store;
 mod ssh;
 mod terminal;
@@ -100,9 +101,10 @@ use pet::{
     PetSnapshot, PetStore,
 };
 use power::PowerManager;
+use project_activity::ProjectActivityCoordinator;
 use project_store::{
     ProjectCloseRequest, ProjectCreateRequest, ProjectListSnapshot, ProjectSelectWorktreeRequest,
-    ProjectStore, TerminalLayoutRecord,
+    ProjectStore, ProjectSummary, TerminalLayoutRecord,
 };
 use ssh::{SSHLaunchCommand, SSHProfileUpsertRequest, SSHProfilesSnapshot, SSHStore};
 use std::fs;
@@ -437,6 +439,7 @@ struct AppState {
     memory: Arc<MemoryStore>,
     settings: Arc<AppSettingsStore>,
     projects: Arc<ProjectStore>,
+    project_activity: Arc<ProjectActivityCoordinator>,
     pet: Arc<PetStore>,
     ssh: Arc<SSHStore>,
     git_watch: Arc<GitWatchManager>,
@@ -1255,6 +1258,14 @@ async fn ai_history_global_summary(
 }
 
 #[tauri::command]
+async fn ai_history_global_state(
+    state: tauri::State<'_, AppState>,
+    projects: Vec<AIHistoryProjectRequest>,
+) -> Result<Option<AIGlobalHistorySnapshot>, String> {
+    state.ai_history.global_state(projects).await
+}
+
+#[tauri::command]
 fn git_status(project_path: String) -> GitStatusSnapshot {
     load_git_status(project_path)
 }
@@ -1732,15 +1743,34 @@ async fn project_list(state: tauri::State<'_, AppState>) -> Result<ProjectListSn
 }
 
 #[tauri::command]
+fn project_mark_active(state: tauri::State<'_, AppState>, project: ProjectSummary) {
+    state.project_activity.mark_project_summary(&project);
+}
+
+#[tauri::command]
 async fn project_create(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: ProjectCreateRequest,
 ) -> Result<ProjectListSnapshot, String> {
     let projects = Arc::clone(&state.projects);
+    let known_project_ids = projects
+        .projects_snapshot()
+        .into_iter()
+        .map(|project| project.id)
+        .collect::<std::collections::HashSet<_>>();
     let snapshot = tauri::async_runtime::spawn_blocking(move || projects.create_project(request))
         .await
         .map_err(|error| error.to_string())??;
+    if let Some(project) = selected_project_summary(&snapshot) {
+        if known_project_ids.contains(&project.id) {
+            state.project_activity.mark_project_summary(&project);
+        } else {
+            state
+                .project_activity
+                .refresh_ai_once(project, Arc::clone(&state.ai_history));
+        }
+    }
     let _ = app.emit("project:updated", snapshot.clone());
     Ok(snapshot)
 }
@@ -1754,13 +1784,15 @@ async fn project_close(
     let projects = Arc::clone(&state.projects);
     let pet = Arc::clone(&state.pet);
     let project_id = request.project_id.clone();
+    let project_id_for_pet = project_id.clone();
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
         let snapshot = projects.close_project(request.project_id)?;
-        let _ = pet.forget_project_baseline(&project_id);
+        let _ = pet.forget_project_baseline(&project_id_for_pet);
         Ok::<_, String>(snapshot)
     })
     .await
     .map_err(|error| error.to_string())??;
+    state.project_activity.remove_project(&project_id);
     let _ = app.emit("project:updated", snapshot.clone());
     Ok(snapshot)
 }
@@ -1779,6 +1811,7 @@ async fn project_close_all(
     })
     .await
     .map_err(|error| error.to_string())??;
+    state.project_activity.clear();
     let _ = app.emit("project:updated", snapshot.clone());
     Ok(snapshot)
 }
@@ -1796,6 +1829,9 @@ async fn project_select(
     })
     .await
     .map_err(|error| error.to_string())??;
+    if let Some(project) = selected_project_summary(&snapshot) {
+        state.project_activity.mark_project_summary(&project);
+    }
     let _ = app.emit("project:updated", snapshot.clone());
     Ok(snapshot)
 }
@@ -1807,14 +1843,44 @@ async fn project_select_worktree(
     request: ProjectSelectWorktreeRequest,
 ) -> Result<ProjectListSnapshot, String> {
     let projects = Arc::clone(&state.projects);
+    let worktree_id = request.worktree_id.clone();
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
         projects.select_worktree(request)?;
         Ok::<_, String>(projects.list_snapshot())
     })
     .await
     .map_err(|error| error.to_string())??;
+    if let Some(worktree) = state.projects.worktree_snapshot_by_id(&worktree_id) {
+        state
+            .project_activity
+            .mark_project_summary(&ProjectSummary {
+                id: worktree.id,
+                name: worktree.name,
+                path: worktree.path,
+                badge: String::new(),
+                status: worktree.status,
+                branch: worktree.branch,
+                changes: 0,
+                badge_symbol: None,
+                badge_color_hex: None,
+            });
+    }
     let _ = app.emit("project:updated", snapshot.clone());
     Ok(snapshot)
+}
+
+fn selected_project_summary(snapshot: &ProjectListSnapshot) -> Option<ProjectSummary> {
+    snapshot
+        .selected_project_id
+        .as_ref()
+        .and_then(|selected_id| {
+            snapshot
+                .projects
+                .iter()
+                .find(|project| &project.id == selected_id)
+        })
+        .or_else(|| snapshot.projects.first())
+        .cloned()
 }
 
 #[tauri::command]
@@ -2779,6 +2845,9 @@ pub fn run() {
                 Arc::clone(&memory),
                 Arc::clone(&projects),
             ));
+            let ai_history = Arc::new(AIHistoryIndexer::new(app.handle().clone()));
+            let project_activity = Arc::new(ProjectActivityCoordinator::new());
+            project_activity.seed_projects(projects.projects_snapshot());
             let power = Arc::new(PowerManager::default());
             power.start_settings_sync(Arc::clone(&settings))?;
             let state = AppState {
@@ -2790,10 +2859,11 @@ pub fn run() {
                 performance: Arc::new(PerformanceMonitor::default()),
                 power,
                 ai_runtime,
-                ai_history: Arc::new(AIHistoryIndexer::new(app.handle().clone())),
+                ai_history: Arc::clone(&ai_history),
                 memory,
-                settings,
-                projects,
+                settings: Arc::clone(&settings),
+                projects: Arc::clone(&projects),
+                project_activity: Arc::clone(&project_activity),
                 pet: Arc::new(PetStore::load_or_seed()),
                 ssh: Arc::new(SSHStore::load_or_seed()),
                 git_watch: Arc::new(GitWatchManager::default()),
@@ -2803,6 +2873,7 @@ pub fn run() {
             state.ai_runtime.start_listener(app.handle().clone())?;
             let initial_settings = state.settings.snapshot();
             let initial_pet = state.pet.snapshot().ok();
+            project_activity.start(app.handle().clone(), Arc::clone(&settings), ai_history);
             app.manage(state);
             if let Some(pet) = initial_pet {
                 sync_desktop_pet_window(app.handle(), &initial_settings, &pet);
@@ -2814,6 +2885,7 @@ pub fn run() {
             project_create,
             project_close,
             project_close_all,
+            project_mark_active,
             project_select,
             project_select_worktree,
             project_open_applications,
@@ -2867,6 +2939,7 @@ pub fn run() {
             ai_history_project_summary,
             ai_history_project_state,
             ai_history_global_summary,
+            ai_history_global_state,
             git_status,
             git_stage,
             git_unstage,

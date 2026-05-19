@@ -229,6 +229,32 @@ function App() {
     }));
   }, [selectedProjectWithAIState, selectedWorktreeByProject, worktreeSnapshot]);
 
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__ || !selectedWorkspaceProject) return;
+    void invoke("project_mark_active", {
+      project: {
+        id: selectedWorkspaceProject.id,
+        name: selectedWorkspaceProject.name,
+        path: selectedWorkspaceProject.path,
+        badge: selectedWorkspaceProject.badge,
+        status: selectedWorkspaceProject.status,
+        branch: selectedWorkspaceProject.branch,
+        changes: 0,
+        badgeSymbol: selectedWorkspaceProject.badgeSymbol ?? null,
+        badgeColorHex: selectedWorkspaceProject.badgeColorHex ?? null,
+      },
+    }).catch((error) => console.error("failed to mark active project", error));
+  }, [
+    selectedWorkspaceProject?.id,
+    selectedWorkspaceProject?.name,
+    selectedWorkspaceProject?.path,
+    selectedWorkspaceProject?.branch,
+    selectedWorkspaceProject?.badge,
+    selectedWorkspaceProject?.status,
+    selectedWorkspaceProject?.badgeSymbol,
+    selectedWorkspaceProject?.badgeColorHex,
+  ]);
+
   const toggleRightPanel = (next: RightPanelKind) => {
     setRightPanel((current) => (current === next ? null : next));
   };
