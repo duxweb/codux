@@ -3484,10 +3484,6 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<SSHProfileDraft | null>(null);
   const [isSaving, setSaving] = useState(false);
-  const [sshStatus, setSshStatus] = useState<{ tone: "neutral" | "success" | "warning" | "danger"; message: string }>({
-    tone: "neutral",
-    message: tm("ssh.panel.status.ready", "Ready"),
-  });
   const sshRowLabels = useMemo<SSHRowLabels>(() => ({
     connect: tm("ssh.profile.connect", "Connect"),
     copy: tm("common.copy", "Copy"),
@@ -3496,15 +3492,10 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
     actions: tm("files.panel.actions", "Actions"),
   }), []);
 
-  const updateSshStatus = useCallback((message: string, tone: "neutral" | "success" | "warning" | "danger" = "neutral") => {
-    setSshStatus({ tone, message });
-  }, []);
-
   const handleSshError = useCallback((nextError: unknown) => {
     const message = nextError instanceof Error ? nextError.message : String(nextError);
     setError(message);
-    updateSshStatus(message, "danger");
-  }, [updateSshStatus]);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!window.__TAURI_INTERNALS__) {
@@ -3516,13 +3507,12 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
     try {
       const snapshot = await invoke<SSHProfilesSnapshot>("ssh_profiles");
       setProfiles(snapshot.profiles);
-      updateSshStatus(tm("ssh.panel.status.refreshed", "SSH connections refreshed"), "success");
     } catch (nextError) {
       handleSshError(nextError);
     } finally {
       setLoading(false);
     }
-  }, [handleSshError, updateSshStatus]);
+  }, [handleSshError]);
 
   useEffect(() => {
     void refresh();
@@ -3569,7 +3559,6 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
       setProfiles(snapshot.profiles);
       setDraft(null);
       setError(null);
-      updateSshStatus(tm("ssh.profile.saved", "Saved SSH connection."), "success");
     } catch (nextError) {
       handleSshError(nextError);
     } finally {
@@ -3592,7 +3581,6 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
       });
       setProfiles(snapshot.profiles);
       setError(null);
-      updateSshStatus(tm("ssh.profile.deleted", "Deleted SSH connection."), "warning");
     } catch (nextError) {
       handleSshError(nextError);
     }
@@ -3600,7 +3588,7 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
 
   const connectProfile = async (profile: SSHConnectionProfile) => {
     if (!project) {
-      updateSshStatus(tm("ssh.panel.status.no_project", "Select a project before connecting."), "warning");
+      setError(tm("ssh.panel.status.no_project", "Select a project before connecting."));
       return;
     }
     try {
@@ -3613,7 +3601,6 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
         command: launch.command,
       });
       setError(null);
-      updateSshStatus(formatI18n(tm("ssh.profile.connecting_format", "Connecting to %@."), sshDisplayName(profile)), "success");
     } catch (nextError) {
       handleSshError(nextError);
     }
@@ -3665,9 +3652,7 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
               disabled={!project}
               labels={sshRowLabels}
               onConnect={() => void connectProfile(profile)}
-              onCopy={() => {
-                updateSshStatus(formatI18n(tm("files.panel.status.copied_format", "Copied %@"), sshDisplayName(profile)), "success");
-              }}
+              onCopy={() => undefined}
               onEdit={() => startProfileEdit(profile)}
               onDelete={() => void deleteProfile(profile)}
             />
@@ -3679,16 +3664,6 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
           {error}
         </div>
       )}
-      <PanelStatusBar
-        tone={error ? "danger" : sshStatus.tone}
-        leading={
-          <>
-            {isLoading ? <Spinner size="sm" color="current" /> : <Server size={12} />}
-            <span className="truncate">{error ?? sshStatus.message}</span>
-          </>
-        }
-        trailing={<span className="tabular-nums text-current/75">{profiles.length}</span>}
-      />
     </>
   );
 }

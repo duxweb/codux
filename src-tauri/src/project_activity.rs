@@ -4,7 +4,7 @@ use crate::app_settings::AppSettingsStore;
 use crate::git::{git_status, GitStatusSnapshot};
 use crate::project_store::{ProjectRecord, ProjectSummary};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -37,6 +37,7 @@ pub struct GitStatusEvent {
 #[derive(Default)]
 pub struct ProjectActivityCoordinator {
     projects: Mutex<HashMap<String, TrackedProject>>,
+    activated_ai_projects: Mutex<HashSet<String>>,
     last_global_ai_refresh: Mutex<Option<Instant>>,
 }
 
@@ -64,15 +65,32 @@ impl ProjectActivityCoordinator {
         }
     }
 
+    pub fn mark_project_active(
+        &self,
+        project: ProjectSummary,
+        ai_history: Arc<AIHistoryIndexer>,
+    ) {
+        self.mark_project_summary(&project);
+        if self.mark_ai_activation(&project.id) {
+            self.refresh_ai_once(project, ai_history);
+        }
+    }
+
     pub fn remove_project(&self, project_id: &str) {
         if let Ok(mut guard) = self.projects.lock() {
             guard.remove(project_id);
+        }
+        if let Ok(mut activated) = self.activated_ai_projects.lock() {
+            activated.remove(project_id);
         }
     }
 
     pub fn clear(&self) {
         if let Ok(mut guard) = self.projects.lock() {
             guard.clear();
+        }
+        if let Ok(mut activated) = self.activated_ai_projects.lock() {
+            activated.clear();
         }
         if let Ok(mut last) = self.last_global_ai_refresh.lock() {
             *last = None;
@@ -101,6 +119,7 @@ impl ProjectActivityCoordinator {
 
     pub fn refresh_ai_once(&self, project: ProjectSummary, ai_history: Arc<AIHistoryIndexer>) {
         self.mark_project_summary(&project);
+        let _ = self.mark_ai_activation(&project.id);
         if let Ok(mut guard) = self.projects.lock() {
             if let Some(tracked) = guard.get_mut(&project.id) {
                 tracked.last_ai_refresh = Some(Instant::now());
@@ -112,6 +131,13 @@ impl ProjectActivityCoordinator {
         async_runtime::spawn(async move {
             let _ = ai_history.refresh_project(project.into()).await;
         });
+    }
+
+    fn mark_ai_activation(&self, project_id: &str) -> bool {
+        self.activated_ai_projects
+            .lock()
+            .map(|mut activated| activated.insert(project_id.to_string()))
+            .unwrap_or(false)
     }
 
     fn projects_due_for_git(&self, interval: Duration) -> Vec<TrackedProject> {

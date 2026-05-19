@@ -1744,7 +1744,9 @@ async fn project_list(state: tauri::State<'_, AppState>) -> Result<ProjectListSn
 
 #[tauri::command]
 fn project_mark_active(state: tauri::State<'_, AppState>, project: ProjectSummary) {
-    state.project_activity.mark_project_summary(&project);
+    state
+        .project_activity
+        .mark_project_active(project, Arc::clone(&state.ai_history));
 }
 
 #[tauri::command]
@@ -1830,7 +1832,9 @@ async fn project_select(
     .await
     .map_err(|error| error.to_string())??;
     if let Some(project) = selected_project_summary(&snapshot) {
-        state.project_activity.mark_project_summary(&project);
+        state
+            .project_activity
+            .mark_project_active(project, Arc::clone(&state.ai_history));
     }
     let _ = app.emit("project:updated", snapshot.clone());
     Ok(snapshot)
@@ -1853,17 +1857,20 @@ async fn project_select_worktree(
     if let Some(worktree) = state.projects.worktree_snapshot_by_id(&worktree_id) {
         state
             .project_activity
-            .mark_project_summary(&ProjectSummary {
-                id: worktree.id,
-                name: worktree.name,
-                path: worktree.path,
-                badge: String::new(),
-                status: worktree.status,
-                branch: worktree.branch,
-                changes: 0,
-                badge_symbol: None,
-                badge_color_hex: None,
-            });
+            .mark_project_active(
+                ProjectSummary {
+                    id: worktree.id,
+                    name: worktree.name,
+                    path: worktree.path,
+                    badge: String::new(),
+                    status: worktree.status,
+                    branch: worktree.branch,
+                    changes: 0,
+                    badge_symbol: None,
+                    badge_color_hex: None,
+                },
+                Arc::clone(&state.ai_history),
+            );
     }
     let _ = app.emit("project:updated", snapshot.clone());
     Ok(snapshot)
