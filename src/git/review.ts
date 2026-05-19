@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
-import { sanitizeGitRepositorySnapshot } from "./status";
+import {
+  isGitChangeForProject,
+  sanitizeGitRepositorySnapshot,
+  type GitRepositoryChangeEvent,
+} from "./status";
 
 export interface GitReviewFile {
   path: string;
@@ -83,6 +88,49 @@ export function useGitReviewSnapshot(projectPath?: string, baseBranch?: string |
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!projectPath || !window.__TAURI_INTERNALS__) return;
+    let cancelled = false;
+    let debounceTimer: number | undefined;
+    let unlisten: (() => void) | undefined;
+    let didUnlisten = false;
+    const stopListening = (nextUnlisten: () => void) => {
+      if (didUnlisten) return;
+      didUnlisten = true;
+      nextUnlisten();
+    };
+
+    const unlistenPromise = listen<GitRepositoryChangeEvent>("git:changed", (event) => {
+      if (cancelled || !isGitChangeForProject(event.payload, projectPath)) return;
+      if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        void refresh();
+      }, 280);
+    });
+    unlistenPromise
+      .then((nextUnlisten) => {
+        if (cancelled) {
+          stopListening(nextUnlisten);
+          return;
+        }
+        unlisten = () => stopListening(nextUnlisten);
+      })
+      .catch((nextError) => {
+        const message = nextError instanceof Error ? nextError.message : String(nextError);
+        setError(message);
+      });
+
+    return () => {
+      cancelled = true;
+      if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
+      if (unlisten) {
+        unlisten();
+      } else {
+        void unlistenPromise.then((nextUnlisten) => stopListening(nextUnlisten)).catch(() => undefined);
+      }
+    };
+  }, [projectPath, refresh]);
 
   return {
     snapshot,

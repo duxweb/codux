@@ -1077,7 +1077,7 @@ function FileRow({
         >
           <span className="w-[13px] flex-shrink-0" />
           <FileText size={13} className="flex-shrink-0 text-ink-mute" />
-          <span className="truncate flex-1 text-right" dir="rtl">{displayName ?? path}</span>
+          <span className="truncate flex-1 text-left">{displayName ?? path}</span>
           <span className={`flex-shrink-0 text-xs font-bold ${toneClass}`}>{tag}</span>
         </PressableButton>
         <ContextMenu
