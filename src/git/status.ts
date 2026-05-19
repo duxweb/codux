@@ -548,6 +548,10 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
   );
 
   useEffect(() => {
+    void refresh({ silent: true });
+  }, [refresh]);
+
+  useEffect(() => {
     if (!project?.path || !window.__TAURI_INTERNALS__) return;
     const projectPath = project.path;
     let disposed = false;
