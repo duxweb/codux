@@ -59,14 +59,20 @@ export function listenWorkspaceCommand(listener: (command: WorkspaceCommand) => 
   };
   window.addEventListener(WORKSPACE_COMMAND_EVENT, handler);
   let tauriUnlisten: UnlistenFn | undefined;
+  let disposed = false;
   if (window.__TAURI_INTERNALS__) {
     void listen<WorkspaceCommand>(WORKSPACE_COMMAND_EVENT, (event) => {
       listener(event.payload);
     }).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+        return;
+      }
       tauriUnlisten = unlisten;
     });
   }
   return () => {
+    disposed = true;
     window.removeEventListener(WORKSPACE_COMMAND_EVENT, handler);
     tauriUnlisten?.();
   };
