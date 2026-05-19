@@ -1648,8 +1648,10 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
   const expandedPathsRef = useRef(expandedPaths);
   const fileTreeRef = useRef<HTMLDivElement | null>(null);
   const filePanelActiveRef = useRef(false);
+  const rowsRef = useRef<FileRowModel[]>([]);
   const selectedEntryRef = useRef<FileEntry | undefined>(undefined);
   const selectedEntriesRef = useRef<FileEntry[]>([]);
+  const selectedPathRef = useRef("");
   const inlineEditRef = useRef<FileInlineEdit | null>(null);
   const fileTreeStateRef = useRef(new Map<string, { expandedPaths: Set<string>; selectedPath: string }>());
 
@@ -1775,8 +1777,14 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
     selectedEntryRef.current = selectedEntry;
   }, [selectedEntry]);
   useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+  useEffect(() => {
     selectedEntriesRef.current = selectedEntries;
   }, [selectedEntries]);
+  useEffect(() => {
+    selectedPathRef.current = selectedPath;
+  }, [selectedPath]);
   useEffect(() => {
     inlineEditRef.current = inlineEdit;
   }, [inlineEdit]);
@@ -1877,6 +1885,34 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
   const activateFilePanel = () => {
     filePanelActiveRef.current = true;
     fileTreeRef.current?.focus({ preventScroll: true });
+  };
+
+  const scrollFileRowIntoView = (path: string) => {
+    window.requestAnimationFrame(() => {
+      const row = fileTreeRef.current?.querySelector<HTMLElement>(`[data-file-path="${cssEscape(path)}"]`);
+      row?.scrollIntoView({ block: "nearest" });
+    });
+  };
+
+  const selectEntryRange = (entry: FileEntry, extend: boolean) => {
+    setPendingDeletePaths([]);
+    const visibleRows = rowsRef.current;
+    if (extend) {
+      const anchorPath = selectionAnchorPath || selectedPathRef.current || entry.path;
+      const anchorIndex = visibleRows.findIndex((row) => row.entry.path === anchorPath);
+      const targetIndex = visibleRows.findIndex((row) => row.entry.path === entry.path);
+      if (anchorIndex >= 0 && targetIndex >= 0) {
+        const [start, end] = anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+        setSelectedPaths(new Set(visibleRows.slice(start, end + 1).map((row) => row.entry.path)));
+        setSelectedPath(entry.path);
+        scrollFileRowIntoView(entry.path);
+        return;
+      }
+    }
+    setSelectedPath(entry.path);
+    setSelectedPaths(new Set([entry.path]));
+    setSelectionAnchorPath(entry.path);
+    scrollFileRowIntoView(entry.path);
   };
 
   const entriesForContextAction = (entry: FileEntry) => (
@@ -2124,10 +2160,74 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
       if (target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select") return;
     }
     const selected = selectedEntryRef.current;
+    const visibleRows = rowsRef.current;
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      if (visibleRows.length === 0) return;
+      setPendingDeletePaths([]);
+      setSelectedPaths(new Set(visibleRows.map((row) => row.entry.path)));
+      const nextEntry = selected ?? visibleRows[0].entry;
+      setSelectedPath(nextEntry.path);
+      if (!selectionAnchorPath) setSelectionAnchorPath(nextEntry.path);
+      scrollFileRowIntoView(nextEntry.path);
+      return;
+    }
+    if (visibleRows.length > 0 && (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Home" || event.key === "End")) {
+      event.preventDefault();
+      const selectedIndex = visibleRows.findIndex((row) => row.entry.path === selectedPathRef.current);
+      const currentIndex = selectedIndex >= 0 ? selectedIndex : event.key === "ArrowUp" ? visibleRows.length : -1;
+      const nextIndex =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? visibleRows.length - 1
+            : Math.min(
+                visibleRows.length - 1,
+                Math.max(0, currentIndex + (event.key === "ArrowDown" ? 1 : -1)),
+              );
+      selectEntryRange(visibleRows[nextIndex].entry, event.shiftKey);
+      return;
+    }
     if (!selected) return;
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      if (selected.isDirectory) {
+        if (!expandedPathsRef.current.has(selected.path)) {
+          setExpandedPaths((current) => new Set(current).add(selected.path));
+          if (!childrenByPath[selected.path]) void loadChildren(selected.path);
+          return;
+        }
+        const currentIndex = visibleRows.findIndex((row) => row.entry.path === selected.path);
+        const firstChild = currentIndex >= 0 ? visibleRows[currentIndex + 1] : undefined;
+        if (firstChild && firstChild.depth > (visibleRows[currentIndex]?.depth ?? -1)) {
+          selectEntryRange(firstChild.entry, event.shiftKey);
+        }
+      }
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (selected.isDirectory && expandedPathsRef.current.has(selected.path)) {
+        setExpandedPaths((current) => {
+          const next = new Set(current);
+          next.delete(selected.path);
+          return next;
+        });
+        return;
+      }
+      const parent = parentPath(selected.path, rootPath);
+      const parentEntry = visibleRows.find((row) => row.entry.path === parent)?.entry;
+      if (parentEntry) selectEntryRange(parentEntry, event.shiftKey);
+      return;
+    }
     if (event.key === "Enter" || event.key === "F2") {
       event.preventDefault();
       void renameEntry(selected);
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
+      event.preventDefault();
+      openEntry(selected);
       return;
     }
     if (event.key === "Delete" || event.key === "Backspace") {
@@ -2138,16 +2238,16 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
       event.preventDefault();
-      setCopiedPath(selected.path);
-      void navigator.clipboard?.writeText(selected.path);
-      updateStatus(formatI18n(tm("files.panel.status.copied_format", "Copied %@"), selected.name), "success");
+      const entries = selectedEntriesRef.current.length ? selectedEntriesRef.current : [selected];
+      setCopiedPath(entries.length === 1 ? entries[0].path : "");
+      copyEntryPaths(entries);
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
       event.preventDefault();
       void pasteCopiedPath();
     }
-  }, [pasteCopiedPath, renameEntry, stageDeleteEntries, updateStatus]);
+  }, [childrenByPath, loadChildren, openEntry, pasteCopiedPath, renameEntry, rootPath, selectionAnchorPath, selectEntryRange, stageDeleteEntries, updateStatus]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleFileShortcutKeyDown);
@@ -2588,6 +2688,7 @@ function FileTreeRow({
   return (
     <Tooltip label={entry.relativePath || entry.name} placement="left" triggerClassName="block w-full">
       <div
+        data-file-path={entry.path}
         onContextMenu={(event) => {
           onContextMenuOpen?.();
           contextMenu.openMenu(event);
@@ -2693,6 +2794,12 @@ function fileNameFromPath(path: string) {
 
 function normalizeInspectorPath(value: string) {
   return value.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function cssEscape(value: string) {
+  return typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(value)
+    : value.replace(/["\\]/g, "\\$&");
 }
 
 function fileEventTouchesRoot(event: FileChangeEvent, rootPath: string) {
