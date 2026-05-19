@@ -1,5 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { Code2, Folder, GitBranch, ListChecks, Plus, SquareTerminal } from "../icons";
+import { Folder, GitBranch, ListChecks, Plus, SquareTerminal } from "../icons";
 import { useEffect, useMemo, useState } from "react";
 import { formatI18n, tm } from "../i18n";
 import {
@@ -265,7 +264,6 @@ function TaskCard({
               onSelect={() => openWithApplication(application)}
               disabled={!task.worktree.path}
             >
-              <ApplicationIcon application={application} size={13} />
               {formatOpenTitle(application.label)}
             </ContextMenuItem>
           ))}
@@ -335,30 +333,6 @@ function TaskCard({
       </ContextMenu>
     </div>
   );
-}
-
-function ApplicationIcon({
-  application,
-  size,
-}: {
-  application: ProjectOpenApplication;
-  size: number;
-}) {
-  if (application.iconPath) {
-    return (
-      <img
-        alt=""
-        className="rounded-[3px] object-contain"
-        height={size}
-        src={convertFileSrc(application.iconPath)}
-        width={size}
-      />
-    );
-  }
-  if (application.id === "terminal" || application.id === "iterm" || application.id === "ghostty") {
-    return <SquareTerminal size={size} className="text-ink-soft" />;
-  }
-  return <Code2 size={size} className="text-ink-soft" />;
 }
 
 function formatOpenTitle(label: string) {

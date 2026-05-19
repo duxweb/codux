@@ -5,7 +5,6 @@ export type ProjectOpenApplication = {
   label: string;
   category: "primary" | "ide";
   installed: boolean;
-  iconPath?: string | null;
 };
 
 export async function listProjectOpenApplications() {

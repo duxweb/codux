@@ -154,8 +154,6 @@ export function Titlebar({
             />
           )}
 
-          <StandbyPill />
-
           <OpenInIDEButton project={selectedProject ?? projects[0]} />
 
           <GlyphButton
@@ -929,17 +927,6 @@ function formatTokens(value: number) {
   if (absolute >= 1_000_000) return compact(1_000_000, "M");
   if (absolute >= 1_000) return compact(1_000, "K");
   return `${Math.floor(value)}`;
-}
-
-function StandbyPill() {
-  return (
-    <Tooltip label={tm("titlebar.agent_standby", "Agent standby")} placement="bottom">
-      <div className="pill-base bg-fill/[0.05] border border-line text-ink-soft gap-1 cursor-default">
-        <Minus size={12} className="text-ink-mute" strokeWidth={2.4} />
-        <span>{tm("titlebar.standby", "Standby")}</span>
-      </div>
-    </Tooltip>
-  );
 }
 
 function ModeSwitcher({

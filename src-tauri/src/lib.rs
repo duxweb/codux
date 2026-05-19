@@ -138,7 +138,6 @@ struct ProjectOpenApplicationSnapshot {
     label: String,
     category: String,
     installed: bool,
-    icon_path: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -1786,7 +1785,6 @@ fn project_open_applications() -> Vec<ProjectOpenApplicationSnapshot> {
             label: spec.label.to_string(),
             category: spec.category.to_string(),
             installed: project_open_application_installed(spec),
-            icon_path: project_open_application_icon_path(spec),
         })
         .collect()
 }
@@ -1841,48 +1839,6 @@ fn project_open_application_installed(spec: &ProjectOpenApplicationSpec) -> bool
     #[cfg(not(target_os = "macos"))]
     {
         spec.commands.iter().any(|command| command_in_path(command))
-    }
-}
-
-fn project_open_application_icon_path(spec: &ProjectOpenApplicationSpec) -> Option<String> {
-    #[cfg(target_os = "macos")]
-    {
-        let app_path = project_open_application_url(spec)?;
-        let icon_dir = paths::runtime_temp_dir().join("app-icons");
-        fs::create_dir_all(&icon_dir).ok()?;
-        let icon_path = icon_dir.join(format!("{}.png", spec.id));
-        let script = r#"
-use framework "AppKit"
-use framework "Foundation"
-on run argv
-  set appPath to item 1 of argv
-  set outPath to item 2 of argv
-  set ws to current application's NSWorkspace's sharedWorkspace()
-  set icon to ws's iconForFile:appPath
-  icon's setSize:(current application's NSMakeSize(64, 64))
-  set tiffData to icon's TIFFRepresentation()
-  set bitmap to current application's NSBitmapImageRep's imageRepWithData:tiffData
-  set pngData to bitmap's representationUsingType:(current application's NSBitmapImageFileTypePNG) |properties|:(missing value)
-  pngData's writeToFile:outPath atomically:true
-end run
-"#;
-        if Command::new("osascript")
-            .arg("-e")
-            .arg(script)
-            .arg(&app_path)
-            .arg(icon_path.display().to_string())
-            .status()
-            .ok()?
-            .success()
-        {
-            return Some(icon_path.display().to_string());
-        }
-        None
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = spec;
-        None
     }
 }
 
