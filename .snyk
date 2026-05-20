@@ -1,0 +1,45 @@
+# Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
+version: v1.25.1
+exclude:
+  code:
+    - Tests/**
+    - .build/**
+    - scripts/dev/**
+# ignores vulnerabilities until expiry date; change duration by modifying expiry date
+ignore:
+  6ebebe99-5bf8-4010-918b-6594d12247f7:
+    - '*':
+        reason: >-
+          False positive: parameterized bindings used, sql param is always a
+          static literal
+        expires: 2027-05-19T00:00:00.000Z
+        created: 2026-05-20T01:24:35.584Z
+  867c1609-79f0-4b31-8af6-39c339e31f6b:
+    - '*':
+        reason: >-
+          False positive: destinationURL built from normalized packageID, not
+          remote data
+        expires: 2027-05-19T00:00:00.000Z
+        created: 2026-05-20T01:24:50.630Z
+  8d0653db-8e08-4533-866c-365e81c86106:
+    - '*':
+        reason: >-
+          False positive: file browser copy/move of clipboard URLs is intended
+          functionality
+        expires: 2027-05-19T00:00:00.000Z
+        created: 2026-05-20T01:24:51.761Z
+  03b1cd49-e336-4afc-b6f2-2c2783fdc368:
+    - '*':
+        reason: >-
+          False positive: file browser copy/move of clipboard URLs is intended
+          functionality
+        expires: 2027-05-19T00:00:00.000Z
+        created: 2026-05-20T01:24:53.010Z
+  c7c9d99e-4ad6-45b9-a42b-2f75d5ecc922:
+    - '*':
+        reason: >-
+          False positive: removeItem path built from normalized packageID, not
+          remote data
+        expires: 2027-05-19T00:00:00.000Z
+        created: 2026-05-20T01:24:54.157Z
+patch: {}

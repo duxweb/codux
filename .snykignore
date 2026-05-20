@@ -1,0 +1,3 @@
+# Ignore test directories
+Tests/
+.build/
