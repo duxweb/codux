@@ -22,14 +22,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Button as HeroButton, Dropdown, ProgressBar, Spinner } from "@heroui/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Key, type ReactNode } from "react";
 import {
-  useAIHistorySnapshot,
-  type AIHeatmapDay,
-  type AIHistorySessionSummary,
-  type AITimeBucket,
-  type AIUsageBreakdownItem,
-} from "../ai/history";
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Key,
+  type ReactNode,
+} from "react";
+import { useAIHistorySnapshot, type AIHeatmapDay, type AITimeBucket, type AIUsageBreakdownItem } from "../ai/history";
 import { aiIndexingPresentation } from "../ai/panelPresentation";
 import { useAIRuntimeSnapshot, type AISessionSnapshot } from "../ai/runtime";
 import {
@@ -72,7 +76,7 @@ import type { RightPanelKind, WorkspaceProject } from "../types";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 import { openGitDiffWindow } from "../windowing";
 import { systemConfirm } from "../systemDialog";
-import { formatI18n, localeFromSettings, tm } from "../i18n";
+import { formatI18n, tm } from "../i18n";
 import { openLocalizedDialog } from "../localizedDialog";
 import { readAppSettings, subscribeAppSettings, type AIStatisticsMode } from "../settings";
 import { revealProjectInFileManager } from "../ide";
@@ -87,7 +91,7 @@ export function Inspector({ panel, selectedProject }: Props) {
     <aside className="h-full min-w-0 flex flex-col bg-surface-chrome/35 backdrop-blur-md">
       {panel === "git" && <GitPanel project={selectedProject} />}
       {panel === "files" && <FilesPanel project={selectedProject} />}
-      {panel === "ai" && <AIPanel project={selectedProject} />}
+      {panel === "ai" && <MemoAIPanel project={selectedProject} />}
       {panel === "ssh" && <SSHPanel project={selectedProject} />}
     </aside>
   );
@@ -2188,7 +2192,7 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
   useEffect(() => {
     let disposed = false;
     let idleHandle: number | undefined;
-    let timerHandle: number | undefined;
+    let timerHandle: ReturnType<typeof globalThis.setTimeout> | undefined;
     const stored = fileTreeStateRef.current.get(rootPath);
     setChildrenByPath({});
     setSelectedPath(stored?.selectedPath ?? "");
@@ -3367,6 +3371,8 @@ function shellQuote(value: string) {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+const MemoAIPanel = memo(AIPanel);
+
 function AIPanel({ project }: { project?: WorkspaceProject }) {
   const { sessions, projectTotals } = useAIRuntimeSnapshot(project?.id);
   const history = useAIHistorySnapshot(project);
@@ -3374,28 +3380,29 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
     () => readAppSettings().statisticsMode as AIStatisticsMode,
   );
   const [isManualRefreshFeedbackVisible, setManualRefreshFeedbackVisible] = useState(false);
-  const [selectedHistorySessionId, setSelectedHistorySessionId] = useState("");
-  const [historySessionTitleOverrides, setHistorySessionTitleOverrides] = useState<Record<string, string>>({});
-  const [hiddenHistorySessionIds, setHiddenHistorySessionIds] = useState<Set<string>>(() => new Set());
   const manualRefreshStartedAtRef = useRef(0);
   const isRefreshingAIHistory = history.isLoading || isManualRefreshFeedbackVisible;
   const isForegroundAIIndexing = history.isForegroundLoading || isManualRefreshFeedbackVisible;
   const displayedProgress = isManualRefreshFeedbackVisible && !history.isLoading ? 1 : history.progress;
   const historySnapshot = history.snapshot;
-  const liveProjectTokens = displayedProjectTotals(projectTotals, statisticsMode);
-  const projectTotalTokens =
-    displayedProjectSummaryTotal(historySnapshot.projectSummary, statisticsMode) + liveProjectTokens;
-  const todayTotalTokens =
-    displayedProjectSummaryToday(historySnapshot.projectSummary, statisticsMode) + liveProjectTokens;
-  const toolRankingRows = toolRows(sessions, historySnapshot.toolBreakdown, statisticsMode);
-  const modelRankingRows = modelRows(sessions, historySnapshot.modelBreakdown, statisticsMode);
-  const recentHistorySessions = historySnapshot.sessions
-    .filter((session) => !hiddenHistorySessionIds.has(session.sessionId))
-    .slice(0, MAX_VISIBLE_AI_SESSIONS)
-    .map((session) => ({
-      ...session,
-      sessionTitle: historySessionTitleOverrides[session.sessionId] ?? session.sessionTitle,
-    }));
+  const { projectTotalTokens, todayTotalTokens, toolRankingRows, modelRankingRows } = useMemo(() => {
+    const liveProjectTokens = displayedProjectTotals(projectTotals, statisticsMode);
+    return {
+      projectTotalTokens:
+        displayedProjectSummaryTotal(historySnapshot.projectSummary, statisticsMode) + liveProjectTokens,
+      todayTotalTokens:
+        displayedProjectSummaryToday(historySnapshot.projectSummary, statisticsMode) + liveProjectTokens,
+      toolRankingRows: toolRows(sessions, historySnapshot.toolBreakdown, statisticsMode),
+      modelRankingRows: modelRows(sessions, historySnapshot.modelBreakdown, statisticsMode),
+    };
+  }, [
+    historySnapshot.modelBreakdown,
+    historySnapshot.projectSummary,
+    historySnapshot.toolBreakdown,
+    projectTotals,
+    sessions,
+    statisticsMode,
+  ]);
   const refreshAIHistory = useCallback(async () => {
     manualRefreshStartedAtRef.current = Date.now();
     setManualRefreshFeedbackVisible(true);
@@ -3415,9 +3422,6 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
   useEffect(() => {
     manualRefreshStartedAtRef.current = 0;
     setManualRefreshFeedbackVisible(false);
-    setSelectedHistorySessionId("");
-    setHistorySessionTitleOverrides({});
-    setHiddenHistorySessionIds(new Set());
   }, [project?.id]);
 
   useEffect(
@@ -3431,9 +3435,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
   return (
     <>
       <PanelHeader
-        title={
-          <span className="truncate">{tm("ai.panel.statistics_title", "AI Stats")}</span>
-        }
+        title={<span className="truncate">{tm("ai.panel.statistics_title", "AI Stats")}</span>}
         trailing={
           <PanelIconButton
             icon={RefreshCw}
@@ -3525,88 +3527,6 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
             />
           ))}
           {modelRankingRows.length === 0 && <EmptyMetricRow label={tm("ai.empty.no_stats", "No AI Stats Yet")} />}
-        </PanelCard>
-
-        <PanelCard
-          title={
-            <span>
-              {tm("ai.sessions.history", "Session History")}{" "}
-              {historySnapshot.sessions.length > MAX_VISIBLE_AI_SESSIONS && (
-                <span className="text-ink-faint font-normal ml-1">
-                  {formatI18n(tm("ai.sessions.recent_limit_format", "Recent %d"), MAX_VISIBLE_AI_SESSIONS)}
-                </span>
-              )}
-            </span>
-          }
-          bodyPadding={false}
-        >
-          <div className="max-h-[236px] overflow-y-auto scrollbar-overlay pb-1">
-            {recentHistorySessions.map((session) => (
-              <HistorySessionRow
-                key={session.sessionId}
-                session={session}
-                mode={statisticsMode}
-                selected={selectedHistorySessionId === session.sessionId}
-                onSelect={() => setSelectedHistorySessionId(session.sessionId)}
-                onRestore={() => restoreHistorySession(project, session)}
-                onRename={() => {
-                  const nextTitle = window.prompt(tm("common.rename", "Rename"), session.sessionTitle)?.trim();
-                  if (!nextTitle) return;
-                  if (!project || !window.__TAURI_INTERNALS__) {
-                    setHistorySessionTitleOverrides((current) => ({
-                      ...current,
-                      [session.sessionId]: nextTitle,
-                    }));
-                    return;
-                  }
-                  void invoke("ai_history_session_rename", {
-                    project: {
-                      id: project.id,
-                      name: project.name,
-                      path: project.path,
-                    },
-                    sessionId: session.sessionId,
-                    title: nextTitle,
-                  }).catch((error) => console.error("failed to rename ai history session", error));
-                }}
-                onDelete={() => {
-                  void systemConfirm(
-                    formatI18n(tm("ai.sessions.delete_confirm_format", "Delete %@?"), session.sessionTitle),
-                    {
-                      title: tm("common.delete", "Delete"),
-                      kind: "warning",
-                      okLabel: tm("common.delete", "Delete"),
-                      cancelLabel: tm("common.cancel", "Cancel"),
-                    },
-                  ).then((confirmed) => {
-                    if (!confirmed) return;
-                    if (!project || !window.__TAURI_INTERNALS__) {
-                      setHiddenHistorySessionIds((current) => new Set(current).add(session.sessionId));
-                      setSelectedHistorySessionId((current) => (current === session.sessionId ? "" : current));
-                      return;
-                    }
-                    void invoke("ai_history_session_remove", {
-                      project: {
-                        id: project.id,
-                        name: project.name,
-                        path: project.path,
-                      },
-                      sessionId: session.sessionId,
-                    }).catch((error) => console.error("failed to remove ai history session", error));
-                  });
-                }}
-              />
-            ))}
-          </div>
-          {recentHistorySessions.length === 0 && (
-            <div className="px-3 py-3 text-xs text-ink-faint">
-              {history.isLoading
-                ? tm("ai.indexing.reading_sources", "Reading index.")
-                : history.error
-                  ? tm("ai.session.storage.open_failed", "Unable to open session storage.")
-                  : tm("ai.sessions.empty", "No Session History")}
-            </div>
-          )}
         </PanelCard>
       </div>
 
@@ -3705,7 +3625,13 @@ function EmptyMetricRow({ label }: { label: string }) {
   return <div className="text-xs text-ink-faint">{label}</div>;
 }
 
-function LiveSessionRow({ session, mode }: { session: AISessionSnapshot; mode: AIStatisticsMode }) {
+const LiveSessionRow = memo(function LiveSessionRow({
+  session,
+  mode,
+}: {
+  session: AISessionSnapshot;
+  mode: AIStatisticsMode;
+}) {
   const model = session.model || "-";
   return (
     <Tooltip label={session.sessionTitle} placement="left" triggerClassName="block w-full">
@@ -3723,7 +3649,7 @@ function LiveSessionRow({ session, mode }: { session: AISessionSnapshot; mode: A
       </div>
     </Tooltip>
   );
-}
+});
 
 function toolRows(sessions: AISessionSnapshot[], historyRows: AIUsageBreakdownItem[], mode: AIStatisticsMode) {
   return rankRows(sessions, historyRows, (session) => session.tool, mode);
@@ -3760,8 +3686,6 @@ function rankRows(
       pct: Math.round((total / max) * 100),
     }));
 }
-
-const MAX_VISIBLE_AI_SESSIONS = 20;
 
 function normalizeRankModelName(value?: string | null) {
   const trimmed = value?.trim();
@@ -3824,15 +3748,7 @@ function displayedBreakdownTokens(row: AIUsageBreakdownItem, mode: AIStatisticsM
   return row.totalTokens + (mode === "includingCache" ? row.cachedInputTokens : 0);
 }
 
-function displayedHistorySessionTotal(session: AIHistorySessionSummary, mode: AIStatisticsMode) {
-  return session.totalTokens + (mode === "includingCache" ? session.cachedInputTokens : 0);
-}
-
-function displayedHistorySessionToday(session: AIHistorySessionSummary, mode: AIStatisticsMode) {
-  return session.todayTokens + (mode === "includingCache" ? session.todayCachedInputTokens : 0);
-}
-
-function BarsRow({
+const BarsRow = memo(function BarsRow({
   sessions,
   buckets,
   mode,
@@ -3900,13 +3816,13 @@ function BarsRow({
       })}
     </div>
   );
-}
+});
 
 const HEATMAP_GAP = 3;
 const HEATMAP_BASE_CELL = 9;
 const HEATMAP_DEFAULT_LAYOUT = { columns: 15, cellSize: 9 };
 
-function HeatmapGrid({
+const HeatmapGrid = memo(function HeatmapGrid({
   sessions,
   days,
   mode,
@@ -4052,7 +3968,7 @@ function HeatmapGrid({
       </div>
     </div>
   );
-}
+});
 
 function startOfLocalDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -4083,7 +3999,17 @@ function formatHeatmapDate(date: Date) {
   }).format(date);
 }
 
-function RankRow({ name, value, pct, tooltip }: { name: string; value: string; pct: number; tooltip?: string }) {
+const RankRow = memo(function RankRow({
+  name,
+  value,
+  pct,
+  tooltip,
+}: {
+  name: string;
+  value: string;
+  pct: number;
+  tooltip?: string;
+}) {
   const body = (
     <div className="py-1.5 cursor-default">
       <div className="flex items-center justify-between gap-3 text-[13px] leading-5">
@@ -4106,134 +4032,7 @@ function RankRow({ name, value, pct, tooltip }: { name: string; value: string; p
     );
   }
   return body;
-}
-
-function HistorySessionRow({
-  session,
-  mode,
-  selected,
-  onSelect,
-  onRestore,
-  onRename,
-  onDelete,
-}: {
-  session: AIHistorySessionSummary;
-  mode: AIStatisticsMode;
-  selected?: boolean;
-  onSelect: () => void;
-  onRestore: () => void;
-  onRename: () => void;
-  onDelete: () => void;
-}) {
-  const contextMenu = useContextMenu();
-  const tool = session.lastTool || "-";
-  const model = normalizeRankModelName(session.lastModel) ?? "-";
-  const lastSeenLabel = sessionTimeLabel(session.lastSeenAt);
-  const todayLabel = formatI18n(
-    tm("common.today_format", "Today %@"),
-    formatTokens(displayedHistorySessionToday(session, mode)),
-  );
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        className={`w-full px-3 py-2.5 flex items-start justify-between gap-3 text-left text-xs border-b border-line last:border-b-0 outline-none ${
-          selected ? "bg-brand-blue/12" : "hover:bg-fill/[0.03]"
-        }`}
-        onClick={onSelect}
-        onDoubleClick={onRestore}
-        onContextMenu={(event) => {
-          onSelect();
-          contextMenu.openMenu(event);
-        }}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold text-ink truncate">{session.sessionTitle}</div>
-          <div className="mt-1 grid gap-0.5">
-            <div className="text-xs font-medium text-ink-soft truncate">{tool}</div>
-            <div className="text-[11px] font-medium text-ink-faint truncate">{model}</div>
-          </div>
-        </div>
-        <div className="flex-shrink-0 text-right">
-          <div className="text-[11px] font-medium text-ink-soft whitespace-nowrap">{lastSeenLabel}</div>
-          <div className="mt-1 text-sm font-medium tabular-nums text-ink">
-            {formatTokens(displayedHistorySessionTotal(session, mode))}
-          </div>
-          <div className="mt-0.5 text-[11px] font-medium text-ink-faint whitespace-nowrap">{todayLabel}</div>
-        </div>
-      </button>
-      <ContextMenu
-        ariaLabel={formatI18n(tm("ai.sessions.actions_format", "%@ Actions"), session.sessionTitle)}
-        menu={contextMenu.menu}
-        onClose={contextMenu.closeMenu}
-      >
-        <ContextMenuItem label={tm("common.open", "Open")} onSelect={onRestore}>
-          {tm("common.open", "Open")}
-        </ContextMenuItem>
-        <ContextMenuItem label={tm("common.rename", "Rename")} onSelect={onRename}>
-          {tm("common.rename", "Rename")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem label={tm("common.delete", "Delete")} onSelect={onDelete}>
-          {tm("common.delete", "Delete")}
-        </ContextMenuItem>
-      </ContextMenu>
-    </div>
-  );
-}
-
-function restoreHistorySession(project: WorkspaceProject | undefined, session: AIHistorySessionSummary) {
-  if (!project) return;
-  const command = historySessionRestoreCommand(session);
-  broadcastWorkspaceCommand({
-    type: "add-top-terminal-split",
-    projectId: project.id,
-    projectPath: project.path,
-    projectName: project.name,
-    title: session.sessionTitle,
-    command,
-  });
-}
-
-function historySessionRestoreCommand(session: AIHistorySessionSummary) {
-  const tool = (session.lastTool || "").toLowerCase();
-  const id = session.externalSessionId || session.sessionId;
-  const quotedId = shellQuote(id);
-  if (tool.includes("codex")) return `codex resume ${quotedId}`;
-  if (tool.includes("claude")) return `claude --resume ${quotedId}`;
-  if (tool.includes("gemini")) return `gemini resume ${quotedId}`;
-  if (tool.includes("opencode")) return `opencode run --session ${quotedId}`;
-  return `codex resume ${quotedId}`;
-}
-
-function sessionTimeLabel(timestamp: number) {
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return "-";
-  return formatI18n(tm("common.last_format", "Last %@"), relativeSessionTime(new Date(timestamp * 1000)));
-}
-
-function relativeSessionTime(date: Date) {
-  const formatter = new Intl.RelativeTimeFormat(localeFromSettings(), {
-    numeric: "auto",
-    style: "short",
-  });
-  const diffSeconds = Math.round((date.getTime() - Date.now()) / 1000);
-  const divisions: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-    ["second", 1],
-  ];
-  for (const [unit, seconds] of divisions) {
-    if (Math.abs(diffSeconds) >= seconds || unit === "second") {
-      return formatter.format(Math.round(diffSeconds / seconds), unit);
-    }
-  }
-  return formatter.format(0, "second");
-}
+});
 
 type SSHCredentialKind = "none" | "password" | "privateKey";
 

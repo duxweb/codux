@@ -71,7 +71,7 @@ export const PetSprite = memo(function PetSprite({
   className,
 }: Props) {
   const spriteRef = useRef<HTMLDivElement | null>(null);
-  const [settings, setSettings] = useState(() => staticMode === undefined ? readAppSettings() : null);
+  const [settings, setSettings] = useState(() => (staticMode === undefined ? readAppSettings() : null));
   const animation = animations[state] ?? animations.idle;
   const frameDurations = animation.frameDurationsMs;
   const normalizedSpecies = speciesFallbacks.has(species) ? species : "voidcat";
@@ -133,16 +133,8 @@ export const PetSprite = memo(function PetSprite({
   }
 
   return (
-    <div
-      className={`overflow-hidden ${className ?? ""}`}
-      style={{ width: size, height: size }}
-    >
-      <div
-        ref={spriteRef}
-        aria-hidden="true"
-        className="bg-no-repeat [image-rendering:auto]"
-        style={style}
-      />
+    <div className={`overflow-hidden ${className ?? ""}`} style={{ width: size, height: size }}>
+      <div ref={spriteRef} aria-hidden="true" className="bg-no-repeat [image-rendering:auto]" style={style} />
     </div>
   );
 });

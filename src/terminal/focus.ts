@@ -1,5 +1,3 @@
-import { describeDebugTarget, logTerminalFocusDebug } from "../debug/terminalFocusDebug";
-
 type TerminalInputRegistration = {
   host: HTMLElement;
   textarea: HTMLTextAreaElement;
@@ -13,19 +11,10 @@ let mouseStartedInsideTerminal = false;
 
 export function registerTerminalInput(registration: TerminalInputRegistration) {
   terminalInputs.add(registration);
-  logTerminalFocusDebug("register", {
-    host: describeDebugTarget(registration.host),
-    textarea: describeDebugTarget(registration.textarea),
-    count: terminalInputs.size,
-  });
   ensureTerminalFocusListener();
 
   return () => {
     terminalInputs.delete(registration);
-    logTerminalFocusDebug("unregister", {
-      host: describeDebugTarget(registration.host),
-      count: terminalInputs.size,
-    });
     if (terminalInputs.size === 0) {
       teardownTerminalFocusListener();
     }
@@ -39,7 +28,6 @@ function ensureTerminalFocusListener() {
   window.addEventListener("pointerup", queueTerminalFocusReleaseFromPointer, false);
   window.addEventListener("click", queueTerminalFocusReleaseFromClick, false);
   window.addEventListener("pointercancel", clearTerminalPointerState, true);
-  logTerminalFocusDebug("listener:on");
   isListening = true;
 }
 
@@ -51,7 +39,6 @@ function teardownTerminalFocusListener() {
   window.removeEventListener("click", queueTerminalFocusReleaseFromClick, false);
   window.removeEventListener("pointercancel", clearTerminalPointerState, true);
   clearTerminalPointerState();
-  logTerminalFocusDebug("listener:off");
   isListening = false;
 }
 
@@ -85,15 +72,8 @@ function queueTerminalFocusRelease(target: EventTarget | null, reason: string) {
   const registration = activeTerminalRegistration();
   if (!registration || registration.host.contains(target)) return;
 
-  logTerminalFocusDebug("release-blur", {
-    reason,
-    target: describeDebugTarget(target),
-    activeBefore: describeDebugTarget(document.activeElement),
-  });
+  void reason;
   releaseTerminalFocus(registration);
-  logTerminalFocusDebug("release-blur-done", {
-    activeAfter: describeDebugTarget(document.activeElement),
-  });
 }
 
 function activeTerminalRegistration() {

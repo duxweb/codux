@@ -21,7 +21,8 @@ describe("terminal layout", () => {
     const layout = restoreTerminalLayout(undefined, createEnsureTerminal());
 
     expect(layout.topPanes).toHaveLength(1);
-    expect(layout.tabs).toHaveLength(1);
+    expect(layout.tabs).toHaveLength(0);
+    expect(layout.activeTabId).toBe("");
     expect(layout.activeSlotId).toBe("top-1");
     expect(layout.activeTerminalId).toBe("project-a:top-1");
     expect(layout.topRatios).toEqual([1]);
@@ -46,14 +47,8 @@ describe("terminal layout", () => {
       createEnsureTerminal("project-b"),
     );
 
-    expect(layout.topPanes.map((pane) => pane.terminalId)).toEqual([
-      "project-b:top-1",
-      "project-b:top-2",
-    ]);
-    expect(layout.tabs.map((tab) => tab.terminalId)).toEqual([
-      "project-b:bottom-1",
-      "project-b:bottom-2",
-    ]);
+    expect(layout.topPanes.map((pane) => pane.terminalId)).toEqual(["project-b:top-1", "project-b:top-2"]);
+    expect(layout.tabs.map((tab) => tab.terminalId)).toEqual(["project-b:bottom-1", "project-b:bottom-2"]);
     expect(layout.activeTabId).toBe("bottom-2");
     expect(layout.activeSlotId).toBe("top-2");
     expect(layout.activeTerminalId).toBe("project-b:top-2");
@@ -157,9 +152,7 @@ describe("terminal layout", () => {
       createEnsureTerminal("project-detached"),
     );
 
-    expect(resolveVisibleTerminalId(layout, "project-detached:top-2")).toBe(
-      "project-detached:top-1",
-    );
+    expect(resolveVisibleTerminalId(layout, "project-detached:top-2")).toBe("project-detached:top-1");
   });
 
   it("falls back to the active bottom tab when all top splits are detached", () => {
@@ -232,11 +225,7 @@ describe("terminal layout", () => {
       activeSlotId: "top-1",
     };
 
-    expect(snapshotTerminalLayout(state).topPanes.map((pane) => pane.id)).toEqual([
-      "top-1",
-      "top-2",
-      "top-3",
-    ]);
+    expect(snapshotTerminalLayout(state).topPanes.map((pane) => pane.id)).toEqual(["top-1", "top-2", "top-3"]);
   });
 
   it("snapshots empty bottom tabs without creating a fallback tab", () => {

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { formatI18n, tm } from "./i18n";
 
 export type BottomTabLayout = {
@@ -30,6 +31,25 @@ export type EnsureTerminalForLayout = (slot: string, title: string) => { id: str
 
 export const terminalLayoutStore = new Map<string, TerminalLayoutSnapshot>();
 
+type TerminalLayoutsSnapshotEvent = {
+  layouts: Record<string, TerminalLayoutSnapshot>;
+};
+
+let terminalLayoutsListenerPromise: Promise<() => void> | null = null;
+
+export function ensureTerminalLayoutsSnapshotSubscription() {
+  if (!canUseTauri() || terminalLayoutsListenerPromise) return;
+  terminalLayoutsListenerPromise = listen<TerminalLayoutsSnapshotEvent>("terminal-layouts:snapshot", (event) => {
+    for (const [projectId, snapshot] of Object.entries(event.payload.layouts)) {
+      terminalLayoutStore.set(projectId, snapshot);
+    }
+  }).catch((error) => {
+    terminalLayoutsListenerPromise = null;
+    console.error("failed to cache terminal layout snapshots", error);
+    return () => {};
+  });
+}
+
 type TerminalLayoutSaveQueue = {
   flushing: boolean;
   pending?: TerminalLayoutSnapshot;
@@ -52,10 +72,7 @@ export async function loadTerminalLayoutSnapshot(projectId: string) {
   return snapshot ?? cached;
 }
 
-export function rememberTerminalLayoutSnapshot(
-  projectId: string,
-  snapshot: TerminalLayoutSnapshot,
-) {
+export function rememberTerminalLayoutSnapshot(projectId: string, snapshot: TerminalLayoutSnapshot) {
   terminalLayoutStore.set(projectId, snapshot);
   if (!canUseTauri() || !projectId) {
     return;
@@ -64,15 +81,8 @@ export function rememberTerminalLayoutSnapshot(
 }
 
 export function createDefaultTerminalLayout(ensureTerminal: EnsureTerminalForLayout) {
-  const bottomTitle = formatI18n(tm("workspace.tab_format", "Tab %@"), 1);
   const topTitle = formatI18n(tm("workspace.split_format", "Split %@"), 1);
-  const tabs: BottomTabLayout[] = [
-    {
-      id: "bottom-1",
-      label: bottomTitle,
-      terminalId: ensureTerminal("bottom-1", bottomTitle).id,
-    },
-  ];
+  const tabs: BottomTabLayout[] = [];
   const topPanes: TopPaneLayout[] = [
     {
       id: "top-1",
@@ -123,9 +133,7 @@ export function restoreTerminalLayout(
     topPanes,
     topRatios: normalizeRatios(topRatios, topPanes.length),
     bottomRatio: cached.bottomRatio,
-    activeTabId: tabs.some((tab) => tab.id === cached.activeTabId)
-      ? cached.activeTabId
-      : tabs[0]?.id ?? "",
+    activeTabId: tabs.some((tab) => tab.id === cached.activeTabId) ? cached.activeTabId : (tabs[0]?.id ?? ""),
     activeTerminalId,
     activeSlotId: resolveActiveSlotId(topPanes, tabs, activeTerminalId),
   };
@@ -158,10 +166,7 @@ export function resolveVisibleTerminalId(
   return resolvePrimaryTerminalId(layout);
 }
 
-export function countTerminalSlots(layout: {
-  topPanes: TopPaneLayout[];
-  tabs: BottomTabLayout[];
-}) {
+export function countTerminalSlots(layout: { topPanes: TopPaneLayout[]; tabs: BottomTabLayout[] }) {
   return layout.topPanes.length + layout.tabs.length;
 }
 
@@ -183,20 +188,14 @@ export function snapshotTerminalLayout(layout: TerminalLayoutState): TerminalLay
   };
 }
 
-export function persistedTerminalLayoutSnapshot(
-  snapshot: TerminalLayoutSnapshot,
-): TerminalLayoutSnapshot {
+export function persistedTerminalLayoutSnapshot(snapshot: TerminalLayoutSnapshot): TerminalLayoutSnapshot {
   return {
     ...snapshot,
     topPanes: snapshot.topPanes.map(({ detached: _detached, ...pane }) => pane),
   };
 }
 
-export function resolveActiveSlotId(
-  topPanes: TopPaneLayout[],
-  tabs: BottomTabLayout[],
-  terminalId: string,
-) {
+export function resolveActiveSlotId(topPanes: TopPaneLayout[], tabs: BottomTabLayout[], terminalId: string) {
   return (
     topPanes.find((pane) => pane.terminalId === terminalId)?.id ??
     tabs.find((tab) => tab.terminalId === terminalId)?.id ??

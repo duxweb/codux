@@ -16,7 +16,7 @@ export async function openLocalizedDialog<T extends OpenDialogOptions>(options: 
       request: localizedOpenRequest(options),
     });
     if (!result) return null;
-    return (options.multiple ? result : result[0] ?? null) as Awaited<ReturnType<typeof open<T>>>;
+    return (options.multiple ? result : (result[0] ?? null)) as Awaited<ReturnType<typeof open<T>>>;
   }
   return open(tauriOpenOptions(options));
 }

@@ -14,6 +14,7 @@ export type AppSettings = {
   statisticsMode: string;
   theme: string;
   background: string;
+  themeColor: string;
   terminalFontSize: string;
   iconStyle: string;
   notificationChannels: Record<string, NotificationChannelSettings>;
@@ -39,9 +40,8 @@ export type UpdateSettings = {
 };
 
 export type RemoteSettings = {
-  enabled: boolean;
-  relayUrl: string;
-  serverUrl: string;
+  isEnabled: boolean;
+  serverURL: string;
   hostID: string;
   hostToken: string;
   hostPrivateKey: string;
@@ -148,6 +148,13 @@ const LEGACY_UPDATE_ENDPOINTS = new Set([
 let cachedSettings: AppSettings | null = null;
 let settingsSyncPromise: Promise<AppSettings> | null = null;
 let settingsListenerInstalled = false;
+let settingsWriteSequence = 0;
+let persistedSettingsSequence = 0;
+let settingsWriteInFlight = false;
+let settingsFlushWaiters: Array<{
+  resolve: (settings: AppSettings) => void;
+  reject: (error: unknown) => void;
+}> = [];
 
 export const defaultSettings: AppSettings = {
   language: "system",
@@ -213,6 +220,7 @@ export const defaultSettings: AppSettings = {
   statisticsMode: "normalized",
   theme: "Auto",
   background: "Auto",
+  themeColor: "Blue",
   terminalFontSize: "14",
   iconStyle: "default",
   notificationChannels: {},
@@ -223,9 +231,8 @@ export const defaultSettings: AppSettings = {
     endpoint: DEFAULT_UPDATE_ENDPOINT,
   },
   remote: {
-    enabled: false,
-    relayUrl: "http://127.0.0.1:8088",
-    serverUrl: "http://127.0.0.1:8088",
+    isEnabled: false,
+    serverURL: "http://127.0.0.1:8088",
     hostID: "",
     hostToken: "",
     hostPrivateKey: "",
@@ -258,7 +265,7 @@ export function readAppSettings(): AppSettings {
         ...defaultSettings.update,
         ...(parsed.update ?? {}),
       },
-    remote: normalizeRemoteSettings(parsed.remote),
+      remote: normalizeRemoteSettings(parsed.remote),
       pet: {
         ...defaultSettings.pet,
         ...(parsed.pet ?? {}),
@@ -273,11 +280,64 @@ export function readAppSettings(): AppSettings {
 
 export function writeAppSettings(next: AppSettings) {
   cachedSettings = normalizeAppSettings(next);
+  settingsWriteSequence += 1;
   window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(cachedSettings));
   if (window.__TAURI_INTERNALS__) {
-    void invoke<AppSettings>("app_settings_set", { settings: cachedSettings }).catch((error) => {
+    persistLatestAppSettings();
+  }
+}
+
+function persistLatestAppSettings() {
+  if (!window.__TAURI_INTERNALS__ || settingsWriteInFlight) return;
+  const settings = cachedSettings;
+  if (!settings || persistedSettingsSequence === settingsWriteSequence) return;
+  const sequence = settingsWriteSequence;
+  settingsWriteInFlight = true;
+  void invoke<AppSettings>("app_settings_set", { settings })
+    .then((persisted) => {
+      if (sequence !== settingsWriteSequence) return;
+      persistedSettingsSequence = sequence;
+      cachedSettings = normalizeAppSettings(persisted);
+      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(cachedSettings));
+    })
+    .catch((error) => {
       console.error("failed to persist app settings", error);
+      rejectSettingsFlushWaiters(error);
+    })
+    .finally(() => {
+      settingsWriteInFlight = false;
+      if (persistedSettingsSequence === settingsWriteSequence) {
+        resolveSettingsFlushWaiters(readAppSettings());
+      } else {
+        persistLatestAppSettings();
+      }
     });
+}
+
+export async function flushAppSettings() {
+  if (!window.__TAURI_INTERNALS__) return readAppSettings();
+  if (persistedSettingsSequence === settingsWriteSequence && !settingsWriteInFlight) {
+    return readAppSettings();
+  }
+  persistLatestAppSettings();
+  return new Promise<AppSettings>((resolve, reject) => {
+    settingsFlushWaiters.push({ resolve, reject });
+  });
+}
+
+function resolveSettingsFlushWaiters(settings: AppSettings) {
+  const waiters = settingsFlushWaiters;
+  settingsFlushWaiters = [];
+  for (const waiter of waiters) {
+    waiter.resolve(settings);
+  }
+}
+
+function rejectSettingsFlushWaiters(error: unknown) {
+  const waiters = settingsFlushWaiters;
+  settingsFlushWaiters = [];
+  for (const waiter of waiters) {
+    waiter.reject(error);
   }
 }
 
@@ -304,6 +364,9 @@ export async function syncAppSettingsFromRust() {
   if (!window.__TAURI_INTERNALS__) return readAppSettings();
   settingsSyncPromise ??= invoke<AppSettings>("app_settings_get")
     .then((settings) => {
+      if (settingsWriteSequence !== persistedSettingsSequence) {
+        return readAppSettings();
+      }
       cachedSettings = normalizeAppSettings(settings);
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(cachedSettings));
       window.dispatchEvent(new CustomEvent("codux:settings-changed", { detail: cachedSettings }));
@@ -324,6 +387,7 @@ function installSettingsEventBridge() {
   if (!window.__TAURI_INTERNALS__ || settingsListenerInstalled) return;
   settingsListenerInstalled = true;
   void listen<AppSettings>("settings:updated", (event) => {
+    if (settingsWriteSequence !== persistedSettingsSequence) return;
     cachedSettings = normalizeAppSettings(event.payload);
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(cachedSettings));
     window.dispatchEvent(new CustomEvent("codux:settings-changed", { detail: cachedSettings }));
@@ -339,9 +403,16 @@ function normalizeAppSettings(settings: Partial<AppSettings>): AppSettings {
     ...(settings.update ?? {}),
   };
   update.endpoint = normalizeUpdateEndpoint(update.endpoint, update.enabled);
+  const legacyThemeColor = inferThemeColorFromLegacyBackground(settings.background);
+  const themeColorSource =
+    settings.themeColor === defaultSettings.themeColor && legacyThemeColor ? legacyThemeColor : settings.themeColor;
+  const background = normalizeBackgroundSetting(settings.background);
+  const themeColor = normalizeThemeColorSetting(themeColorSource);
   return {
     ...defaultSettings,
     ...settings,
+    background,
+    themeColor,
     notificationChannels: {
       ...defaultSettings.notificationChannels,
       ...(settings.notificationChannels ?? {}),
@@ -363,18 +434,91 @@ function normalizeAppSettings(settings: Partial<AppSettings>): AppSettings {
   };
 }
 
+const backgroundSettingLabels = ["Auto", "Zinc", "Neutral", "Stone", "Slate"] as const;
+const themeColorSettingLabels = [
+  "Blue",
+  "Sky",
+  "Cyan",
+  "Teal",
+  "Emerald",
+  "Green",
+  "Lime",
+  "Amber",
+  "Orange",
+  "Red",
+  "Rose",
+  "Pink",
+  "Fuchsia",
+  "Purple",
+  "Violet",
+  "Indigo",
+] as const;
+
+const legacyThemeColorAliases: Record<string, string> = {
+  burnt: "Orange",
+  crimson: "Red",
+  gold: "Amber",
+  iris: "Violet",
+  lavender: "Violet",
+  moss: "Emerald",
+  navy: "Blue",
+  plum: "Rose",
+  sage: "Green",
+};
+
+function normalizeAppearanceName(value?: string) {
+  return (value ?? "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+}
+
+function canonicalAppearanceLabel(value: string | undefined, labels: readonly string[]) {
+  const normalized = normalizeAppearanceName(value);
+  return labels.find((label) => normalizeAppearanceName(label) === normalized);
+}
+
+function normalizeBackgroundSetting(value?: string) {
+  return canonicalAppearanceLabel(value, backgroundSettingLabels) ?? defaultSettings.background;
+}
+
+function normalizeThemeColorSetting(value?: string) {
+  const direct = canonicalAppearanceLabel(value, themeColorSettingLabels);
+  if (direct) return direct;
+  const alias = legacyThemeColorAliases[normalizeAppearanceName(value)];
+  return canonicalAppearanceLabel(alias, themeColorSettingLabels) ?? defaultSettings.themeColor;
+}
+
+function inferThemeColorFromLegacyBackground(value?: string) {
+  const normalized = normalizeAppearanceName(value);
+  if (canonicalAppearanceLabel(value, themeColorSettingLabels)) return value;
+  return legacyThemeColorAliases[normalized];
+}
+
 export function normalizeStatisticsMode(value?: string): AIStatisticsMode {
   return value === "includingCache" ? "includingCache" : "normalized";
 }
 
 function normalizeRemoteSettings(settings?: Partial<RemoteSettings>): RemoteSettings {
-  const serverUrl = (settings?.serverUrl ?? settings?.relayUrl ?? defaultSettings.remote.serverUrl).trim();
+  const raw = settings as Partial<RemoteSettings> & { hostId?: string };
   return {
-    ...defaultSettings.remote,
-    ...(settings ?? {}),
-    relayUrl: serverUrl,
-    serverUrl,
-    cachedDevices: Array.isArray(settings?.cachedDevices) ? settings.cachedDevices : [],
+    isEnabled: Boolean(raw?.isEnabled),
+    serverURL: (raw?.serverURL ?? defaultSettings.remote.serverURL).trim(),
+    hostID: (raw?.hostID ?? raw?.hostId ?? "").trim(),
+    hostToken: raw?.hostToken ?? "",
+    hostPrivateKey: raw?.hostPrivateKey ?? "",
+    hostPublicKey: raw?.hostPublicKey ?? "",
+    cachedDevices: Array.isArray(raw?.cachedDevices) ? raw.cachedDevices.map(normalizeRemoteDeviceSettings) : [],
+  };
+}
+
+function normalizeRemoteDeviceSettings(device: Partial<RemoteDeviceSettings>): RemoteDeviceSettings {
+  return {
+    id: device.id ?? "",
+    hostId: device.hostId ?? "",
+    name: device.name ?? "",
+    publicKey: device.publicKey ?? "",
+    createdAt: device.createdAt ?? "",
+    lastSeen: device.lastSeen ?? "",
+    revokedAt: device.revokedAt ?? null,
+    online: device.online ?? null,
   };
 }
 
@@ -388,9 +532,7 @@ function normalizeUpdateEndpoint(endpoint: string, enabled: boolean) {
 function normalizeAISettings(settings?: Partial<AISettings>, legacyPet?: Partial<PetSettings>): AISettings {
   const rawPet: Partial<AIPetSettings> = settings?.pet ?? {};
   const legacySpeechMode =
-    rawPet.speechMode === undefined && typeof legacyPet?.speechMode === "string"
-      ? legacyPet.speechMode
-      : undefined;
+    rawPet.speechMode === undefined && typeof legacyPet?.speechMode === "string" ? legacyPet.speechMode : undefined;
   const legacySpeechFrequency =
     rawPet.speechFrequency === undefined && typeof legacyPet?.speechFrequency === "string"
       ? legacyPet.speechFrequency

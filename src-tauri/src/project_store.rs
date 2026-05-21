@@ -106,6 +106,12 @@ pub struct ProjectListSnapshot {
     pub selected_worktree_id_by_project: HashMap<String, String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalLayoutsSnapshot {
+    pub layouts: HashMap<String, TerminalLayoutRecord>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
@@ -137,6 +143,9 @@ pub struct ProjectUpdateRequest {
     pub project_id: String,
     pub name: String,
     pub path: String,
+    pub badge_text: Option<String>,
+    pub badge_symbol: Option<String>,
+    pub badge_color_hex: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -212,14 +221,37 @@ impl ProjectStore {
             .unwrap_or_default()
     }
 
-    pub fn worktree_snapshot_by_id(&self, worktree_id: &str) -> Option<ProjectWorktreeRecord> {
-        self.snapshot.lock().ok().and_then(|snapshot| {
-            snapshot
-                .worktrees
-                .iter()
-                .find(|worktree| worktree.id == worktree_id)
-                .cloned()
-        })
+    pub fn workspace_summary_by_path(&self, path: &str) -> Option<ProjectSummary> {
+        let normalized = normalize_path(path);
+        let snapshot = self.snapshot.lock().ok()?;
+        snapshot
+            .worktrees
+            .iter()
+            .find(|worktree| normalize_path(&worktree.path) == normalized)
+            .map(worktree_summary)
+            .or_else(|| {
+                snapshot
+                    .projects
+                    .iter()
+                    .find(|project| normalize_path(&project.path) == normalized)
+                    .map(project_summary)
+            })
+    }
+
+    pub fn root_project_summary_for_workspace_id(&self, id: &str) -> Option<ProjectSummary> {
+        let snapshot = self.snapshot.lock().ok()?;
+        if let Some(project) = snapshot.projects.iter().find(|project| project.id == id) {
+            return Some(project_summary(project));
+        }
+        let worktree = snapshot
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.id == id)?;
+        snapshot
+            .projects
+            .iter()
+            .find(|project| project.id == worktree.project_id)
+            .map(project_summary)
     }
 
     pub fn create_project(
@@ -374,6 +406,15 @@ impl ProjectStore {
             .ok_or_else(|| "Project not found.".to_string())?;
         project.name = name.clone();
         project.path = path.clone();
+        project.badge_text = request
+            .badge_text
+            .and_then(|value| normalized_string(&value));
+        project.badge_symbol = request
+            .badge_symbol
+            .and_then(|value| normalized_string(&value));
+        project.badge_color_hex = request
+            .badge_color_hex
+            .and_then(|value| normalized_string(&value));
         for worktree in snapshot
             .worktrees
             .iter_mut()
@@ -464,6 +505,15 @@ impl ProjectStore {
             .lock()
             .ok()
             .and_then(|snapshot| snapshot.terminal_layouts.get(project_id).cloned())
+    }
+
+    pub fn terminal_layouts_snapshot(&self) -> TerminalLayoutsSnapshot {
+        let layouts = self
+            .snapshot
+            .lock()
+            .map(|snapshot| snapshot.terminal_layouts.clone())
+            .unwrap_or_default();
+        TerminalLayoutsSnapshot { layouts }
     }
 
     pub fn save_terminal_layout(
@@ -1087,6 +1137,21 @@ fn project_summary(project: &ProjectRecord) -> ProjectSummary {
         badge_symbol: project.badge_symbol.clone(),
         badge_color_hex: project.badge_color_hex.clone(),
         git_default_push_remote_name: project.git_default_push_remote_name.clone(),
+    }
+}
+
+fn worktree_summary(worktree: &ProjectWorktreeRecord) -> ProjectSummary {
+    ProjectSummary {
+        id: worktree.id.clone(),
+        name: worktree.name.clone(),
+        path: worktree.path.clone(),
+        badge: badge_from_name(&worktree.name),
+        status: worktree.status.clone(),
+        branch: worktree.branch.clone(),
+        changes: 0,
+        badge_symbol: None,
+        badge_color_hex: None,
+        git_default_push_remote_name: None,
     }
 }
 

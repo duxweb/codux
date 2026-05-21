@@ -2,17 +2,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type IDisposable, type ITheme } from "@xterm/xterm";
-import {
-  Copy,
-  Maximize2,
-  PanelBottomClose,
-  Plus,
-  RefreshCw,
-  Square,
-  TerminalSquare,
-} from "../icons";
+import { Copy, Maximize2, PanelBottomClose, Plus, RefreshCw, Square, TerminalSquare } from "../icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { logTerminalFocusDebug } from "../debug/terminalFocusDebug";
 import { readAppSettings, readTerminalFontSize, subscribeAppSettings } from "../settings";
 import { registerTerminalInput } from "../terminal/focus";
 import { terminalRuntime, type TerminalRuntimeEvent, type TerminalRuntimeSession } from "../terminal/runtime";
@@ -145,7 +136,6 @@ function XtermRenderer({
       const nextWebglAddon = new WebglAddon();
       disposables.push(
         nextWebglAddon.onContextLoss(() => {
-          logTerminalFocusDebug("xterm-webgl-context-loss", {});
           if (webglAddon === nextWebglAddon) {
             disposeWebglAddon();
           } else {
@@ -155,11 +145,8 @@ function XtermRenderer({
       );
       terminal.loadAddon(nextWebglAddon);
       webglAddon = nextWebglAddon;
-      logTerminalFocusDebug("xterm-webgl-enabled", {});
     } catch (error) {
-      logTerminalFocusDebug("xterm-webgl-unavailable", {
-        message: error instanceof Error ? error.message : String(error),
-      });
+      void error;
     }
 
     const releaseSelectionDrag = (reason: string) => {
@@ -167,7 +154,7 @@ function XtermRenderer({
       isSelecting = false;
       const selection = (terminal as XtermWithSelectionInternals)._core?._selectionService;
       selection?._removeMouseDownListeners?.();
-      logTerminalFocusDebug("xterm-selection-release", { reason });
+      void reason;
     };
 
     const markSelectionStart = (event: MouseEvent) => {
@@ -373,9 +360,7 @@ export function TerminalView({
   const shellRef = useRef<HTMLElement | null>(null);
   const [adapterVersion, setAdapterVersion] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [session, setSession] = useState<TerminalRuntimeSession | undefined>(() =>
-    sessionRef.current,
-  );
+  const [session, setSession] = useState<TerminalRuntimeSession | undefined>(() => sessionRef.current);
   const canAcceptInput = session?.state === "running" && Boolean(session.backendId || !window.__TAURI_INTERNALS__);
   onDisposedRef.current = onDisposed;
 
@@ -387,14 +372,20 @@ export function TerminalView({
     setAdapterVersion((current) => current + 1);
   }, []);
 
-  const writeTerminalInput = useCallback((data: string) => {
-    if (sessionRef.current?.state !== "running") return;
-    terminalRuntime.write(terminalId, data);
-  }, [terminalId]);
+  const writeTerminalInput = useCallback(
+    (data: string) => {
+      if (sessionRef.current?.state !== "running") return;
+      terminalRuntime.write(terminalId, data);
+    },
+    [terminalId],
+  );
 
-  const resizeTerminal = useCallback((cols: number, rows: number) => {
-    terminalRuntime.resize(terminalId, cols, rows);
-  }, [terminalId]);
+  const resizeTerminal = useCallback(
+    (cols: number, rows: number) => {
+      terminalRuntime.resize(terminalId, cols, rows);
+    },
+    [terminalId],
+  );
 
   const fitAndResize = useCallback(() => {
     adapterRef.current?.fit();
@@ -628,20 +619,14 @@ export function TerminalView({
             disabled={!contextMenu.hasSelection}
             onPress={() => void runContextAction("copy")}
           />
-          <TerminalContextMenuItem
-            label={t("terminal.paste")}
-            onPress={() => void runContextAction("paste")}
-          />
+          <TerminalContextMenuItem label={t("terminal.paste")} onPress={() => void runContextAction("paste")} />
           <TerminalContextMenuSeparator />
           <TerminalContextMenuItem
             icon={RefreshCw}
             label={t("terminal.clear")}
             onPress={() => void runContextAction("clear")}
           />
-          <TerminalContextMenuItem
-            label={t("terminal.selectAll")}
-            onPress={() => void runContextAction("selectAll")}
-          />
+          <TerminalContextMenuItem label={t("terminal.selectAll")} onPress={() => void runContextAction("selectAll")} />
           <TerminalContextMenuSeparator />
           <TerminalContextMenuItem
             icon={Plus}
@@ -671,15 +656,8 @@ function TerminalContextMenuItem({
   onPress: () => void;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      className="terminal-context-menu-item"
-      onClick={onPress}
-    >
-      <span className="terminal-context-menu-icon">
-        {Icon ? <Icon size={13} strokeWidth={2.1} /> : null}
-      </span>
+    <button type="button" disabled={disabled} className="terminal-context-menu-item" onClick={onPress}>
+      <span className="terminal-context-menu-icon">{Icon ? <Icon size={13} strokeWidth={2.1} /> : null}</span>
       <span className="truncate">{label}</span>
     </button>
   );

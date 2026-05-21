@@ -1,6 +1,5 @@
 import { Button as HButton } from "@heroui/react";
 import type { ComponentProps, ReactNode } from "react";
-import { logTerminalFocusDebug } from "../debug/terminalFocusDebug";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "success";
 export type ButtonSize = "sm" | "md" | "lg";
@@ -67,12 +66,6 @@ export function Button({
   ...rest
 }: Props) {
   const iconSize = iconSizeMap[size];
-  const debugName =
-    typeof rest["aria-label"] === "string"
-      ? rest["aria-label"]
-      : typeof children === "string"
-        ? children
-        : "button";
 
   return (
     <HButton
@@ -84,23 +77,11 @@ export function Button({
       preventFocusOnPress={preventFocusOnPress}
       className={`${block ? "w-full" : ""} focus:outline-none focus-visible:outline-none ${variantClassNameMap[variant] ?? ""} ${className ?? ""}`}
       onPointerDownCapture={(event) => {
-        logTerminalFocusDebug("button:pointerdown-capture", {
-          name: debugName,
-          active: document.activeElement?.tagName.toLowerCase(),
-        });
         onPointerDownCapture?.(event);
       }}
       onPressUp={(event) => {
         onPressUp?.(event);
-        logTerminalFocusDebug("button:onPressUp", {
-          name: debugName,
-          active: document.activeElement?.tagName.toLowerCase(),
-        });
         if (!disabled && onPress) {
-          logTerminalFocusDebug("button:onPress", {
-            name: debugName,
-            active: document.activeElement?.tagName.toLowerCase(),
-          });
           onPress(event as Parameters<NonNullable<HButtonProps["onPress"]>>[0]);
         }
       }}

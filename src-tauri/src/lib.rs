@@ -2,6 +2,7 @@ mod ai_history;
 mod ai_history_indexer;
 mod ai_runtime;
 mod ai_usage_store;
+mod app_icon;
 mod app_info;
 mod app_settings;
 mod dialog;
@@ -31,6 +32,7 @@ use ai_runtime::{
     AIRuntimeBridge, AIRuntimeBridgeSnapshot, AIRuntimeContextSnapshot, AIRuntimeProbeRequest,
     AIRuntimeStateSnapshot,
 };
+use app_icon::apply_app_icon;
 use app_info::{
     AppAboutMetadata, DiagnosticsExportRequest, DiagnosticsExportResult, UpdateInstallResult,
     UpdateStatus,
@@ -106,11 +108,12 @@ use pet::{
     PetSnapshot, PetStore,
 };
 use power::PowerManager;
-use project_activity::ProjectActivityCoordinator;
+use project_activity::{ProjectActivityCoordinator, WorktreeSnapshotEvent};
 use project_store::{
     ProjectCloseRequest, ProjectCreateRequest, ProjectDefaultPushRemoteRequest,
     ProjectListSnapshot, ProjectReorderRequest, ProjectSelectWorktreeRequest, ProjectStore,
-    ProjectSummary, ProjectUpdateRequest, TerminalLayoutRecord,
+    ProjectSummary, ProjectUpdateRequest, TerminalBottomTabRecord, TerminalLayoutRecord,
+    TerminalTopPaneRecord,
 };
 use remote_p2p::{RemoteP2PHostTransport, RemoteP2PLane, RemoteP2PSignal};
 use reqwest::header::CONTENT_TYPE;
@@ -128,6 +131,7 @@ use std::{thread, time::Duration};
 use tauri::async_runtime::JoinHandle;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::utils::config::Color;
+use tauri::WindowEvent;
 use tauri::Wry;
 use tauri::{Emitter, Manager};
 use tauri::{
@@ -138,8 +142,8 @@ use terminal::{TerminalConfig, TerminalEvent, TerminalManager};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WebSocketMessage;
 use worktree::{
-    create_worktree, remove_worktree, worktree_snapshot as load_worktree_snapshot,
-    WorktreeCreateRequest, WorktreeRemoveRequest, WorktreeSnapshot,
+    create_worktree, remove_worktree, WorktreeCreateRequest, WorktreeRemoveRequest,
+    WorktreeSnapshot,
 };
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
@@ -170,14 +174,6 @@ struct ProjectOpenApplicationSnapshot {
 struct ProjectOpenApplicationRequest {
     project_path: String,
     application_id: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WorktreeSnapshotEvent {
-    project_id: String,
-    project_path: String,
-    snapshot: WorktreeSnapshot,
 }
 
 struct ProjectOpenApplicationSpec {
@@ -869,9 +865,16 @@ fn terminal_create(
     app: tauri::AppHandle,
     config: TerminalConfig,
 ) -> Result<String, String> {
-    let remote = Arc::clone(&state.remote);
-    state
-        .terminals
+    create_terminal_session(Arc::clone(&state.remote), &state.terminals, app, config)
+}
+
+fn create_terminal_session(
+    remote: Arc<RemoteHostService>,
+    terminals: &TerminalManager,
+    app: tauri::AppHandle,
+    config: TerminalConfig,
+) -> Result<String, String> {
+    terminals
         .create(config, move |event| {
             let _ = app.emit("terminal:event", event.clone());
             remote.handle_terminal_event(event);
@@ -958,6 +961,28 @@ fn ai_runtime_state_snapshot(state: tauri::State<'_, AppState>) -> AIRuntimeStat
 }
 
 #[tauri::command]
+fn app_runtime_ready(state: tauri::State<'_, AppState>, app: tauri::AppHandle) {
+    let _ = app.emit("project:updated", state.projects.list_snapshot());
+    let _ = app.emit(
+        "terminal-layouts:snapshot",
+        state.projects.terminal_layouts_snapshot(),
+    );
+    let _ = app.emit("remote:status", state.remote.snapshot());
+    let _ = app.emit("ai-runtime:state", state.ai_runtime.state_snapshot());
+    state.project_activity.prewarm_worktrees(
+        app,
+        Arc::clone(&state.projects),
+        state.projects.list_snapshot().projects,
+    );
+}
+
+#[tauri::command]
+fn app_window_state(state: tauri::State<'_, AppState>, visible: bool, focused: bool) {
+    state.project_activity.mark_main_window_visible(visible);
+    state.project_activity.mark_main_window_focused(focused);
+}
+
+#[tauri::command]
 fn ai_runtime_dismiss_completion(state: tauri::State<'_, AppState>, project_id: String) -> bool {
     state.ai_runtime.dismiss_completion(project_id)
 }
@@ -979,6 +1004,7 @@ fn app_settings_set(
         .ai_runtime
         .sync_window_state(&app, state.settings.as_ref());
     let _ = state.power.set_sleep_prevention(next.sleep_mode.clone());
+    apply_app_icon(&app, &next.icon_style)?;
     rebuild_app_menu(&app, &next)?;
     if let Ok(pet) = state.pet.snapshot() {
         sync_desktop_pet_window(&app, &next, &pet);
@@ -1269,6 +1295,25 @@ async fn ai_history_project_summary(
 }
 
 #[tauri::command]
+fn ai_history_refresh_project(state: tauri::State<'_, AppState>, project: AIHistoryProjectRequest) {
+    let summary = ProjectSummary {
+        id: project.id,
+        name: project.name,
+        path: project.path,
+        badge: String::new(),
+        status: "active".to_string(),
+        branch: "master".to_string(),
+        changes: 0,
+        badge_symbol: None,
+        badge_color_hex: None,
+        git_default_push_remote_name: None,
+    };
+    state
+        .project_activity
+        .refresh_ai_once(summary, Arc::clone(&state.ai_history));
+}
+
+#[tauri::command]
 async fn ai_history_project_state(
     state: tauri::State<'_, AppState>,
     project: AIHistoryProjectRequest,
@@ -1282,6 +1327,14 @@ async fn ai_history_global_summary(
     projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<AIGlobalHistorySnapshot, String> {
     state.ai_history.global_summary(projects).await
+}
+
+#[tauri::command]
+async fn ai_history_refresh_global(
+    state: tauri::State<'_, AppState>,
+    projects: Vec<AIHistoryProjectRequest>,
+) -> Result<(), String> {
+    state.ai_history.refresh_global(projects).await
 }
 
 #[tauri::command]
@@ -1314,34 +1367,133 @@ async fn ai_history_session_remove(
     state.ai_history.remove_session(project, session_id).await
 }
 
-#[tauri::command]
-fn git_status(project_path: String) -> GitStatusSnapshot {
-    load_git_status(project_path)
+fn emit_git_status_snapshot(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    project_path: &str,
+    snapshot: GitStatusSnapshot,
+) {
+    let project = state.projects.workspace_summary_by_path(project_path);
+    let _ = app.emit(
+        "git:status",
+        project_activity::GitStatusEvent {
+            project_id: project
+                .as_ref()
+                .map(|value| value.id.clone())
+                .unwrap_or_default(),
+            project_name: project
+                .as_ref()
+                .map(|value| value.name.clone())
+                .unwrap_or_default(),
+            project_path: project
+                .as_ref()
+                .map(|value| value.path.clone())
+                .unwrap_or_else(|| project_path.to_string()),
+            snapshot,
+        },
+    );
+}
+
+fn refresh_git_sidecars_for_path(app: &tauri::AppHandle, state: &AppState, project_path: &str) {
+    state.project_activity.refresh_git_sidecars_by_path(
+        app.clone(),
+        Arc::clone(&state.projects),
+        project_path.to_string(),
+    );
+}
+
+fn run_git_status_command(
+    state: &AppState,
+    app: &tauri::AppHandle,
+    project_path: String,
+    action: impl FnOnce(String) -> Result<GitStatusSnapshot, String>,
+) -> Result<GitStatusSnapshot, String> {
+    let snapshot = action(project_path.clone())?;
+    emit_git_status_snapshot(app, state, &project_path, snapshot.clone());
+    refresh_git_sidecars_for_path(app, state, &project_path);
+    Ok(snapshot)
 }
 
 #[tauri::command]
-fn git_stage(request: GitPathsRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_stage(request)
+fn git_status(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) -> GitStatusSnapshot {
+    let snapshot = load_git_status(project_path.clone());
+    emit_git_status_snapshot(&app, &state, &project_path, snapshot.clone());
+    snapshot
 }
 
 #[tauri::command]
-fn git_unstage(request: GitPathsRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_unstage(request)
+fn git_refresh_project(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) {
+    state.project_activity.refresh_git_sidecars_by_path(
+        app.clone(),
+        Arc::clone(&state.projects),
+        project_path.clone(),
+    );
+    if let Some(project) = state.projects.workspace_summary_by_path(&project_path) {
+        state.project_activity.refresh_git_once(app, &project);
+    }
 }
 
 #[tauri::command]
-fn git_commit(request: GitCommitRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_commit(request)
+fn git_stage(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitPathsRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_stage(request)
+    })
 }
 
 #[tauri::command]
-fn git_commit_action(request: GitCommitActionRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_commit_action(request)
+fn git_unstage(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitPathsRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_unstage(request)
+    })
 }
 
 #[tauri::command]
-fn git_amend_last_commit_message(request: GitCommitRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_amend_last_commit_message(request)
+fn git_commit(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitCommitRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_commit(request)
+    })
+}
+
+#[tauri::command]
+fn git_commit_action(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitCommitActionRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_commit_action(request)
+    })
+}
+
+#[tauri::command]
+fn git_amend_last_commit_message(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitCommitRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_amend_last_commit_message(request)
+    })
 }
 
 #[tauri::command]
@@ -1350,8 +1502,12 @@ fn git_last_commit_message(project_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn git_undo_last_commit(project_path: String) -> Result<GitStatusSnapshot, String> {
-    perform_git_undo_last_commit(project_path)
+fn git_undo_last_commit(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, project_path, perform_git_undo_last_commit)
 }
 
 #[tauri::command]
@@ -1360,23 +1516,39 @@ fn git_head_commit_pushed(project_path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn git_pull(project_path: String) -> Result<GitStatusSnapshot, String> {
-    perform_git_pull(project_path)
+fn git_pull(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, project_path, perform_git_pull)
 }
 
 #[tauri::command]
-fn git_push(project_path: String) -> Result<GitStatusSnapshot, String> {
-    perform_git_push(project_path)
+fn git_push(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, project_path, perform_git_push)
 }
 
 #[tauri::command]
-fn git_fetch(project_path: String) -> Result<GitStatusSnapshot, String> {
-    perform_git_fetch(project_path)
+fn git_fetch(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, project_path, perform_git_fetch)
 }
 
 #[tauri::command]
-fn git_sync(project_path: String) -> Result<GitStatusSnapshot, String> {
-    perform_git_sync(project_path)
+fn git_sync(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, project_path, perform_git_sync)
 }
 
 #[tauri::command]
@@ -1385,18 +1557,34 @@ fn git_review(project_path: String, base_branch: Option<String>) -> GitReviewSna
 }
 
 #[tauri::command]
-fn git_init(project_path: String) -> Result<GitStatusSnapshot, String> {
-    perform_git_init(project_path)
+fn git_init(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, project_path, perform_git_init)
 }
 
 #[tauri::command]
-fn git_clone(request: GitCloneRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_clone(request)
+fn git_clone(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitCloneRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_clone(request)
+    })
 }
 
 #[tauri::command]
-fn git_discard(request: GitPathsRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_discard(request)
+fn git_discard(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitPathsRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_discard(request)
+    })
 }
 
 #[tauri::command]
@@ -1405,80 +1593,166 @@ fn git_branches(project_path: String) -> GitBranchesSnapshot {
 }
 
 #[tauri::command]
-fn git_checkout_branch(request: GitBranchRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_checkout_branch(request)
+fn git_checkout_branch(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitBranchRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_checkout_branch(request)
+    })
 }
 
 #[tauri::command]
-fn git_checkout_remote_branch(request: GitBranchRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_checkout_remote_branch(request)
+fn git_checkout_remote_branch(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitBranchRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_checkout_remote_branch(request)
+    })
 }
 
 #[tauri::command]
-fn git_create_branch(request: GitCreateBranchRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_create_branch(request)
+fn git_create_branch(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitCreateBranchRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_create_branch(request)
+    })
 }
 
 #[tauri::command]
-fn git_merge_branch(request: GitBranchRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_merge_branch(request)
+fn git_merge_branch(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitBranchRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_merge_branch(request)
+    })
 }
 
 #[tauri::command]
-fn git_squash_merge_branch(request: GitBranchRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_squash_merge_branch(request)
+fn git_squash_merge_branch(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitBranchRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_squash_merge_branch(request)
+    })
 }
 
 #[tauri::command]
-fn git_delete_branch(request: GitDeleteBranchRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_delete_branch(request)
+fn git_delete_branch(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitDeleteBranchRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_delete_branch(request)
+    })
 }
 
 #[tauri::command]
-fn git_force_push(project_path: String) -> Result<GitStatusSnapshot, String> {
-    perform_git_force_push(project_path)
+fn git_force_push(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, project_path, perform_git_force_push)
 }
 
 #[tauri::command]
-fn git_push_remote(request: GitPushRemoteRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_push_remote(request)
+fn git_push_remote(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitPushRemoteRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_push_remote(request)
+    })
 }
 
 #[tauri::command]
 fn git_push_remote_branch(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
     request: GitPushRemoteBranchRequest,
 ) -> Result<GitStatusSnapshot, String> {
-    perform_git_push_remote_branch(request)
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_push_remote_branch(request)
+    })
 }
 
 #[tauri::command]
-fn git_checkout_commit(request: GitCommitRefRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_checkout_commit(request)
+fn git_checkout_commit(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitCommitRefRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_checkout_commit(request)
+    })
 }
 
 #[tauri::command]
-fn git_revert_commit(request: GitCommitRefRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_revert_commit(request)
+fn git_revert_commit(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitCommitRefRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_revert_commit(request)
+    })
 }
 
 #[tauri::command]
-fn git_restore_commit(request: GitRestoreCommitRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_restore_commit(request)
+fn git_restore_commit(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitRestoreCommitRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_restore_commit(request)
+    })
 }
 
 #[tauri::command]
-fn git_add_remote(request: GitRemoteRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_add_remote(request)
+fn git_add_remote(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitRemoteRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_add_remote(request)
+    })
 }
 
 #[tauri::command]
-fn git_remove_remote(request: GitRemoteRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_remove_remote(request)
+fn git_remove_remote(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitRemoteRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_remove_remote(request)
+    })
 }
 
 #[tauri::command]
-fn git_append_gitignore(request: GitPathsRequest) -> Result<GitStatusSnapshot, String> {
-    perform_git_append_gitignore(request)
+fn git_append_gitignore(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: GitPathsRequest,
+) -> Result<GitStatusSnapshot, String> {
+    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
+        perform_git_append_gitignore(request)
+    })
 }
 
 #[tauri::command]
@@ -1502,7 +1776,19 @@ fn git_watch(
     app: tauri::AppHandle,
     project_path: String,
 ) -> Result<GitWatchRegistration, String> {
-    state.git_watch.watch(app, project_path)
+    let activity = Arc::clone(&state.project_activity);
+    let projects = Arc::clone(&state.projects);
+    state
+        .git_watch
+        .watch(app.clone(), project_path, move |event| {
+            activity.refresh_git_changed(
+                app.clone(),
+                Arc::clone(&projects),
+                event.project_path,
+                event.repository_path,
+                event.changed_paths,
+            );
+        })
 }
 
 #[tauri::command]
@@ -1580,62 +1866,13 @@ fn file_unwatch(state: tauri::State<'_, AppState>, project_path: String) -> Resu
 }
 
 #[tauri::command]
-async fn worktree_snapshot(
-    state: tauri::State<'_, AppState>,
-    project_id: String,
-    project_path: String,
-) -> Result<WorktreeSnapshot, String> {
-    let projects = Arc::clone(&state.projects);
-    tauri::async_runtime::spawn_blocking(move || {
-        projects.merge_worktree_snapshot(load_worktree_snapshot(project_id, project_path))
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
-fn emit_worktree_snapshot(
-    app: tauri::AppHandle,
-    projects: Arc<ProjectStore>,
-    project: ProjectSummary,
-) {
-    tauri::async_runtime::spawn(async move {
-        let project_id = project.id;
-        let project_path = project.path;
-        let event_project_id = project_id.clone();
-        let event_project_path = project_path.clone();
-        let snapshot = tauri::async_runtime::spawn_blocking(move || {
-            projects.merge_worktree_snapshot(load_worktree_snapshot(project_id, project_path))
-        })
-        .await;
-
-        match snapshot {
-            Ok(Ok(snapshot)) => {
-                let _ = app.emit(
-                    "worktree:snapshot",
-                    WorktreeSnapshotEvent {
-                        project_id: event_project_id,
-                        project_path: event_project_path,
-                        snapshot,
-                    },
-                );
-            }
-            Ok(Err(error)) => {
-                eprintln!("failed to merge worktree snapshot: {error}");
-            }
-            Err(error) => {
-                eprintln!("failed to refresh worktree snapshot: {error}");
-            }
-        }
-    });
-}
-
-#[tauri::command]
 async fn worktree_create(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: WorktreeCreateRequest,
 ) -> Result<WorktreeSnapshot, String> {
     let projects = Arc::clone(&state.projects);
+    let projects_for_snapshot = Arc::clone(&state.projects);
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
         let snapshot = create_worktree(request)?;
         let selected = snapshot.selected_worktree_id.clone();
@@ -1671,6 +1908,7 @@ async fn worktree_create(
             snapshot: snapshot.clone(),
         },
     );
+    let _ = app.emit("project:updated", projects_for_snapshot.list_snapshot());
     Ok(snapshot)
 }
 
@@ -1681,6 +1919,7 @@ async fn worktree_remove(
     request: WorktreeRemoveRequest,
 ) -> Result<WorktreeSnapshot, String> {
     let projects = Arc::clone(&state.projects);
+    let projects_for_snapshot = Arc::clone(&state.projects);
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
         let snapshot = remove_worktree(request)?;
         projects.merge_worktree_snapshot(snapshot)
@@ -1708,6 +1947,7 @@ async fn worktree_remove(
             snapshot: snapshot.clone(),
         },
     );
+    let _ = app.emit("project:updated", projects_for_snapshot.list_snapshot());
     Ok(snapshot)
 }
 
@@ -1877,13 +2117,28 @@ fn project_mark_active(
     app: tauri::AppHandle,
     project: ProjectSummary,
 ) {
-    state.project_activity.mark_project_active(
-        app.clone(),
-        project.clone(),
-        Arc::clone(&state.ai_history),
-    );
-    emit_worktree_snapshot(app.clone(), Arc::clone(&state.projects), project.clone());
-    let _ = state.git_watch.watch(app.clone(), project.path.clone());
+    mark_project_active_with_watch(&state, app, project);
+}
+
+fn mark_project_active_with_watch(
+    state: &AppState,
+    app: tauri::AppHandle,
+    project: ProjectSummary,
+) {
+    state.project_activity.mark_project_active(project.clone());
+    let activity = Arc::clone(&state.project_activity);
+    let projects = Arc::clone(&state.projects);
+    let _ = state
+        .git_watch
+        .watch(app.clone(), project.path.clone(), move |event| {
+            activity.refresh_git_changed(
+                app.clone(),
+                Arc::clone(&projects),
+                event.project_path,
+                event.repository_path,
+                event.changed_paths,
+            );
+        });
 }
 
 #[tauri::command]
@@ -1891,7 +2146,7 @@ async fn project_create(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: ProjectCreateRequest,
-) -> Result<ProjectListSnapshot, String> {
+) -> Result<(), String> {
     let projects = Arc::clone(&state.projects);
     let known_project_ids = projects
         .projects_snapshot()
@@ -1903,17 +2158,18 @@ async fn project_create(
         .map_err(|error| error.to_string())??;
     if let Some(project) = selected_project_summary(&snapshot) {
         if known_project_ids.contains(&project.id) {
-            state.project_activity.mark_project_summary(&project);
+            mark_project_active_with_watch(&state, app.clone(), project);
         } else {
             state.project_activity.refresh_project_now(
                 app.clone(),
-                project,
+                project.clone(),
                 Arc::clone(&state.ai_history),
             );
+            mark_project_active_with_watch(&state, app.clone(), project);
         }
     }
-    let _ = app.emit("project:updated", snapshot.clone());
-    Ok(snapshot)
+    let _ = app.emit("project:updated", snapshot);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1921,7 +2177,7 @@ async fn project_close(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: ProjectCloseRequest,
-) -> Result<ProjectListSnapshot, String> {
+) -> Result<(), String> {
     let projects = Arc::clone(&state.projects);
     let pet = Arc::clone(&state.pet);
     let project_id = request.project_id.clone();
@@ -1934,15 +2190,15 @@ async fn project_close(
     .await
     .map_err(|error| error.to_string())??;
     state.project_activity.remove_project(&project_id);
-    let _ = app.emit("project:updated", snapshot.clone());
-    Ok(snapshot)
+    let _ = app.emit("project:updated", snapshot);
+    Ok(())
 }
 
 #[tauri::command]
 async fn project_close_all(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
-) -> Result<ProjectListSnapshot, String> {
+) -> Result<(), String> {
     let projects = Arc::clone(&state.projects);
     let pet = Arc::clone(&state.pet);
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
@@ -1953,8 +2209,8 @@ async fn project_close_all(
     .await
     .map_err(|error| error.to_string())??;
     state.project_activity.clear();
-    let _ = app.emit("project:updated", snapshot.clone());
-    Ok(snapshot)
+    let _ = app.emit("project:updated", snapshot);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1962,7 +2218,7 @@ async fn project_select(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     project_id: String,
-) -> Result<ProjectListSnapshot, String> {
+) -> Result<(), String> {
     let projects = Arc::clone(&state.projects);
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
         projects.select_project(project_id)?;
@@ -1971,16 +2227,27 @@ async fn project_select(
     .await
     .map_err(|error| error.to_string())??;
     if let Some(project) = selected_project_summary(&snapshot) {
-        state.project_activity.mark_project_active(
-            app.clone(),
-            project.clone(),
-            Arc::clone(&state.ai_history),
-        );
-        emit_worktree_snapshot(app.clone(), Arc::clone(&state.projects), project.clone());
-        let _ = state.git_watch.watch(app.clone(), project.path);
+        mark_project_active_with_watch(&state, app.clone(), project);
     }
-    let _ = app.emit("project:updated", snapshot.clone());
-    Ok(snapshot)
+    let _ = app.emit("project:updated", snapshot);
+    Ok(())
+}
+
+#[tauri::command]
+async fn project_update(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: ProjectUpdateRequest,
+) -> Result<(), String> {
+    let projects = Arc::clone(&state.projects);
+    let snapshot = tauri::async_runtime::spawn_blocking(move || projects.update_project(request))
+        .await
+        .map_err(|error| error.to_string())??;
+    if let Some(project) = selected_project_summary(&snapshot) {
+        mark_project_active_with_watch(&state, app.clone(), project);
+    }
+    let _ = app.emit("project:updated", snapshot);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1988,13 +2255,13 @@ async fn project_reorder(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: ProjectReorderRequest,
-) -> Result<ProjectListSnapshot, String> {
+) -> Result<(), String> {
     let projects = Arc::clone(&state.projects);
     let snapshot = tauri::async_runtime::spawn_blocking(move || projects.reorder_projects(request))
         .await
         .map_err(|error| error.to_string())??;
-    let _ = app.emit("project:updated", snapshot.clone());
-    Ok(snapshot)
+    let _ = app.emit("project:updated", snapshot);
+    Ok(())
 }
 
 #[tauri::command]
@@ -2002,7 +2269,7 @@ async fn project_select_worktree(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: ProjectSelectWorktreeRequest,
-) -> Result<ProjectListSnapshot, String> {
+) -> Result<(), String> {
     let projects = Arc::clone(&state.projects);
     let worktree_id = request.worktree_id.clone();
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
@@ -2011,28 +2278,15 @@ async fn project_select_worktree(
     })
     .await
     .map_err(|error| error.to_string())??;
-    if let Some(worktree) = state.projects.worktree_snapshot_by_id(&worktree_id) {
-        let worktree_path = worktree.path.clone();
-        state.project_activity.mark_project_active(
-            app.clone(),
-            ProjectSummary {
-                id: worktree.id,
-                name: worktree.name,
-                path: worktree.path,
-                badge: String::new(),
-                status: worktree.status,
-                branch: worktree.branch,
-                changes: 0,
-                badge_symbol: None,
-                badge_color_hex: None,
-                git_default_push_remote_name: None,
-            },
-            Arc::clone(&state.ai_history),
-        );
-        let _ = state.git_watch.watch(app.clone(), worktree_path);
+    if let Some(project) = state
+        .projects
+        .root_project_summary_for_workspace_id(&worktree_id)
+        .or_else(|| selected_project_summary(&snapshot))
+    {
+        mark_project_active_with_watch(&state, app.clone(), project);
     }
-    let _ = app.emit("project:updated", snapshot.clone());
-    Ok(snapshot)
+    let _ = app.emit("project:updated", snapshot);
+    Ok(())
 }
 
 #[tauri::command]
@@ -2040,14 +2294,14 @@ async fn project_set_default_push_remote(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: ProjectDefaultPushRemoteRequest,
-) -> Result<ProjectListSnapshot, String> {
+) -> Result<(), String> {
     let projects = Arc::clone(&state.projects);
     let snapshot =
         tauri::async_runtime::spawn_blocking(move || projects.set_default_push_remote(request))
             .await
             .map_err(|error| error.to_string())??;
-    let _ = app.emit("project:updated", snapshot.clone());
-    Ok(snapshot)
+    let _ = app.emit("project:updated", snapshot);
+    Ok(())
 }
 
 fn selected_project_summary(snapshot: &ProjectListSnapshot) -> Option<ProjectSummary> {
@@ -2218,6 +2472,11 @@ fn remote_status(state: tauri::State<'_, AppState>) -> RemoteStatus {
 }
 
 #[tauri::command]
+fn remote_snapshot_emit(state: tauri::State<'_, AppState>, app: tauri::AppHandle) {
+    state.remote.emit_snapshot(&app);
+}
+
+#[tauri::command]
 async fn remote_reconnect(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -2231,6 +2490,15 @@ async fn remote_devices_refresh(
     app: tauri::AppHandle,
 ) -> Result<RemoteStatus, String> {
     state.remote.refresh_devices(app).await
+}
+
+#[tauri::command]
+async fn remote_device_revoke(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    device_id: String,
+) -> Result<RemoteStatus, String> {
+    state.remote.revoke_device(app, device_id).await
 }
 
 #[tauri::command]
@@ -2360,6 +2628,7 @@ fn app_toggle_devtools(
 }
 
 struct RemoteHostService {
+    app: tauri::AppHandle,
     settings: Arc<AppSettingsStore>,
     projects: Arc<ProjectStore>,
     terminals: Arc<TerminalManager>,
@@ -2372,11 +2641,20 @@ struct RemoteHostService {
     terminal_viewers_by_session: Mutex<HashMap<String, HashSet<String>>>,
     terminal_upload_sessions: Mutex<HashMap<String, RemoteTerminalUploadSession>>,
     reconnect_task: Mutex<Option<JoinHandle<()>>>,
+    pairing_poll_task: Mutex<Option<JoinHandle<()>>>,
     p2p: Mutex<Option<Arc<RemoteP2PHostTransport>>>,
+}
+
+struct RemoteLayoutTerminal {
+    project: ProjectSummary,
+    slot_id: String,
+    title: String,
+    session_key: String,
 }
 
 impl RemoteHostService {
     fn new(
+        app: tauri::AppHandle,
         settings: Arc<AppSettingsStore>,
         projects: Arc<ProjectStore>,
         terminals: Arc<TerminalManager>,
@@ -2384,6 +2662,7 @@ impl RemoteHostService {
     ) -> Self {
         let status = RemoteStatus::from_settings(&settings.snapshot().remote, None, None);
         Self {
+            app,
             settings,
             projects,
             terminals,
@@ -2396,6 +2675,7 @@ impl RemoteHostService {
             terminal_viewers_by_session: Mutex::new(HashMap::new()),
             terminal_upload_sessions: Mutex::new(HashMap::new()),
             reconnect_task: Mutex::new(None),
+            pairing_poll_task: Mutex::new(None),
             p2p: Mutex::new(None),
         }
     }
@@ -2411,7 +2691,12 @@ impl RemoteHostService {
 
     fn start(self: &Arc<Self>, app: tauri::AppHandle) {
         self.ensure_p2p_transport();
+        self.emit_snapshot(&app);
         self.sync_settings(app);
+    }
+
+    fn emit_snapshot(&self, app: &tauri::AppHandle) {
+        let _ = app.emit("remote:status", self.snapshot());
     }
 
     fn ensure_p2p_transport(self: &Arc<Self>) {
@@ -2457,7 +2742,7 @@ impl RemoteHostService {
 
     fn sync_settings(self: &Arc<Self>, app: tauri::AppHandle) {
         let remote = self.settings.snapshot().remote;
-        if !remote.enabled || remote_server_url(&remote).trim().is_empty() {
+        if !remote.is_enabled || remote_server_url(&remote).trim().is_empty() {
             self.connection_generation.fetch_add(1, Ordering::SeqCst);
             if let Ok(mut tx) = self.socket_tx.lock() {
                 *tx = None;
@@ -2508,6 +2793,48 @@ impl RemoteHostService {
         Ok(self.snapshot())
     }
 
+    async fn revoke_device(
+        self: &Arc<Self>,
+        app: tauri::AppHandle,
+        device_id: String,
+    ) -> Result<RemoteStatus, String> {
+        let remote = self.settings.snapshot().remote;
+        if device_id.trim().is_empty() {
+            return Err("Missing device id.".to_string());
+        }
+        if remote.host_id.trim().is_empty() || remote.host_token.trim().is_empty() {
+            return Err("Remote Host is not registered.".to_string());
+        }
+        remote_post::<Value>(
+            &remote_server_url(&remote),
+            "/api/devices/revoke",
+            json!({
+                "hostId": remote.host_id,
+                "token": remote.host_token,
+                "deviceId": device_id,
+            }),
+        )
+        .await?;
+        let next_settings = self.settings.update(|current| {
+            current
+                .remote
+                .cached_devices
+                .retain(|device| device.id != device_id);
+        })?;
+        let mut status = self.snapshot();
+        status.device_list.retain(|device| device.id != device_id);
+        let synced = RemoteStatus::from_settings(
+            &next_settings.remote,
+            Some(&status.status),
+            Some("Device removed.".to_string()),
+        );
+        status.devices = synced.devices;
+        status.message = synced.message;
+        self.update_snapshot(status, Some(&app));
+        let _ = self.load_devices(Some(&app)).await;
+        Ok(self.snapshot())
+    }
+
     async fn create_pairing(
         self: &Arc<Self>,
         app: tauri::AppHandle,
@@ -2530,6 +2857,7 @@ impl RemoteHostService {
         status.status = "connected".to_string();
         status.message = format!("Pairing code: {}", pairing.code);
         self.update_snapshot(status.clone(), Some(&app));
+        self.start_pairing_poll(app, pairing);
         Ok(status)
     }
 
@@ -2577,21 +2905,22 @@ impl RemoteHostService {
         message: &str,
     ) -> Result<RemoteStatus, String> {
         let remote = self.settings.snapshot().remote;
-        if !pairing_id.trim().is_empty()
-            && !remote.host_id.trim().is_empty()
-            && !remote.host_token.trim().is_empty()
-        {
-            let _ = remote_post::<Value>(
-                &remote_server_url(&remote),
-                path,
-                json!({
-                    "hostId": remote.host_id,
-                    "token": remote.host_token,
-                    "pairingId": pairing_id,
-                }),
-            )
-            .await;
+        if pairing_id.trim().is_empty() {
+            return Err("Missing pairing id.".to_string());
         }
+        if remote.host_id.trim().is_empty() || remote.host_token.trim().is_empty() {
+            return Err("Remote Host is not registered.".to_string());
+        }
+        remote_post::<Value>(
+            &remote_server_url(&remote),
+            path,
+            json!({
+                "hostId": remote.host_id,
+                "token": remote.host_token,
+                "pairingId": pairing_id,
+            }),
+        )
+        .await?;
         let mut status = self.snapshot();
         status.pairing = status
             .pairing
@@ -2601,10 +2930,105 @@ impl RemoteHostService {
             .retain(|pairing| pairing.id != pairing_id);
         status.message = message.to_string();
         self.update_snapshot(status.clone(), Some(app));
+        self.stop_pairing_poll();
         if path.ends_with("/confirm") {
-            let _ = self.load_devices(Some(app)).await;
+            self.load_devices(Some(app)).await?;
         }
         Ok(self.snapshot())
+    }
+
+    fn start_pairing_poll(self: &Arc<Self>, app: tauri::AppHandle, pairing: RemotePairingInfo) {
+        self.stop_pairing_poll();
+        let service = Arc::clone(self);
+        if let Ok(mut task) = self.pairing_poll_task.lock() {
+            *task = Some(tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    let still_active = service
+                        .snapshot()
+                        .pairing
+                        .as_ref()
+                        .map(|current| current.pairing_id == pairing.pairing_id)
+                        .unwrap_or(false);
+                    if !still_active {
+                        return;
+                    }
+                    if service.poll_pairing_status(&app, &pairing).await {
+                        return;
+                    }
+                }
+            }));
+        }
+    }
+
+    fn stop_pairing_poll(&self) {
+        if let Ok(mut task) = self.pairing_poll_task.lock() {
+            if let Some(handle) = task.take() {
+                handle.abort();
+            }
+        }
+    }
+
+    async fn poll_pairing_status(
+        &self,
+        app: &tauri::AppHandle,
+        pairing: &RemotePairingInfo,
+    ) -> bool {
+        let remote = self.settings.snapshot().remote;
+        let response = remote_post::<RemotePairingStatusResponse>(
+            &remote_server_url(&remote),
+            "/api/pairings/status",
+            json!({
+                "code": pairing.code,
+                "secret": pairing.secret,
+            }),
+        )
+        .await;
+        let Ok(response) = response else {
+            let mut status = self.snapshot();
+            if status
+                .pairing
+                .as_ref()
+                .map(|current| current.pairing_id.as_str())
+                == Some(pairing.pairing_id.as_str())
+            {
+                status.pairing = None;
+                status.message = "Pairing failed.".to_string();
+                self.update_snapshot(status, Some(app));
+            }
+            return true;
+        };
+        match response.status.as_str() {
+            "claimed" => {
+                self.show_pending_pairing(
+                    app,
+                    response
+                        .pairing_id
+                        .unwrap_or_else(|| pairing.pairing_id.clone()),
+                    response
+                        .device_name
+                        .unwrap_or_else(|| "Mobile Device".to_string()),
+                    response.device_public_key.unwrap_or_default(),
+                    response.code.unwrap_or_else(|| pairing.code.clone()),
+                    pairing.secret.clone(),
+                );
+                true
+            }
+            "confirmed" | "rejected" => {
+                let mut status = self.snapshot();
+                if status
+                    .pairing
+                    .as_ref()
+                    .map(|current| current.pairing_id.as_str())
+                    == Some(pairing.pairing_id.as_str())
+                {
+                    status.pairing = None;
+                    self.update_snapshot(status, Some(app));
+                }
+                true
+            }
+            _ => false,
+        }
     }
 
     async fn connect_loop(self: Arc<Self>, app: tauri::AppHandle, generation: u64) {
@@ -2614,7 +3038,7 @@ impl RemoteHostService {
                 return;
             }
             let remote = self.settings.snapshot().remote;
-            if !remote.enabled {
+            if !remote.is_enabled {
                 return;
             }
             if let Err(error) = self.connect_once(app.clone(), generation).await {
@@ -2705,7 +3129,7 @@ impl RemoteHostService {
 
     async fn register_host(self: &Arc<Self>, app: Option<&tauri::AppHandle>) -> Result<(), String> {
         let mut remote = self.settings.snapshot().remote;
-        if !remote.enabled {
+        if !remote.is_enabled {
             self.update_snapshot(
                 RemoteStatus::from_settings(
                     &remote,
@@ -2780,12 +3204,7 @@ impl RemoteHostService {
         struct DeviceList {
             devices: Vec<app_settings::RemoteHostDeviceSettings>,
         }
-        let escaped_host_id = percent_encoding::utf8_percent_encode(
-            &remote.host_id,
-            percent_encoding::NON_ALPHANUMERIC,
-        )
-        .to_string();
-        let path = format!("/api/hosts/{escaped_host_id}/devices");
+        let path = format!("/api/hosts/{}/devices", remote.host_id);
         let url = remote_url(
             &relay,
             &path,
@@ -2794,9 +3213,18 @@ impl RemoteHostService {
         )?;
         let client = remote_http_client()?;
         let response = client.get(url).send().await.map_err(remote_error_message)?;
-        let list = remote_parse_response::<DeviceList>(response).await?;
+        let mut list = remote_parse_response::<DeviceList>(response).await?;
+        list.devices.retain(|device| device.revoked_at.is_none());
         let next_settings = self.settings.update(|current| {
-            current.remote.cached_devices = list.devices.clone();
+            current.remote.cached_devices = list
+                .devices
+                .iter()
+                .cloned()
+                .map(|mut device| {
+                    device.online = Some(false);
+                    device
+                })
+                .collect();
         })?;
         let mut status = self.snapshot();
         let synced = RemoteStatus::from_settings(
@@ -2805,7 +3233,11 @@ impl RemoteHostService {
             Some(status.message.clone()),
         );
         status.devices = synced.devices;
-        status.device_list = synced.device_list;
+        status.device_list = list
+            .devices
+            .into_iter()
+            .map(RemoteHostDevice::from)
+            .collect();
         status.host_id = synced.host_id;
         status.encryption = synced.encryption;
         self.update_snapshot(status, app);
@@ -2955,7 +3387,7 @@ impl RemoteHostService {
         .await;
     }
 
-    fn handle_p2p_envelope_sync(&self, envelope: RemoteEnvelope) {
+    fn handle_p2p_envelope_sync(self: &Arc<Self>, envelope: RemoteEnvelope) {
         match envelope.kind.as_str() {
             "terminal.buffer" => self.handle_terminal_buffer(&envelope),
             "terminal.input" => self.handle_terminal_input(&envelope),
@@ -3011,6 +3443,28 @@ impl RemoteHostService {
             .filter(|pairing| pairing.pairing_id == pairing_id)
             .map(|pairing| pairing.secret)
             .unwrap_or_default();
+        self.show_pending_pairing(
+            app,
+            pairing_id,
+            device_name,
+            device_public_key,
+            pairing_code,
+            pairing_secret,
+        );
+    }
+
+    fn show_pending_pairing(
+        &self,
+        app: &tauri::AppHandle,
+        pairing_id: String,
+        device_name: String,
+        device_public_key: String,
+        pairing_code: String,
+        pairing_secret: String,
+    ) {
+        if pairing_id.is_empty() {
+            return;
+        }
         let match_code = remote_pairing_match_code(
             &self.settings.snapshot().remote,
             &pairing_code,
@@ -3045,6 +3499,7 @@ impl RemoteHostService {
         }
         status.message = "Confirm device pairing.".to_string();
         self.update_snapshot(status, Some(app));
+        self.stop_pairing_poll();
     }
 
     fn send_project_and_terminal_lists(&self, device_id: Option<&str>) {
@@ -3085,41 +3540,118 @@ impl RemoteHostService {
     }
 
     fn remote_terminals(&self) -> Vec<Value> {
-        self.terminals
+        let running = self
+            .terminals
             .list()
             .into_iter()
-            .map(|terminal| {
-                json!({
-                    "id": terminal.id,
-                    "title": terminal.title,
-                    "displayTitle": if terminal.project_name.trim().is_empty() {
-                        terminal.title.clone()
-                    } else {
-                        format!("{} · {}", terminal.project_name, terminal.title)
-                    },
-                    "projectId": terminal.project_id,
-                    "projectName": terminal.project_name,
-                    "projectPath": terminal.cwd,
-                    "cwd": terminal.cwd,
-                    "shell": terminal.shell,
-                    "command": terminal.command,
-                    "kind": "desktop-shared",
-                    "ownerKind": std::env::consts::OS,
-                    "ownerDeviceId": "",
-                    "ownerDeviceName": remote_host_name(),
-                    "resizeOwner": std::env::consts::OS,
-                    "cols": terminal.cols,
-                    "rows": terminal.rows,
-                    "gridSource": std::env::consts::OS,
-                    "status": terminal.status,
-                    "isRunning": terminal.is_running,
-                    "createdAt": terminal.created_at,
-                    "lastActiveAt": terminal.last_active_at,
-                    "bufferCharacters": terminal.buffer_characters,
-                    "hasBuffer": terminal.has_buffer,
-                })
+            .map(remote_terminal_snapshot_payload)
+            .collect::<Vec<_>>();
+        let mut known = running
+            .iter()
+            .filter_map(|value| value.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect::<HashSet<_>>();
+        let mut terminals = running;
+        for terminal in self.remote_layout_terminals() {
+            if let Some(id) = terminal.get("id").and_then(Value::as_str) {
+                if known.insert(id.to_string()) {
+                    terminals.push(terminal);
+                }
+            }
+        }
+        terminals
+    }
+
+    fn remote_layout_terminals(&self) -> Vec<Value> {
+        let projects_by_id = self
+            .projects
+            .list_snapshot()
+            .projects
+            .into_iter()
+            .map(|project| (project.id.clone(), project))
+            .collect::<HashMap<_, _>>();
+        let layouts = self
+            .projects
+            .terminal_layouts_snapshot()
+            .layouts
+            .into_iter()
+            .filter_map(|(project_id, layout)| {
+                projects_by_id
+                    .get(&project_id)
+                    .cloned()
+                    .map(|project| (project, layout))
             })
-            .collect()
+            .flat_map(|(project, layout)| {
+                let mut values = Vec::new();
+                for pane in layout.top_panes {
+                    values.push(remote_layout_top_pane_payload(&project, &pane));
+                }
+                for tab in layout.tabs {
+                    values.push(remote_layout_tab_payload(&project, &tab));
+                }
+                values
+            })
+            .collect::<Vec<_>>();
+        let mut known_project_ids = self
+            .projects
+            .terminal_layouts_snapshot()
+            .layouts
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let mut values = layouts;
+        for project in projects_by_id.values() {
+            if known_project_ids.insert(project.id.clone()) {
+                values.push(remote_default_top_terminal_payload(project));
+            }
+        }
+        values
+    }
+
+    fn remote_layout_terminal(&self, session_id: &str) -> Option<RemoteLayoutTerminal> {
+        let projects_by_id = self
+            .projects
+            .list_snapshot()
+            .projects
+            .into_iter()
+            .map(|project| (project.id.clone(), project))
+            .collect::<HashMap<_, _>>();
+        for (project_id, layout) in self.projects.terminal_layouts_snapshot().layouts {
+            let Some(project) = projects_by_id.get(&project_id).cloned() else {
+                continue;
+            };
+            for pane in layout.top_panes {
+                if pane.terminal_id == session_id {
+                    return Some(RemoteLayoutTerminal {
+                        project,
+                        slot_id: pane.id.clone(),
+                        title: pane.title,
+                        session_key: terminal_session_key(&project_id, &pane.id),
+                    });
+                }
+            }
+            for tab in layout.tabs {
+                if tab.terminal_id == session_id {
+                    return Some(RemoteLayoutTerminal {
+                        project,
+                        slot_id: tab.id.clone(),
+                        title: tab.label,
+                        session_key: terminal_session_key(&project_id, &tab.id),
+                    });
+                }
+            }
+        }
+        if let Some((project_id, slot_id)) = default_remote_terminal_parts(session_id) {
+            let project = projects_by_id.get(project_id)?.clone();
+            if slot_id == "top-1" {
+                return Some(RemoteLayoutTerminal {
+                    project,
+                    slot_id: slot_id.to_string(),
+                    title: "Split 1".to_string(),
+                    session_key: terminal_session_key(project_id, slot_id),
+                });
+            }
+        }
+        None
     }
 
     fn handle_file_read(&self, envelope: &RemoteEnvelope) {
@@ -3252,6 +3784,9 @@ impl RemoteHostService {
             project_id: project_id.to_string(),
             name,
             path: path.to_string(),
+            badge_text: None,
+            badge_symbol: None,
+            badge_color_hex: None,
         }) {
             Ok(_) => {
                 self.send(
@@ -3365,14 +3900,15 @@ impl RemoteHostService {
             return;
         };
         let device_id = envelope.device_id.clone();
-        let service = Arc::clone(self);
-        let app_for_event = app.clone();
         let title = if command.trim().is_empty() {
             "Terminal".to_string()
         } else {
             command.clone()
         };
-        match self.terminals.create(
+        match create_terminal_session(
+            Arc::clone(self),
+            &self.terminals,
+            app,
             TerminalConfig {
                 cwd: Some(project.path.clone()),
                 shell: None,
@@ -3396,10 +3932,6 @@ impl RemoteHostService {
                 title: Some(title),
                 tool: None,
             },
-            move |event| {
-                let _ = app_for_event.emit("terminal:event", event.clone());
-                service.handle_terminal_event(event);
-            },
         ) {
             Ok(session_id) => {
                 self.register_terminal_viewer(&session_id, device_id.as_deref());
@@ -3417,7 +3949,7 @@ impl RemoteHostService {
         }
     }
 
-    fn handle_terminal_buffer(&self, envelope: &RemoteEnvelope) {
+    fn handle_terminal_buffer(self: &Arc<Self>, envelope: &RemoteEnvelope) {
         let Some(session_id) = envelope.session_id.as_deref() else {
             self.send_error(envelope, "Terminal session is required.");
             return;
@@ -3427,10 +3959,14 @@ impl RemoteHostService {
             .get("offset")
             .and_then(Value::as_u64)
             .unwrap_or(0) as usize;
+        if let Err(error) = self.ensure_remote_terminal_started(session_id, envelope) {
+            self.send_error(envelope, &error);
+            return;
+        }
         self.send_terminal_buffer(session_id, envelope.device_id.as_deref(), offset);
     }
 
-    fn handle_terminal_input(&self, envelope: &RemoteEnvelope) {
+    fn handle_terminal_input(self: &Arc<Self>, envelope: &RemoteEnvelope) {
         let Some(session_id) = envelope.session_id.as_deref() else {
             self.send_error(envelope, "Terminal session is required.");
             return;
@@ -3448,12 +3984,16 @@ impl RemoteHostService {
                 json!({ "inputId": input_id, "ok": true, "accepted": true }),
             );
         }
+        if let Err(error) = self.ensure_remote_terminal_started(session_id, envelope) {
+            self.send_error(envelope, &error);
+            return;
+        }
         if let Err(error) = self.terminals.write(session_id, data.as_bytes()) {
             self.send_error(envelope, &error.to_string());
         }
     }
 
-    fn handle_terminal_resize(&self, envelope: &RemoteEnvelope) {
+    fn handle_terminal_resize(self: &Arc<Self>, envelope: &RemoteEnvelope) {
         let Some(session_id) = envelope.session_id.as_deref() else {
             return;
         };
@@ -3467,6 +4007,12 @@ impl RemoteHostService {
             .get("rows")
             .and_then(Value::as_u64)
             .unwrap_or(30) as u16;
+        if self
+            .ensure_remote_terminal_started(session_id, envelope)
+            .is_err()
+        {
+            return;
+        }
         let _ = self.terminals.resize(session_id, cols, rows);
     }
 
@@ -3906,6 +4452,49 @@ impl RemoteHostService {
             .find(|value| value.get("id").and_then(Value::as_str) == Some(session_id))
     }
 
+    fn ensure_remote_terminal_started(
+        self: &Arc<Self>,
+        session_id: &str,
+        envelope: &RemoteEnvelope,
+    ) -> Result<(), String> {
+        if self.terminals.snapshot(session_id).is_ok() {
+            return Ok(());
+        }
+        let Some(layout) = self.remote_layout_terminal(session_id) else {
+            return Ok(());
+        };
+        create_terminal_session(
+            Arc::clone(self),
+            &self.terminals,
+            self.app.clone(),
+            TerminalConfig {
+                cwd: Some(layout.project.path.clone()),
+                shell: None,
+                command: None,
+                cols: envelope
+                    .payload
+                    .get("cols")
+                    .and_then(Value::as_u64)
+                    .map(|value| value as u16),
+                rows: envelope
+                    .payload
+                    .get("rows")
+                    .and_then(Value::as_u64)
+                    .map(|value| value as u16),
+                env: None,
+                project_id: Some(layout.project.id.clone()),
+                project_name: Some(layout.project.name.clone()),
+                terminal_id: Some(session_id.to_string()),
+                slot_id: Some(layout.slot_id),
+                session_key: Some(layout.session_key),
+                title: Some(layout.title),
+                tool: Some("auto".to_string()),
+            },
+        )?;
+        self.send_terminal_list(envelope.device_id.as_deref());
+        Ok(())
+    }
+
     fn register_terminal_viewer(&self, session_id: &str, device_id: Option<&str>) {
         let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
             return;
@@ -3976,24 +4565,33 @@ impl RemoteHostService {
         session_id: Option<&str>,
         payload: Value,
     ) {
-        let envelope = RemoteOutgoingEnvelope {
+        let inner = RemoteOutgoingEnvelope {
             kind: kind.to_string(),
             device_id: device_id.map(str::to_string),
             session_id: session_id.map(str::to_string),
             seq: None,
             payload: payload.clone(),
         };
-        let p2p = self.p2p.lock().ok().and_then(|value| value.clone());
-        if let (Some(p2p), Ok(data)) = (p2p, serde_json::to_vec(&envelope)) {
-            let lane = match kind {
-                "terminal.upload.ack" | "terminal.uploaded" => RemoteP2PLane::Upload,
-                _ => RemoteP2PLane::Terminal,
-            };
-            if tauri::async_runtime::block_on(p2p.send(data, device_id, lane)) {
+        let Some(p2p) = self.p2p.lock().ok().and_then(|value| value.clone()) else {
+            self.send_relay(kind, device_id, session_id, payload);
+            return;
+        };
+        let Ok(data) = serde_json::to_vec(&inner) else {
+            self.send_relay(kind, device_id, session_id, payload);
+            return;
+        };
+        let lane = remote_p2p_lane(kind);
+        let relay_text = self.outgoing_relay_text(kind, device_id, session_id, payload);
+        let socket_tx = self.socket_tx.lock().ok().and_then(|value| value.clone());
+        let device_id = device_id.map(str::to_string);
+        tauri::async_runtime::spawn(async move {
+            if p2p.send(data, device_id.as_deref(), lane).await {
                 return;
             }
-        }
-        self.send_relay(kind, device_id, session_id, payload);
+            if let (Some(tx), Some(text)) = (socket_tx, relay_text) {
+                let _ = tx.send(text);
+            }
+        });
     }
 
     fn send_relay(
@@ -4003,6 +4601,23 @@ impl RemoteHostService {
         session_id: Option<&str>,
         payload: Value,
     ) {
+        let Some(text) = self.outgoing_relay_text(kind, device_id, session_id, payload) else {
+            return;
+        };
+        if let Ok(current) = self.socket_tx.lock() {
+            if let Some(tx) = current.as_ref() {
+                let _ = tx.send(text);
+            }
+        }
+    }
+
+    fn outgoing_relay_text(
+        &self,
+        kind: &str,
+        device_id: Option<&str>,
+        session_id: Option<&str>,
+        payload: Value,
+    ) -> Option<String> {
         let inner = RemoteOutgoingEnvelope {
             kind: kind.to_string(),
             device_id: device_id.map(str::to_string),
@@ -4021,14 +4636,7 @@ impl RemoteHostService {
                     "message": "End-to-end encryption is required. Please pair this mobile device again."
                 }),
             });
-        let Ok(text) = serde_json::to_string(&envelope) else {
-            return;
-        };
-        if let Ok(current) = self.socket_tx.lock() {
-            if let Some(tx) = current.as_ref() {
-                let _ = tx.send(text);
-            }
-        }
+        serde_json::to_string(&envelope).ok()
     }
 
     fn send(&self, kind: &str, device_id: Option<&str>, session_id: Option<&str>, payload: Value) {
@@ -4245,7 +4853,7 @@ impl RemoteStatus {
         message: Option<String>,
     ) -> Self {
         let relay = remote_server_url(settings);
-        let enabled = settings.enabled && !relay.trim().is_empty();
+        let enabled = settings.is_enabled && !relay.trim().is_empty();
         let devices = settings
             .cached_devices
             .iter()
@@ -4282,6 +4890,111 @@ impl RemoteStatus {
             pending_pairings: Vec::new(),
         }
     }
+}
+
+fn remote_terminal_snapshot_payload(terminal: terminal::TerminalSessionSnapshot) -> Value {
+    json!({
+        "id": terminal.id,
+        "title": terminal.title,
+        "displayTitle": if terminal.project_name.trim().is_empty() {
+            terminal.title.clone()
+        } else {
+            format!("{} · {}", terminal.project_name, terminal.title)
+        },
+        "projectId": terminal.project_id,
+        "projectName": terminal.project_name,
+        "projectPath": terminal.cwd,
+        "cwd": terminal.cwd,
+        "shell": terminal.shell,
+        "command": terminal.command,
+        "kind": "desktop-shared",
+        "ownerKind": std::env::consts::OS,
+        "ownerDeviceId": "",
+        "ownerDeviceName": remote_host_name(),
+        "resizeOwner": std::env::consts::OS,
+        "cols": terminal.cols,
+        "rows": terminal.rows,
+        "gridSource": std::env::consts::OS,
+        "status": terminal.status,
+        "isRunning": terminal.is_running,
+        "createdAt": terminal.created_at,
+        "lastActiveAt": terminal.last_active_at,
+        "bufferCharacters": terminal.buffer_characters,
+        "hasBuffer": terminal.has_buffer,
+    })
+}
+
+fn remote_layout_top_pane_payload(project: &ProjectSummary, pane: &TerminalTopPaneRecord) -> Value {
+    remote_layout_terminal_payload(project, &pane.id, &pane.title, &pane.terminal_id)
+}
+
+fn remote_layout_tab_payload(project: &ProjectSummary, tab: &TerminalBottomTabRecord) -> Value {
+    remote_layout_terminal_payload(project, &tab.id, &tab.label, &tab.terminal_id)
+}
+
+fn remote_default_top_terminal_payload(project: &ProjectSummary) -> Value {
+    let slot_id = "top-1";
+    let title = "Split 1";
+    remote_layout_terminal_payload(
+        project,
+        slot_id,
+        title,
+        &default_remote_terminal_id(&project.id, slot_id),
+    )
+}
+
+fn remote_layout_terminal_payload(
+    project: &ProjectSummary,
+    slot_id: &str,
+    title: &str,
+    terminal_id: &str,
+) -> Value {
+    json!({
+        "id": terminal_id,
+        "title": title,
+        "displayTitle": format!("{} · {}", project.name, title),
+        "projectId": project.id,
+        "projectName": project.name,
+        "projectPath": project.path,
+        "cwd": project.path,
+        "shell": "login shell",
+        "command": "",
+        "kind": "desktop-shared",
+        "ownerKind": std::env::consts::OS,
+        "ownerDeviceId": "",
+        "ownerDeviceName": remote_host_name(),
+        "resizeOwner": std::env::consts::OS,
+        "cols": 0,
+        "rows": 0,
+        "gridSource": std::env::consts::OS,
+        "status": "idle",
+        "isRunning": false,
+        "createdAt": "",
+        "lastActiveAt": "",
+        "bufferCharacters": 0,
+        "hasBuffer": false,
+        "slotId": slot_id,
+    })
+}
+
+fn terminal_session_key(project_id: &str, slot_id: &str) -> String {
+    format!("{project_id}:{slot_id}")
+}
+
+fn remote_p2p_lane(kind: &str) -> RemoteP2PLane {
+    match kind {
+        "terminal.upload.ack" | "terminal.uploaded" => RemoteP2PLane::Upload,
+        _ => RemoteP2PLane::Terminal,
+    }
+}
+
+fn default_remote_terminal_id(project_id: &str, slot_id: &str) -> String {
+    format!("remote-default:{project_id}:{slot_id}")
+}
+
+fn default_remote_terminal_parts(session_id: &str) -> Option<(&str, &str)> {
+    let rest = session_id.strip_prefix("remote-default:")?;
+    rest.rsplit_once(':')
 }
 
 fn remote_file_list(path: Option<&str>, purpose: Option<&str>) -> Value {
@@ -4466,10 +5179,10 @@ fn remote_url(
 }
 
 fn remote_server_url(settings: &app_settings::RemoteSettings) -> String {
-    if settings.relay_url.trim().is_empty() {
+    if settings.server_url.trim().is_empty() {
         "http://127.0.0.1:8088".to_string()
     } else {
-        settings.relay_url.trim().to_string()
+        settings.server_url.trim().to_string()
     }
 }
 
@@ -4723,6 +5436,16 @@ struct RemotePendingPairing {
     code: String,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemotePairingStatusResponse {
+    status: String,
+    pairing_id: Option<String>,
+    code: Option<String>,
+    device_name: Option<String>,
+    device_public_key: Option<String>,
+}
+
 #[cfg(debug_assertions)]
 fn toggle_devtools(window: &tauri::WebviewWindow) {
     if window.is_devtools_open() {
@@ -4781,11 +5504,12 @@ fn apply_desktop_pet_menu_action(app: &tauri::AppHandle, id: &str) {
             });
         }
         DESKTOP_PET_MUTE_TODAY => {
-            let tomorrow = chrono::Utc::now()
+            let tomorrow = chrono::Local::now()
                 .date_naive()
                 .succ_opt()
                 .and_then(|date| date.and_hms_opt(0, 0, 0))
-                .map(|date| date.and_utc().timestamp())
+                .and_then(|date| date.and_local_timezone(chrono::Local).single())
+                .map(|date| date.timestamp())
                 .unwrap_or_else(|| chrono::Utc::now().timestamp() + 86_400);
             let _ = update_desktop_pet_settings(state, app.clone(), |settings| {
                 settings.ai.pet.speech_temporary_mute_until = Some(tomorrow);
@@ -5429,6 +6153,7 @@ pub fn run() {
                 Arc::clone(&memory),
             ));
             let remote = Arc::new(RemoteHostService::new(
+                app.handle().clone(),
                 Arc::clone(&settings),
                 Arc::clone(&projects),
                 Arc::clone(&terminals),
@@ -5451,14 +6176,48 @@ pub fn run() {
                 file_watch: Arc::new(FileWatchManager::default()),
                 desktop_pet_hit_state: Arc::new(DesktopPetHitState::default()),
             };
-            state.ai_runtime.start_listener(app.handle().clone())?;
+            state
+                .ai_runtime
+                .start_listener_background(app.handle().clone());
             let initial_settings = state.settings.snapshot();
             let initial_pet = state.pet.snapshot().ok();
-            project_activity.start(app.handle().clone(), Arc::clone(&settings), ai_history);
+            Arc::clone(&project_activity).start(
+                app.handle().clone(),
+                Arc::clone(&settings),
+                ai_history,
+                Arc::clone(&projects),
+            );
             remote.start(app.handle().clone());
             app.manage(state);
+            let _ = apply_app_icon(app.handle(), &initial_settings.icon_style);
             if let Some(pet) = initial_pet {
                 sync_desktop_pet_window(app.handle(), &initial_settings, &pet);
+            }
+            let activity_for_window_events = Arc::clone(&project_activity);
+            if let Some(main_window) = app.get_webview_window("main") {
+                activity_for_window_events
+                    .mark_main_window_visible(main_window.is_visible().unwrap_or(true));
+                activity_for_window_events
+                    .mark_main_window_focused(main_window.is_focused().unwrap_or(false));
+                main_window.on_window_event(move |event| match event {
+                    WindowEvent::Focused(focused) => {
+                        activity_for_window_events.mark_main_window_focused(*focused);
+                        if *focused {
+                            activity_for_window_events.mark_main_window_visible(true);
+                        }
+                    }
+                    WindowEvent::CloseRequested { .. } => {
+                        activity_for_window_events.mark_main_window_visible(false);
+                        activity_for_window_events.mark_main_window_focused(false);
+                    }
+                    WindowEvent::Destroyed => {
+                        activity_for_window_events.mark_main_window_visible(false);
+                        activity_for_window_events.mark_main_window_focused(false);
+                    }
+                    _ => {}
+                });
+            } else {
+                project_activity.mark_main_window_visible(true);
             }
             Ok(())
         })
@@ -5469,6 +6228,7 @@ pub fn run() {
             project_close_all,
             project_mark_active,
             project_select,
+            project_update,
             project_reorder,
             project_select_worktree,
             project_set_default_push_remote,
@@ -5478,8 +6238,10 @@ pub fn run() {
             terminal_layout_get,
             terminal_layout_save,
             remote_status,
+            remote_snapshot_emit,
             remote_reconnect,
             remote_devices_refresh,
+            remote_device_revoke,
             remote_pairing_create,
             remote_pairing_cancel,
             remote_pairing_confirm,
@@ -5504,6 +6266,8 @@ pub fn run() {
             ai_runtime_snapshot,
             ai_runtime_probe,
             ai_runtime_state_snapshot,
+            app_runtime_ready,
+            app_window_state,
             ai_runtime_dismiss_completion,
             app_settings_get,
             app_settings_set,
@@ -5527,12 +6291,15 @@ pub fn run() {
             memory_index_now,
             app_request_restart,
             ai_history_project_summary,
+            ai_history_refresh_project,
             ai_history_project_state,
             ai_history_global_summary,
+            ai_history_refresh_global,
             ai_history_global_state,
             ai_history_session_rename,
             ai_history_session_remove,
             git_status,
+            git_refresh_project,
             git_stage,
             git_unstage,
             git_commit,
@@ -5583,7 +6350,6 @@ pub fn run() {
             file_open,
             file_watch,
             file_unwatch,
-            worktree_snapshot,
             worktree_create,
             worktree_remove,
             performance_snapshot,

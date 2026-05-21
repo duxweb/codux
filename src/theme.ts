@@ -76,6 +76,13 @@ export type TerminalThemeOption = {
 
 export type BackgroundColorOption = {
   label: string;
+  dark: string;
+  light: string;
+  preview: string;
+};
+
+export type ThemeColorOption = {
+  label: string;
   color: string;
 };
 
@@ -94,8 +101,16 @@ export type TerminalThemePreview = {
 
 export const terminalThemeOptions: TerminalThemeOption[] = [
   { value: "Auto", label: "Auto", labelKey: "settings.theme.auto" },
-  { value: "Tokyo Night Storm", label: "TokyoNight Storm", labelKey: "settings.terminal_theme.preset.tokyonight_storm" },
-  { value: "Tokyo Night Night", label: "TokyoNight Night", labelKey: "settings.terminal_theme.preset.tokyonight_night" },
+  {
+    value: "Tokyo Night Storm",
+    label: "TokyoNight Storm",
+    labelKey: "settings.terminal_theme.preset.tokyonight_storm",
+  },
+  {
+    value: "Tokyo Night Night",
+    label: "TokyoNight Night",
+    labelKey: "settings.terminal_theme.preset.tokyonight_night",
+  },
   { value: "Catppuccin Mocha", label: "Catppuccin Mocha", labelKey: "settings.terminal_theme.preset.catppuccin_mocha" },
   { value: "Rose Pine Moon", label: "Rose Pine Moon", labelKey: "settings.terminal_theme.preset.rose_pine_moon" },
   { value: "Kanagawa Wave", label: "Kanagawa Wave", labelKey: "settings.terminal_theme.preset.kanagawa_wave" },
@@ -105,7 +120,11 @@ export const terminalThemeOptions: TerminalThemeOption[] = [
   { value: "Dracula+", label: "Dracula+", labelKey: "settings.terminal_theme.preset.dracula_plus" },
   { value: "GitHub Dark", label: "GitHub Dark", labelKey: "settings.terminal_theme.preset.github_dark" },
   { value: "Gruvbox Dark", label: "Gruvbox Dark", labelKey: "settings.terminal_theme.preset.gruvbox_dark" },
-  { value: "Gruvbox Material Dark", label: "Gruvbox Material Dark", labelKey: "settings.terminal_theme.preset.gruvbox_material_dark" },
+  {
+    value: "Gruvbox Material Dark",
+    label: "Gruvbox Material Dark",
+    labelKey: "settings.terminal_theme.preset.gruvbox_material_dark",
+  },
   { value: "Nord", label: "Nord", labelKey: "settings.terminal_theme.preset.nord" },
   { value: "Tokyo Night Day", label: "TokyoNight Day", labelKey: "settings.terminal_theme.preset.tokyonight_day" },
   { value: "GitHub Light", label: "GitHub Light", labelKey: "settings.terminal_theme.preset.github_light" },
@@ -113,38 +132,53 @@ export const terminalThemeOptions: TerminalThemeOption[] = [
   { value: "Flexoki Light", label: "Flexoki Light", labelKey: "settings.terminal_theme.preset.flexoki_light" },
   { value: "Flexoki Dark", label: "Flexoki Dark", labelKey: "settings.terminal_theme.preset.flexoki_dark" },
   { value: "Gruvbox Light", label: "Gruvbox Light", labelKey: "settings.terminal_theme.preset.gruvbox_light" },
-  { value: "Gruvbox Material Light", label: "Gruvbox Material Light", labelKey: "settings.terminal_theme.preset.gruvbox_material_light" },
+  {
+    value: "Gruvbox Material Light",
+    label: "Gruvbox Material Light",
+    labelKey: "settings.terminal_theme.preset.gruvbox_material_light",
+  },
   { value: "Nord Light", label: "Nord Light", labelKey: "settings.terminal_theme.preset.nord_light" },
   { value: "Atom One Light", label: "Atom One Light", labelKey: "settings.terminal_theme.preset.atom_one_light" },
 ];
 
 export const backgroundColorOptions: BackgroundColorOption[] = [
-  { label: "Auto", color: "linear-gradient(135deg, #1c1b1a, #fffcf0)" },
-  { label: "Black", color: "#100f0f" },
-  { label: "Ink", color: "#1c1b1a" },
-  { label: "Charcoal", color: "#282726" },
-  { label: "Graphite", color: "#343331" },
-  { label: "Slate", color: "#403e3c" },
-  { label: "Stone", color: "#575653" },
-  { label: "Ash", color: "#878580" },
-  { label: "Paper", color: "#fffcf0" },
-  { label: "Crimson", color: "#af3029" },
-  { label: "Burnt", color: "#bc5215" },
-  { label: "Amber", color: "#ad8301" },
-  { label: "Moss", color: "#66800b" },
-  { label: "Teal", color: "#24837b" },
-  { label: "Navy", color: "#205ea6" },
-  { label: "Iris", color: "#5e409d" },
-  { label: "Plum", color: "#a02f6f" },
-  { label: "Red", color: "#d14d41" },
-  { label: "Orange", color: "#da702c" },
-  { label: "Gold", color: "#d0a215" },
-  { label: "Sage", color: "#879a39" },
-  { label: "Cyan", color: "#3aa99f" },
-  { label: "Blue", color: "#4385be" },
-  { label: "Lavender", color: "#8b7ec8" },
-  { label: "Rose", color: "#ce5d97" },
+  { label: "Auto", dark: "", light: "", preview: "linear-gradient(135deg, #18181b, #f4f4f5)" },
+  { label: "Zinc", dark: "#18181b", light: "#f4f4f5", preview: "linear-gradient(135deg, #18181b, #f4f4f5)" },
+  { label: "Neutral", dark: "#171717", light: "#f5f5f5", preview: "linear-gradient(135deg, #171717, #f5f5f5)" },
+  { label: "Stone", dark: "#1c1917", light: "#f5f5f4", preview: "linear-gradient(135deg, #1c1917, #f5f5f4)" },
+  { label: "Slate", dark: "#0f172a", light: "#f1f5f9", preview: "linear-gradient(135deg, #0f172a, #f1f5f9)" },
 ];
+
+export const themeColorOptions: ThemeColorOption[] = [
+  { label: "Blue", color: "#3b82f6" },
+  { label: "Sky", color: "#0ea5e9" },
+  { label: "Cyan", color: "#06b6d4" },
+  { label: "Teal", color: "#14b8a6" },
+  { label: "Emerald", color: "#10b981" },
+  { label: "Green", color: "#22c55e" },
+  { label: "Lime", color: "#84cc16" },
+  { label: "Amber", color: "#f59e0b" },
+  { label: "Orange", color: "#f97316" },
+  { label: "Red", color: "#ef4444" },
+  { label: "Rose", color: "#f43f5e" },
+  { label: "Pink", color: "#ec4899" },
+  { label: "Fuchsia", color: "#d946ef" },
+  { label: "Purple", color: "#a855f7" },
+  { label: "Violet", color: "#8b5cf6" },
+  { label: "Indigo", color: "#6366f1" },
+];
+
+const legacyThemeColorAliases: Record<string, string> = {
+  burnt: "Orange",
+  crimson: "Red",
+  gold: "Amber",
+  iris: "Violet",
+  lavender: "Violet",
+  moss: "Emerald",
+  navy: "Blue",
+  plum: "Rose",
+  sage: "Green",
+};
 
 export const systemThemeOptions = [
   { value: "Auto", label: "System", labelKey: "settings.theme.system" },
@@ -728,17 +762,17 @@ export function applyConfiguredTheme(settings: AppSettings, systemTheme = resolv
     root.style.setProperty(variable, value);
   }
 
-  applyBackgroundOverride(root, settings.background);
+  applyAppearanceOverrides(root, settings.background, settings.themeColor);
   applyNativeWindowTheme(settings, appTheme);
 }
 
-export function initSystemTheme() {
+export function initSystemTheme(settingsProvider: () => AppSettings = readAppSettings) {
   if (typeof window === "undefined") {
     return () => undefined;
   }
 
   const media = window.matchMedia("(prefers-color-scheme: dark)");
-  const sync = () => applyConfiguredTheme(readAppSettings(), media.matches ? "dark" : "light");
+  const sync = () => applyConfiguredTheme(settingsProvider(), media.matches ? "dark" : "light");
   sync();
 
   if (typeof media.addEventListener === "function") {
@@ -835,43 +869,81 @@ function resolveTerminalThemeProfile(theme: string): TerminalThemeProfile {
     return terminalThemeProfiles[profile] as TerminalThemeProfile;
   }
   if (profile) return profile;
-  if (normalized.includes("day") || normalized.includes("latte") || normalized.includes("dawn") || normalized.includes("light")) {
+  if (
+    normalized.includes("day") ||
+    normalized.includes("latte") ||
+    normalized.includes("dawn") ||
+    normalized.includes("light")
+  ) {
     return terminalThemeProfiles["catppuccin latte"] as TerminalThemeProfile;
   }
   if (normalized.includes("nord")) {
     return terminalThemeProfiles.nord as TerminalThemeProfile;
   }
-  if (normalized.includes("night") || normalized.includes("mocha") || normalized.includes("moon") || normalized.includes("wave") || normalized.includes("dark")) {
+  if (
+    normalized.includes("night") ||
+    normalized.includes("mocha") ||
+    normalized.includes("moon") ||
+    normalized.includes("wave") ||
+    normalized.includes("dark")
+  ) {
     return terminalThemeProfiles["tokyonight night"] as TerminalThemeProfile;
   }
   return terminalThemeProfiles.auto as TerminalThemeProfile;
 }
 
+function applyAppearanceOverrides(root: HTMLElement, background: string, themeColor: string) {
+  applyBackgroundOverride(root, background);
+  applyThemeColorOverride(root, themeColor);
+}
+
 function applyBackgroundOverride(root: HTMLElement, background: string) {
-  const option = backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalizeThemeName(background));
+  const option = resolveBackgroundColorOption(background);
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
   if (!option || normalizeThemeName(option.label) === "auto") {
     root.style.setProperty("--surface-window-tint", "color-mix(in oklab, var(--terminal-bg) 38%, transparent)");
     root.style.setProperty("--surface-window-glass", "color-mix(in oklab, var(--terminal-bg) 26%, transparent)");
-    applyAccentColor(root, "var(--color-brand-blue)", "var(--color-on-brand)");
     return;
   }
-  const color = option.color;
+  const color = appTheme === "light" ? option.light : option.dark;
   const anchor = appTheme === "light" ? "rgb(255 255 255)" : "var(--terminal-bg)";
+  root.style.setProperty(
+    "--surface-window-tint",
+    `color-mix(in oklab, ${color} ${appTheme === "light" ? "54%" : "48%"}, transparent)`,
+  );
+  root.style.setProperty(
+    "--surface-window-glass",
+    `color-mix(in oklab, ${color} ${appTheme === "light" ? "38%" : "32%"}, transparent)`,
+  );
+  root.style.setProperty(
+    "--color-surface-glass",
+    `color-mix(in oklab, ${color} ${appTheme === "light" ? "36%" : "58%"}, ${anchor})`,
+  );
+  root.style.setProperty(
+    "--color-surface-chrome",
+    `color-mix(in oklab, ${color} ${appTheme === "light" ? "30%" : "46%"}, ${anchor})`,
+  );
+  root.style.setProperty(
+    "--color-surface-panel",
+    `color-mix(in oklab, ${color} ${appTheme === "light" ? "22%" : "32%"}, ${anchor})`,
+  );
+  root.style.setProperty(
+    "--color-surface-card",
+    `color-mix(in oklab, ${color} ${appTheme === "light" ? "12%" : "22%"}, ${anchor})`,
+  );
+  root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
+  root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
+  root.style.setProperty("--surface-editor", "var(--terminal-bg)");
+}
+
+function applyThemeColorOverride(root: HTMLElement, themeColor: string) {
+  const option = resolveThemeColorOption(themeColor);
+  const color = option?.color ?? "#3b82f6";
   const foreground = resolveAccentForeground(color);
   root.style.setProperty("--color-brand-blue", color);
   root.style.setProperty("--color-brand-blue-deep", `color-mix(in oklab, ${color} 78%, black)`);
   root.style.setProperty("--color-on-brand", foreground);
   applyAccentColor(root, color, foreground);
-  root.style.setProperty("--surface-window-tint", `color-mix(in oklab, ${color} ${appTheme === "light" ? "42%" : "46%"}, transparent)`);
-  root.style.setProperty("--surface-window-glass", `color-mix(in oklab, ${color} ${appTheme === "light" ? "28%" : "32%"}, transparent)`);
-  root.style.setProperty("--color-surface-glass", `color-mix(in oklab, ${color} ${appTheme === "light" ? "30%" : "62%"}, ${anchor})`);
-  root.style.setProperty("--color-surface-chrome", `color-mix(in oklab, ${color} ${appTheme === "light" ? "24%" : "48%"}, ${anchor})`);
-  root.style.setProperty("--color-surface-panel", `color-mix(in oklab, ${color} ${appTheme === "light" ? "16%" : "34%"}, ${anchor})`);
-  root.style.setProperty("--color-surface-card", `color-mix(in oklab, ${color} ${appTheme === "light" ? "10%" : "24%"}, ${anchor})`);
-  root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
-  root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
-  root.style.setProperty("--surface-editor", "var(--terminal-bg)");
 }
 
 function applyAccentColor(root: HTMLElement, color: string, foreground: string) {
@@ -893,15 +965,37 @@ function resolveAccentForeground(color: string) {
 
 function resolveBackgroundTint(root: HTMLElement, background: string): ResolvedBackgroundTint {
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
-  const option = backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalizeThemeName(background));
+  const option = resolveBackgroundColorOption(background);
   const isCustom = Boolean(option && normalizeThemeName(option.label) !== "auto");
-  const terminalBg = root.style.getPropertyValue("--terminal-bg").trim() || getComputedStyle(root).getPropertyValue("--terminal-bg").trim();
-  const color = isCustom && option ? option.color : terminalBg || (appTheme === "light" ? "#fbfcfe" : "#171b22");
+  const terminalBg =
+    root.style.getPropertyValue("--terminal-bg").trim() ||
+    getComputedStyle(root).getPropertyValue("--terminal-bg").trim();
+  const color =
+    isCustom && option
+      ? appTheme === "light"
+        ? option.light
+        : option.dark
+      : terminalBg || (appTheme === "light" ? "#fbfcfe" : "#171b22");
   const parsed = parseHexColor(color);
   return {
     rgb: parsed ? [parsed.r, parsed.g, parsed.b] : appTheme === "light" ? [251, 252, 254] : [23, 27, 34],
     alpha: isCustom ? 104 : 78,
   };
+}
+
+export function resolveBackgroundColorOption(background: string): BackgroundColorOption | undefined {
+  const normalized = normalizeThemeName(background);
+  return backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalized);
+}
+
+export function resolveThemeColorOption(themeColor: string): ThemeColorOption | undefined {
+  const normalized = normalizeThemeName(themeColor);
+  const directOption = themeColorOptions.find((item) => normalizeThemeName(item.label) === normalized);
+  if (directOption) return directOption;
+
+  const alias = legacyThemeColorAliases[normalized];
+  if (!alias) return undefined;
+  return themeColorOptions.find((item) => normalizeThemeName(item.label) === normalizeThemeName(alias));
 }
 
 function applyNativeWindowTheme(settings: AppSettings, appTheme: AppTheme) {
@@ -911,7 +1005,8 @@ function applyNativeWindowTheme(settings: AppSettings, appTheme: AppTheme) {
   if (route) return;
 
   const currentWindow = getCurrentWindow();
-  const nativeTheme: Theme | null = resolveTerminalThemeProfile(settings.theme).appTheme === "system" ? null : appTheme === "light" ? "light" : "dark";
+  const nativeTheme: Theme | null =
+    resolveTerminalThemeProfile(settings.theme).appTheme === "system" ? null : appTheme === "light" ? "light" : "dark";
   void currentWindow.setTheme(nativeTheme).catch((error) => {
     console.error("failed to apply native window theme", error);
   });
@@ -921,7 +1016,10 @@ function applyNativeWindowTheme(settings: AppSettings, appTheme: AppTheme) {
 
   const { rgb, alpha } = resolveBackgroundTint(document.documentElement, settings.background);
   const effects: Effects = {
-    effects: appTheme === "light" ? [Effect.Sidebar, Effect.TabbedLight, Effect.Acrylic, Effect.Mica] : [Effect.Sidebar, Effect.TabbedDark, Effect.Acrylic, Effect.Mica],
+    effects:
+      appTheme === "light"
+        ? [Effect.Sidebar, Effect.TabbedLight, Effect.Acrylic, Effect.Mica]
+        : [Effect.Sidebar, Effect.TabbedDark, Effect.Acrylic, Effect.Mica],
     state: EffectState.Active,
     radius: 12,
     color: [...rgb, alpha],

@@ -5,6 +5,7 @@ export type WorkspaceCommand =
       type: "add-top-terminal-split";
       title?: string;
       command?: string;
+      deferredCommand?: string;
       projectId?: string;
       projectPath?: string;
       projectName?: string;
@@ -13,6 +14,7 @@ export type WorkspaceCommand =
       type: "add-bottom-terminal-tab";
       label?: string;
       command?: string;
+      deferredCommand?: string;
       projectId?: string;
       projectPath?: string;
       projectName?: string;

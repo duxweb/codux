@@ -1,11 +1,13 @@
 import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { LogicalPosition, LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { formatI18n, tm } from "./i18n";
+import { isMacPlatform } from "./platform";
 
 export type AppWindowKind =
   | "about"
   | "settings"
   | "project-create"
+  | "project-edit"
   | "desktop-pet"
   | "pet-claim"
   | "pet-dex"
@@ -55,16 +57,26 @@ const windowConfig: Record<AppWindowKind, WindowConfig> = {
     label: "settings",
     titleKey: "menu.settings",
     titleFallback: "Settings",
-    width: 640,
-    height: 600,
-    minWidth: 640,
-    minHeight: 480,
+    width: 780,
+    height: 640,
+    minWidth: 720,
+    minHeight: 520,
     route: "/settings",
   },
   "project-create": {
     label: "project-create",
     titleKey: "project.create.title",
     titleFallback: "Create Project",
+    width: 600,
+    height: 552,
+    minWidth: 540,
+    minHeight: 552,
+    route: "/project-create",
+  },
+  "project-edit": {
+    label: "project-edit",
+    titleKey: "project.edit.title",
+    titleFallback: "Edit Project",
     width: 600,
     height: 552,
     minWidth: 540,
@@ -124,15 +136,17 @@ const windowConfig: Record<AppWindowKind, WindowConfig> = {
 };
 
 const opaqueAppWindowBackground = "#22262e";
+const childWindowTrafficLightPosition = () => (isMacPlatform() ? new LogicalPosition(14, 21) : undefined);
 
-export async function openAppWindow(kind: AppWindowKind) {
+export async function openAppWindow(kind: AppWindowKind, query?: Record<string, string | null | undefined>) {
   if (!window.__TAURI_INTERNALS__) {
-    window.location.hash = windowConfig[kind].route;
+    window.location.hash = routeWithQuery(windowConfig[kind].route, query);
     return;
   }
 
   const config = windowConfig[kind];
-  const existing = await WebviewWindow.getByLabel(config.label);
+  const label = windowLabel(kind, query);
+  const existing = await WebviewWindow.getByLabel(label);
   if (existing) {
     try {
       await existing.show();
@@ -143,20 +157,23 @@ export async function openAppWindow(kind: AppWindowKind) {
     return;
   }
 
-  const appWindow = new WebviewWindow(config.label, {
+  const appWindow = new WebviewWindow(label, {
     title: tm(config.titleKey, config.titleFallback).replace("%@", "Codux"),
-    url: kind === "desktop-pet" ? config.route : `/#${config.route}`,
+    url: kind === "desktop-pet" ? config.route : `/#${routeWithQuery(config.route, query)}`,
     width: config.width,
     height: config.height,
     minWidth: config.minWidth,
     minHeight: config.minHeight,
-    resizable: kind === "about" || kind === "desktop-pet" || kind === "pet-claim" || kind === "pet-custom-install" ? false : true,
+    resizable:
+      kind === "about" || kind === "desktop-pet" || kind === "pet-claim" || kind === "pet-custom-install"
+        ? false
+        : true,
     transparent: kind === "desktop-pet",
     decorations: kind === "desktop-pet" ? false : true,
     titleBarStyle: kind === "desktop-pet" ? undefined : "overlay",
     hiddenTitle: kind === "desktop-pet" ? undefined : true,
     acceptFirstMouse: true,
-    trafficLightPosition: kind === "desktop-pet" ? undefined : new LogicalPosition(14, 22),
+    trafficLightPosition: kind === "desktop-pet" ? undefined : childWindowTrafficLightPosition(),
     backgroundColor: kind === "desktop-pet" ? "#00000000" : opaqueAppWindowBackground,
     visible: false,
     focus: false,
@@ -168,10 +185,29 @@ export async function openAppWindow(kind: AppWindowKind) {
     console.error(`failed to create ${kind} window`, event.payload);
   });
   appWindow.once("tauri://created", () => {
-    void appWindow.show().then(() => appWindow.setFocus()).catch((error) => {
-      console.error(`failed to reveal ${kind} window`, error);
-    });
+    void appWindow
+      .show()
+      .then(() => appWindow.setFocus())
+      .catch((error) => {
+        console.error(`failed to reveal ${kind} window`, error);
+      });
   });
+}
+
+function routeWithQuery(route: string, query?: Record<string, string | null | undefined>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query ?? {})) {
+    if (value != null) params.set(key, value);
+  }
+  const suffix = params.toString();
+  return suffix ? `${route}?${suffix}` : route;
+}
+
+function windowLabel(kind: AppWindowKind, query?: Record<string, string | null | undefined>) {
+  if (kind === "project-edit" && query?.projectId) {
+    return `project-edit-${query.projectId}`;
+  }
+  return windowConfig[kind].label;
 }
 
 export async function openDetachedTerminalWindow(options: DetachedTerminalWindowOptions) {
@@ -206,7 +242,7 @@ export async function openDetachedTerminalWindow(options: DetachedTerminalWindow
     decorations: true,
     titleBarStyle: "overlay",
     hiddenTitle: true,
-    trafficLightPosition: new LogicalPosition(14, 22),
+    trafficLightPosition: childWindowTrafficLightPosition(),
     acceptFirstMouse: true,
     backgroundColor: "#171b22",
     visible: false,
@@ -217,9 +253,12 @@ export async function openDetachedTerminalWindow(options: DetachedTerminalWindow
     console.error("failed to create detached terminal window", event.payload);
   });
   appWindow.once("tauri://created", () => {
-    void appWindow.show().then(() => appWindow.setFocus()).catch((error) => {
-      console.error("failed to reveal detached terminal window", error);
-    });
+    void appWindow
+      .show()
+      .then(() => appWindow.setFocus())
+      .catch((error) => {
+        console.error("failed to reveal detached terminal window", error);
+      });
   });
 }
 
@@ -255,7 +294,7 @@ export async function openGitDiffWindow(options: GitDiffWindowOptions) {
     decorations: true,
     titleBarStyle: "overlay",
     hiddenTitle: true,
-    trafficLightPosition: new LogicalPosition(14, 22),
+    trafficLightPosition: childWindowTrafficLightPosition(),
     acceptFirstMouse: true,
     backgroundColor: opaqueAppWindowBackground,
     visible: false,
@@ -266,9 +305,12 @@ export async function openGitDiffWindow(options: GitDiffWindowOptions) {
     console.error("failed to create git diff window", event.payload);
   });
   appWindow.once("tauri://created", () => {
-    void appWindow.show().then(() => appWindow.setFocus()).catch((error) => {
-      console.error("failed to reveal git diff window", error);
-    });
+    void appWindow
+      .show()
+      .then(() => appWindow.setFocus())
+      .catch((error) => {
+        console.error("failed to reveal git diff window", error);
+      });
   });
 }
 

@@ -14,13 +14,13 @@ import {
   Minus,
   PanelLeft,
   PanelLeftClose,
-  Radio,
   Server,
   ShieldCheck,
   Sparkles,
   Star,
   TerminalSquare,
   Trophy,
+  Wifi,
   Zap,
   type AppIcon,
 } from "../icons";
@@ -38,17 +38,13 @@ import { PetSprite } from "./PetSprite";
 import { PressableButton } from "./PressableButton";
 import { Tooltip } from "./Tooltip";
 import type { ButtonSize } from "./Button";
-import type {
-  MainView,
-  PerformanceSnapshot,
-  RemoteStatus,
-  RightPanelKind,
-  WorkspaceProject,
-} from "../types";
+import type { MainView, PerformanceSnapshot, RemoteStatus, RightPanelKind, WorkspaceProject } from "../types";
 import { dispatchWorkspaceCommand } from "../workspaceCommands";
 import { readAppSettings, subscribeAppSettings } from "../settings";
 import { formatI18n, t, tm } from "../i18n";
 import { openAppWindow } from "../windowing";
+import { isMacPlatform, isWindowsPlatform } from "../platform";
+import { startWindowDrag } from "../windowDrag";
 
 type Props = {
   projects: WorkspaceProject[];
@@ -65,7 +61,7 @@ type Props = {
   pet: PetLedger;
 };
 
-type TitlebarPopoverKey = "pet" | "daily-level";
+type TitlebarPopoverKey = "pet" | "daily-level" | "remote";
 
 export function Titlebar({
   projects,
@@ -74,7 +70,6 @@ export function Titlebar({
   setMainView,
   isSidebarExpanded,
   toggleSidebar,
-  isTaskSidebarExpanded,
   toggleTaskSidebar,
   rightPanel,
   toggleRightPanel,
@@ -83,21 +78,16 @@ export function Titlebar({
 }: Props) {
   const [settings, setSettings] = useState(readAppSettings);
   const [activePopover, setActivePopover] = useState<TitlebarPopoverKey | null>(null);
-  const [historyEnabled, setHistoryEnabled] = useState(false);
-  const globalHistory = useAIGlobalHistorySnapshot(projects, { enabled: historyEnabled });
+  const globalHistory = useAIGlobalHistorySnapshot(projects);
   const { globalTotals } = useAIRuntimeSnapshot();
-  const todayLevelTokens = Math.max(
-    0,
-    globalHistory.snapshot.todayTotalTokens - globalHistory.snapshot.todayCachedInputTokens,
-  ) + globalTotals.totalTokens;
+  const todayLevelTokens =
+    Math.max(0, globalHistory.snapshot.todayTotalTokens - globalHistory.snapshot.todayCachedInputTokens) +
+    globalTotals.totalTokens;
+  const leftChromeInset = isMacPlatform() ? "pl-[86px]" : "pl-4";
+  const rightChromeInset = isWindowsPlatform() ? "pr-[150px]" : "pr-4";
 
   useEffect(() => subscribeAppSettings(setSettings), []);
   useEffect(() => setActivePopover(null), [mainView]);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setHistoryEnabled(true), 1200);
-    return () => window.clearTimeout(timer);
-  }, []);
-
   const setPopoverOpen = (key: TitlebarPopoverKey, isOpen: boolean) => {
     setActivePopover(isOpen ? key : null);
   };
@@ -106,22 +96,16 @@ export function Titlebar({
     <header
       data-tauri-drag-region
       className="absolute top-0 left-0 right-0 h-[var(--titlebar-height)] z-30 drag-region"
+      onPointerDown={startWindowDrag}
     >
-      <div
-        className="absolute inset-0 flex items-center justify-between drag-region"
-        data-tauri-drag-region
-      >
-        <div className="flex items-center gap-2.5 pl-[86px] no-drag">
+      <div className="absolute inset-0 flex items-center justify-between drag-region" data-tauri-drag-region>
+        <div className={`flex items-center gap-2.5 ${leftChromeInset} no-drag`}>
           <GlyphButton
             icon={isSidebarExpanded ? PanelLeftClose : PanelLeft}
             tooltip={t("projects", settings)}
             onPress={toggleSidebar}
           />
-          <GlyphButton
-            icon={ListTree}
-            tooltip={t("tasks", settings)}
-            onPress={toggleTaskSidebar}
-          />
+          <GlyphButton icon={ListTree} tooltip={t("tasks", settings)} onPress={toggleTaskSidebar} />
           <GlyphButton
             icon={Columns2}
             tooltip={t("split", settings)}
@@ -135,10 +119,14 @@ export function Titlebar({
 
           <MemoryStatusButton />
 
-          <RemotePill status={remoteStatus} />
+          <RemotePill
+            status={remoteStatus}
+            isOpen={activePopover === "remote"}
+            onOpenChange={(isOpen) => setPopoverOpen("remote", isOpen)}
+          />
         </div>
 
-        <div className="flex items-center gap-2.5 pr-4 no-drag">
+        <div className={`flex items-center gap-2.5 ${rightChromeInset} no-drag`}>
           {settings.pet.enabled && (
             <PetPopoverButton
               pet={pet}
@@ -329,13 +317,7 @@ function DailyLevelPopoverButton({
   );
 }
 
-function DailyLevelPanel({
-  tokens,
-  currentTier,
-}: {
-  tokens: number;
-  currentTier: DailyLevelTier;
-}) {
+function DailyLevelPanel({ tokens, currentTier }: { tokens: number; currentTier: DailyLevelTier }) {
   return (
     <div className="w-[280px]">
       <div className="flex items-center gap-2.5">
@@ -356,9 +338,7 @@ function DailyLevelPanel({
           return (
             <div
               key={tier.id}
-              className={`flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 ${
-                isCurrent ? "bg-fill/[0.075]" : ""
-              }`}
+              className={`flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 ${isCurrent ? "bg-fill/[0.075]" : ""}`}
               style={isCurrent ? { boxShadow: `inset 0 0 0 1px ${tier.color}45` } : undefined}
             >
               <DailyLevelBadge tier={tier} size="md" />
@@ -384,20 +364,9 @@ function DailyLevelPanel({
   );
 }
 
-function DailyLevelBadge({
-  tier,
-  size,
-}: {
-  tier: DailyLevelTier;
-  size: ButtonSize;
-}) {
+function DailyLevelBadge({ tier, size }: { tier: DailyLevelTier; size: ButtonSize }) {
   const Icon = tier.icon;
-  const metrics =
-    size === "lg"
-      ? { box: 34, icon: 14 }
-      : size === "md"
-        ? { box: 24, icon: 10 }
-        : { box: 19, icon: 8 };
+  const metrics = size === "lg" ? { box: 34, icon: 14 } : size === "md" ? { box: 24, icon: 10 } : { box: 19, icon: 8 };
   return (
     <span
       className="grid flex-shrink-0 place-items-center rounded-full text-on-brand"
@@ -463,9 +432,7 @@ function GlyphButton({
         variant="ghost"
         onPress={onPress}
         aria-label={tooltip}
-        className={`no-drag h-[30px] w-[30px] min-w-[30px] ${
-          active ? "bg-fill/10 text-ink" : "text-ink-soft"
-        }`}
+        className={`no-drag h-[30px] w-[30px] min-w-[30px] ${active ? "bg-fill/10 text-ink" : "text-ink-soft"}`}
       >
         <Icon size={15} strokeWidth={1.85} />
       </Button>
@@ -479,14 +446,13 @@ function MemoryStatusButton() {
   const isQueued = snapshot.status === "queued";
   const isFailed = snapshot.status === "failed";
   const isActive = isProcessing || isQueued || isFailed;
-  const tone =
-    isProcessing
-      ? "text-brand-blue"
-      : isQueued
-        ? "text-brand-amber"
-        : isFailed
-          ? "text-brand-red"
-          : "text-ink-soft";
+  const tone = isProcessing
+    ? "text-brand-blue"
+    : isQueued
+      ? "text-brand-amber"
+      : isFailed
+        ? "text-brand-red"
+        : "text-ink-soft";
   const activeSurface = isProcessing
     ? "border-brand-blue/45 bg-brand-blue/14 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-blue)_18%,transparent)]"
     : isQueued
@@ -542,9 +508,7 @@ function MemoryStatusTooltip({ snapshot }: { snapshot: MemoryExtractionStatusSna
         )}
       </div>
       {snapshot.lastError && (
-        <div className="mt-2 rounded-md bg-brand-red/10 px-2 py-1.5 text-brand-red">
-          {snapshot.lastError}
-        </div>
+        <div className="mt-2 rounded-md bg-brand-red/10 px-2 py-1.5 text-brand-red">{snapshot.lastError}</div>
       )}
     </div>
   );
@@ -590,11 +554,7 @@ function PerformanceHUD() {
   const cpuText = formatCpu(snapshot.cpuPercent);
   const memoryText = formatBytes(snapshot.memoryBytes);
   const cpuTone =
-    snapshot.cpuPercent >= 85
-      ? "text-brand-red"
-      : snapshot.cpuPercent >= 60
-        ? "text-brand-amber"
-        : "text-ink-soft";
+    snapshot.cpuPercent >= 85 ? "text-brand-red" : snapshot.cpuPercent >= 60 ? "text-brand-amber" : "text-ink-soft";
 
   const tooltip = [
     formatI18n(tm("performance.monitor.cpu_format", "CPU %@"), cpuText),
@@ -633,39 +593,86 @@ function formatBytes(bytes: number) {
   return `${Math.round(bytes / mb)}M`;
 }
 
-function RemotePill({ status }: { status?: RemoteStatus | null }) {
+function RemotePill({
+  status,
+  isOpen,
+  onOpenChange,
+}: {
+  status?: RemoteStatus | null;
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+}) {
   const enabled = Boolean(status?.enabled);
-  const detail = enabled
-    ? formatI18n(
-        tm("titlebar.remote.detail_format", "%@ · %@ devices"),
-        status?.relay ?? "relay",
-        status?.devices ?? 0,
-      )
-    : tm("remote.status.disabled", "Remote disabled");
+  const tooltip = tm("remote.connection", "远程连接");
+  const label = enabled
+    ? tm("remote.status.connected_label", "Connected")
+    : tm("remote.status.disconnected_label", "Disconnected");
   return (
-    <Tooltip label={detail} placement="bottom">
-      <button
-        className={`pill-base border transition-colors gap-1.5 no-drag ${
-          enabled
-            ? "bg-brand-green/12 border-brand-green/30 text-brand-green hover:bg-brand-green/16"
-            : "bg-fill/[0.05] border-line text-ink-soft hover:bg-fill/10"
-        }`}
-      >
-        <Radio size={13} strokeWidth={2.2} />
-        <span>{enabled ? tm("remote.status.connected_label", "Connected") : t("remote")}</span>
-      </button>
-    </Tooltip>
+    <DesktopPopover
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      placement="bottom-start"
+      trigger={
+        <button
+          type="button"
+          aria-label={tooltip}
+          title={tooltip}
+          className={`pill-base border transition-colors gap-1.5 no-drag ${
+            enabled
+              ? "bg-brand-green/12 border-brand-green/30 text-brand-green hover:bg-brand-green/16"
+              : "bg-fill/[0.05] border-line text-ink-soft hover:bg-fill/10"
+          }`}
+        >
+          <Wifi size={13} strokeWidth={2.2} />
+          <span>{label}</span>
+        </button>
+      }
+    >
+      <RemotePanel status={status} />
+    </DesktopPopover>
+  );
+}
+
+function RemotePanel({ status }: { status?: RemoteStatus | null }) {
+  const devices = status?.deviceList ?? [];
+
+  return (
+    <div className="w-[276px] p-2.5">
+      <div className="px-1 pb-2">
+        <div className="truncate text-sm font-semibold text-ink">{tm("remote.connection", "远程连接")}</div>
+      </div>
+      <div className="max-h-[240px] overflow-y-auto scrollbar-overlay rounded-[8px] border border-line bg-fill/[0.025]">
+        {devices.length > 0 ? (
+          devices.map((device) => (
+            <div
+              key={device.id}
+              className="flex items-center justify-between gap-3 border-b border-line px-2.5 py-2 last:border-b-0"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-ink-soft">{device.name || device.id}</div>
+                <div className="mt-0.5 truncate text-[11px] font-medium text-ink-faint">
+                  {device.online ? tm("remote.devices.online", "Online") : tm("remote.devices.offline", "Offline")}
+                </div>
+              </div>
+              <span className={`h-2 w-2 flex-none rounded-full ${device.online ? "bg-brand-green" : "bg-fill/25"}`} />
+            </div>
+          ))
+        ) : (
+          <div className="px-2.5 py-3 text-xs text-ink-faint">{tm("remote.devices.empty", "No paired devices")}</div>
+        )}
+      </div>
+    </div>
   );
 }
 
 function PetPanel({ pet }: { pet: PetLedger }) {
-  const [settings, setSettings] = useState(readAppSettings);
   const [isEditingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(pet.snapshot.customName);
   const info = pet.snapshot.progress;
   const stats = pet.snapshot.currentStats;
   const personaLabel = tm(`pet.persona.${pet.snapshot.personaId}`, pet.snapshot.personaId);
-  const speciesName = pet.snapshot.customPet?.displayName || tm(`pet.species.${pet.snapshot.species}.base`, pet.snapshot.species);
+  const speciesName =
+    pet.snapshot.customPet?.displayName || tm(`pet.species.${pet.snapshot.species}.base`, pet.snapshot.species);
   const trimmedName = pet.snapshot.customName.trim();
   const displayName = trimmedName || speciesName;
   const subtitle = trimmedName ? speciesName : null;
@@ -677,10 +684,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
         label: tm("pet.attribute.wisdom", "Wisdom"),
         value: stats.wisdom,
         color: "#2F8FFF",
-        help: tm(
-          "pet.attribute.wisdom.help",
-          "Reflects deeper, denser sessions with more substantial exchanges.",
-        ),
+        help: tm("pet.attribute.wisdom.help", "Reflects deeper, denser sessions with more substantial exchanges."),
       },
       {
         key: "chaos",
@@ -688,10 +692,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
         label: tm("pet.attribute.chaos", "Chaos"),
         value: stats.chaos,
         color: "#FF6030",
-        help: tm(
-          "pet.attribute.chaos.help",
-          "Reflects fast, jumpy, high-tempo sessions with frequent bursts.",
-        ),
+        help: tm("pet.attribute.chaos.help", "Reflects fast, jumpy, high-tempo sessions with frequent bursts."),
       },
       {
         key: "night",
@@ -699,10 +700,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
         label: tm("pet.attribute.night", "Night"),
         value: stats.night,
         color: "#6060CC",
-        help: tm(
-          "pet.attribute.night.help",
-          "Reflects how much of your recent activity leans into late-night hours.",
-        ),
+        help: tm("pet.attribute.night.help", "Reflects how much of your recent activity leans into late-night hours."),
       },
       {
         key: "stamina",
@@ -734,7 +732,6 @@ function PetPanel({ pet }: { pet: PetLedger }) {
     [statRows],
   );
 
-  useEffect(() => subscribeAppSettings(setSettings), []);
   useEffect(() => {
     setDraftName(pet.snapshot.customName);
   }, [pet.snapshot.customName, pet.snapshot.species]);
@@ -830,9 +827,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
       <div className="mx-3.5 h-px bg-line" />
 
       <section className="px-3.5 py-3">
-        <div className="mb-[7px] text-left text-xs font-medium text-ink-faint">
-          {tm("pet.stats.title", "Traits")}
-        </div>
+        <div className="mb-[7px] text-left text-xs font-medium text-ink-faint">{tm("pet.stats.title", "Traits")}</div>
         <div className="grid gap-[7px]">
           {statRows.map((row) => (
             <PetTrait
@@ -947,13 +942,7 @@ function formatTokens(value: number) {
   return `${Math.floor(value)}`;
 }
 
-function ModeSwitcher({
-  mainView,
-  setMainView,
-}: {
-  mainView: MainView;
-  setMainView: (view: MainView) => void;
-}) {
+function ModeSwitcher({ mainView, setMainView }: { mainView: MainView; setMainView: (view: MainView) => void }) {
   const items: Array<{ id: MainView; icon: typeof TerminalSquare; label: string }> = [
     { id: "terminal", icon: TerminalSquare, label: tm("workspace.create_split.terminal", "Terminal") },
     { id: "files", icon: FileText, label: t("files") },

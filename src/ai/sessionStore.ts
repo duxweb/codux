@@ -129,14 +129,15 @@ export class AISessionStore {
       previous &&
       (previous.tool !== tool ||
         (previous.terminalInstanceId && terminalInstanceId && previous.terminalInstanceId !== terminalInstanceId) ||
-        (previous.aiSessionId && normalize(event.aiSessionID) && previous.aiSessionId !== normalize(event.aiSessionID)));
+        (previous.aiSessionId &&
+          normalize(event.aiSessionID) &&
+          previous.aiSessionId !== normalize(event.aiSessionID)));
     const base = shouldReset ? undefined : previous;
     const aiSessionId = normalize(event.aiSessionID) ?? base?.aiSessionId;
     const logicalKey = aiSessionId ? `${tool}:${aiSessionId}` : undefined;
     const totalTokens = numberOr(base?.totalTokens, event.totalTokens);
     const baselineTotalTokens =
-      base?.baselineTotalTokens ??
-      (logicalKey ? this.logicalBaselines.get(logicalKey) ?? totalTokens : 0);
+      base?.baselineTotalTokens ?? (logicalKey ? (this.logicalBaselines.get(logicalKey) ?? totalTokens) : 0);
     if (logicalKey && !this.logicalBaselines.has(logicalKey)) {
       this.logicalBaselines.set(logicalKey, baselineTotalTokens);
     }
@@ -145,13 +146,13 @@ export class AISessionStore {
     const wasInterrupted =
       event.kind === "turnCompleted" || event.kind === "sessionEnded"
         ? Boolean(event.metadata?.wasInterrupted ?? false)
-        : base?.wasInterrupted ?? false;
+        : (base?.wasInterrupted ?? false);
     const hasCompletedTurn =
       event.kind === "turnCompleted"
         ? event.metadata?.hasCompletedTurn !== false
         : event.kind === "sessionEnded"
-          ? base?.hasCompletedTurn ?? false
-          : base?.hasCompletedTurn ?? false;
+          ? (base?.hasCompletedTurn ?? false)
+          : (base?.hasCompletedTurn ?? false);
 
     if (event.kind === "sessionEnded" && base && !base.hasCompletedTurn) {
       this.sessions.delete(terminalId);
@@ -161,9 +162,9 @@ export class AISessionStore {
 
     const activeTurnStartedAt =
       state === "responding"
-        ? base?.activeTurnStartedAt ?? now
+        ? (base?.activeTurnStartedAt ?? now)
         : state === "needsInput"
-          ? base?.activeTurnStartedAt ?? now
+          ? (base?.activeTurnStartedAt ?? now)
           : undefined;
     const didUpdateActiveStartedAt =
       activeTurnStartedAt != null && this.noteLatestActiveStartedAt(event.projectID, activeTurnStartedAt);

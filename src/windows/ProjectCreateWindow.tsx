@@ -66,10 +66,17 @@ const COLORS = [
 ];
 
 export function ProjectCreateWindow() {
-  const [name, setName] = useState("");
-  const [path, setPath] = useState("");
-  const [symbolId, setSymbolId] = useState<string>("none");
-  const [color, setColor] = useState<string>(COLORS[0]);
+  const query = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+  const projectId = query.get("projectId") ?? "";
+  const isEditing = projectId.trim().length > 0;
+  const initialName = query.get("name") ?? "";
+  const initialPath = query.get("path") ?? "";
+  const initialSymbol = query.get("badgeSymbol") || "none";
+  const initialColor = query.get("badgeColorHex") || COLORS[0];
+  const [name, setName] = useState(initialName);
+  const [path, setPath] = useState(initialPath);
+  const [symbolId, setSymbolId] = useState<string>(initialSymbol);
+  const [color, setColor] = useState<string>(initialColor);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
@@ -107,8 +114,9 @@ export function ProjectCreateWindow() {
     setError(null);
     try {
       if (window.__TAURI_INTERNALS__) {
-        await invoke("project_create", {
+        await invoke(isEditing ? "project_update" : "project_create", {
           request: {
+            projectId: isEditing ? projectId : undefined,
             name: name.trim(),
             path: path.trim(),
             badgeText: name.trim().slice(0, 2).toUpperCase(),
@@ -127,12 +135,12 @@ export function ProjectCreateWindow() {
 
   return (
     <WindowFrame
-      title={tm("project.create.title", "Create Project")}
+      title={isEditing ? tm("project.edit.title", "Edit Project") : tm("project.create.title", "Create Project")}
       footer={
         <WindowFooterActions
           onCancel={dismiss}
           onSubmit={() => void submit()}
-          submitLabel={tm("common.create", "Create")}
+          submitLabel={isEditing ? tm("common.save", "Save") : tm("common.create", "Create")}
           disabled={!canSubmit}
           busy={isSubmitting}
         />
@@ -183,12 +191,7 @@ export function ProjectCreateWindow() {
         <FieldGroup label={tm("project.editor.color", "Project Color")}>
           <div className="flex flex-wrap items-center gap-3 pt-1 pl-[3px]">
             {COLORS.map((value) => (
-              <ColorDot
-                key={value}
-                color={value}
-                selected={color === value}
-                onPress={() => setColor(value)}
-              />
+              <ColorDot key={value} color={value} selected={color === value} onPress={() => setColor(value)} />
             ))}
           </div>
         </FieldGroup>
@@ -203,15 +206,7 @@ export function ProjectCreateWindow() {
   );
 }
 
-function FieldGroup({
-  label,
-  required,
-  children,
-}: {
-  label: ReactNode;
-  required?: boolean;
-  children: ReactNode;
-}) {
+function FieldGroup({ label, required, children }: { label: ReactNode; required?: boolean; children: ReactNode }) {
   return (
     <div className="grid gap-2">
       <div className="text-sm font-medium text-ink">
@@ -254,15 +249,7 @@ function SymbolCell({
   );
 }
 
-function ColorDot({
-  color,
-  selected,
-  onPress,
-}: {
-  color: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
+function ColorDot({ color, selected, onPress }: { color: string; selected: boolean; onPress: () => void }) {
   return (
     <PressableButton
       onPressUp={onPress}

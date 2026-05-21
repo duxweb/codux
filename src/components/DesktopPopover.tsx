@@ -16,13 +16,7 @@ import {
   type Delay,
   type Placement,
 } from "@floating-ui/react";
-import {
-  cloneElement,
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-  type Ref,
-} from "react";
+import { cloneElement, type CSSProperties, type ReactElement, type ReactNode, type Ref } from "react";
 
 type TriggerProps = Record<string, unknown> & {
   className?: string;
@@ -85,12 +79,7 @@ export function DesktopPopover({
     escapeKey: true,
   });
   const roleInteraction = useRole(context, { role });
-  const { getFloatingProps, getReferenceProps } = useInteractions([
-    click,
-    hoverInteraction,
-    dismiss,
-    roleInteraction,
-  ]);
+  const { getFloatingProps, getReferenceProps } = useInteractions([click, hoverInteraction, dismiss, roleInteraction]);
   const { isMounted, styles: transitionStyles } = useTransitionStyles(context, {
     duration: 110,
     initial: { opacity: 0, transform: "scale(0.985)" },
@@ -155,10 +144,7 @@ function mergeElementProps(original: Record<string, unknown>, injected: TriggerP
   return props;
 }
 
-function mergeHandlers(
-  first: unknown,
-  second: unknown,
-) {
+function mergeHandlers(first: unknown, second: unknown) {
   if (typeof first !== "function") return second;
   if (typeof second !== "function") return first;
   return (event: unknown) => {

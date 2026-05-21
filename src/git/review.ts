@@ -1,11 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
-import {
-  isGitChangeForProject,
-  sanitizeGitRepositorySnapshot,
-  type GitRepositoryChangeEvent,
-} from "./status";
+import { useCallback } from "react";
+import { useRuntimeStore } from "../runtimeStore";
+import { sanitizeGitRepositorySnapshot } from "./status";
 
 export interface GitReviewFile {
   path: string;
@@ -43,6 +40,14 @@ export interface GitReviewContentSnapshot {
   error?: string | null;
 }
 
+export interface GitReviewEvent {
+  projectId: string;
+  projectName: string;
+  projectPath: string;
+  baseBranch?: string | null;
+  snapshot: GitReviewSnapshot;
+}
+
 const emptyReviewSnapshot: GitReviewSnapshot = {
   mode: "workingTreeAudit",
   title: "Uncommitted Audit",
@@ -53,102 +58,71 @@ const emptyReviewSnapshot: GitReviewSnapshot = {
   error: null,
 };
 
-const gitReviewSnapshotCache = new Map<string, GitReviewSnapshot>();
+let gitReviewCacheListenerPromise: Promise<() => void> | null = null;
 
 function reviewCacheKey(projectPath?: string, baseBranch?: string | null) {
   return projectPath ? `${projectPath}:${baseBranch ?? ""}` : "";
 }
 
+function cacheGitReviewEvent(event: GitReviewEvent) {
+  const key = reviewCacheKey(event.projectPath, event.baseBranch);
+  if (!key) return;
+  const snapshot = sanitizeGitRepositorySnapshot(event.snapshot);
+  useRuntimeStore.getState().setGitReview(key, {
+    snapshot,
+    error: snapshot.error ?? null,
+    updatedAt: Date.now(),
+  });
+}
+
+export function ensureGitReviewEventCacheSubscription() {
+  if (!window.__TAURI_INTERNALS__ || gitReviewCacheListenerPromise) return;
+  gitReviewCacheListenerPromise = listen<GitReviewEvent>("git:review", (event) => {
+    cacheGitReviewEvent(event.payload);
+  }).catch((error) => {
+    gitReviewCacheListenerPromise = null;
+    console.error("failed to cache git review events", error);
+    return () => {};
+  });
+}
+
 export function useGitReviewSnapshot(projectPath?: string, baseBranch?: string | null) {
   const cacheKey = reviewCacheKey(projectPath, baseBranch);
-  const [snapshot, setSnapshot] = useState<GitReviewSnapshot>(
-    () => (cacheKey ? gitReviewSnapshotCache.get(cacheKey) : undefined) ?? emptyReviewSnapshot,
-  );
-  const [isLoading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const cached = useRuntimeStore((state) => (cacheKey ? state.gitReviewByKey[cacheKey] : undefined));
+  const snapshot = cached?.snapshot ?? emptyReviewSnapshot;
+  const error = cached?.error ?? null;
 
   const refresh = useCallback(async () => {
     if (!projectPath || !window.__TAURI_INTERNALS__) {
-      setSnapshot(emptyReviewSnapshot);
-      setError(null);
       return;
     }
-    setLoading(true);
     try {
       const next = await invoke<GitReviewSnapshot>("git_review", {
         projectPath,
         baseBranch,
       });
       const normalized = sanitizeGitRepositorySnapshot(next);
-      gitReviewSnapshotCache.set(reviewCacheKey(projectPath, baseBranch), normalized);
-      setSnapshot(normalized);
-      setError(normalized.error ?? null);
+      useRuntimeStore.getState().setGitReview(reviewCacheKey(projectPath, baseBranch), {
+        snapshot: normalized,
+        error: normalized.error ?? null,
+        updatedAt: Date.now(),
+      });
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : String(nextError);
-      setError(message);
-      setSnapshot({
-        ...emptyReviewSnapshot,
+      useRuntimeStore.getState().setGitReview(reviewCacheKey(projectPath, baseBranch), {
+        snapshot: {
+          ...emptyReviewSnapshot,
+          error: message,
+        },
         error: message,
+        updatedAt: Date.now(),
       });
-    } finally {
-      setLoading(false);
     }
   }, [baseBranch, projectPath]);
 
-  useEffect(() => {
-    const cached = cacheKey ? gitReviewSnapshotCache.get(cacheKey) : undefined;
-    setSnapshot(cached ?? emptyReviewSnapshot);
-    setError(cached?.error ?? null);
-    setLoading(false);
-    if (!cached) void refresh();
-  }, [cacheKey, refresh]);
-
-  useEffect(() => {
-    if (!projectPath || !window.__TAURI_INTERNALS__) return;
-    let cancelled = false;
-    let debounceTimer: number | undefined;
-    let unlisten: (() => void) | undefined;
-    let didUnlisten = false;
-    const stopListening = (nextUnlisten: () => void) => {
-      if (didUnlisten) return;
-      didUnlisten = true;
-      nextUnlisten();
-    };
-
-    const unlistenPromise = listen<GitRepositoryChangeEvent>("git:changed", (event) => {
-      if (cancelled || !isGitChangeForProject(event.payload, projectPath)) return;
-      if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
-      debounceTimer = window.setTimeout(() => {
-        void refresh();
-      }, 280);
-    });
-    unlistenPromise
-      .then((nextUnlisten) => {
-        if (cancelled) {
-          stopListening(nextUnlisten);
-          return;
-        }
-        unlisten = () => stopListening(nextUnlisten);
-      })
-      .catch((nextError) => {
-        const message = nextError instanceof Error ? nextError.message : String(nextError);
-        setError(message);
-      });
-
-    return () => {
-      cancelled = true;
-      if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
-      if (unlisten) {
-        unlisten();
-      } else {
-        void unlistenPromise.then((nextUnlisten) => stopListening(nextUnlisten)).catch(() => undefined);
-      }
-    };
-  }, [projectPath, refresh]);
-
   return {
     snapshot,
-    isLoading,
+    isLoading: false,
     error,
     refresh,
   };

@@ -77,7 +77,6 @@ export interface WorktreeRemoveInput {
   worktreePath: string;
 }
 
-const worktreeSnapshotRequests = new Map<string, Promise<WorktreeSnapshot>>();
 let worktreeSnapshotListenerPromise: Promise<() => void> | null = null;
 
 function worktreeSnapshotKey(projectId: string, projectPath: string) {
@@ -87,11 +86,13 @@ function worktreeSnapshotKey(projectId: string, projectPath: string) {
 function cacheWorktreeSnapshot(projectId: string, projectPath: string, snapshot: WorktreeSnapshot) {
   const key = worktreeSnapshotKey(projectId, projectPath);
   if (!key) return;
-  useRuntimeStore.getState().setWorktreeSnapshot(key, {
+  const store = useRuntimeStore.getState();
+  store.setWorktreeSnapshot(key, {
     snapshot,
     error: snapshot.error ?? null,
     updatedAt: Date.now(),
   });
+  store.setWorktreeLoading(key, false);
 }
 
 export function ensureWorktreeSnapshotEventCacheSubscription() {
@@ -146,8 +147,6 @@ export function emptyWorktreeSnapshot(project?: WorkspaceProject): WorktreeSnaps
 export function useWorktreeSnapshot(project?: WorkspaceProject) {
   const projectId = project?.id ?? "";
   const projectPath = project?.path ?? "";
-  const projectBranch = project?.branch ?? "";
-  const projectChanges = project?.changes ?? 0;
   const cacheKey = worktreeSnapshotKey(projectId, projectPath);
   const cachedEntry = useRuntimeStore((state) => (cacheKey ? state.worktreeSnapshotByKey[cacheKey] : undefined));
   const snapshot = cachedEntry?.snapshot ?? emptyWorktreeSnapshot(project);
@@ -169,52 +168,46 @@ export function useWorktreeSnapshot(project?: WorkspaceProject) {
     return next;
   }, []);
 
-  const refresh = useCallback(
-    async (force = false) => {
-      if (!projectId || !projectPath) {
-        const next = emptyWorktreeSnapshot(project);
-        if (cacheKey) applySnapshot(cacheKey, next);
-        return next;
-      }
-      if (!window.__TAURI_INTERNALS__) {
-        const next = emptyWorktreeSnapshot(project);
-        applySnapshot(cacheKey, next);
-        return next;
-      }
-      const requestKey = `${projectId}:${projectPath}`;
-      const cached = useRuntimeStore.getState().worktreeSnapshotByKey[requestKey]?.snapshot;
-      if (cached && !force) return cached;
-      useRuntimeStore.getState().setWorktreeLoading(requestKey, true);
-      try {
-        let request = force ? undefined : worktreeSnapshotRequests.get(requestKey);
-        if (!request) {
-          request = invoke<WorktreeSnapshot>("worktree_snapshot", {
-            projectId,
-            projectPath,
-          }).finally(() => {
-            worktreeSnapshotRequests.delete(requestKey);
-          });
-          worktreeSnapshotRequests.set(requestKey, request);
-        }
-        const next = await request;
-        if (projectKeyRef.current !== requestKey) return next;
+  const refresh = useCallback(async () => {
+    if (!project || !projectId || !projectPath) {
+      const next = emptyWorktreeSnapshot(project);
+      if (cacheKey) applySnapshot(cacheKey, next);
+      return next;
+    }
+    if (!window.__TAURI_INTERNALS__) {
+      const next = emptyWorktreeSnapshot(project);
+      applySnapshot(cacheKey, next);
+      return next;
+    }
+    const requestKey = `${projectId}:${projectPath}`;
+    useRuntimeStore.getState().setWorktreeLoading(requestKey, true);
+    try {
+      await invoke("project_mark_active", {
+        project: {
+          id: project.id,
+          name: project.name,
+          path: project.path,
+          badge: project.badge,
+          status: project.status,
+          branch: project.branch,
+          changes: project.changes,
+          badgeSymbol: project.badgeSymbol ?? null,
+          badgeColorHex: project.badgeColorHex ?? null,
+          gitDefaultPushRemoteName: project.gitDefaultPushRemoteName ?? null,
+        },
+      });
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : String(nextError);
+      const next = { ...emptyWorktreeSnapshot(project), error: message };
+      if (projectKeyRef.current === requestKey) {
         applySnapshot(requestKey, next);
-        return next;
-      } catch (nextError) {
-        const message = nextError instanceof Error ? nextError.message : String(nextError);
-        const next = { ...emptyWorktreeSnapshot(project), error: message };
-        if (projectKeyRef.current === requestKey) {
-          applySnapshot(requestKey, next);
-        }
-        return next;
-      } finally {
-        if (projectKeyRef.current === requestKey) {
-          useRuntimeStore.getState().setWorktreeLoading(requestKey, false);
-        }
       }
-    },
-    [applySnapshot, cacheKey, project, projectId, projectPath],
-  );
+      return next;
+    } finally {
+      useRuntimeStore.getState().setWorktreeLoading(requestKey, false);
+    }
+    return useRuntimeStore.getState().worktreeSnapshotByKey[requestKey]?.snapshot ?? emptyWorktreeSnapshot(project);
+  }, [applySnapshot, cacheKey, project, projectId, projectPath]);
 
   const create = useCallback(
     async (input: WorktreeCreateInput) => {
@@ -241,17 +234,6 @@ export function useWorktreeSnapshot(project?: WorkspaceProject) {
     },
     [applySnapshot, snapshot],
   );
-
-  useEffect(() => {
-    if (!cacheKey) {
-      return;
-    }
-    if (useRuntimeStore.getState().worktreeSnapshotByKey[cacheKey]) {
-      useRuntimeStore.getState().setWorktreeLoading(cacheKey, false);
-      return;
-    }
-    void refresh();
-  }, [cacheKey, projectBranch, projectChanges, refresh]);
 
   return {
     snapshot,

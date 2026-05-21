@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   archiveMemoryEntry,
   deleteMemoryEntry,
@@ -16,16 +16,7 @@ import {
 } from "../ai/memory";
 import { Button } from "../components/Button";
 import { PressableButton } from "../components/PressableButton";
-import {
-  FileArchive,
-  Folder,
-  PencilSquare,
-  RefreshCw,
-  Trash,
-  Users,
-  Zap,
-  type AppIcon,
-} from "../icons";
+import { FileArchive, Folder, PencilSquare, RefreshCw, Trash, Users, Zap, type AppIcon } from "../icons";
 import { formatI18n, tm } from "../i18n";
 import { readAppSettings } from "../settings";
 import { systemConfirm, systemMessage } from "../systemDialog";
@@ -73,7 +64,7 @@ export function MemoryManagerWindow() {
   const [isLoading, setLoading] = useState(true);
   const [editingSummary, setEditingSummary] = useState<MemorySummary | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -96,11 +87,11 @@ export function MemoryManagerWindow() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tab, target.projectId, target.scope]);
 
   useEffect(() => {
     void load().finally(() => revealCurrentAppWindow());
-  }, [target.scope, target.projectId, tab]);
+  }, [load]);
 
   const overview = snapshot?.currentOverview;
   const isIndexing = snapshot?.extraction.status === "queued" || snapshot?.extraction.status === "processing";
@@ -142,13 +133,12 @@ export function MemoryManagerWindow() {
         </aside>
 
         <section className="flex min-h-0 min-w-0 flex-col">
-          <header
-            className="drag-region border-b border-line/60 px-5 pb-4 pt-5"
-            data-tauri-drag-region
-          >
+          <header className="drag-region border-b border-line/60 px-5 pb-4 pt-5" data-tauri-drag-region>
             <div className="flex items-start gap-3">
               <div className="min-w-0 drag-region" data-tauri-drag-region>
-                <h1 className="truncate text-[20px] font-bold leading-tight drag-region" data-tauri-drag-region>{snapshot?.selectedTargetTitle ?? tm("memory.manager.user_memory", "User Memory")}</h1>
+                <h1 className="truncate text-[20px] font-bold leading-tight drag-region" data-tauri-drag-region>
+                  {snapshot?.selectedTargetTitle ?? tm("memory.manager.user_memory", "User Memory")}
+                </h1>
                 <p className="mt-1 text-xs text-ink-mute drag-region" data-tauri-drag-region>
                   {overview
                     ? formatI18n(
@@ -170,7 +160,13 @@ export function MemoryManagerWindow() {
                 >
                   {tm("memory.manager.index_now", "Index Now")}
                 </Button>
-                <Button size="sm" variant="ghost" isIconOnly aria-label={tm("common.refresh", "Refresh")} onPress={() => void load()}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  isIconOnly
+                  aria-label={tm("common.refresh", "Refresh")}
+                  onPress={() => void load()}
+                >
                   <RefreshCw size={14} />
                 </Button>
               </div>
@@ -196,7 +192,10 @@ export function MemoryManagerWindow() {
             {error ? (
               <EmptyState title={tm("memory.manager.error", "Memory could not be loaded")} detail={error} />
             ) : isLoading && !snapshot ? (
-              <EmptyState title={tm("common.loading", "Loading")} detail={tm("memory.manager.subtitle", "Browse and clean extracted memories")} />
+              <EmptyState
+                title={tm("common.loading", "Loading")}
+                detail={tm("memory.manager.subtitle", "Browse and clean extracted memories")}
+              />
             ) : tab === "summary" ? (
               <SummaryList
                 summaries={snapshot?.summaries ?? []}
@@ -242,7 +241,9 @@ function TargetRow({
   return (
     <PressableButton
       className={`flex min-h-[54px] w-full items-center gap-2.5 rounded-[8px] px-3 text-left transition-colors ${
-        selected ? "border border-brand-blue/20 bg-brand-blue/10 text-ink" : "border border-transparent text-ink-soft hover:bg-fill/[0.06]"
+        selected
+          ? "border border-brand-blue/20 bg-brand-blue/10 text-ink"
+          : "border border-transparent text-ink-soft hover:bg-fill/[0.06]"
       }`}
       onPressUp={onSelect}
     >
@@ -251,7 +252,9 @@ function TargetRow({
         <div className="truncate text-[13px] font-semibold">{localizedTargetTitle(row)}</div>
         <div className="truncate text-[11px] text-ink-mute">{localizedTargetSubtitle(row)}</div>
       </div>
-      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${selected ? "bg-brand-blue/12 text-brand-blue" : "bg-fill/[0.06] text-ink-mute"}`}>
+      <span
+        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${selected ? "bg-brand-blue/12 text-brand-blue" : "bg-fill/[0.06] text-ink-mute"}`}
+      >
         {row.count}
       </span>
     </PressableButton>
@@ -271,7 +274,10 @@ function SummaryList({
     return (
       <EmptyState
         title={tm("memory.manager.empty.summary", "No summary memory")}
-        detail={tm("memory.manager.empty.summary.detail", "Summaries appear after extraction has enough useful context.")}
+        detail={tm(
+          "memory.manager.empty.summary.detail",
+          "Summaries appear after extraction has enough useful context.",
+        )}
       />
     );
   }
@@ -280,18 +286,31 @@ function SummaryList({
       {summaries.map((summary) => (
         <article key={summary.id} className="rounded-[8px] border border-line/70 bg-surface-chrome p-3.5">
           <div className="flex items-start gap-2">
-            <Badge text={formatI18n(tm("memory.manager.summary.version_format", "v%lld"), summary.version)} color="#3D80FA" />
-            <Badge text={formatI18n(tm("memory.manager.summary.tokens_format", "%lld tokens"), summary.tokenEstimate)} color="#7B8190" />
+            <Badge
+              text={formatI18n(tm("memory.manager.summary.version_format", "v%lld"), summary.version)}
+              color="#3D80FA"
+            />
+            <Badge
+              text={formatI18n(tm("memory.manager.summary.tokens_format", "%lld tokens"), summary.tokenEstimate)}
+              color="#7B8190"
+            />
             <div className="ml-auto flex items-center gap-1">
               <span className="mr-1 text-[11px] text-ink-faint">{formatDate(summary.updatedAt)}</span>
-              <IconButton label={tm("memory.manager.edit_summary", "Edit Summary")} icon={PencilSquare} onPress={() => onEdit(summary)} />
+              <IconButton
+                label={tm("memory.manager.edit_summary", "Edit Summary")}
+                icon={PencilSquare}
+                onPress={() => onEdit(summary)}
+              />
               <IconButton label={tm("common.delete", "Delete")} icon={Trash} danger onPress={() => onDelete(summary)} />
             </div>
           </div>
           <p className="mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{summary.content}</p>
           {summary.sourceEntryIds.length > 0 && (
             <p className="mt-3 text-[11px] text-ink-mute">
-              {formatI18n(tm("memory.manager.summary.sources_format", "%lld source entries"), summary.sourceEntryIds.length)}
+              {formatI18n(
+                tm("memory.manager.summary.sources_format", "%lld source entries"),
+                summary.sourceEntryIds.length,
+              )}
             </p>
           )}
         </article>
@@ -321,11 +340,21 @@ function EntryList({
   if (entries.length === 0) {
     return (
       <EmptyState
-        title={tab === "history" ? tm("memory.manager.empty.history", "No memory history") : tm("memory.manager.empty.active", "No active memories")}
+        title={
+          tab === "history"
+            ? tm("memory.manager.empty.history", "No memory history")
+            : tm("memory.manager.empty.active", "No active memories")
+        }
         detail={
           tab === "history"
-            ? tm("memory.manager.empty.history.detail", "Merged and archived memories appear here after extraction compacts older entries.")
-            : tm("memory.manager.empty.active.detail", "Fresh extracted memories appear here before they are compacted into summaries. Older compacted items remain in History.")
+            ? tm(
+                "memory.manager.empty.history.detail",
+                "Merged and archived memories appear here after extraction compacts older entries.",
+              )
+            : tm(
+                "memory.manager.empty.active.detail",
+                "Fresh extracted memories appear here before they are compacted into summaries. Older compacted items remain in History.",
+              )
         }
       />
     );
@@ -337,7 +366,10 @@ function EntryList({
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: kindColor[group.kind] }} />
             <span className="text-[12px] font-semibold text-ink-soft">{kindTitle(group.kind)}</span>
-            <span className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold" style={{ color: kindColor[group.kind], backgroundColor: `${kindColor[group.kind]}1c` }}>
+            <span
+              className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold"
+              style={{ color: kindColor[group.kind], backgroundColor: `${kindColor[group.kind]}1c` }}
+            >
               {group.entries.length}
             </span>
           </div>
@@ -371,13 +403,19 @@ function EntryCard({
         <div className="ml-auto flex items-center gap-1">
           <span className="mr-1 text-[11px] text-ink-faint">{formatDate(entry.updatedAt)}</span>
           {entry.status === "active" && (
-            <IconButton label={tm("memory.manager.archive", "Archive")} icon={FileArchive} onPress={() => onArchive(entry)} />
+            <IconButton
+              label={tm("memory.manager.archive", "Archive")}
+              icon={FileArchive}
+              onPress={() => onArchive(entry)}
+            />
           )}
           <IconButton label={tm("common.delete", "Delete")} icon={Trash} danger onPress={() => onDelete(entry)} />
         </div>
       </div>
       <p className="mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{entry.content}</p>
-      {entry.rationale && <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-ink-mute">{entry.rationale}</p>}
+      {entry.rationale && (
+        <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-ink-mute">{entry.rationale}</p>
+      )}
     </article>
   );
 }
@@ -424,7 +462,10 @@ function SummaryEditor({
         <div className="border-b border-line/60 px-5 py-4">
           <div className="text-[16px] font-bold">{tm("memory.manager.edit_summary.title", "Edit Summary Memory")}</div>
           <div className="mt-1 text-xs text-ink-mute">
-            {tm("memory.manager.edit_summary.detail", "Changes are saved as a new summary version and used for future memory injection.")}
+            {tm(
+              "memory.manager.edit_summary.detail",
+              "Changes are saved as a new summary version and used for future memory injection.",
+            )}
           </div>
         </div>
         <div className="min-h-0 flex-1 p-4">
@@ -435,7 +476,9 @@ function SummaryEditor({
           />
         </div>
         <div className="flex justify-end gap-2 border-t border-line/60 px-4 py-3">
-          <Button variant="ghost" disabled={isSaving} onPress={onClose}>{tm("common.cancel", "Cancel")}</Button>
+          <Button variant="ghost" disabled={isSaving} onPress={onClose}>
+            {tm("common.cancel", "Cancel")}
+          </Button>
           <Button variant="primary" disabled={!canSave || isSaving} onPress={() => void save()}>
             {isSaving ? tm("common.processing", "Processing") : tm("common.save", "Save")}
           </Button>
@@ -505,39 +548,47 @@ async function archiveEntry(entry: MemoryEntry, load: () => Promise<void>) {
 }
 
 async function confirmDeleteEntry(entry: MemoryEntry, load: () => Promise<void>) {
-  const confirmed = await systemConfirm(tm("memory.manager.delete.confirm.message", "This removes the selected memory from the local memory database."), {
-    title: tm("memory.manager.delete.confirm.title", "Delete Memory"),
-    kind: "warning",
-    okLabel: tm("common.delete", "Delete"),
-    cancelLabel: tm("common.cancel", "Cancel"),
-  });
+  const confirmed = await systemConfirm(
+    tm("memory.manager.delete.confirm.message", "This removes the selected memory from the local memory database."),
+    {
+      title: tm("memory.manager.delete.confirm.title", "Delete Memory"),
+      kind: "warning",
+      okLabel: tm("common.delete", "Delete"),
+      cancelLabel: tm("common.cancel", "Cancel"),
+    },
+  );
   if (!confirmed) return;
   await deleteMemoryEntry(entry.id);
   await load();
 }
 
 async function confirmDeleteSummary(summary: MemorySummary, load: () => Promise<void>) {
-  const confirmed = await systemConfirm(tm("memory.manager.delete.confirm.message", "This removes the selected memory from the local memory database."), {
-    title: tm("memory.manager.delete.confirm.title", "Delete Memory"),
-    kind: "warning",
-    okLabel: tm("common.delete", "Delete"),
-    cancelLabel: tm("common.cancel", "Cancel"),
-  });
+  const confirmed = await systemConfirm(
+    tm("memory.manager.delete.confirm.message", "This removes the selected memory from the local memory database."),
+    {
+      title: tm("memory.manager.delete.confirm.title", "Delete Memory"),
+      kind: "warning",
+      okLabel: tm("common.delete", "Delete"),
+      cancelLabel: tm("common.cancel", "Cancel"),
+    },
+  );
   if (!confirmed) return;
   await deleteMemorySummary(summary.id);
   await load();
 }
 
 function fallbackTargets(): MemoryManagerTargetRow[] {
-  return [{
-    id: "user",
-    scope: "user",
-    projectId: null,
-    title: tm("memory.manager.user_memory", "User Memory"),
-    subtitle: tm("memory.manager.user_memory.subtitle", "Cross-project preferences"),
-    count: 0,
-    updatedAt: null,
-  }];
+  return [
+    {
+      id: "user",
+      scope: "user",
+      projectId: null,
+      title: tm("memory.manager.user_memory", "User Memory"),
+      subtitle: tm("memory.manager.user_memory.subtitle", "Cross-project preferences"),
+      count: 0,
+      updatedAt: null,
+    },
+  ];
 }
 
 function localizedTargetTitle(row: MemoryManagerTargetRow) {

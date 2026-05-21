@@ -2,12 +2,7 @@ import type { MainView, RightPanelKind } from "./types";
 import { readAppSettings } from "./settings";
 import { tm } from "./i18n";
 
-export type ShortcutScope =
-  | "global"
-  | "workspace"
-  | "project-sidebar"
-  | "task-sidebar"
-  | "right-sidebar";
+export type ShortcutScope = "global" | "workspace" | "project-sidebar" | "task-sidebar" | "right-sidebar";
 
 export type ShortcutContext = {
   focusScope: ShortcutScope;
@@ -124,15 +119,10 @@ export function registerShortcutHandler(scope: ShortcutScope, handler: ShortcutH
 }
 
 export function dispatchShortcut(event: KeyboardEvent, context: ShortcutContext) {
-  const scopes =
-    context.focusScope === "global"
-      ? ["global"]
-      : [context.focusScope, "global"];
+  const scopes = context.focusScope === "global" ? ["global"] : [context.focusScope, "global"];
 
   for (const scope of scopes) {
-    const handlers = registrations
-      .filter((registration) => registration.scope === scope)
-      .sort((a, b) => b.id - a.id);
+    const handlers = registrations.filter((registration) => registration.scope === scope).sort((a, b) => b.id - a.id);
 
     for (const registration of handlers) {
       if (registration.handler(event, context)) {

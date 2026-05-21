@@ -1,7 +1,7 @@
 import { Folder, ListChecks, Plus, RefreshCw, SquareTerminal } from "../icons";
-import { invoke } from "@tauri-apps/api/core";
 import { Input as HeroInput, ListBox, Modal, Select as HeroSelect } from "@heroui/react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useAIHistorySnapshot } from "../ai/history";
 import { formatI18n, tm } from "../i18n";
 import {
   listProjectOpenApplications,
@@ -12,9 +12,12 @@ import {
 import { Button } from "./Button";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
 import { PressableButton } from "./PressableButton";
-import type { GitBranchesSnapshot } from "../git/status";
+import { normalizeGitEventPath } from "../git/status";
+import { useRuntimeStore } from "../runtimeStore";
 import type { WorkspaceProject } from "../types";
-import { gitBranchNamesFromSnapshot, worktreeBranchOptions } from "../worktree/branches";
+import { worktreeBranchOptions } from "../worktree/branches";
+import { readAppSettings, subscribeAppSettings, type AIStatisticsMode } from "../settings";
+import { AIHistorySessionList } from "./AIHistorySessionList";
 import type { ProjectWorktreeSnapshot, WorktreeTaskStatus } from "../worktree/snapshot";
 
 type WorktreeAIState = WorkspaceProject["aiState"];
@@ -64,12 +67,18 @@ export function TaskSidebar({
   const [isCreating, setCreating] = useState(false);
   const [worktreeName, setWorktreeName] = useState("");
   const [baseBranch, setBaseBranch] = useState("");
-  const [gitBranchNames, setGitBranchNames] = useState<string[]>([]);
-  const [isLoadingBranches, setLoadingBranches] = useState(false);
   const [createError, setCreateError] = useState("");
   const [applications, setApplications] = useState<ProjectOpenApplication[]>([]);
   const [optimisticSelectedId, setOptimisticSelectedId] = useState("");
+  const [historyHeight, setHistoryHeight] = useState(220);
+  const [statisticsMode, setStatisticsMode] = useState<AIStatisticsMode>(
+    () => readAppSettings().statisticsMode as AIStatisticsMode,
+  );
+  const asideRef = useRef<HTMLElement | null>(null);
   const defaultWorktree = worktrees.find((worktree) => worktree.isDefault) ?? fallbackDefaultWorktree(selectedProject);
+  const gitSnapshot = useRuntimeStore((state) =>
+    selectedProject?.path ? state.gitStatusByPath[normalizeGitEventPath(selectedProject.path)]?.snapshot : undefined,
+  );
   const worktreeRows = useMemo(
     () =>
       [defaultWorktree, ...worktrees.filter((worktree) => worktree.id !== defaultWorktree.id)].map((worktree) =>
@@ -77,12 +86,39 @@ export function TaskSidebar({
       ),
     [defaultWorktree, worktrees],
   );
-  const branchOptions = useMemo(() => worktreeBranchOptions(gitBranchNames), [gitBranchNames]);
+  const branchOptions = useMemo(
+    () =>
+      worktreeBranchOptions([
+        gitSnapshot?.branch ?? "",
+        ...(gitSnapshot?.branches.map((branch) => branch.name) ?? []),
+        defaultWorktree.branch ?? "",
+        selectedProject?.branch ?? "",
+      ]),
+    [defaultWorktree.branch, gitSnapshot, selectedProject?.branch],
+  );
   const canCreate = worktreeName.trim().length > 0 && baseBranch.trim().length > 0 && !isBusy;
   const optimisticRowExists = optimisticSelectedId
     ? worktreeRows.some((worktree) => worktree.id === optimisticSelectedId)
     : false;
   const selectedRowId = (optimisticRowExists ? optimisticSelectedId : "") || selectedWorktreeId || worktreeRows[0]?.id;
+  const selectedWorktree = worktreeRows.find((worktree) => worktree.id === selectedRowId)?.worktree;
+  const historyProject = useMemo<WorkspaceProject | undefined>(() => {
+    if (!selectedProject) return undefined;
+    if (!selectedWorktree) return selectedProject;
+    return {
+      ...selectedProject,
+      id: selectedWorktree.id,
+      rootProjectId: selectedProject.id,
+      worktreeId: selectedWorktree.id,
+      name: selectedWorktree.isDefault ? selectedProject.name : `${selectedProject.name} · ${selectedWorktree.name}`,
+      path: selectedWorktree.path || selectedProject.path,
+      branch: selectedWorktree.branch || selectedProject.branch,
+      baseBranch: selectedWorktree.isDefault ? null : selectedProject.branch,
+      isDefaultWorktree: selectedWorktree.isDefault,
+      changes: selectedWorktree.gitSummary.changes,
+    };
+  }, [selectedProject, selectedWorktree]);
+  const history = useAIHistorySnapshot(historyProject);
 
   const selectWorktree = useCallback(
     (id: string) => {
@@ -109,39 +145,20 @@ export function TaskSidebar({
     };
   }, []);
 
-  const loadGitBranchesForCreate = useCallback(async () => {
-    if (!selectedProject?.path) return;
-    if (!window.__TAURI_INTERNALS__) {
-      return;
-    }
-    setLoadingBranches(true);
-    try {
-      const snapshot = await invoke<GitBranchesSnapshot>("git_branches", {
-        projectPath: selectedProject.path,
-      });
-      const nextBranches = gitBranchNamesFromSnapshot(snapshot);
-      setGitBranchNames(nextBranches);
-      setBaseBranch((current) => {
-        if (current && nextBranches.includes(current)) return current;
-        return nextBranches.includes(snapshot.current) ? snapshot.current : nextBranches[0] || "";
-      });
-    } catch (error) {
-      console.error("failed to load git branches for worktree create", error);
-      setGitBranchNames([]);
-      setBaseBranch("");
-    } finally {
-      setLoadingBranches(false);
-    }
-  }, [selectedProject?.path]);
+  useEffect(
+    () =>
+      subscribeAppSettings((settings) => {
+        setStatisticsMode(settings.statisticsMode as AIStatisticsMode);
+      }),
+    [],
+  );
 
   const openCreateModal = useCallback(() => {
     setCreating(true);
     setWorktreeName(timestampSlug());
-    setBaseBranch("");
-    setGitBranchNames([]);
+    setBaseBranch(branchOptions[0] ?? "");
     setCreateError("");
-    void loadGitBranchesForCreate();
-  }, [loadGitBranchesForCreate]);
+  }, [branchOptions]);
 
   useEffect(() => {
     if (createRequest <= 0) return;
@@ -172,10 +189,31 @@ export function TaskSidebar({
     if (canCreate) submitCreate();
   };
 
+  const beginHistoryResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = historyHeight;
+    const maxHeight = Math.max(180, Math.round((asideRef.current?.clientHeight ?? 640) * 0.58));
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextHeight = startHeight - (moveEvent.clientY - startY);
+      setHistoryHeight(Math.max(156, Math.min(maxHeight, Math.round(nextHeight))));
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+  };
+
   return (
-    <aside className="h-full flex flex-col">
+    <aside ref={asideRef} className="h-full flex flex-col">
       <div className="h-[42px] px-3.5 flex items-center justify-between flex-shrink-0">
-        <span className="text-sm font-semibold tracking-tight">{tm("worktree.sidebar.title", "Worktree")}</span>
+        <span className="min-w-0 truncate text-sm font-semibold tracking-tight">
+          {selectedProject?.name || tm("worktree.sidebar.title", "Worktree")}
+        </span>
         <div className="flex items-center gap-1">
           <PressableButton
             className="w-6 h-6 grid place-items-center rounded-md text-ink-mute hover:text-ink hover:bg-fill/8 transition-colors disabled:opacity-50"
@@ -195,9 +233,9 @@ export function TaskSidebar({
           </PressableButton>
         </div>
       </div>
-      <div className="h-px bg-line mx-3 opacity-60" />
+      <div className="h-px bg-line opacity-60" />
 
-      <div className="flex-1 overflow-y-auto scrollbar-overlay px-2 pt-3 pb-2.5">
+      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay px-2 pt-3 pb-2.5">
         {worktreeRows.length > 0 ? (
           worktreeRows.map((worktree) => (
             <WorktreeCard
@@ -225,6 +263,33 @@ export function TaskSidebar({
             {tm("worktree.sidebar.empty", "No worktrees")}
           </div>
         )}
+      </div>
+      <div className="relative flex-none bg-transparent" style={{ height: historyHeight }}>
+        <div
+          className="peer/history-resize absolute inset-x-0 top-[-4px] z-10 h-3 cursor-row-resize"
+          onPointerDown={beginHistoryResize}
+          aria-label={tm("common.resize", "Resize")}
+        />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-brand-blue/0 transition-colors peer-hover/history-resize:bg-brand-blue/70" />
+        <div className="flex h-[38px] items-center justify-between gap-2 bg-fill/[0.045] px-3.5 py-1.5">
+          <span className="truncate text-sm font-semibold text-ink-soft">
+            {tm("ai.sessions.history", "Session History")}
+          </span>
+          {history.snapshot.sessions.length > 0 && (
+            <span className="flex h-5 min-w-5 flex-none items-center justify-center rounded-full bg-fill/[0.08] px-1.5 text-[11px] font-semibold tabular-nums text-ink-faint">
+              {history.snapshot.sessions.length}
+            </span>
+          )}
+        </div>
+        <AIHistorySessionList
+          project={historyProject}
+          sessions={history.snapshot.sessions}
+          mode={statisticsMode}
+          isLoading={history.isLoading}
+          error={history.error}
+          maxItems={12}
+          className="h-[calc(100%-38px)] px-2 pt-2.5 pb-2.5"
+        />
       </div>
       <Modal isOpen={isCreating} onOpenChange={setCreating}>
         <Modal.Backdrop className="no-drag fixed inset-0 z-[9000] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
@@ -257,7 +322,7 @@ export function TaskSidebar({
                     onSelectionChange={(key) => {
                       if (typeof key === "string") setBaseBranch(key);
                     }}
-                    isDisabled={isBusy || isLoadingBranches || branchOptions.length === 0}
+                    isDisabled={isBusy || branchOptions.length === 0}
                     fullWidth
                   >
                     <HeroSelect.Trigger>

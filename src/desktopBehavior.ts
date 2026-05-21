@@ -11,12 +11,7 @@ const TEXT_ENTRY_SELECTOR = [
   ".xterm",
   "[data-allow-tab-navigation]",
 ].join(", ");
-const FOCUSABLE_CHROME_SELECTOR = [
-  "button",
-  "a[href]",
-  "[role='button']",
-  "[tabindex]",
-].join(", ");
+const FOCUSABLE_CHROME_SELECTOR = ["button", "a[href]", "[role='button']", "[tabindex]"].join(", ");
 
 export function installDesktopBrowserBehavior() {
   if (!window.__TAURI_INTERNALS__) {
@@ -75,11 +70,7 @@ function preventDesktopKeyboardDefaults(event: KeyboardEvent) {
   }
 
   const active = document.activeElement;
-  if (
-    active instanceof HTMLButtonElement &&
-    event.target === active &&
-    isPlainPrintableKey(event)
-  ) {
+  if (active instanceof HTMLButtonElement && event.target === active && isPlainPrintableKey(event)) {
     event.preventDefault();
     active.blur();
   }
@@ -114,10 +105,5 @@ function closestElement(target: EventTarget | null, selector: string) {
 }
 
 function isPlainPrintableKey(event: KeyboardEvent) {
-  return (
-    event.key.length === 1 &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey
-  );
+  return event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
 }

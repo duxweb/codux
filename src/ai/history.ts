@@ -115,9 +115,6 @@ type AIHistoryRefreshOptions = {
   mode?: "foreground" | "silent";
 };
 
-const projectHistoryRequests = new Map<string, Promise<AIHistoryProjectState>>();
-const projectStateRequests = new Map<string, Promise<AIHistoryProjectState>>();
-const globalHistoryRequests = new Map<string, Promise<AIGlobalHistorySnapshot>>();
 let aiHistoryCacheListenerPromise: Promise<UnlistenFn> | null = null;
 
 function projectHistoryKey(project: WorkspaceProject) {
@@ -209,66 +206,59 @@ export function useAIHistorySnapshot(project?: WorkspaceProject) {
       }
       useRuntimeStore.getState().setAIProjectState(projectHistoryKey(project), next);
     },
-    [project?.id, project?.name, project?.path],
+    [project],
   );
 
-  const refresh = useCallback(async (options: AIHistoryRefreshOptions = {}) => {
-    if (!project || !window.__TAURI_INTERNALS__) {
-      stateVersionRef.current = 0;
-      foregroundProjectIdRef.current = null;
-      return;
-    }
-    if (options.mode !== "silent") {
-      foregroundProjectIdRef.current = project.id;
-    }
-    useRuntimeStore.getState().setAIProjectState(projectHistoryKey(project), {
-      projectId: project.id,
-      projectName: project.name,
-      projectPath: project.path,
-      snapshot,
-      isLoading: true,
-      queued: true,
-      progress: 0,
-      detail: "queued",
-      error: null,
-      version: stateVersionRef.current,
-    });
-    try {
-      const requestKey = projectHistoryKey(project);
-      let request = projectHistoryRequests.get(requestKey);
-      if (!request) {
-        request = invoke<AIHistoryProjectState>("ai_history_project_summary", {
+  const refresh = useCallback(
+    async (options: AIHistoryRefreshOptions = {}) => {
+      if (!project || !window.__TAURI_INTERNALS__) {
+        stateVersionRef.current = 0;
+        foregroundProjectIdRef.current = null;
+        return;
+      }
+      if (options.mode !== "silent") {
+        foregroundProjectIdRef.current = project.id;
+      }
+      useRuntimeStore.getState().setAIProjectState(projectHistoryKey(project), {
+        projectId: project.id,
+        projectName: project.name,
+        projectPath: project.path,
+        snapshot,
+        isLoading: true,
+        queued: true,
+        progress: 0,
+        detail: "queued",
+        error: null,
+        version: stateVersionRef.current,
+      });
+      try {
+        await invoke("ai_history_refresh_project", {
           project: {
             id: project.id,
             name: project.name,
             path: project.path,
           },
-        }).finally(() => {
-          projectHistoryRequests.delete(requestKey);
         });
-        projectHistoryRequests.set(requestKey, request);
+      } catch (reason) {
+        if (activeProjectIdRef.current !== project.id) return;
+        console.error("failed to load ai history", reason);
+        useRuntimeStore.getState().setAIProjectState(projectHistoryKey(project), {
+          projectId: project.id,
+          projectName: project.name,
+          projectPath: project.path,
+          snapshot: emptyHistorySnapshot(project),
+          isLoading: false,
+          queued: false,
+          progress: null,
+          detail: "failed",
+          error: reason instanceof Error ? reason.message : String(reason),
+          version: stateVersionRef.current + 1,
+        });
+        foregroundProjectIdRef.current = null;
       }
-      const next = await request;
-      if (activeProjectIdRef.current !== project.id) return;
-      applyProjectState(next);
-    } catch (reason) {
-      if (activeProjectIdRef.current !== project.id) return;
-      console.error("failed to load ai history", reason);
-      useRuntimeStore.getState().setAIProjectState(projectHistoryKey(project), {
-        projectId: project.id,
-        projectName: project.name,
-        projectPath: project.path,
-        snapshot: emptyHistorySnapshot(project),
-        isLoading: false,
-        queued: false,
-        progress: null,
-        detail: "failed",
-        error: reason instanceof Error ? reason.message : String(reason),
-        version: stateVersionRef.current + 1,
-      });
-      foregroundProjectIdRef.current = null;
-    }
-  }, [applyProjectState, project?.id, project?.name, project?.path, snapshot]);
+    },
+    [project, snapshot],
+  );
 
   const loadState = useCallback(async () => {
     if (!project || !window.__TAURI_INTERNALS__) {
@@ -276,55 +266,16 @@ export function useAIHistorySnapshot(project?: WorkspaceProject) {
       foregroundProjectIdRef.current = null;
       return;
     }
-    try {
-      const requestKey = projectHistoryKey(project);
-      const cached = useRuntimeStore.getState().aiProjectStateByKey[requestKey];
-      if (cached) {
-        applyProjectState(cached);
-        return;
-      }
-      let request = projectStateRequests.get(requestKey);
-      if (!request) {
-        request = invoke<AIHistoryProjectState>("ai_history_project_state", {
-          project: {
-            id: project.id,
-            name: project.name,
-            path: project.path,
-          },
-        }).finally(() => {
-          projectStateRequests.delete(requestKey);
-        });
-        projectStateRequests.set(requestKey, request);
-      }
-      const next = await request;
-      if (activeProjectIdRef.current !== project.id) return;
-      applyProjectState(next);
-    } catch (reason) {
-      if (activeProjectIdRef.current !== project.id) return;
-      console.error("failed to load ai history state", reason);
-      useRuntimeStore.getState().setAIProjectState(projectHistoryKey(project), {
-        projectId: project.id,
-        projectName: project.name,
-        projectPath: project.path,
-        snapshot: emptyHistorySnapshot(project),
-        isLoading: false,
-        queued: false,
-        progress: null,
-        detail: "failed",
-        error: reason instanceof Error ? reason.message : String(reason),
-        version: stateVersionRef.current + 1,
-      });
-      foregroundProjectIdRef.current = null;
-    }
-  }, [applyProjectState, project?.id, project?.name, project?.path]);
+    const cached = useRuntimeStore.getState().aiProjectStateByKey[projectHistoryKey(project)];
+    if (cached) applyProjectState(cached);
+  }, [applyProjectState, project]);
 
   useEffect(() => {
     if (!project || !window.__TAURI_INTERNALS__) {
-      void refresh();
       return;
     }
     void loadState();
-  }, [loadState, project?.id, refresh]);
+  }, [loadState, project]);
 
   return useMemo(
     () => ({
@@ -340,41 +291,26 @@ export function useAIHistorySnapshot(project?: WorkspaceProject) {
   );
 }
 
-export function useAIGlobalHistorySnapshot(
-  projects: WorkspaceProject[],
-  options: GlobalHistoryOptions = {},
-) {
+export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options: GlobalHistoryOptions = {}) {
   const cachedGlobalHistory = useRuntimeStore((state) => state.aiGlobalHistory);
   const globalStatus = useRuntimeStore((state) => state.aiGlobalStatus);
   const snapshot = cachedGlobalHistory ?? emptyGlobalHistorySnapshot;
   const enabled = options.enabled !== false;
-  const projectKey = projects
-    .map((project) => project.path)
-    .join("|");
-
   const refresh = useCallback(async () => {
     if (!window.__TAURI_INTERNALS__ || !shouldLoadGlobalHistory(enabled, projects.length)) {
       useRuntimeStore.getState().setAIGlobalHistory(null);
       useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
       return;
     }
-    useRuntimeStore.getState().setAIGlobalStatus({ error: null });
+    useRuntimeStore.getState().setAIGlobalStatus({ isLoading: true, error: null });
     try {
-      let request = globalHistoryRequests.get(projectKey);
-      if (!request) {
-        request = invoke<AIGlobalHistorySnapshot | null>("ai_history_global_state", {
-          projects: projects.map((project) => ({
-            id: project.id,
-            name: project.name,
-            path: project.path,
-          })),
-        }).then((next) => next ?? emptyGlobalHistorySnapshot).finally(() => {
-          globalHistoryRequests.delete(projectKey);
-        });
-        globalHistoryRequests.set(projectKey, request);
-      }
-      const next = await request;
-      useRuntimeStore.getState().setAIGlobalHistory(next);
+      await invoke("ai_history_refresh_global", {
+        projects: projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+          path: project.path,
+        })),
+      });
     } catch (reason) {
       console.error("failed to load global ai history", reason);
       useRuntimeStore.getState().setAIGlobalStatus({
@@ -382,11 +318,7 @@ export function useAIGlobalHistorySnapshot(
         error: reason instanceof Error ? reason.message : String(reason),
       });
     }
-  }, [enabled, projectKey]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [enabled, projects]);
 
   return useMemo(
     () => ({
@@ -403,10 +335,7 @@ export function shouldLoadGlobalHistory(enabled: boolean, projectCount: number) 
   return enabled && projectCount > 0;
 }
 
-export function shouldApplyAIHistoryProjectState(
-  next: Pick<AIHistoryProjectState, "version">,
-  currentVersion: number,
-) {
+export function shouldApplyAIHistoryProjectState(next: Pick<AIHistoryProjectState, "version">, currentVersion: number) {
   return next.version >= currentVersion;
 }
 

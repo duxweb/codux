@@ -2,11 +2,7 @@ import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowTopRight, CheckCircle2, Info, Search } from "../icons";
 import { emitPetCustomPetInstalled } from "../ai/petCustomEvents";
-import {
-  installCustomPet,
-  previewCustomPetInstall,
-  type PetCustomPetInstallPreview,
-} from "../ai/petState";
+import { installCustomPet, previewCustomPetInstall, type PetCustomPetInstallPreview } from "../ai/petState";
 import { openExternalUrl } from "../appActions";
 import { Button } from "../components/Button";
 import { TextInput } from "../components/Form";
@@ -118,7 +114,9 @@ export function PetCustomPetInstallWindow() {
             disabled={!preview || !displayName.trim() || phase === "installing"}
             onPress={() => void install()}
           >
-            {phase === "installing" ? tm("pet.custom.install.installing", "Installing...") : tm("pet.custom.install.confirm", "Install")}
+            {phase === "installing"
+              ? tm("pet.custom.install.installing", "Installing...")
+              : tm("pet.custom.install.confirm", "Install")}
           </Button>
         </>
       }
@@ -141,12 +139,7 @@ export function PetCustomPetInstallWindow() {
               placeholder={tm("pet.custom.install.url.placeholder", "https://petdex.crafter.run/zh/pets/boba")}
               autoFocus
             />
-            <Button
-              variant="ghost"
-              leading={ArrowTopRight}
-              disabled={isBusy}
-              onPress={openMarket}
-            >
+            <Button variant="ghost" leading={ArrowTopRight} disabled={isBusy} onPress={openMarket}>
               {tm("pet.custom.market.action", "Get Pets")}
             </Button>
             <Button
@@ -169,12 +162,7 @@ export function PetCustomPetInstallWindow() {
             <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-4 rounded-[12px] border border-line bg-fill/[0.035] p-4">
               <div className="grid h-[104px] w-[104px] place-items-center overflow-hidden rounded-[12px] bg-brand-blue/10">
                 {preview.imageUrl ? (
-                  <img
-                    src={preview.imageUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    draggable={false}
-                  />
+                  <img src={preview.imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
                 ) : (
                   <Info size={34} className="text-brand-blue" />
                 )}
@@ -208,7 +196,9 @@ export function PetCustomPetInstallWindow() {
             <div className="grid gap-2 text-xs text-ink-soft">
               <InstallCheck text={tm("pet.custom.install.validation.page", "Petdex page verified")} />
               <InstallCheck text={tm("pet.custom.install.validation.package", "Package link found")} />
-              <InstallCheck text={tm("pet.custom.install.validation.format", "Codex-format check runs during install")} />
+              <InstallCheck
+                text={tm("pet.custom.install.validation.format", "Codex-format check runs during install")}
+              />
             </div>
           </>
         )}

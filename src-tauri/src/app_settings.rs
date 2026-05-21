@@ -44,6 +44,8 @@ pub struct AppSettings {
     pub theme: String,
     #[serde(default = "default_background")]
     pub background: String,
+    #[serde(default = "default_theme_color")]
+    pub theme_color: String,
     #[serde(default = "default_terminal_font_size")]
     pub terminal_font_size: String,
     #[serde(default = "default_icon_style")]
@@ -211,11 +213,11 @@ pub struct AIProviderSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteSettings {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default = "default_remote_server_url", alias = "serverUrl")]
-    pub relay_url: String,
-    #[serde(default, alias = "hostID")]
+    #[serde(default, rename = "isEnabled")]
+    pub is_enabled: bool,
+    #[serde(default = "default_remote_server_url", rename = "serverURL")]
+    pub server_url: String,
+    #[serde(default, rename = "hostID")]
     pub host_id: String,
     #[serde(default)]
     pub host_token: String,
@@ -251,8 +253,8 @@ pub struct RemoteHostDeviceSettings {
 impl Default for RemoteSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
-            relay_url: default_remote_server_url(),
+            is_enabled: false,
+            server_url: default_remote_server_url(),
             host_id: String::new(),
             host_token: String::new(),
             host_private_key: String::new(),
@@ -369,6 +371,7 @@ impl Default for AppSettings {
             statistics_mode: default_statistics_mode(),
             theme: default_theme(),
             background: default_background(),
+            theme_color: default_theme_color(),
             terminal_font_size: default_terminal_font_size(),
             icon_style: default_icon_style(),
             notification_channels: HashMap::new(),
@@ -575,15 +578,21 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
     if settings.background.trim().is_empty() {
         settings.background = default_background();
     }
+    if settings.theme_color.trim().is_empty() {
+        settings.theme_color = default_theme_color();
+    }
     if settings.terminal_font_size.trim().is_empty() {
         settings.terminal_font_size = default_terminal_font_size();
     }
     if settings.icon_style.trim().is_empty() {
         settings.icon_style = default_icon_style();
     }
-    if settings.remote.relay_url.trim().is_empty() {
-        settings.remote.relay_url = default_remote_server_url();
-    }
+    let remote_server_url = settings.remote.server_url.trim().to_string();
+    settings.remote.server_url = if !remote_server_url.is_empty() {
+        remote_server_url
+    } else {
+        default_remote_server_url()
+    };
     settings
         .remote
         .cached_devices
@@ -618,7 +627,6 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
     {
         settings.update.endpoint = default_update_endpoint();
     }
-    settings.remote.relay_url = settings.remote.relay_url.trim().to_string();
     settings
 }
 
@@ -941,6 +949,10 @@ fn default_theme() -> String {
 
 fn default_background() -> String {
     "Auto".to_string()
+}
+
+fn default_theme_color() -> String {
+    "Blue".to_string()
 }
 
 fn default_terminal_font_size() -> String {

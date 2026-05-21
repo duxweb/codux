@@ -31,13 +31,25 @@ export function AboutWindow() {
   const showAgreement = async () => {
     await systemMessage(
       [
-        tm("about.user_agreement_body", "By using it, you understand that terminal, Git, and AI activity features read local project metadata and runtime state, but do not proactively upload your project contents. You are responsible for the safety of your local environment, permissions, third-party CLIs, and repository credentials. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time."),
+        tm(
+          "about.user_agreement_body",
+          "By using it, you understand that terminal, Git, and AI activity features read local project metadata and runtime state, but do not proactively upload your project contents. You are responsible for the safety of your local environment, permissions, third-party CLIs, and repository credentials. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time.",
+        ),
         "",
-        tm("about.user_agreement_data", "Codux only reads the local state needed to display terminal sessions, Git repository status, AI tool activity, and local statistics. You are responsible for reviewing any third-party CLI behavior and network activity triggered by those tools."),
+        tm(
+          "about.user_agreement_data",
+          "Codux only reads the local state needed to display terminal sessions, Git repository status, AI tool activity, and local statistics. You are responsible for reviewing any third-party CLI behavior and network activity triggered by those tools.",
+        ),
         "",
-        tm("about.user_agreement_responsibility", "You are responsible for your local environment, file permissions, repository credentials, notification permissions, and any commands executed inside the terminal."),
+        tm(
+          "about.user_agreement_responsibility",
+          "You are responsible for your local environment, file permissions, repository credentials, notification permissions, and any commands executed inside the terminal.",
+        ),
         "",
-        tm("about.user_agreement_license", "Codux is distributed as open-source software under the GPL-3.0 license. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time."),
+        tm(
+          "about.user_agreement_license",
+          "Codux is distributed as open-source software under the GPL-3.0 license. Continued use means you accept that this experimental software may change behavior, interface, and compatibility over time.",
+        ),
       ].join("\n"),
       {
         title: tm("about.user_agreement", "User Agreement"),
@@ -57,7 +69,11 @@ export function AboutWindow() {
   };
 
   return (
-    <WindowFrame title={tm("menu.app.about_format", "About %@").replace("%@", about.name)} mainScrollable={false} mainClassName="px-0 py-0">
+    <WindowFrame
+      title={tm("menu.app.about_format", "About %@").replace("%@", about.name)}
+      mainScrollable={false}
+      mainClassName="px-0 py-0"
+    >
       <div className="flex h-full flex-col items-center px-6 text-center">
         <div className="h-6 flex-shrink-0" />
         <div className="grid h-24 w-24 place-items-center rounded-[22px] bg-gradient-to-br from-brand-blue to-brand-blue-deep text-[42px] font-black text-on-brand shadow-lg shadow-black/20">
@@ -69,7 +85,9 @@ export function AboutWindow() {
         </div>
         <div className="mt-5 grid gap-1">
           <div className="text-xs text-ink-soft">{tm("about.tagline", "AI-Powered Terminal Workspace")}</div>
-          <div className="text-[11px] text-ink-faint">{tm("about.copyright", "Copyright (c) 2025 Codux contributors")}</div>
+          <div className="text-[11px] text-ink-faint">
+            {tm("about.copyright", "Copyright (c) 2025 Codux contributors")}
+          </div>
         </div>
         <div className="mt-5 flex items-center justify-center gap-3">
           <Button size="sm" variant="secondary" onPress={() => void showAgreement()}>

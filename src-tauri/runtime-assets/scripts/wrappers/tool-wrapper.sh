@@ -287,6 +287,33 @@ if isinstance(value, str):
 PY
 }
 
+configured_codex_effort() {
+  local config_path
+  config_path="$(tool_permission_settings_path)"
+  [[ -f "${config_path}" ]] || return 0
+
+  CONFIG_PATH="${config_path}" /usr/bin/python3 - <<'PY'
+import json
+import os
+
+path = os.environ.get("CONFIG_PATH", "")
+if not path:
+    raise SystemExit(0)
+
+try:
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+except Exception:
+    raise SystemExit(0)
+
+value = payload.get("codexEffort")
+if isinstance(value, str):
+    value = value.strip()
+    if value in {"none", "minimal", "low", "medium", "high", "xhigh"}:
+        print(value)
+PY
+}
+
 apply_configured_model_arg() {
   local configured_model
   configured_model="$(configured_tool_model || true)"
@@ -305,6 +332,36 @@ apply_configured_model_arg() {
       launch_args=(--model "${configured_model}" "${launch_args[@]}")
       ;;
   esac
+}
+
+has_config_key_arg() {
+  local target="$1"
+  shift
+  local previous=""
+  local arg
+  for arg in "$@"; do
+    if [[ "${previous}" == "-c" || "${previous}" == "--config" ]]; then
+      [[ "${arg}" == "${target}="* ]] && return 0
+    fi
+    case "${arg}" in
+      -c${target}=*|--config=${target}=*)
+        return 0
+        ;;
+    esac
+    previous="${arg}"
+  done
+  return 1
+}
+
+apply_configured_codex_effort_arg() {
+  [[ "${tool_name}" == "codex" ]] || return 0
+  local configured_effort
+  configured_effort="$(configured_codex_effort || true)"
+  [[ -n "${configured_effort}" ]] || return 0
+  if has_config_key_arg "model_reasoning_effort" "${launch_args[@]}"; then
+    return 0
+  fi
+  launch_args=(-c "model_reasoning_effort=\"${configured_effort}\"" "${launch_args[@]}")
 }
 
 has_exact_arg() {
@@ -511,6 +568,7 @@ if [[ "$tool_name" == "codex" ]]; then
     local_permission_mode="$(configured_permission_mode || true)"
     launch_args=("$@")
     apply_configured_model_arg
+    apply_configured_codex_effort_arg
     if [[ "${local_permission_mode}" == "fullAccess" ]] \
       && ! has_exact_arg "--dangerously-bypass-approvals-and-sandbox" "${launch_args[@]}" \
       && ! has_exact_arg "--full-auto" "${launch_args[@]}" \
@@ -552,8 +610,13 @@ if [[ "$tool_name" == "gemini" ]]; then
 fi
 
 if [[ "$tool_name" == "opencode" ]]; then
+  local_permission_mode="$(configured_permission_mode || true)"
   launch_args=("$@")
   apply_configured_model_arg
+  if [[ "${local_permission_mode}" == "fullAccess" ]] \
+    && ! has_exact_arg "--dangerously-skip-permissions" "${launch_args[@]}"; then
+    launch_args=(--dangerously-skip-permissions "${launch_args[@]}")
+  fi
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"

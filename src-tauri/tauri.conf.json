@@ -30,7 +30,7 @@
         "acceptFirstMouse": true,
         "trafficLightPosition": {
           "x": 16,
-          "y": 18
+          "y": 21
         },
         "windowEffects": {
           "effects": ["sidebar", "mica", "acrylic"],
@@ -46,9 +46,7 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": [
-        "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json"
-      ],
+      "endpoints": ["https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxRTg4MkJBQzYxMENDOApSV1RJREdHc0s0Z2VBaWh3NFFLMDhIK3R3NUJVRFlyUUR3dzZHUkNWUUtXdEg2UnZPVmUvaHVhQQo="
     }
   },

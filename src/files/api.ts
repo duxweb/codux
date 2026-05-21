@@ -164,7 +164,7 @@ export async function unwatchProjectFiles(projectPath: string) {
 
 export function languageForPath(path: string) {
   const name = path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
-  const ext = name.includes(".") ? name.split(".").pop() ?? "" : "";
+  const ext = name.includes(".") ? (name.split(".").pop() ?? "") : "";
   if (["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "vue", "svelte"].includes(ext)) return "javascript";
   if (["json", "json5", "jsonl", "map"].includes(ext) || name.endsWith(".jsonc")) return "json";
   if (["css", "scss", "sass", "less"].includes(ext)) return "css";
@@ -177,7 +177,11 @@ export function languageForPath(path: string) {
   if (["sql", "psql", "mysql"].includes(ext)) return "sql";
   if (["yml", "yaml"].includes(ext)) return "yaml";
   if (ext === "toml") return "toml";
-  if (["ini", "conf", "config", "env", "lock", "gitignore", "dockerignore", "editorconfig"].includes(ext) || name.startsWith(".env")) return "properties";
+  if (
+    ["ini", "conf", "config", "env", "lock", "gitignore", "dockerignore", "editorconfig"].includes(ext) ||
+    name.startsWith(".env")
+  )
+    return "properties";
   if (name === "dockerfile" || name.endsWith(".dockerfile")) return "dockerfile";
   if (["diff", "patch"].includes(ext)) return "diff";
   if (["sh", "bash", "zsh", "fish", "ps1", "bat", "cmd"].includes(ext)) return "shell";

@@ -132,11 +132,7 @@ export class TerminalRuntime {
     this.initialSizeResolvers.get(sessionId)?.();
     this.initialSizeResolvers.delete(sessionId);
 
-    if (
-      previousSize &&
-      previousSize.cols === safeSize.cols &&
-      previousSize.rows === safeSize.rows
-    ) {
+    if (previousSize && previousSize.cols === safeSize.cols && previousSize.rows === safeSize.rows) {
       return;
     }
 
@@ -253,9 +249,7 @@ export class TerminalRuntime {
     this.listeners.delete(sessionId);
   }
 
-  private createRecord(
-    options: EnsureTerminalOptions & { key: string; terminalId?: string },
-  ): TerminalRuntimeSession {
+  private createRecord(options: EnsureTerminalOptions & { key: string; terminalId?: string }): TerminalRuntimeSession {
     const id = options.terminalId ?? createTerminalId(++this.sequence);
     return {
       id,
@@ -395,10 +389,7 @@ export class TerminalRuntime {
           state: "exited",
           exitCode: event.exitCode,
         });
-        this.appendOutput(
-          sessionId,
-          `\r\n[process exited${event.exitCode == null ? "" : `: ${event.exitCode}`}]`,
-        );
+        this.appendOutput(sessionId, `\r\n[process exited${event.exitCode == null ? "" : `: ${event.exitCode}`}]`);
         continue;
       }
 
@@ -432,10 +423,7 @@ export class TerminalRuntime {
     if (!session) return;
 
     const history = `${session.history}${data}`;
-    session.history =
-      history.length > MAX_HISTORY_CHARS
-        ? history.slice(history.length - MAX_HISTORY_CHARS)
-        : history;
+    session.history = history.length > MAX_HISTORY_CHARS ? history.slice(history.length - MAX_HISTORY_CHARS) : history;
     if (session.backendId && session.state === "starting") {
       session.state = "running";
       this.emit(sessionId, { type: "state", session: { ...session } });
@@ -443,10 +431,7 @@ export class TerminalRuntime {
     this.emit(sessionId, { type: "output", data, session: { ...session } });
   }
 
-  private updateSession(
-    sessionId: string,
-    patch: Partial<Omit<TerminalRuntimeSession, "id" | "key">>,
-  ) {
+  private updateSession(sessionId: string, patch: Partial<Omit<TerminalRuntimeSession, "id" | "key">>) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     Object.assign(session, patch);

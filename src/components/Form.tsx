@@ -10,18 +10,8 @@ import {
 } from "@heroui/react";
 import type { ComponentProps, ReactNode } from "react";
 
-export function SettingsForm({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <HForm className={`grid gap-4 ${className ?? ""}`}>
-      {children}
-    </HForm>
-  );
+export function SettingsForm({ children, className }: { children: ReactNode; className?: string }) {
+  return <HForm className={`grid gap-4 ${className ?? ""}`}>{children}</HForm>;
 }
 
 export function Field({
@@ -48,12 +38,8 @@ export function Field({
               {label}
               {required && <span className="text-brand-red ml-0.5">*</span>}
             </div>
-            {description !== undefined && (
-              <div className="mt-0.5 text-xs text-ink-faint">{description}</div>
-            )}
-            {hint !== undefined && (
-              <div className="mt-0.5 text-xs text-ink-faint">{hint}</div>
-            )}
+            {description !== undefined && <div className="mt-0.5 text-xs text-ink-faint">{description}</div>}
+            {hint !== undefined && <div className="mt-0.5 text-xs text-ink-faint">{hint}</div>}
           </div>
         )}
         <div className="min-w-0">{children}</div>
@@ -70,12 +56,8 @@ export function Field({
             {required && <span className="text-brand-red ml-0.5">*</span>}
           </div>
         )}
-        {description !== undefined && (
-          <div className="mt-0.5 text-xs text-ink-faint">{description}</div>
-        )}
-        {hint !== undefined && (
-          <div className="mt-0.5 text-xs text-ink-faint">{hint}</div>
-        )}
+        {description !== undefined && <div className="mt-0.5 text-xs text-ink-faint">{description}</div>}
+        {hint !== undefined && <div className="mt-0.5 text-xs text-ink-faint">{hint}</div>}
       </div>
       <div className="flex min-w-[180px] w-[30%] max-w-[260px] flex-shrink-0 justify-end">{children}</div>
     </label>
@@ -129,11 +111,7 @@ export function Select({
       <HSelect.Popover>
         <HListBox>
           {options.map((option) => (
-            <HListBox.Item
-              key={option.value}
-              id={option.value}
-              textValue={option.label}
-            >
+            <HListBox.Item key={option.value} id={option.value} textValue={option.label}>
               {option.label}
               <HListBox.ItemIndicator />
             </HListBox.Item>
@@ -154,12 +132,7 @@ export function Toggle({
   disabled?: boolean;
 }) {
   return (
-    <HSwitch
-      isSelected={checked}
-      onChange={(value) => onChange?.(value)}
-      isDisabled={disabled}
-      size="md"
-    >
+    <HSwitch isSelected={checked} onChange={(value) => onChange?.(value)} isDisabled={disabled} size="md">
       <HSwitch.Control>
         <HSwitch.Thumb />
       </HSwitch.Control>
@@ -179,11 +152,7 @@ export function Checkbox({
   disabled?: boolean;
 }) {
   return (
-    <HCheckbox
-      isSelected={checked}
-      onChange={(value) => onChange?.(value)}
-      isDisabled={disabled}
-    >
+    <HCheckbox isSelected={checked} onChange={(value) => onChange?.(value)} isDisabled={disabled}>
       <HCheckbox.Control>
         <HCheckbox.Indicator />
       </HCheckbox.Control>
@@ -209,9 +178,7 @@ export function FormRow({
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-ink">{label}</div>
-        {description !== undefined && (
-          <div className="text-xs text-ink-faint mt-0.5">{description}</div>
-        )}
+        {description !== undefined && <div className="text-xs text-ink-faint mt-0.5">{description}</div>}
       </div>
       <div className="flex flex-shrink-0 justify-end">{children}</div>
     </div>
@@ -237,16 +204,10 @@ export function SettingsCard({
         <div className="mb-2 px-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              {title !== undefined && (
-                <h3 className="text-sm font-semibold text-ink">{title}</h3>
-              )}
-              {description !== undefined && (
-                <p className="mt-1 text-xs text-ink-faint">{description}</p>
-              )}
+              {title !== undefined && <h3 className="text-sm font-semibold text-ink">{title}</h3>}
+              {description !== undefined && <p className="mt-1 text-xs text-ink-faint">{description}</p>}
             </div>
-            {action !== undefined && (
-              <div className="flex flex-none items-center justify-end">{action}</div>
-            )}
+            {action !== undefined && <div className="flex flex-none items-center justify-end">{action}</div>}
           </div>
         </div>
       )}

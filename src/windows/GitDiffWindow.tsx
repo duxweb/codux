@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowTopRight, FileCode2 } from "../icons";
 import type { GitDiffSnapshot } from "../git/status";
 import { Button } from "../components/Button";
@@ -28,7 +28,7 @@ export function GitDiffWindow() {
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -64,11 +64,11 @@ export function GitDiffWindow() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [request.path, request.projectPath, request.staged]);
 
   useEffect(() => {
     void load().finally(() => revealCurrentAppWindow());
-  }, []);
+  }, [load]);
 
   const diff = snapshot?.diff || "";
   const openTargetFile = async () => {
@@ -86,11 +86,7 @@ export function GitDiffWindow() {
       title={tm("git.diff.window.title", "Diff")}
       footer={
         <>
-          <Button
-            variant="ghost"
-            size="sm"
-            onPress={() => void closeCurrentAppWindow()}
-          >
+          <Button variant="ghost" size="sm" onPress={() => void closeCurrentAppWindow()}>
             {tm("common.close", "Close")}
           </Button>
           <Button
@@ -106,7 +102,6 @@ export function GitDiffWindow() {
       }
       mainClassName="px-0 py-0"
     >
-
       {error && (
         <div className="mx-4 mt-3 rounded-md border border-brand-red/30 bg-brand-red/12 px-3 py-2 text-xs text-brand-red">
           {error}

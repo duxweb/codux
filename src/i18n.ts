@@ -24,17 +24,7 @@ export type LocaleKey =
   | "terminal.split"
   | "terminal.newTab";
 
-export type Locale =
-  | "zh-Hans"
-  | "zh-Hant"
-  | "en"
-  | "ja"
-  | "ko"
-  | "fr"
-  | "de"
-  | "es"
-  | "pt-BR"
-  | "ru";
+export type Locale = "zh-Hans" | "zh-Hant" | "en" | "ja" | "ko" | "fr" | "de" | "es" | "pt-BR" | "ru";
 
 type I18nBundle = {
   sourceLanguage: string;
@@ -145,12 +135,16 @@ const bundleKeyAliases: Partial<Record<LocaleKey, string>> = {
 let runtimeBundle: I18nBundle | null = null;
 let i18nSyncPromise: Promise<void> | null = null;
 let runtimeLocale: Locale | null = null;
+const I18N_BUNDLE_CACHE_KEY = "codux:i18n-bundle:v1";
+
+loadCachedI18nBundle();
 
 export async function syncI18nBundleFromRust() {
   if (!window.__TAURI_INTERNALS__) return;
   i18nSyncPromise ??= invoke<I18nBundle>("i18n_bundle_get")
     .then((bundle) => {
       runtimeBundle = bundle;
+      cacheI18nBundle(bundle);
     })
     .catch((error) => {
       console.error("failed to load i18n bundle", error);
@@ -159,6 +153,26 @@ export async function syncI18nBundleFromRust() {
       i18nSyncPromise = null;
     });
   await i18nSyncPromise;
+}
+
+function loadCachedI18nBundle() {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(I18N_BUNDLE_CACHE_KEY);
+    if (!raw) return;
+    runtimeBundle = JSON.parse(raw) as I18nBundle;
+  } catch {
+    runtimeBundle = null;
+  }
+}
+
+function cacheI18nBundle(bundle: I18nBundle) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(I18N_BUNDLE_CACHE_KEY, JSON.stringify(bundle));
+  } catch {
+    // Ignore quota or privacy-mode failures; the Rust bundle remains authoritative.
+  }
 }
 
 export function localeFromSettings(settings: AppSettings = readAppSettings()): Locale {

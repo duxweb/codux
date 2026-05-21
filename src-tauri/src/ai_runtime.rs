@@ -15,7 +15,7 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use tauri::async_runtime::{channel, Receiver, Sender};
 use tauri::window::{ProgressBarState, ProgressBarStatus};
@@ -383,6 +383,31 @@ pub struct AIRuntimeBridge {
     socket_path: PathBuf,
     registry: Arc<AIRuntimeRegistry>,
     supervisor: Arc<AIRuntimeSupervisor>,
+    startup: Arc<AIRuntimeStartupState>,
+}
+
+#[derive(Default)]
+struct AIRuntimeStartupState {
+    status: Mutex<AIRuntimeStartupStatus>,
+    ready: Condvar,
+}
+
+#[derive(Default)]
+enum AIRuntimeStartupStatus {
+    #[default]
+    Idle,
+    Starting,
+    Ready,
+    Failed(String),
+}
+
+fn startup_status_result(status: &AIRuntimeStartupStatus) -> Result<(), String> {
+    match status {
+        AIRuntimeStartupStatus::Ready => Ok(()),
+        AIRuntimeStartupStatus::Failed(error) => Err(error.clone()),
+        AIRuntimeStartupStatus::Idle => Err("AI runtime has not been started.".to_string()),
+        AIRuntimeStartupStatus::Starting => Err("AI runtime is still starting.".to_string()),
+    }
 }
 
 impl AIRuntimeBridge {
@@ -412,6 +437,7 @@ impl AIRuntimeBridge {
             socket_path,
             registry: Arc::new(AIRuntimeRegistry::default()),
             supervisor: Arc::new(AIRuntimeSupervisor::new(settings, memory, projects)),
+            startup: Arc::new(AIRuntimeStartupState::default()),
         }
     }
 
@@ -493,7 +519,46 @@ impl AIRuntimeBridge {
         Ok(())
     }
 
-    pub fn start_listener(&self, app: AppHandle) -> Result<(), String> {
+    pub fn start_listener_background(self: &Arc<Self>, app: AppHandle) {
+        if !self.mark_starting() {
+            return;
+        }
+        let runtime = Arc::clone(self);
+        if let Err(error) = thread::Builder::new()
+            .name("codux-ai-runtime-startup".to_string())
+            .spawn(move || {
+                let result = runtime.start_listener_inner(app);
+                runtime.finish_startup(result);
+            })
+        {
+            self.finish_startup(Err(error.to_string()));
+        }
+    }
+
+    pub fn ensure_started(&self) -> Result<(), String> {
+        match self.startup.status.lock() {
+            Ok(status) => match &*status {
+                AIRuntimeStartupStatus::Idle => drop(status),
+                AIRuntimeStartupStatus::Starting => {
+                    let status = self
+                        .startup
+                        .ready
+                        .wait_while(status, |status| {
+                            matches!(status, AIRuntimeStartupStatus::Starting)
+                        })
+                        .map_err(|_| "AI runtime startup lock poisoned.".to_string())?;
+                    return startup_status_result(&status);
+                }
+                AIRuntimeStartupStatus::Ready => return Ok(()),
+                AIRuntimeStartupStatus::Failed(error) => return Err(error.clone()),
+            },
+            Err(_) => return Err("AI runtime startup lock poisoned.".to_string()),
+        }
+
+        Err("AI runtime has not been started.".to_string())
+    }
+
+    fn start_listener_inner(&self, app: AppHandle) -> Result<(), String> {
         self.prepare()?;
         self.supervisor
             .start(app.clone(), Arc::clone(&self.registry))?;
@@ -532,6 +597,27 @@ impl AIRuntimeBridge {
         }
 
         Ok(())
+    }
+
+    fn mark_starting(&self) -> bool {
+        let Ok(mut status) = self.startup.status.lock() else {
+            return false;
+        };
+        if !matches!(*status, AIRuntimeStartupStatus::Idle) {
+            return false;
+        }
+        *status = AIRuntimeStartupStatus::Starting;
+        true
+    }
+
+    fn finish_startup(&self, result: Result<(), String>) {
+        if let Ok(mut status) = self.startup.status.lock() {
+            *status = match result {
+                Ok(()) => AIRuntimeStartupStatus::Ready,
+                Err(error) => AIRuntimeStartupStatus::Failed(error),
+            };
+            self.startup.ready.notify_all();
+        }
     }
 
     pub fn socket_path(&self) -> &Path {

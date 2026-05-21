@@ -14,7 +14,8 @@
       "update.installing": "Installiere...",
       "update.latest.message_format": "Aktuelle Version: v%@\nNeueste Version: v%@",
       "update.latest.title": "Sie verwenden bereits die neueste Version.",
-      "update.not_configured.title": "Updates nicht konfiguriert"
+      "update.not_configured.title": "Updates nicht konfiguriert",
+      "update.not_configured.preview": "Update-Kanal ist in der Browser-Vorschau nicht konfiguriert."
     },
     "en": {
       "update.available.later": "Later",
@@ -30,7 +31,8 @@
       "update.installing": "Installing...",
       "update.latest.message_format": "Current version: v%@\nLatest release: v%@",
       "update.latest.title": "You're up to date.",
-      "update.not_configured.title": "Updates Not Configured"
+      "update.not_configured.title": "Updates Not Configured",
+      "update.not_configured.preview": "Update channel is not configured in browser preview."
     },
     "es": {
       "update.available.later": "Más tarde",
@@ -46,7 +48,8 @@
       "update.installing": "Instalando...",
       "update.latest.message_format": "Versión actual: v%@\nÚltima versión: v%@",
       "update.latest.title": "Ya tienes la versión más reciente.",
-      "update.not_configured.title": "Actualizaciones no configuradas"
+      "update.not_configured.title": "Actualizaciones no configuradas",
+      "update.not_configured.preview": "El canal de actualización no está configurado en la vista previa del navegador."
     },
     "fr": {
       "update.available.later": "Plus tard",
@@ -62,7 +65,8 @@
       "update.installing": "Installation...",
       "update.latest.message_format": "Version actuelle : v%@\nDernière version : v%@",
       "update.latest.title": "Vous disposez déjà de la dernière version.",
-      "update.not_configured.title": "Mises à jour non configurées"
+      "update.not_configured.title": "Mises à jour non configurées",
+      "update.not_configured.preview": "Le canal de mise à jour n'est pas configuré dans l'aperçu navigateur."
     },
     "ja": {
       "update.available.later": "あとで",
@@ -78,7 +82,8 @@
       "update.installing": "インストール中...",
       "update.latest.message_format": "現在のバージョン: v%@\n最新バージョン: v%@",
       "update.latest.title": "すでに最新バージョンです。",
-      "update.not_configured.title": "更新が未設定です"
+      "update.not_configured.title": "更新が未設定です",
+      "update.not_configured.preview": "ブラウザプレビューでは更新チャンネルが設定されていません。"
     },
     "ko": {
       "update.available.later": "나중에",
@@ -94,7 +99,8 @@
       "update.installing": "설치 중...",
       "update.latest.message_format": "현재 버전: v%@\n최신 버전: v%@",
       "update.latest.title": "이미 최신 버전입니다.",
-      "update.not_configured.title": "업데이트가 설정되지 않음"
+      "update.not_configured.title": "업데이트가 설정되지 않음",
+      "update.not_configured.preview": "브라우저 미리보기에는 업데이트 채널이 설정되어 있지 않습니다."
     },
     "pt-BR": {
       "update.available.later": "Depois",
@@ -110,7 +116,8 @@
       "update.installing": "Instalando...",
       "update.latest.message_format": "Versão atual: v%@\nÚltima versão: v%@",
       "update.latest.title": "Você já está na versão mais recente.",
-      "update.not_configured.title": "Atualizações não configuradas"
+      "update.not_configured.title": "Atualizações não configuradas",
+      "update.not_configured.preview": "O canal de atualização não está configurado na prévia do navegador."
     },
     "ru": {
       "update.available.later": "Позже",
@@ -126,7 +133,8 @@
       "update.installing": "Установка...",
       "update.latest.message_format": "Текущая версия: v%@\nПоследняя версия: v%@",
       "update.latest.title": "У вас уже последняя версия.",
-      "update.not_configured.title": "Обновления не настроены"
+      "update.not_configured.title": "Обновления не настроены",
+      "update.not_configured.preview": "Канал обновлений не настроен в предпросмотре браузера."
     },
     "zh-Hans": {
       "update.available.later": "稍后再说",
@@ -142,7 +150,8 @@
       "update.installing": "正在安装...",
       "update.latest.message_format": "当前版本：v%@\n最新版本：v%@",
       "update.latest.title": "当前已是最新版本",
-      "update.not_configured.title": "更新未配置"
+      "update.not_configured.title": "更新未配置",
+      "update.not_configured.preview": "浏览器预览中未配置更新渠道。"
     },
     "zh-Hant": {
       "update.available.later": "稍後再說",
@@ -158,7 +167,8 @@
       "update.installing": "正在安裝...",
       "update.latest.message_format": "目前版本：v%@\n最新版本：v%@",
       "update.latest.title": "目前已是最新版本",
-      "update.not_configured.title": "更新未配置"
+      "update.not_configured.title": "更新未配置",
+      "update.not_configured.preview": "瀏覽器預覽中未配置更新渠道。"
     }
   }
 }

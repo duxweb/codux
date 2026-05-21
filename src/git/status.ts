@@ -214,11 +214,10 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
         useRuntimeStore.getState().setGitLoading(projectCacheKey, true);
       }
       try {
-        const next = await invoke<GitStatusSnapshot>("git_status", {
+        await invoke("git_refresh_project", {
           projectPath: requestPath,
         });
         if (projectPathRef.current !== requestPath) return;
-        applySnapshot(next);
       } catch (nextError) {
         if (projectPathRef.current !== requestPath) return;
         const message = nextError instanceof Error ? nextError.message : String(nextError);
@@ -238,17 +237,8 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
         }
       }
     },
-    [applySnapshot, projectBranch, projectPath, projectCacheKey],
+    [projectBranch, projectPath, projectCacheKey],
   );
-
-  useEffect(() => {
-    if (!projectPath || !window.__TAURI_INTERNALS__) return;
-    if (useRuntimeStore.getState().gitStatusByPath[projectCacheKey]) {
-      useRuntimeStore.getState().setGitLoading(projectCacheKey, false);
-      return;
-    }
-    void refresh({ silent: true });
-  }, [projectCacheKey, projectPath, refresh]);
 
   const runSnapshotAction = useCallback(
     async (command: string, payload: Record<string, unknown>) => {

@@ -47,5 +47,11 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ["src/icons.tsx", "src/main.tsx", "src/components/AppIconMark.tsx", "src/components/ContextMenu.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
   prettier,
 );

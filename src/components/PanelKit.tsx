@@ -6,19 +6,11 @@ type IconLike = (props: { size?: number; strokeWidth?: number; className?: strin
 
 export type PanelTone = "neutral" | "info" | "success" | "warning" | "danger";
 
-export function PanelHeader({
-  title,
-  trailing,
-}: {
-  title: ReactNode;
-  trailing?: ReactNode;
-}) {
+export function PanelHeader({ title, trailing }: { title: ReactNode; trailing?: ReactNode }) {
   return (
     <div className="h-[42px] px-3.5 flex items-center justify-between flex-shrink-0 border-b border-line">
       <div className="text-sm font-semibold text-ink truncate">{title}</div>
-      {trailing ? (
-        <div className="flex items-center gap-1.5">{trailing}</div>
-      ) : null}
+      {trailing ? <div className="flex items-center gap-1.5">{trailing}</div> : null}
     </div>
   );
 }
@@ -97,9 +89,7 @@ export function PanelStatusBar({
   trailing?: ReactNode;
 }) {
   return (
-    <div
-      className={`h-[36px] flex-shrink-0 px-3 flex items-center justify-between gap-2 text-xs ${toneClass[tone]}`}
-    >
+    <div className={`h-[36px] flex-shrink-0 px-3 flex items-center justify-between gap-2 text-xs ${toneClass[tone]}`}>
       <div className="flex items-center gap-1.5 min-w-0">{leading}</div>
       <div className="flex items-center gap-1 flex-shrink-0">{trailing}</div>
     </div>
@@ -197,9 +187,7 @@ export function PanelEmptyState({
         </div>
         <div className="text-sm font-semibold">{title}</div>
         {description && (
-          <div className="text-xs text-ink-mute mt-1.5 max-w-[220px] mx-auto leading-relaxed">
-            {description}
-          </div>
+          <div className="text-xs text-ink-mute mt-1.5 max-w-[220px] mx-auto leading-relaxed">{description}</div>
         )}
         {action && <div className="mt-4">{action}</div>}
       </div>

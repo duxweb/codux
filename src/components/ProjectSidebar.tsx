@@ -16,30 +16,24 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import {
   checkForUpdates,
-  closeAllProjectsFromMenu,
   closeProjectFromMenu,
   exportDiagnostics,
   openExternalUrl,
   openLiveLog,
   openRuntimeLog,
   showAbout,
-  toggleDeveloperTools,
 } from "../appActions";
 import { CODUX_GITHUB_URL, CODUX_WEBSITE_URL } from "../appLinks";
+import { openAppWindow } from "../windowing";
 import { useCallback, useEffect, useState } from "react";
-import {
-  listProjectOpenApplications,
-  openProjectInApplication,
-  revealProjectInFileManager,
-  type ProjectOpenApplication,
-} from "../ide";
+import { revealProjectInFileManager } from "../ide";
 import { formatI18n, t, tm } from "../i18n";
 import { Button } from "./Button";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
 import { DesktopMenu, DesktopMenuItem, DesktopMenuSeparator } from "./DesktopMenu";
 import { PressableButton } from "./PressableButton";
 import { Tooltip } from "./Tooltip";
-import type { ProjectListSnapshot, WorkspaceProject } from "../types";
+import type { WorkspaceProject } from "../types";
 import type { AppIcon } from "../icons";
 
 type Props = {
@@ -50,7 +44,6 @@ type Props = {
   onFocusScope: () => void;
   onCreateProject: () => void;
   onOpenSettings: () => void;
-  onProjectSnapshot?: (snapshot: ProjectListSnapshot) => void;
   onCreateWorktree?: (project: WorkspaceProject) => void;
 };
 
@@ -96,29 +89,13 @@ export function ProjectSidebar({
   onFocusScope,
   onCreateProject,
   onOpenSettings,
-  onProjectSnapshot,
   onCreateWorktree,
 }: Props) {
   const width = isExpanded ? 248 : 70;
-  const [openApplications, setOpenApplications] = useState<ProjectOpenApplication[]>([]);
-  const [openApplicationsLoaded, setOpenApplicationsLoaded] = useState(false);
   const [orderedProjects, setOrderedProjects] = useState(projects);
   const [optimisticSelectedProjectId, setOptimisticSelectedProjectId] = useState(selectedProjectId);
   const optimisticProjectExists = orderedProjects.some((project) => project.id === optimisticSelectedProjectId);
   const displayedSelectedProjectId = optimisticProjectExists ? optimisticSelectedProjectId : selectedProjectId;
-
-  const loadOpenApplications = useCallback(() => {
-    if (openApplicationsLoaded) return;
-    setOpenApplicationsLoaded(true);
-    void listProjectOpenApplications()
-      .then((items) => {
-        setOpenApplications(items.filter((item) => item.installed && item.category === "ide"));
-      })
-      .catch((error) => {
-        setOpenApplicationsLoaded(false);
-        console.error("failed to load installed applications", error);
-      });
-  }, [openApplicationsLoaded]);
 
   const selectProject = useCallback(
     (id: string) => {
@@ -137,25 +114,20 @@ export function ProjectSidebar({
     setOrderedProjects((current) => mergeProjectOrder(current, projects));
   }, [projects]);
 
-  const reorderProject = useCallback(
-    (sourceId: string, targetId: string) => {
-      setOrderedProjects((current) => {
-        const next = reorderById(current, sourceId, targetId);
-        if (next === current) return current;
-        if (window.__TAURI_INTERNALS__) {
-          void invoke<ProjectListSnapshot>("project_reorder", {
-            request: {
-              projectIds: next.map((project) => project.id),
-            },
-          })
-            .then((snapshot) => onProjectSnapshot?.(snapshot))
-            .catch((error) => console.error("failed to reorder projects", error));
-        }
-        return next;
-      });
-    },
-    [onProjectSnapshot],
-  );
+  const reorderProject = useCallback((sourceId: string, targetId: string) => {
+    setOrderedProjects((current) => {
+      const next = reorderById(current, sourceId, targetId);
+      if (next === current) return current;
+      if (window.__TAURI_INTERNALS__) {
+        void invoke("project_reorder", {
+          request: {
+            projectIds: next.map((project) => project.id),
+          },
+        }).catch((error) => console.error("failed to reorder projects", error));
+      }
+      return next;
+    });
+  }, []);
 
   return (
     <nav
@@ -171,67 +143,43 @@ export function ProjectSidebar({
       )}
 
       <div className="flex-1 overflow-y-auto scrollbar-hidden">
-        <div
-          className={`flex flex-col ${
-            isExpanded ? "gap-1 px-3 pt-1 pb-4" : "gap-1 px-3 pt-[18px] pb-4"
-          }`}
-        >
+        <div className={`flex flex-col ${isExpanded ? "gap-1 px-3 pt-1 pb-4" : "gap-1 px-3 pt-[18px] pb-4"}`}>
           {orderedProjects.map((project, index) => (
             <ProjectRow
               key={project.id}
               project={project}
-              colors={project.badgeColorHex ? projectBadgeColors(project.badgeColorHex) : badgePalette[index % badgePalette.length]}
+              colors={
+                project.badgeColorHex
+                  ? projectBadgeColors(project.badgeColorHex)
+                  : badgePalette[index % badgePalette.length]
+              }
               isSelected={project.id === displayedSelectedProjectId}
               isExpanded={isExpanded}
               onPress={() => selectProject(project.id)}
               onReorder={reorderProject}
-              openApplications={openApplications}
-              onLoadOpenApplications={loadOpenApplications}
               onCreateWorktree={() => onCreateWorktree?.(project)}
+              onEdit={() =>
+                void openAppWindow("project-edit", {
+                  projectId: project.id,
+                  name: project.name,
+                  path: project.path,
+                  badgeSymbol: project.badgeSymbol ?? "",
+                  badgeColorHex: project.badgeColorHex ?? "",
+                })
+              }
               onReveal={() => void revealProjectInFileManager(project.path)}
-              onOpenApplication={(applicationId) => void openProjectInApplication(project.path, applicationId)}
               onClose={() => {
-                void closeProjectFromMenu(project)
-                  .then((snapshot) => {
-                    if (snapshot) onProjectSnapshot?.(snapshot);
-                  })
-                  .catch((error) => console.error("failed to close project", error));
-              }}
-              onCloseAll={() => {
-                void closeAllProjectsFromMenu(orderedProjects)
-                  .then((snapshot) => {
-                    if (snapshot) onProjectSnapshot?.(snapshot);
-                  })
-                  .catch((error) => console.error("failed to close all projects", error));
+                void closeProjectFromMenu(project).catch((error) => console.error("failed to close project", error));
               }}
             />
           ))}
         </div>
       </div>
 
-      <div
-        className={`flex flex-col gap-1.5 pb-4 pt-3 ${
-          isExpanded ? "px-3" : "px-3 items-center"
-        }`}
-      >
-        <FooterButton
-          icon={Plus}
-          label={t("addProject")}
-          isExpanded={isExpanded}
-          onPress={onCreateProject}
-        />
-        <FooterButton
-          icon={Settings}
-          label={t("settings")}
-          isExpanded={isExpanded}
-          onPress={onOpenSettings}
-        />
-        <FooterButton
-          icon={MoreHorizontal}
-          label={t("help")}
-          isExpanded={isExpanded}
-          menu
-        />
+      <div className={`flex flex-col gap-1.5 pb-4 pt-3 ${isExpanded ? "px-3" : "px-3 items-center"}`}>
+        <FooterButton icon={Plus} label={t("addProject")} isExpanded={isExpanded} onPress={onCreateProject} />
+        <FooterButton icon={Settings} label={t("settings")} isExpanded={isExpanded} onPress={onOpenSettings} />
+        <FooterButton icon={MoreHorizontal} label={t("help")} isExpanded={isExpanded} menu />
       </div>
     </nav>
   );
@@ -266,13 +214,10 @@ function ProjectRow({
   isSelected,
   isExpanded,
   onPress,
-  openApplications,
-  onLoadOpenApplications,
   onCreateWorktree,
+  onEdit,
   onReveal,
-  onOpenApplication,
   onClose,
-  onCloseAll,
   onReorder,
 }: {
   project: WorkspaceProject;
@@ -280,13 +225,10 @@ function ProjectRow({
   isSelected: boolean;
   isExpanded: boolean;
   onPress: () => void;
-  openApplications: ProjectOpenApplication[];
-  onLoadOpenApplications: () => void;
   onCreateWorktree?: () => void;
+  onEdit?: () => void;
   onReveal?: () => void;
-  onOpenApplication?: (applicationId: string) => void;
   onClose?: () => void;
-  onCloseAll?: () => void;
   onReorder?: (sourceId: string, targetId: string) => void;
 }) {
   const initials = project.badge.slice(0, isExpanded ? 2 : 1).toUpperCase();
@@ -299,7 +241,6 @@ function ProjectRow({
       <PressableButton
         onPressUp={onPress}
         onContextMenu={(event) => {
-          onLoadOpenApplications();
           contextMenu.openMenu(event);
         }}
         aria-busy={project.aiState === "running"}
@@ -325,13 +266,7 @@ function ProjectRow({
         }`}
         style={{ opacity: isSelected ? 1 : 0.82 }}
       >
-        <div
-          className={
-            isExpanded
-              ? "flex items-center gap-2.5 p-2"
-              : "flex justify-center p-[6px]"
-          }
-        >
+        <div className={isExpanded ? "flex items-center gap-2.5 p-2" : "flex justify-center p-[6px]"}>
           <span
             className="relative rounded-[8px] grid place-items-center flex-shrink-0 shadow-badge"
             style={{
@@ -340,25 +275,17 @@ function ProjectRow({
               background: `linear-gradient(135deg, ${colors.from} 0%, ${colors.to} 100%)`,
             }}
           >
-            {project.aiState !== "idle" && (
-              <ProjectActivityBadge state={project.aiState} />
-            )}
+            {project.aiState !== "idle" && <ProjectActivityBadge state={project.aiState} />}
             {BadgeIcon ? (
               <BadgeIcon size={isExpanded ? 17 : 16} className="text-on-brand" />
             ) : (
-              <span className="text-on-brand font-bold text-sm tracking-tight">
-                {initials}
-              </span>
+              <span className="text-on-brand font-bold text-sm tracking-tight">{initials}</span>
             )}
           </span>
 
           {isExpanded && (
             <div className="min-w-0 flex-1 text-left">
-              <div
-                className={`text-sm font-semibold truncate ${
-                  isSelected ? "text-ink" : "text-ink-soft"
-                }`}
-              >
+              <div className={`text-sm font-semibold truncate ${isSelected ? "text-ink" : "text-ink-soft"}`}>
                 {project.name}
               </div>
               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-ink-faint">
@@ -386,24 +313,15 @@ function ProjectRow({
           {tm("worktree.create.title", "New Worktree")}
         </ContextMenuItem>
         <ContextMenuSeparator />
+        <ContextMenuItem label={tm("common.edit", "Edit")} onSelect={onEdit}>
+          {tm("common.edit", "Edit")}
+        </ContextMenuItem>
         <ContextMenuItem label={tm("sidebar.project.open_folder", "Open Folder")} onSelect={onReveal}>
           {tm("sidebar.project.open_folder", "Open Folder")}
         </ContextMenuItem>
-        {openApplications.map((application) => (
-          <ContextMenuItem
-            key={application.id}
-            label={formatI18n(tm("open.application.format", "Open in %@"), application.label)}
-            onSelect={() => onOpenApplication?.(application.id)}
-          >
-            {formatI18n(tm("open.application.format", "Open in %@"), application.label)}
-          </ContextMenuItem>
-        ))}
         <ContextMenuSeparator />
         <ContextMenuItem label={tm("sidebar.project.remove", "Remove Project")} onSelect={onClose}>
           {tm("sidebar.project.remove", "Remove Project")}
-        </ContextMenuItem>
-        <ContextMenuItem label={tm("workspace.close_all_projects.confirm", "Close All")} onSelect={onCloseAll}>
-          {tm("workspace.close_all_projects.confirm", "Close All")}
         </ContextMenuItem>
       </ContextMenu>
     </>
@@ -538,23 +456,27 @@ function HelpMenuButton({
       <DesktopMenuItem label={tm("about.updates", "Check for Updates")} onSelect={() => void checkForUpdates()}>
         {tm("about.updates", "Check for Updates")}
       </DesktopMenuItem>
-      <DesktopMenuItem label={tm("menu.help.export_diagnostics", "Export Diagnostics...")} onSelect={() => void exportDiagnostics()}>
+      <DesktopMenuItem
+        label={tm("menu.help.export_diagnostics", "Export Diagnostics...")}
+        onSelect={() => void exportDiagnostics()}
+      >
         {tm("menu.help.export_diagnostics", "Export Diagnostics...")}
       </DesktopMenuItem>
       <DesktopMenuSeparator />
-      <DesktopMenuItem label={tm("menu.help.open_runtime_log", "Open Runtime Log")} onSelect={() => void openRuntimeLog()}>
+      <DesktopMenuItem
+        label={tm("menu.help.open_runtime_log", "Open Runtime Log")}
+        onSelect={() => void openRuntimeLog()}
+      >
         {tm("menu.help.open_runtime_log", "Open Runtime Log")}
       </DesktopMenuItem>
       <DesktopMenuItem label={tm("menu.help.open_live_log", "Open Live Log")} onSelect={() => void openLiveLog()}>
         {tm("menu.help.open_live_log", "Open Live Log")}
       </DesktopMenuItem>
-      {import.meta.env.DEV && (
-        <DesktopMenuItem label={tm("menu.help.developer_tools", "Developer Tools")} onSelect={() => void toggleDeveloperTools()}>
-          {tm("menu.help.developer_tools", "Developer Tools")}
-        </DesktopMenuItem>
-      )}
       <DesktopMenuSeparator />
-      <DesktopMenuItem label={tm("menu.help.website", "Website")} onSelect={() => void openExternalUrl(CODUX_WEBSITE_URL)}>
+      <DesktopMenuItem
+        label={tm("menu.help.website", "Website")}
+        onSelect={() => void openExternalUrl(CODUX_WEBSITE_URL)}
+      >
         {tm("menu.help.website", "Website")}
       </DesktopMenuItem>
       <DesktopMenuItem label={tm("menu.help.github", "GitHub")} onSelect={() => void openExternalUrl(CODUX_GITHUB_URL)}>

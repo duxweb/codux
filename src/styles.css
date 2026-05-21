@@ -20,17 +20,17 @@
   --color-line: rgb(48 55 68);
   --color-line-strong: rgb(64 72 88);
 
-  --color-brand-blue: rgb(91 141 244);
-  --color-brand-blue-deep: rgb(58 111 217);
-  --color-brand-green: rgb(57 217 138);
-  --color-brand-green-deep: rgb(31 157 97);
-  --color-brand-amber: rgb(244 184 90);
-  --color-brand-amber-deep: rgb(201 137 51);
-  --color-brand-red: rgb(255 94 108);
-  --color-brand-purple: rgb(180 149 234);
-  --color-brand-purple-deep: rgb(126 88 196);
-  --color-brand-pink: rgb(226 91 139);
-  --color-brand-pink-deep: rgb(181 61 111);
+  --color-brand-blue: rgb(59 130 246);
+  --color-brand-blue-deep: rgb(37 99 235);
+  --color-brand-green: rgb(34 197 94);
+  --color-brand-green-deep: rgb(22 163 74);
+  --color-brand-amber: rgb(245 158 11);
+  --color-brand-amber-deep: rgb(217 119 6);
+  --color-brand-red: rgb(239 68 68);
+  --color-brand-purple: rgb(168 85 247);
+  --color-brand-purple-deep: rgb(147 51 234);
+  --color-brand-pink: rgb(236 72 153);
+  --color-brand-pink-deep: rgb(219 39 119);
 
   --accent: var(--color-brand-blue);
   --accent-hover: color-mix(in oklab, var(--color-brand-blue) 88%, var(--color-fill));
@@ -45,9 +45,7 @@
   --radius-glyph: 7px;
 
   --shadow-pop: 0 10px 30px -12px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.25);
-  --shadow-badge:
-    inset 0 1px 0 color-mix(in oklab, var(--color-fill) 8%, transparent),
-    0 2px 6px rgb(0 0 0 / 0.2);
+  --shadow-badge: inset 0 1px 0 color-mix(in oklab, var(--color-fill) 8%, transparent), 0 2px 6px rgb(0 0 0 / 0.2);
 }
 
 :root {
@@ -105,14 +103,7 @@
   --editor-deleted: var(--terminal-red);
   --editor-invalid: var(--terminal-bright-red);
 
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "SF Pro Text",
-    "PingFang SC",
-    "Segoe UI",
-    ui-sans-serif,
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", ui-sans-serif, sans-serif;
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
@@ -146,9 +137,7 @@
     transparent 2px 6px
   );
   --shadow-pop: 0 14px 34px -18px rgb(24 35 52 / 0.24), 0 2px 8px rgb(24 35 52 / 0.12);
-  --shadow-badge:
-    inset 0 1px 0 rgb(255 255 255 / 0.36),
-    0 2px 7px rgb(24 35 52 / 0.16);
+  --shadow-badge: inset 0 1px 0 rgb(255 255 255 / 0.36), 0 2px 7px rgb(24 35 52 / 0.16);
 
   --terminal-bg: #fbfcfe;
   --terminal-fg: #263246;
@@ -187,8 +176,8 @@
   --color-surface-editor: rgb(23 25 29);
   --color-line: rgb(54 58 66);
   --color-line-strong: rgb(72 77 87);
-  --color-brand-blue: rgb(124 164 234);
-  --color-brand-blue-deep: rgb(85 126 208);
+  --color-brand-blue: rgb(96 165 250);
+  --color-brand-blue-deep: rgb(59 130 246);
 
   --terminal-bg: #181a1e;
   --terminal-fg: #dce1e7;
@@ -210,8 +199,8 @@
   --color-surface-editor: rgb(14 20 29);
   --color-line: rgb(40 51 68);
   --color-line-strong: rgb(55 68 89);
-  --color-brand-blue: rgb(102 152 255);
-  --color-brand-blue-deep: rgb(67 119 230);
+  --color-brand-blue: rgb(96 165 250);
+  --color-brand-blue-deep: rgb(59 130 246);
 
   --terminal-bg: #0f151f;
   --terminal-selection: #284768;
@@ -282,7 +271,6 @@
   .scrollbar-overlay::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklab, var(--color-fill) 28%, transparent);
   }
-
 }
 
 @layer base {
@@ -406,7 +394,6 @@
     app-region: no-drag;
     -webkit-app-region: no-drag;
   }
-
 }
 
 .app-shell {
@@ -432,6 +419,22 @@ html.standalone-window:not(.terminal-window) .app-shell {
 
 html.standalone-window:not(.terminal-window) .app-shell::after {
   content: none;
+}
+
+@keyframes codux-startup-progress {
+  0% {
+    transform: translateX(-115%);
+    opacity: 0.35;
+  }
+
+  45% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(230%);
+    opacity: 0.35;
+  }
 }
 
 ::-webkit-scrollbar {

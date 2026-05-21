@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { aggregateProjectPhase, phaseToAIState, resolveDisplayedProjectPhase } from "./ai/projectPhase";
 import { ensureAIHistoryEventCacheSubscription } from "./ai/history";
 import { usePetLedger } from "./ai/petState";
@@ -18,9 +18,10 @@ import { TaskSidebar } from "./components/TaskSidebar";
 import { Titlebar } from "./components/Titlebar";
 import { Workspace } from "./components/Workspace";
 import { fallbackProjects } from "./data/mock";
-import { installTerminalFocusEventTrace, logTerminalFocusDebug } from "./debug/terminalFocusDebug";
+import { ensureGitReviewEventCacheSubscription } from "./git/review";
 import { ensureGitStatusEventCacheSubscription } from "./git/status";
 import { readCachedProjectListSnapshot, writeCachedProjectListSnapshot } from "./projectSnapshotCache";
+import { useRuntimeStore } from "./runtimeStore";
 import { dispatchShortcut, isConfiguredShortcut, registerShortcutHandler, type ShortcutScope } from "./shortcuts";
 import { openAppWindow, revealMainAppWindow } from "./windowing";
 import { listenWorkspaceCommand } from "./workspaceCommands";
@@ -28,6 +29,7 @@ import { ensureWorktreeSnapshotEventCacheSubscription, useWorktreeSnapshot } fro
 import { subscribeAppSettings } from "./settings";
 import { systemConfirm } from "./systemDialog";
 import { tm } from "./i18n";
+import { ensureTerminalLayoutsSnapshotSubscription } from "./terminalLayout";
 import type {
   MainView,
   ProjectListSnapshot,
@@ -42,22 +44,10 @@ import type { ProjectWorktreeSnapshot } from "./worktree/snapshot";
 type HydratableProject = ProjectSummary &
   Partial<Pick<WorkspaceProject, "branch" | "aiState" | "terminals" | "changes">>;
 
-let projectListSnapshotPromise: Promise<ProjectListSnapshot> | null = null;
-let remoteStatusPromise: Promise<RemoteStatus> | null = null;
-
-function loadProjectListSnapshot() {
-  projectListSnapshotPromise ??= invoke<ProjectListSnapshot>("project_list").finally(() => {
-    projectListSnapshotPromise = null;
-  });
-  return projectListSnapshotPromise;
-}
-
-function loadRemoteStatus() {
-  remoteStatusPromise ??= invoke<RemoteStatus>("remote_status").finally(() => {
-    remoteStatusPromise = null;
-  });
-  return remoteStatusPromise;
-}
+const EMPTY_WORKTREES: ProjectWorktreeSnapshot[] = [];
+const EMPTY_WORKTREE_AI_STATE: Record<string, WorkspaceProject["aiState"]> = {};
+const MemoProjectSidebar = memo(ProjectSidebar);
+const MemoTaskSidebar = memo(TaskSidebar);
 
 function hydrate(project: HydratableProject, index: number): WorkspaceProject {
   return {
@@ -86,30 +76,56 @@ function App() {
       ? (cachedProjectSnapshot?.selectedProjectId ?? initialProjects[0]?.id ?? "")
       : (fallbackProjects[0]?.id ?? ""),
   );
+  const [activeProjectId, setActiveProjectId] = useState(() =>
+    window.__TAURI_INTERNALS__
+      ? (cachedProjectSnapshot?.selectedProjectId ?? initialProjects[0]?.id ?? "")
+      : (fallbackProjects[0]?.id ?? ""),
+  );
+  const [inspectorProject, setInspectorProject] = useState<WorkspaceProject | undefined>(() => undefined);
   const [mainView, setMainView] = useState<MainView>("terminal");
   const [isSidebarExpanded, setSidebarExpanded] = useState(false);
   const [isTaskSidebarExpanded, setTaskSidebarExpanded] = useState(true);
   const [rightPanel, setRightPanel] = useState<RightPanelKind | null>(null);
   const [_session, setSession] = useState<TerminalSession | null>(null);
-  const [remoteStatus, setRemoteStatus] = useState<RemoteStatus | null>(null);
+  const remoteStatus = useRuntimeStore((state) => state.remoteStatus);
+  const projectListSnapshot = useRuntimeStore((state) => state.projectListSnapshot);
   const [selectedWorktreeByProject, setSelectedWorktreeByProject] = useState<Record<string, string>>({});
   const [terminalFocusRequest, setTerminalFocusRequest] = useState(0);
   const [taskCreateRequest, setTaskCreateRequest] = useState(0);
   const [isCreatingWorktree, setCreatingWorktree] = useState(false);
   const [aiVersion, setAiVersion] = useState(0);
+  const [, startInspectorTransition] = useTransition();
   const focusScopeRef = useRef<ShortcutScope>("workspace");
+  const activeWorkspaceKeyRef = useRef("");
 
   const applyProjectSnapshot = useCallback((snapshot: ProjectListSnapshot) => {
     writeCachedProjectListSnapshot(snapshot);
     const next = snapshot.projects.map(hydrate);
+    const nextProjectIds = new Set(next.map((project) => project.id));
     setProjects(next);
-    setSelectedWorktreeByProject(snapshot.selectedWorktreeIdByProject ?? {});
+    setSelectedWorktreeByProject((current) => {
+      const incoming = snapshot.selectedWorktreeIdByProject ?? {};
+      const merged: Record<string, string> = {};
+      for (const project of next) {
+        merged[project.id] = current[project.id] || incoming[project.id] || project.id;
+      }
+      return merged;
+    });
     setSelectedProjectId((current) => {
-      if (snapshot.selectedProjectId && next.some((project) => project.id === snapshot.selectedProjectId)) {
+      if (current && nextProjectIds.has(current)) {
+        return current;
+      }
+      if (snapshot.selectedProjectId && nextProjectIds.has(snapshot.selectedProjectId)) {
         return snapshot.selectedProjectId;
       }
-      if (current && next.some((project) => project.id === current)) {
+      return next[0]?.id ?? "";
+    });
+    setActiveProjectId((current) => {
+      if (current && nextProjectIds.has(current)) {
         return current;
+      }
+      if (snapshot.selectedProjectId && nextProjectIds.has(snapshot.selectedProjectId)) {
+        return snapshot.selectedProjectId;
       }
       return next[0]?.id ?? "";
     });
@@ -119,33 +135,46 @@ function App() {
     const unsubscribe = aiRuntime.subscribe(() => setAiVersion((current) => current + 1));
     if (!window.__TAURI_INTERNALS__) return unsubscribe;
     ensureAIHistoryEventCacheSubscription();
+    ensureGitReviewEventCacheSubscription();
     ensureGitStatusEventCacheSubscription();
     ensureWorktreeSnapshotEventCacheSubscription();
+    ensureTerminalLayoutsSnapshotSubscription();
     let isDisposed = false;
     let unlistenProjects: (() => void) | undefined;
-    void loadProjectListSnapshot()
-      .then(applyProjectSnapshot)
-      .catch((error) => console.error("failed to load projects", error));
-
-    void listen<ProjectListSnapshot>("project:updated", (event) => {
-      applyProjectSnapshot(event.payload);
-    }).then((unlisten) => {
-      if (isDisposed) {
-        unlisten();
-        return;
-      }
-      unlistenProjects = unlisten;
-    });
-
-    void loadRemoteStatus()
-      .then(setRemoteStatus)
-      .catch((error) => console.error("failed to load remote status", error));
+    let unlistenRemoteStatus: (() => void) | undefined;
+    void Promise.all([
+      listen<ProjectListSnapshot>("project:updated", (event) => {
+        useRuntimeStore.getState().setProjectListSnapshot(event.payload);
+      }),
+      listen<RemoteStatus>("remote:status", (event) => {
+        useRuntimeStore.getState().setRemoteStatus(event.payload);
+      }),
+    ])
+      .then(([nextUnlistenProjects, nextUnlistenRemoteStatus]) => {
+        if (isDisposed) {
+          nextUnlistenProjects();
+          nextUnlistenRemoteStatus();
+          return;
+        }
+        unlistenProjects = nextUnlistenProjects;
+        unlistenRemoteStatus = nextUnlistenRemoteStatus;
+        void invoke("app_runtime_ready").catch((error) =>
+          console.error("failed to initialize runtime snapshots", error),
+        );
+      })
+      .catch((error) => console.error("failed to initialize runtime event listeners", error));
+    void aiRuntime.start().catch((error) => console.error("failed to initialize ai runtime", error));
     return () => {
       isDisposed = true;
       unlistenProjects?.();
+      unlistenRemoteStatus?.();
       unsubscribe();
     };
   }, [applyProjectSnapshot]);
+
+  useEffect(() => {
+    if (projectListSnapshot) applyProjectSnapshot(projectListSnapshot);
+  }, [applyProjectSnapshot, projectListSnapshot]);
 
   const projectsWithAIState = useMemo(
     () =>
@@ -161,21 +190,28 @@ function App() {
   const pet = usePetLedger(projectsWithAIState);
 
   const selectedProjectWithAIState = useMemo(
-    () => projectsWithAIState.find((p) => p.id === selectedProjectId) ?? projectsWithAIState[0],
-    [projectsWithAIState, selectedProjectId],
+    () => projectsWithAIState.find((p) => p.id === activeProjectId) ?? projectsWithAIState[0],
+    [activeProjectId, projectsWithAIState],
   );
-
   useEffect(() => subscribeAppSettings(() => void aiRuntime.start()), []);
-  useEffect(
-    () =>
-      subscribeAppSettings(() => {
-        if (!window.__TAURI_INTERNALS__) return;
-        void loadRemoteStatus()
-          .then(setRemoteStatus)
-          .catch((error) => console.error("failed to load remote status", error));
-      }),
-    [],
-  );
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__) return;
+    const reportWindowState = () => {
+      void invoke("app_window_state", {
+        visible: document.visibilityState !== "hidden",
+        focused: document.hasFocus(),
+      }).catch((error) => console.error("failed to report app window state", error));
+    };
+    reportWindowState();
+    window.addEventListener("focus", reportWindowState);
+    window.addEventListener("blur", reportWindowState);
+    document.addEventListener("visibilitychange", reportWindowState);
+    return () => {
+      window.removeEventListener("focus", reportWindowState);
+      window.removeEventListener("blur", reportWindowState);
+      document.removeEventListener("visibilitychange", reportWindowState);
+    };
+  }, []);
   const worktree = useWorktreeSnapshot(selectedProjectWithAIState);
   const worktreeSnapshot = worktree.snapshot;
   const worktreeAIStateById = useMemo(() => {
@@ -196,6 +232,9 @@ function App() {
     : "";
   const selectedWorktree =
     worktreeSnapshot.worktrees.find((item) => item.id === selectedWorktreeId) ?? worktreeSnapshot.worktrees[0];
+  const taskSidebarProject = isTaskSidebarExpanded ? selectedProjectWithAIState : undefined;
+  const taskSidebarWorktrees = isTaskSidebarExpanded ? worktreeSnapshot.worktrees : EMPTY_WORKTREES;
+  const taskSidebarAIStateById = isTaskSidebarExpanded ? worktreeAIStateById : EMPTY_WORKTREE_AI_STATE;
   const selectedWorkspaceProject = useMemo<WorkspaceProject | undefined>(() => {
     if (!selectedProjectWithAIState) return undefined;
     if (!selectedWorktree) return selectedProjectWithAIState;
@@ -235,6 +274,13 @@ function App() {
 
   useEffect(() => {
     if (!window.__TAURI_INTERNALS__ || !selectedWorkspaceProject) return;
+    const workspaceKey = [
+      selectedWorkspaceProject.id,
+      selectedWorkspaceProject.path,
+      selectedWorkspaceProject.branch,
+    ].join(":");
+    if (activeWorkspaceKeyRef.current === workspaceKey) return;
+    activeWorkspaceKeyRef.current = workspaceKey;
     void invoke("project_mark_active", {
       project: {
         id: selectedWorkspaceProject.id,
@@ -282,16 +328,10 @@ function App() {
           setShortcutFocusScope("workspace");
         },
         toggleProjects: () => {
-          setSidebarExpanded((value) => {
-            logTerminalFocusDebug("state:sidebar-toggle", { from: value, to: !value });
-            return !value;
-          });
+          setSidebarExpanded((value) => !value);
         },
         toggleTasks: () => {
-          setTaskSidebarExpanded((value) => {
-            logTerminalFocusDebug("state:task-sidebar-toggle", { from: value, to: !value });
-            return !value;
-          });
+          setTaskSidebarExpanded((value) => !value);
         },
         toggleRightPanel,
         createTask: () => {
@@ -300,33 +340,21 @@ function App() {
           setTaskCreateRequest((value) => value + 1);
         },
         openProjectFolder: () => {
-          void openProjectFolderFromMenu()
-            .then((snapshot) => {
-              if (snapshot) applyProjectSnapshot(snapshot);
-            })
-            .catch((error) => console.error("failed to open project folder", error));
+          void openProjectFolderFromMenu().catch((error) => console.error("failed to open project folder", error));
         },
         closeCurrentProject: () => {
-          void closeProjectFromMenu(selectedProjectWithAIState)
-            .then((snapshot) => {
-              if (snapshot) applyProjectSnapshot(snapshot);
-            })
-            .catch((error) => console.error("failed to close project", error));
+          void closeProjectFromMenu(selectedProjectWithAIState).catch((error) =>
+            console.error("failed to close project", error),
+          );
         },
         closeAllProjects: () => {
-          void closeAllProjectsFromMenu(projectsWithAIState)
-            .then((snapshot) => {
-              if (snapshot) applyProjectSnapshot(snapshot);
-            })
-            .catch((error) => console.error("failed to close all projects", error));
+          void closeAllProjectsFromMenu(projectsWithAIState).catch((error) =>
+            console.error("failed to close all projects", error),
+          );
         },
       }),
-    [applyProjectSnapshot, projectsWithAIState, requestTerminalFocus, selectedProjectWithAIState],
+    [projectsWithAIState, requestTerminalFocus, selectedProjectWithAIState],
   );
-
-  useEffect(() => {
-    return installTerminalFocusEventTrace();
-  }, []);
 
   const selectProject = useCallback(
     (id: string) => {
@@ -335,127 +363,153 @@ function App() {
       if (worktreeId && worktreeId !== id) {
         aiRuntime.dismissCompletion(worktreeId);
       }
-      startTransition(() => {
-        setSelectedProjectId(id);
-      });
+      setSelectedProjectId(id);
+      setActiveProjectId(id);
       if (window.__TAURI_INTERNALS__) {
-        void invoke<ProjectListSnapshot>("project_select", { projectId: id })
-          .then(applyProjectSnapshot)
-          .catch((error) => console.error("failed to select project", error));
-      }
-      if (mainView === "terminal") {
-        requestTerminalFocus();
+        void invoke("project_select", { projectId: id }).catch((error) =>
+          console.error("failed to select project", error),
+        );
       }
     },
-    [applyProjectSnapshot, mainView, requestTerminalFocus, selectedWorktreeByProject],
+    [selectedWorktreeByProject],
   );
+
+  useEffect(() => {
+    startInspectorTransition(() => {
+      setInspectorProject(selectedWorkspaceProject);
+    });
+  }, [selectedWorkspaceProject, startInspectorTransition]);
 
   const selectWorktree = useCallback(
     (id: string) => {
       if (!selectedProjectWithAIState) return;
-      startTransition(() => {
-        setSelectedWorktreeByProject((existing) => {
-          if (existing[selectedProjectWithAIState.id] === id) return existing;
-          return {
-            ...existing,
-            [selectedProjectWithAIState.id]: id,
-          };
-        });
+      setSelectedWorktreeByProject((existing) => {
+        if (existing[selectedProjectWithAIState.id] === id) return existing;
+        return {
+          ...existing,
+          [selectedProjectWithAIState.id]: id,
+        };
       });
       if (window.__TAURI_INTERNALS__) {
-        void invoke<ProjectListSnapshot>("project_select_worktree", {
+        void invoke("project_select_worktree", {
           request: {
             projectId: selectedProjectWithAIState.id,
             worktreeId: id,
           },
         }).catch((error) => console.error("failed to select worktree", error));
       }
-      if (mainView === "terminal") {
-        requestTerminalFocus();
-      }
     },
-    [mainView, requestTerminalFocus, selectedProjectWithAIState],
+    [selectedProjectWithAIState],
   );
 
-  const createWorktreeForSelectedProject = async (input?: { branchName: string; baseBranch?: string | null }) => {
-    if (!selectedProjectWithAIState) return;
-    const branchName = input?.branchName.trim();
-    if (!branchName) return;
-    const baseBranch = input?.baseBranch?.trim() || selectedWorktree?.branch || selectedProjectWithAIState.branch;
-    setCreatingWorktree(true);
-    try {
-      const next = await worktree.create({
-        projectId: selectedProjectWithAIState.id,
-        projectPath: selectedProjectWithAIState.path,
-        baseBranch,
-        branchName,
-      });
-      await worktree.refresh(true);
-      if (window.__TAURI_INTERNALS__) {
-        await loadProjectListSnapshot().then(applyProjectSnapshot);
+  const createWorktreeForSelectedProject = useCallback(
+    async (input?: { branchName: string; baseBranch?: string | null }) => {
+      if (!selectedProjectWithAIState) return;
+      const branchName = input?.branchName.trim();
+      if (!branchName) return;
+      const baseBranch = input?.baseBranch?.trim() || selectedWorktree?.branch || selectedProjectWithAIState.branch;
+      setCreatingWorktree(true);
+      try {
+        const next = await worktree.create({
+          projectId: selectedProjectWithAIState.id,
+          projectPath: selectedProjectWithAIState.path,
+          baseBranch,
+          branchName,
+        });
+        const created = next.worktrees.find((item) => item.branch === branchName);
+        if (created) {
+          setSelectedWorktreeByProject((existing) => ({
+            ...existing,
+            [selectedProjectWithAIState.id]: created.id,
+          }));
+        }
+      } catch (error) {
+        console.error("failed to create worktree", error);
+        throw error;
+      } finally {
+        setCreatingWorktree(false);
       }
-      const created = next.worktrees.find((item) => item.branch === branchName);
-      if (created) {
-        setSelectedWorktreeByProject((existing) => ({
-          ...existing,
-          [selectedProjectWithAIState.id]: created.id,
-        }));
+    },
+    [selectedProjectWithAIState, selectedWorktree?.branch, worktree],
+  );
+
+  const removeWorktreeForSelectedProject = useCallback(
+    async (target: ProjectWorktreeSnapshot) => {
+      if (!selectedProjectWithAIState || target.isDefault) return;
+      if (
+        !(await systemConfirm(
+          tm(
+            "worktree.remove.message_format",
+            "Remove %@ from Codux and the Git worktree list? The branch will not be deleted.",
+          ).replace("%@", target.branch || target.name),
+          {
+            title: tm("worktree.remove.title", "Remove Worktree"),
+            kind: "warning",
+            okLabel: tm("worktree.menu.remove", "Remove"),
+            cancelLabel: tm("common.cancel", "Cancel"),
+          },
+        ))
+      ) {
+        return;
       }
-    } catch (error) {
-      console.error("failed to create worktree", error);
-      throw error;
-    } finally {
-      setCreatingWorktree(false);
-    }
-  };
-
-  const removeWorktreeForSelectedProject = async (target: ProjectWorktreeSnapshot) => {
-    if (!selectedProjectWithAIState || target.isDefault) return;
-    if (
-      !(await systemConfirm(
-        tm(
-          "worktree.remove.message_format",
-          "Remove %@ from Codux and the Git worktree list? The branch will not be deleted.",
-        ).replace("%@", target.branch || target.name),
-        {
-          title: tm("worktree.remove.title", "Remove Worktree"),
-          kind: "warning",
-          okLabel: tm("worktree.menu.remove", "Remove"),
-          cancelLabel: tm("common.cancel", "Cancel"),
-        },
-      ))
-    ) {
-      return;
-    }
-    try {
-      const next = await worktree.remove({
-        projectId: selectedProjectWithAIState.id,
-        projectPath: selectedProjectWithAIState.path,
-        worktreePath: target.path,
-      });
-      const nextSelected = next.worktrees[0]?.id;
-      if (nextSelected) {
-        setSelectedWorktreeByProject((existing) => ({
-          ...existing,
-          [selectedProjectWithAIState.id]: nextSelected,
-        }));
+      try {
+        const next = await worktree.remove({
+          projectId: selectedProjectWithAIState.id,
+          projectPath: selectedProjectWithAIState.path,
+          worktreePath: target.path,
+        });
+        const nextSelected = next.worktrees[0]?.id;
+        if (nextSelected) {
+          setSelectedWorktreeByProject((existing) => ({
+            ...existing,
+            [selectedProjectWithAIState.id]: nextSelected,
+          }));
+        }
+      } catch (error) {
+        console.error("failed to remove worktree", error);
       }
-    } catch (error) {
-      console.error("failed to remove worktree", error);
-    }
-  };
+    },
+    [selectedProjectWithAIState, worktree],
+  );
 
-  const reviewWorktree = (target: ProjectWorktreeSnapshot) => {
-    selectWorktree(target.id);
-    setMainView("review");
-    setShortcutFocusScope("workspace");
-  };
+  const reviewWorktree = useCallback(
+    (target: ProjectWorktreeSnapshot) => {
+      selectWorktree(target.id);
+      setMainView("review");
+      setShortcutFocusScope("workspace");
+    },
+    [selectWorktree],
+  );
 
-  const openWorktreeTerminal = (target: ProjectWorktreeSnapshot) => {
-    selectWorktree(target.id);
-    setMainView("terminal");
-    requestTerminalFocus();
-  };
+  const openWorktreeTerminal = useCallback(
+    (target: ProjectWorktreeSnapshot) => {
+      selectWorktree(target.id);
+      setMainView("terminal");
+      requestTerminalFocus();
+    },
+    [requestTerminalFocus, selectWorktree],
+  );
+
+  const refreshWorktrees = useCallback(() => {
+    void worktree.refresh();
+  }, [worktree]);
+
+  const openProjectCreateWindow = useCallback(() => {
+    void openAppWindow("project-create");
+  }, []);
+
+  const openSettingsWindow = useCallback(() => {
+    void openAppWindow("settings");
+  }, []);
+
+  const createWorktreeFromProject = useCallback(
+    (project: WorkspaceProject) => {
+      selectProject(project.id);
+      setTaskSidebarExpanded(true);
+      setTaskCreateRequest((value) => value + 1);
+    },
+    [selectProject],
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -609,17 +663,11 @@ function App() {
         setMainView={setMainView}
         isSidebarExpanded={isSidebarExpanded}
         toggleSidebar={() => {
-          setSidebarExpanded((value) => {
-            logTerminalFocusDebug("state:sidebar-toggle", { from: value, to: !value });
-            return !value;
-          });
+          setSidebarExpanded((value) => !value);
         }}
         isTaskSidebarExpanded={isTaskSidebarExpanded}
         toggleTaskSidebar={() => {
-          setTaskSidebarExpanded((value) => {
-            logTerminalFocusDebug("state:task-sidebar-toggle", { from: value, to: !value });
-            return !value;
-          });
+          setTaskSidebarExpanded((value) => !value);
         }}
         rightPanel={rightPanel}
         toggleRightPanel={toggleRightPanel}
@@ -628,20 +676,15 @@ function App() {
       />
 
       <div className="absolute inset-x-0 bottom-0 flex" style={{ top: "var(--titlebar-height)" }}>
-        <ProjectSidebar
+        <MemoProjectSidebar
           projects={projectsWithAIState}
-          selectedProjectId={selectedProjectWithAIState?.id ?? ""}
+          selectedProjectId={selectedProjectId}
           onSelect={selectProject}
           isExpanded={isSidebarExpanded}
           onFocusScope={() => setShortcutFocusScope("project-sidebar")}
-          onCreateProject={() => void openAppWindow("project-create")}
-          onOpenSettings={() => void openAppWindow("settings")}
-          onProjectSnapshot={applyProjectSnapshot}
-          onCreateWorktree={(project) => {
-            selectProject(project.id);
-            setTaskSidebarExpanded(true);
-            setTaskCreateRequest((value) => value + 1);
-          }}
+          onCreateProject={openProjectCreateWindow}
+          onOpenSettings={openSettingsWindow}
+          onCreateWorktree={createWorktreeFromProject}
         />
 
         <div className="flex-1 min-w-0 flex">
@@ -655,19 +698,17 @@ function App() {
               onFocusCapture={() => setShortcutFocusScope("task-sidebar")}
             >
               <div className="h-full w-[216px]">
-                <TaskSidebar
-                  selectedProject={selectedProjectWithAIState}
-                  worktrees={worktreeSnapshot.worktrees}
+                <MemoTaskSidebar
+                  selectedProject={taskSidebarProject}
+                  worktrees={taskSidebarWorktrees}
                   selectedWorktreeId={selectedWorktreeId}
-                  aiStateByWorktreeId={worktreeAIStateById}
+                  aiStateByWorktreeId={taskSidebarAIStateById}
                   onSelectWorktree={selectWorktree}
                   onCreateWorktree={createWorktreeForSelectedProject}
                   onRemoveWorktree={removeWorktreeForSelectedProject}
                   onOpenWorktreeTerminal={openWorktreeTerminal}
                   onReviewWorktree={reviewWorktree}
-                  onRefreshWorktrees={() => {
-                    void worktree.refresh(true);
-                  }}
+                  onRefreshWorktrees={refreshWorktrees}
                   isBusy={worktree.isLoading || isCreatingWorktree}
                   createRequest={taskCreateRequest}
                 />
@@ -693,7 +734,7 @@ function App() {
               onPointerDown={() => setShortcutFocusScope("right-sidebar")}
               onFocusCapture={() => setShortcutFocusScope("right-sidebar")}
             >
-              <Inspector panel={rightPanel} selectedProject={selectedWorkspaceProject} />
+              <Inspector panel={rightPanel} selectedProject={inspectorProject} />
             </div>
           )}
         </div>

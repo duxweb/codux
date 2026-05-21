@@ -1,9 +1,4 @@
-export type AIHookKind =
-  | "sessionStarted"
-  | "promptSubmitted"
-  | "needsInput"
-  | "turnCompleted"
-  | "sessionEnded";
+export type AIHookKind = "sessionStarted" | "promptSubmitted" | "needsInput" | "turnCompleted" | "sessionEnded";
 
 export type AIState = "idle" | "responding" | "needsInput";
 
@@ -44,11 +39,10 @@ export type AIHookEventPayload = {
   metadata?: AIHookEventMetadata | null;
 };
 
-export type AIRuntimeEvent =
-  | {
-      kind: "hook";
-      payload: AIHookEventPayload;
-    };
+export type AIRuntimeEvent = {
+  kind: "hook";
+  payload: AIHookEventPayload;
+};
 
 export type AIRuntimeTerminalState = {
   terminalId: string;

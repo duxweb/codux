@@ -115,11 +115,7 @@ export async function deleteMemorySummary(summaryId: string) {
   await invoke("memory_delete_summary", { summaryId });
 }
 
-export async function updateMemorySummary(request: {
-  summaryId: string;
-  content: string;
-  maxVersions?: number;
-}) {
+export async function updateMemorySummary(request: { summaryId: string; content: string; maxVersions?: number }) {
   return invoke<MemorySummary>("memory_update_summary", { request });
 }
 

@@ -4,8 +4,8 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
-use tauri::{AppHandle, Emitter};
+use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
 
 const REVIEW_UNTRACKED_LINE_COUNT_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
 
@@ -258,22 +258,13 @@ pub struct GitRepositoryChangeEvent {
     pub changed_paths: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct GitStatusEvent {
-    project_id: String,
-    project_name: String,
-    project_path: String,
-    snapshot: GitStatusSnapshot,
-}
-
 pub struct GitWatchManager {
     watchers: Mutex<HashMap<String, GitRepositoryWatcher>>,
 }
 
 struct GitRepositoryWatcher {
     _watcher: RecommendedWatcher,
-    project_path: String,
+    project_paths: Arc<Mutex<HashSet<String>>>,
     _repository_path: String,
     _watch_paths: Vec<PathBuf>,
 }
@@ -289,8 +280,9 @@ impl Default for GitWatchManager {
 impl GitWatchManager {
     pub fn watch(
         &self,
-        app: AppHandle,
+        _app: AppHandle,
         project_path: String,
+        on_changed: impl Fn(GitRepositoryChangeEvent) + Send + Sync + 'static,
     ) -> Result<GitWatchRegistration, String> {
         let watch_target = resolve_watch_target(&project_path)?;
         let key = watch_target.repository_key.clone();
@@ -304,15 +296,21 @@ impl GitWatchManager {
             .watchers
             .lock()
             .map_err(|_| "Git watcher lock is poisoned.".to_string())?;
-        if watchers.contains_key(&key) {
+        if let Some(existing) = watchers.get(&key) {
+            if let Ok(mut paths) = existing.project_paths.lock() {
+                paths.insert(watch_target.project_path.clone());
+            }
             return Ok(registration);
         }
 
-        let project_path_for_event = watch_target.project_path.clone();
+        let project_paths_for_event = Arc::new(Mutex::new(HashSet::from([watch_target
+            .project_path
+            .clone()])));
         let repository_path_for_event = watch_target.repository_path.clone();
         let repository_key = watch_target.repository_key.clone();
         let git_dir_keys = watch_target.git_dir_keys.clone();
-        let app_handle = app.clone();
+        let on_changed = Arc::new(on_changed);
+        let watched_project_paths = Arc::clone(&project_paths_for_event);
         let mut watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
             let Ok(event) = event else {
                 return;
@@ -329,28 +327,17 @@ impl GitWatchManager {
             if changed_paths.is_empty() {
                 return;
             }
-            let _ = app_handle.emit(
-                "git:changed",
-                GitRepositoryChangeEvent {
-                    project_path: project_path_for_event.clone(),
+            let project_paths = watched_project_paths
+                .lock()
+                .map(|paths| paths.iter().cloned().collect::<Vec<_>>())
+                .unwrap_or_default();
+            for project_path in project_paths {
+                on_changed(GitRepositoryChangeEvent {
+                    project_path,
                     repository_path: repository_path_for_event.clone(),
-                    changed_paths,
-                },
-            );
-            let app_handle = app_handle.clone();
-            let project_path = project_path_for_event.clone();
-            std::thread::spawn(move || {
-                let snapshot = git_status(project_path.clone());
-                let _ = app_handle.emit(
-                    "git:status",
-                    GitStatusEvent {
-                        project_id: String::new(),
-                        project_name: String::new(),
-                        project_path,
-                        snapshot,
-                    },
-                );
-            });
+                    changed_paths: changed_paths.clone(),
+                });
+            }
         })
         .map_err(|error| error.to_string())?;
 
@@ -364,7 +351,7 @@ impl GitWatchManager {
             key,
             GitRepositoryWatcher {
                 _watcher: watcher,
-                project_path: watch_target.project_path,
+                project_paths: project_paths_for_event,
                 _repository_path: watch_target.repository_path,
                 _watch_paths: watch_target.watch_paths,
             },
@@ -381,13 +368,30 @@ impl GitWatchManager {
             .watchers
             .lock()
             .map_err(|_| "Git watcher lock is poisoned.".to_string())?;
-        if watchers.remove(&repository_key).is_none() {
-            watchers.retain(|_, watcher| {
-                normalized_path_key(Path::new(&watcher.project_path)) != requested_key
-            });
+        if let Some(watcher) = watchers.get(&repository_key) {
+            let mut should_remove = false;
+            if let Ok(mut paths) = watcher.project_paths.lock() {
+                should_remove = remove_watched_project_path(&mut paths, &requested_key);
+            }
+            if should_remove {
+                watchers.remove(&repository_key);
+            }
+            return Ok(());
         }
+        watchers.retain(|_, watcher| {
+            let mut should_remove = false;
+            if let Ok(mut paths) = watcher.project_paths.lock() {
+                should_remove = remove_watched_project_path(&mut paths, &requested_key);
+            }
+            !should_remove
+        });
         Ok(())
     }
+}
+
+fn remove_watched_project_path(paths: &mut HashSet<String>, requested_key: &str) -> bool {
+    paths.retain(|path| normalized_path_key(Path::new(path)) != requested_key);
+    paths.is_empty()
 }
 
 struct GitWatchTarget {
@@ -1981,6 +1985,33 @@ mod tests {
             &git_dirs,
             "/repo/app/.git/modules/dependency/config"
         ));
+    }
+
+    #[test]
+    fn git_watcher_path_set_keeps_other_worktrees_when_one_is_removed() {
+        let mut paths = HashSet::from([
+            "/repo/app".to_string(),
+            "/repo/app/.codux/worktrees/task-a".to_string(),
+        ]);
+
+        let empty = remove_watched_project_path(
+            &mut paths,
+            &normalized_path_key(Path::new("/repo/app/.codux/worktrees/task-a")),
+        );
+
+        assert!(!empty);
+        assert_eq!(paths, HashSet::from(["/repo/app".to_string()]));
+    }
+
+    #[test]
+    fn git_watcher_path_set_reports_empty_after_last_path_is_removed() {
+        let mut paths = HashSet::from(["/repo/app".to_string()]);
+
+        let empty =
+            remove_watched_project_path(&mut paths, &normalized_path_key(Path::new("/repo/app")));
+
+        assert!(empty);
+        assert!(paths.is_empty());
     }
 
     #[test]

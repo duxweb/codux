@@ -38,10 +38,7 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
   return (
     <div className="relative">
       <Tooltip label={tm("open.ide", "Open in IDE")} placement="bottom" disabled={open}>
-        <Dropdown
-          isOpen={open}
-          onOpenChange={setOpen}
-        >
+        <Dropdown isOpen={open} onOpenChange={setOpen}>
           <Dropdown.Trigger
             isDisabled={!enabled}
             className="flex h-[26px] items-center rounded-pill border border-line bg-fill/[0.055] text-ink-soft transition-colors hover:border-line-strong hover:bg-fill/10 hover:text-ink disabled:opacity-45"
@@ -55,7 +52,10 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
               <ChevronDown size={11} className="text-ink-mute" strokeWidth={2.4} />
             </span>
           </Dropdown.Trigger>
-          <Dropdown.Popover placement="bottom end" className="min-w-[210px] rounded-[10px] border border-line-strong bg-surface-chrome p-1 shadow-pop backdrop-blur-2xl">
+          <Dropdown.Popover
+            placement="bottom end"
+            className="min-w-[210px] rounded-[10px] border border-line-strong bg-surface-chrome p-1 shadow-pop backdrop-blur-2xl"
+          >
             <Dropdown.Menu
               aria-label={tm("open.ide", "Open in IDE")}
               className="grid gap-0.5"

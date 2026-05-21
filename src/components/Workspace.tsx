@@ -17,7 +17,7 @@ import {
 } from "../icons";
 import { listen } from "@tauri-apps/api/event";
 import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Checkbox, TextInput } from "./Form";
 import { PressableButton } from "./PressableButton";
@@ -77,6 +77,25 @@ const DEFAULT_EDITOR_SEARCH_QUERY: CodeEditorSearchQuery = {
   wholeWord: false,
 };
 
+const writtenDeferredTerminalCommands = new Set<string>();
+
+function writeDeferredTerminalCommand(terminalId: string, command: string) {
+  const commandKey = `${terminalId}\u0000${command}`;
+  if (writtenDeferredTerminalCommands.has(commandKey)) return;
+  writtenDeferredTerminalCommands.add(commandKey);
+  const writeCommand = () => terminalRuntime.write(terminalId, `${command}\r`);
+  const session = terminalRuntime.getSession(terminalId);
+  if (session?.state === "running") {
+    writeCommand();
+    return;
+  }
+  const unsubscribe = terminalRuntime.subscribe(terminalId, (event) => {
+    if (event.type === "closed" || event.session.state !== "running") return;
+    unsubscribe();
+    writeCommand();
+  });
+}
+
 type Props = {
   mainView: MainView;
   selectedProject?: WorkspaceProject;
@@ -88,6 +107,7 @@ type TerminalLaunchOptions = {
   title?: string;
   label?: string;
   command?: string;
+  deferredCommand?: string;
   tool?: string;
 };
 
@@ -113,23 +133,34 @@ export function Workspace({ mainView, selectedProject, onSessionChange, terminal
   const [terminalProjects, setTerminalProjects] = useState<WorkspaceProject[]>(() =>
     fallbackProject ? [fallbackProject] : [],
   );
+  const activeTerminalProject = fallbackProject;
+  const displayedTerminalProjects = useMemo(() => {
+    if (!activeTerminalProject) return terminalProjects;
+    const index = terminalProjects.findIndex((project) => project.id === activeTerminalProject.id);
+    if (index < 0) return [...terminalProjects, activeTerminalProject];
+    if (terminalProjects[index] === activeTerminalProject) return terminalProjects;
+    const next = [...terminalProjects];
+    next[index] = activeTerminalProject;
+    return next;
+  }, [activeTerminalProject, terminalProjects]);
 
-  useEffect(() => {
-    if (!fallbackProject) return;
+  useLayoutEffect(() => {
+    if (!activeTerminalProject) return;
     setTerminalProjects((current) => {
-      const index = current.findIndex((project) => project.id === fallbackProject.id);
+      const index = current.findIndex((project) => project.id === activeTerminalProject.id);
       if (index < 0) {
-        return [...current, fallbackProject];
+        return [...current, activeTerminalProject];
       }
+      if (current[index] === activeTerminalProject) return current;
       const next = [...current];
-      next[index] = fallbackProject;
+      next[index] = activeTerminalProject;
       return next;
     });
-  }, [fallbackProject]);
+  }, [activeTerminalProject]);
 
   return (
     <section className="h-full overflow-hidden">
-      {terminalProjects.map((project) => {
+      {displayedTerminalProjects.map((project) => {
         const visible = mainView === "terminal" && project.id === projectId;
         return (
           <div key={project.id} className={visible ? "h-full" : "hidden"}>
@@ -353,6 +384,9 @@ function TerminalMode({
         const terminalId = ensureTerminal(id, title, launch).id;
         setTopRatios(equalRatios(current.length + 1));
         activateTerminal(terminalId);
+        if (launch?.deferredCommand) {
+          writeDeferredTerminalCommand(terminalId, launch.deferredCommand);
+        }
         window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
         return [
           ...current,
@@ -378,6 +412,9 @@ function TerminalMode({
         setActiveTabId(id);
         const terminalId = ensureTerminal(id, label, launch).id;
         activateTerminal(terminalId);
+        if (launch?.deferredCommand) {
+          writeDeferredTerminalCommand(terminalId, launch.deferredCommand);
+        }
         return [
           ...current,
           {
@@ -399,7 +436,8 @@ function TerminalMode({
           addTopPane({
             title: command.title,
             command: command.command,
-            tool: command.command ? "manual" : undefined,
+            deferredCommand: command.deferredCommand,
+            tool: command.command || command.deferredCommand ? "manual" : undefined,
           });
         }
         if (command.type === "add-bottom-terminal-tab") {
@@ -408,7 +446,8 @@ function TerminalMode({
             label: command.label,
             title: command.label,
             command: command.command,
-            tool: command.command ? "manual" : undefined,
+            deferredCommand: command.deferredCommand,
+            tool: command.command || command.deferredCommand ? "manual" : undefined,
           });
         }
         if (command.type === "insert-terminal-text") {
@@ -435,7 +474,17 @@ function TerminalMode({
           );
         }
       }),
-    [acceptsWorkspaceCommands, activateTerminal, activeTabId, activeTerminalId, addBottomTab, addTopPane, projectId, tabs, topPanes],
+    [
+      acceptsWorkspaceCommands,
+      activateTerminal,
+      activeTabId,
+      activeTerminalId,
+      addBottomTab,
+      addTopPane,
+      projectId,
+      tabs,
+      topPanes,
+    ],
   );
 
   useEffect(() => {
@@ -1490,11 +1539,7 @@ function FileEditor({
             onPress={() => editorRef.current?.redo()}
             disabled={tab.readOnly}
           />
-          <EditorBtn
-            icon={Search}
-            tooltip={tm("files.preview.find", "Find")}
-            onPress={openSearch}
-          />
+          <EditorBtn icon={Search} tooltip={tm("files.preview.find", "Find")} onPress={openSearch} />
           <EditorBtn icon={Copy} tooltip={tm("files.preview.copy_path", "Copy Path")} onPress={onCopyPath} />
           <EditorBtn
             icon={RotateCcw}

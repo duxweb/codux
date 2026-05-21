@@ -1,25 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  AIHookEventPayload,
-  AIRuntimeContextSnapshot,
-  AIRuntimeProbeRequest,
-  AISessionSnapshot,
-} from "./types";
+import type { AIHookEventPayload, AIRuntimeContextSnapshot, AIRuntimeProbeRequest, AISessionSnapshot } from "./types";
 import { canonicalToolName, normalize, numberOr } from "./utils";
 
-export type RuntimeProbe = (
-  request: AIRuntimeProbeRequest,
-) => Promise<AIRuntimeContextSnapshot | null | undefined>;
+export type RuntimeProbe = (request: AIRuntimeProbeRequest) => Promise<AIRuntimeContextSnapshot | null | undefined>;
 
 export interface AIToolDriver {
   id: string;
   aliases: Set<string>;
   isRealtimeTool: boolean;
   matches(tool?: string | null): boolean;
-  resolveHookEvent(
-    event: AIHookEventPayload,
-    currentSession?: AISessionSnapshot,
-  ): Promise<AIHookEventPayload>;
+  resolveHookEvent(event: AIHookEventPayload, currentSession?: AISessionSnapshot): Promise<AIHookEventPayload>;
   runtimeSnapshot(session: AISessionSnapshot): Promise<AIRuntimeContextSnapshot | null | undefined>;
 }
 
@@ -128,7 +118,11 @@ export class ClaudeToolDriver extends BaseToolDriver {
       updatedAt: event.updatedAt,
     }).catch(() => undefined);
     if (!snapshot) return resolved;
-    return mergeSnapshotIntoHook({ ...resolved, aiSessionID: normalize(resolved.aiSessionID) ?? externalSessionId }, snapshot, fallbackSession);
+    return mergeSnapshotIntoHook(
+      { ...resolved, aiSessionID: normalize(resolved.aiSessionID) ?? externalSessionId },
+      snapshot,
+      fallbackSession,
+    );
   }
 }
 
@@ -210,12 +204,8 @@ function mergeSnapshotIntoHook(
   fallbackSession?: AISessionSnapshot,
 ): AIHookEventPayload {
   const wasInterrupted = snapshot.wasInterrupted ?? event.metadata?.wasInterrupted ?? false;
-  const hasCompletedTurn =
-    snapshot.hasCompletedTurn ?? event.metadata?.hasCompletedTurn ?? !wasInterrupted;
-  const nextKind =
-    snapshot.responseState === "responding"
-      ? "promptSubmitted"
-      : event.kind;
+  const hasCompletedTurn = snapshot.hasCompletedTurn ?? event.metadata?.hasCompletedTurn ?? !wasInterrupted;
+  const nextKind = snapshot.responseState === "responding" ? "promptSubmitted" : event.kind;
   return {
     ...event,
     kind: nextKind,
@@ -223,12 +213,11 @@ function mergeSnapshotIntoHook(
     model: normalize(event.model) ?? normalize(snapshot.model) ?? fallbackSession?.model,
     inputTokens: numberOr(event.inputTokens ?? fallbackSession?.inputTokens, snapshot.inputTokens),
     outputTokens: numberOr(event.outputTokens ?? fallbackSession?.outputTokens, snapshot.outputTokens),
-    cachedInputTokens: numberOr(event.cachedInputTokens ?? fallbackSession?.cachedInputTokens, snapshot.cachedInputTokens),
-    totalTokens: Math.max(
-      event.totalTokens ?? 0,
-      fallbackSession?.totalTokens ?? 0,
-      snapshot.totalTokens ?? 0,
+    cachedInputTokens: numberOr(
+      event.cachedInputTokens ?? fallbackSession?.cachedInputTokens,
+      snapshot.cachedInputTokens,
     ),
+    totalTokens: Math.max(event.totalTokens ?? 0, fallbackSession?.totalTokens ?? 0, snapshot.totalTokens ?? 0),
     updatedAt: Math.max(event.updatedAt, snapshot.completedAt ?? 0, snapshot.updatedAt ?? 0),
     metadata: {
       ...event.metadata,

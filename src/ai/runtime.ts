@@ -6,12 +6,7 @@ import { AIRuntimeIngressService } from "./ingressService";
 import { AIRuntimePollingService } from "./pollingService";
 import { AISessionStore, type SessionStoreListener } from "./sessionStore";
 import { aiToolDriverFactory, type AIToolDriverFactory } from "./toolDrivers";
-import type {
-  AIProjectPhase,
-  AIProjectTotals,
-  AIRuntimeStateSnapshot,
-  AIHookEventPayload,
-} from "./types";
+import type { AIProjectPhase, AIProjectTotals, AIRuntimeStateSnapshot, AIHookEventPayload } from "./types";
 
 export type {
   AIHookEventMetadata,
@@ -33,6 +28,7 @@ export class AIRuntimeStore {
   private readonly ingressService: AIRuntimeIngressService;
   private readonly pollingService: AIRuntimePollingService;
   private runtimeState?: AIRuntimeStateSnapshot;
+  private sortedRuntimeSessions?: AIRuntimeStateSnapshot["sessions"];
   private listeners = new Set<SessionStoreListener>();
   private unlistenState?: UnlistenFn;
   private startPromise?: Promise<void>;
@@ -40,14 +36,10 @@ export class AIRuntimeStore {
   constructor(toolDriverFactory: AIToolDriverFactory = aiToolDriverFactory) {
     this.sessionStore = new AISessionStore(toolDriverFactory);
     this.pollingService = new AIRuntimePollingService(this.sessionStore, toolDriverFactory);
-    this.ingressService = new AIRuntimeIngressService(
-      this.sessionStore,
-      toolDriverFactory,
-      (terminalId, reason) => {
-        this.pollingService.noteHookApplied(terminalId, reason);
-        this.pollingService.sync(`hook:${reason}`);
-      },
-    );
+    this.ingressService = new AIRuntimeIngressService(this.sessionStore, toolDriverFactory, (terminalId, reason) => {
+      this.pollingService.noteHookApplied(terminalId, reason);
+      this.pollingService.sync(`hook:${reason}`);
+    });
     this.sessionStore.subscribe(() => this.emit());
   }
 
@@ -73,9 +65,8 @@ export class AIRuntimeStore {
 
   snapshots(projectId?: string) {
     if (this.runtimeState) {
-      return this.runtimeState.sessions
-        .filter((session) => (projectId ? session.projectId === projectId : true))
-        .sort((left, right) => right.updatedAt - left.updatedAt);
+      const sessions = this.sortedRuntimeSessions ?? this.runtimeState.sessions;
+      return projectId ? sessions.filter((session) => session.projectId === projectId) : sessions;
     }
     return this.sessionStore.snapshots(projectId);
   }
@@ -124,13 +115,6 @@ export class AIRuntimeStore {
 
   private async startRustStateListener() {
     if (this.unlistenState) return;
-    this.setRuntimeState(await invoke<AIRuntimeStateSnapshot>("ai_runtime_state_snapshot").catch(
-      (error) => {
-        console.error("failed to load ai runtime state", error);
-        return undefined;
-      },
-    ));
-    this.emit();
     this.unlistenState = await listen<AIRuntimeStateSnapshot>("ai-runtime:state", (event) => {
       this.setRuntimeState(event.payload);
       this.emit();
@@ -139,6 +123,9 @@ export class AIRuntimeStore {
 
   private setRuntimeState(snapshot: AIRuntimeStateSnapshot | undefined) {
     this.runtimeState = snapshot;
+    this.sortedRuntimeSessions = snapshot
+      ? [...snapshot.sessions].sort((left, right) => right.updatedAt - left.updatedAt)
+      : undefined;
     useRuntimeStore.getState().setAIRuntimeSnapshot(snapshot ?? null);
   }
 

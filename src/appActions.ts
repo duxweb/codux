@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { tm } from "./i18n";
 import { openLocalizedDialog, saveLocalizedDialog } from "./localizedDialog";
 import { systemConfirm, systemMessage } from "./systemDialog";
-import type { ProjectListSnapshot, WorkspaceProject } from "./types";
+import type { WorkspaceProject } from "./types";
 import { openAppWindow } from "./windowing";
 import { dispatchWorkspaceCommand, type WorkspaceCommand } from "./workspaceCommands";
 
@@ -64,7 +64,7 @@ export async function checkForUpdates() {
         downloadUrl: null,
         channel: null,
         installationMode: "preview",
-        message: "Update channel is not configured in browser preview.",
+        message: tm("update.not_configured.preview", "Update channel is not configured in browser preview."),
       };
 
   if (!status.configured) {
@@ -182,7 +182,7 @@ export async function openProjectFolderFromMenu() {
   return openProjectFolderRequest;
 }
 
-let openProjectFolderRequest: Promise<ProjectListSnapshot | null> | null = null;
+let openProjectFolderRequest: Promise<boolean | null> | null = null;
 
 async function openProjectFolderFromMenuUnsafe() {
   const selected = await openLocalizedDialog({
@@ -193,7 +193,7 @@ async function openProjectFolderFromMenuUnsafe() {
     prompt: tm("project.open_folder.prompt", "Open"),
   });
   if (typeof selected !== "string") return null;
-  return invoke<ProjectListSnapshot>("project_create", {
+  await invoke("project_create", {
     request: {
       name: selected.split(/[\\/]/).filter(Boolean).pop() ?? "Project",
       path: selected,
@@ -202,6 +202,7 @@ async function openProjectFolderFromMenuUnsafe() {
       badgeColorHex: null,
     },
   });
+  return true;
 }
 
 function installMenuListener<T>(
@@ -224,21 +225,29 @@ function installMenuListener<T>(
 export async function closeProjectFromMenu(project?: WorkspaceProject) {
   if (!window.__TAURI_INTERNALS__ || (!project?.rootProjectId && !project?.id)) return null;
   const projectId = project.rootProjectId ?? project.id;
-  return invoke<ProjectListSnapshot>("project_close", {
+  await invoke("project_close", {
     request: { projectId },
   });
+  return true;
 }
 
 export async function closeAllProjectsFromMenu(projects: WorkspaceProject[]) {
   if (!window.__TAURI_INTERNALS__ || projects.length === 0) return null;
-  const confirmed = await systemConfirm(tm("workspace.close_all_projects.message", "Are you sure you want to close all projects in the current workspace? Files on disk will not be deleted."), {
-    title: tm("workspace.close_all_projects.title", "Close All Projects"),
-    kind: "warning",
-    okLabel: tm("workspace.close_all_projects.confirm", "Close All"),
-    cancelLabel: tm("common.cancel", "Cancel"),
-  });
+  const confirmed = await systemConfirm(
+    tm(
+      "workspace.close_all_projects.message",
+      "Are you sure you want to close all projects in the current workspace? Files on disk will not be deleted.",
+    ),
+    {
+      title: tm("workspace.close_all_projects.title", "Close All Projects"),
+      kind: "warning",
+      okLabel: tm("workspace.close_all_projects.confirm", "Close All"),
+      cancelLabel: tm("common.cancel", "Cancel"),
+    },
+  );
   if (!confirmed) return null;
-  return invoke<ProjectListSnapshot>("project_close_all");
+  await invoke("project_close_all");
+  return true;
 }
 
 export function installAppMenuActions() {
@@ -247,7 +256,12 @@ export function installAppMenuActions() {
   const unlisteners: Array<() => void> = [];
   const isDisposed = () => disposed;
   installMenuListener<void>(unlisteners, isDisposed, "app-menu:settings", () => void openAppWindow("settings"));
-  installMenuListener<void>(unlisteners, isDisposed, "app-menu:project-create", () => void openAppWindow("project-create"));
+  installMenuListener<void>(
+    unlisteners,
+    isDisposed,
+    "app-menu:project-create",
+    () => void openAppWindow("project-create"),
+  );
   installMenuListener<void>(unlisteners, isDisposed, "app-menu:about", () => void showAbout());
   installMenuListener<void>(unlisteners, isDisposed, "app-menu:check-updates", () => void checkForUpdates());
   installMenuListener<void>(unlisteners, isDisposed, "app-menu:export-diagnostics", () => void exportDiagnostics());
@@ -271,7 +285,7 @@ export function installWorkspaceMenuActions(handlers: {
   let disposed = false;
   const unlisteners: Array<() => void> = [];
   const isDisposed = () => disposed;
-  const install = <T,>(event: string, handler: (payload: T) => void) => {
+  const install = <T>(event: string, handler: (payload: T) => void) => {
     installMenuListener(unlisteners, isDisposed, event, handler);
   };
 
@@ -284,23 +298,15 @@ export function installWorkspaceMenuActions(handlers: {
   install("app-menu:project-open-folder", handlers.openProjectFolder);
   install("app-menu:project-close-current", handlers.closeCurrentProject);
   install("app-menu:project-close-all", handlers.closeAllProjects);
-  install<"add-top-terminal-split" | "add-bottom-terminal-tab">(
-    "app-menu:workspace-command",
-    (payload) => {
-      const command: WorkspaceCommand =
-        payload === "add-top-terminal-split"
-          ? { type: "add-top-terminal-split" }
-          : { type: "add-bottom-terminal-tab" };
-      dispatchWorkspaceCommand(command);
-    },
-  );
-  install<"editor-save" | "editor-search" | "close-active">(
-    "app-menu:workspace-command",
-    (payload) => {
-      const command: WorkspaceCommand = { type: payload };
-      dispatchWorkspaceCommand(command);
-    },
-  );
+  install<"add-top-terminal-split" | "add-bottom-terminal-tab">("app-menu:workspace-command", (payload) => {
+    const command: WorkspaceCommand =
+      payload === "add-top-terminal-split" ? { type: "add-top-terminal-split" } : { type: "add-bottom-terminal-tab" };
+    dispatchWorkspaceCommand(command);
+  });
+  install<"editor-save" | "editor-search" | "close-active">("app-menu:workspace-command", (payload) => {
+    const command: WorkspaceCommand = { type: payload };
+    dispatchWorkspaceCommand(command);
+  });
   install("app-menu:task-create", handlers.createTask);
 
   return () => {

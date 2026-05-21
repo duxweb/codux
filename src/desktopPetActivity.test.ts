@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { desktopPetActivityLine, nextDesktopPetActivityRefreshMs, type AISessionSnapshot } from "./desktopPetActivity";
+import {
+  desktopPetActivityLine,
+  desktopPetAnimationState,
+  nextDesktopPetActivityRefreshMs,
+  type AISessionSnapshot,
+} from "./desktopPetActivity";
 
 function session(patch: Partial<AISessionSnapshot>): AISessionSnapshot {
   return {
@@ -24,11 +29,120 @@ describe("desktop pet activity", () => {
         ],
         101,
       ),
-    ).toBe("我先检查项目结构。\n然后确认入口和配置。");
+    ).toEqual({ text: "我先检查项目结构。\n然后确认入口和配置。", tone: "normal" });
+  });
+
+  it("clamps live assistant previews to three non-empty lines", () => {
+    expect(
+      desktopPetActivityLine(
+        [
+          session({
+            state: "responding",
+            latestAssistantPreview: "第一行\n\n第二行\n第三行\n第四行",
+          }),
+        ],
+        101,
+      ),
+    ).toEqual({ text: "第一行\n第二行\n第三行", tone: "normal" });
+  });
+
+  it("does not truncate long live assistant preview lines beyond the native three-line clamp", () => {
+    const longLine = "正在执行一个很长的 AI 任务输出".repeat(8);
+    expect(
+      desktopPetActivityLine(
+        [
+          session({
+            state: "responding",
+            latestAssistantPreview: longLine,
+          }),
+        ],
+        101,
+      ),
+    ).toEqual({ text: longLine, tone: "normal" });
   });
 
   it("keeps the bubble hidden when no runtime activity is visible", () => {
-    expect(desktopPetActivityLine([session({ updatedAt: 10 })], 100)).toBe("");
+    expect(desktopPetActivityLine([session({ updatedAt: 10 })], 100)).toEqual({ text: "", tone: "normal" });
     expect(nextDesktopPetActivityRefreshMs([session({ updatedAt: 10 })], 100)).toBeNull();
+  });
+
+  it("keeps completed success messages visible for thirty seconds with success tone", () => {
+    expect(
+      desktopPetActivityLine(
+        [
+          session({
+            updatedAt: 100,
+            hasCompletedTurn: true,
+          }),
+        ],
+        129.5,
+      ),
+    ).toEqual({ text: "codex completed", tone: "success" });
+    expect(desktopPetActivityLine([session({ updatedAt: 100, hasCompletedTurn: true })], 131)).toEqual({
+      text: "",
+      tone: "normal",
+    });
+    expect(nextDesktopPetActivityRefreshMs([session({ updatedAt: 100, hasCompletedTurn: true })], 129.5)).toBe(500);
+  });
+
+  it("uses orange attention tone for permission requests and expires them quickly", () => {
+    const permission = session({
+      state: "needsInput",
+      updatedAt: 100,
+      notificationType: "PermissionRequest",
+      targetToolName: "Shell",
+    });
+    expect(desktopPetActivityLine([permission], 111.5)).toEqual({
+      text: "codex needs permission for Shell",
+      tone: "attention",
+    });
+    expect(desktopPetActivityLine([permission], 113)).toEqual({
+      text: "codex needs input",
+      tone: "attention",
+    });
+    expect(nextDesktopPetActivityRefreshMs([permission], 111.5)).toBe(500);
+  });
+
+  it("maps AI runtime activity to desktop pet animation states like the native app", () => {
+    expect(
+      desktopPetAnimationState({
+        claimed: false,
+        dailyExperienceTokens: 0,
+        sessions: [],
+        now: 100,
+      }),
+    ).toBe("waiting");
+    expect(
+      desktopPetAnimationState({
+        claimed: true,
+        dailyExperienceTokens: 0,
+        sessions: [session({ state: "responding" })],
+        now: 100,
+      }),
+    ).toBe("running");
+    expect(
+      desktopPetAnimationState({
+        claimed: true,
+        dailyExperienceTokens: 0,
+        sessions: [session({ state: "needsInput" })],
+        now: 100,
+      }),
+    ).toBe("review");
+    expect(
+      desktopPetAnimationState({
+        claimed: true,
+        dailyExperienceTokens: 0,
+        sessions: [session({ hasCompletedTurn: true, updatedAt: 95 })],
+        now: 100,
+      }),
+    ).toBe("waving");
+    expect(
+      desktopPetAnimationState({
+        claimed: true,
+        dailyExperienceTokens: 0,
+        sessions: [session({ hasCompletedTurn: true, wasInterrupted: true, updatedAt: 95 })],
+        now: 100,
+      }),
+    ).toBe("failed");
   });
 });

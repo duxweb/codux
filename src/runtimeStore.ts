@@ -1,11 +1,19 @@
 import { create } from "zustand";
 import type { AIGlobalHistorySnapshot, AIHistoryProjectState } from "./ai/history";
 import type { AIRuntimeStateSnapshot } from "./ai/types";
+import type { GitReviewSnapshot } from "./git/review";
 import type { GitStatusSnapshot } from "./git/status";
+import type { ProjectListSnapshot, RemoteStatus } from "./types";
 import type { WorktreeSnapshot } from "./worktree/snapshot";
 
 export type GitStatusCacheEntry = {
   snapshot: GitStatusSnapshot;
+  error: string | null;
+  updatedAt: number;
+};
+
+export type GitReviewCacheEntry = {
+  snapshot: GitReviewSnapshot;
   error: string | null;
   updatedAt: number;
 };
@@ -18,10 +26,13 @@ export type WorktreeCacheEntry = {
 
 type RuntimeState = {
   gitStatusByPath: Record<string, GitStatusCacheEntry>;
+  gitReviewByKey: Record<string, GitReviewCacheEntry>;
   worktreeSnapshotByKey: Record<string, WorktreeCacheEntry>;
   aiProjectStateByKey: Record<string, AIHistoryProjectState>;
   aiGlobalHistory: AIGlobalHistorySnapshot | null;
   aiRuntimeSnapshot: AIRuntimeStateSnapshot | null;
+  projectListSnapshot: ProjectListSnapshot | null;
+  remoteStatus: RemoteStatus | null;
   aiGlobalStatus: {
     isLoading: boolean;
     error: string | null;
@@ -31,6 +42,7 @@ type RuntimeState = {
   worktreeLoadingByKey: Record<string, boolean>;
   worktreeErrorByKey: Record<string, string | null>;
   setGitStatus: (pathKey: string, entry: GitStatusCacheEntry) => void;
+  setGitReview: (key: string, entry: GitReviewCacheEntry) => void;
   setGitLoading: (pathKey: string, isLoading: boolean) => void;
   setGitError: (pathKey: string, error: string | null) => void;
   setWorktreeSnapshot: (key: string, entry: WorktreeCacheEntry) => void;
@@ -38,6 +50,8 @@ type RuntimeState = {
   setWorktreeError: (key: string, error: string | null) => void;
   setAIProjectState: (key: string, state: AIHistoryProjectState) => void;
   setAIRuntimeSnapshot: (snapshot: AIRuntimeStateSnapshot | null) => void;
+  setProjectListSnapshot: (snapshot: ProjectListSnapshot | null) => void;
+  setRemoteStatus: (status: RemoteStatus | null) => void;
   updateAIProjectStateByProjectId: (
     projectId: string,
     updater: (state: AIHistoryProjectState, key: string) => AIHistoryProjectState,
@@ -48,10 +62,13 @@ type RuntimeState = {
 
 export const useRuntimeStore = create<RuntimeState>((set) => ({
   gitStatusByPath: {},
+  gitReviewByKey: {},
   worktreeSnapshotByKey: {},
   aiProjectStateByKey: {},
   aiGlobalHistory: null,
   aiRuntimeSnapshot: null,
+  projectListSnapshot: null,
+  remoteStatus: null,
   aiGlobalStatus: {
     isLoading: false,
     error: null,
@@ -76,6 +93,13 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
       gitLoadingByPath: {
         ...state.gitLoadingByPath,
         [pathKey]: isLoading,
+      },
+    })),
+  setGitReview: (key, entry) =>
+    set((state) => ({
+      gitReviewByKey: {
+        ...state.gitReviewByKey,
+        [key]: entry,
       },
     })),
   setGitError: (pathKey, error) =>
@@ -118,6 +142,8 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
       },
     })),
   setAIRuntimeSnapshot: (snapshot) => set({ aiRuntimeSnapshot: snapshot }),
+  setProjectListSnapshot: (snapshot) => set({ projectListSnapshot: snapshot }),
+  setRemoteStatus: (status) => set({ remoteStatus: status }),
   updateAIProjectStateByProjectId: (projectId, updater) =>
     set((state) => {
       const entry = Object.entries(state.aiProjectStateByKey).find(([, value]) => value.projectId === projectId);

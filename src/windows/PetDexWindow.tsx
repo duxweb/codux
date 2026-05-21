@@ -36,9 +36,7 @@ const petAccentColors: Record<string, string> = {
   panda: "#6A6F78",
 };
 
-type SpotlightIdentity =
-  | { kind: "bundled"; item: PetCatalogItem }
-  | { kind: "custom"; pet: PetCustomPet };
+type SpotlightIdentity = { kind: "bundled"; item: PetCatalogItem } | { kind: "custom"; pet: PetCustomPet };
 
 export function PetDexWindow() {
   const pet = usePetLedger([]);
@@ -100,12 +98,15 @@ export function PetDexWindow() {
   };
 
   const archiveCurrent = async () => {
-    const confirmed = await systemConfirm(tm("pet.archive.alert.message", "Archive this pet into the dex and choose a new companion."), {
-      title: tm("pet.archive.alert.title", "Archive Current Pet"),
-      kind: "warning",
-      okLabel: tm("pet.archive.confirm", "Confirm Archive"),
-      cancelLabel: tm("common.cancel", "Cancel"),
-    });
+    const confirmed = await systemConfirm(
+      tm("pet.archive.alert.message", "Archive this pet into the dex and choose a new companion."),
+      {
+        title: tm("pet.archive.alert.title", "Archive Current Pet"),
+        kind: "warning",
+        okLabel: tm("pet.archive.confirm", "Confirm Archive"),
+        cancelLabel: tm("common.cancel", "Cancel"),
+      },
+    );
     if (!confirmed) return;
     setWorking(true);
     try {
@@ -143,11 +144,7 @@ export function PetDexWindow() {
   const currentName = petDisplayName(pet.snapshot.species, pet.snapshot.customPet, pet.snapshot.customName);
 
   return (
-    <WindowFrame
-      title={tm("pet.dex.title", "Petdex")}
-      mainClassName="px-0 py-0"
-      mainScrollable={false}
-    >
+    <WindowFrame title={tm("pet.dex.title", "Petdex")} mainClassName="px-0 py-0" mainScrollable={false}>
       <div className="relative grid h-full min-h-0 grid-cols-[270px_minmax(0,1fr)] overflow-hidden">
         <aside className="min-h-0 border-r border-line/60 bg-fill/[0.02]">
           <div className="flex h-full flex-col">
@@ -214,7 +211,13 @@ export function PetDexWindow() {
 
             <div className="border-t border-line/60 p-4">
               {pet.snapshot.claimedAt ? (
-                <Button block variant="primary" leading={ArchiveBoxIcon} disabled={isWorking} onPress={() => void archiveCurrent()}>
+                <Button
+                  block
+                  variant="primary"
+                  leading={ArchiveBoxIcon}
+                  disabled={isWorking}
+                  onPress={() => void archiveCurrent()}
+                >
                   {tm("pet.archive.action", "Archive")}
                 </Button>
               ) : (
@@ -222,7 +225,13 @@ export function PetDexWindow() {
                   {tm("pet.claim.action", "Claim Pet")}
                 </Button>
               )}
-              <Button block className="mt-2" variant="secondary" leading={PlusIcon} onPress={() => void openAppWindow("pet-custom-install")}>
+              <Button
+                block
+                className="mt-2"
+                variant="secondary"
+                leading={PlusIcon}
+                onPress={() => void openAppWindow("pet-custom-install")}
+              >
                 {tm("pet.custom.install.action", "Add Custom Pet")}
               </Button>
             </div>
@@ -261,12 +270,19 @@ export function PetDexWindow() {
               </div>
               {customPets.length === 0 ? (
                 <div className="rounded-[10px] border border-line bg-fill/[0.02] px-4 py-6 text-center text-xs text-ink-faint">
-                  {tm("pet.custom.install.subtitle", "Paste a Petdex page, verify the package, then install it into Codux.")}
+                  {tm(
+                    "pet.custom.install.subtitle",
+                    "Paste a Petdex page, verify the package, then install it into Codux.",
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-4 gap-3">
                   {customPets.map((item) => (
-                    <CustomPetCard key={item.id} pet={item} onSelect={() => setSpotlight({ kind: "custom", pet: item })} />
+                    <CustomPetCard
+                      key={item.id}
+                      pet={item}
+                      onSelect={() => setSpotlight({ kind: "custom", pet: item })}
+                    />
                   ))}
                 </div>
               )}
@@ -385,15 +401,7 @@ function TraitBar({ emoji, label, value, color }: { emoji: string; label: string
   );
 }
 
-function SpeciesCard({
-  item,
-  unlocked,
-  onSelect,
-}: {
-  item: PetCatalogItem;
-  unlocked: boolean;
-  onSelect: () => void;
-}) {
+function SpeciesCard({ item, unlocked, onSelect }: { item: PetCatalogItem; unlocked: boolean; onSelect: () => void }) {
   const accent = petAccentColors[item.species] ?? "#2F8FFF";
   return (
     <PressableButton
@@ -404,8 +412,15 @@ function SpeciesCard({
           : "border-line bg-fill/[0.025] opacity-80"
       }`}
     >
-      <div className="grid h-14 w-14 place-items-center rounded-full" style={{ backgroundColor: unlocked ? `${accent}1f` : "rgba(255,255,255,0.04)" }}>
-        {unlocked ? <PetSprite species={item.species} size={44} staticMode /> : <span className="text-2xl font-bold text-ink-faint">?</span>}
+      <div
+        className="grid h-14 w-14 place-items-center rounded-full"
+        style={{ backgroundColor: unlocked ? `${accent}1f` : "rgba(255,255,255,0.04)" }}
+      >
+        {unlocked ? (
+          <PetSprite species={item.species} size={44} staticMode />
+        ) : (
+          <span className="text-2xl font-bold text-ink-faint">?</span>
+        )}
       </div>
       <div className="mt-2 max-w-full truncate text-xs font-semibold">
         {unlocked ? tm(item.nameKey, item.species) : tm("pet.dex.unknown", "???")}
@@ -446,7 +461,13 @@ function HistoryRow({
   return (
     <div className="grid grid-cols-[44px_minmax(0,1fr)_110px_30px] items-center gap-3 rounded-[9px] bg-fill/[0.035] px-3 py-2">
       <div className="grid h-11 w-11 place-items-center rounded-[9px] bg-fill/[0.05]">
-        <PetSprite species={record.species} src={record.customPet?.spritesheetDataUrl} state="idle" size={38} staticMode />
+        <PetSprite
+          species={record.species}
+          src={record.customPet?.spritesheetDataUrl}
+          state="idle"
+          size={38}
+          staticMode
+        />
       </div>
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
@@ -461,7 +482,14 @@ function HistoryRow({
         </div>
       </div>
       <div className="text-right text-xs text-ink-faint">{formatDate(record.retiredAt)}</div>
-      <Button isIconOnly size="sm" variant="ghost" disabled={disabled} aria-label={tm("pet.archive.restore.action", "Restore")} onPress={onRestore}>
+      <Button
+        isIconOnly
+        size="sm"
+        variant="ghost"
+        disabled={disabled}
+        aria-label={tm("pet.archive.restore.action", "Restore")}
+        onPress={onRestore}
+      >
         <ArrowUturnLeftIcon className="h-4 w-4" />
       </Button>
     </div>
@@ -492,7 +520,10 @@ function DexSpotlightOverlay({
         className="w-[360px] rounded-[14px] border border-line-strong bg-surface-chrome p-5 text-center text-ink shadow-pop"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="mx-auto grid h-[116px] w-[116px] place-items-center rounded-full" style={{ backgroundColor: `${accent}16` }}>
+        <div
+          className="mx-auto grid h-[116px] w-[116px] place-items-center rounded-full"
+          style={{ backgroundColor: `${accent}16` }}
+        >
           {isCustom ? (
             <PetSprite species="voidcat" src={identity.pet.spritesheetDataUrl} size={94} staticMode={staticMode} />
           ) : (

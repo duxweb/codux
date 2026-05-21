@@ -145,10 +145,7 @@ export function usePetLedger(projects: WorkspaceProject[] = []): PetLedger {
   const [isSnapshotLoading, setSnapshotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const liveTokens = runtime.globalTotals.totalTokens;
-  const visibleSnapshot = useMemo(
-    () => petSnapshotWithLiveTokens(snapshot, liveTokens),
-    [liveTokens, snapshot],
-  );
+  const visibleSnapshot = useMemo(() => petSnapshotWithLiveTokens(snapshot, liveTokens), [liveTokens, snapshot]);
 
   const loadSnapshot = useCallback(async () => {
     const runtimeFallbackSnapshot = emptyPetSnapshot(aiRuntime.projectTotals().totalTokens, emptyStats);
@@ -160,9 +157,7 @@ export function usePetLedger(projects: WorkspaceProject[] = []): PetLedger {
     setSnapshotLoading(true);
     setError(null);
     try {
-      const next = projects.length > 0
-        ? await refreshPetLedger(projects)
-        : await invoke<PetSnapshot>("pet_snapshot");
+      const next = projects.length > 0 ? await refreshPetLedger(projects) : await invoke<PetSnapshot>("pet_snapshot");
       setSnapshot(next);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -298,10 +293,7 @@ export async function loadPetCatalog(): Promise<PetCatalog> {
   return invoke<PetCatalog>("pet_catalog");
 }
 
-export async function previewCustomPetInstall(
-  pageUrl: string,
-  displayName = "",
-): Promise<PetCustomPetInstallPreview> {
+export async function previewCustomPetInstall(pageUrl: string, displayName = ""): Promise<PetCustomPetInstallPreview> {
   return invoke<PetCustomPetInstallPreview>("pet_custom_install_preview", {
     request: { pageUrl, displayName },
   });

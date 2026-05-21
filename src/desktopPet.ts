@@ -13,10 +13,18 @@ import codeUrl from "./assets/pets/code/spritesheet.png?url";
 import dragonUrl from "./assets/pets/dragon/spritesheet.png?url";
 import chaosspriteUrl from "./assets/pets/chaossprite/spritesheet.png?url";
 import gooseUrl from "./assets/pets/goose/spritesheet.png?url";
-import { desktopPetActivityLine, nextDesktopPetActivityRefreshMs, type AISessionSnapshot } from "./desktopPetActivity";
+import {
+  desktopPetActivityLine,
+  desktopPetAnimationState,
+  nextDesktopPetActivityRefreshMs,
+  type AISessionSnapshot,
+  type DesktopPetAnimationState,
+  type DesktopPetActivityTone,
+} from "./desktopPetActivity";
+import { lockRuntimeLocale, syncI18nBundleFromRust, tm } from "./i18n";
+import { syncAppSettingsFromRust } from "./settings";
 import "./desktopPet.css";
 
-type PetAnimationState = "idle" | "running" | "waiting" | "review";
 type DesktopPetSide = "left" | "right";
 
 type AppSettings = {
@@ -63,10 +71,12 @@ const spriteUrls: Record<string, string> = {
   chaossprite: chaosspriteUrl,
   goose: gooseUrl,
 };
-const animations: Record<PetAnimationState, { row: number; frameDurationsMs: number[] }> = {
+const animations: Record<DesktopPetAnimationState, { row: number; frameDurationsMs: number[] }> = {
   idle: { row: 0, frameDurationsMs: [280, 110, 110, 140, 140, 320] },
-  running: { row: 7, frameDurationsMs: [120, 120, 120, 120, 120, 220] },
+  waving: { row: 3, frameDurationsMs: [140, 140, 140, 280] },
+  failed: { row: 5, frameDurationsMs: [140, 140, 140, 140, 140, 140, 140, 240] },
   waiting: { row: 6, frameDurationsMs: [150, 150, 150, 150, 150, 260] },
+  running: { row: 7, frameDurationsMs: [120, 120, 120, 120, 120, 220] },
   review: { row: 8, frameDurationsMs: [150, 150, 150, 150, 150, 280] },
 };
 
@@ -84,15 +94,16 @@ let side: DesktopPetSide = "left";
 let frameTimer: number | null = null;
 let activityTimer: number | null = null;
 let currentFrame = 0;
-let currentState: PetAnimationState = "idle";
+let currentState: DesktopPetAnimationState = "idle";
 let lastBubbleText = "";
 let lastBubbleVisible = false;
+let lastBubbleTone: DesktopPetActivityTone = "normal";
 
 void boot();
 
 async function boot() {
   installWindowEvents();
-  await Promise.all([loadSettings(), loadPet(), loadRuntime()]);
+  await Promise.all([loadSettings(), loadPet(), loadRuntime(), syncI18nBundleFromRust()]);
   await loadPlacement();
   renderAll();
   if (shouldDisplayPet()) {
@@ -126,7 +137,7 @@ function installWindowEvents() {
     side = event.payload.side === "right" ? "right" : "left";
     applySide();
   });
-  void appWindow.listen("desktop-pet:skip-line", () => setBubbleText(""));
+  void appWindow.listen("desktop-pet:skip-line", () => setBubbleLine(""));
 }
 
 function openContextMenu(event: MouseEvent) {
@@ -136,7 +147,12 @@ function openContextMenu(event: MouseEvent) {
 }
 
 async function loadSettings() {
-  settings = await invoke<AppSettings>("app_settings_get").catch(() => null);
+  settings = await syncAppSettingsFromRust()
+    .then((next) => {
+      lockRuntimeLocale(next);
+      return next;
+    })
+    .catch(() => invoke<AppSettings>("app_settings_get").catch(() => null));
 }
 
 async function loadPet() {
@@ -189,11 +205,12 @@ function updateSpriteSource() {
 }
 
 function updateSpriteAnimation() {
-  const nextState: PetAnimationState = pet?.claimedAt
-    ? pet.dailyExperienceTokens > 0
-      ? "running"
-      : "idle"
-    : "waiting";
+  const nextState = desktopPetAnimationState({
+    claimed: Boolean(pet?.claimedAt),
+    dailyExperienceTokens: pet?.dailyExperienceTokens ?? 0,
+    sessions: runtime.sessions,
+    now: Date.now() / 1000,
+  });
   if (nextState === currentState && frameTimer != null) return;
   currentState = nextState;
   currentFrame = 0;
@@ -230,26 +247,29 @@ function applyFrame() {
 
 function updateActivityLine() {
   const now = Date.now() / 1000;
-  const text = desktopPetActivityLine(runtime.sessions, now);
-  setBubbleText(text);
+  const line = desktopPetActivityLine(runtime.sessions, now, tm);
+  setBubbleLine(line.text, line.tone);
   if (activityTimer != null) window.clearTimeout(activityTimer);
   const refreshMs = nextDesktopPetActivityRefreshMs(runtime.sessions, now);
   activityTimer = refreshMs == null ? null : window.setTimeout(updateActivityLine, refreshMs);
 }
 
-function setBubbleText(text: string) {
+function setBubbleLine(text: string, tone: DesktopPetActivityTone = "normal") {
   const nextText = text.trim();
+  const nextTone = nextText ? tone : "normal";
   const isVisible = nextText.length > 0;
-  if (nextText === lastBubbleText && isVisible === lastBubbleVisible) return;
+  if (nextText === lastBubbleText && isVisible === lastBubbleVisible && nextTone === lastBubbleTone) return;
   lastBubbleText = nextText;
   lastBubbleVisible = isVisible;
+  lastBubbleTone = nextTone;
   bubble.hidden = !isVisible;
   bubble.style.display = isVisible ? "grid" : "none";
+  bubble.dataset.tone = nextTone;
   bubbleText.textContent = nextText;
   void invoke("desktop_pet_set_bubble_visible", { visible: isVisible }).catch(() => undefined);
 }
 
-function frameDelay(delayMs: number, state: PetAnimationState) {
+function frameDelay(delayMs: number, state: DesktopPetAnimationState) {
   const leadingHold = state === "idle" || state === "waiting" || state === "review" ? 1.85 : 1.35;
   return Math.max(80, Math.round(delayMs * leadingHold));
 }

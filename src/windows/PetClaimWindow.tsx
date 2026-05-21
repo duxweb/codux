@@ -1,7 +1,14 @@
 import { CheckCircle2, Plus, Sparkles } from "../icons";
 import { useEffect, useMemo, useState } from "react";
 import { listenPetCustomPetInstalled } from "../ai/petCustomEvents";
-import { defaultPetCatalog, loadPetCatalog, usePetLedger, type PetCatalog, type PetCatalogItem, type PetCustomPet } from "../ai/petState";
+import {
+  defaultPetCatalog,
+  loadPetCatalog,
+  usePetLedger,
+  type PetCatalog,
+  type PetCatalogItem,
+  type PetCustomPet,
+} from "../ai/petState";
 import { Button } from "../components/Button";
 import { TextInput } from "../components/Form";
 import { PetSprite } from "../components/PetSprite";
@@ -105,26 +112,31 @@ export function PetClaimWindow() {
   }, [catalog]);
 
   const selected = selections.find((item) => item.id === selectedId) ?? selections[0] ?? fallbackSelection();
-  const accent = selected.kind === "bundled"
-    ? (petAccentColors[selected.item.species] ?? "#2A80FF")
-    : selected.kind === "random"
-      ? "#8B5CF6"
-      : "#2A80FF";
-  const selectedTitle = selected.kind === "bundled"
-    ? tm(selected.item.nameKey, selected.item.species)
-    : selected.kind === "random"
-      ? tm("pet.claim.random.title", "Random")
-      : selected.pet.displayName;
-  const selectedSubtitle = selected.kind === "bundled"
-    ? tm(selected.item.subtitleKey, "")
-    : selected.kind === "random"
-      ? tm("pet.claim.random.subtitle", "Let Codux choose a companion")
-      : tm("pet.claim.custom.subtitle", "Installed custom pet");
-  const selectedDescription = selected.kind === "bundled"
-    ? (tm(selected.item.descriptionKey, "") || selectedSubtitle)
-    : selected.kind === "random"
-      ? tm("pet.claim.random.description", "Let Codux choose one companion for you.")
-      : (selected.pet.description || tm("pet.claim.custom.description", "A custom Codex-format companion installed from Petdex."));
+  const accent =
+    selected.kind === "bundled"
+      ? (petAccentColors[selected.item.species] ?? "#2A80FF")
+      : selected.kind === "random"
+        ? "#8B5CF6"
+        : "#2A80FF";
+  const selectedTitle =
+    selected.kind === "bundled"
+      ? tm(selected.item.nameKey, selected.item.species)
+      : selected.kind === "random"
+        ? tm("pet.claim.random.title", "Random")
+        : selected.pet.displayName;
+  const selectedSubtitle =
+    selected.kind === "bundled"
+      ? tm(selected.item.subtitleKey, "")
+      : selected.kind === "random"
+        ? tm("pet.claim.random.subtitle", "Let Codux choose a companion")
+        : tm("pet.claim.custom.subtitle", "Installed custom pet");
+  const selectedDescription =
+    selected.kind === "bundled"
+      ? tm(selected.item.descriptionKey, "") || selectedSubtitle
+      : selected.kind === "random"
+        ? tm("pet.claim.random.description", "Let Codux choose one companion for you.")
+        : selected.pet.description ||
+          tm("pet.claim.custom.description", "A custom Codex-format companion installed from Petdex.");
 
   const confirm = async () => {
     if (isSubmitting) return;
@@ -241,23 +253,23 @@ function PetOptionRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const title = selection.kind === "bundled"
-    ? tm(selection.item.nameKey, selection.item.species)
-    : selection.kind === "random"
-      ? tm("pet.claim.random.title", "Random")
-      : selection.pet.displayName;
-  const subtitle = selection.kind === "bundled"
-    ? tm(selection.item.subtitleKey, "")
-    : selection.kind === "random"
-      ? tm("pet.claim.random.subtitle", "Let Codux choose a companion")
-      : tm("pet.claim.custom.subtitle", "Installed custom pet");
+  const title =
+    selection.kind === "bundled"
+      ? tm(selection.item.nameKey, selection.item.species)
+      : selection.kind === "random"
+        ? tm("pet.claim.random.title", "Random")
+        : selection.pet.displayName;
+  const subtitle =
+    selection.kind === "bundled"
+      ? tm(selection.item.subtitleKey, "")
+      : selection.kind === "random"
+        ? tm("pet.claim.random.subtitle", "Let Codux choose a companion")
+        : tm("pet.claim.custom.subtitle", "Installed custom pet");
   return (
     <PressableButton
       onPressUp={onSelect}
       className={`grid grid-cols-[44px_minmax(0,1fr)_18px] items-center gap-2.5 rounded-[10px] border px-2.5 py-[7px] text-left transition-colors ${
-        selected
-          ? "border-brand-blue/60 bg-brand-blue/10"
-          : "border-transparent bg-fill/[0.035] hover:bg-fill/[0.07]"
+        selected ? "border-brand-blue/60 bg-brand-blue/10" : "border-transparent bg-fill/[0.035] hover:bg-fill/[0.07]"
       }`}
     >
       <PetOptionSprite selection={selection} />
@@ -280,14 +292,7 @@ function PetSelectionSprite({
   staticMode?: boolean;
 }) {
   if (selection.kind === "custom") {
-    return (
-      <PetSprite
-        species="voidcat"
-        src={selection.pet.spritesheetDataUrl}
-        size={size}
-        staticMode={staticMode}
-      />
-    );
+    return <PetSprite species="voidcat" src={selection.pet.spritesheetDataUrl} size={size} staticMode={staticMode} />;
   }
   if (selection.kind === "random") {
     return (
@@ -322,12 +327,7 @@ function PetOptionSprite({ selection }: { selection: PetSelection }) {
 
   return (
     <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-[8px] bg-fill/[0.035]">
-      <img
-        src={src}
-        alt=""
-        className="h-full w-full object-contain"
-        draggable={false}
-      />
+      <img src={src} alt="" className="h-full w-full object-contain" draggable={false} />
     </span>
   );
 }

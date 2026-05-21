@@ -32,9 +32,7 @@ export function Tooltip({
 
   return (
     <HTooltip delay={delay} closeDelay={80}>
-      <HTooltip.Trigger className={triggerClassName}>
-        {children}
-      </HTooltip.Trigger>
+      <HTooltip.Trigger className={triggerClassName}>{children}</HTooltip.Trigger>
       <HTooltip.Content
         placement={placement}
         showArrow={false}

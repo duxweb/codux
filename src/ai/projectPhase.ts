@@ -13,10 +13,7 @@ export function aggregateProjectPhase(
   selectedWorktreeId: string | undefined,
   phaseFor: (projectId: string) => AIProjectPhase,
 ): AIProjectPhase {
-  const ids =
-    selectedWorktreeId && selectedWorktreeId !== projectId
-      ? [projectId, selectedWorktreeId]
-      : [projectId];
+  const ids = selectedWorktreeId && selectedWorktreeId !== projectId ? [projectId, selectedWorktreeId] : [projectId];
   return ids.map(phaseFor).reduce(preferredPhase, { kind: "idle" } as AIProjectPhase);
 }
 

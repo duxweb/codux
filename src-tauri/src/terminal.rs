@@ -178,7 +178,14 @@ impl TerminalManager {
     where
         F: Fn(TerminalEvent) + Send + Sync + 'static,
     {
-        let id = Uuid::new_v4().to_string();
+        self.ai_runtime
+            .ensure_started()
+            .map_err(anyhow::Error::msg)?;
+        let id = config
+            .terminal_id
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let sink: EventSink = Arc::new(emit);
         let session = TerminalSession::spawn(
             id.clone(),

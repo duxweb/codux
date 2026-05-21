@@ -3,7 +3,18 @@
   "identifier": "default",
   "description": "Default capability for the Codux desktop window.",
   "local": true,
-  "windows": ["main", "settings", "project-create", "desktop-pet", "pet-claim", "pet-dex", "pet-custom-install", "memory-manager", "terminal-*", "git-diff-*"],
+  "windows": [
+    "main",
+    "settings",
+    "project-create",
+    "desktop-pet",
+    "pet-claim",
+    "pet-dex",
+    "pet-custom-install",
+    "memory-manager",
+    "terminal-*",
+    "git-diff-*"
+  ],
   "permissions": [
     "core:default",
     "opener:default",

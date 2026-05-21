@@ -47,6 +47,7 @@
       "git.commit.message.placeholder": "Geben Sie die Commit-Nachricht ein",
       "git.commit.options": "Commit-Optionen",
       "git.commit.push_success": "Änderungen festgeschrieben und vorangetrieben.",
+      "git.commit.submitting": "Committing",
       "git.commit.success": "Festgeschriebene inszenierte Änderungen.",
       "git.commit.sync_success": "Festgeschriebene und synchronisierte Änderungen.",
       "git.credential.password_or_token": "Passwort oder Token",
@@ -60,6 +61,7 @@
       "git.diff.missing_params": "Diff-Parameter fehlen.",
       "git.diff.new_file": "Neue Datei",
       "git.diff.old_file": "Alte Datei",
+      "git.diff.open_file": "Datei öffnen",
       "git.diff.select_file": "Wählen Sie eine Datei aus, um den Diff anzuzeigen.",
       "git.diff.staged_changes": "Gestagte Änderungen",
       "git.diff.too_large": "Diese Datei ist zu groß für einen sicheren Vergleich.",
@@ -75,6 +77,7 @@
       "git.empty.not_repository": "Das aktuelle Verzeichnis ist kein Git-Repository",
       "git.empty.reading_status": "Git-Status wird gelesen",
       "git.empty.select_project": "Add or select a project to view Git status.",
+      "git.error.unsafe_path_format": "Refusing to write outside the repository: %@",
       "git.files.actions_format": "%@ Aktionen",
       "git.files.changes": "Änderungen",
       "git.files.changes.empty": "Keine Änderungen im Arbeitsbaum",
@@ -214,8 +217,7 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files.",
-      "git.diff.open_file": "Datei öffnen"
+      "git.unstage.selected.success": "Unstaged selected files."
     },
     "en": {
       "git.auth.cancelled": "Git authentication was cancelled.",
@@ -483,6 +485,7 @@
       "git.commit.message.placeholder": "Ingrese el mensaje de confirmación",
       "git.commit.options": "Opciones de commit",
       "git.commit.push_success": "Cambios comprometidos e impulsados.",
+      "git.commit.submitting": "Committing",
       "git.commit.success": "Cambios por etapas comprometidos.",
       "git.commit.sync_success": "Cambios comprometidos y sincronizados.",
       "git.credential.password_or_token": "Contraseña o token",
@@ -496,6 +499,7 @@
       "git.diff.missing_params": "Faltan parámetros de diff.",
       "git.diff.new_file": "Archivo nuevo",
       "git.diff.old_file": "Archivo anterior",
+      "git.diff.open_file": "Abrir archivo",
       "git.diff.select_file": "Selecciona un archivo para ver su diff.",
       "git.diff.staged_changes": "Cambios preparados",
       "git.diff.too_large": "Este archivo es demasiado grande para compararlo con seguridad.",
@@ -511,6 +515,7 @@
       "git.empty.not_repository": "El directorio actual no es un repositorio Git",
       "git.empty.reading_status": "Lectura del estado de Git",
       "git.empty.select_project": "Add or select a project to view Git status.",
+      "git.error.unsafe_path_format": "Refusing to write outside the repository: %@",
       "git.files.actions_format": "Acciones de %@",
       "git.files.changes": "Cambios",
       "git.files.changes.empty": "Sin cambios en el árbol de trabajo",
@@ -650,8 +655,7 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files.",
-      "git.diff.open_file": "Abrir archivo"
+      "git.unstage.selected.success": "Unstaged selected files."
     },
     "fr": {
       "git.auth.cancelled": "L'authentification Git a été annulée.",
@@ -700,6 +704,7 @@
       "git.commit.message.placeholder": "Entrez le message de validation",
       "git.commit.options": "Options de commit",
       "git.commit.push_success": "Des changements engagés et poussés.",
+      "git.commit.submitting": "Committing",
       "git.commit.success": "Changements par étapes engagés.",
       "git.commit.sync_success": "Modifications validées et synchronisées.",
       "git.credential.password_or_token": "Mot de passe ou jeton",
@@ -713,6 +718,7 @@
       "git.diff.missing_params": "Paramètres diff manquants.",
       "git.diff.new_file": "Nouveau fichier",
       "git.diff.old_file": "Ancien fichier",
+      "git.diff.open_file": "Ouvrir le fichier",
       "git.diff.select_file": "Sélectionnez un fichier pour afficher son diff.",
       "git.diff.staged_changes": "Modifications indexées",
       "git.diff.too_large": "Ce fichier est trop volumineux pour être comparé en sécurité.",
@@ -728,6 +734,7 @@
       "git.empty.not_repository": "Le répertoire actuel n'est pas un référentiel Git",
       "git.empty.reading_status": "Lecture du statut Git",
       "git.empty.select_project": "Add or select a project to view Git status.",
+      "git.error.unsafe_path_format": "Refusing to write outside the repository: %@",
       "git.files.actions_format": "Actions pour %@",
       "git.files.changes": "Changements",
       "git.files.changes.empty": "Aucune modification dans le répertoire de travail",
@@ -867,8 +874,7 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files.",
-      "git.diff.open_file": "Ouvrir le fichier"
+      "git.unstage.selected.success": "Unstaged selected files."
     },
     "ja": {
       "git.auth.cancelled": "Git 認証がキャンセルされました。",
@@ -917,6 +923,7 @@
       "git.commit.message.placeholder": "コミットメッセージを入力してください",
       "git.commit.options": "コミットオプション",
       "git.commit.push_success": "コミットおよびプッシュされた変更。",
+      "git.commit.submitting": "Committing",
       "git.commit.success": "段階的な変更をコミットしました。",
       "git.commit.sync_success": "コミットされ同期された変更。",
       "git.credential.password_or_token": "パスワードまたはトークン",
@@ -930,6 +937,7 @@
       "git.diff.missing_params": "diff パラメータが不足しています。",
       "git.diff.new_file": "新しいファイル",
       "git.diff.old_file": "古いファイル",
+      "git.diff.open_file": "ファイルを開く",
       "git.diff.select_file": "差分を表示するファイルを選択してください。",
       "git.diff.staged_changes": "ステージ済みの変更",
       "git.diff.too_large": "このファイルは安全に比較するには大きすぎます。",
@@ -945,6 +953,7 @@
       "git.empty.not_repository": "現在のディレクトリは Git リポジトリではありません",
       "git.empty.reading_status": "Git ステータスの読み取り",
       "git.empty.select_project": "Add or select a project to view Git status.",
+      "git.error.unsafe_path_format": "Refusing to write outside the repository: %@",
       "git.files.actions_format": "%@ の操作",
       "git.files.changes": "変更点",
       "git.files.changes.empty": "ワークツリーの変更はありません",
@@ -1084,8 +1093,7 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files.",
-      "git.diff.open_file": "ファイルを開く"
+      "git.unstage.selected.success": "Unstaged selected files."
     },
     "ko": {
       "git.auth.cancelled": "Git 인증이 취소되었습니다.",
@@ -1134,6 +1142,7 @@
       "git.commit.message.placeholder": "커밋 메시지 입력",
       "git.commit.options": "커밋 옵션",
       "git.commit.push_success": "변경 사항을 커밋하고 푸시했습니다.",
+      "git.commit.submitting": "Committing",
       "git.commit.success": "단계적 변경 사항을 커밋했습니다.",
       "git.commit.sync_success": "커밋되고 동기화된 변경 사항.",
       "git.credential.password_or_token": "비밀번호 또는 토큰",
@@ -1147,6 +1156,7 @@
       "git.diff.missing_params": "diff 매개변수가 없습니다.",
       "git.diff.new_file": "새 파일",
       "git.diff.old_file": "이전 파일",
+      "git.diff.open_file": "파일 열기",
       "git.diff.select_file": "diff를 보려면 파일을 선택하세요.",
       "git.diff.staged_changes": "스테이지된 변경 사항",
       "git.diff.too_large": "이 파일은 안전하게 비교하기에는 너무 큽니다.",
@@ -1162,6 +1172,7 @@
       "git.empty.not_repository": "현재 디렉터리는 Git 저장소가 아닙니다.",
       "git.empty.reading_status": "Git 상태 읽기",
       "git.empty.select_project": "Add or select a project to view Git status.",
+      "git.error.unsafe_path_format": "Refusing to write outside the repository: %@",
       "git.files.actions_format": "%@ 작업",
       "git.files.changes": "변경 사항",
       "git.files.changes.empty": "작업 트리 변경 사항 없음",
@@ -1301,8 +1312,7 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files.",
-      "git.diff.open_file": "파일 열기"
+      "git.unstage.selected.success": "Unstaged selected files."
     },
     "pt-BR": {
       "git.auth.cancelled": "A autenticação Git foi cancelada.",
@@ -1351,6 +1361,7 @@
       "git.commit.message.placeholder": "Insira a mensagem de confirmação",
       "git.commit.options": "Opções de commit",
       "git.commit.push_success": "Mudanças confirmadas e enviadas por push.",
+      "git.commit.submitting": "Committing",
       "git.commit.success": "Alterações em etapas confirmadas.",
       "git.commit.sync_success": "Alterações confirmadas e sincronizadas.",
       "git.credential.password_or_token": "Senha ou token",
@@ -1364,6 +1375,7 @@
       "git.diff.missing_params": "Parâmetros de diff ausentes.",
       "git.diff.new_file": "Arquivo novo",
       "git.diff.old_file": "Arquivo antigo",
+      "git.diff.open_file": "Abrir arquivo",
       "git.diff.select_file": "Selecione um arquivo para ver o diff.",
       "git.diff.staged_changes": "Alterações preparadas",
       "git.diff.too_large": "Este arquivo é grande demais para comparar com segurança.",
@@ -1379,6 +1391,7 @@
       "git.empty.not_repository": "O diretório atual não é um repositório Git",
       "git.empty.reading_status": "Lendo o status Git",
       "git.empty.select_project": "Add or select a project to view Git status.",
+      "git.error.unsafe_path_format": "Refusing to write outside the repository: %@",
       "git.files.actions_format": "Ações de %@",
       "git.files.changes": "Mudanças",
       "git.files.changes.empty": "Sem mudanças na árvore de trabalho",
@@ -1518,8 +1531,7 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files.",
-      "git.diff.open_file": "Abrir arquivo"
+      "git.unstage.selected.success": "Unstaged selected files."
     },
     "ru": {
       "git.auth.cancelled": "Аутентификация Git отменена.",
@@ -1568,6 +1580,7 @@
       "git.commit.message.placeholder": "Введите сообщение о фиксации",
       "git.commit.options": "Параметры коммита",
       "git.commit.push_success": "Зафиксированы и отправлены изменения.",
+      "git.commit.submitting": "Committing",
       "git.commit.success": "Зафиксированы поэтапные изменения.",
       "git.commit.sync_success": "Зафиксированные и синхронизированные изменения.",
       "git.credential.password_or_token": "Пароль или токен",
@@ -1581,6 +1594,7 @@
       "git.diff.missing_params": "Отсутствуют параметры diff.",
       "git.diff.new_file": "Новый файл",
       "git.diff.old_file": "Старый файл",
+      "git.diff.open_file": "Открыть файл",
       "git.diff.select_file": "Выберите файл для просмотра diff.",
       "git.diff.staged_changes": "Индексированные изменения",
       "git.diff.too_large": "Этот файл слишком велик для безопасного сравнения.",
@@ -1596,6 +1610,7 @@
       "git.empty.not_repository": "Текущий каталог не является репозиторием Git",
       "git.empty.reading_status": "Чтение статуса Git",
       "git.empty.select_project": "Add or select a project to view Git status.",
+      "git.error.unsafe_path_format": "Refusing to write outside the repository: %@",
       "git.files.actions_format": "Действия для %@",
       "git.files.changes": "Изменения",
       "git.files.changes.empty": "Нет изменений в рабочем дереве",
@@ -1735,8 +1750,7 @@
       "git.sync.conflict.title": "Sync Conflict",
       "git.unstage.file.success_format": "Unstaged %@.",
       "git.unstage.section.success": "Unstaged files in this section.",
-      "git.unstage.selected.success": "Unstaged selected files.",
-      "git.diff.open_file": "Открыть файл"
+      "git.unstage.selected.success": "Unstaged selected files."
     },
     "zh-Hans": {
       "git.auth.cancelled": "已取消 Git 鉴权。",
@@ -1768,7 +1782,6 @@
       "git.commit.action": "提交",
       "git.commit.action_push": "提交并推送",
       "git.commit.action_sync": "提交并同步",
-      "git.commit.submitting": "提交中",
       "git.commit.completed": "提交成功。",
       "git.commit.edit_last_message.notice": "仅修改最新一次提交的消息。",
       "git.commit.edit_last_message.placeholder": "输入新的提交消息",
@@ -1786,6 +1799,7 @@
       "git.commit.message.placeholder": "填写提交说明",
       "git.commit.options": "提交选项",
       "git.commit.push_success": "已提交并推送更改。",
+      "git.commit.submitting": "提交中",
       "git.commit.success": "已提交已暂存更改。",
       "git.commit.sync_success": "已提交并同步更改。",
       "git.credential.password_or_token": "密码或令牌",
@@ -1799,6 +1813,7 @@
       "git.diff.missing_params": "缺少 diff 参数。",
       "git.diff.new_file": "新文件",
       "git.diff.old_file": "旧文件",
+      "git.diff.open_file": "打开文件",
       "git.diff.select_file": "选择文件以查看差异。",
       "git.diff.staged_changes": "已暂存变更",
       "git.diff.too_large": "该文件过大，无法安全对比。",
@@ -1954,8 +1969,7 @@
       "git.sync.conflict.title": "同步冲突",
       "git.unstage.file.success_format": "已取消暂存 %@。",
       "git.unstage.section.success": "已取消暂存这个分组中的文件。",
-      "git.unstage.selected.success": "已取消暂存选中的文件。",
-      "git.diff.open_file": "打开文件"
+      "git.unstage.selected.success": "已取消暂存选中的文件。"
     },
     "zh-Hant": {
       "git.auth.cancelled": "Git 驗證已取消。",
@@ -1987,7 +2001,6 @@
       "git.commit.action": "提交",
       "git.commit.action_push": "提交和推送",
       "git.commit.action_sync": "提交並同步",
-      "git.commit.submitting": "提交中",
       "git.commit.completed": "提交完成。",
       "git.commit.edit_last_message.notice": "僅修改最新一次提交訊息。",
       "git.commit.edit_last_message.placeholder": "輸入新的提交訊息",
@@ -2005,6 +2018,7 @@
       "git.commit.message.placeholder": "輸入提交訊息",
       "git.commit.options": "提交選項",
       "git.commit.push_success": "承諾並推動變革。",
+      "git.commit.submitting": "提交中",
       "git.commit.success": "致力於階段性變革。",
       "git.commit.sync_success": "提交並同步更改。",
       "git.credential.password_or_token": "密碼或 Token",
@@ -2018,6 +2032,7 @@
       "git.diff.missing_params": "缺少 diff 參數。",
       "git.diff.new_file": "新檔案",
       "git.diff.old_file": "舊檔案",
+      "git.diff.open_file": "開啟檔案",
       "git.diff.select_file": "選擇檔案以查看差異。",
       "git.diff.staged_changes": "已暫存變更",
       "git.diff.too_large": "此檔案過大，無法安全對比。",
@@ -2173,8 +2188,7 @@
       "git.sync.conflict.title": "同步衝突",
       "git.unstage.file.success_format": "已取消暫存 %@。",
       "git.unstage.section.success": "已取消暫存這個分組中的檔案。",
-      "git.unstage.selected.success": "已取消暫存所選檔案。",
-      "git.diff.open_file": "開啟檔案"
+      "git.unstage.selected.success": "已取消暫存所選檔案。"
     }
   }
 }

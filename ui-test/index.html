@@ -738,18 +738,48 @@
     </style>
   </head>
   <body>
-    <svg width="0" height="0" style="position:absolute">
-      <symbol id="i-terminal" viewBox="0 0 24 24"><path d="M4 6h16v12H4z" /><path d="m8 10 3 2-3 2" /><path d="M14 15h3" /></symbol>
+    <svg width="0" height="0" style="position: absolute">
+      <symbol id="i-terminal" viewBox="0 0 24 24">
+        <path d="M4 6h16v12H4z" />
+        <path d="m8 10 3 2-3 2" />
+        <path d="M14 15h3" />
+      </symbol>
       <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 7h7l2 2h7v10H4z" /></symbol>
-      <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 4h7l4 4v12H7z" /><path d="M14 4v5h5" /></symbol>
-      <symbol id="i-git" viewBox="0 0 24 24"><path d="M7 5v8a4 4 0 0 0 4 4h6" /><path d="M7 9h8" /><circle cx="7" cy="5" r="2" /><circle cx="15" cy="9" r="2" /><circle cx="17" cy="17" r="2" /></symbol>
-      <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z" /></symbol>
-      <symbol id="i-ssh" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14" /><path d="M9 7v10" /></symbol>
-      <symbol id="i-memory" viewBox="0 0 24 24"><path d="M6 8h12v8H6z" /><path d="M9 5v3M12 5v3M15 5v3M9 16v3M12 16v3M15 16v3" /></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24">
+        <path d="M7 4h7l4 4v12H7z" />
+        <path d="M14 4v5h5" />
+      </symbol>
+      <symbol id="i-git" viewBox="0 0 24 24">
+        <path d="M7 5v8a4 4 0 0 0 4 4h6" />
+        <path d="M7 9h8" />
+        <circle cx="7" cy="5" r="2" />
+        <circle cx="15" cy="9" r="2" />
+        <circle cx="17" cy="17" r="2" />
+      </symbol>
+      <symbol id="i-ai" viewBox="0 0 24 24">
+        <path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z" />
+      </symbol>
+      <symbol id="i-ssh" viewBox="0 0 24 24">
+        <path d="M5 7h14M5 12h14M5 17h14" />
+        <path d="M9 7v10" />
+      </symbol>
+      <symbol id="i-memory" viewBox="0 0 24 24">
+        <path d="M6 8h12v8H6z" />
+        <path d="M9 5v3M12 5v3M15 5v3M9 16v3M12 16v3M15 16v3" />
+      </symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
-      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></symbol>
-      <symbol id="i-split" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1" /><path d="M12 5v14" /></symbol>
-      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="6" />
+        <path d="m16 16 4 4" />
+      </symbol>
+      <symbol id="i-split" viewBox="0 0 24 24">
+        <rect x="4" y="5" width="16" height="14" rx="1" />
+        <path d="M12 5v14" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </symbol>
     </svg>
 
     <div class="app">
@@ -765,14 +795,26 @@
           <div class="crumb">codux-tauri / ui shell / main + wt/ui-shell</div>
           <div class="top-center-actions">
             <div class="top-tools" aria-label="工作区操作">
-              <button class="icon-btn" title="搜索"><svg class="icon"><use href="#i-search" /></svg></button>
-              <button class="icon-btn" title="分屏"><svg class="icon"><use href="#i-split" /></svg></button>
-              <button class="icon-btn" title="新终端"><svg class="icon"><use href="#i-plus" /></svg></button>
+              <button class="icon-btn" title="搜索">
+                <svg class="icon"><use href="#i-search" /></svg>
+              </button>
+              <button class="icon-btn" title="分屏">
+                <svg class="icon"><use href="#i-split" /></svg>
+              </button>
+              <button class="icon-btn" title="新终端">
+                <svg class="icon"><use href="#i-plus" /></svg>
+              </button>
             </div>
             <nav class="switcher" aria-label="主视图">
-              <button data-main="terminal"><svg class="icon"><use href="#i-terminal" /></svg>终端</button>
-              <button data-main="files"><svg class="icon"><use href="#i-folder" /></svg>文件</button>
-              <button data-main="git"><svg class="icon"><use href="#i-git" /></svg>Git</button>
+              <button data-main="terminal">
+                <svg class="icon"><use href="#i-terminal" /></svg>终端
+              </button>
+              <button data-main="files">
+                <svg class="icon"><use href="#i-folder" /></svg>文件
+              </button>
+              <button data-main="git">
+                <svg class="icon"><use href="#i-git" /></svg>Git
+              </button>
             </nav>
           </div>
         </div>
@@ -807,14 +849,18 @@
             </button>
           </div>
           <div class="head">
-            <button class="icon-btn" title="新建项目"><svg class="icon"><use href="#i-plus" /></svg></button>
+            <button class="icon-btn" title="新建项目">
+              <svg class="icon"><use href="#i-plus" /></svg>
+            </button>
           </div>
         </aside>
 
         <aside class="col worktrees" aria-label="Worktree">
           <div class="head">
             <div class="head-title">Worktree / 任务</div>
-            <button class="icon-btn" title="搜索"><svg class="icon"><use href="#i-search" /></svg></button>
+            <button class="icon-btn" title="搜索">
+              <svg class="icon"><use href="#i-search" /></svg>
+            </button>
           </div>
           <div class="list">
             <button class="row active">
@@ -857,21 +903,31 @@
                   <div class="pane-meta">zsh · /Volumes/Web/codux-tauri</div>
                 </div>
                 <div class="term">
-                  <div class="line"><span class="dim">12:04:11</span> <span class="cmd">pnpm dev</span> <span class="ok">ready</span> in 412 ms</div>
-                  <div class="line"><span class="dim">12:04:12</span> Local: <span class="cmd">http://localhost:5173</span></div>
+                  <div class="line">
+                    <span class="dim">12:04:11</span> <span class="cmd">pnpm dev</span> <span class="ok">ready</span> in
+                    412 ms
+                  </div>
+                  <div class="line">
+                    <span class="dim">12:04:12</span> Local: <span class="cmd">http://localhost:5173</span>
+                  </div>
                   <div class="ai-line">
                     <span class="ai-name ok">codex</span>
                     <span><span class="cmd">tool_use</span> editing ui-test/index.html</span>
                     <span class="dim">now</span>
                   </div>
-                  <div class="line"><span class="dim">12:06:18</span> split layout saved for <span class="cmd">ui shell</span></div>
+                  <div class="line">
+                    <span class="dim">12:06:18</span> split layout saved for <span class="cmd">ui shell</span>
+                  </div>
                   <div class="ai-line">
                     <span class="ai-name warn">claude</span>
                     <span><span class="cmd">needs_input</span> wait for task workspace decision</span>
                     <span class="dim">1m</span>
                   </div>
                   <div class="line"></div>
-                  <div class="line"><span class="soft">~/Web/codux-tauri</span> <span class="ok">main</span> <span class="soft">❯</span><span class="caret"></span></div>
+                  <div class="line">
+                    <span class="soft">~/Web/codux-tauri</span> <span class="ok">main</span> <span class="soft">❯</span
+                    ><span class="caret"></span>
+                  </div>
                 </div>
               </article>
 
@@ -896,10 +952,21 @@
                   <div class="pane-meta">stdout · stderr · exit</div>
                 </div>
                 <div class="term">
-                  <div class="ai-line"><span class="ai-name ok">codex</span><span>running · patch static UI</span><span class="dim">12s</span></div>
-                  <div class="ai-line"><span class="ai-name warn">claude</span><span>input required · worktree layout</span><span class="dim">1m</span></div>
-                  <div class="ai-line"><span class="ai-name">gemini</span><span>observing · tests pane</span><span class="dim">4m</span></div>
-                  <div class="ai-line"><span class="ai-name">retome</span><span>memory index · 3 pending</span><span class="dim">idle</span></div>
+                  <div class="ai-line">
+                    <span class="ai-name ok">codex</span><span>running · patch static UI</span
+                    ><span class="dim">12s</span>
+                  </div>
+                  <div class="ai-line">
+                    <span class="ai-name warn">claude</span><span>input required · worktree layout</span
+                    ><span class="dim">1m</span>
+                  </div>
+                  <div class="ai-line">
+                    <span class="ai-name">gemini</span><span>observing · tests pane</span><span class="dim">4m</span>
+                  </div>
+                  <div class="ai-line">
+                    <span class="ai-name">retome</span><span>memory index · 3 pending</span
+                    ><span class="dim">idle</span>
+                  </div>
                 </div>
               </article>
             </div>
@@ -908,10 +975,18 @@
           <section class="view files">
             <div class="simple-grid">
               <div class="simple-list">
-                <div class="simple-row active"><svg class="icon"><use href="#i-file" /></svg>ui-test/index.html</div>
-                <div class="simple-row"><svg class="icon"><use href="#i-folder" /></svg>src</div>
-                <div class="simple-row"><svg class="icon"><use href="#i-folder" /></svg>src-tauri</div>
-                <div class="simple-row"><svg class="icon"><use href="#i-file" /></svg>package.json</div>
+                <div class="simple-row active">
+                  <svg class="icon"><use href="#i-file" /></svg>ui-test/index.html
+                </div>
+                <div class="simple-row">
+                  <svg class="icon"><use href="#i-folder" /></svg>src
+                </div>
+                <div class="simple-row">
+                  <svg class="icon"><use href="#i-folder" /></svg>src-tauri
+                </div>
+                <div class="simple-row">
+                  <svg class="icon"><use href="#i-file" /></svg>package.json
+                </div>
               </div>
               <div class="simple-detail">
                 <div class="code">
@@ -948,8 +1023,12 @@
               <button class="tab"><span class="dot ok"></span>ai monitor</button>
             </div>
             <div class="tab-group">
-              <button class="tab"><svg class="icon"><use href="#i-split" /></svg>split</button>
-              <button class="tab"><svg class="icon"><use href="#i-plus" /></svg>terminal</button>
+              <button class="tab">
+                <svg class="icon"><use href="#i-split" /></svg>split
+              </button>
+              <button class="tab">
+                <svg class="icon"><use href="#i-plus" /></svg>terminal
+              </button>
             </div>
           </div>
         </section>
@@ -958,10 +1037,18 @@
           <div class="head">
             <div class="head-title">右侧栏</div>
             <nav class="panel-switch" aria-label="右侧栏切换">
-              <button data-panel="ai" title="AI"><svg class="icon"><use href="#i-ai" /></svg></button>
-              <button data-panel="files" title="文件"><svg class="icon"><use href="#i-folder" /></svg></button>
-              <button data-panel="git" title="Git"><svg class="icon"><use href="#i-git" /></svg></button>
-              <button data-panel="ssh" title="SSH"><svg class="icon"><use href="#i-ssh" /></svg></button>
+              <button data-panel="ai" title="AI">
+                <svg class="icon"><use href="#i-ai" /></svg>
+              </button>
+              <button data-panel="files" title="文件">
+                <svg class="icon"><use href="#i-folder" /></svg>
+              </button>
+              <button data-panel="git" title="Git">
+                <svg class="icon"><use href="#i-git" /></svg>
+              </button>
+              <button data-panel="ssh" title="SSH">
+                <svg class="icon"><use href="#i-ssh" /></svg>
+              </button>
             </nav>
           </div>
 

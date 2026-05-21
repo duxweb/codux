@@ -10,16 +10,7 @@ type HeroIcon = (props: SVGProps<SVGSVGElement> & { title?: string; titleId?: st
 
 function hero(Icon: HeroIcon) {
   return function AppIcon({ size = 16, strokeWidth: _strokeWidth, className, style, ...props }: IconProps) {
-    return (
-      <Icon
-        aria-hidden="true"
-        className={className}
-        height={size}
-        style={style}
-        width={size}
-        {...props}
-      />
-    );
+    return <Icon aria-hidden="true" className={className} height={size} style={style} width={size} {...props} />;
   };
 }
 
@@ -101,6 +92,7 @@ export const PanelLeftClose = hero(HeroIcons.RectangleGroupIcon);
 export const PencilSquare = hero(HeroIcons.PencilSquareIcon);
 export const Plus = hero(HeroIcons.PlusIcon);
 export const Radio = hero(HeroIcons.RadioIcon);
+export const QrCode = hero(HeroIcons.QrCodeIcon);
 export const Redo2 = hero(HeroIcons.ArrowUturnRightIcon);
 export const RefreshCw = hero(HeroIcons.ArrowPathIcon);
 export const RotateCcw = hero(HeroIcons.ArrowPathIcon);
@@ -121,4 +113,5 @@ export const Users = hero(HeroIcons.UserGroupIcon);
 export const Window = hero(HeroIcons.WindowIcon);
 export const Wrench = hero(HeroIcons.WrenchIcon);
 export const X = hero(HeroIcons.XMarkIcon);
+export const Wifi = hero(HeroIcons.WifiIcon);
 export const Zap = hero(HeroIcons.BoltIcon);

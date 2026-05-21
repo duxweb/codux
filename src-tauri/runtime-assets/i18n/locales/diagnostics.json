@@ -1,6 +1,69 @@
 {
   "strings": {
+    "de": {
+      "diagnostics.export.error.title": "Unable to Export Diagnostics",
+      "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
+      "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
+      "diagnostics.export.panel.title": "Export Diagnostics",
+      "diagnostics.export.running": "Exporting diagnostics…",
+      "diagnostics.export.success_format": "Exported diagnostics to %@."
+    },
     "en": {
+      "diagnostics.export.error.title": "Unable to Export Diagnostics",
+      "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
+      "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
+      "diagnostics.export.panel.title": "Export Diagnostics",
+      "diagnostics.export.running": "Exporting diagnostics…",
+      "diagnostics.export.success_format": "Exported diagnostics to %@."
+    },
+    "es": {
+      "diagnostics.export.error.title": "Unable to Export Diagnostics",
+      "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
+      "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
+      "diagnostics.export.panel.title": "Export Diagnostics",
+      "diagnostics.export.running": "Exporting diagnostics…",
+      "diagnostics.export.success_format": "Exported diagnostics to %@."
+    },
+    "fr": {
+      "diagnostics.export.error.title": "Unable to Export Diagnostics",
+      "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
+      "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
+      "diagnostics.export.panel.title": "Export Diagnostics",
+      "diagnostics.export.running": "Exporting diagnostics…",
+      "diagnostics.export.success_format": "Exported diagnostics to %@."
+    },
+    "ja": {
+      "diagnostics.export.error.title": "Unable to Export Diagnostics",
+      "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
+      "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
+      "diagnostics.export.panel.title": "Export Diagnostics",
+      "diagnostics.export.running": "Exporting diagnostics…",
+      "diagnostics.export.success_format": "Exported diagnostics to %@."
+    },
+    "ko": {
+      "diagnostics.export.error.title": "Unable to Export Diagnostics",
+      "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
+      "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
+      "diagnostics.export.panel.title": "Export Diagnostics",
+      "diagnostics.export.running": "Exporting diagnostics…",
+      "diagnostics.export.success_format": "Exported diagnostics to %@."
+    },
+    "pt-BR": {
+      "diagnostics.export.error.title": "Unable to Export Diagnostics",
+      "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
+      "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
+      "diagnostics.export.panel.title": "Export Diagnostics",
+      "diagnostics.export.running": "Exporting diagnostics…",
+      "diagnostics.export.success_format": "Exported diagnostics to %@."
+    },
+    "ru": {
       "diagnostics.export.error.title": "Unable to Export Diagnostics",
       "diagnostics.export.failed": "Failed to export diagnostics.",
       "diagnostics.export.filter.json": "JSON",
@@ -18,44 +81,13 @@
       "diagnostics.export.running": "正在导出诊断包…",
       "diagnostics.export.success_format": "诊断包已导出到 %@。"
     },
-    "de": {
-      "diagnostics.export.error.title": "Unable to Export Diagnostics",
-      "diagnostics.export.panel.title": "Export Diagnostics",
-      "diagnostics.export.success_format": "Exported diagnostics to %@."
-    },
-    "es": {
-      "diagnostics.export.error.title": "Unable to Export Diagnostics",
-      "diagnostics.export.panel.title": "Export Diagnostics",
-      "diagnostics.export.success_format": "Exported diagnostics to %@."
-    },
-    "fr": {
-      "diagnostics.export.error.title": "Unable to Export Diagnostics",
-      "diagnostics.export.panel.title": "Export Diagnostics",
-      "diagnostics.export.success_format": "Exported diagnostics to %@."
-    },
-    "ja": {
-      "diagnostics.export.error.title": "Unable to Export Diagnostics",
-      "diagnostics.export.panel.title": "Export Diagnostics",
-      "diagnostics.export.success_format": "Exported diagnostics to %@."
-    },
-    "ko": {
-      "diagnostics.export.error.title": "Unable to Export Diagnostics",
-      "diagnostics.export.panel.title": "Export Diagnostics",
-      "diagnostics.export.success_format": "Exported diagnostics to %@."
-    },
-    "pt-BR": {
-      "diagnostics.export.error.title": "Unable to Export Diagnostics",
-      "diagnostics.export.panel.title": "Export Diagnostics",
-      "diagnostics.export.success_format": "Exported diagnostics to %@."
-    },
-    "ru": {
-      "diagnostics.export.error.title": "Unable to Export Diagnostics",
-      "diagnostics.export.panel.title": "Export Diagnostics",
-      "diagnostics.export.success_format": "Exported diagnostics to %@."
-    },
     "zh-Hant": {
       "diagnostics.export.error.title": "Unable to Export Diagnostics",
+      "diagnostics.export.failed": "Failed to export diagnostics.",
+      "diagnostics.export.filter.json": "JSON",
+      "diagnostics.export.panel.message": "Choose where to save the diagnostics archive.",
       "diagnostics.export.panel.title": "Export Diagnostics",
+      "diagnostics.export.running": "Exporting diagnostics…",
       "diagnostics.export.success_format": "Exported diagnostics to %@."
     }
   }
