@@ -12,6 +12,7 @@ const channel = requiredEnv("RELEASE_CHANNEL");
 const tagName = process.env.RELEASE_TAG || `v${version}`;
 const channelTag = `tauri-${channel}`;
 const repo = process.env.GITHUB_REPOSITORY || "duxweb/codux";
+const targetCommitish = process.env.RELEASE_TARGET_COMMITISH || resolveTargetCommitish();
 const notesPath = process.env.RELEASE_NOTES_PATH || path.join(root, "dist", `release-notes-${version}.md`);
 const artifactsDir = process.env.RELEASE_ARTIFACTS_DIR || path.join(root, "release-artifacts");
 const notes = fs.existsSync(notesPath) ? fs.readFileSync(notesPath, "utf8") : `Codux ${version}`;
@@ -52,7 +53,7 @@ if (!dryRun) {
     "--repo",
     repo,
     "--target",
-    tagName,
+    targetCommitish,
     "--title",
     `Codux ${channel}`,
     "--notes",
@@ -216,6 +217,14 @@ function signaturePriority(name) {
   if (name.endsWith(".msi.sig") || name.endsWith(".msi.zip.sig")) return 90;
   if (name.endsWith(".app.tar.gz.sig")) return 100;
   return 0;
+}
+
+function resolveTargetCommitish() {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" });
+  if (result.status === 0) {
+    return result.stdout.trim();
+  }
+  return tagName;
 }
 
 function run(command, args, options = {}) {
