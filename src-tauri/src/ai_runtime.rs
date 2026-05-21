@@ -3314,16 +3314,41 @@ fn toml_key_name(line: &str) -> Option<String> {
 
 fn codex_hook_state_key(line: &str) -> Option<String> {
     let trimmed = normalized_line(line);
-    let prefix = "[hooks.state.\"";
-    let suffix = "\"]";
-    if !trimmed.starts_with(prefix) || !trimmed.ends_with(suffix) {
-        return None;
+    let raw = trimmed
+        .strip_prefix("[hooks.state.")
+        .and_then(|value| value.strip_suffix(']'))?;
+    parse_toml_basic_string(raw).or_else(|| parse_toml_literal_string(raw))
+}
+
+fn parse_toml_basic_string(value: &str) -> Option<String> {
+    let raw = value.strip_prefix('"')?.strip_suffix('"')?;
+    let mut output = String::new();
+    let mut chars = raw.chars();
+    while let Some(character) = chars.next() {
+        if character != '\\' {
+            output.push(character);
+            continue;
+        }
+        match chars.next()? {
+            '"' => output.push('"'),
+            '\\' => output.push('\\'),
+            'n' => output.push('\n'),
+            'r' => output.push('\r'),
+            't' => output.push('\t'),
+            other => {
+                output.push('\\');
+                output.push(other);
+            }
+        }
     }
-    Some(
-        trimmed[prefix.len()..trimmed.len() - suffix.len()]
-            .replace("\\\"", "\"")
-            .replace("\\\\", "\\"),
-    )
+    Some(output)
+}
+
+fn parse_toml_literal_string(value: &str) -> Option<String> {
+    value
+        .strip_prefix('\'')
+        .and_then(|value| value.strip_suffix('\''))
+        .map(str::to_string)
 }
 
 fn is_toml_table_header(line: &str) -> bool {
@@ -4399,6 +4424,34 @@ model = "gpt-5.5"
         assert!(updated.contains("[hooks.state.\"/tmp/hooks.json:stop:0:0\"]"));
         assert!(updated.contains("trusted_hash = \"sha256:new\""));
         assert!(updated.contains("[profiles.work]\nmodel = \"gpt-5.5\""));
+    }
+
+    #[test]
+    fn codex_config_updater_removes_literal_string_hook_state_duplicates() {
+        let existing = r#"
+[hooks.state]
+
+[hooks.state.'C:\Users\dux\.codex\hooks.json:stop:0:0']
+trusted_hash = "sha256:old-literal"
+
+[hooks.state."C:\\Users\\dux\\.codex\\hooks.json:stop:0:0"]
+trusted_hash = "sha256:old-basic"
+"#;
+        let updated = updated_codex_config_text(
+            existing,
+            &[CodexHookTrustState {
+                key: r#"C:\Users\dux\.codex\hooks.json:stop:0:0"#.to_string(),
+                trusted_hash: "sha256:new".to_string(),
+            }],
+        );
+
+        assert!(!updated.contains("sha256:old-literal"));
+        assert!(!updated.contains("sha256:old-basic"));
+        assert_eq!(updated.matches("[hooks.state.").count(), 1);
+        assert!(updated.contains(
+            r#"[hooks.state."C:\\Users\\dux\\.codex\\hooks.json:stop:0:0"]"#
+        ));
+        assert!(updated.contains("trusted_hash = \"sha256:new\""));
     }
 
     #[test]
