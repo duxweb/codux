@@ -281,6 +281,7 @@ function App() {
       gitDefaultPushRemoteName: selectedProjectWithAIState.gitDefaultPushRemoteName,
     };
   }, [aiVersion, selectedProjectWithAIState, selectedWorktree]);
+  const visibleRightPanel = selectedWorkspaceProject ? rightPanel : null;
 
   useEffect(() => {
     if (!selectedProjectWithAIState || worktreeSnapshot.worktrees.length === 0) return;
@@ -540,7 +541,7 @@ function App() {
       const handled = dispatchShortcut(event, {
         focusScope: focusScopeRef.current,
         mainView,
-        rightPanel,
+        rightPanel: visibleRightPanel,
       });
       if (!handled && isConfiguredShortcut(event, "close.active")) {
         event.preventDefault();
@@ -553,7 +554,7 @@ function App() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [mainView, rightPanel]);
+  }, [mainView, visibleRightPanel]);
 
   useEffect(() => {
     return registerShortcutHandler("global", (event) => {
@@ -585,16 +586,18 @@ function App() {
         return true;
       }
       if (isConfiguredShortcut(event, "panel.git")) {
+        if (!selectedWorkspaceProject) return true;
         setRightPanel((panel) => (panel === "git" ? null : "git"));
         return true;
       }
       if (isConfiguredShortcut(event, "panel.ai")) {
+        if (!selectedWorkspaceProject) return true;
         setRightPanel((panel) => (panel === "ai" ? null : "ai"));
         return true;
       }
       return false;
     });
-  }, [requestTerminalFocus]);
+  }, [requestTerminalFocus, selectedWorkspaceProject]);
 
   useEffect(() => {
     if (mainView === "terminal") {
@@ -691,11 +694,12 @@ function App() {
           requestTerminalFocus();
         }
         if (command.type === "open-right-panel") {
+          if (!selectedWorkspaceProject) return;
           setRightPanel(command.panel);
           setShortcutFocusScope("right-sidebar");
         }
       }),
-    [requestTerminalFocus],
+    [requestTerminalFocus, selectedWorkspaceProject],
   );
 
   return (
@@ -713,7 +717,7 @@ function App() {
         toggleTaskSidebar={() => {
           setTaskSidebarExpanded((value) => !value);
         }}
-        rightPanel={rightPanel}
+        rightPanel={visibleRightPanel}
         toggleRightPanel={toggleRightPanel}
         remoteStatus={remoteStatus}
         pet={pet}
@@ -778,13 +782,13 @@ function App() {
             </div>
           </div>
 
-          {rightPanel && (
+          {visibleRightPanel && (
             <div
               className="w-[320px] flex-shrink-0 border-t border-l border-line-strong"
               onPointerDown={() => setShortcutFocusScope("right-sidebar")}
               onFocusCapture={() => setShortcutFocusScope("right-sidebar")}
             >
-              <Inspector panel={rightPanel} selectedProject={inspectorProject} />
+              <Inspector panel={visibleRightPanel} selectedProject={inspectorProject} />
             </div>
           )}
         </div>

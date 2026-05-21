@@ -92,6 +92,7 @@ export function Titlebar({
     globalTotals.totalTokens;
   const leftChromeInset = isMacPlatform() ? "pl-[86px]" : "pl-4";
   const rightChromeInset = isWindowsPlatform() ? "pr-[150px]" : "pr-4";
+  const hasProjectContext = Boolean(selectedProject);
 
   useEffect(() => subscribeAppSettings(setSettings), []);
   useEffect(() => setActivePopover(null), [mainView]);
@@ -150,32 +151,36 @@ export function Titlebar({
             />
           )}
 
-          <OpenInIDEButton project={selectedProject ?? projects[0]} />
+          {hasProjectContext && (
+            <>
+              <OpenInIDEButton project={selectedProject} />
 
-          <GlyphButton
-            icon={BarChart3}
-            tooltip={t("aiAssistant", settings)}
-            active={rightPanel === "ai"}
-            onPress={() => toggleRightPanel("ai")}
-          />
-          <GlyphButton
-            icon={Server}
-            tooltip={t("ssh", settings)}
-            active={rightPanel === "ssh"}
-            onPress={() => toggleRightPanel("ssh")}
-          />
-          <GlyphButton
-            icon={GitBranch}
-            tooltip={t("git", settings)}
-            active={rightPanel === "git"}
-            onPress={() => toggleRightPanel("git")}
-          />
-          <GlyphButton
-            icon={Folder}
-            tooltip={t("files", settings)}
-            active={rightPanel === "files"}
-            onPress={() => toggleRightPanel("files")}
-          />
+              <GlyphButton
+                icon={BarChart3}
+                tooltip={t("aiAssistant", settings)}
+                active={rightPanel === "ai"}
+                onPress={() => toggleRightPanel("ai")}
+              />
+              <GlyphButton
+                icon={Server}
+                tooltip={t("ssh", settings)}
+                active={rightPanel === "ssh"}
+                onPress={() => toggleRightPanel("ssh")}
+              />
+              <GlyphButton
+                icon={GitBranch}
+                tooltip={t("git", settings)}
+                active={rightPanel === "git"}
+                onPress={() => toggleRightPanel("git")}
+              />
+              <GlyphButton
+                icon={Folder}
+                tooltip={t("files", settings)}
+                active={rightPanel === "files"}
+                onPress={() => toggleRightPanel("files")}
+              />
+            </>
+          )}
         </div>
       </div>
 
