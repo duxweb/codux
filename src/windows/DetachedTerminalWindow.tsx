@@ -1,7 +1,9 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TerminalView } from "../components/TerminalView";
+import { WindowsWindowControls } from "../components/WindowsWindowControls";
 import { tm } from "../i18n";
+import { isWindowsPlatform } from "../platform";
 import { terminalRuntime } from "../terminal/runtime";
 import { destroyCurrentAppWindow, revealCurrentAppWindow } from "../windowing";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
@@ -114,6 +116,7 @@ export function DetachedTerminalWindow() {
 
   return (
     <main className="h-screen min-w-0 min-h-0 overflow-hidden bg-[var(--terminal-bg)] text-ink">
+      {isWindowsPlatform() && <WindowsWindowControls className="h-12" />}
       <section className="h-full min-w-0 min-h-0 bg-[var(--terminal-bg)] p-4">
         {localTerminalId && !isClosing ? (
           <TerminalView

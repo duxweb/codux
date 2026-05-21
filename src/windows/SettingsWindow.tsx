@@ -22,6 +22,7 @@ import { checkForUpdates, type UpdateInstallResult, type UpdateStatus } from "..
 import { Button } from "../components/Button";
 import { AppIconMark, appIconStyles } from "../components/AppIconMark";
 import { PressableButton } from "../components/PressableButton";
+import { WindowsWindowControls } from "../components/WindowsWindowControls";
 import { Field, SettingsCard, FormRow, Select, SettingsForm, Textarea, TextInput, Toggle } from "../components/Form";
 import { revealCurrentAppWindow } from "../windowing";
 import { isWindowsPlatform } from "../platform";
@@ -257,6 +258,7 @@ export function SettingsWindow() {
 
   return (
     <div className="app-shell h-screen grid grid-cols-[200px_minmax(0,1fr)] text-ink">
+      {isWindowsPlatform() && <WindowsWindowControls className="h-12" />}
       <aside className="min-h-0 border-r border-line bg-surface-chrome/45 flex flex-col">
         <div className="h-14 flex-shrink-0 drag-region" data-tauri-drag-region onPointerDown={startWindowDrag} />
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 no-drag">

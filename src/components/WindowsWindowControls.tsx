@@ -21,7 +21,7 @@ export function WindowsWindowControls({ className = "" }: Props) {
   };
 
   return (
-    <div className={`absolute right-0 top-0 flex items-start no-drag ${className}`}>
+    <div className={`absolute right-0 top-0 z-50 flex items-start no-drag ${className}`}>
       <WindowControlButton icon={MinusSmall} label={tm("window.minimize", "Minimize")} onPress={minimize} />
       <WindowControlButton icon={Square2Stack} label={tm("window.maximize", "Maximize")} onPress={toggleMaximize} />
       <WindowControlButton icon={X} label={tm("common.close", "Close")} danger onPress={close} />
