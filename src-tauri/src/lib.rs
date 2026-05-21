@@ -6017,7 +6017,7 @@ fn configure_windows_main_window(app: &tauri::AppHandle) {
         return;
     };
     let _ = window.set_decorations(false);
-    let _ = window.set_background_color(Color(0, 0, 0, 0));
+    let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
     let _ = window.set_effects(WindowEffectsConfig {
         effects: vec![Effect::Mica],
         state: None,
