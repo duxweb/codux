@@ -202,32 +202,27 @@ if ($Tool -eq "codex" -and -not [string]::IsNullOrWhiteSpace($codexEffort) -and 
 }
 
 if ($permissionMode -eq "fullAccess") {
-  switch ($Tool) {
-    "codex" {
-      if (-not (Has-Arg $launchArgs "--dangerously-bypass-approvals-and-sandbox") -and
-          -not (Has-Arg $launchArgs "--full-auto") -and
-          -not (Has-Option-Value $launchArgs @("--sandbox", "--ask-for-approval", "-s", "-a"))) {
-        $launchArgs = @("--dangerously-bypass-approvals-and-sandbox") + $launchArgs
-      }
+  if ($Tool -eq "codex") {
+    if (-not (Has-Arg $launchArgs "--dangerously-bypass-approvals-and-sandbox") -and
+        -not (Has-Arg $launchArgs "--full-auto") -and
+        -not (Has-Option-Value $launchArgs @("--sandbox", "--ask-for-approval", "-s", "-a"))) {
+      $launchArgs = @("--dangerously-bypass-approvals-and-sandbox") + $launchArgs
     }
-    { $_ -eq "claude" -or $_ -eq "claude-code" } {
-      if (-not (Has-Arg $launchArgs "--dangerously-skip-permissions") -and
-          -not (Has-Arg $launchArgs "--allow-dangerously-skip-permissions") -and
-          -not (Has-Option-Value $launchArgs @("--permission-mode"))) {
-        $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
-      }
+  } elseif ($Tool -eq "claude" -or $Tool -eq "claude-code") {
+    if (-not (Has-Arg $launchArgs "--dangerously-skip-permissions") -and
+        -not (Has-Arg $launchArgs "--allow-dangerously-skip-permissions") -and
+        -not (Has-Option-Value $launchArgs @("--permission-mode"))) {
+      $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
     }
-    "gemini" {
-      if (-not (Has-Option-Value $launchArgs @("--approval-mode")) -and
-          -not (Has-Arg $launchArgs "--yolo") -and
-          -not (Has-Arg $launchArgs "-y")) {
-        $launchArgs = @("--approval-mode", "yolo") + $launchArgs
-      }
+  } elseif ($Tool -eq "gemini") {
+    if (-not (Has-Option-Value $launchArgs @("--approval-mode")) -and
+        -not (Has-Arg $launchArgs "--yolo") -and
+        -not (Has-Arg $launchArgs "-y")) {
+      $launchArgs = @("--approval-mode", "yolo") + $launchArgs
     }
-    "opencode" {
-      if (-not (Has-Arg $launchArgs "--dangerously-skip-permissions")) {
-        $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
-      }
+  } elseif ($Tool -eq "opencode") {
+    if (-not (Has-Arg $launchArgs "--dangerously-skip-permissions")) {
+      $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
     }
   }
 }
