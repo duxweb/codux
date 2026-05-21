@@ -69,7 +69,7 @@ function normalizedBundleVersion(value) {
   if (!match) {
     return value;
   }
-  return `${match[1]}.${match[2]}.${match[3]}.${match[4] || "0"}`;
+  return `${match[1]}.${match[2]}.${match[3]}-${match[4] || "0"}`;
 }
 
 function updateJson(relativePath, updater) {
