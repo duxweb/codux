@@ -26,7 +26,7 @@ updateSettingsVersion("src/settings.ts", version);
 const notesPath =
   process.env.RELEASE_NOTES_PATH ||
   (process.env.GITHUB_OUTPUT ? "" : path.join(root, "dist", `release-notes-${version}.md`));
-const notes = extractChangelogSection("CHANGELOG.md", version);
+const notes = buildReleaseNotes(version);
 if (notesPath) {
   fs.mkdirSync(path.dirname(notesPath), { recursive: true });
   fs.writeFileSync(notesPath, notes, "utf8");
@@ -118,14 +118,26 @@ function updateSettingsVersion(relativePath, nextVersion) {
 
 function extractChangelogSection(relativePath, nextVersion) {
   const filePath = path.join(root, relativePath);
+  if (!fs.existsSync(filePath)) {
+    return "";
+  }
   const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
   const start = lines.findIndex((line) => line.startsWith(`## [${nextVersion}]`));
   if (start === -1) {
-    return `Codux ${nextVersion}`;
+    return "";
   }
   const end = lines.findIndex((line, index) => index > start && line.startsWith("## ["));
   return lines
     .slice(start, end === -1 ? undefined : end)
     .join("\n")
     .trim();
+}
+
+function buildReleaseNotes(nextVersion) {
+  const english = extractChangelogSection("CHANGELOG.md", nextVersion);
+  const chinese = extractChangelogSection("CHANGELOG.zh-CN.md", nextVersion);
+  if (chinese && english) {
+    return [`## 中文`, chinese, `---`, `## English`, english].join("\n\n");
+  }
+  return english || chinese || `Codux ${nextVersion}`;
 }

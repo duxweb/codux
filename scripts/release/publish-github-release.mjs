@@ -44,6 +44,7 @@ if (!dryRun) {
   for (const asset of assets) {
     run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${asset.path}#${asset.name}`]);
   }
+  run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${latestPath}#latest.json`]);
 
   run("gh", ["release", "delete", channelTag, "--repo", repo, "--yes", "--cleanup-tag"], { allowFailure: true });
   run("gh", [
