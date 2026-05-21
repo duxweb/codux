@@ -337,7 +337,7 @@ fn capture_raw_sample() -> Option<RawSample> {
 
     impl OwnedHandle {
         fn new(handle: HANDLE) -> Option<Self> {
-            if handle == 0 || handle == INVALID_HANDLE_VALUE {
+            if handle.is_null() || handle == INVALID_HANDLE_VALUE {
                 return None;
             }
             Some(Self(handle))
