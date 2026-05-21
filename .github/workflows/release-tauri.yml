@@ -34,8 +34,6 @@ jobs:
             args: --target aarch64-apple-darwin
           - platform: macos-latest
             args: --target x86_64-apple-darwin
-          - platform: ubuntu-22.04
-            args: ""
           - platform: windows-latest
             args: ""
 
@@ -67,12 +65,6 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -93,5 +85,6 @@ jobs:
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
           uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
           uploadUpdaterSignatures: true
           releaseAssetNamePattern: codux-tauri-[version]-[platform]-[arch].[ext]
