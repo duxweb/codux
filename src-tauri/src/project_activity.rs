@@ -1,6 +1,7 @@
 use crate::ai_history::AIHistoryProjectRequest;
 use crate::ai_history_indexer::AIHistoryIndexer;
 use crate::app_settings::AppSettingsStore;
+use crate::background_queue::{SerialJob, SerialJobQueue};
 use crate::git::{git_review, git_status, GitReviewSnapshot, GitStatusSnapshot};
 use crate::project_store::{ProjectRecord, ProjectStore, ProjectSummary};
 use crate::worktree::{worktree_snapshot, WorktreeSnapshot};
@@ -68,7 +69,6 @@ pub struct GitProjectChangedEvent {
     changed_paths: Vec<String>,
 }
 
-#[derive(Default)]
 pub struct ProjectActivityCoordinator {
     projects: Mutex<HashMap<String, TrackedProject>>,
     active_project_id: Mutex<Option<String>>,
@@ -79,16 +79,24 @@ pub struct ProjectActivityCoordinator {
     last_global_ai_refresh: Mutex<Option<Instant>>,
     activation_queue: Mutex<VecDeque<ActivationRequest>>,
     activation_signal: Condvar,
-    git_refreshes: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
-    git_reviews: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
-    worktree_refreshes: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
-    git_work_lane: Arc<Mutex<()>>,
+    git_jobs: GitJobQueue,
 }
 
-#[derive(Debug, Clone, Default)]
-struct CoalescedRefreshState {
-    running: bool,
-    pending: bool,
+impl Default for ProjectActivityCoordinator {
+    fn default() -> Self {
+        Self {
+            projects: Mutex::new(HashMap::new()),
+            active_project_id: Mutex::new(None),
+            main_window_visible: AtomicBool::new(false),
+            main_window_focused: AtomicBool::new(false),
+            activated_git_projects: Mutex::new(HashSet::new()),
+            activated_ai_projects: Mutex::new(HashSet::new()),
+            last_global_ai_refresh: Mutex::new(None),
+            activation_queue: Mutex::new(VecDeque::new()),
+            activation_signal: Condvar::new(),
+            git_jobs: GitJobQueue::new(),
+        }
+    }
 }
 
 impl ProjectActivityCoordinator {
@@ -162,12 +170,10 @@ impl ProjectActivityCoordinator {
                 tracked_project = tracked.clone();
             }
         }
-        refresh_git_project_with_lane(
+        self.git_jobs.submit(GitJob::Refresh {
             app,
-            Arc::clone(&self.git_refreshes),
-            Arc::clone(&self.git_work_lane),
-            tracked_project,
-        );
+            project: tracked_project,
+        });
     }
 
     pub fn refresh_git_changed(
@@ -187,31 +193,22 @@ impl ProjectActivityCoordinator {
                 tracked.last_git_refresh = Some(Instant::now());
             }
         }
-        let git_refreshes = Arc::clone(&self.git_refreshes);
-        let worktree_refreshes = Arc::clone(&self.worktree_refreshes);
-        let git_work_lane = Arc::clone(&self.git_work_lane);
-        thread::spawn(move || {
-            let _ = app.emit(
-                "git:changed",
-                GitProjectChangedEvent {
-                    project_path: project_path.clone(),
-                    repository_path,
-                    changed_paths,
-                },
-            );
-            refresh_worktree_project(
-                app.clone(),
-                Arc::clone(&project_store),
-                Arc::clone(&worktree_refreshes),
-                Arc::clone(&git_work_lane),
-                &project,
-            );
-            refresh_git_project_with_lane(
-                app,
-                git_refreshes,
-                git_work_lane,
-                TrackedProject::from(project),
-            );
+        let _ = app.emit(
+            "git:changed",
+            GitProjectChangedEvent {
+                project_path: project_path.clone(),
+                repository_path,
+                changed_paths,
+            },
+        );
+        self.git_jobs.submit(GitJob::Worktree {
+            app: app.clone(),
+            project_store,
+            project: project.clone(),
+        });
+        self.git_jobs.submit(GitJob::Refresh {
+            app,
+            project: TrackedProject::from(project),
         });
     }
 
@@ -225,23 +222,14 @@ impl ProjectActivityCoordinator {
             return;
         };
         self.mark_project_summary(&project);
-        let git_reviews = Arc::clone(&self.git_reviews);
-        let worktree_refreshes = Arc::clone(&self.worktree_refreshes);
-        let git_work_lane = Arc::clone(&self.git_work_lane);
-        thread::spawn(move || {
-            refresh_worktree_project(
-                app.clone(),
-                Arc::clone(&project_store),
-                worktree_refreshes,
-                Arc::clone(&git_work_lane),
-                &project,
-            );
-            refresh_git_review_project(
-                app,
-                git_reviews,
-                git_work_lane,
-                TrackedProject::from(project),
-            );
+        self.git_jobs.submit(GitJob::Worktree {
+            app: app.clone(),
+            project_store,
+            project: project.clone(),
+        });
+        self.git_jobs.submit(GitJob::Review {
+            app,
+            project: TrackedProject::from(project),
         });
     }
 
@@ -251,15 +239,13 @@ impl ProjectActivityCoordinator {
         project_store: Arc<ProjectStore>,
         projects: Vec<ProjectSummary>,
     ) {
-        thread::spawn(move || {
-            for project in projects {
-                refresh_worktree_project_without_coalescing(
-                    app.clone(),
-                    Arc::clone(&project_store),
-                    &project,
-                );
-            }
-        });
+        for project in projects {
+            self.git_jobs.submit(GitJob::Worktree {
+                app: app.clone(),
+                project_store: Arc::clone(&project_store),
+                project,
+            });
+        }
     }
 
     pub fn remove_project(&self, project_id: &str) {
@@ -347,13 +333,11 @@ impl ProjectActivityCoordinator {
             };
             let project = request.project;
             let is_first_git_activation = self.mark_git_activation(&project.id);
-            refresh_worktree_project(
-                app.clone(),
-                Arc::clone(&project_store),
-                Arc::clone(&self.worktree_refreshes),
-                Arc::clone(&self.git_work_lane),
-                &project,
-            );
+            self.git_jobs.submit(GitJob::Worktree {
+                app: app.clone(),
+                project_store: Arc::clone(&project_store),
+                project: project.clone(),
+            });
             if is_first_git_activation {
                 self.refresh_git_once(app.clone(), &project);
             }
@@ -464,12 +448,10 @@ fn run_activity_tick(
             .unwrap_or_else(|| Duration::from_secs(min_git_refresh_seconds * 4))
             .max(Duration::from_secs(min_git_refresh_seconds * 4));
         for project in coordinator.projects_due_for_git(interval, background_interval) {
-            refresh_git_project_with_lane(
-                app.clone(),
-                Arc::clone(&coordinator.git_refreshes),
-                Arc::clone(&coordinator.git_work_lane),
+            coordinator.git_jobs.submit(GitJob::Refresh {
+                app: app.clone(),
                 project,
-            );
+            });
         }
     }
 
@@ -526,6 +508,94 @@ impl From<TrackedProject> for AIHistoryProjectRequest {
             path: project.path,
         }
     }
+}
+
+#[derive(Clone)]
+struct GitJobQueue {
+    queue: SerialJobQueue<GitJob>,
+}
+
+impl GitJobQueue {
+    fn new() -> Self {
+        Self {
+            queue: SerialJobQueue::new("codux-git-job-worker", run_git_job),
+        }
+    }
+
+    fn submit(&self, job: GitJob) {
+        self.queue.submit(job);
+    }
+}
+
+impl Default for GitJobQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+enum GitJob {
+    Refresh {
+        app: AppHandle,
+        project: TrackedProject,
+    },
+    Review {
+        app: AppHandle,
+        project: TrackedProject,
+    },
+    Worktree {
+        app: AppHandle,
+        project_store: Arc<ProjectStore>,
+        project: ProjectSummary,
+    },
+}
+
+impl SerialJob for GitJob {
+    fn queue_key(&self) -> String {
+        match self {
+            Self::Refresh { project, .. } => git_job_key("refresh", &project.path),
+            Self::Review { project, .. } => git_job_key("review", &project.path),
+            Self::Worktree { project, .. } => git_job_key("worktree", &project.path),
+        }
+    }
+}
+
+fn run_git_job(job: GitJob) {
+    match job {
+        GitJob::Refresh { app, project } => run_git_refresh_job(app, project),
+        GitJob::Review { app, project } => run_git_review_job(app, project),
+        GitJob::Worktree {
+            app,
+            project_store,
+            project,
+        } => refresh_worktree_project_now(app, project_store, &project),
+    }
+}
+
+fn run_git_refresh_job(app: AppHandle, project: TrackedProject) {
+    let project_id = project.id.clone();
+    let project_name = project.name.clone();
+    let project_path = project.path.clone();
+    let snapshot = git_status(project_path.clone());
+    if snapshot.is_repository || snapshot.error.is_none() || Path::new(&project_path).exists() {
+        let _ = app.emit(
+            "git:status",
+            GitStatusEvent {
+                project_id: project_id.clone(),
+                project_name: project_name.clone(),
+                project_path: project_path.clone(),
+                snapshot,
+            },
+        );
+    }
+    emit_git_review(app, project_id, project_name, project_path);
+}
+
+fn run_git_review_job(app: AppHandle, project: TrackedProject) {
+    emit_git_review(app, project.id, project.name, project.path);
+}
+
+fn git_job_key(kind: &str, path: &str) -> String {
+    format!("{kind}:{}", coalesced_refresh_key(path))
 }
 
 fn upsert_project(
@@ -607,106 +677,6 @@ fn projects_due_by_interval(
         .collect()
 }
 
-fn refresh_git_project_with_lane(
-    app: AppHandle,
-    states: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
-    lane: Arc<Mutex<()>>,
-    project: TrackedProject,
-) {
-    let refresh_key = coalesced_refresh_key(&project.path);
-    if !claim_coalesced_refresh(&states, &refresh_key) {
-        return;
-    }
-    thread::spawn(move || loop {
-        with_git_lane(&lane, || {
-            let project_id = project.id.clone();
-            let project_name = project.name.clone();
-            let project_path = project.path.clone();
-            let snapshot = git_status(project_path.clone());
-            if snapshot.is_repository
-                || snapshot.error.is_none()
-                || Path::new(&project_path).exists()
-            {
-                let _ = app.emit(
-                    "git:status",
-                    GitStatusEvent {
-                        project_id: project_id.clone(),
-                        project_name: project_name.clone(),
-                        project_path: project_path.clone(),
-                        snapshot,
-                    },
-                );
-            }
-            emit_git_review(app.clone(), project_id, project_name, project_path);
-        });
-        if finish_coalesced_refresh(&states, &refresh_key) {
-            continue;
-        }
-        break;
-    });
-}
-
-fn refresh_git_review_project(
-    app: AppHandle,
-    states: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
-    lane: Arc<Mutex<()>>,
-    project: TrackedProject,
-) {
-    let refresh_key = coalesced_refresh_key(&project.path);
-    if !claim_coalesced_refresh(&states, &refresh_key) {
-        return;
-    }
-    thread::spawn(move || loop {
-        with_git_lane(&lane, || {
-            emit_git_review(
-                app.clone(),
-                project.id.clone(),
-                project.name.clone(),
-                project.path.clone(),
-            );
-        });
-        if finish_coalesced_refresh(&states, &refresh_key) {
-            continue;
-        }
-        break;
-    });
-}
-
-fn claim_coalesced_refresh(
-    states: &Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
-    project_id: &str,
-) -> bool {
-    let Ok(mut guard) = states.lock() else {
-        return true;
-    };
-    let state = guard.entry(project_id.to_string()).or_default();
-    if state.running {
-        state.pending = true;
-        return false;
-    }
-    state.running = true;
-    state.pending = false;
-    true
-}
-
-fn finish_coalesced_refresh(
-    states: &Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
-    project_id: &str,
-) -> bool {
-    let Ok(mut guard) = states.lock() else {
-        return false;
-    };
-    let Some(state) = guard.get_mut(project_id) else {
-        return false;
-    };
-    if state.pending {
-        state.pending = false;
-        return true;
-    }
-    guard.remove(project_id);
-    false
-}
-
 fn emit_git_review(app: AppHandle, project_id: String, project_name: String, project_path: String) {
     let review = git_review(project_path.clone(), None);
     if review.is_repository || review.error.is_none() || Path::new(&project_path).exists() {
@@ -721,37 +691,6 @@ fn emit_git_review(app: AppHandle, project_id: String, project_name: String, pro
             },
         );
     }
-}
-
-fn refresh_worktree_project(
-    app: AppHandle,
-    project_store: Arc<ProjectStore>,
-    states: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
-    lane: Arc<Mutex<()>>,
-    project: &ProjectSummary,
-) {
-    let refresh_key = coalesced_refresh_key(&project.path);
-    if !claim_coalesced_refresh(&states, &refresh_key) {
-        return;
-    }
-    let project = project.clone();
-    thread::spawn(move || loop {
-        with_git_lane(&lane, || {
-            refresh_worktree_project_now(app.clone(), Arc::clone(&project_store), &project);
-        });
-        if finish_coalesced_refresh(&states, &refresh_key) {
-            continue;
-        }
-        break;
-    });
-}
-
-fn refresh_worktree_project_without_coalescing(
-    app: AppHandle,
-    project_store: Arc<ProjectStore>,
-    project: &ProjectSummary,
-) {
-    refresh_worktree_project_now(app, project_store, project);
 }
 
 fn refresh_worktree_project_now(
@@ -803,11 +742,4 @@ fn coalesced_refresh_key(path: &str) -> String {
         key = key.to_ascii_lowercase();
     }
     key
-}
-
-fn with_git_lane<R>(lane: &Arc<Mutex<()>>, work: impl FnOnce() -> R) -> R {
-    let Ok(_guard) = lane.lock() else {
-        return work();
-    };
-    work()
 }

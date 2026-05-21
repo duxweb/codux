@@ -5,6 +5,7 @@ mod ai_usage_store;
 mod app_icon;
 mod app_info;
 mod app_settings;
+mod background_queue;
 mod dialog;
 mod files;
 mod git;
