@@ -157,8 +157,8 @@ function buildLatestJson(assets) {
       console.warn(`Skipping ${signatureAsset.name}: matching bundle ${bundleName} was not found`);
       continue;
     }
-    const platform = platformKey(signatureAsset.name);
-    if (!platform) {
+    const platforms = platformKey(signatureAsset.name);
+    if (!platforms) {
       console.warn(`Skipping ${signatureAsset.name}: unknown updater platform`);
       continue;
     }
@@ -166,10 +166,12 @@ function buildLatestJson(assets) {
       signature: fs.readFileSync(signatureAsset.path, "utf8").trim(),
       url: `https://github.com/${repo}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(bundleAsset.name)}`,
     };
-    if (!content.platforms[platform.base]) {
-      content.platforms[platform.base] = entry;
+    for (const platform of platforms) {
+      if (!content.platforms[platform.base]) {
+        content.platforms[platform.base] = entry;
+      }
+      content.platforms[platform.detail] = entry;
     }
-    content.platforms[platform.detail] = entry;
   }
 
   if (!Object.keys(content.platforms).length) {
@@ -179,13 +181,19 @@ function buildLatestJson(assets) {
 }
 
 function platformKey(assetName) {
+  if (assetName.includes("macos-universal") || assetName.includes("universal-apple-darwin")) {
+    return [
+      { base: "darwin-aarch64", detail: "darwin-aarch64-app" },
+      { base: "darwin-x86_64", detail: "darwin-x86_64-app" },
+    ];
+  }
   if (
     assetName.includes("macos-aarch64") ||
     assetName.includes("aarch64-apple-darwin") ||
     assetName.includes("darwin-aarch64") ||
     assetName.includes("aarch64.dmg")
   ) {
-    return { base: "darwin-aarch64", detail: "darwin-aarch64-app" };
+    return [{ base: "darwin-aarch64", detail: "darwin-aarch64-app" }];
   }
   if (
     assetName.includes("macos-x86_64") ||
@@ -194,11 +202,11 @@ function platformKey(assetName) {
     assetName.includes("x64.dmg") ||
     assetName.includes("x86_64.dmg")
   ) {
-    return { base: "darwin-x86_64", detail: "darwin-x86_64-app" };
+    return [{ base: "darwin-x86_64", detail: "darwin-x86_64-app" }];
   }
   if (assetName.match(/x64|x86_64|amd64/i) && assetName.match(/windows|win|setup|nsis|msi/i)) {
     const installer = assetName.match(/msi/i) ? "msi" : "nsis";
-    return { base: "windows-x86_64", detail: `windows-x86_64-${installer}` };
+    return [{ base: "windows-x86_64", detail: `windows-x86_64-${installer}` }];
   }
   return null;
 }

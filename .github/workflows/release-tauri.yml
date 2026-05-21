@@ -75,14 +75,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: macos-aarch64
+          - id: macos-universal
             platform: macos-latest
-            args: --target aarch64-apple-darwin
-            bundle_dir: src-tauri/target/aarch64-apple-darwin/release/bundle
-          - id: macos-x86_64
-            platform: macos-13
-            args: --target x86_64-apple-darwin
-            bundle_dir: src-tauri/target/x86_64-apple-darwin/release/bundle
+            args: --target universal-apple-darwin
+            bundle_dir: src-tauri/target/universal-apple-darwin/release/bundle
           - id: windows-x86_64
             platform: windows-latest
             args: ""
@@ -116,6 +112,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ startsWith(matrix.id, 'macos-') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ matrix.id }}-
+            rust-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
