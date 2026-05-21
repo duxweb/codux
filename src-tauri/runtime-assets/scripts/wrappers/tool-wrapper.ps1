@@ -155,6 +155,23 @@ function Stop-State([string]$Name) {
   & (Join-Path $wrapperDir "dmux-ai-state.cmd") "stop" "codux-tauri" $Name | Out-Null
 }
 
+function Prompt-State([string]$Name) {
+  & (Join-Path $wrapperDir "dmux-ai-state.cmd") "prompt-submit" "codux-tauri" $Name | Out-Null
+}
+
+function Is-Metadata-Invocation([string[]]$CommandArgs) {
+  if ($CommandArgs.Count -eq 0) { return $false }
+  foreach ($arg in $CommandArgs) {
+    switch -Regex ($arg) {
+      '^(--version|-V|version)$' { return $true }
+      '^(--help|-h|help)$' { return $true }
+      '^(features|--features)$' { return $true }
+      '^(auth|login|logout|doctor|update|upgrade|config)$' { return $true }
+    }
+  }
+  return $false
+}
+
 function Invoke-Real-Binary([string]$Binary, [string[]]$CommandArgs, [string]$SearchPath, [string]$LaunchDir) {
   $previousPath = $env:PATH
   try {
@@ -253,6 +270,9 @@ if ($Tool -eq "opencode") {
 }
 
 Start-State $Tool
+if (-not (Is-Metadata-Invocation $launchArgs)) {
+  Prompt-State $Tool
+}
 $launchDir = Resolve-Memory-Launch-Dir
 Invoke-Real-Binary $realBin $launchArgs $searchPath $launchDir
 $exitCode = if ($null -eq $script:DMUX_WRAPPER_EXIT_CODE) { 0 } else { $script:DMUX_WRAPPER_EXIT_CODE }
