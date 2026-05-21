@@ -87,6 +87,7 @@ jobs:
             platform: windows-latest
             args: ""
             bundle_dir: src-tauri/target/release/bundle
+            windows_bundle_version: true
 
     runs-on: ${{ matrix.platform }}
     env:
@@ -123,6 +124,7 @@ jobs:
         shell: bash
         env:
           RELEASE_NOTES_PATH: dist/release-notes.md
+          RELEASE_WINDOWS_BUNDLE_VERSION: ${{ matrix.windows_bundle_version || '' }}
         run: |
           mkdir -p dist
           node scripts/release/prepare-release.mjs "${SOURCE_REF}" "${{ needs.metadata.outputs.channel }}"

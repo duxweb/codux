@@ -8,6 +8,7 @@ const root = process.cwd();
 const rawRef = process.argv[2] || process.env.GITHUB_REF_NAME || "";
 const rawChannel = process.argv[3] || process.env.RELEASE_CHANNEL || "";
 const version = normalizeVersion(rawRef);
+const bundleVersion = process.env.RELEASE_BUNDLE_VERSION || normalizedBundleVersion(version);
 const channel =
   rawChannel === "stable" || rawChannel === "beta" ? rawChannel : version.includes("-") ? "beta" : "stable";
 
@@ -16,6 +17,7 @@ updateJson("package.json", (data) => {
   return data;
 });
 updateTauriVersion("src-tauri/tauri.conf.json", version);
+updateBundleVersion("src-tauri/tauri.conf.json", bundleVersion);
 updateCargoVersion("src-tauri/Cargo.toml", version);
 updateCargoLockVersion("src-tauri/Cargo.lock", version);
 updateSettingsVersion("src/settings.ts", version);
@@ -58,6 +60,17 @@ function normalizeVersion(value) {
   return trimmed;
 }
 
+function normalizedBundleVersion(value) {
+  if (!process.env.RELEASE_WINDOWS_BUNDLE_VERSION) {
+    return value;
+  }
+  const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:-[A-Za-z]+\.?(\d+))?/);
+  if (!match) {
+    return value;
+  }
+  return `${match[1]}.${match[2]}.${match[3]}.${match[4] || "0"}`;
+}
+
 function updateJson(relativePath, updater) {
   const filePath = path.join(root, relativePath);
   const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -74,6 +87,16 @@ function updateTauriVersion(relativePath, nextVersion) {
   const filePath = path.join(root, relativePath);
   const content = fs.readFileSync(filePath, "utf8");
   fs.writeFileSync(filePath, content.replace(/^ {2}"version": ".*",$/m, `  "version": "${nextVersion}",`), "utf8");
+}
+
+function updateBundleVersion(relativePath, nextVersion) {
+  const filePath = path.join(root, relativePath);
+  const content = fs.readFileSync(filePath, "utf8");
+  fs.writeFileSync(
+    filePath,
+    content.replace(/^ {6}"bundleVersion": ".*",$/m, `      "bundleVersion": "${nextVersion}",`),
+    "utf8",
+  );
 }
 
 function updateCargoLockVersion(relativePath, nextVersion) {
