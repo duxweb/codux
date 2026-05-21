@@ -143,7 +143,9 @@ export const UPDATE_CHANNEL_ENDPOINTS: Record<"stable" | "beta", string> = {
   stable: "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json",
   beta: "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json",
 };
-const DEFAULT_UPDATE_ENDPOINT = UPDATE_CHANNEL_ENDPOINTS.stable;
+const APP_VERSION = "1.0.0-beta.1";
+const DEFAULT_UPDATE_CHANNEL: "stable" | "beta" = APP_VERSION.includes("-") ? "beta" : "stable";
+const DEFAULT_UPDATE_ENDPOINT = UPDATE_CHANNEL_ENDPOINTS[DEFAULT_UPDATE_CHANNEL];
 const LEGACY_UPDATE_ENDPOINTS = new Set([
   "https://github.com/duxweb/codux/releases/latest/download/codux-tauri-latest.json",
   "https://github.com/duxweb/codux/releases/latest/download/latest.json",
@@ -229,7 +231,7 @@ export const defaultSettings: AppSettings = {
   shortcuts: {},
   update: {
     enabled: true,
-    channel: "stable",
+    channel: DEFAULT_UPDATE_CHANNEL,
     endpoint: DEFAULT_UPDATE_ENDPOINT,
   },
   remote: {

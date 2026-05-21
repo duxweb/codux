@@ -264,10 +264,11 @@ impl Default for RemoteSettings {
 
 impl Default for UpdateSettings {
     fn default() -> Self {
+        let channel = default_update_channel();
         Self {
             enabled: true,
-            channel: "stable".to_string(),
-            endpoint: default_update_endpoint(),
+            endpoint: update_endpoint_for_channel(channel),
+            channel: channel.to_string(),
         }
     }
 }
@@ -954,8 +955,12 @@ fn default_developer_refresh() -> String {
     "3".to_string()
 }
 
-fn default_update_endpoint() -> String {
-    update_endpoint_for_channel("stable")
+fn default_update_channel() -> &'static str {
+    if env!("CARGO_PKG_VERSION").contains('-') {
+        "beta"
+    } else {
+        "stable"
+    }
 }
 
 fn update_endpoint_for_channel(channel: &str) -> String {
