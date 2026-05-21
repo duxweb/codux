@@ -9,6 +9,7 @@ const rawRef = process.argv[2] || process.env.GITHUB_REF_NAME || "";
 const rawChannel = process.argv[3] || process.env.RELEASE_CHANNEL || "";
 const version = normalizeVersion(rawRef);
 const bundleVersion = process.env.RELEASE_BUNDLE_VERSION || normalizedBundleVersion(version);
+const tauriVersion = process.env.RELEASE_TAURI_VERSION || bundleVersion;
 const channel =
   rawChannel === "stable" || rawChannel === "beta" ? rawChannel : version.includes("-") ? "beta" : "stable";
 
@@ -16,7 +17,7 @@ updateJson("package.json", (data) => {
   data.version = version;
   return data;
 });
-updateTauriVersion("src-tauri/tauri.conf.json", version);
+updateTauriVersion("src-tauri/tauri.conf.json", tauriVersion);
 updateBundleVersion("src-tauri/tauri.conf.json", bundleVersion);
 updateCargoVersion("src-tauri/Cargo.toml", version);
 updateCargoLockVersion("src-tauri/Cargo.lock", version);
