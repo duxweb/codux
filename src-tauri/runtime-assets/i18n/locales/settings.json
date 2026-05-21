@@ -272,7 +272,7 @@
       "settings.tools.permission.full_access": "Vollzugriff",
       "settings.tools.permissions": "Tool-Berechtigungen",
       "settings.update.channel": "Update-Kanal",
-      "settings.update.description": "Update-Prüfungen bleiben deaktiviert, bis dieser Build mit einem signierten Tauri-Updater-Endpunkt und öffentlichem Schlüssel konfiguriert ist.",
+      "settings.update.description": "Updates are checked from the selected GitHub Release channel.",
       "settings.update.enabled": "Update-Prüfungen aktivieren",
       "settings.update.endpoint": "Update-Endpunkt",
       "settings.update.endpoint_help": "Leer lassen, sofern der Build nicht signiert ist und keinen passenden öffentlichen Updater-Schlüssel enthält.",
@@ -301,7 +301,9 @@
       "settings.update.status.disabled": "Update checks are turned off.",
       "settings.update.status.checking_github": "Checking GitHub releases...",
       "settings.update.status.error": "Unable to check updates. Please try again later.",
-      "settings.update.mode.disabled": "Aus"
+      "settings.update.mode.disabled": "Aus",
+      "settings.update.channel.stable": "Stable",
+      "settings.update.channel.beta": "Beta"
     },
     "en": {
       "settings.ai_auto_refresh": "AI Auto Refresh",
@@ -575,7 +577,7 @@
       "settings.tools.permission.full_access": "Full Access",
       "settings.tools.permissions": "Tool Configuration",
       "settings.update.channel": "Update Channel",
-      "settings.update.description": "Updates are checked from GitHub Releases for the selected channel.",
+      "settings.update.description": "Updates are checked from the selected GitHub Release channel.",
       "settings.update.enabled": "Enable Update Checks",
       "settings.update.endpoint": "Update Endpoint",
       "settings.update.endpoint_help": "The default endpoint reads the signed latest.json asset without changing the native macOS release channel.",
@@ -604,7 +606,9 @@
       "settings.update.status.disabled": "Update checks are turned off.",
       "settings.update.status.checking_github": "Checking GitHub releases...",
       "settings.update.status.error": "Unable to check updates. Please try again later.",
-      "settings.update.mode.disabled": "Off"
+      "settings.update.mode.disabled": "Off",
+      "settings.update.channel.stable": "Stable",
+      "settings.update.channel.beta": "Beta"
     },
     "es": {
       "settings.ai_auto_refresh": "Actualización automática de IA",
@@ -878,7 +882,7 @@
       "settings.tools.permission.full_access": "Acceso completo",
       "settings.tools.permissions": "Permisos de herramientas",
       "settings.update.channel": "Canal de actualización",
-      "settings.update.description": "La comprobación de actualizaciones permanece desactivada hasta configurar un endpoint firmado del actualizador Tauri y su clave pública para esta compilación.",
+      "settings.update.description": "Updates are checked from the selected GitHub Release channel.",
       "settings.update.enabled": "Activar comprobación de actualizaciones",
       "settings.update.endpoint": "Endpoint de actualización",
       "settings.update.endpoint_help": "Déjalo vacío salvo que la compilación esté firmada y tenga una clave pública de actualizador compatible.",
@@ -907,7 +911,9 @@
       "settings.update.status.disabled": "Update checks are turned off.",
       "settings.update.status.checking_github": "Checking GitHub releases...",
       "settings.update.status.error": "Unable to check updates. Please try again later.",
-      "settings.update.mode.disabled": "Desactivado"
+      "settings.update.mode.disabled": "Desactivado",
+      "settings.update.channel.stable": "Stable",
+      "settings.update.channel.beta": "Beta"
     },
     "fr": {
       "settings.ai_auto_refresh": "Actualisation auto IA",
@@ -1181,7 +1187,7 @@
       "settings.tools.permission.full_access": "Accès complet",
       "settings.tools.permissions": "Autorisations des outils",
       "settings.update.channel": "Canal de mise à jour",
-      "settings.update.description": "La recherche de mises à jour reste désactivée tant qu’un endpoint Tauri signé et une clé publique ne sont pas configurés pour cette version.",
+      "settings.update.description": "Updates are checked from the selected GitHub Release channel.",
       "settings.update.enabled": "Activer la recherche de mises à jour",
       "settings.update.endpoint": "Endpoint de mise à jour",
       "settings.update.endpoint_help": "Laissez vide sauf si cette version est signée avec une clé publique de mise à jour correspondante.",
@@ -1210,7 +1216,9 @@
       "settings.update.status.disabled": "Update checks are turned off.",
       "settings.update.status.checking_github": "Checking GitHub releases...",
       "settings.update.status.error": "Unable to check updates. Please try again later.",
-      "settings.update.mode.disabled": "Désactivé"
+      "settings.update.mode.disabled": "Désactivé",
+      "settings.update.channel.stable": "Stable",
+      "settings.update.channel.beta": "Beta"
     },
     "ja": {
       "settings.ai_auto_refresh": "AI 自動更新",
@@ -1484,7 +1492,7 @@
       "settings.tools.permission.full_access": "フルアクセス",
       "settings.tools.permissions": "ツール権限",
       "settings.update.channel": "更新チャンネル",
-      "settings.update.description": "署名済みの Tauri 更新エンドポイントと公開鍵がこのビルドに設定されるまで、更新確認は無効です。",
+      "settings.update.description": "Updates are checked from the selected GitHub Release channel.",
       "settings.update.enabled": "更新確認を有効にする",
       "settings.update.endpoint": "更新エンドポイント",
       "settings.update.endpoint_help": "ビルドが署名され、対応する更新用公開鍵が設定されている場合以外は空のままにしてください。",
@@ -1513,7 +1521,9 @@
       "settings.update.status.disabled": "Update checks are turned off.",
       "settings.update.status.checking_github": "Checking GitHub releases...",
       "settings.update.status.error": "Unable to check updates. Please try again later.",
-      "settings.update.mode.disabled": "オフ"
+      "settings.update.mode.disabled": "オフ",
+      "settings.update.channel.stable": "Stable",
+      "settings.update.channel.beta": "Beta"
     },
     "ko": {
       "settings.ai_auto_refresh": "AI 자동 새로고침",
@@ -1787,7 +1797,7 @@
       "settings.tools.permission.full_access": "전체 권한",
       "settings.tools.permissions": "도구 권한",
       "settings.update.channel": "업데이트 채널",
-      "settings.update.description": "서명된 Tauri 업데이트 엔드포인트와 공개 키가 이 빌드에 설정될 때까지 업데이트 확인은 비활성화됩니다.",
+      "settings.update.description": "Updates are checked from the selected GitHub Release channel.",
       "settings.update.enabled": "업데이트 확인 활성화",
       "settings.update.endpoint": "업데이트 엔드포인트",
       "settings.update.endpoint_help": "빌드가 서명되어 있고 일치하는 업데이트 공개 키가 설정된 경우가 아니면 비워 두세요.",
@@ -1816,7 +1826,9 @@
       "settings.update.status.disabled": "Update checks are turned off.",
       "settings.update.status.checking_github": "Checking GitHub releases...",
       "settings.update.status.error": "Unable to check updates. Please try again later.",
-      "settings.update.mode.disabled": "꺼짐"
+      "settings.update.mode.disabled": "꺼짐",
+      "settings.update.channel.stable": "Stable",
+      "settings.update.channel.beta": "Beta"
     },
     "pt-BR": {
       "settings.ai_auto_refresh": "Atualização automática de IA",
@@ -2090,7 +2102,7 @@
       "settings.tools.permission.full_access": "Acesso total",
       "settings.tools.permissions": "Permissões de ferramentas",
       "settings.update.channel": "Canal de atualização",
-      "settings.update.description": "A verificação de atualizações fica desativada até que um endpoint assinado do atualizador Tauri e uma chave pública sejam configurados para esta build.",
+      "settings.update.description": "Updates are checked from the selected GitHub Release channel.",
       "settings.update.enabled": "Ativar verificação de atualizações",
       "settings.update.endpoint": "Endpoint de atualização",
       "settings.update.endpoint_help": "Deixe vazio a menos que a build esteja assinada e configurada com uma chave pública de atualização correspondente.",
@@ -2119,7 +2131,9 @@
       "settings.update.status.disabled": "Update checks are turned off.",
       "settings.update.status.checking_github": "Checking GitHub releases...",
       "settings.update.status.error": "Unable to check updates. Please try again later.",
-      "settings.update.mode.disabled": "Desativado"
+      "settings.update.mode.disabled": "Desativado",
+      "settings.update.channel.stable": "Stable",
+      "settings.update.channel.beta": "Beta"
     },
     "ru": {
       "settings.ai_auto_refresh": "Автообновление ИИ",
@@ -2393,7 +2407,7 @@
       "settings.tools.permission.full_access": "Полный доступ",
       "settings.tools.permissions": "Разрешения инструментов",
       "settings.update.channel": "Канал обновлений",
-      "settings.update.description": "Проверка обновлений отключена, пока для этой сборки не настроены подписанный endpoint Tauri updater и публичный ключ.",
+      "settings.update.description": "Updates are checked from the selected GitHub Release channel.",
       "settings.update.enabled": "Включить проверку обновлений",
       "settings.update.endpoint": "Endpoint обновлений",
       "settings.update.endpoint_help": "Оставьте пустым, если сборка не подписана и не настроена с подходящим публичным ключом обновлений.",
@@ -2422,7 +2436,9 @@
       "settings.update.status.disabled": "Update checks are turned off.",
       "settings.update.status.checking_github": "Checking GitHub releases...",
       "settings.update.status.error": "Unable to check updates. Please try again later.",
-      "settings.update.mode.disabled": "Отключено"
+      "settings.update.mode.disabled": "Отключено",
+      "settings.update.channel.stable": "Stable",
+      "settings.update.channel.beta": "Beta"
     },
     "zh-Hans": {
       "settings.ai_auto_refresh": "AI 自动刷新",
@@ -2725,7 +2741,9 @@
       "settings.update.status.disabled": "检查更新已关闭。",
       "settings.update.status.checking_github": "正在检查 GitHub Release...",
       "settings.update.status.error": "暂时无法检查更新，请稍后重试。",
-      "settings.update.mode.disabled": "已关闭"
+      "settings.update.mode.disabled": "已关闭",
+      "settings.update.channel.stable": "稳定版",
+      "settings.update.channel.beta": "测试版"
     },
     "zh-Hant": {
       "settings.ai_auto_refresh": "AI 自動重新整理",
@@ -3028,7 +3046,9 @@
       "settings.update.status.disabled": "檢查更新已關閉。",
       "settings.update.status.checking_github": "正在檢查 GitHub Release...",
       "settings.update.status.error": "暫時無法檢查更新，請稍後再試。",
-      "settings.update.mode.disabled": "已關閉"
+      "settings.update.mode.disabled": "已關閉",
+      "settings.update.channel.stable": "穩定版",
+      "settings.update.channel.beta": "測試版"
     }
   }
 }

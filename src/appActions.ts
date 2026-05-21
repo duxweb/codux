@@ -27,6 +27,7 @@ export type UpdateStatus = {
   currentVersion: string;
   latestVersion?: string | null;
   downloadUrl?: string | null;
+  notes?: string | null;
   channel?: string | null;
   installationMode: string;
   message: string;
@@ -62,6 +63,7 @@ export async function checkForUpdates() {
         currentVersion: fallbackAbout().version,
         latestVersion: null,
         downloadUrl: null,
+        notes: null,
         channel: null,
         installationMode: "preview",
         message: tm("update.not_configured.preview", "Update channel is not configured in browser preview."),
@@ -77,10 +79,17 @@ export async function checkForUpdates() {
   }
 
   if (status.available) {
-    const shouldInstall = await systemConfirm(
+    const notes = status.notes?.trim();
+    const message = [
       tm("update.available.message_format", "A new version v%@ is available. You are currently using v%@.")
         .replace("%@", status.latestVersion ?? status.currentVersion)
         .replace("%@", status.currentVersion),
+      notes ? `${tm("update.available.notes_title", "Release Notes")}\n${notes}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const shouldInstall = await systemConfirm(
+      message,
       {
         title: tm("update.available.title", "Update Available"),
         kind: "info",
@@ -93,7 +102,7 @@ export async function checkForUpdates() {
     if (!shouldInstall) return;
     if (status.automaticInstallSupported && window.__TAURI_INTERNALS__) {
       const result = await invoke<UpdateInstallResult>("app_update_install");
-      await systemMessage(result.message, {
+      await systemMessage(tm("update.installed.message", result.message), {
         title: tm("update.installed.title", "Update Installed"),
         kind: "info",
         buttons: { ok: "OK" },

@@ -139,7 +139,11 @@ export type AIProviderSettings = {
 };
 
 const SETTINGS_KEY = "codux:settings:v1";
-const DEFAULT_UPDATE_ENDPOINT = "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json";
+export const UPDATE_CHANNEL_ENDPOINTS: Record<"stable" | "beta", string> = {
+  stable: "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json",
+  beta: "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json",
+};
+const DEFAULT_UPDATE_ENDPOINT = UPDATE_CHANNEL_ENDPOINTS.stable;
 const LEGACY_UPDATE_ENDPOINTS = new Set([
   "https://github.com/duxweb/codux/releases/latest/download/codux-tauri-latest.json",
   "https://github.com/duxweb/codux/releases/latest/download/latest.json",
@@ -400,7 +404,8 @@ function normalizeAppSettings(settings: Partial<AppSettings>): AppSettings {
     ...defaultSettings.update,
     ...(settings.update ?? {}),
   };
-  update.endpoint = normalizeUpdateEndpoint(update.endpoint, update.enabled);
+  update.channel = update.channel === "beta" ? "beta" : "stable";
+  update.endpoint = normalizeUpdateEndpoint(update.endpoint, update.enabled, update.channel);
   const legacyThemeColor = inferThemeColorFromLegacyBackground(settings.background);
   const themeColorSource =
     settings.themeColor === defaultSettings.themeColor && legacyThemeColor ? legacyThemeColor : settings.themeColor;
@@ -520,11 +525,16 @@ function normalizeRemoteDeviceSettings(device: Partial<RemoteDeviceSettings>): R
   };
 }
 
-function normalizeUpdateEndpoint(endpoint: string, enabled: boolean) {
+function normalizeUpdateEndpoint(endpoint: string, enabled: boolean, channel: string) {
   const trimmed = endpoint.trim();
   if (!enabled) return trimmed;
-  if (!trimmed || LEGACY_UPDATE_ENDPOINTS.has(trimmed)) return DEFAULT_UPDATE_ENDPOINT;
+  const channelEndpoint = channel === "beta" ? UPDATE_CHANNEL_ENDPOINTS.beta : UPDATE_CHANNEL_ENDPOINTS.stable;
+  if (!trimmed || LEGACY_UPDATE_ENDPOINTS.has(trimmed) || isManagedUpdateEndpoint(trimmed)) return channelEndpoint;
   return trimmed;
+}
+
+function isManagedUpdateEndpoint(endpoint: string) {
+  return Object.values(UPDATE_CHANNEL_ENDPOINTS).includes(endpoint);
 }
 
 function normalizeAISettings(settings?: Partial<AISettings>, legacyPet?: Partial<PetSettings>): AISettings {

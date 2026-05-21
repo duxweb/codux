@@ -5,6 +5,7 @@ use crate::performance::PerformanceSnapshot;
 use crate::project_store::ProjectListSnapshot;
 use crate::ssh::SSHProfilesSnapshot;
 use chrono::Utc;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
@@ -38,6 +39,7 @@ pub struct UpdateStatus {
     pub current_version: String,
     pub latest_version: Option<String>,
     pub download_url: Option<String>,
+    pub notes: Option<String>,
     pub channel: Option<String>,
     pub installation_mode: String,
     pub message: String,
@@ -161,6 +163,7 @@ pub async fn update_status(app: &AppHandle, settings: &AppSettings) -> UpdateSta
         current_version: about.version,
         latest_version: None,
         download_url: None,
+        notes: None,
         channel: Some(settings.update.channel.clone())
             .filter(|value| !value.trim().is_empty())
             .or_else(|| {
@@ -268,6 +271,7 @@ async fn check_signed_update(app: &AppHandle, endpoint: &str) -> Result<UpdateSt
             current_version: about.version,
             latest_version: Some(update.version),
             download_url: Some(update.download_url.to_string()),
+            notes: update.body,
             channel: None,
             installation_mode: "automatic".to_string(),
             message: "A signed update is available and can be installed automatically.".to_string(),
@@ -283,6 +287,7 @@ async fn check_signed_update(app: &AppHandle, endpoint: &str) -> Result<UpdateSt
         current_version: about.version.clone(),
         latest_version: Some(about.version.clone()),
         download_url: None,
+        notes: None,
         channel: None,
         installation_mode: "automatic".to_string(),
         message: format!("Current version {} is up to date.", about.version),
@@ -393,7 +398,10 @@ async fn check_update_endpoint(
         latest_version: latest,
         download_url: manifest
             .download_url
-            .or(manifest.notes)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        notes: manifest
+            .notes
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
         channel,
@@ -419,6 +427,7 @@ fn update_error(
         current_version,
         latest_version: None,
         download_url: None,
+        notes: None,
         channel,
         installation_mode: if manifest_endpoint_configured {
             "manifest".to_string()
@@ -432,19 +441,12 @@ fn update_error(
 }
 
 fn version_is_newer(latest: &str, current: &str) -> bool {
-    let latest_parts = semantic_version_parts(latest);
-    let current_parts = semantic_version_parts(current);
-    latest_parts > current_parts
-}
-
-fn semantic_version_parts(value: &str) -> Vec<u64> {
-    value
-        .trim()
-        .trim_start_matches('v')
-        .split(|ch: char| !ch.is_ascii_digit())
-        .filter(|part| !part.is_empty())
-        .map(|part| part.parse::<u64>().unwrap_or(0))
-        .collect()
+    let latest = latest.trim().trim_start_matches('v');
+    let current = current.trim().trim_start_matches('v');
+    match (Version::parse(latest), Version::parse(current)) {
+        (Ok(latest), Ok(current)) => latest > current,
+        _ => false,
+    }
 }
 
 pub fn export_diagnostics(
@@ -559,6 +561,7 @@ fn update_status_snapshot(app: &AppHandle, settings: &AppSettings) -> UpdateStat
         current_version: about.version,
         latest_version: None,
         download_url: None,
+        notes: None,
         channel: Some(settings.update.channel.clone()).filter(|value| !value.trim().is_empty()),
         installation_mode: if manifest_endpoint_configured {
             "manifest".to_string()

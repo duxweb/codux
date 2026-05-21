@@ -15,7 +15,9 @@
       "update.latest.message_format": "Aktuelle Version: v%@\nNeueste Version: v%@",
       "update.latest.title": "Sie verwenden bereits die neueste Version.",
       "update.not_configured.title": "Updates nicht konfiguriert",
-      "update.not_configured.preview": "Update-Kanal ist in der Browser-Vorschau nicht konfiguriert."
+      "update.not_configured.preview": "Update-Kanal ist in der Browser-Vorschau nicht konfiguriert.",
+      "update.available.notes_title": "Release Notes",
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
     },
     "en": {
       "update.available.later": "Later",
@@ -32,7 +34,9 @@
       "update.latest.message_format": "Current version: v%@\nLatest release: v%@",
       "update.latest.title": "You're up to date.",
       "update.not_configured.title": "Updates Not Configured",
-      "update.not_configured.preview": "Update channel is not configured in browser preview."
+      "update.not_configured.preview": "Update channel is not configured in browser preview.",
+      "update.available.notes_title": "Release Notes",
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
     },
     "es": {
       "update.available.later": "Más tarde",
@@ -49,7 +53,9 @@
       "update.latest.message_format": "Versión actual: v%@\nÚltima versión: v%@",
       "update.latest.title": "Ya tienes la versión más reciente.",
       "update.not_configured.title": "Actualizaciones no configuradas",
-      "update.not_configured.preview": "El canal de actualización no está configurado en la vista previa del navegador."
+      "update.not_configured.preview": "El canal de actualización no está configurado en la vista previa del navegador.",
+      "update.available.notes_title": "Release Notes",
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
     },
     "fr": {
       "update.available.later": "Plus tard",
@@ -66,7 +72,9 @@
       "update.latest.message_format": "Version actuelle : v%@\nDernière version : v%@",
       "update.latest.title": "Vous disposez déjà de la dernière version.",
       "update.not_configured.title": "Mises à jour non configurées",
-      "update.not_configured.preview": "Le canal de mise à jour n'est pas configuré dans l'aperçu navigateur."
+      "update.not_configured.preview": "Le canal de mise à jour n'est pas configuré dans l'aperçu navigateur.",
+      "update.available.notes_title": "Release Notes",
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
     },
     "ja": {
       "update.available.later": "あとで",
@@ -83,7 +91,9 @@
       "update.latest.message_format": "現在のバージョン: v%@\n最新バージョン: v%@",
       "update.latest.title": "すでに最新バージョンです。",
       "update.not_configured.title": "更新が未設定です",
-      "update.not_configured.preview": "ブラウザプレビューでは更新チャンネルが設定されていません。"
+      "update.not_configured.preview": "ブラウザプレビューでは更新チャンネルが設定されていません。",
+      "update.available.notes_title": "Release Notes",
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
     },
     "ko": {
       "update.available.later": "나중에",
@@ -100,7 +110,9 @@
       "update.latest.message_format": "현재 버전: v%@\n최신 버전: v%@",
       "update.latest.title": "이미 최신 버전입니다.",
       "update.not_configured.title": "업데이트가 설정되지 않음",
-      "update.not_configured.preview": "브라우저 미리보기에는 업데이트 채널이 설정되어 있지 않습니다."
+      "update.not_configured.preview": "브라우저 미리보기에는 업데이트 채널이 설정되어 있지 않습니다.",
+      "update.available.notes_title": "Release Notes",
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
     },
     "pt-BR": {
       "update.available.later": "Depois",
@@ -117,7 +129,9 @@
       "update.latest.message_format": "Versão atual: v%@\nÚltima versão: v%@",
       "update.latest.title": "Você já está na versão mais recente.",
       "update.not_configured.title": "Atualizações não configuradas",
-      "update.not_configured.preview": "O canal de atualização não está configurado na prévia do navegador."
+      "update.not_configured.preview": "O canal de atualização não está configurado na prévia do navegador.",
+      "update.available.notes_title": "Release Notes",
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
     },
     "ru": {
       "update.available.later": "Позже",
@@ -134,7 +148,9 @@
       "update.latest.message_format": "Текущая версия: v%@\nПоследняя версия: v%@",
       "update.latest.title": "У вас уже последняя версия.",
       "update.not_configured.title": "Обновления не настроены",
-      "update.not_configured.preview": "Канал обновлений не настроен в предпросмотре браузера."
+      "update.not_configured.preview": "Канал обновлений не настроен в предпросмотре браузера.",
+      "update.available.notes_title": "Release Notes",
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
     },
     "zh-Hans": {
       "update.available.later": "稍后再说",
@@ -151,7 +167,9 @@
       "update.latest.message_format": "当前版本：v%@\n最新版本：v%@",
       "update.latest.title": "当前已是最新版本",
       "update.not_configured.title": "更新未配置",
-      "update.not_configured.preview": "浏览器预览中未配置更新渠道。"
+      "update.not_configured.preview": "浏览器预览中未配置更新渠道。",
+      "update.available.notes_title": "更新内容",
+      "update.installed.message": "更新已下载并安装，重启 Codux 后生效。"
     },
     "zh-Hant": {
       "update.available.later": "稍後再說",
@@ -168,7 +186,9 @@
       "update.latest.message_format": "目前版本：v%@\n最新版本：v%@",
       "update.latest.title": "目前已是最新版本",
       "update.not_configured.title": "更新未配置",
-      "update.not_configured.preview": "瀏覽器預覽中未配置更新渠道。"
+      "update.not_configured.preview": "瀏覽器預覽中未配置更新渠道。",
+      "update.available.notes_title": "更新內容",
+      "update.installed.message": "更新已下載並安裝，重新啟動 Codux 後生效。"
     }
   }
 }

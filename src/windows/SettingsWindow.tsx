@@ -168,9 +168,8 @@ const statisticsModeOptions = [
 ];
 
 const updateChannelOptions = [
-  { value: "stable", label: "Stable" },
-  { value: "beta", label: "Beta" },
-  { value: "nightly", label: "Nightly" },
+  { value: "stable", label: tm("settings.update.channel.stable", "Stable") },
+  { value: "beta", label: tm("settings.update.channel.beta", "Beta") },
 ];
 
 const runtimeTools = [
@@ -367,6 +366,7 @@ function GeneralSection() {
         currentVersion: "",
         latestVersion: null,
         downloadUrl: null,
+        notes: null,
         channel: settings.update.channel,
         installationMode: "error",
         message: error instanceof Error ? error.message : String(error),
@@ -380,7 +380,7 @@ function GeneralSection() {
     setInstallingUpdate(true);
     try {
       const result = await invoke<UpdateInstallResult>("app_update_install");
-      await systemMessage(result.message, {
+      await systemMessage(tm("update.installed.message", result.message), {
         title: tm("update.installed.title", "Update Installed"),
         kind: "info",
         buttons: { ok: "OK" },
@@ -468,10 +468,7 @@ function GeneralSection() {
 
       <SettingsCard
         title={tm("settings.update.section", "Updates")}
-        description={tm(
-          "settings.update.description",
-          "Updates use signed Tauri artifacts from the tauri-stable GitHub Release.",
-        )}
+        description={tm("settings.update.description", "Updates are checked from the selected GitHub Release channel.")}
       >
         <FormRow label={tm("settings.update.enabled", "Enable Update Checks")}>
           <Toggle

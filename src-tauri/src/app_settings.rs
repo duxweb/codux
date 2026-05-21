@@ -621,7 +621,9 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
         && (settings.update.endpoint.is_empty()
             || is_legacy_update_endpoint(&settings.update.endpoint))
     {
-        settings.update.endpoint = default_update_endpoint();
+        settings.update.endpoint = update_endpoint_for_channel(&settings.update.channel);
+    } else if settings.update.enabled && is_managed_update_endpoint(&settings.update.endpoint) {
+        settings.update.endpoint = update_endpoint_for_channel(&settings.update.channel);
     }
     settings
 }
@@ -953,7 +955,23 @@ fn default_developer_refresh() -> String {
 }
 
 fn default_update_endpoint() -> String {
-    "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json".to_string()
+    update_endpoint_for_channel("stable")
+}
+
+fn update_endpoint_for_channel(channel: &str) -> String {
+    match channel {
+        "beta" => "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json",
+        _ => "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json",
+    }
+    .to_string()
+}
+
+fn is_managed_update_endpoint(endpoint: &str) -> bool {
+    matches!(
+        endpoint,
+        "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json"
+            | "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json"
+    )
 }
 
 fn is_legacy_update_endpoint(endpoint: &str) -> bool {

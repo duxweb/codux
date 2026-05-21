@@ -1,6 +1,6 @@
 [package]
 name = "codux-tauri"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 description = "Codux Tauri desktop workspace"
 authors = ["Codux"]
 edition = "2021"
@@ -33,6 +33,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+semver = "1.0"
 sha2 = "0.10"
 sys-locale = "0.3"
 tauri = { version = "2.9.3", features = ["macos-private-api"] }

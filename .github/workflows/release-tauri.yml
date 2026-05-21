@@ -7,10 +7,18 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Source tag or branch to build, for example tauri-v0.1.0. Defaults to tauri."
+        description: "Source tag or branch to build, for example tauri-v1.0.0-beta.1. Defaults to tauri."
         required: false
         default: tauri
         type: string
+      channel:
+        description: "Updater channel to publish."
+        required: false
+        default: beta
+        type: choice
+        options:
+          - beta
+          - stable
 
 permissions:
   contents: write
@@ -34,7 +42,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     env:
       SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-      RELEASE_TAG: tauri-stable
+      RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || (contains(github.ref_name, '-beta') && 'beta' || 'stable') }}
+      RELEASE_TAG: ${{ format('tauri-{0}', github.event_name == 'workflow_dispatch' && inputs.channel || (contains(github.ref_name, '-beta') && 'beta' || 'stable')) }}
 
     steps:
       - name: Checkout
@@ -75,11 +84,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Codux Tauri Stable
-          releaseBody: Cross-platform Codux Tauri release built from `${{ env.SOURCE_REF }}`. This release stays marked as prerelease so the native macOS Sparkle channel can continue using GitHub's latest release. The `latest.json` asset is used by the in-app Tauri updater.
+          releaseName: Codux Tauri ${{ env.RELEASE_CHANNEL }}
+          releaseBody: Cross-platform Codux Tauri ${{ env.RELEASE_CHANNEL }} release built from `${{ env.SOURCE_REF }}`. The `latest.json` asset is used by the in-app Tauri updater.
           releaseCommitish: ${{ env.SOURCE_REF }}
           releaseDraft: false
-          prerelease: true
+          prerelease: ${{ env.RELEASE_CHANNEL == 'beta' }}
           projectPath: .
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
