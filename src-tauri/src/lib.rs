@@ -471,6 +471,7 @@ struct AppState {
     git_watch: Arc<GitWatchManager>,
     file_watch: Arc<FileWatchManager>,
     desktop_pet_hit_state: Arc<DesktopPetHitState>,
+    is_exiting: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
@@ -6212,12 +6213,15 @@ pub fn run() {
                 git_watch: Arc::new(GitWatchManager::default()),
                 file_watch: Arc::new(FileWatchManager::default()),
                 desktop_pet_hit_state: Arc::new(DesktopPetHitState::default()),
+                is_exiting: Arc::new(AtomicBool::new(false)),
             };
             state
                 .ai_runtime
                 .start_listener_background(app.handle().clone());
             let initial_settings = state.settings.snapshot();
             let initial_pet = state.pet.snapshot().ok();
+            let terminals_for_window_events = Arc::clone(&state.terminals);
+            let is_exiting_for_window_events = Arc::clone(&state.is_exiting);
             Arc::clone(&project_activity).start(
                 app.handle().clone(),
                 Arc::clone(&settings),
@@ -6232,6 +6236,7 @@ pub fn run() {
             }
             let activity_for_window_events = Arc::clone(&project_activity);
             if let Some(main_window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
                 activity_for_window_events
                     .mark_main_window_visible(main_window.is_visible().unwrap_or(true));
                 activity_for_window_events
@@ -6243,9 +6248,14 @@ pub fn run() {
                             activity_for_window_events.mark_main_window_visible(true);
                         }
                     }
-                    WindowEvent::CloseRequested { .. } => {
+                    WindowEvent::CloseRequested { api, .. } => {
                         activity_for_window_events.mark_main_window_visible(false);
                         activity_for_window_events.mark_main_window_focused(false);
+                        if !is_exiting_for_window_events.swap(true, Ordering::SeqCst) {
+                            api.prevent_close();
+                            terminals_for_window_events.kill_all();
+                            app_handle.exit(0);
+                        }
                     }
                     WindowEvent::Destroyed => {
                         activity_for_window_events.mark_main_window_visible(false);

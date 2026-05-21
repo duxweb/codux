@@ -1,6 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MinusSmall, Square2Stack, X, type AppIcon } from "../icons";
 import { tm } from "../i18n";
+import { PressableButton } from "./PressableButton";
 
 type Props = {
   className?: string;
@@ -17,7 +18,7 @@ export function WindowsWindowControls({ className = "" }: Props) {
   };
   const close = () => {
     if (!window.__TAURI_INTERNALS__) return;
-    void getCurrentWindow().close();
+    void getCurrentWindow().close().catch((error) => console.error("failed to close window", error));
   };
 
   return (
@@ -41,16 +42,19 @@ function WindowControlButton({
   onPress: () => void;
 }) {
   return (
-    <button
+    <PressableButton
       type="button"
       aria-label={label}
       title={label}
       className={`grid h-[34px] w-[46px] place-items-center text-ink-soft transition-colors ${
         danger ? "hover:bg-brand-red hover:text-white" : "hover:bg-fill/10 hover:text-ink"
       }`}
-      onClick={onPress}
+      onPointerDownCapture={(event) => {
+        event.stopPropagation();
+      }}
+      onPress={onPress}
     >
       <Icon size={13} strokeWidth={2} />
-    </button>
+    </PressableButton>
   );
 }

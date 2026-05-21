@@ -227,6 +227,20 @@ impl TerminalManager {
         Ok(())
     }
 
+    pub fn kill_all(&self) {
+        let sessions = match self.sessions.lock() {
+            Ok(mut sessions) => sessions.drain().map(|(_, session)| session).collect::<Vec<_>>(),
+            Err(_) => return,
+        };
+
+        for session in sessions {
+            if let Ok(binding) = session.binding.lock() {
+                self.ai_runtime.registry().remove(&binding.terminal_id);
+            }
+            let _ = session.kill();
+        }
+    }
+
     pub fn snapshot(&self, session_id: &str) -> Result<String, TerminalError> {
         let session = self.session(session_id)?;
         session.snapshot()
