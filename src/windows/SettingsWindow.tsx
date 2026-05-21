@@ -25,7 +25,7 @@ import { PressableButton } from "../components/PressableButton";
 import { WindowsWindowControls } from "../components/WindowsWindowControls";
 import { Field, SettingsCard, FormRow, Select, SettingsForm, Textarea, TextInput, Toggle } from "../components/Form";
 import { revealCurrentAppWindow } from "../windowing";
-import { isWindowsPlatform } from "../platform";
+import { isAppleShortcutPlatform, isWindowsPlatform } from "../platform";
 import { startWindowDrag } from "../windowDrag";
 import type { AppIcon } from "../icons";
 import {
@@ -1753,7 +1753,7 @@ function ShortcutSection() {
             value={
               recordingId === shortcut.id
                 ? tm("settings.shortcut.record", "Record Shortcut")
-                : (settings.shortcuts[shortcut.id] ?? shortcutDisplayValue(shortcut.id))
+                : shortcutDisplayValue(shortcut.id)
             }
             recording={recordingId === shortcut.id}
             customized={Boolean(settings.shortcuts[shortcut.id])}
@@ -1764,7 +1764,10 @@ function ShortcutSection() {
       </SettingsCard>
       <SettingsCard title={tm("settings.shortcut.project_switch", "Project Switch Shortcuts")}>
         <div className="text-xs text-ink-faint">
-          {tm("settings.shortcut.project_switch_hint", "Use ⌘1-⌘9 to switch projects in sidebar order.")}
+          {tm("settings.shortcut.project_switch_hint", "Use ⌘1-⌘9 to switch projects in sidebar order.").replace(
+            /⌘/g,
+            isAppleShortcutPlatform() ? "⌘" : "Ctrl+",
+          )}
         </div>
       </SettingsCard>
     </SettingsForm>

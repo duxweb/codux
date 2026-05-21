@@ -32,7 +32,7 @@ import {
   type ShortcutScope,
 } from "./shortcuts";
 import { openAppWindow, revealMainAppWindow } from "./windowing";
-import { listenWorkspaceCommand } from "./workspaceCommands";
+import { broadcastWorkspaceCommand, listenWorkspaceCommand } from "./workspaceCommands";
 import { ensureWorktreeSnapshotEventCacheSubscription, useWorktreeSnapshot } from "./worktree/snapshot";
 import { subscribeAppSettings } from "./settings";
 import { runAfterFirstPaint, runWhenIdle } from "./startupScheduler";
@@ -572,6 +572,26 @@ function App() {
         setShortcutFocusScope("workspace");
         return true;
       }
+      if (isConfiguredShortcut(event, "terminal.split")) {
+        setMainView("terminal");
+        requestTerminalFocus();
+        broadcastWorkspaceCommand({ type: "add-top-terminal-split" });
+        return true;
+      }
+      if (isConfiguredShortcut(event, "terminal.tab")) {
+        setMainView("terminal");
+        requestTerminalFocus();
+        broadcastWorkspaceCommand({ type: "add-bottom-terminal-tab" });
+        return true;
+      }
+      if (isConfiguredShortcut(event, "panel.git")) {
+        setRightPanel((panel) => (panel === "git" ? null : "git"));
+        return true;
+      }
+      if (isConfiguredShortcut(event, "panel.ai")) {
+        setRightPanel((panel) => (panel === "ai" ? null : "ai"));
+        return true;
+      }
       return false;
     });
   }, [requestTerminalFocus]);
@@ -849,25 +869,25 @@ function WelcomeShortcutHints() {
       id: "split",
       icon: Columns2,
       label: tm("titlebar.split", "Split"),
-      keys: shortcutDisplayValue("terminal.split", "⌘⇧\\"),
+      keys: shortcutDisplayValue("terminal.split"),
     },
     {
       id: "tab",
       icon: Square2Stack,
       label: tm("titlebar.tab", "Tab"),
-      keys: shortcutDisplayValue("terminal.tab", "⌘⇧T"),
+      keys: shortcutDisplayValue("terminal.tab"),
     },
     {
       id: "git",
       icon: GitBranch,
       label: tm("titlebar.git", "Git"),
-      keys: shortcutDisplayValue("panel.git", "⌘⇧G"),
+      keys: shortcutDisplayValue("panel.git"),
     },
     {
       id: "ai",
       icon: Sparkles,
       label: tm("titlebar.ai", "AI"),
-      keys: shortcutDisplayValue("panel.ai", "⌘⇧A"),
+      keys: shortcutDisplayValue("panel.ai"),
     },
   ];
 

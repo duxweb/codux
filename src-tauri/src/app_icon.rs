@@ -33,11 +33,11 @@ fn render_app_icon(style: &str, size: u32) -> Image<'static> {
 }
 
 fn icon_pixel(x: f32, y: f32, size: f32, palette: IconPalette) -> [f32; 4] {
-    let inset = size * 0.08;
+    let inset = size * 0.04;
     let rect_min = inset;
     let rect_max = size - inset;
     let rect_size = rect_max - rect_min;
-    let radius = size * 0.22;
+    let radius = size * 0.24;
     let distance = rounded_rect_distance(x, y, rect_min, rect_min, rect_size, rect_size, radius);
     let edge_alpha = smoothstep(1.0, -1.0, distance);
     if edge_alpha <= 0.0 {

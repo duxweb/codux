@@ -1,6 +1,7 @@
 import type { MainView, RightPanelKind } from "./types";
 import { readAppSettings } from "./settings";
 import { tm } from "./i18n";
+import { isAppleShortcutPlatform } from "./platform";
 
 export type ShortcutScope = "global" | "workspace" | "project-sidebar" | "task-sidebar" | "right-sidebar";
 
@@ -24,6 +25,13 @@ export type ShortcutDefinition = {
     shift?: boolean;
   }>;
   scope: ShortcutScope;
+};
+
+const commonShortcutKeys: Record<string, ShortcutDefinition["keys"]> = {
+  "terminal.split": [{ key: "\\", meta: true, shift: true }],
+  "terminal.tab": [{ key: "t", meta: true, shift: true }],
+  "panel.git": [{ key: "g", meta: true, shift: true }],
+  "panel.ai": [{ key: "a", meta: true, shift: true }],
 };
 
 type ShortcutRegistration = {
@@ -139,7 +147,7 @@ export function dispatchShortcut(event: KeyboardEvent, context: ShortcutContext)
 export function configuredShortcutKeys(id: string) {
   const configured = parseShortcutSequence(readAppSettings().shortcuts[id]);
   if (configured.length > 0) return configured;
-  return appShortcutDefinitions.find((shortcut) => shortcut.id === id)?.keys ?? [];
+  return appShortcutDefinitions.find((shortcut) => shortcut.id === id)?.keys ?? commonShortcutKeys[id] ?? [];
 }
 
 export function isConfiguredShortcut(event: KeyboardEvent, id: string) {
@@ -161,21 +169,26 @@ export function isShortcut(
     shift?: boolean;
   },
 ) {
+  const usesApplePrimary = isAppleShortcutPlatform();
+  const expectsPrimary = Boolean(shortcut.meta);
+  const expectedMeta = usesApplePrimary ? expectsPrimary : false;
+  const expectedCtrl = Boolean(shortcut.ctrl) || (!usesApplePrimary && expectsPrimary);
   return (
     event.key.toLowerCase() === shortcut.key.toLowerCase() &&
-    event.metaKey === Boolean(shortcut.meta) &&
-    event.ctrlKey === Boolean(shortcut.ctrl) &&
+    event.metaKey === expectedMeta &&
+    event.ctrlKey === expectedCtrl &&
     event.altKey === Boolean(shortcut.alt) &&
     event.shiftKey === Boolean(shortcut.shift)
   );
 }
 
 export function formatShortcutKeys(shortcut: ShortcutDefinition["keys"][number]) {
+  const usesAppleSymbols = isAppleShortcutPlatform();
   const parts = [
-    shortcut.meta ? "⌘" : "",
-    shortcut.ctrl ? "⌃" : "",
-    shortcut.alt ? "⌥" : "",
-    shortcut.shift ? "⇧" : "",
+    shortcut.meta ? (usesAppleSymbols ? "⌘" : "Ctrl+") : "",
+    shortcut.ctrl ? (usesAppleSymbols ? "⌃" : "Ctrl+") : "",
+    shortcut.alt ? (usesAppleSymbols ? "⌥" : "Alt+") : "",
+    shortcut.shift ? (usesAppleSymbols ? "⇧" : "Shift+") : "",
     shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key,
   ];
   return parts.filter(Boolean).join("");

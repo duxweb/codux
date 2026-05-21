@@ -67,13 +67,13 @@ export function AppIconMark({
           <feDropShadow dx="0" dy="1.28" stdDeviation="1.28" floodColor="black" floodOpacity="0.2" />
         </filter>
         <clipPath id={`${id}-clip`}>
-          <rect x="10.24" y="10.24" width="107.52" height="107.52" rx="28.16" ry="28.16" />
+          <rect x="5.12" y="5.12" width="117.76" height="117.76" rx="30.72" ry="30.72" />
         </clipPath>
       </defs>
       <g clipPath={`url(#${id}-clip)`}>
-        <rect x="10.24" y="10.24" width="107.52" height="107.52" fill={`url(#${id}-bg)`} />
-        <rect x="10.24" y="10.24" width="107.52" height="107.52" fill={`url(#${id}-top)`} />
-        <rect x="10.24" y="10.24" width="107.52" height="107.52" fill={`url(#${id}-bottom)`} />
+        <rect x="5.12" y="5.12" width="117.76" height="117.76" fill={`url(#${id}-bg)`} />
+        <rect x="5.12" y="5.12" width="117.76" height="117.76" fill={`url(#${id}-top)`} />
+        <rect x="5.12" y="5.12" width="117.76" height="117.76" fill={`url(#${id}-bottom)`} />
         <path
           d="M40.32 44.8 L62.08 64 L40.32 83.2"
           fill="none"
@@ -93,12 +93,12 @@ export function AppIconMark({
           filter={`url(#${id}-shadow)`}
         />
         <rect
-          x="10.74"
-          y="10.74"
-          width="106.52"
-          height="106.52"
-          rx="27.66"
-          ry="27.66"
+          x="5.62"
+          y="5.62"
+          width="116.76"
+          height="116.76"
+          rx="30.22"
+          ry="30.22"
           fill="none"
           stroke="white"
           strokeOpacity="0.08"
