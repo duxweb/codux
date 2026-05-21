@@ -500,6 +500,16 @@ impl AIRuntimeBridge {
                 .join("dmux-ai-state.cmd"),
             false,
         )?;
+        #[cfg(windows)]
+        stage_runtime_asset(
+            "scripts/wrappers/dmux-ai-state.ps1",
+            &self
+                .root_dir
+                .join("scripts")
+                .join("wrappers")
+                .join("dmux-ai-state.ps1"),
+            false,
+        )?;
         stage_runtime_asset(
             "scripts/wrappers/tool-wrapper.sh",
             &self
