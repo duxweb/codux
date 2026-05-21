@@ -4,10 +4,14 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
+use std::time::Duration;
 use tauri::AppHandle;
 
 const REVIEW_UNTRACKED_LINE_COUNT_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
+const GIT_WATCH_DEBOUNCE_MS: u64 = 250;
 static GIT_COMMAND_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize)]
@@ -311,7 +315,21 @@ impl GitWatchManager {
         let repository_key = watch_target.repository_key.clone();
         let git_dir_keys = watch_target.git_dir_keys.clone();
         let on_changed = Arc::new(on_changed);
-        let watched_project_paths = Arc::clone(&project_paths_for_event);
+        let (change_tx, change_rx) = mpsc::channel::<Vec<String>>();
+        let debounced_paths = Arc::clone(&project_paths_for_event);
+        let debounced_repository_path = repository_path_for_event.clone();
+        let debounced_on_changed = Arc::clone(&on_changed);
+        thread::Builder::new()
+            .name("codux-git-watch-debounce".to_string())
+            .spawn(move || {
+                run_git_watch_debounce(
+                    change_rx,
+                    debounced_paths,
+                    debounced_repository_path,
+                    debounced_on_changed,
+                );
+            })
+            .map_err(|error| error.to_string())?;
         let mut watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
             let Ok(event) = event else {
                 return;
@@ -328,17 +346,7 @@ impl GitWatchManager {
             if changed_paths.is_empty() {
                 return;
             }
-            let project_paths = watched_project_paths
-                .lock()
-                .map(|paths| paths.iter().cloned().collect::<Vec<_>>())
-                .unwrap_or_default();
-            for project_path in project_paths {
-                on_changed(GitRepositoryChangeEvent {
-                    project_path,
-                    repository_path: repository_path_for_event.clone(),
-                    changed_paths: changed_paths.clone(),
-                });
-            }
+            let _ = change_tx.send(changed_paths);
         })
         .map_err(|error| error.to_string())?;
 
@@ -387,6 +395,43 @@ impl GitWatchManager {
             !should_remove
         });
         Ok(())
+    }
+}
+
+fn run_git_watch_debounce(
+    rx: mpsc::Receiver<Vec<String>>,
+    watched_project_paths: Arc<Mutex<HashSet<String>>>,
+    repository_path: String,
+    on_changed: Arc<impl Fn(GitRepositoryChangeEvent) + Send + Sync + 'static>,
+) {
+    while let Ok(paths) = rx.recv() {
+        let mut changed_paths = paths;
+        loop {
+            match rx.recv_timeout(Duration::from_millis(GIT_WATCH_DEBOUNCE_MS)) {
+                Ok(next_paths) => push_unique_strings(&mut changed_paths, next_paths),
+                Err(RecvTimeoutError::Timeout) => break,
+                Err(RecvTimeoutError::Disconnected) => return,
+            }
+        }
+        let project_paths = watched_project_paths
+            .lock()
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        for project_path in project_paths {
+            on_changed(GitRepositoryChangeEvent {
+                project_path,
+                repository_path: repository_path.clone(),
+                changed_paths: changed_paths.clone(),
+            });
+        }
+    }
+}
+
+fn push_unique_strings(target: &mut Vec<String>, values: Vec<String>) {
+    for value in values {
+        if !target.iter().any(|existing| existing == &value) {
+            target.push(value);
+        }
     }
 }
 
