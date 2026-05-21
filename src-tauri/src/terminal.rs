@@ -310,7 +310,7 @@ impl TerminalSession {
             .context("failed to open PTY")?;
 
         let shell = shell.unwrap_or_else(default_shell);
-        let cwd = cwd.filter(|value| !value.trim().is_empty());
+        let cwd = normalize_terminal_cwd(cwd);
         let initial_command = initial_command.filter(|value| !value.trim().is_empty());
         let mut command = build_shell_command(&shell, initial_command.as_deref());
 
@@ -1020,6 +1020,33 @@ fn clear_terminal_environment(command: &mut CommandBuilder) {
     {
         let _ = command;
     }
+}
+
+fn normalize_terminal_cwd(cwd: Option<String>) -> Option<String> {
+    cwd.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(normalize_terminal_path(trimmed))
+        }
+    })
+}
+
+#[cfg(windows)]
+fn normalize_terminal_path(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = path.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    path.to_string()
+}
+
+#[cfg(not(windows))]
+fn normalize_terminal_path(path: &str) -> String {
+    path.to_string()
 }
 
 fn project_path_name(path: &str) -> Option<String> {
