@@ -35,7 +35,7 @@ type TerminalRendererAdapter = {
 const MIN_COLS = 20;
 const MIN_ROWS = 8;
 const isWindowsTerminal = isWindowsPlatform();
-const useWebglTerminalRenderer = !isWindowsTerminal;
+const useWebglTerminalRenderer = true;
 
 function cssVar(host: HTMLElement, name: string, fallback: string) {
   return window.getComputedStyle(host).getPropertyValue(name).trim() || fallback;
