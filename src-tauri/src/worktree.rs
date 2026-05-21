@@ -1,8 +1,7 @@
-use crate::git::git_brief_status;
+use crate::git::{git_brief_status, git_command_output};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize)]
@@ -374,20 +373,7 @@ fn has_head_commit(path: &str) -> bool {
 }
 
 fn git_output(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .map_err(|error| error.to_string())?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("git {:?} failed", args)
-        } else {
-            stderr
-        });
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    git_command_output(cwd, args)
 }
 
 fn managed_worktree_path(project_path: &str, branch_name: &str) -> PathBuf {

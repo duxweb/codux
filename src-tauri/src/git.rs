@@ -4,10 +4,11 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::AppHandle;
 
 const REVIEW_UNTRACKED_LINE_COUNT_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
+static GIT_COMMAND_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1872,11 +1873,15 @@ fn review_status(value: &str) -> String {
 }
 
 fn git_output(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .map_err(|error| error.to_string())?;
+    git_command_output(cwd, args)
+}
+
+fn git_output_permissive(cwd: &Path, args: &[&str]) -> Result<String, String> {
+    git_command_output_permissive(cwd, args)
+}
+
+pub(crate) fn git_command_output(cwd: &Path, args: &[&str]) -> Result<String, String> {
+    let output = run_git_command(cwd, args)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if stderr.is_empty() {
@@ -1888,17 +1893,26 @@ fn git_output(cwd: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-fn git_output_permissive(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .map_err(|error| error.to_string())?;
+pub(crate) fn git_command_output_permissive(cwd: &Path, args: &[&str]) -> Result<String, String> {
+    let output = run_git_command(cwd, args)?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     if output.status.success() || !stdout.trim().is_empty() {
         return Ok(stdout);
     }
     Ok(String::new())
+}
+
+fn run_git_command(cwd: &Path, args: &[&str]) -> Result<std::process::Output, String> {
+    let _guard = GIT_COMMAND_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "Git command queue is unavailable.".to_string())?;
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| error.to_string())?;
+    Ok(output)
 }
 
 fn repository_root(path: &str) -> Result<String, String> {
