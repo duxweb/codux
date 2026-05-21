@@ -1,17 +1,14 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Smile } from "../icons";
+import {
+  activePetFrameCount,
+  loadPetActiveFrameCounts,
+  petAnimations,
+  petAtlas,
+  petFrameDelay,
+  type PetAnimationState,
+} from "../petAnimation";
 import { readAppSettings, subscribeAppSettings } from "../settings";
-
-export type PetAnimationState =
-  | "idle"
-  | "running-right"
-  | "running-left"
-  | "waving"
-  | "jumping"
-  | "failed"
-  | "waiting"
-  | "running"
-  | "review";
 
 type Props = {
   species?: string;
@@ -22,24 +19,8 @@ type Props = {
   className?: string;
 };
 
-const atlas = {
-  columns: 8,
-  rows: 9,
-  cellWidth: 192,
-  cellHeight: 208,
-};
-
-const animations: Record<PetAnimationState, { row: number; frameDurationsMs: number[] }> = {
-  idle: { row: 0, frameDurationsMs: [280, 110, 110, 140, 140, 320] },
-  "running-right": { row: 1, frameDurationsMs: [120, 120, 120, 120, 120, 120, 120, 220] },
-  "running-left": { row: 2, frameDurationsMs: [120, 120, 120, 120, 120, 120, 120, 220] },
-  waving: { row: 3, frameDurationsMs: [140, 140, 140, 280] },
-  jumping: { row: 4, frameDurationsMs: [140, 140, 140, 140, 280] },
-  failed: { row: 5, frameDurationsMs: [140, 140, 140, 140, 140, 140, 140, 240] },
-  waiting: { row: 6, frameDurationsMs: [150, 150, 150, 150, 150, 260] },
-  running: { row: 7, frameDurationsMs: [120, 120, 120, 120, 120, 220] },
-  review: { row: 8, frameDurationsMs: [150, 150, 150, 150, 150, 280] },
-};
+const atlas = petAtlas;
+const animations = petAnimations;
 
 const petSpriteLoaders = import.meta.glob("../assets/pets/*/spritesheet.png", {
   query: "?url",
@@ -79,8 +60,10 @@ export const PetSprite = memo(function PetSprite({
   const spriteKey = `../assets/pets/${normalizedSpecies}/spritesheet.png`;
   const [loadedSpriteUrl, setLoadedSpriteUrl] = useState(() => loadedPetSpriteUrls.get(spriteKey) ?? "");
   const spriteUrl = src || loadedSpriteUrl;
+  const spriteFrameKey = src ? `custom:${src}` : spriteKey;
+  const [activeFrameCounts, setActiveFrameCounts] = useState<number[] | null>(null);
   const resolvedStaticMode = staticMode ?? settings?.pet.staticMode ?? false;
-  const frameCount = frameDurations.length;
+  const frameCount = activePetFrameCount(activeFrameCounts, animation);
   const scale = size / atlas.cellHeight;
   const visibleWidth = atlas.cellWidth * scale;
 
@@ -119,6 +102,21 @@ export const PetSprite = memo(function PetSprite({
       cancelled = true;
     };
   }, [spriteKey, src]);
+
+  useEffect(() => {
+    if (!spriteUrl) {
+      setActiveFrameCounts(null);
+      return;
+    }
+    let cancelled = false;
+    setActiveFrameCounts(null);
+    void loadPetActiveFrameCounts(spriteFrameKey, spriteUrl).then((counts) => {
+      if (!cancelled) setActiveFrameCounts(counts);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [spriteFrameKey, spriteUrl]);
 
   useEffect(() => {
     const sprite = spriteRef.current;
@@ -173,8 +171,7 @@ export const PetSprite = memo(function PetSprite({
 });
 
 function frameDelay(delayMs: number, state: PetAnimationState) {
-  const leadingHold = state === "idle" || state === "waiting" || state === "review" ? 1.85 : 1.35;
-  return Math.max(80, Math.round(delayMs * leadingHold));
+  return petFrameDelay(delayMs, state);
 }
 
 function applySpriteFrame(

@@ -10,6 +10,13 @@ import {
   type DesktopPetActivityTone,
 } from "./desktopPetActivity";
 import { lockRuntimeLocale, syncI18nBundleFromRust, tm } from "./i18n";
+import {
+  activePetFrameCount,
+  loadPetActiveFrameCounts,
+  petAnimations,
+  petAtlas,
+  petFrameDelay,
+} from "./petAnimation";
 import { syncAppSettingsFromRust } from "./settings";
 import "./desktopPet.css";
 
@@ -42,22 +49,14 @@ type PlacementSnapshot = {
   side: DesktopPetSide;
 };
 
-const atlas = { columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 };
 const spriteSize = 128;
-const visibleWidth = (atlas.cellWidth * spriteSize) / atlas.cellHeight;
+const visibleWidth = (petAtlas.cellWidth * spriteSize) / petAtlas.cellHeight;
 const spriteLoaders = import.meta.glob("./assets/pets/*/spritesheet.png", {
   query: "?url",
   import: "default",
 }) as Record<string, () => Promise<string>>;
 const spriteUrlCache = new Map<string, string>();
-const animations: Record<DesktopPetAnimationState, { row: number; frameDurationsMs: number[] }> = {
-  idle: { row: 0, frameDurationsMs: [280, 110, 110, 140, 140, 320] },
-  waving: { row: 3, frameDurationsMs: [140, 140, 140, 280] },
-  failed: { row: 5, frameDurationsMs: [140, 140, 140, 140, 140, 140, 140, 240] },
-  waiting: { row: 6, frameDurationsMs: [150, 150, 150, 150, 150, 260] },
-  running: { row: 7, frameDurationsMs: [120, 120, 120, 120, 120, 220] },
-  review: { row: 8, frameDurationsMs: [150, 150, 150, 150, 150, 280] },
-};
+const animations = petAnimations;
 
 const root = document.getElementById("pet-root") as HTMLDivElement;
 const spriteHotspot = document.getElementById("sprite-hotspot") as HTMLDivElement;
@@ -76,6 +75,7 @@ let currentFrame = 0;
 let currentState: DesktopPetAnimationState = "idle";
 let currentSpriteKey = "";
 let currentSpriteUrl = "";
+let currentActiveFrameCounts: number[] | null = null;
 let lastBubbleText = "";
 let lastBubbleVisible = false;
 let lastBubbleTone: DesktopPetActivityTone = "normal";
@@ -178,7 +178,7 @@ function applySide() {
 function updateSpriteSource() {
   sprite.style.width = `${visibleWidth}px`;
   sprite.style.height = `${spriteSize}px`;
-  sprite.style.backgroundSize = `${atlas.columns * visibleWidth}px ${atlas.rows * spriteSize}px`;
+  sprite.style.backgroundSize = `${petAtlas.columns * visibleWidth}px ${petAtlas.rows * spriteSize}px`;
   spriteHotspot.style.width = `${spriteSize}px`;
   spriteHotspot.style.height = `${spriteSize}px`;
 
@@ -214,7 +214,16 @@ function applySpriteSource(key: string, source: string) {
   if (currentSpriteKey === key && currentSpriteUrl === source) return;
   currentSpriteKey = key;
   currentSpriteUrl = source;
+  currentActiveFrameCounts = null;
   sprite.style.backgroundImage = `url("${source}")`;
+  void loadPetActiveFrameCounts(key, source)
+    .then((counts) => {
+      if (currentSpriteKey !== key || currentSpriteUrl !== source) return;
+      currentActiveFrameCounts = counts;
+      currentFrame = Math.min(currentFrame, currentFrameCount() - 1);
+      applyFrame();
+    })
+    .catch(() => undefined);
 }
 
 function updateSpriteAnimation() {
@@ -235,12 +244,13 @@ function updateSpriteAnimation() {
 
 function scheduleFrame() {
   const animation = animations[currentState] ?? animations.idle;
+  const frameCount = currentFrameCount();
   const delay = frameDelay(
-    animation.frameDurationsMs[currentFrame % animation.frameDurationsMs.length] ?? 180,
+    animation.frameDurationsMs[currentFrame % frameCount] ?? 180,
     currentState,
   );
   frameTimer = window.setTimeout(() => {
-    currentFrame = (currentFrame + 1) % animation.frameDurationsMs.length;
+    currentFrame = (currentFrame + 1) % frameCount;
     applyFrame();
     scheduleFrame();
   }, delay);
@@ -256,6 +266,11 @@ function stopFrameTimer() {
 function applyFrame() {
   const animation = animations[currentState] ?? animations.idle;
   sprite.style.backgroundPosition = `-${currentFrame * visibleWidth}px -${animation.row * spriteSize}px`;
+}
+
+function currentFrameCount() {
+  const animation = animations[currentState] ?? animations.idle;
+  return activePetFrameCount(currentActiveFrameCounts, animation);
 }
 
 function updateActivityLine() {
@@ -283,6 +298,5 @@ function setBubbleLine(text: string, tone: DesktopPetActivityTone = "normal") {
 }
 
 function frameDelay(delayMs: number, state: DesktopPetAnimationState) {
-  const leadingHold = state === "idle" || state === "waiting" || state === "review" ? 1.85 : 1.35;
-  return Math.max(80, Math.round(delayMs * leadingHold));
+  return petFrameDelay(delayMs, state);
 }
