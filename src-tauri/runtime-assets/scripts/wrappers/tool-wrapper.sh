@@ -113,6 +113,9 @@ find_real_binary() {
 real_bin="$(find_real_binary || true)"
 if [[ -z "$real_bin" ]]; then
   print -u2 -- "wrapper: failed to locate real binary for $tool_name"
+  if [[ -x "${wrapper_dir}/dmux-ai-state.sh" && -n "${DMUX_SESSION_ID:-}" ]]; then
+    "${wrapper_dir}/dmux-ai-state.sh" stop codux-tauri "$tool_name" </dev/null >/dev/null 2>&1 || true
+  fi
   exit 127
 fi
 

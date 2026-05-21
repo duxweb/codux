@@ -18,7 +18,8 @@ if not defined REAL_BIN (
   )
 )
 if not defined REAL_BIN (
-  echo wrapper: failed to locate real binary for %TOOL% 1>&2
+  echo %TOOL% is not installed or not available in PATH.
+  call "%WRAPPER_DIR%dmux-ai-state.cmd" stop codux-tauri %TOOL%
   exit /b 127
 )
 
