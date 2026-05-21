@@ -525,17 +525,21 @@ impl AIRuntimeBridge {
             "opencode",
             "codux-ssh",
         ] {
+            #[cfg(not(windows))]
             stage_runtime_asset(
                 &format!("scripts/wrappers/bin/{bin_name}"),
                 &self.wrapper_bin_dir.join(bin_name),
                 true,
             )?;
             #[cfg(windows)]
-            stage_runtime_asset(
-                &format!("scripts/wrappers/bin/{bin_name}.cmd"),
-                &self.wrapper_bin_dir.join(format!("{bin_name}.cmd")),
-                false,
-            )?;
+            {
+                let _ = fs::remove_file(self.wrapper_bin_dir.join(bin_name));
+                stage_runtime_asset(
+                    &format!("scripts/wrappers/bin/{bin_name}.cmd"),
+                    &self.wrapper_bin_dir.join(format!("{bin_name}.cmd")),
+                    false,
+                )?;
+            }
         }
 
         self.install_managed_hook_configs()?;
