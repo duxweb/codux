@@ -12,6 +12,8 @@ import {
   installWorkspaceMenuActions,
   openProjectFolderFromMenu,
 } from "./appActions";
+import { AppIconMark } from "./components/AppIconMark";
+import { Button } from "./components/Button";
 import { Inspector } from "./components/Inspector";
 import { ProjectSidebar } from "./components/ProjectSidebar";
 import { TaskSidebar } from "./components/TaskSidebar";
@@ -31,6 +33,7 @@ import { runAfterFirstPaint, runWhenIdle } from "./startupScheduler";
 import { systemConfirm } from "./systemDialog";
 import { tm } from "./i18n";
 import { ensureTerminalLayoutsSnapshotSubscription } from "./terminalLayout";
+import { FolderOpen, FolderPlus } from "./icons";
 import type {
   MainView,
   ProjectListSnapshot,
@@ -323,6 +326,10 @@ function App() {
     setTerminalFocusRequest((current) => current + 1);
   }, []);
 
+  const openProjectFolder = useCallback(() => {
+    void openProjectFolderFromMenu().catch((error) => console.error("failed to open project folder", error));
+  }, []);
+
   useLayoutEffect(() => {
     void revealMainAppWindow().catch((error) => console.error("failed to reveal main window", error));
   }, []);
@@ -352,9 +359,7 @@ function App() {
           setShortcutFocusScope("task-sidebar");
           setTaskCreateRequest((value) => value + 1);
         },
-        openProjectFolder: () => {
-          void openProjectFolderFromMenu().catch((error) => console.error("failed to open project folder", error));
-        },
+        openProjectFolder,
         closeCurrentProject: () => {
           void closeProjectFromMenu(selectedProjectWithAIState).catch((error) =>
             console.error("failed to close project", error),
@@ -366,7 +371,7 @@ function App() {
           );
         },
       }),
-    [projectsWithAIState, requestTerminalFocus, selectedProjectWithAIState],
+    [openProjectFolder, projectsWithAIState, requestTerminalFocus, selectedProjectWithAIState],
   );
 
   const selectProject = useCallback(
@@ -702,42 +707,48 @@ function App() {
 
         <div className="flex-1 min-w-0 flex">
           <div className="flex-1 min-w-0 flex rounded-tl-workspace overflow-hidden border-t border-l border-line-strong bg-surface-terminal/95">
-            <aside
-              className={`flex-shrink-0 overflow-hidden border-r border-line bg-fill/[0.025] transition-[width,opacity] duration-150 ${
-                isTaskSidebarExpanded ? "w-[216px] opacity-100" : "w-0 opacity-0 pointer-events-none"
-              }`}
-              aria-hidden={!isTaskSidebarExpanded}
-              onPointerDown={() => setShortcutFocusScope("task-sidebar")}
-              onFocusCapture={() => setShortcutFocusScope("task-sidebar")}
-            >
-              <div className="h-full w-[216px]">
-                <MemoTaskSidebar
-                  selectedProject={taskSidebarProject}
-                  worktrees={taskSidebarWorktrees}
-                  selectedWorktreeId={selectedWorktreeId}
-                  aiStateByWorktreeId={taskSidebarAIStateById}
-                  onSelectWorktree={selectWorktree}
-                  onCreateWorktree={createWorktreeForSelectedProject}
-                  onRemoveWorktree={removeWorktreeForSelectedProject}
-                  onOpenWorktreeTerminal={openWorktreeTerminal}
-                  onReviewWorktree={reviewWorktree}
-                  onRefreshWorktrees={refreshWorktrees}
-                  isBusy={worktree.isLoading || isCreatingWorktree}
-                  createRequest={taskCreateRequest}
-                />
-              </div>
-            </aside>
+            {selectedProjectWithAIState && (
+              <aside
+                className={`flex-shrink-0 overflow-hidden border-r border-line bg-fill/[0.025] transition-[width,opacity] duration-150 ${
+                  isTaskSidebarExpanded ? "w-[216px] opacity-100" : "w-0 opacity-0 pointer-events-none"
+                }`}
+                aria-hidden={!isTaskSidebarExpanded}
+                onPointerDown={() => setShortcutFocusScope("task-sidebar")}
+                onFocusCapture={() => setShortcutFocusScope("task-sidebar")}
+              >
+                <div className="h-full w-[216px]">
+                  <MemoTaskSidebar
+                    selectedProject={taskSidebarProject}
+                    worktrees={taskSidebarWorktrees}
+                    selectedWorktreeId={selectedWorktreeId}
+                    aiStateByWorktreeId={taskSidebarAIStateById}
+                    onSelectWorktree={selectWorktree}
+                    onCreateWorktree={createWorktreeForSelectedProject}
+                    onRemoveWorktree={removeWorktreeForSelectedProject}
+                    onOpenWorktreeTerminal={openWorktreeTerminal}
+                    onReviewWorktree={reviewWorktree}
+                    onRefreshWorktrees={refreshWorktrees}
+                    isBusy={worktree.isLoading || isCreatingWorktree}
+                    createRequest={taskCreateRequest}
+                  />
+                </div>
+              </aside>
+            )}
             <div
               className="flex-1 min-w-0"
               onPointerDown={() => setShortcutFocusScope("workspace")}
               onFocusCapture={() => setShortcutFocusScope("workspace")}
             >
-              <Workspace
-                mainView={mainView}
-                selectedProject={selectedWorkspaceProject}
-                terminalFocusRequest={terminalFocusRequest}
-                onSessionChange={setSession}
-              />
+              {selectedWorkspaceProject ? (
+                <Workspace
+                  mainView={mainView}
+                  selectedProject={selectedWorkspaceProject}
+                  terminalFocusRequest={terminalFocusRequest}
+                  onSessionChange={setSession}
+                />
+              ) : (
+                <WelcomeWorkspace onCreateProject={openProjectCreateWindow} onOpenFolder={openProjectFolder} />
+              )}
             </div>
           </div>
 
@@ -753,6 +764,35 @@ function App() {
         </div>
       </div>
     </main>
+  );
+}
+
+function WelcomeWorkspace({
+  onCreateProject,
+  onOpenFolder,
+}: {
+  onCreateProject: () => void;
+  onOpenFolder: () => void;
+}) {
+  const title = tm("welcome.title_format", "Welcome to %@").replace("%@", "Codux");
+  return (
+    <section className="flex h-full min-h-0 items-center justify-center px-10 py-12">
+      <div className="flex w-full max-w-[460px] flex-col items-center text-center">
+        <AppIconMark size={74} className="mb-5" />
+        <h1 className="text-[22px] font-semibold leading-tight tracking-normal text-ink">{title}</h1>
+        <p className="mt-2 max-w-[360px] text-sm leading-6 text-ink-soft">
+          {tm("welcome.subtitle", "Create a project in the sidebar to get started")}
+        </p>
+        <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+          <Button variant="primary" size="md" leading={FolderPlus} onPress={onCreateProject}>
+            {tm("project.create.title", "Create Project")}
+          </Button>
+          <Button variant="secondary" size="md" leading={FolderOpen} onPress={onOpenFolder}>
+            {tm("project.open_folder.title", "Open Folder")}
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -490,9 +490,12 @@ struct DesktopPetHitLayout {
 }
 
 const DESKTOP_PET_LABEL: &str = "desktop-pet";
-const DESKTOP_PET_BASE_WIDTH: f64 = 328.0;
+const DESKTOP_PET_BASE_WIDTH: f64 = 352.0;
 const DESKTOP_PET_BASE_HEIGHT: f64 = 202.0;
 const DESKTOP_PET_SPRITE_SIZE: f64 = 112.0;
+const DESKTOP_PET_BUBBLE_WIDTH: f64 = 198.0;
+const DESKTOP_PET_BUBBLE_HEIGHT: f64 = 78.0;
+const DESKTOP_PET_BUBBLE_TOP: f64 = 52.0;
 const DESKTOP_PET_SPRITE_VISIBLE_INSET_X: f64 = 18.0;
 const DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP: f64 = 12.0;
 const DESKTOP_PET_SPRITE_VISIBLE_INSET_BOTTOM: f64 = 4.0;
@@ -691,12 +694,15 @@ fn desktop_pet_local_point_is_hotspot(
         && y <= sprite_y + sprite_height;
     let in_bubble = if has_bubble {
         let bubble_x = if layout.side == "right" {
-            layout.width - 8.0 - 214.0
+            layout.width - 8.0 - DESKTOP_PET_BUBBLE_WIDTH
         } else {
             8.0
         };
-        let bubble_y = 56.0;
-        x >= bubble_x && x <= bubble_x + 214.0 && y >= bubble_y && y <= bubble_y + 88.0
+        let bubble_y = DESKTOP_PET_BUBBLE_TOP;
+        x >= bubble_x
+            && x <= bubble_x + DESKTOP_PET_BUBBLE_WIDTH
+            && y >= bubble_y
+            && y <= bubble_y + DESKTOP_PET_BUBBLE_HEIGHT
     } else {
         false
     };

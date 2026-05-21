@@ -233,7 +233,7 @@ function PetPopoverButton({
       onOpenChange={onOpenChange}
       placement="bottom-end"
       trigger={
-        <button type="button" aria-label={t("pet")} title={tooltip} className={triggerClassName}>
+        <button type="button" aria-label={tooltip} className={triggerClassName}>
           <PetTitlebarIcon isMaxLevel={pet.snapshot.claimedAt ? info.isAtMaxLevel : false} />
           <span className="leading-none">{label}</span>
         </button>
@@ -313,7 +313,6 @@ function DailyLevelPopoverButton({
         <button
           type="button"
           aria-label={tm("ai.today_level", "Today's Level")}
-          title={tm("ai.today_level", "Today's Level")}
           className="no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[7px] border border-line bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-line-strong hover:bg-fill/10 data-[pressed]:bg-fill/12"
         >
           <DailyLevelBadge tier={tier} size="sm" />
@@ -626,7 +625,6 @@ function RemotePill({
         <button
           type="button"
           aria-label={tooltip}
-          title={tooltip}
           className={`pill-base border transition-colors gap-1.5 no-drag ${
             enabled
               ? "bg-brand-green/12 border-brand-green/30 text-brand-green hover:bg-brand-green/16"

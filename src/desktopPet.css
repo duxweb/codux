@@ -50,13 +50,13 @@ body {
   --pixel-bubble-text: rgb(240 237 225);
   --pixel-bubble-tail-y: 50%;
   position: absolute;
-  top: 56px;
+  top: 52px;
   display: grid;
-  width: 214px;
-  min-height: 58px;
+  width: 198px;
+  min-height: 52px;
   box-sizing: border-box;
   place-items: center;
-  padding: 12px 24px 12px 15px;
+  padding: 10px 21px 10px 13px;
   color: var(--pixel-bubble-text);
   pointer-events: auto;
 }
@@ -173,7 +173,7 @@ body {
 }
 
 .speech-bubble--left-tail {
-  padding: 12px 15px 12px 24px;
+  padding: 10px 13px 10px 21px;
 }
 
 .speech-bubble--left-tail::before,
