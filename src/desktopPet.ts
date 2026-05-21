@@ -49,7 +49,7 @@ type PlacementSnapshot = {
   side: DesktopPetSide;
 };
 
-const spriteSize = 128;
+const spriteSize = 112;
 const visibleWidth = (petAtlas.cellWidth * spriteSize) / petAtlas.cellHeight;
 const spriteLoaders = import.meta.glob("./assets/pets/*/spritesheet.png", {
   query: "?url",

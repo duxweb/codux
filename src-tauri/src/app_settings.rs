@@ -90,8 +90,6 @@ pub struct PetSettings {
     pub speech_mode: String,
     #[serde(default = "default_pet_speech_frequency")]
     pub speech_frequency: String,
-    #[serde(default = "default_pet_desktop_scale")]
-    pub desktop_scale: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -283,7 +281,6 @@ impl Default for PetSettings {
             reminders: false,
             speech_mode: default_pet_speech_mode(),
             speech_frequency: default_pet_speech_frequency(),
-            desktop_scale: default_pet_desktop_scale(),
         }
     }
 }
@@ -558,7 +555,6 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
         "chatterbox" => "chatterbox".to_string(),
         _ => default_pet_speech_frequency(),
     };
-    settings.pet.desktop_scale = sanitize_pet_desktop_scale(&settings.pet.desktop_scale);
     if settings.sleep_mode.trim().is_empty() {
         settings.sleep_mode = default_sleep_mode();
     }
@@ -792,17 +788,6 @@ fn sanitize_pet_speech_frequency(value: &str) -> String {
     }
 }
 
-fn sanitize_pet_desktop_scale(value: &str) -> String {
-    let parsed = value.trim().parse::<f64>().unwrap_or(1.0);
-    let stepped = (parsed / 0.1).round() * 0.1;
-    let normalized = stepped.clamp(0.75, 1.5);
-    if (normalized - 1.0).abs() < f64::EPSILON {
-        "1".to_string()
-    } else {
-        format!("{normalized:.1}")
-    }
-}
-
 fn normalize_hour(hour: Option<i32>) -> Option<i32> {
     hour.map(|value| value.clamp(0, 23))
 }
@@ -846,10 +831,6 @@ fn default_pet_speech_mode() -> String {
 
 fn default_pet_speech_frequency() -> String {
     "normal".to_string()
-}
-
-fn default_pet_desktop_scale() -> String {
-    "1".to_string()
 }
 
 fn default_ai_pet_speech_mode() -> String {

@@ -21,7 +21,7 @@ export type DesktopPetActivityLine = {
 type Translate = (key: string, fallback: string) => string;
 
 const DESKTOP_PET_COMPLETED_STATUS_SECONDS = 30;
-const DESKTOP_PET_PERMISSION_STATUS_SECONDS = 12;
+const DESKTOP_PET_PERMISSION_STATUS_SECONDS = 30;
 
 export function desktopPetActivityLine(
   sessions: AISessionSnapshot[],
@@ -49,12 +49,9 @@ export function desktopPetActivityLine(
     };
   }
 
-  const visibleSessions = sessions.filter((session) => {
-    if (session.state === "responding" || session.state === "needsInput") return true;
-    return session.hasCompletedTurn && now - session.updatedAt <= DESKTOP_PET_COMPLETED_STATUS_SECONDS;
-  });
-  if (!visibleSessions.length) return emptyLine();
-  const needsInput = visibleSessions.filter((session) => session.state === "needsInput").sort(compareUpdatedDesc)[0];
+  const needsInput = sessions
+    .filter((session) => session.state === "needsInput" && !isExpiredPermissionFallback(session, now))
+    .sort(compareUpdatedDesc)[0];
   if (needsInput) {
     return {
       text:
@@ -63,16 +60,8 @@ export function desktopPetActivityLine(
       tone: "attention",
     };
   }
-  const running = visibleSessions.filter((session) => session.state === "responding").sort(compareUpdatedDesc)[0];
-  if (running) {
-    return {
-      text:
-        normalizedPreview(running.latestAssistantPreview) ||
-        formatActivity(translate("pet.activity.running_format", "%@ is running"), running.tool),
-      tone: "normal",
-    };
-  }
-  const completed = visibleSessions.filter((session) => session.hasCompletedTurn).sort(compareUpdatedDesc)[0];
+
+  const completed = sessions.filter((session) => isVisibleCompleted(session, now)).sort(compareUpdatedDesc)[0];
   if (completed) {
     return {
       text: completed.wasInterrupted
@@ -81,13 +70,23 @@ export function desktopPetActivityLine(
       tone: completed.wasInterrupted ? "warning" : "success",
     };
   }
+
+  const running = sessions.filter((session) => session.state === "responding").sort(compareUpdatedDesc)[0];
+  if (running) {
+    return {
+      text:
+        normalizedPreview(running.latestAssistantPreview) ||
+        formatActivity(translate("pet.activity.running_format", "%@ is running"), running.tool),
+      tone: "normal",
+    };
+  }
   return emptyLine();
 }
 
 export function nextDesktopPetActivityRefreshMs(sessions: AISessionSnapshot[], now: number) {
   const nextExpiry = [
     ...sessions
-      .filter((session) => session.hasCompletedTurn && session.state !== "responding" && session.state !== "needsInput")
+      .filter((session) => isVisibleCompleted(session, now))
       .map((session) => session.updatedAt + DESKTOP_PET_COMPLETED_STATUS_SECONDS),
     ...sessions
       .filter(
@@ -112,20 +111,13 @@ export function desktopPetAnimationState({
   now: number;
 }): DesktopPetAnimationState {
   if (!claimed) return "waiting";
-  const activeSessions = sessions.filter((session) => session.state === "responding" || session.state === "needsInput");
-  if (activeSessions.some((session) => session.state === "needsInput")) return "review";
-  if (activeSessions.length > 0) return "running";
+  const needsInput = sessions.some((session) => session.state === "needsInput" && !isExpiredPermissionFallback(session, now));
+  if (needsInput) return "review";
 
-  const completed = sessions
-    .filter(
-      (session) =>
-        session.hasCompletedTurn &&
-        session.state !== "responding" &&
-        session.state !== "needsInput" &&
-        now - session.updatedAt <= DESKTOP_PET_COMPLETED_STATUS_SECONDS,
-    )
-    .sort(compareUpdatedDesc)[0];
+  const completed = sessions.filter((session) => isVisibleCompleted(session, now)).sort(compareUpdatedDesc)[0];
   if (completed) return completed.wasInterrupted ? "failed" : "waving";
+
+  if (sessions.some((session) => session.state === "responding")) return "running";
 
   return dailyExperienceTokens > 0 ? "running" : "idle";
 }
@@ -140,6 +132,22 @@ function compareUpdatedDesc(left: AISessionSnapshot, right: AISessionSnapshot) {
 
 function isPermissionRequestNotificationType(value?: string | null) {
   return value === "PermissionRequest" || value === "permission-request" || value === "permission_request";
+}
+
+function isExpiredPermissionFallback(session: AISessionSnapshot, now: number) {
+  return (
+    isPermissionRequestNotificationType(session.notificationType) &&
+    now - session.updatedAt > DESKTOP_PET_PERMISSION_STATUS_SECONDS
+  );
+}
+
+function isVisibleCompleted(session: AISessionSnapshot, now: number) {
+  return (
+    session.hasCompletedTurn &&
+    session.state !== "responding" &&
+    session.state !== "needsInput" &&
+    now - session.updatedAt <= DESKTOP_PET_COMPLETED_STATUS_SECONDS
+  );
 }
 
 function formatActivity(template: string, ...values: string[]) {

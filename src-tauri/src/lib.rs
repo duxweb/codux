@@ -490,9 +490,9 @@ struct DesktopPetHitLayout {
 }
 
 const DESKTOP_PET_LABEL: &str = "desktop-pet";
-const DESKTOP_PET_BASE_WIDTH: f64 = 352.0;
-const DESKTOP_PET_BASE_HEIGHT: f64 = 218.0;
-const DESKTOP_PET_SPRITE_SIZE: f64 = 128.0;
+const DESKTOP_PET_BASE_WIDTH: f64 = 328.0;
+const DESKTOP_PET_BASE_HEIGHT: f64 = 202.0;
+const DESKTOP_PET_SPRITE_SIZE: f64 = 112.0;
 const DESKTOP_PET_SPRITE_VISIBLE_INSET_X: f64 = 18.0;
 const DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP: f64 = 12.0;
 const DESKTOP_PET_SPRITE_VISIBLE_INSET_BOTTOM: f64 = 4.0;
@@ -504,9 +504,6 @@ const DESKTOP_PET_MUTE_TODAY: &str = "desktop-pet:mute-today";
 const DESKTOP_PET_SKIP_LINE: &str = "desktop-pet:skip-line";
 const DESKTOP_PET_SPEAK_MORE: &str = "desktop-pet:speak-more";
 const DESKTOP_PET_SPEAK_LESS: &str = "desktop-pet:speak-less";
-const DESKTOP_PET_SCALE_UP: &str = "desktop-pet:scale-up";
-const DESKTOP_PET_SCALE_DOWN: &str = "desktop-pet:scale-down";
-const DESKTOP_PET_SCALE_RESET: &str = "desktop-pet:scale-reset";
 const DESKTOP_PET_HIDE: &str = "desktop-pet:hide";
 
 fn sync_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings, pet: &PetSnapshot) {
@@ -528,9 +525,8 @@ fn sync_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings, pet: 
 }
 
 fn show_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings) -> tauri::Result<()> {
-    let scale = desktop_pet_scale(settings);
-    let width = (DESKTOP_PET_BASE_WIDTH * scale).round();
-    let height = (DESKTOP_PET_BASE_HEIGHT * scale).round();
+    let width = DESKTOP_PET_BASE_WIDTH;
+    let height = DESKTOP_PET_BASE_HEIGHT;
 
     if let Some(window) = app.get_webview_window(DESKTOP_PET_LABEL) {
         let previous_position = window.outer_position().ok();
@@ -705,26 +701,6 @@ fn desktop_pet_local_point_is_hotspot(
         false
     };
     in_sprite || in_bubble
-}
-
-fn desktop_pet_scale(settings: &AppSettings) -> f64 {
-    let parsed = settings
-        .pet
-        .desktop_scale
-        .trim()
-        .parse::<f64>()
-        .unwrap_or(1.0);
-    let stepped = (parsed / 0.1).round() * 0.1;
-    stepped.clamp(0.75, 1.5)
-}
-
-fn desktop_pet_scale_setting(scale: f64) -> String {
-    let normalized = (scale / 0.1).round().mul_add(0.1, 0.0).clamp(0.75, 1.5);
-    if (normalized - 1.0).abs() < f64::EPSILON {
-        "1".to_string()
-    } else {
-        format!("{normalized:.1}")
-    }
 }
 
 fn desktop_pet_initial_position(
@@ -1076,7 +1052,6 @@ fn desktop_pet_show_context_menu(
     window: tauri::WebviewWindow<Wry>,
 ) -> Result<(), String> {
     let settings = state.settings.snapshot();
-    let scale = desktop_pet_scale(&settings);
     let locale = locale_from_language_setting(&settings.language);
     let tr = |key: &str, fallback: &str| i18n::translate(&locale, key, fallback);
     let mute_30 = MenuItem::with_id(
@@ -1127,30 +1102,6 @@ fn desktop_pet_show_context_menu(
         None::<&str>,
     )
     .map_err(|error| error.to_string())?;
-    let scale_up = MenuItem::with_id(
-        &app,
-        DESKTOP_PET_SCALE_UP,
-        tr("pet.desktop.scale_up", "Make Larger"),
-        scale < 1.5 - f64::EPSILON,
-        None::<&str>,
-    )
-    .map_err(|error| error.to_string())?;
-    let scale_down = MenuItem::with_id(
-        &app,
-        DESKTOP_PET_SCALE_DOWN,
-        tr("pet.desktop.scale_down", "Make Smaller"),
-        scale > 0.75 + f64::EPSILON,
-        None::<&str>,
-    )
-    .map_err(|error| error.to_string())?;
-    let scale_reset = MenuItem::with_id(
-        &app,
-        DESKTOP_PET_SCALE_RESET,
-        tr("pet.desktop.scale_reset", "Reset Size"),
-        (scale - 1.0).abs() > f64::EPSILON,
-        None::<&str>,
-    )
-    .map_err(|error| error.to_string())?;
     let hide = MenuItem::with_id(
         &app,
         DESKTOP_PET_HIDE,
@@ -1161,7 +1112,6 @@ fn desktop_pet_show_context_menu(
     .map_err(|error| error.to_string())?;
     let separator_1 = PredefinedMenuItem::separator(&app).map_err(|error| error.to_string())?;
     let separator_2 = PredefinedMenuItem::separator(&app).map_err(|error| error.to_string())?;
-    let separator_3 = PredefinedMenuItem::separator(&app).map_err(|error| error.to_string())?;
     let menu = Menu::with_items(
         &app,
         &[
@@ -1173,10 +1123,6 @@ fn desktop_pet_show_context_menu(
             &speak_more,
             &speak_less,
             &separator_2,
-            &scale_up,
-            &scale_down,
-            &scale_reset,
-            &separator_3,
             &hide,
         ],
     )
@@ -5578,23 +5524,6 @@ fn apply_desktop_pet_menu_action(app: &tauri::AppHandle, id: &str) {
             let _ = update_desktop_pet_settings(state, app.clone(), |settings| {
                 settings.ai.pet.speech_frequency =
                     desktop_pet_lowered_speech_frequency(&settings.ai.pet.speech_frequency);
-            });
-        }
-        DESKTOP_PET_SCALE_UP => {
-            let _ = update_desktop_pet_settings(state, app.clone(), |settings| {
-                let scale = desktop_pet_scale(settings) + 0.1;
-                settings.pet.desktop_scale = desktop_pet_scale_setting(scale);
-            });
-        }
-        DESKTOP_PET_SCALE_DOWN => {
-            let _ = update_desktop_pet_settings(state, app.clone(), |settings| {
-                let scale = desktop_pet_scale(settings) - 0.1;
-                settings.pet.desktop_scale = desktop_pet_scale_setting(scale);
-            });
-        }
-        DESKTOP_PET_SCALE_RESET => {
-            let _ = update_desktop_pet_settings(state, app.clone(), |settings| {
-                settings.pet.desktop_scale = "1".to_string();
             });
         }
         DESKTOP_PET_HIDE => {

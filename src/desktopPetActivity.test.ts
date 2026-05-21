@@ -85,22 +85,52 @@ describe("desktop pet activity", () => {
     expect(nextDesktopPetActivityRefreshMs([session({ updatedAt: 100, hasCompletedTurn: true })], 129.5)).toBe(500);
   });
 
-  it("uses orange attention tone for permission requests and expires them quickly", () => {
+  it("uses orange attention tone for permission requests and expires them after thirty seconds", () => {
     const permission = session({
       state: "needsInput",
       updatedAt: 100,
       notificationType: "PermissionRequest",
       targetToolName: "Shell",
     });
-    expect(desktopPetActivityLine([permission], 111.5)).toEqual({
+    expect(desktopPetActivityLine([permission], 129.5)).toEqual({
       text: "codex needs permission for Shell",
       tone: "attention",
     });
-    expect(desktopPetActivityLine([permission], 113)).toEqual({
-      text: "codex needs input",
+    expect(desktopPetActivityLine([permission], 131)).toEqual({
+      text: "",
+      tone: "normal",
+    });
+    expect(nextDesktopPetActivityRefreshMs([permission], 129.5)).toBe(500);
+  });
+
+  it("prioritizes permission, then recent completion, then running sessions", () => {
+    const running = session({
+      state: "responding",
+      updatedAt: 110,
+      latestAssistantPreview: "正在处理",
+    });
+    const completed = session({
+      updatedAt: 120,
+      hasCompletedTurn: true,
+    });
+    const permission = session({
+      state: "needsInput",
+      updatedAt: 125,
+      notificationType: "permission_request",
+      targetToolName: "Shell",
+    });
+    expect(desktopPetActivityLine([running, completed, permission], 126)).toEqual({
+      text: "codex needs permission for Shell",
       tone: "attention",
     });
-    expect(nextDesktopPetActivityRefreshMs([permission], 111.5)).toBe(500);
+    expect(desktopPetActivityLine([running, completed], 126)).toEqual({
+      text: "codex completed",
+      tone: "success",
+    });
+    expect(desktopPetActivityLine([running, completed], 151)).toEqual({
+      text: "正在处理",
+      tone: "normal",
+    });
   });
 
   it("maps AI runtime activity to desktop pet animation states like the native app", () => {
@@ -144,5 +174,39 @@ describe("desktop pet activity", () => {
         now: 100,
       }),
     ).toBe("failed");
+  });
+
+  it("uses global pet animation priority across all sessions", () => {
+    const running = session({ state: "responding", updatedAt: 100 });
+    const completed = session({ hasCompletedTurn: true, updatedAt: 105 });
+    const permission = session({
+      state: "needsInput",
+      updatedAt: 110,
+      notificationType: "PermissionRequest",
+    });
+    expect(
+      desktopPetAnimationState({
+        claimed: true,
+        dailyExperienceTokens: 0,
+        sessions: [running, completed, permission],
+        now: 111,
+      }),
+    ).toBe("review");
+    expect(
+      desktopPetAnimationState({
+        claimed: true,
+        dailyExperienceTokens: 0,
+        sessions: [running, completed],
+        now: 111,
+      }),
+    ).toBe("waving");
+    expect(
+      desktopPetAnimationState({
+        claimed: true,
+        dailyExperienceTokens: 0,
+        sessions: [running, completed],
+        now: 136,
+      }),
+    ).toBe("running");
   });
 });

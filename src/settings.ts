@@ -69,7 +69,6 @@ export type PetSettings = {
   speechMode: string;
   /** Legacy Tauri settings kept only for one-time migration into ai.pet. */
   speechFrequency: string;
-  desktopScale: string;
 };
 
 export type AISettings = {
@@ -167,7 +166,6 @@ export const defaultSettings: AppSettings = {
     reminders: false,
     speechMode: "mixed",
     speechFrequency: "normal",
-    desktopScale: "1",
   },
   ai: {
     globalPrompt: "",
