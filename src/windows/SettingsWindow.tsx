@@ -250,7 +250,7 @@ const notificationChannels = [
 export function SettingsWindow() {
   const [active, setActive] = useState<SectionId>("general");
   const activeSection = sections.find((item) => item.id === active) ?? sections[0];
-  const titleRightInset = isWindowsPlatform() ? "pr-[150px]" : "pr-6";
+  const titleRightInset = isWindowsPlatform() ? "pr-[58px]" : "pr-6";
 
   useEffect(() => {
     void revealCurrentAppWindow();
@@ -258,7 +258,7 @@ export function SettingsWindow() {
 
   return (
     <div className="app-shell h-screen grid grid-cols-[200px_minmax(0,1fr)] text-ink">
-      {isWindowsPlatform() && <WindowsWindowControls className="h-12" />}
+      {isWindowsPlatform() && <WindowsWindowControls closeOnly className="h-12" />}
       <aside className="min-h-0 border-r border-line bg-surface-chrome/45 flex flex-col">
         <div className="h-14 flex-shrink-0 drag-region" data-tauri-drag-region onPointerDown={startWindowDrag} />
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 no-drag">

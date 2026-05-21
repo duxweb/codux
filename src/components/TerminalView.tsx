@@ -109,7 +109,7 @@ function XtermRenderer({
       allowTransparency: false,
       altClickMovesCursor: false,
       convertEol: isWindowsTerminal,
-      cursorBlink: true,
+      cursorBlink: !isWindowsTerminal,
       cursorInactiveStyle: "outline",
       disableStdin: true,
       drawBoldTextInBrightColors: true,
