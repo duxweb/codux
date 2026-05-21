@@ -23,6 +23,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$payload = @{ kind=$kind; terminalID=$env:DMUX_SESSION_ID; terminalInstanceID=$env:DMUX_SESSION_INSTANCE_ID; projectID=$env:DMUX_PROJECT_ID; projectName=$projectName; projectPath=$env:DMUX_PROJECT_PATH; sessionTitle=$sessionTitle; tool='%TOOL%'; aiSessionID=$env:DMUX_EXTERNAL_SESSION_ID; model=$env:DMUX_ACTIVE_AI_MODEL; totalTokens=$null; updatedAt=([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()/1000.0); metadata=$meta };" ^
   "$envelope = @{ kind='ai-hook'; payload=$payload } | ConvertTo-Json -Depth 8 -Compress;" ^
   "$name = ('{0}-{1}.json' -f ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()), ([guid]::NewGuid().ToString('N')));" ^
-  "$path=Join-Path $dir $name; Set-Content -LiteralPath $path -Value $envelope -Encoding UTF8;" ^
+  "$path=Join-Path $dir $name; $utf8NoBom = New-Object System.Text.UTF8Encoding($false); [System.IO.File]::WriteAllText($path, $envelope, $utf8NoBom);" ^
   "Write-LiveLog ('hook written action=%ACTION% tool=%TOOL% kind=' + $kind + ' file=' + $name + ' session=' + $env:DMUX_SESSION_ID)"
 exit /b 0

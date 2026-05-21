@@ -2379,6 +2379,7 @@ fn handle_runtime_stream(mut stream: UnixStream, hook_tx: Sender<AIRuntimeSuperv
 }
 
 fn runtime_frame_to_hook(buffer: &[u8]) -> Option<AIHookEventPayload> {
+    let buffer = buffer.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(buffer);
     let envelope = serde_json::from_slice::<RuntimeEnvelope>(buffer).ok()?;
     let payload = match envelope.kind.as_str() {
         "ai-hook" => serde_json::from_value::<AIHookEventPayload>(envelope.payload).ok(),
@@ -4609,6 +4610,17 @@ trusted_hash = "sha256:old-basic"
         assert_eq!(payload.project_id, "project-1");
         assert_eq!(payload.tool, "codex");
         assert_eq!(payload.total_tokens, Some(12));
+    }
+
+    #[test]
+    fn runtime_frame_parser_accepts_utf8_bom_envelope() {
+        let frame = b"\xEF\xBB\xBF{\"kind\":\"ai-hook\",\"payload\":{\"kind\":\"promptSubmitted\",\"terminalID\":\"term-1\",\"projectID\":\"project-1\",\"projectName\":\"Project\",\"sessionTitle\":\"Split 1\",\"tool\":\"codex\",\"updatedAt\":1000}}";
+
+        let payload = runtime_frame_to_hook(frame).unwrap();
+
+        assert_eq!(payload.kind, "promptSubmitted");
+        assert_eq!(payload.terminal_id, "term-1");
+        assert_eq!(payload.project_id, "project-1");
     }
 
     #[test]
