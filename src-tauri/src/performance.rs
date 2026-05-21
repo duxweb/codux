@@ -320,7 +320,7 @@ fn capture_raw_sample() -> Option<RawSample> {
         TH32CS_SNAPPROCESS,
     };
     use windows_sys::Win32::System::ProcessStatus::{
-        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX,
     };
     use windows_sys::Win32::System::Threading::{
         GetCurrentProcessId, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -419,16 +419,17 @@ fn capture_raw_sample() -> Option<RawSample> {
             0.0
         };
 
-        let mut counters = unsafe { mem::zeroed::<PROCESS_MEMORY_COUNTERS>() };
+        let mut counters = unsafe { mem::zeroed::<PROCESS_MEMORY_COUNTERS_EX>() };
+        counters.cb = mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
         let memory_bytes = if unsafe {
             GetProcessMemoryInfo(
                 process.0,
-                &mut counters,
-                mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                &mut counters as *mut PROCESS_MEMORY_COUNTERS_EX as *mut _,
+                mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
             )
         } != 0
         {
-            counters.WorkingSetSize as u64
+            counters.PrivateUsage as u64
         } else {
             0
         };
