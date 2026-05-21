@@ -76,8 +76,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Codux Tauri ${{ env.RELEASE_CHANNEL }}
-          releaseBody: Cross-platform Codux Tauri ${{ env.RELEASE_CHANNEL }} release built from `${{ env.SOURCE_REF }}`. The `latest.json` asset is used by the in-app Tauri updater.
+          releaseName: Codux ${{ env.RELEASE_CHANNEL }}
+          releaseBody: Cross-platform Codux ${{ env.RELEASE_CHANNEL }} release built from `${{ env.SOURCE_REF }}`. The `latest.json` asset is used by the in-app Tauri updater.
           releaseCommitish: ${{ env.SOURCE_REF }}
           releaseDraft: false
           prerelease: ${{ env.RELEASE_CHANNEL == 'beta' }}
@@ -87,4 +87,4 @@ jobs:
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           uploadUpdaterSignatures: true
-          releaseAssetNamePattern: codux-tauri-[version]-[platform]-[arch].[ext]
+          releaseAssetNamePattern: codux-[version]-[platform]-[arch].[ext]

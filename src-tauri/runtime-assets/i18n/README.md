@@ -1,7 +1,7 @@
 This directory contains the Tauri app's portable i18n bundle.
 
 The bundle was seeded once from the macOS language catalog. From this point on,
-maintain these JSON files directly as Codux Tauri's cross-platform language
+maintain these JSON files directly as Codux's cross-platform language
 bundle.
 
 `locales.json` is only the manifest: it defines the supported locales and the

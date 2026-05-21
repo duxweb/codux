@@ -6395,7 +6395,7 @@ pub fn run() {
             ssh_launch_command,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Codux Tauri application")
+        .expect("error while building Codux application")
         .run(|app, event| match event {
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
                 if let Some(state) = app.try_state::<AppState>() {

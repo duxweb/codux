@@ -6,29 +6,29 @@ pub fn app_support_dir() -> PathBuf {
         return home_dir()
             .join("Library")
             .join("Application Support")
-            .join("Codux Tauri");
+            .join("Codux");
     }
     #[cfg(target_os = "windows")]
     {
         if let Some(appdata) = std::env::var_os("APPDATA") {
-            return PathBuf::from(appdata).join("Codux Tauri");
+            return PathBuf::from(appdata).join("Codux");
         }
         return home_dir()
             .join("AppData")
             .join("Roaming")
-            .join("Codux Tauri");
+            .join("Codux");
     }
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
         if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
-            return PathBuf::from(config_home).join("codux-tauri");
+            return PathBuf::from(config_home).join("codux");
         }
-        return home_dir().join(".config").join("codux-tauri");
+        return home_dir().join(".config").join("codux");
     }
 }
 
 pub fn runtime_temp_dir() -> PathBuf {
-    std::env::temp_dir().join("codux-tauri")
+    std::env::temp_dir().join("codux")
 }
 
 pub fn home_dir() -> PathBuf {

@@ -117,16 +117,15 @@ export class TerminalRuntime {
     if (!session || session.backendId || session.state !== "starting" || this.startingSessions.has(sessionId)) {
       return;
     }
-    const options =
-      this.startOptions.get(sessionId) ?? {
-        projectId: session.projectId,
-        slotId: session.slotId,
-        title: session.title,
-        cwd: session.cwd,
-        projectName: session.projectName,
-        command: session.command,
-        tool: session.tool,
-      };
+    const options = this.startOptions.get(sessionId) ?? {
+      projectId: session.projectId,
+      slotId: session.slotId,
+      title: session.title,
+      cwd: session.cwd,
+      projectName: session.projectName,
+      command: session.command,
+      tool: session.tool,
+    };
     this.enqueueBackendStart(sessionId, options);
   }
 
@@ -329,7 +328,7 @@ export class TerminalRuntime {
 
     if (!window.__TAURI_INTERNALS__) {
       const preview = [
-        "\x1b[38;5;42mCodux Tauri terminal\x1b[0m",
+        "\x1b[38;5;42mCodux terminal\x1b[0m",
         "Run `pnpm tauri dev` to attach the native PTY backend.",
         "",
         `${options.cwd} $ `,
@@ -355,7 +354,7 @@ export class TerminalRuntime {
         command: options.command,
         tool: options.tool ?? "auto",
         env: {
-          CODEX_WORKSPACE: "codux-tauri",
+          CODEX_WORKSPACE: "codux",
           CODUX_PROJECT_ID: options.projectId,
           CODUX_SLOT_ID: options.slotId,
           CODUX_TERMINAL_ID: session.id,

@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Codux",
   "version": "1.0.0-beta.1",
-  "identifier": "cn.dux.codux.tauri",
+  "identifier": "com.duxweb.dmux",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -59,6 +59,11 @@
       "./infoplist/": ""
     },
     "macOS": {
+      "bundleName": "Codux",
+      "bundleVersion": "1",
+      "minimumSystemVersion": "14.0",
+      "signingIdentity": "-",
+      "hardenedRuntime": false,
       "infoPlist": "Info.plist"
     }
   }

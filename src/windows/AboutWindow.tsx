@@ -12,8 +12,8 @@ import { WindowFrame } from "./WindowFrame";
 const fallbackAbout: AppAboutMetadata = {
   name: "Codux",
   version: "0.1.0",
-  identifier: "cn.dux.codux.tauri",
-  description: "Codux Tauri desktop workspace",
+  identifier: "com.duxweb.dmux",
+  description: "Codux desktop workspace",
   targetOs: "web",
   targetArch: "browser",
   buildProfile: "preview",

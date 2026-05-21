@@ -2,7 +2,7 @@
 set -euo pipefail
 
 profile_id="${1:-}"
-profiles_file="${CODUX_SSH_PROFILES_FILE:-$HOME/Library/Application Support/Codux Tauri/ssh_profiles.json}"
+profiles_file="${CODUX_SSH_PROFILES_FILE:-$HOME/Library/Application Support/Codux/ssh_profiles.json}"
 
 if [[ -z "$profile_id" ]]; then
   echo "usage: codux-ssh <profile-id>" >&2

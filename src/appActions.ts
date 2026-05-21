@@ -88,17 +88,14 @@ export async function checkForUpdates() {
     ]
       .filter(Boolean)
       .join("\n\n");
-    const shouldInstall = await systemConfirm(
-      message,
-      {
-        title: tm("update.available.title", "Update Available"),
-        kind: "info",
-        okLabel: status.automaticInstallSupported
-          ? tm("update.available.install", "Install")
-          : tm("update.available.open", "Download"),
-        cancelLabel: tm("update.available.later", "Later"),
-      },
-    );
+    const shouldInstall = await systemConfirm(message, {
+      title: tm("update.available.title", "Update Available"),
+      kind: "info",
+      okLabel: status.automaticInstallSupported
+        ? tm("update.available.install", "Install")
+        : tm("update.available.open", "Download"),
+      cancelLabel: tm("update.available.later", "Later"),
+    });
     if (!shouldInstall) return;
     if (status.automaticInstallSupported && window.__TAURI_INTERNALS__) {
       const result = await invoke<UpdateInstallResult>("app_update_install");
@@ -336,8 +333,8 @@ function fallbackAbout(): AppAboutMetadata {
   return {
     name: "Codux",
     version: "0.1.0",
-    identifier: "cn.dux.codux.tauri",
-    description: "Codux Tauri desktop workspace",
+    identifier: "com.duxweb.dmux",
+    description: "Codux desktop workspace",
     targetOs: "web",
     targetArch: "browser",
     buildProfile: "preview",
