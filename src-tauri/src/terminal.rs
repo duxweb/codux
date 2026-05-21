@@ -1060,7 +1060,6 @@ fn build_shell_command(shell: &str, initial_command: Option<&str>) -> CommandBui
     command
 }
 
-#[cfg(unix)]
 fn shell_name(shell: &str) -> Option<String> {
     Path::new(shell)
         .file_name()
