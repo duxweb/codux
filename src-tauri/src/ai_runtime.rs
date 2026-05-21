@@ -32,6 +32,7 @@ const RUNNING_STATE_RENEWAL_SECONDS: f64 = 30.0;
 const CODEX_INTERVAL_POLL_MINIMUM_SECONDS: f64 = 60.0;
 const TRANSCRIPT_MONITOR_INTERVAL_MS: u64 = 2_000;
 const TRANSCRIPT_POLL_MINIMUM_SECONDS: f64 = 5.0;
+const RUNTIME_EVENT_FILE_MAX_AGE_SECONDS: f64 = 300.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -383,6 +384,7 @@ pub struct AIRuntimeBridge {
     zdotdir: PathBuf,
     hook_script: PathBuf,
     managed_hook_script: PathBuf,
+    runtime_event_dir: PathBuf,
     socket_path: PathBuf,
     registry: Arc<AIRuntimeRegistry>,
     supervisor: Arc<AIRuntimeSupervisor>,
@@ -431,12 +433,14 @@ impl AIRuntimeBridge {
             .join("wrappers")
             .join("dmux-ai-state.sh");
         let socket_path = runtime_temp_dir().join("runtime-events.sock");
+        let runtime_event_dir = runtime_event_dir();
         Self {
             root_dir,
             wrapper_bin_dir,
             zdotdir,
             hook_script,
             managed_hook_script,
+            runtime_event_dir,
             socket_path,
             registry: Arc::new(AIRuntimeRegistry::default()),
             supervisor: Arc::new(AIRuntimeSupervisor::new(settings, memory, projects)),
@@ -451,6 +455,7 @@ impl AIRuntimeBridge {
         fs::create_dir_all(&self.wrapper_bin_dir).map_err(|error| error.to_string())?;
         fs::create_dir_all(&self.zdotdir).map_err(|error| error.to_string())?;
         fs::create_dir_all(runtime_temp_dir()).map_err(|error| error.to_string())?;
+        fs::create_dir_all(&self.runtime_event_dir).map_err(|error| error.to_string())?;
         fs::create_dir_all(self.claude_session_map_dir()).map_err(|error| error.to_string())?;
         fs::create_dir_all(self.opencode_session_map_dir()).map_err(|error| error.to_string())?;
 
@@ -484,6 +489,16 @@ impl AIRuntimeBridge {
             &self.managed_hook_script,
             true,
         )?;
+        #[cfg(windows)]
+        stage_runtime_asset(
+            "scripts/wrappers/dmux-ai-state.cmd",
+            &self
+                .root_dir
+                .join("scripts")
+                .join("wrappers")
+                .join("dmux-ai-state.cmd"),
+            false,
+        )?;
         stage_runtime_asset(
             "scripts/wrappers/tool-wrapper.sh",
             &self
@@ -514,6 +529,12 @@ impl AIRuntimeBridge {
                 &format!("scripts/wrappers/bin/{bin_name}"),
                 &self.wrapper_bin_dir.join(bin_name),
                 true,
+            )?;
+            #[cfg(windows)]
+            stage_runtime_asset(
+                &format!("scripts/wrappers/bin/{bin_name}.cmd"),
+                &self.wrapper_bin_dir.join(format!("{bin_name}.cmd")),
+                false,
             )?;
         }
 
@@ -845,6 +866,7 @@ impl AIRuntimeSupervisor {
         start_ai_runtime_transcript_monitor_loop(
             self.hook_tx.clone(),
             Arc::clone(&transcript_monitors),
+            runtime_event_dir(),
         );
         tauri::async_runtime::spawn(ai_runtime_supervisor_loop(
             hook_rx,
@@ -1019,6 +1041,7 @@ fn start_ai_runtime_poll_loop(tx: Sender<AIRuntimeSupervisorMessage>) {
 fn start_ai_runtime_transcript_monitor_loop(
     tx: Sender<AIRuntimeSupervisorMessage>,
     monitors: Arc<Mutex<HashMap<String, TranscriptMonitor>>>,
+    runtime_event_dir: PathBuf,
 ) {
     let _ = thread::Builder::new()
         .name("codux-ai-runtime-transcript-monitor".to_string())
@@ -1037,8 +1060,10 @@ fn start_ai_runtime_transcript_monitor_loop(
                 Err(_) => Vec::new(),
             };
             if changed.is_empty() {
+                drain_runtime_event_dir(&tx, &runtime_event_dir);
                 continue;
             }
+            drain_runtime_event_dir(&tx, &runtime_event_dir);
             if tx
                 .blocking_send(AIRuntimeSupervisorMessage::TranscriptTail(changed))
                 .is_err()
@@ -1046,6 +1071,37 @@ fn start_ai_runtime_transcript_monitor_loop(
                 break;
             }
         });
+}
+
+fn runtime_event_dir() -> PathBuf {
+    runtime_temp_dir().join("runtime-events")
+}
+
+fn drain_runtime_event_dir(tx: &Sender<AIRuntimeSupervisorMessage>, dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let now = now_seconds();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let age = fs::metadata(&path)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| now - duration.as_secs_f64())
+            .unwrap_or(0.0);
+        let data = fs::read(&path).ok();
+        let _ = fs::remove_file(&path);
+        if age > RUNTIME_EVENT_FILE_MAX_AGE_SECONDS {
+            continue;
+        }
+        if let Some(data) = data.filter(|value| !value.is_empty()) {
+            let _ = tx.blocking_send(AIRuntimeSupervisorMessage::HookFrame(data));
+        }
+    }
 }
 
 fn emit_runtime_state(app: &AppHandle, state: &AIRuntimeStateStore) {
@@ -3303,14 +3359,41 @@ fn is_managed_hook_action(value: &serde_json::Value, action: &str, tool: Option<
     let Some(command) = object.get("command").and_then(|value| value.as_str()) else {
         return false;
     };
-    command.contains("dmux-ai-state.sh")
+    if command.contains("dmux-ai-state.sh")
         && command.contains(&shell_quote(action))
         && tool
             .map(|tool| command.contains(&shell_quote(tool)))
             .unwrap_or(true)
+    {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        command.contains("dmux-ai-state.cmd")
+            && command.contains(&windows_cmd_quote(action))
+            && tool
+                .map(|tool| command.contains(&windows_cmd_quote(tool)))
+                .unwrap_or(true)
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 fn hook_command(helper_script: &Path, action: &str, owner: &str, tool: &str) -> String {
+    #[cfg(windows)]
+    {
+        return format!(
+            "cmd /d /s /c \"{} {} {} {}\"",
+            windows_cmd_quote(&helper_script.with_extension("cmd").display().to_string()),
+            windows_cmd_quote(action),
+            windows_cmd_quote(owner),
+            windows_cmd_quote(tool),
+        );
+    }
+
+    #[cfg(not(windows))]
     [
         shell_quote(&helper_script.display().to_string()),
         shell_quote(action),
@@ -3318,6 +3401,11 @@ fn hook_command(helper_script: &Path, action: &str, owner: &str, tool: &str) -> 
         shell_quote(tool),
     ]
     .join(" ")
+}
+
+#[cfg(windows)]
+fn windows_cmd_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
 }
 
 fn shell_quote(value: &str) -> String {

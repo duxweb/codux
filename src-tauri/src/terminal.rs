@@ -663,6 +663,13 @@ impl TerminalEnvironment {
             request.ai_runtime.socket_path().display().to_string(),
         );
         values.insert(
+            "DMUX_RUNTIME_EVENT_DIR".to_string(),
+            runtime_temp_dir()
+                .join("runtime-events")
+                .display()
+                .to_string(),
+        );
+        values.insert(
             "DMUX_CLAUDE_SESSION_MAP_DIR".to_string(),
             request
                 .ai_runtime
