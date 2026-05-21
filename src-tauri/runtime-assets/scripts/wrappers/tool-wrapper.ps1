@@ -1,14 +1,12 @@
-param([Parameter(ValueFromRemainingArguments = $true)][string[]]$RemainingArgs)
-
-if ($RemainingArgs.Count -lt 1) {
+if ($args.Count -lt 1) {
   Write-Error "Missing tool name."
   exit 64
 }
 
-$Tool = $RemainingArgs[0]
+$Tool = [string]$args[0]
 $ToolArgs = @()
-if ($RemainingArgs.Count -gt 1) {
-  $ToolArgs = @($RemainingArgs[1..($RemainingArgs.Count - 1)])
+if ($args.Count -gt 1) {
+  $ToolArgs = @($args[1..($args.Count - 1)] | ForEach-Object { [string]$_ })
 }
 
 $ErrorActionPreference = "SilentlyContinue"
