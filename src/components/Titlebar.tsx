@@ -67,6 +67,7 @@ type TitlebarPopoverKey = "pet" | "daily-level" | "remote";
 const TITLEBAR_ICON_BUTTON_CLASS = "no-drag !h-[28px] !w-[28px] !min-w-[28px] !px-0 rounded-[7px]";
 const TITLEBAR_TOOL_ICON_SIZE = 14;
 const TITLEBAR_BUTTON_ICON_SIZE = 11;
+const TITLEBAR_MEMORY_ICON_SIZE = 10;
 const TITLEBAR_NAV_ICON_SIZE = 12;
 
 export function Titlebar({
@@ -477,7 +478,7 @@ function MemoryStatusButton() {
         data-active={isActive ? "true" : "false"}
         onClick={() => void openAppWindow("memory-manager")}
       >
-        <BrainCog size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.1} />
+        <BrainCog size={TITLEBAR_MEMORY_ICON_SIZE} strokeWidth={2.1} />
         {isProcessing ? (
           <span
             className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-chrome border-t-brand-blue bg-surface-chrome motion-safe:animate-spin"
