@@ -6,6 +6,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { installDesktopBrowserBehavior } from "./desktopBehavior";
 import { lockRuntimeLocale, syncI18nBundleFromRust } from "./i18n";
 import { readAppSettings, subscribeAppSettings, syncAppSettingsFromRust } from "./settings";
+import { AppIconMark } from "./components/AppIconMark";
 import { preloadRuntimeSnapshots } from "./startupPreload";
 import { applyConfiguredTheme, initSystemTheme } from "./theme";
 import "@xterm/xterm/css/xterm.css";
@@ -154,24 +155,23 @@ async function bootstrapRoot() {
   const rootPromise = loadRoot();
   void syncStartupResources();
   const Root = await rootPromise;
-  await Promise.all([syncStartupResources(), preloadPromise]);
+  await syncStartupResources();
+  void preloadPromise;
   return Root;
 }
 
 function StartupWindowReveal() {
   React.useEffect(() => {
     if (!window.__TAURI_INTERNALS__) return;
-    if (!isStandalone) return;
     void getCurrentWebviewWindow()
       .show()
-      .catch((error) => console.error("failed to reveal standalone window", error));
+      .catch((error) => console.error("failed to reveal startup window", error));
   }, []);
 
   return null;
 }
 
 function renderStartupShell() {
-  if (!isStandalone) return;
   reactRoot.render(
     <React.StrictMode>
       <StartupShell />
@@ -183,7 +183,25 @@ function StartupShell() {
   if (isStandalone) {
     return <StartupWindowReveal />;
   }
-  return null;
+  return (
+    <main className="app-shell relative grid h-screen w-screen place-items-center overflow-hidden text-ink">
+      <StartupWindowReveal />
+      <div className="relative z-30 grid place-items-center gap-6">
+        <AppIconMark size={132} className="drop-shadow-[0_22px_42px_rgb(0_0_0/0.28)]" />
+        <div className="grid gap-3 text-center">
+          <div className="text-[18px] font-semibold tracking-normal text-ink">
+            {navigator.language.toLowerCase().startsWith("zh") ? "正在启动 Codux" : "Starting Codux"}
+          </div>
+          <div className="mx-auto h-1 w-40 overflow-hidden rounded-full bg-fill/10">
+            <div
+              className="h-full w-16 rounded-full bg-brand-blue"
+              style={{ animation: "codux-startup-progress 1.25s ease-in-out infinite" }}
+            />
+          </div>
+        </div>
+      </div>
+    </main>
+  );
 }
 
 function StartupError() {

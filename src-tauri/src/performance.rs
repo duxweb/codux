@@ -327,17 +327,29 @@ fn timeval_seconds(value: libc::timeval) -> f64 {
 #[cfg(windows)]
 fn capture_raw_sample() -> Option<RawSample> {
     use std::mem;
-    use windows_sys::Win32::Foundation::{FILETIME, HANDLE};
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
     use windows_sys::Win32::System::ProcessStatus::{
         GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX2,
     };
     use windows_sys::Win32::System::Threading::{
-        GetCurrentProcess, GetProcessTimes,
+        GetCurrentProcess, GetProcessId, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_VM_READ,
     };
 
     fn filetime_seconds(value: FILETIME) -> f64 {
         let ticks = ((value.dwHighDateTime as u64) << 32) | value.dwLowDateTime as u64;
         ticks as f64 / 10_000_000.0
+    }
+
+    #[derive(Clone)]
+    struct ProcessEntry {
+        pid: u32,
+        parent_pid: u32,
+        name: String,
     }
 
     fn process_sample(process: HANDLE) -> Option<(f64, u64)> {
@@ -377,12 +389,68 @@ fn capture_raw_sample() -> Option<RawSample> {
         Some((cpu_seconds, memory_bytes))
     }
 
+    fn list_processes() -> Vec<ProcessEntry> {
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Vec::new();
+        }
+
+        let mut entries = Vec::new();
+        let mut entry = unsafe { mem::zeroed::<PROCESSENTRY32W>() };
+        entry.dwSize = mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+        while ok {
+            entries.push(ProcessEntry {
+                pid: entry.th32ProcessID,
+                parent_pid: entry.th32ParentProcessID,
+                name: utf16_z_to_string(&entry.szExeFile),
+            });
+            ok = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+        }
+        unsafe {
+            CloseHandle(snapshot);
+        }
+        entries
+    }
+
+    fn utf16_z_to_string(value: &[u16]) -> String {
+        let len = value.iter().position(|ch| *ch == 0).unwrap_or(value.len());
+        String::from_utf16_lossy(&value[..len])
+    }
+
+    fn is_webview_child(entry: &ProcessEntry, main_pid: u32) -> bool {
+        entry.parent_pid == main_pid && entry.name.to_ascii_lowercase().contains("webview")
+    }
+
+    fn process_sample_by_pid(pid: u32) -> Option<(f64, u64)> {
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, 0, pid) };
+        if process.is_null() {
+            return None;
+        }
+        let sample = process_sample(process);
+        unsafe {
+            CloseHandle(process);
+        }
+        sample
+    }
+
     let captured_at = Instant::now();
     let process = unsafe { GetCurrentProcess() };
     if process.is_null() {
         return None;
     }
-    let (cpu_seconds, memory_bytes) = process_sample(process)?;
+    let main_pid = unsafe { GetProcessId(process) };
+    let (mut cpu_seconds, mut memory_bytes) = process_sample(process)?;
+    for entry in list_processes() {
+        if !is_webview_child(&entry, main_pid) {
+            continue;
+        }
+        let Some((child_cpu_seconds, child_memory_bytes)) = process_sample_by_pid(entry.pid) else {
+            continue;
+        };
+        cpu_seconds += child_cpu_seconds;
+        memory_bytes = memory_bytes.saturating_add(child_memory_bytes);
+    }
 
     Some(RawSample {
         captured_at,

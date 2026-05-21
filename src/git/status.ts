@@ -164,6 +164,9 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
   const snapshot =
     useRuntimeStore((state) => (projectCacheKey ? state.gitStatusByPath[projectCacheKey]?.snapshot : undefined)) ??
     optimisticGitSnapshot(project);
+  const hasCachedSnapshot = useRuntimeStore((state) =>
+    projectCacheKey ? Boolean(state.gitStatusByPath[projectCacheKey]) : false,
+  );
   const isLoading = useRuntimeStore((state) =>
     projectCacheKey ? (state.gitLoadingByPath[projectCacheKey] ?? false) : false,
   );
@@ -239,6 +242,13 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
     },
     [projectBranch, projectPath, projectCacheKey],
   );
+
+  useEffect(() => {
+    if (!projectPath || !projectCacheKey || hasCachedSnapshot || isLoading) {
+      return;
+    }
+    void refresh({ silent: true });
+  }, [hasCachedSnapshot, isLoading, projectCacheKey, projectPath, refresh]);
 
   const runSnapshotAction = useCallback(
     async (command: string, payload: Record<string, unknown>) => {
