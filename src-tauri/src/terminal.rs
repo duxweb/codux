@@ -21,8 +21,7 @@ const MAX_HISTORY_BYTES: usize = 2_000_000;
 const OUTPUT_CHUNK_BYTES: usize = 16 * 1024;
 
 #[cfg(windows)]
-const FALLBACK_PATH: &str =
-    "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\WindowsPowerShell\\v1.0";
+const FALLBACK_PATH: &str = "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0";
 
 #[cfg(not(windows))]
 const FALLBACK_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin";
@@ -1056,7 +1055,10 @@ fn build_shell_command(shell: &str, initial_command: Option<&str>) -> CommandBui
         shell_name.as_deref(),
         Some("powershell.exe" | "powershell" | "pwsh.exe" | "pwsh")
     ) {
-        command.args(["-NoLogo", "-NoExit"]);
+        command.args(["-NoLogo", "-NoProfile", "-NoExit"]);
+        if matches!(shell_name.as_deref(), Some("powershell.exe" | "powershell")) {
+            command.args(["-ExecutionPolicy", "Bypass"]);
+        }
         if let Some(initial_command) = initial_command {
             command.args(["-Command", initial_command]);
         }
@@ -1086,10 +1088,51 @@ fn shell_name(shell: &str) -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn default_shell() -> String {
-    std::env::var("COMSPEC").unwrap_or_else(|_| "powershell.exe".to_string())
+    windows_shell_candidates()
+        .into_iter()
+        .find(|path| Path::new(path).exists())
+        .unwrap_or_else(|| "powershell.exe".to_string())
 }
 
 #[cfg(not(target_os = "windows"))]
 fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_shell_candidates() -> Vec<String> {
+    let mut candidates = Vec::new();
+    if let Ok(program_files) = env::var("ProgramFiles") {
+        candidates.push(
+            Path::new(&program_files)
+                .join("PowerShell")
+                .join("7")
+                .join("pwsh.exe")
+                .display()
+                .to_string(),
+        );
+    }
+    if let Ok(system_root) = env::var("SystemRoot").or_else(|_| env::var("WINDIR")) {
+        candidates.push(
+            Path::new(&system_root)
+                .join("System32")
+                .join("WindowsPowerShell")
+                .join("v1.0")
+                .join("powershell.exe")
+                .display()
+                .to_string(),
+        );
+        candidates.push(
+            Path::new(&system_root)
+                .join("System32")
+                .join("cmd.exe")
+                .display()
+                .to_string(),
+        );
+    }
+    if let Ok(comspec) = env::var("COMSPEC") {
+        candidates.push(comspec);
+    }
+    candidates.push("powershell.exe".to_string());
+    candidates
 }

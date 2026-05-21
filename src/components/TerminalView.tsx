@@ -8,6 +8,7 @@ import { readAppSettings, readTerminalFontSize, subscribeAppSettings } from "../
 import { registerTerminalInput } from "../terminal/focus";
 import { terminalRuntime, type TerminalRuntimeEvent, type TerminalRuntimeSession } from "../terminal/runtime";
 import { t } from "../i18n";
+import { isWindowsPlatform } from "../platform";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 
 type TerminalRendererAdapter = {
@@ -28,6 +29,7 @@ type TerminalRendererAdapter = {
 
 const MIN_COLS = 20;
 const MIN_ROWS = 8;
+const useWebglTerminalRenderer = !isWindowsPlatform();
 
 function cssVar(host: HTMLElement, name: string, fallback: string) {
   return window.getComputedStyle(host).getPropertyValue(name).trim() || fallback;
@@ -132,21 +134,23 @@ function XtermRenderer({
     terminal.loadAddon(unicode11Addon);
     terminal.unicode.activeVersion = "11";
     terminal.open(host);
-    try {
-      const nextWebglAddon = new WebglAddon();
-      disposables.push(
-        nextWebglAddon.onContextLoss(() => {
-          if (webglAddon === nextWebglAddon) {
-            disposeWebglAddon();
-          } else {
-            nextWebglAddon.dispose();
-          }
-        }),
-      );
-      terminal.loadAddon(nextWebglAddon);
-      webglAddon = nextWebglAddon;
-    } catch (error) {
-      void error;
+    if (useWebglTerminalRenderer) {
+      try {
+        const nextWebglAddon = new WebglAddon();
+        disposables.push(
+          nextWebglAddon.onContextLoss(() => {
+            if (webglAddon === nextWebglAddon) {
+              disposeWebglAddon();
+            } else {
+              nextWebglAddon.dispose();
+            }
+          }),
+        );
+        terminal.loadAddon(nextWebglAddon);
+        webglAddon = nextWebglAddon;
+      } catch (error) {
+        void error;
+      }
     }
 
     const releaseSelectionDrag = (reason: string) => {
