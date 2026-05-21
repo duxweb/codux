@@ -121,4 +121,42 @@ describe("terminal runtime", () => {
       data: "11133333",
     });
   });
+
+  it("hydrates output that arrived before the backend id was registered", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "terminal_create") {
+        eventHandler?.({
+          payload: {
+            kind: "output",
+            sessionId: "backend-early",
+            data: "early prompt",
+          },
+        });
+        return Promise.resolve("backend-early");
+      }
+      if (command === "terminal_snapshot") {
+        return Promise.resolve("early prompt");
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const runtime = new TerminalRuntime();
+    const session = runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "分屏 1",
+      cwd: "/project",
+    });
+
+    runtime.ensureStarted(session.id);
+    runtime.resize(session.id, 100, 30);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(runtime.getSession(session.id)?.backendId).toBe("backend-early");
+    expect(runtime.getSession(session.id)?.history).toBe("early prompt");
+    expect(runtime.getSession(session.id)?.state).toBe("running");
+  });
 });

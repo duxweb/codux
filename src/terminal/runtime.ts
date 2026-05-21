@@ -358,6 +358,7 @@ export class TerminalRuntime {
         backendId,
         shell: "login shell",
       });
+      void this.attachBackendSnapshot(sessionId, backendId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.updateSession(sessionId, { state: "error" });
@@ -372,8 +373,10 @@ export class TerminalRuntime {
       await this.ensureEventListener();
       const history = await invoke<string>("terminal_snapshot", { sessionId: backendId });
       if (!this.sessions.has(sessionId)) return;
-      this.updateSession(sessionId, { history, state: "running" });
-      this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)! });
+      if (history) {
+        this.updateSession(sessionId, { history, state: "running" });
+        this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)! });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.updateSession(sessionId, { state: "error" });
