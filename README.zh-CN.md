@@ -127,8 +127,8 @@ cargo check --manifest-path src-tauri/Cargo.toml
 桌面端通过推送发布标签触发构建：
 
 ```bash
-git tag tauri-v1.0.0-beta.1
-git push origin tauri-v1.0.0-beta.1
+git tag v1.0.0-beta.1
+git push origin v1.0.0-beta.1
 ```
 
 发布工作流会读取标签版本，自动写入桌面端 / package 清单，从 `CHANGELOG.md` 提取对应版本更新日志，构建 macOS 与 Windows 产物，发布 GitHub Release，并更新 beta 或 stable 更新通道。

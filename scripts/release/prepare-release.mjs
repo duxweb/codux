@@ -51,7 +51,7 @@ function normalizeVersion(value) {
     .replace(/^tauri-v/, "")
     .replace(/^v/, "");
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(trimmed)) {
-    throw new Error(`Invalid release version "${value}". Expected a SemVer tag such as tauri-v1.0.0-beta.1.`);
+    throw new Error(`Invalid release version "${value}". Expected a SemVer tag such as v1.0.0-beta.1.`);
   }
   return trimmed;
 }

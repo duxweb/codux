@@ -127,8 +127,8 @@ cargo check --manifest-path src-tauri/Cargo.toml
 Desktop releases are created by pushing a desktop release tag:
 
 ```bash
-git tag tauri-v1.0.0-beta.1
-git push origin tauri-v1.0.0-beta.1
+git tag v1.0.0-beta.1
+git push origin v1.0.0-beta.1
 ```
 
 The release workflow reads the tag, writes the app version into the desktop/package manifests, extracts the matching `CHANGELOG.md` section, builds macOS and Windows artifacts, publishes a GitHub Release, and updates the beta or stable updater channel.
