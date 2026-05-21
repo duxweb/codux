@@ -1057,6 +1057,7 @@ fn apply_runtime_window_state(
     };
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_badge_count(count);
+        #[cfg(target_os = "macos")]
         let _ = window.set_badge_label(count.map(|value| value.to_string()));
         let progress = if snapshot.running_count > 0 {
             ProgressBarState {
