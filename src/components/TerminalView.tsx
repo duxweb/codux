@@ -29,7 +29,8 @@ type TerminalRendererAdapter = {
 
 const MIN_COLS = 20;
 const MIN_ROWS = 8;
-const useWebglTerminalRenderer = !isWindowsPlatform();
+const isWindowsTerminal = isWindowsPlatform();
+const useWebglTerminalRenderer = !isWindowsTerminal;
 
 function cssVar(host: HTMLElement, name: string, fallback: string) {
   return window.getComputedStyle(host).getPropertyValue(name).trim() || fallback;
@@ -102,7 +103,7 @@ function XtermRenderer({
       allowProposedApi: true,
       allowTransparency: false,
       altClickMovesCursor: false,
-      convertEol: false,
+      convertEol: isWindowsTerminal,
       cursorBlink: true,
       cursorInactiveStyle: "outline",
       disableStdin: true,
@@ -115,6 +116,12 @@ function XtermRenderer({
       scrollback: 20000,
       showCursorImmediately: true,
       theme: xtermTheme(host),
+      windowsPty: isWindowsTerminal
+        ? {
+            backend: "conpty",
+            buildNumber: 26200,
+          }
+        : undefined,
     });
     const fitAddon = new FitAddon();
     const unicode11Addon = new Unicode11Addon();

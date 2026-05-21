@@ -318,7 +318,7 @@ impl TerminalSession {
             command.cwd(PathBuf::from(cwd));
         }
 
-        command.env_clear();
+        clear_terminal_environment(&mut command);
         let process_instance_id = Uuid::new_v4().to_string().to_lowercase();
         let terminal_env = TerminalEnvironment::resolve(TerminalEnvironmentRequest {
             shell: &shell,
@@ -1010,6 +1010,16 @@ fn user_name() -> String {
 
 fn default_lang() -> String {
     "en_US.UTF-8".to_string()
+}
+
+fn clear_terminal_environment(command: &mut CommandBuilder) {
+    #[cfg(not(windows))]
+    command.env_clear();
+
+    #[cfg(windows)]
+    {
+        let _ = command;
+    }
 }
 
 fn project_path_name(path: &str) -> Option<String> {
