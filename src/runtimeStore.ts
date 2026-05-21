@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { AIGlobalHistorySnapshot, AIHistoryProjectState } from "./ai/history";
+import type { PetSnapshot } from "./ai/petState";
 import type { AIRuntimeStateSnapshot } from "./ai/types";
 import type { GitReviewSnapshot } from "./git/review";
 import type { GitStatusSnapshot } from "./git/status";
@@ -31,6 +32,7 @@ type RuntimeState = {
   aiProjectStateByKey: Record<string, AIHistoryProjectState>;
   aiGlobalHistory: AIGlobalHistorySnapshot | null;
   aiRuntimeSnapshot: AIRuntimeStateSnapshot | null;
+  petSnapshot: PetSnapshot | null;
   projectListSnapshot: ProjectListSnapshot | null;
   remoteStatus: RemoteStatus | null;
   aiGlobalStatus: {
@@ -50,6 +52,7 @@ type RuntimeState = {
   setWorktreeError: (key: string, error: string | null) => void;
   setAIProjectState: (key: string, state: AIHistoryProjectState) => void;
   setAIRuntimeSnapshot: (snapshot: AIRuntimeStateSnapshot | null) => void;
+  setPetSnapshot: (snapshot: PetSnapshot | null) => void;
   setProjectListSnapshot: (snapshot: ProjectListSnapshot | null) => void;
   setRemoteStatus: (status: RemoteStatus | null) => void;
   updateAIProjectStateByProjectId: (
@@ -67,6 +70,7 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
   aiProjectStateByKey: {},
   aiGlobalHistory: null,
   aiRuntimeSnapshot: null,
+  petSnapshot: null,
   projectListSnapshot: null,
   remoteStatus: null,
   aiGlobalStatus: {
@@ -142,6 +146,7 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
       },
     })),
   setAIRuntimeSnapshot: (snapshot) => set({ aiRuntimeSnapshot: snapshot }),
+  setPetSnapshot: (snapshot) => set({ petSnapshot: snapshot }),
   setProjectListSnapshot: (snapshot) => set({ projectListSnapshot: snapshot }),
   setRemoteStatus: (status) => set({ remoteStatus: status }),
   updateAIProjectStateByProjectId: (projectId, updater) =>

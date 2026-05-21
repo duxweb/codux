@@ -1,10 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { AppIconMark } from "./components/AppIconMark";
 import { installDesktopBrowserBehavior } from "./desktopBehavior";
-import { lockRuntimeLocale, syncI18nBundleFromRust, tm } from "./i18n";
+import { lockRuntimeLocale, syncI18nBundleFromRust } from "./i18n";
 import { readAppSettings, subscribeAppSettings, syncAppSettingsFromRust } from "./settings";
+import { preloadRuntimeSnapshots } from "./startupPreload";
 import { applyConfiguredTheme, initSystemTheme } from "./theme";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
@@ -116,7 +116,6 @@ function syncInitialThemeAndLocale() {
   runtimeThemeSettings = readAppSettings();
   applyConfiguredTheme(runtimeThemeSettings);
   lockRuntimeLocale(runtimeThemeSettings);
-  void revealStartupWindow();
   return runtimeThemeSettings;
 }
 
@@ -132,16 +131,12 @@ async function syncStartupResources() {
 }
 
 async function bootstrapRoot() {
-  await syncStartupResources();
-  return loadRoot();
-}
-
-async function revealStartupWindow() {
-  if (!window.__TAURI_INTERNALS__) return;
-  if (isStandalone) return;
-  await getCurrentWebviewWindow()
-    .show()
-    .catch((error) => console.error("failed to reveal startup window", error));
+  const preloadPromise = isStandalone ? Promise.resolve() : preloadRuntimeSnapshots();
+  const rootPromise = loadRoot();
+  void syncStartupResources();
+  const Root = await rootPromise;
+  await Promise.all([syncStartupResources(), preloadPromise]);
+  return Root;
 }
 
 function StartupWindowReveal() {
@@ -157,6 +152,7 @@ function StartupWindowReveal() {
 }
 
 function renderStartupShell() {
+  if (!isStandalone) return;
   reactRoot.render(
     <React.StrictMode>
       <StartupShell />
@@ -168,22 +164,7 @@ function StartupShell() {
   if (isStandalone) {
     return <StartupWindowReveal />;
   }
-  return (
-    <main className="app-shell relative grid h-screen w-screen place-items-center overflow-hidden text-ink">
-      <div className="absolute inset-0" data-tauri-drag-region />
-      <div className="relative z-30 flex min-w-[220px] flex-col items-center">
-        <AppIconMark
-          styleName={readAppSettings().iconStyle}
-          size={86}
-          className="drop-shadow-[0_18px_46px_rgb(0_0_0_/_0.28)]"
-        />
-        <div className="mt-5 text-[15px] font-semibold text-ink">{tm("startup.loading", "正在启动 Codux")}</div>
-        <div className="mt-3 h-1 w-[132px] overflow-hidden rounded-full bg-fill/[0.08]">
-          <div className="h-full w-1/2 animate-[codux-startup-progress_1.15s_ease-in-out_infinite] rounded-full bg-brand-blue/85" />
-        </div>
-      </div>
-    </main>
-  );
+  return null;
 }
 
 function StartupError() {

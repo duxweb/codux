@@ -115,6 +115,11 @@ export class AIRuntimeStore {
 
   private async startRustStateListener() {
     if (this.unlistenState) return;
+    const cachedSnapshot = useRuntimeStore.getState().aiRuntimeSnapshot;
+    if (cachedSnapshot) {
+      this.setRuntimeState(cachedSnapshot);
+      this.emit();
+    }
     this.unlistenState = await listen<AIRuntimeStateSnapshot>("ai-runtime:state", (event) => {
       this.setRuntimeState(event.payload);
       this.emit();

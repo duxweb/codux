@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { checkForUpdates, openExternalUrl, type AppAboutMetadata } from "../appActions";
+import { AppIconMark } from "../components/AppIconMark";
 import { Button } from "../components/Button";
 import { CODUX_WEBSITE_URL } from "../appLinks";
 import { tm } from "../i18n";
+import { readAppSettings } from "../settings";
 import { systemMessage } from "../systemDialog";
 import { WindowFrame } from "./WindowFrame";
 
@@ -20,6 +22,7 @@ const fallbackAbout: AppAboutMetadata = {
 export function AboutWindow() {
   const [about, setAbout] = useState<AppAboutMetadata>(fallbackAbout);
   const [isChecking, setChecking] = useState(false);
+  const iconStyle = readAppSettings().iconStyle;
 
   useEffect(() => {
     if (!window.__TAURI_INTERNALS__) return;
@@ -76,9 +79,7 @@ export function AboutWindow() {
     >
       <div className="flex h-full flex-col items-center px-6 text-center">
         <div className="h-6 flex-shrink-0" />
-        <div className="grid h-24 w-24 place-items-center rounded-[22px] bg-gradient-to-br from-brand-blue to-brand-blue-deep text-[42px] font-black text-on-brand shadow-lg shadow-black/20">
-          C
-        </div>
+        <AppIconMark styleName={iconStyle} size={96} />
         <div className="mt-3.5 text-[20px] font-bold leading-tight">{about.name}</div>
         <div className="mt-1 text-xs text-ink-soft">
           {about.version} · {about.targetOs}/{about.targetArch} · {about.buildProfile}

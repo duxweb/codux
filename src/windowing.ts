@@ -136,7 +136,7 @@ const windowConfig: Record<AppWindowKind, WindowConfig> = {
 };
 
 const opaqueAppWindowBackground = "#22262e";
-const childWindowTrafficLightPosition = () => (isMacPlatform() ? new LogicalPosition(14, 21) : undefined);
+const childWindowTrafficLightPosition = () => (isMacPlatform() ? new LogicalPosition(14, 24) : undefined);
 
 export async function openAppWindow(kind: AppWindowKind, query?: Record<string, string | null | undefined>) {
   if (!window.__TAURI_INTERNALS__) {

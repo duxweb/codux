@@ -24,13 +24,13 @@
         "decorations": true,
         "transparent": true,
         "backgroundColor": "#00000000",
-        "visible": false,
+        "visible": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "acceptFirstMouse": true,
         "trafficLightPosition": {
           "x": 16,
-          "y": 21
+          "y": 24
         },
         "windowEffects": {
           "effects": ["sidebar", "mica", "acrylic"],

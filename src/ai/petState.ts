@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { aiRuntime, useAIRuntimeSnapshot } from "./runtime";
+import { useRuntimeStore } from "../runtimeStore";
 import type { WorkspaceProject } from "../types";
 
 export type PetStats = {
@@ -139,18 +140,22 @@ const emptyStats: PetStats = {
   empathy: 0,
 };
 
-export function usePetLedger(projects: WorkspaceProject[] = []): PetLedger {
+export function usePetLedger(projects: WorkspaceProject[] = [], options: { enabled?: boolean } = {}): PetLedger {
+  const isEnabled = options.enabled ?? true;
   const runtime = useAIRuntimeSnapshot();
-  const [snapshot, setSnapshot] = useState<PetSnapshot>(() => emptyPetSnapshot(0, emptyStats));
+  const cachedSnapshot = useRuntimeStore((state) => state.petSnapshot);
+  const setPetSnapshot = useRuntimeStore((state) => state.setPetSnapshot);
+  const [snapshot, setLocalSnapshot] = useState<PetSnapshot>(() => cachedSnapshot ?? emptyPetSnapshot(0, emptyStats));
   const [isSnapshotLoading, setSnapshotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const liveTokens = runtime.globalTotals.totalTokens;
   const visibleSnapshot = useMemo(() => petSnapshotWithLiveTokens(snapshot, liveTokens), [liveTokens, snapshot]);
 
   const loadSnapshot = useCallback(async () => {
+    if (!isEnabled) return;
     const runtimeFallbackSnapshot = emptyPetSnapshot(aiRuntime.projectTotals().totalTokens, emptyStats);
     if (!window.__TAURI_INTERNALS__) {
-      setSnapshot(runtimeFallbackSnapshot);
+      setPetSnapshot(runtimeFallbackSnapshot);
       setError(null);
       return;
     }
@@ -158,14 +163,14 @@ export function usePetLedger(projects: WorkspaceProject[] = []): PetLedger {
     setError(null);
     try {
       const next = projects.length > 0 ? await refreshPetLedger(projects) : await invoke<PetSnapshot>("pet_snapshot");
-      setSnapshot(next);
+      setPetSnapshot(next);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
-      setSnapshot(runtimeFallbackSnapshot);
+      setPetSnapshot(runtimeFallbackSnapshot);
     } finally {
       setSnapshotLoading(false);
     }
-  }, [projects]);
+  }, [isEnabled, projects, setPetSnapshot]);
 
   const refresh = useCallback(async () => {
     await loadSnapshot();
@@ -174,15 +179,15 @@ export function usePetLedger(projects: WorkspaceProject[] = []): PetLedger {
   const claim = useCallback(
     async (species: string, customName = "", customPet: PetCustomPet | null = null) => {
       if (!window.__TAURI_INTERNALS__) {
-        setSnapshot((current) => ({
-          ...current,
+        setPetSnapshot({
+          ...snapshot,
           claimedAt: Math.floor(Date.now() / 1000),
           species,
           customPet,
           customName,
           currentExperienceTokens: 0,
           progress: emptyProgress(),
-        }));
+        });
         return;
       }
       setSnapshotLoading(true);
@@ -196,69 +201,83 @@ export function usePetLedger(projects: WorkspaceProject[] = []): PetLedger {
             projects: projects.map(projectRequest),
           },
         });
-        setSnapshot(next);
+        setPetSnapshot(next);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : String(reason));
       } finally {
         setSnapshotLoading(false);
       }
     },
-    [projects],
+    [projects, setPetSnapshot, snapshot],
   );
 
-  const rename = useCallback(async (customName: string) => {
-    if (!window.__TAURI_INTERNALS__) {
-      setSnapshot((current) => ({ ...current, customName }));
-      return;
-    }
-    const next = await invoke<PetSnapshot>("pet_rename", { request: { customName } });
-    setSnapshot(next);
-  }, []);
+  const rename = useCallback(
+    async (customName: string) => {
+      if (!window.__TAURI_INTERNALS__) {
+        setPetSnapshot({ ...snapshot, customName });
+        return;
+      }
+      const next = await invoke<PetSnapshot>("pet_rename", { request: { customName } });
+      setPetSnapshot(next);
+    },
+    [setPetSnapshot, snapshot],
+  );
 
   const archiveCurrent = useCallback(async () => {
     if (!window.__TAURI_INTERNALS__) {
-      setSnapshot((current) => ({
-        ...emptyPetSnapshot(current.totalNormalizedTokens, emptyStats),
+      setPetSnapshot({
+        ...emptyPetSnapshot(snapshot.totalNormalizedTokens, emptyStats),
         legacy: [
           {
             id: `legacy-${Date.now()}`,
-            species: current.species,
-            customPet: current.customPet ?? null,
-            customName: current.customName,
-            totalXp: current.currentExperienceTokens,
-            stats: current.currentStats,
-            personaId: current.personaId,
-            progress: current.progress,
+            species: snapshot.species,
+            customPet: snapshot.customPet ?? null,
+            customName: snapshot.customName,
+            totalXp: snapshot.currentExperienceTokens,
+            stats: snapshot.currentStats,
+            personaId: snapshot.personaId,
+            progress: snapshot.progress,
             retiredAt: Math.floor(Date.now() / 1000),
           },
-          ...current.legacy,
+          ...snapshot.legacy,
         ],
-      }));
+      });
       return;
     }
     const next = await invoke<PetSnapshot>("pet_archive_current");
-    setSnapshot(next);
-  }, []);
+    setPetSnapshot(next);
+  }, [setPetSnapshot, snapshot]);
 
-  const restoreArchived = useCallback(async (legacyId: string) => {
-    if (!window.__TAURI_INTERNALS__) return;
-    const next = await invoke<PetSnapshot>("pet_restore_archived", {
-      request: { legacyId },
-    });
-    setSnapshot(next);
-  }, []);
+  const restoreArchived = useCallback(
+    async (legacyId: string) => {
+      if (!window.__TAURI_INTERNALS__) return;
+      const next = await invoke<PetSnapshot>("pet_restore_archived", {
+        request: { legacyId },
+      });
+      setPetSnapshot(next);
+    },
+    [setPetSnapshot],
+  );
 
   useEffect(() => {
+    if (cachedSnapshot) {
+      setLocalSnapshot(cachedSnapshot);
+    }
+  }, [cachedSnapshot]);
+
+  useEffect(() => {
+    if (!isEnabled) return;
     void loadSnapshot();
-  }, [loadSnapshot]);
+  }, [isEnabled, loadSnapshot]);
 
   useEffect(() => {
+    if (!isEnabled) return;
     if (!window.__TAURI_INTERNALS__) return;
     let isDisposed = false;
     let unlisten: (() => void) | undefined;
     void listen<PetSnapshot>("pet:updated", (event) => {
       if (!isDisposed) {
-        setSnapshot(event.payload);
+        setPetSnapshot(event.payload);
       }
     })
       .then((dispose) => {
@@ -273,7 +292,7 @@ export function usePetLedger(projects: WorkspaceProject[] = []): PetLedger {
       isDisposed = true;
       unlisten?.();
     };
-  }, []);
+  }, [isEnabled, setPetSnapshot]);
 
   return {
     snapshot: visibleSnapshot,

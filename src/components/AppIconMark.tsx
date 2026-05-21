@@ -55,11 +55,11 @@ export function AppIconMark({
           <stop offset="0" stopColor={palette.top} />
           <stop offset="1" stopColor={palette.bottom} />
         </linearGradient>
-        <radialGradient id={`${id}-top`} cx="50%" cy="18%" r="52%">
+        <radialGradient id={`${id}-top`} cx="50%" cy="18%" r="50%">
           <stop offset="0" stopColor="white" stopOpacity="0.1" />
           <stop offset="1" stopColor="white" stopOpacity="0" />
         </radialGradient>
-        <radialGradient id={`${id}-bottom`} cx="50%" cy="92%" r="48%">
+        <radialGradient id={`${id}-bottom`} cx="50%" cy="92%" r="45%">
           <stop offset="0" stopColor="black" stopOpacity="0.08" />
           <stop offset="1" stopColor="black" stopOpacity="0" />
         </radialGradient>

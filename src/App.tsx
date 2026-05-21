@@ -27,6 +27,7 @@ import { openAppWindow, revealMainAppWindow } from "./windowing";
 import { listenWorkspaceCommand } from "./workspaceCommands";
 import { ensureWorktreeSnapshotEventCacheSubscription, useWorktreeSnapshot } from "./worktree/snapshot";
 import { subscribeAppSettings } from "./settings";
+import { runAfterFirstPaint, runWhenIdle } from "./startupScheduler";
 import { systemConfirm } from "./systemDialog";
 import { tm } from "./i18n";
 import { ensureTerminalLayoutsSnapshotSubscription } from "./terminalLayout";
@@ -93,6 +94,7 @@ function App() {
   const [terminalFocusRequest, setTerminalFocusRequest] = useState(0);
   const [taskCreateRequest, setTaskCreateRequest] = useState(0);
   const [isCreatingWorktree, setCreatingWorktree] = useState(false);
+  const [isSecondaryStartupReady, setSecondaryStartupReady] = useState(!window.__TAURI_INTERNALS__);
   const [aiVersion, setAiVersion] = useState(0);
   const [, startInspectorTransition] = useTransition();
   const focusScopeRef = useRef<ShortcutScope>("workspace");
@@ -134,11 +136,6 @@ function App() {
   useEffect(() => {
     const unsubscribe = aiRuntime.subscribe(() => setAiVersion((current) => current + 1));
     if (!window.__TAURI_INTERNALS__) return unsubscribe;
-    ensureAIHistoryEventCacheSubscription();
-    ensureGitReviewEventCacheSubscription();
-    ensureGitStatusEventCacheSubscription();
-    ensureWorktreeSnapshotEventCacheSubscription();
-    ensureTerminalLayoutsSnapshotSubscription();
     let isDisposed = false;
     let unlistenProjects: (() => void) | undefined;
     let unlistenRemoteStatus: (() => void) | undefined;
@@ -158,12 +155,28 @@ function App() {
         }
         unlistenProjects = nextUnlistenProjects;
         unlistenRemoteStatus = nextUnlistenRemoteStatus;
-        void invoke("app_runtime_ready").catch((error) =>
-          console.error("failed to initialize runtime snapshots", error),
-        );
+        runAfterFirstPaint(() => {
+          if (isDisposed) return;
+          void invoke("app_runtime_ready").catch((error) =>
+            console.error("failed to initialize runtime snapshots", error),
+          );
+          runWhenIdle(() => {
+            if (isDisposed) return;
+            ensureTerminalLayoutsSnapshotSubscription();
+            ensureWorktreeSnapshotEventCacheSubscription();
+            ensureGitStatusEventCacheSubscription();
+            ensureGitReviewEventCacheSubscription();
+            ensureAIHistoryEventCacheSubscription();
+            setSecondaryStartupReady(true);
+          });
+        });
       })
       .catch((error) => console.error("failed to initialize runtime event listeners", error));
-    void aiRuntime.start().catch((error) => console.error("failed to initialize ai runtime", error));
+    runWhenIdle(() => {
+      if (!isDisposed) {
+        void aiRuntime.start().catch((error) => console.error("failed to initialize ai runtime", error));
+      }
+    });
     return () => {
       isDisposed = true;
       unlistenProjects?.();
@@ -187,7 +200,7 @@ function App() {
       }),
     [aiVersion, projects, selectedWorktreeByProject],
   );
-  const pet = usePetLedger(projectsWithAIState);
+  const pet = usePetLedger(projectsWithAIState, { enabled: isSecondaryStartupReady });
 
   const selectedProjectWithAIState = useMemo(
     () => projectsWithAIState.find((p) => p.id === activeProjectId) ?? projectsWithAIState[0],
@@ -212,7 +225,7 @@ function App() {
       document.removeEventListener("visibilitychange", reportWindowState);
     };
   }, []);
-  const worktree = useWorktreeSnapshot(selectedProjectWithAIState);
+  const worktree = useWorktreeSnapshot(isSecondaryStartupReady ? selectedProjectWithAIState : undefined);
   const worktreeSnapshot = worktree.snapshot;
   const worktreeAIStateById = useMemo(() => {
     void aiVersion;
