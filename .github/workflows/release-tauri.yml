@@ -24,29 +24,81 @@ on:
 permissions:
   contents: write
 
-jobs:
-  publish-desktop:
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-          - platform: windows-latest
-            args: ""
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-    runs-on: ${{ matrix.platform }}
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
+      source_ref: ${{ steps.ref.outputs.source_ref }}
     env:
       SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Resolve source ref
+        id: ref
+        shell: bash
+        run: echo "source_ref=${SOURCE_REF}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        env:
+          RELEASE_NOTES_PATH: dist/release-notes.md
+        run: |
+          mkdir -p dist
+          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
+          node scripts/release/prepare-release.mjs "${SOURCE_REF}" "${requested_channel}"
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: dist/release-notes.md
+          if-no-files-found: error
+
+  build:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos-aarch64
+            platform: macos-latest
+            args: --target aarch64-apple-darwin
+            bundle_dir: src-tauri/target/aarch64-apple-darwin/release/bundle
+          - id: macos-x86_64
+            platform: macos-13
+            args: --target x86_64-apple-darwin
+            bundle_dir: src-tauri/target/x86_64-apple-darwin/release/bundle
+          - id: windows-x86_64
+            platform: windows-latest
+            args: ""
+            bundle_dir: src-tauri/target/release/bundle
+
+    runs-on: ${{ matrix.platform }}
+    env:
+      SOURCE_REF: ${{ needs.metadata.outputs.source_ref }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -62,40 +114,74 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ startsWith(matrix.id, 'macos-') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Resolve release metadata
-        id: meta
+      - name: Apply release version
         shell: bash
-        run: |
-          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
-          node scripts/release/prepare-release.mjs "${SOURCE_REF}" "${requested_channel}"
-
-      - name: Verify release version
-        shell: bash
-        run: |
-          node -e "const version = '${{ steps.meta.outputs.version }}'; if (!/^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$/.test(version)) { throw new Error('Invalid SemVer: ' + version); }"
-
-      - name: Build and publish desktop bundles
-        uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RELEASE_NOTES_PATH: dist/release-notes.md
+        run: |
+          mkdir -p dist
+          node scripts/release/prepare-release.mjs "${SOURCE_REF}" "${{ needs.metadata.outputs.channel }}"
+
+      - name: Build desktop bundle
+        shell: bash
+        run: pnpm tauri build ${{ matrix.args }}
+
+      - name: Stage bundle artifacts
+        shell: bash
+        env:
+          BUNDLE_SOURCE_DIR: ${{ matrix.bundle_dir }}
+          RELEASE_BUILD_ID: ${{ matrix.id }}
+          RELEASE_STAGE_DIR: release-artifacts
+        run: node scripts/release/stage-bundle-artifacts.mjs
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: tauri-${{ steps.meta.outputs.channel }}
-          releaseName: Codux ${{ steps.meta.outputs.version }}
-          releaseBody: ${{ steps.meta.outputs.notes }}
-          releaseCommitish: ${{ env.SOURCE_REF }}
-          releaseDraft: false
-          prerelease: ${{ steps.meta.outputs.channel == 'beta' }}
-          projectPath: .
-          tauriScript: pnpm tauri
-          args: ${{ matrix.args }}
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
-          uploadUpdaterSignatures: true
-          releaseAssetNamePattern: codux-[version]-[platform]-[arch].[ext]
+          name: bundle-${{ matrix.id }}
+          path: release-artifacts/${{ matrix.id }}/*
+          if-no-files-found: error
+
+  publish:
+    needs:
+      - metadata
+      - build
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
+      RELEASE_TAG: ${{ needs.metadata.outputs.source_ref }}
+      RELEASE_NOTES_PATH: dist/release-notes.md
+      RELEASE_ARTIFACTS_DIR: release-artifacts
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: dist
+
+      - name: Download bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub release and updater metadata
+        run: node scripts/release/publish-github-release.mjs

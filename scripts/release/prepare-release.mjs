@@ -20,7 +20,9 @@ updateCargoVersion("src-tauri/Cargo.toml", version);
 updateCargoLockVersion("src-tauri/Cargo.lock", version);
 updateSettingsVersion("src/settings.ts", version);
 
-const notesPath = process.env.GITHUB_OUTPUT ? "" : path.join(root, "dist", `release-notes-${version}.md`);
+const notesPath =
+  process.env.RELEASE_NOTES_PATH ||
+  (process.env.GITHUB_OUTPUT ? "" : path.join(root, "dist", `release-notes-${version}.md`));
 const notes = extractChangelogSection("CHANGELOG.md", version);
 if (notesPath) {
   fs.mkdirSync(path.dirname(notesPath), { recursive: true });
