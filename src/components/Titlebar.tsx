@@ -37,6 +37,7 @@ import { OpenInIDEButton } from "./OpenInIDEButton";
 import { PetSprite } from "./PetSprite";
 import { PressableButton } from "./PressableButton";
 import { Tooltip } from "./Tooltip";
+import { WindowsWindowControls } from "./WindowsWindowControls";
 import type { ButtonSize } from "./Button";
 import type { MainView, PerformanceSnapshot, RemoteStatus, RightPanelKind, WorkspaceProject } from "../types";
 import { dispatchWorkspaceCommand } from "../workspaceCommands";
@@ -171,6 +172,8 @@ export function Titlebar({
           />
         </div>
       </div>
+
+      {isWindowsPlatform() && <WindowsWindowControls className="z-10 h-[var(--titlebar-height)]" />}
 
       <div
         className="absolute inset-0 flex items-center justify-center pointer-events-none drag-region"

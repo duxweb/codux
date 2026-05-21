@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "../components/Button";
+import { WindowsWindowControls } from "../components/WindowsWindowControls";
 import { tm } from "../i18n";
 import { isMacPlatform, isWindowsPlatform } from "../platform";
 import { startWindowDrag } from "../windowDrag";
@@ -18,7 +19,7 @@ export function WindowFrame({ title, children, footer, mainClassName, mainScroll
   return (
     <div className="app-shell h-screen overflow-hidden text-ink flex flex-col">
       <header
-        className="h-12 flex flex-shrink-0 items-center border-b border-line/45 bg-surface-chrome/70 drag-region"
+        className="relative h-12 flex flex-shrink-0 items-center border-b border-line/45 bg-surface-chrome/70 drag-region"
         data-tauri-drag-region
         onPointerDown={startWindowDrag}
       >
@@ -30,6 +31,7 @@ export function WindowFrame({ title, children, footer, mainClassName, mainScroll
             {title}
           </div>
         </div>
+        {isWindowsPlatform() && <WindowsWindowControls className="h-12" />}
       </header>
 
       <main

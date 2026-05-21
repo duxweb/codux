@@ -33,7 +33,7 @@
           "y": 24
         },
         "windowEffects": {
-          "effects": ["sidebar", "mica", "acrylic"],
+          "effects": ["mica"],
           "state": "active",
           "radius": 12,
           "color": "#171b223a"

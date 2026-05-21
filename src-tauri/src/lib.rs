@@ -131,6 +131,10 @@ use std::{thread, time::Duration};
 use tauri::async_runtime::JoinHandle;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::utils::config::Color;
+#[cfg(target_os = "windows")]
+use tauri::utils::config::WindowEffectsConfig;
+#[cfg(target_os = "windows")]
+use tauri::window::Effect;
 use tauri::WindowEvent;
 use tauri::Wry;
 use tauri::{Emitter, Manager};
@@ -5993,9 +5997,33 @@ fn tr_or_label(settings: &AppSettings, key: &str, fallback: &str) -> String {
 }
 
 fn rebuild_app_menu(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
-    let menu = build_app_menu(app, settings).map_err(|error| error.to_string())?;
-    app.set_menu(menu).map_err(|error| error.to_string())?;
-    Ok(())
+    #[cfg(target_os = "windows")]
+    {
+        let _ = app;
+        let _ = settings;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let menu = build_app_menu(app, settings).map_err(|error| error.to_string())?;
+        app.set_menu(menu).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn configure_windows_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.set_decorations(false);
+    let _ = window.set_background_color(Color(0, 0, 0, 0));
+    let _ = window.set_effects(WindowEffectsConfig {
+        effects: vec![Effect::Mica],
+        state: None,
+        radius: None,
+        color: None,
+    });
 }
 
 pub fn run() {
@@ -6004,7 +6032,9 @@ pub fn run() {
     sync_process_locale_preference(&settings.snapshot());
     let menu_settings = Arc::clone(&settings);
     let setup_settings = Arc::clone(&settings);
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(not(target_os = "windows"))]
+    let builder = builder
         .menu(move |app| {
             let settings = menu_settings.snapshot();
             build_app_menu(app, &settings)
@@ -6125,6 +6155,10 @@ pub fn run() {
                 }
             }
         });
+    #[cfg(target_os = "windows")]
+    {
+        let _ = menu_settings;
+    }
 
     builder
         .plugin(tauri_plugin_dialog::init())
@@ -6132,6 +6166,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
+            #[cfg(target_os = "windows")]
+            configure_windows_main_window(app.handle());
             let settings = Arc::clone(&setup_settings);
             let memory =
                 Arc::new(MemoryStore::load_or_create().map_err(|error| error.to_string())?);

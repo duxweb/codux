@@ -1,7 +1,7 @@
 import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { LogicalPosition, LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { formatI18n, tm } from "./i18n";
-import { isMacPlatform } from "./platform";
+import { isMacPlatform, isWindowsPlatform } from "./platform";
 
 export type AppWindowKind =
   | "about"
@@ -137,6 +137,8 @@ const windowConfig: Record<AppWindowKind, WindowConfig> = {
 
 const opaqueAppWindowBackground = "#22262e";
 const childWindowTrafficLightPosition = () => (isMacPlatform() ? new LogicalPosition(14, 24) : undefined);
+const usesNativeOverlayTitlebar = () => isMacPlatform();
+const childWindowDecorations = (kind?: AppWindowKind) => kind !== "desktop-pet" && !isWindowsPlatform();
 
 export async function openAppWindow(kind: AppWindowKind, query?: Record<string, string | null | undefined>) {
   if (!window.__TAURI_INTERNALS__) {
@@ -169,9 +171,9 @@ export async function openAppWindow(kind: AppWindowKind, query?: Record<string, 
         ? false
         : true,
     transparent: kind === "desktop-pet",
-    decorations: kind === "desktop-pet" ? false : true,
-    titleBarStyle: kind === "desktop-pet" ? undefined : "overlay",
-    hiddenTitle: kind === "desktop-pet" ? undefined : true,
+    decorations: childWindowDecorations(kind),
+    titleBarStyle: usesNativeOverlayTitlebar() && kind !== "desktop-pet" ? "overlay" : undefined,
+    hiddenTitle: usesNativeOverlayTitlebar() && kind !== "desktop-pet" ? true : undefined,
     acceptFirstMouse: true,
     trafficLightPosition: kind === "desktop-pet" ? undefined : childWindowTrafficLightPosition(),
     backgroundColor: kind === "desktop-pet" ? "#00000000" : opaqueAppWindowBackground,
@@ -239,9 +241,9 @@ export async function openDetachedTerminalWindow(options: DetachedTerminalWindow
     minHeight: 360,
     resizable: true,
     transparent: false,
-    decorations: true,
-    titleBarStyle: "overlay",
-    hiddenTitle: true,
+    decorations: childWindowDecorations(),
+    titleBarStyle: usesNativeOverlayTitlebar() ? "overlay" : undefined,
+    hiddenTitle: usesNativeOverlayTitlebar() ? true : undefined,
     trafficLightPosition: childWindowTrafficLightPosition(),
     acceptFirstMouse: true,
     backgroundColor: "#171b22",
@@ -291,9 +293,9 @@ export async function openGitDiffWindow(options: GitDiffWindowOptions) {
     minHeight: 480,
     resizable: true,
     transparent: false,
-    decorations: true,
-    titleBarStyle: "overlay",
-    hiddenTitle: true,
+    decorations: childWindowDecorations(),
+    titleBarStyle: usesNativeOverlayTitlebar() ? "overlay" : undefined,
+    hiddenTitle: usesNativeOverlayTitlebar() ? true : undefined,
     trafficLightPosition: childWindowTrafficLightPosition(),
     acceptFirstMouse: true,
     backgroundColor: opaqueAppWindowBackground,

@@ -1049,13 +1049,30 @@ fn build_shell_command(shell: &str, initial_command: Option<&str>) -> CommandBui
 
 #[cfg(windows)]
 fn build_shell_command(shell: &str, initial_command: Option<&str>) -> CommandBuilder {
+    let shell_name = shell_name(shell);
     let mut command = CommandBuilder::new(shell);
-    if let Some(initial_command) = initial_command {
-        if shell.to_ascii_lowercase().contains("powershell") {
-            command.args(["-NoLogo", "-NoExit", "-Command", initial_command]);
-        } else {
-            command.args(["/K", initial_command]);
+
+    if matches!(
+        shell_name.as_deref(),
+        Some("powershell.exe" | "powershell" | "pwsh.exe" | "pwsh")
+    ) {
+        command.args(["-NoLogo", "-NoExit"]);
+        if let Some(initial_command) = initial_command {
+            command.args(["-Command", initial_command]);
         }
+        return command;
+    }
+
+    if matches!(shell_name.as_deref(), Some("cmd.exe" | "cmd")) {
+        command.arg("/K");
+        if let Some(initial_command) = initial_command {
+            command.arg(initial_command);
+        }
+        return command;
+    }
+
+    if let Some(initial_command) = initial_command {
+        command.arg(initial_command);
     }
     command
 }
