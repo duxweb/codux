@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "3";
+const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "4";
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 const SCHEMA_STATEMENTS: &[&str] = &[

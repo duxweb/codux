@@ -1860,13 +1860,41 @@ fn file_modified_millis(path: &Path) -> Option<u128> {
 }
 
 fn paths_equivalent(left: Option<&str>, right: &str) -> bool {
-    let Some(left) = left.and_then(normalized_string) else {
+    let Some(left) = left.and_then(normalized_history_path) else {
         return false;
     };
-    let Some(right) = normalized_string(right) else {
+    let Some(right) = normalized_history_path(right) else {
         return false;
     };
-    left.trim_end_matches('/') == right.trim_end_matches('/')
+    left == right || left.starts_with(&format!("{right}/"))
+}
+
+fn normalized_history_path(value: &str) -> Option<String> {
+    let mut value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    value = value
+        .strip_prefix(r"\\?\")
+        .or_else(|| value.strip_prefix(r"//?/"))
+        .unwrap_or(value);
+    let mut normalized = value.replace('\\', "/");
+    while normalized.ends_with('/') && !is_path_root(&normalized) {
+        normalized.pop();
+    }
+    if has_windows_drive_prefix(&normalized) {
+        normalized = normalized.to_ascii_lowercase();
+    }
+    Some(normalized)
+}
+
+fn has_windows_drive_prefix(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic()
+}
+
+fn is_path_root(value: &str) -> bool {
+    value == "/" || (value.len() == 3 && has_windows_drive_prefix(value) && value.ends_with('/'))
 }
 
 fn normalized_string(value: &str) -> Option<String> {
@@ -1963,6 +1991,22 @@ mod tests {
 
         assert_eq!(files, vec![rollout_path]);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn matches_windows_extended_paths_and_project_children() {
+        assert!(paths_equivalent(
+            Some(r"\\?\F:\codux-tauri\src-tauri"),
+            r"F:\codux-tauri"
+        ));
+        assert!(paths_equivalent(
+            Some(r"F:\codux-tauri\src-tauri\"),
+            r"f:\codux-tauri"
+        ));
+        assert!(!paths_equivalent(
+            Some(r"F:\codux-tauri-other"),
+            r"F:\codux-tauri"
+        ));
     }
 
     #[test]
