@@ -7,16 +7,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Source tag or branch to build, for example tauri-v1.0.0-beta.1. Defaults to tauri."
+        description: "Source tag to build, for example tauri-v1.0.0-beta.1."
         required: false
-        default: tauri
+        default: tauri-v1.0.0-beta.1
         type: string
       channel:
         description: "Updater channel to publish."
         required: false
-        default: beta
+        default: auto
         type: choice
         options:
+          - auto
           - beta
           - stable
 
@@ -40,8 +41,6 @@ jobs:
     runs-on: ${{ matrix.platform }}
     env:
       SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-      RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || (contains(github.ref_name, '-beta') && 'beta' || 'stable') }}
-      RELEASE_TAG: ${{ format('tauri-{0}', github.event_name == 'workflow_dispatch' && inputs.channel || (contains(github.ref_name, '-beta') && 'beta' || 'stable')) }}
 
     steps:
       - name: Checkout
@@ -68,6 +67,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
+          node scripts/release/prepare-release.mjs "${SOURCE_REF}" "${requested_channel}"
+
+      - name: Verify release version
+        shell: bash
+        run: |
+          node -e "const version = '${{ steps.meta.outputs.version }}'; if (!/^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$/.test(version)) { throw new Error('Invalid SemVer: ' + version); }"
+
       - name: Build and publish Tauri bundles
         uses: tauri-apps/tauri-action@v1
         env:
@@ -75,12 +86,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Codux ${{ env.RELEASE_CHANNEL }}
-          releaseBody: Cross-platform Codux ${{ env.RELEASE_CHANNEL }} release built from `${{ env.SOURCE_REF }}`. The `latest.json` asset is used by the in-app Tauri updater.
+          tagName: tauri-${{ steps.meta.outputs.channel }}
+          releaseName: Codux ${{ steps.meta.outputs.version }}
+          releaseBody: ${{ steps.meta.outputs.notes }}
           releaseCommitish: ${{ env.SOURCE_REF }}
           releaseDraft: false
-          prerelease: ${{ env.RELEASE_CHANNEL == 'beta' }}
+          prerelease: ${{ steps.meta.outputs.channel == 'beta' }}
           projectPath: .
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
