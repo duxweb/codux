@@ -2640,13 +2640,20 @@ fn app_window_close(
     window: tauri::WebviewWindow,
 ) -> Result<(), String> {
     if window.label() == "main" {
-        if !state.is_exiting.swap(true, Ordering::SeqCst) {
-            state.terminals.kill_all();
+        if shutdown_runtime_state(&state.terminals, &state.is_exiting) {
             app.exit(0);
         }
         return Ok(());
     }
     window.destroy().map_err(|error| error.to_string())
+}
+
+fn shutdown_runtime_state(terminals: &TerminalManager, is_exiting: &AtomicBool) -> bool {
+    if is_exiting.swap(true, Ordering::SeqCst) {
+        return false;
+    }
+    terminals.kill_all();
+    true
 }
 
 struct RemoteHostService {
@@ -6267,9 +6274,11 @@ pub fn run() {
                     WindowEvent::CloseRequested { api, .. } => {
                         activity_for_window_events.mark_main_window_visible(false);
                         activity_for_window_events.mark_main_window_focused(false);
-                        if !is_exiting_for_window_events.swap(true, Ordering::SeqCst) {
+                        if shutdown_runtime_state(
+                            &terminals_for_window_events,
+                            &is_exiting_for_window_events,
+                        ) {
                             api.prevent_close();
-                            terminals_for_window_events.kill_all();
                             app_handle.exit(0);
                         }
                     }
@@ -6431,6 +6440,14 @@ pub fn run() {
             ssh_profile_delete,
             ssh_launch_command,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Codux Tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building Codux Tauri application")
+        .run(|app, event| match event {
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    shutdown_runtime_state(&state.terminals, &state.is_exiting);
+                }
+            }
+            _ => {}
+        });
 }
