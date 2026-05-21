@@ -480,6 +480,15 @@ struct DesktopPetHitState {
     hit_test_running: AtomicBool,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct DesktopPetHitLayout {
+    position: PhysicalPosition<i32>,
+    width: f64,
+    height: f64,
+    scale_factor: f64,
+    side: &'static str,
+}
+
 const DESKTOP_PET_LABEL: &str = "desktop-pet";
 const DESKTOP_PET_BASE_WIDTH: f64 = 352.0;
 const DESKTOP_PET_BASE_HEIGHT: f64 = 218.0;
@@ -605,6 +614,8 @@ fn start_desktop_pet_hit_test_loop(app: tauri::AppHandle) {
 
     thread::spawn(move || {
         let mut last_click_through = true;
+        let mut cached_layout: Option<DesktopPetHitLayout> = None;
+        let mut ticks_since_layout_refresh = 0_u32;
         loop {
             let Some(window) = app.get_webview_window(DESKTOP_PET_LABEL) else {
                 break;
@@ -612,60 +623,68 @@ fn start_desktop_pet_hit_test_loop(app: tauri::AppHandle) {
             if !window.is_visible().unwrap_or(false) {
                 break;
             }
+            if cached_layout.is_none() || ticks_since_layout_refresh >= 10 {
+                cached_layout = desktop_pet_hit_layout(&window);
+                ticks_since_layout_refresh = 0;
+            }
             let has_bubble = hit_state.has_bubble.load(Ordering::Relaxed);
-            let click_through = desktop_pet_should_click_through(&window, has_bubble);
+            let click_through = desktop_pet_should_click_through(&window, cached_layout, has_bubble);
             if click_through != last_click_through {
                 let _ = window.set_ignore_cursor_events(click_through);
                 last_click_through = click_through;
             }
+            ticks_since_layout_refresh = ticks_since_layout_refresh.saturating_add(1);
             thread::sleep(Duration::from_millis(if click_through { 220 } else { 80 }));
         }
         hit_state.hit_test_running.store(false, Ordering::Release);
     });
 }
 
-fn desktop_pet_should_click_through(window: &tauri::WebviewWindow<Wry>, has_bubble: bool) -> bool {
+fn desktop_pet_hit_layout(window: &tauri::WebviewWindow<Wry>) -> Option<DesktopPetHitLayout> {
+    let position = window.outer_position().ok()?;
+    let size = window.inner_size().ok()?;
+    let scale_factor = window.scale_factor().unwrap_or(1.0).max(0.1);
+    Some(DesktopPetHitLayout {
+        position,
+        width: f64::from(size.width) / scale_factor,
+        height: f64::from(size.height) / scale_factor,
+        scale_factor,
+        side: desktop_pet_side_for_position(window, position).unwrap_or("left"),
+    })
+}
+
+fn desktop_pet_should_click_through(
+    window: &tauri::WebviewWindow<Wry>,
+    layout: Option<DesktopPetHitLayout>,
+    has_bubble: bool,
+) -> bool {
+    let Some(layout) = layout else {
+        return true;
+    };
     let Ok(cursor) = window.cursor_position() else {
         return true;
     };
-    let Ok(position) = window.outer_position() else {
-        return true;
-    };
-    let Ok(size) = window.inner_size() else {
-        return true;
-    };
-    let scale_factor = window.scale_factor().unwrap_or(1.0).max(0.1);
-    let local_x = (cursor.x - f64::from(position.x)) / scale_factor;
-    let local_y = (cursor.y - f64::from(position.y)) / scale_factor;
-    if local_x < 0.0
-        || local_y < 0.0
-        || local_x > f64::from(size.width) / scale_factor
-        || local_y > f64::from(size.height) / scale_factor
+    let local_x = (cursor.x - f64::from(layout.position.x)) / layout.scale_factor;
+    let local_y = (cursor.y - f64::from(layout.position.y)) / layout.scale_factor;
+    if local_x < 0.0 || local_y < 0.0 || local_x > layout.width || local_y > layout.height
     {
         return true;
     }
-    !desktop_pet_local_point_is_hotspot(window, local_x, local_y, has_bubble)
+    !desktop_pet_local_point_is_hotspot(layout, local_x, local_y, has_bubble)
 }
 
 fn desktop_pet_local_point_is_hotspot(
-    window: &tauri::WebviewWindow<Wry>,
+    layout: DesktopPetHitLayout,
     x: f64,
     y: f64,
     has_bubble: bool,
 ) -> bool {
-    let Ok(size) = window.inner_size() else {
-        return false;
-    };
-    let scale_factor = window.scale_factor().unwrap_or(1.0).max(0.1);
-    let width = f64::from(size.width) / scale_factor;
-    let height = f64::from(size.height) / scale_factor;
-    let side = desktop_pet_placement_for_window(window).side;
-    let sprite_x = if side == "right" {
+    let sprite_x = if layout.side == "right" {
         24.0 + DESKTOP_PET_SPRITE_VISIBLE_INSET_X
     } else {
-        width - 24.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_X
+        layout.width - 24.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_X
     };
-    let sprite_y = height - 8.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP;
+    let sprite_y = layout.height - 8.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP;
     let sprite_width = DESKTOP_PET_SPRITE_SIZE - DESKTOP_PET_SPRITE_VISIBLE_INSET_X * 2.0;
     let sprite_height = DESKTOP_PET_SPRITE_SIZE
         - DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP
@@ -675,8 +694,8 @@ fn desktop_pet_local_point_is_hotspot(
         && y >= sprite_y
         && y <= sprite_y + sprite_height;
     let in_bubble = if has_bubble {
-        let bubble_x = if side == "right" {
-            width - 8.0 - 214.0
+        let bubble_x = if layout.side == "right" {
+            layout.width - 8.0 - 214.0
         } else {
             8.0
         };
