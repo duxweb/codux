@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback } from "react";
 import { useRuntimeStore } from "../runtimeStore";
 import { sanitizeGitRepositorySnapshot } from "./status";
 
@@ -68,10 +67,14 @@ function cacheGitReviewEvent(event: GitReviewEvent) {
   const key = reviewCacheKey(event.projectPath, event.baseBranch);
   if (!key) return;
   const snapshot = sanitizeGitRepositorySnapshot(event.snapshot);
+  const signature = gitReviewSignature(snapshot);
+  const current = useRuntimeStore.getState().gitReviewByKey[key];
+  if (current?.signature === signature) return;
   useRuntimeStore.getState().setGitReview(key, {
     snapshot,
     error: snapshot.error ?? null,
     updatedAt: Date.now(),
+    signature,
   });
 }
 
@@ -92,40 +95,23 @@ export function useGitReviewSnapshot(projectPath?: string, baseBranch?: string |
   const snapshot = cached?.snapshot ?? emptyReviewSnapshot;
   const error = cached?.error ?? null;
 
-  const refresh = useCallback(async () => {
-    if (!projectPath || !window.__TAURI_INTERNALS__) {
-      return;
-    }
-    try {
-      const next = await invoke<GitReviewSnapshot>("git_review", {
-        projectPath,
-        baseBranch,
-      });
-      const normalized = sanitizeGitRepositorySnapshot(next);
-      useRuntimeStore.getState().setGitReview(reviewCacheKey(projectPath, baseBranch), {
-        snapshot: normalized,
-        error: normalized.error ?? null,
-        updatedAt: Date.now(),
-      });
-    } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : String(nextError);
-      useRuntimeStore.getState().setGitReview(reviewCacheKey(projectPath, baseBranch), {
-        snapshot: {
-          ...emptyReviewSnapshot,
-          error: message,
-        },
-        error: message,
-        updatedAt: Date.now(),
-      });
-    }
-  }, [baseBranch, projectPath]);
-
   return {
     snapshot,
+    updatedAt: cached?.updatedAt ?? 0,
     isLoading: false,
     error,
-    refresh,
   };
+}
+
+function gitReviewSignature(snapshot: GitReviewSnapshot) {
+  return JSON.stringify({
+    mode: snapshot.mode,
+    baseBranch: snapshot.baseBranch ?? null,
+    diffStat: snapshot.diffStat,
+    isRepository: snapshot.isRepository,
+    error: snapshot.error ?? null,
+    files: snapshot.files.map((file) => [file.path, file.status, file.additions, file.deletions]),
+  });
 }
 
 export async function loadGitReviewDiff(projectPath: string, path: string, baseBranch?: string | null) {

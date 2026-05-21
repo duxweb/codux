@@ -544,7 +544,8 @@ function PerformanceHUD() {
         .catch((error) => console.error("failed to load performance snapshot", error));
     };
     refresh();
-    const intervalMs = Math.max(1000, Number(settings.developerRefresh || 3) * 1000);
+    const minimumIntervalMs = isWindowsPlatform() ? 5000 : 1000;
+    const intervalMs = Math.max(minimumIntervalMs, Number(settings.developerRefresh || 3) * 1000);
     const timer = window.setInterval(refresh, intervalMs);
     return () => {
       isMounted = false;

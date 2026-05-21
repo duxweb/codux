@@ -17,6 +17,7 @@ export type GitReviewCacheEntry = {
   snapshot: GitReviewSnapshot;
   error: string | null;
   updatedAt: number;
+  signature?: string;
 };
 
 export type WorktreeCacheEntry = {

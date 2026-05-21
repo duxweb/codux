@@ -176,12 +176,16 @@ export function Workspace({ mainView, selectedProject, onSessionChange, terminal
           </div>
         );
       })}
-      <div className={mainView === "files" ? "h-full" : "hidden"}>
-        <FilesMode project={selectedProject} />
-      </div>
-      <div className={mainView === "review" ? "h-full" : "hidden"}>
-        <ReviewMode project={selectedProject} />
-      </div>
+      {mainView === "files" && (
+        <div className="h-full">
+          <FilesMode project={selectedProject} />
+        </div>
+      )}
+      {mainView === "review" && (
+        <div className="h-full">
+          <ReviewMode project={selectedProject} />
+        </div>
+      )}
     </section>
   );
 }
@@ -1913,6 +1917,7 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
   const baseBranch = project?.isDefaultWorktree ? null : project?.baseBranch;
   const review = useGitReviewSnapshot(project?.path, baseBranch);
   const snapshot = review.snapshot;
+  const reviewUpdatedAt = review.updatedAt;
   const [selectedPath, setSelectedPath] = useState("");
   const [expandedReviewPaths, setExpandedReviewPaths] = useState<Set<string>>(new Set());
   const [content, setContent] = useState<GitReviewContentSnapshot | null>(null);
@@ -1937,7 +1942,8 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
       : (project?.path ?? tm("worktree.review.audit_working_tree", "Working Tree"));
   const totalAdditions = snapshot.files.reduce((sum, file) => sum + file.additions, 0);
   const totalDeletions = snapshot.files.reduce((sum, file) => sum + file.deletions, 0);
-  const language = languageForPath(selectedFile?.path ?? "");
+  const selectedFilePath = selectedFile?.path ?? "";
+  const language = languageForPath(selectedFilePath);
   const addedReviewLineHighlights = useMemo(() => addedLineHighlights(content), [content]);
   const deletedReviewLineHighlights = useMemo(() => deletedLineHighlights(content), [content]);
 
@@ -1977,14 +1983,17 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
   }, [snapshot.files]);
 
   useEffect(() => {
-    if (!project?.path || !selectedFile) {
+    if (!project?.path || !selectedFilePath) {
       setContent(null);
       setDiffError(null);
       return;
     }
     let disposed = false;
+    const projectPath = project.path;
+    const filePath = selectedFilePath;
+    const baseBranch = snapshot.baseBranch;
     setDiffError(null);
-    void loadGitReviewFileContent(project.path, selectedFile.path, snapshot.baseBranch)
+    void loadGitReviewFileContent(projectPath, filePath, baseBranch)
       .then((nextContent) => {
         if (disposed) return;
         setContent(nextContent);
@@ -1998,12 +2007,12 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
     return () => {
       disposed = true;
     };
-  }, [project?.path, selectedFile, snapshot.baseBranch]);
+  }, [project?.path, selectedFilePath, snapshot.baseBranch, reviewUpdatedAt]);
 
   useEffect(() => {
     reviewScrollSourceRef.current = "";
     setReviewScrollTop(0);
-  }, [selectedFile?.path, snapshot.baseBranch]);
+  }, [selectedFilePath, snapshot.baseBranch]);
 
   const handleReviewColumnScroll = useCallback((source: string, info: CodeEditorScrollInfo) => {
     reviewScrollSourceRef.current = source;
