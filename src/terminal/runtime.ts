@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { TerminalEvent, TerminalSession } from "../types";
 import { readConfiguredShell } from "../settings";
 
-const MAX_HISTORY_CHARS = 2_000_000;
+const MAX_REPLAY_CHARS = 160_000;
 
 export type TerminalRuntimeSession = TerminalSession & {
   key: string;
@@ -11,18 +11,19 @@ export type TerminalRuntimeSession = TerminalSession & {
   backendId?: string;
   command?: string;
   tool?: string;
-  history: string;
+  replayBuffer: string;
+  hasSnapshot: boolean;
 };
 
 export type TerminalRuntimeEvent =
   | { type: "output"; data: string; session: TerminalRuntimeSessionSnapshot }
-  | { type: "reset"; session: TerminalRuntimeSession }
+  | { type: "reset"; session: TerminalRuntimeSession; history?: string }
   | { type: "state"; session: TerminalRuntimeSession }
   | { type: "closed"; sessionId: string };
 
 export type TerminalListener = (event: TerminalRuntimeEvent) => void;
 
-export type TerminalRuntimeSessionSnapshot = Omit<TerminalRuntimeSession, "history">;
+export type TerminalRuntimeSessionSnapshot = Omit<TerminalRuntimeSession, "replayBuffer">;
 
 type EnsureTerminalOptions = {
   projectId: string;
@@ -174,6 +175,15 @@ export class TerminalRuntime {
     void invoke("terminal_interrupt", { sessionId: session.backendId });
   }
 
+  async snapshot(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+    if (!session.backendId || !window.__TAURI_INTERNALS__) {
+      return session.replayBuffer;
+    }
+    return invoke<string>("terminal_snapshot", { sessionId: session.backendId });
+  }
+
   ensureAttachedSession(options: AttachedSessionOptions) {
     const key = `attached:${options.backendId}`;
     const existing = [...(this.backendToSessionIds.get(options.backendId) ?? [])]
@@ -236,10 +246,11 @@ export class TerminalRuntime {
     this.updateSession(sessionId, {
       backendId: undefined,
       exitCode: undefined,
-      history: "",
+      replayBuffer: "",
+      hasSnapshot: false,
       state: "starting",
     });
-    this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)! });
+    this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)!, history: "" });
     this.enqueueBackendStart(sessionId, {
       projectId: session.projectId,
       slotId: session.slotId,
@@ -290,7 +301,8 @@ export class TerminalRuntime {
       tool: options.tool,
       shell: "login shell",
       state: "starting",
-      history: "",
+      replayBuffer: "",
+      hasSnapshot: false,
     };
   }
 
@@ -322,8 +334,8 @@ export class TerminalRuntime {
         "",
         `${options.cwd} $ `,
       ].join("\r\n");
-      this.updateSession(sessionId, { state: "running", history: preview });
-      this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)! });
+      this.updateSession(sessionId, { state: "running", replayBuffer: preview, hasSnapshot: true });
+      this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)!, history: preview });
       return;
     }
 
@@ -376,8 +388,12 @@ export class TerminalRuntime {
       const history = await invoke<string>("terminal_snapshot", { sessionId: backendId });
       if (!this.sessions.has(sessionId)) return;
       if (history) {
-        this.updateSession(sessionId, { history, state: "running" });
-        this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)! });
+        this.updateSession(sessionId, {
+          replayBuffer: trimReplayBuffer(history),
+          hasSnapshot: true,
+          state: "running",
+        });
+        this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)!, history });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -457,10 +473,7 @@ export class TerminalRuntime {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    session.history += data;
-    if (session.history.length > MAX_HISTORY_CHARS) {
-      session.history = session.history.slice(session.history.length - MAX_HISTORY_CHARS);
-    }
+    session.replayBuffer = trimReplayBuffer(session.replayBuffer + data);
     if (session.backendId && session.state === "starting") {
       session.state = "running";
       this.emit(sessionId, { type: "state", session: { ...session } });
@@ -501,8 +514,17 @@ function createTerminalId(sequence: number) {
 }
 
 function sessionSnapshot(session: TerminalRuntimeSession): TerminalRuntimeSessionSnapshot {
-  const { history: _history, ...snapshot } = session;
+  const { replayBuffer: _replayBuffer, ...snapshot } = session;
   return { ...snapshot };
+}
+
+export function terminalReplayBuffer(session?: TerminalRuntimeSession) {
+  return session?.replayBuffer;
+}
+
+function trimReplayBuffer(value: string) {
+  if (value.length <= MAX_REPLAY_CHARS) return value;
+  return value.slice(value.length - MAX_REPLAY_CHARS);
 }
 
 function nextAnimationFrame() {

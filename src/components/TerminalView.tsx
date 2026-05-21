@@ -6,7 +6,12 @@ import { Copy, Maximize2, PanelBottomClose, Plus, RefreshCw, Square, TerminalSqu
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readAppSettings, readTerminalFontSize, subscribeAppSettings } from "../settings";
 import { registerTerminalInput } from "../terminal/focus";
-import { terminalRuntime, type TerminalRuntimeEvent, type TerminalRuntimeSession } from "../terminal/runtime";
+import {
+  terminalReplayBuffer,
+  terminalRuntime,
+  type TerminalRuntimeEvent,
+  type TerminalRuntimeSession,
+} from "../terminal/runtime";
 import { t } from "../i18n";
 import { isWindowsPlatform } from "../platform";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
@@ -429,7 +434,7 @@ export function TerminalView({
         return;
       }
       if (event.type === "reset") {
-        adapter.reset(event.session.history);
+        adapter.reset(event.history ?? terminalReplayBuffer(event.session));
         adapter.setInputEnabled(event.session.state === "running");
         sessionRef.current = event.session;
         setSession(event.session);
@@ -452,7 +457,18 @@ export function TerminalView({
     const current = terminalRuntime.getSession(terminalId);
     sessionRef.current = current;
     setSession(current);
-    adapter.reset(current?.history);
+    let cancelled = false;
+    void terminalRuntime
+      .snapshot(terminalId)
+      .then((history) => {
+        if (cancelled) return;
+        if (terminalRuntime.getSession(terminalId)?.id !== terminalId) return;
+        adapter.reset(history ?? terminalReplayBuffer(terminalRuntime.getSession(terminalId)));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        adapter.reset(terminalReplayBuffer(current));
+      });
     adapter.setInputEnabled(current?.state === "running");
     terminalRuntime.ensureStarted(terminalId);
     const unsubscribe = terminalRuntime.subscribe(terminalId, applyEvent);
@@ -461,6 +477,7 @@ export function TerminalView({
     });
 
     return () => {
+      cancelled = true;
       window.cancelAnimationFrame(fitFrame);
       unsubscribe();
       if (resizeFrameRef.current !== null) {

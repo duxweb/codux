@@ -156,7 +156,7 @@ describe("terminal runtime", () => {
     await Promise.resolve();
 
     expect(runtime.getSession(session.id)?.backendId).toBe("backend-early");
-    expect(runtime.getSession(session.id)?.history).toBe("early prompt");
+    expect(runtime.getSession(session.id)?.replayBuffer).toBe("early prompt");
     expect(runtime.getSession(session.id)?.state).toBe("running");
   });
 
@@ -190,6 +190,6 @@ describe("terminal runtime", () => {
 
     expect(events).toHaveLength(1);
     expect((events[0] as { session: { history?: string } }).session.history).toBeUndefined();
-    expect(runtime.getSession(session.id)?.history).toBe("line 1");
+    expect(runtime.getSession(session.id)?.replayBuffer).toBe("line 1");
   });
 });

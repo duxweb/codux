@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { installDesktopBrowserBehavior } from "./desktopBehavior";
 import { lockRuntimeLocale, syncI18nBundleFromRust } from "./i18n";
@@ -10,6 +11,7 @@ import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 
 const uninstallDesktopBrowserBehavior = installDesktopBrowserBehavior();
+const uninstallDevtoolsShortcut = installDevtoolsShortcut();
 
 const route = window.location.hash.replace(/^#/, "");
 const routePath = route.split("?")[0] || route;
@@ -103,6 +105,7 @@ void bootstrapRoot()
 
 const uninstallAppRuntime = () => {
   uninstallDesktopBrowserBehavior();
+  uninstallDevtoolsShortcut();
   uninstallSystemTheme();
   uninstallSettingsThemeSync();
 };
@@ -117,6 +120,20 @@ function syncInitialThemeAndLocale() {
   applyConfiguredTheme(runtimeThemeSettings);
   lockRuntimeLocale(runtimeThemeSettings);
   return runtimeThemeSettings;
+}
+
+function installDevtoolsShortcut() {
+  if (!window.__TAURI_INTERNALS__) return () => undefined;
+  const handleKeyDown = (event: KeyboardEvent) => {
+    const isToggle =
+      event.key === "F12" || (event.key.toLowerCase() === "i" && event.ctrlKey && event.shiftKey);
+    if (!isToggle) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void invoke("app_toggle_devtools");
+  };
+  window.addEventListener("keydown", handleKeyDown, true);
+  return () => window.removeEventListener("keydown", handleKeyDown, true);
 }
 
 async function syncStartupResources() {
