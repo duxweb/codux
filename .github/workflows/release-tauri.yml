@@ -1,0 +1,97 @@
+name: Release Tauri
+
+on:
+  push:
+    tags:
+      - "tauri-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Source tag or branch to build, for example tauri-v1.0.0-beta.1. Defaults to tauri."
+        required: false
+        default: tauri
+        type: string
+      channel:
+        description: "Updater channel to publish."
+        required: false
+        default: beta
+        type: choice
+        options:
+          - beta
+          - stable
+
+permissions:
+  contents: write
+
+jobs:
+  publish-tauri:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: windows-latest
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    env:
+      SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || (contains(github.ref_name, '-beta') && 'beta' || 'stable') }}
+      RELEASE_TAG: ${{ format('tauri-{0}', github.event_name == 'workflow_dispatch' && inputs.channel || (contains(github.ref_name, '-beta') && 'beta' || 'stable')) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and publish Tauri bundles
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Codux Tauri ${{ env.RELEASE_CHANNEL }}
+          releaseBody: Cross-platform Codux Tauri ${{ env.RELEASE_CHANNEL }} release built from `${{ env.SOURCE_REF }}`. The `latest.json` asset is used by the in-app Tauri updater.
+          releaseCommitish: ${{ env.SOURCE_REF }}
+          releaseDraft: false
+          prerelease: ${{ env.RELEASE_CHANNEL == 'beta' }}
+          projectPath: .
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          releaseAssetNamePattern: codux-tauri-[version]-[platform]-[arch].[ext]
