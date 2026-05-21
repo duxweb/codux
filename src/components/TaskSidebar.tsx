@@ -122,8 +122,9 @@ export function TaskSidebar({
 
   const selectWorktree = useCallback(
     (id: string) => {
-      if (selectedRowId === id) return;
-      setOptimisticSelectedId(id);
+      if (selectedRowId !== id) {
+        setOptimisticSelectedId(id);
+      }
       onSelectWorktree?.(id);
     },
     [onSelectWorktree, selectedRowId],

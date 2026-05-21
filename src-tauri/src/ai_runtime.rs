@@ -572,6 +572,7 @@ impl AIRuntimeBridge {
         if !self.mark_starting() {
             return;
         }
+        reset_runtime_live_log();
         let runtime = Arc::clone(self);
         if let Err(error) = thread::Builder::new()
             .name("codux-ai-runtime-startup".to_string())
@@ -2812,6 +2813,14 @@ fn runtime_root_dir() -> PathBuf {
 
 fn runtime_live_log_path() -> PathBuf {
     runtime_temp_dir().join("live.log")
+}
+
+fn reset_runtime_live_log() {
+    let path = runtime_live_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(path, "");
 }
 
 fn runtime_log_line(category: &str, message: &str) {

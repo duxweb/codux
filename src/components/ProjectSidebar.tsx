@@ -100,8 +100,9 @@ export function ProjectSidebar({
 
   const selectProject = useCallback(
     (id: string) => {
-      if (displayedSelectedProjectId === id) return;
-      setOptimisticSelectedProjectId(id);
+      if (displayedSelectedProjectId !== id) {
+        setOptimisticSelectedProjectId(id);
+      }
       onSelect(id);
     },
     [displayedSelectedProjectId, onSelect],
