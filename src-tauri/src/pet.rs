@@ -1,5 +1,7 @@
 use crate::ai_history::{AIGlobalHistorySnapshot, AIHistoryProjectRequest, AISessionSummary};
-use crate::paths::{app_support_dir, home_dir};
+use crate::paths::app_support_dir;
+#[cfg(target_os = "macos")]
+use crate::paths::home_dir;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{engine::general_purpose, Engine as _};

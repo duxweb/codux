@@ -8,7 +8,10 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+#[cfg(unix)]
+use std::io::Read;
+use std::io::{BufRead, BufReader};
+#[cfg(unix)]
 use std::net::Shutdown;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -3328,6 +3331,9 @@ fn stage_runtime_asset(
     destination: &Path,
     executable: bool,
 ) -> Result<(), String> {
+    #[cfg(not(unix))]
+    let _ = executable;
+
     let source = runtime_assets_root().join(relative_path);
     let content = fs::read(&source)
         .map_err(|error| format!("read asset {} failed: {error}", source.display()))?;

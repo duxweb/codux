@@ -598,15 +598,18 @@ fn is_allowed_git_metadata_path(relative: &str) -> bool {
     #[cfg(windows)]
     {
         let relative = relative.to_ascii_lowercase();
-        return match relative.as_str() {
+        match relative.as_str() {
             "head" | "index" | "fetch_head" | "orig_head" | "packed-refs" => true,
             _ => relative.starts_with("refs/") || relative.starts_with("logs/head"),
-        };
+        }
     }
 
-    match relative {
-        "HEAD" | "index" | "FETCH_HEAD" | "ORIG_HEAD" | "packed-refs" => true,
-        _ => relative.starts_with("refs/") || relative.starts_with("logs/HEAD"),
+    #[cfg(not(windows))]
+    {
+        match relative {
+            "HEAD" | "index" | "FETCH_HEAD" | "ORIG_HEAD" | "packed-refs" => true,
+            _ => relative.starts_with("refs/") || relative.starts_with("logs/HEAD"),
+        }
     }
 }
 
