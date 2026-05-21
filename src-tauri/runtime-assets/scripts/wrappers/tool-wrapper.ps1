@@ -22,14 +22,18 @@ function Join-PathList([string[]]$Values) {
   return ($Values | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [IO.Path]::PathSeparator
 }
 
-function Same-Directory([string]$A, [string]$B) {
+function Normalize-Directory([string]$Value) {
   try {
-    $left = [IO.Path]::GetFullPath($A).TrimEnd('\', '/')
-    $right = [IO.Path]::GetFullPath($B).TrimEnd('\', '/')
-    return [string]::Equals($left, $right, [StringComparison]::OrdinalIgnoreCase)
+    return [IO.DirectoryInfo]::new($Value).FullName.TrimEnd('\', '/')
   } catch {
-    return $false
+    return $Value.TrimEnd('\', '/')
   }
+}
+
+function Same-Directory([string]$A, [string]$B) {
+  $left = Normalize-Directory $A
+  $right = Normalize-Directory $B
+  return [string]::Equals($left, $right, [StringComparison]::OrdinalIgnoreCase)
 }
 
 function Filter-Wrapper-Path([string]$Value) {

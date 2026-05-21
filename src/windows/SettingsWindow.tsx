@@ -564,10 +564,8 @@ function shellOptionsForPlatform() {
   const isMac = platform.includes("mac");
   const shells = isWindows
     ? [
-        { value: "powershell.exe", label: "Windows PowerShell" },
         { value: "pwsh.exe", label: "PowerShell 7" },
-        { value: "cmd.exe", label: "Command Prompt" },
-        { value: "bash.exe", label: "Git Bash" },
+        { value: "powershell.exe", label: "Windows PowerShell" },
       ]
     : isMac
       ? ["zsh", "bash", "sh", "fish"].map((value) => ({ value, label: value }))

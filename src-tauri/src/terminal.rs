@@ -1126,14 +1126,6 @@ fn build_shell_command(shell: &str, initial_command: Option<&str>) -> CommandBui
         return command;
     }
 
-    if matches!(shell_name.as_deref(), Some("cmd.exe" | "cmd")) {
-        command.arg("/K");
-        if let Some(initial_command) = initial_command {
-            command.arg(initial_command);
-        }
-        return command;
-    }
-
     if let Some(initial_command) = initial_command {
         command.arg(initial_command);
     }
@@ -1183,16 +1175,6 @@ fn windows_shell_candidates() -> Vec<String> {
                 .display()
                 .to_string(),
         );
-        candidates.push(
-            Path::new(&system_root)
-                .join("System32")
-                .join("cmd.exe")
-                .display()
-                .to_string(),
-        );
-    }
-    if let Ok(comspec) = env::var("COMSPEC") {
-        candidates.push(comspec);
     }
     candidates.push("powershell.exe".to_string());
     candidates
