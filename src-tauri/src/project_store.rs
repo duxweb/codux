@@ -634,28 +634,7 @@ fn sanitize_snapshot(snapshot: AppSnapshot) -> AppSnapshot {
 }
 
 fn seed_snapshot() -> AppSnapshot {
-    let cwd = std::env::current_dir()
-        .ok()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "/Volumes/Web/codux-tauri".to_string());
-    let mut projects = vec![project_record("codux-tauri", &cwd, "TA", "active")];
-    if Path::new("/Volumes/Web/codux").exists() {
-        projects.push(project_record(
-            "codux",
-            "/Volumes/Web/codux",
-            "SW",
-            "reference",
-        ));
-    }
-    let selected_project_id = projects.first().map(|project| project.id.clone());
-    AppSnapshot {
-        projects,
-        worktrees: Vec::new(),
-        worktree_tasks: Vec::new(),
-        terminal_layouts: HashMap::new(),
-        selected_project_id,
-        selected_worktree_id_by_project: HashMap::new(),
-    }
+    AppSnapshot::default()
 }
 
 fn sanitize_terminal_layout(layout: TerminalLayoutRecord) -> Option<TerminalLayoutRecord> {
@@ -1106,19 +1085,6 @@ fn sanitize_worktree_tasks(
             Some(task)
         })
         .collect()
-}
-
-fn project_record(name: &str, path: &str, badge: &str, _status: &str) -> ProjectRecord {
-    let path = normalize_path(path);
-    ProjectRecord {
-        id: project_uuid(name, &path),
-        name: name.to_string(),
-        path,
-        badge_text: Some(badge.to_string()),
-        badge_symbol: None,
-        badge_color_hex: None,
-        git_default_push_remote_name: None,
-    }
 }
 
 fn project_summary(project: &ProjectRecord) -> ProjectSummary {
