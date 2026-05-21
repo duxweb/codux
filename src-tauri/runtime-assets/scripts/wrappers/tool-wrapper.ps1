@@ -155,20 +155,20 @@ function Stop-State([string]$Name) {
   & (Join-Path $wrapperDir "dmux-ai-state.cmd") "stop" "codux-tauri" $Name | Out-Null
 }
 
-function Invoke-Real-Binary([string]$Binary, [string[]]$Args, [string]$SearchPath, [string]$LaunchDir) {
+function Invoke-Real-Binary([string]$Binary, [string[]]$CommandArgs, [string]$SearchPath, [string]$LaunchDir) {
   $previousPath = $env:PATH
   try {
     $env:PATH = $SearchPath
     if (-not [string]::IsNullOrWhiteSpace($LaunchDir) -and (Test-Path -LiteralPath $LaunchDir)) {
       Push-Location -LiteralPath $LaunchDir
       try {
-        & $Binary @Args
+        & $Binary @CommandArgs
         return $LASTEXITCODE
       } finally {
         Pop-Location
       }
     }
-    & $Binary @Args
+    & $Binary @CommandArgs
     return $LASTEXITCODE
   } finally {
     $env:PATH = $previousPath
