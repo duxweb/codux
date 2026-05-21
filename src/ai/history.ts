@@ -201,16 +201,17 @@ export function useAIHistorySnapshot(project?: WorkspaceProject, options: AIHist
   const cachedState = useRuntimeStore((state) =>
     projectCacheKey ? state.aiProjectStateByKey[projectCacheKey] : undefined,
   );
-  const cachedSessions =
-    useRuntimeStore((state) =>
-      includeSessions && projectCacheKey ? state.aiProjectSessionsByKey[projectCacheKey]?.sessions : undefined,
-    ) ?? [];
+  const cachedSessions = useRuntimeStore((state) =>
+    includeSessions && projectCacheKey ? state.aiProjectSessionsByKey[projectCacheKey]?.sessions : undefined,
+  );
   const storedSnapshot = cachedState?.snapshot ?? emptyHistorySnapshot(project);
   const snapshot = useMemo(
-    () =>
-      storedSnapshot.sessions === cachedSessions
+    () => {
+      const sessions = cachedSessions ?? [];
+      return storedSnapshot.sessions === sessions
         ? storedSnapshot
-        : { ...storedSnapshot, sessions: cachedSessions },
+        : { ...storedSnapshot, sessions };
+    },
     [cachedSessions, storedSnapshot],
   );
   const isLoading = cachedState?.isLoading ?? false;
