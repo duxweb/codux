@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useEffect, useState } from "react";
 import { useRuntimeStore } from "../runtimeStore";
 import { sanitizeGitRepositorySnapshot } from "./status";
 
@@ -94,11 +95,35 @@ export function useGitReviewSnapshot(projectPath?: string, baseBranch?: string |
   const cached = useRuntimeStore((state) => (cacheKey ? state.gitReviewByKey[cacheKey] : undefined));
   const snapshot = cached?.snapshot ?? emptyReviewSnapshot;
   const error = cached?.error ?? null;
+  const [isLoading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__ || !projectPath || cached) {
+      setLoading(false);
+      return;
+    }
+    let disposed = false;
+    setLoading(true);
+    invoke<GitReviewSnapshot>("git_review", {
+      projectPath,
+      baseBranch,
+    })
+      .catch((reason) => {
+        if (disposed) return;
+        console.error("failed to refresh git review snapshot", reason);
+      })
+      .finally(() => {
+        if (!disposed) setLoading(false);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [baseBranch, cacheKey, cached, projectPath]);
 
   return {
     snapshot,
     updatedAt: cached?.updatedAt ?? 0,
-    isLoading: false,
+    isLoading,
     error,
   };
 }

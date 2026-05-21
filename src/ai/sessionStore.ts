@@ -220,14 +220,26 @@ export class AISessionStore {
     let hasCompletedTurn = session.hasCompletedTurn;
     let activeTurnStartedAt = session.activeTurnStartedAt;
     let runtimeTurnStartedAt = session.runtimeTurnStartedAt;
+    const snapshotIsNewer = (snapshot.updatedAt || 0) > session.updatedAt;
+    const promptTurnStartedAt = session.activeTurnStartedAt ?? session.startedAt ?? session.updatedAt;
 
     if (responseState === "responding") {
-      if (!session.wasInterrupted && !session.hasCompletedTurn) {
+      const snapshotStartedAfterPrompt =
+        snapshot.startedAt != null && snapshot.startedAt >= promptTurnStartedAt;
+      if (
+        session.state === "responding" ||
+        (!session.wasInterrupted && !session.hasCompletedTurn && (snapshotIsNewer || session.state === "idle")) ||
+        snapshotStartedAfterPrompt
+      ) {
         state = "responding";
         wasInterrupted = false;
         hasCompletedTurn = false;
-        activeTurnStartedAt = activeTurnStartedAt ?? snapshot.startedAt ?? snapshotUpdatedAt;
-        runtimeTurnStartedAt = runtimeTurnStartedAt ?? snapshot.startedAt ?? snapshotUpdatedAt;
+        const started =
+          snapshot.startedAt != null && snapshot.startedAt >= promptTurnStartedAt
+            ? snapshot.startedAt
+            : Math.max(snapshot.updatedAt || 0, snapshotUpdatedAt);
+        activeTurnStartedAt = started;
+        runtimeTurnStartedAt = started;
       }
     } else if (
       responseState === "idle" &&
@@ -236,11 +248,23 @@ export class AISessionStore {
         snapshot.wasInterrupted ||
         snapshot.hasCompletedTurn)
     ) {
-      state = "idle";
-      activeTurnStartedAt = undefined;
-      runtimeTurnStartedAt = undefined;
-      wasInterrupted = Boolean(snapshot.wasInterrupted ?? false);
-      hasCompletedTurn = Boolean(snapshot.hasCompletedTurn ?? !wasInterrupted);
+      const turnCompletedAt =
+        snapshot.completedAt ?? (snapshot.wasInterrupted || snapshot.hasCompletedTurn ? snapshot.updatedAt : undefined);
+      const canResolveIdle =
+        snapshot.wasInterrupted || snapshot.hasCompletedTurn
+          ? turnCompletedAt != null && turnCompletedAt >= promptTurnStartedAt
+          : session.state === "needsInput"
+            ? true
+            : session.runtimeTurnStartedAt != null &&
+              session.runtimeTurnStartedAt >= promptTurnStartedAt &&
+              snapshot.updatedAt >= session.runtimeTurnStartedAt;
+      if (canResolveIdle) {
+        state = "idle";
+        activeTurnStartedAt = undefined;
+        runtimeTurnStartedAt = undefined;
+        wasInterrupted = Boolean(snapshot.wasInterrupted ?? false);
+        hasCompletedTurn = Boolean(snapshot.hasCompletedTurn ?? !wasInterrupted);
+      }
     }
 
     const next: AISessionSnapshot = {

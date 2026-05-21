@@ -4,7 +4,7 @@ import type { AIHistorySessionSummary } from "../ai/history";
 import type { AIStatisticsMode } from "../settings";
 import type { WorkspaceProject } from "../types";
 import { formatI18n, localeFromSettings, tm } from "../i18n";
-import { broadcastWorkspaceCommand } from "../workspaceCommands";
+import { dispatchWorkspaceCommand } from "../workspaceCommands";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
 import { PressableButton } from "./PressableButton";
 import { systemConfirm } from "../systemDialog";
@@ -175,7 +175,7 @@ const HistorySessionRow = memo(function HistorySessionRow({
 
 function restoreHistorySession(project: WorkspaceProject | undefined, session: AIHistorySessionSummary) {
   if (!project) return;
-  broadcastWorkspaceCommand({
+  dispatchWorkspaceCommand({
     type: "add-top-terminal-split",
     projectId: project.id,
     projectPath: project.path,

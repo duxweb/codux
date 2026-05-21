@@ -221,10 +221,14 @@ pub fn create_worktree(request: WorktreeCreateRequest) -> Result<WorktreeSnapsho
 pub fn remove_worktree(request: WorktreeRemoveRequest) -> Result<WorktreeSnapshot, String> {
     let root = repository_root(&request.project_path)
         .ok_or_else(|| "Not a Git repository.".to_string())?;
+    let branch_to_delete = removable_worktree_branch(&root, &request.worktree_path);
     git_output(
         Path::new(&root),
         &["worktree", "remove", request.worktree_path.as_str()],
     )?;
+    if let Some(branch) = branch_to_delete.as_deref() {
+        delete_local_branch(Path::new(&root), branch)?;
+    }
     Ok(worktree_snapshot(request.project_id, request.project_path))
 }
 
@@ -310,6 +314,33 @@ fn current_branch(path: &str) -> Option<String> {
         .ok()
         .as_ref()
         .and_then(current_branch_from_repo)
+}
+
+fn removable_worktree_branch(root: &str, worktree_path: &str) -> Option<String> {
+    let default_branch = current_branch(root);
+    let branch = current_branch(worktree_path)?;
+    if default_branch.as_deref() == Some(branch.as_str()) {
+        return None;
+    }
+    Some(branch)
+}
+
+fn delete_local_branch(cwd: &Path, branch: &str) -> Result<(), String> {
+    match git_output(cwd, &["branch", "-d", "--", branch]) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            if branch_delete_needs_force(&error) {
+                git_output(cwd, &["branch", "-D", "--", branch]).map(|_| ())
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+fn branch_delete_needs_force(error: &str) -> bool {
+    let error = error.to_lowercase();
+    error.contains("not fully merged") || error.contains("is not an ancestor")
 }
 
 fn commit_hash(ref_name: &str, path: &str) -> Option<String> {

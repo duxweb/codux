@@ -19,7 +19,16 @@ export function startWindowDrag(event: PointerEvent<HTMLElement>) {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest(NO_DRAG_SELECTOR)) return;
   event.preventDefault();
-  void getCurrentWindow()
+
+  const currentWindow = getCurrentWindow();
+  if (event.detail >= 2) {
+    void currentWindow.toggleMaximize().catch((error) => {
+      console.error("failed to toggle window maximize", error);
+    });
+    return;
+  }
+
+  void currentWindow
     .startDragging()
     .catch((error) => {
       console.error("failed to start window drag", error);

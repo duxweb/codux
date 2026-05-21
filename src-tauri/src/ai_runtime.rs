@@ -22,7 +22,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use tauri::async_runtime::{channel, Receiver, Sender};
-use tauri::window::{ProgressBarState, ProgressBarStatus};
 use tauri::Emitter;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
@@ -973,7 +972,7 @@ async fn ai_runtime_supervisor_loop(
                 }
                 refresh_transcript_monitors(
                     &transcript_monitors,
-                    &state.runtime_tracked_sessions(now_seconds()),
+                    &state.transcript_monitored_sessions(),
                 );
                 apply_runtime_window_state(&app, &state.snapshot(), &settings);
                 if let Some(completion) = mutation.completion {
@@ -990,7 +989,10 @@ async fn ai_runtime_supervisor_loop(
                 let snapshot = state.snapshot();
                 let tracked = state.runtime_tracked_sessions(now_seconds());
                 if tracked.is_empty() {
-                    clear_transcript_monitors(&transcript_monitors);
+                    refresh_transcript_monitors(
+                        &transcript_monitors,
+                        &state.transcript_monitored_sessions(),
+                    );
                     apply_runtime_window_state(&app, &snapshot, &settings);
                     continue;
                 }
@@ -1003,7 +1005,7 @@ async fn ai_runtime_supervisor_loop(
                 }
                 refresh_transcript_monitors(
                     &transcript_monitors,
-                    &state.runtime_tracked_sessions(now_seconds()),
+                    &state.transcript_monitored_sessions(),
                 );
                 apply_runtime_window_state(&app, &state.snapshot(), &settings);
                 if let Some(completion) = mutation.completion {
@@ -1037,7 +1039,7 @@ async fn ai_runtime_supervisor_loop(
                 }
                 refresh_transcript_monitors(
                     &transcript_monitors,
-                    &state.runtime_tracked_sessions(now_seconds()),
+                    &state.transcript_monitored_sessions(),
                 );
                 apply_runtime_window_state(&app, &state.snapshot(), &settings);
                 if let Some(completion) = mutation.completion {
@@ -1063,13 +1065,10 @@ fn poll_runtime_sessions(
     let terminal_snapshot = registry.snapshot();
     let mut mutation = state.reconcile_bridge_snapshot(&terminal_snapshot);
     let now = now_seconds();
-    for session in state.runtime_tracked_sessions(now) {
-        if terminal_ids
-            .map(|ids| !ids.contains(&session.terminal_id))
-            .unwrap_or(false)
-        {
-            continue;
-        }
+    let sessions = terminal_ids
+        .map(|ids| state.sessions_for_terminals(ids))
+        .unwrap_or_else(|| state.runtime_tracked_sessions(now));
+    for session in sessions {
         if !should_poll_session(&session, reason, now_seconds()) {
             continue;
         }
@@ -1196,18 +1195,6 @@ fn apply_runtime_window_state(
         let _ = window.set_badge_count(count);
         #[cfg(target_os = "macos")]
         let _ = window.set_badge_label(count.map(|value| value.to_string()));
-        let progress = if snapshot.running_count > 0 {
-            ProgressBarState {
-                status: Some(ProgressBarStatus::Normal),
-                progress: Some(35),
-            }
-        } else {
-            ProgressBarState {
-                status: Some(ProgressBarStatus::None),
-                progress: None,
-            }
-        };
-        let _ = window.set_progress_bar(progress);
     }
 }
 
@@ -1335,6 +1322,31 @@ impl AIRuntimeStateStore {
                 !session.has_completed_turn
                     && now - session.updated_at <= RUNNING_STALE_SECONDS * 3.0
             })
+            .cloned()
+            .collect()
+    }
+
+    fn transcript_monitored_sessions(&self) -> Vec<AISessionSnapshot> {
+        let Ok(core) = self.core.lock() else {
+            return Vec::new();
+        };
+        core.sessions
+            .values()
+            .filter(|session| is_codex_transcript_session(session))
+            .cloned()
+            .collect()
+    }
+
+    fn sessions_for_terminals(
+        &self,
+        terminal_ids: &std::collections::HashSet<String>,
+    ) -> Vec<AISessionSnapshot> {
+        let Ok(core) = self.core.lock() else {
+            return Vec::new();
+        };
+        core.sessions
+            .values()
+            .filter(|session| terminal_ids.contains(&session.terminal_id))
             .cloned()
             .collect()
     }
@@ -1680,15 +1692,29 @@ fn apply_runtime_snapshot_unlocked(
     let mut has_completed_turn = session.has_completed_turn;
     let mut active_turn_started_at = session.active_turn_started_at;
     let mut runtime_turn_started_at = session.runtime_turn_started_at;
+    let snapshot_is_newer = snapshot.updated_at > session.updated_at;
+    let prompt_turn_started_at = session
+        .active_turn_started_at
+        .or(session.started_at)
+        .unwrap_or(session.updated_at);
 
     if snapshot.response_state.as_deref() == Some("responding") {
-        if !session.was_interrupted && !session.has_completed_turn {
+        if session.state == "responding"
+            || (!session.was_interrupted
+                && !session.has_completed_turn
+                && (snapshot_is_newer || session.state == "idle"))
+            || snapshot_started_after_prompt_turn(&snapshot, prompt_turn_started_at)
+        {
             state = "responding".to_string();
             was_interrupted = false;
             has_completed_turn = false;
-            let started = snapshot.started_at.unwrap_or(snapshot_updated_at);
-            active_turn_started_at = active_turn_started_at.or(Some(started));
-            runtime_turn_started_at = runtime_turn_started_at.or(Some(started));
+            let started = runtime_turn_started_at_for_responding_snapshot(
+                &snapshot,
+                prompt_turn_started_at,
+                snapshot_updated_at,
+            );
+            active_turn_started_at = Some(started);
+            runtime_turn_started_at = Some(started);
         }
     } else if snapshot.response_state.as_deref() == Some("idle")
         && (session.state == "responding"
@@ -1696,11 +1722,27 @@ fn apply_runtime_snapshot_unlocked(
             || snapshot.was_interrupted
             || snapshot.has_completed_turn)
     {
-        state = "idle".to_string();
-        active_turn_started_at = None;
-        runtime_turn_started_at = None;
-        was_interrupted = snapshot.was_interrupted;
-        has_completed_turn = snapshot.has_completed_turn || !was_interrupted;
+        let turn_completed_at = snapshot.completed_at.or_else(|| {
+            (snapshot.was_interrupted || snapshot.has_completed_turn).then_some(snapshot.updated_at)
+        });
+        let can_resolve_idle = if snapshot.was_interrupted || snapshot.has_completed_turn {
+            turn_completed_at
+                .map(|completed_at| completed_at >= prompt_turn_started_at)
+                .unwrap_or(false)
+        } else if session.state == "needsInput" {
+            true
+        } else if let Some(observed_started_at) = session.runtime_turn_started_at {
+            observed_started_at >= prompt_turn_started_at && snapshot.updated_at >= observed_started_at
+        } else {
+            false
+        };
+        if can_resolve_idle {
+            state = "idle".to_string();
+            active_turn_started_at = None;
+            runtime_turn_started_at = None;
+            was_interrupted = snapshot.was_interrupted;
+            has_completed_turn = snapshot.has_completed_turn || !was_interrupted;
+        }
     }
 
     if let Some(started_at) = active_turn_started_at {
@@ -1736,6 +1778,26 @@ fn apply_runtime_snapshot_unlocked(
     }
     core.sessions.insert(terminal_id.to_string(), next);
     true
+}
+
+fn snapshot_started_after_prompt_turn(snapshot: &AIRuntimeContextSnapshot, prompt_turn_started_at: f64) -> bool {
+    snapshot
+        .started_at
+        .map(|started_at| started_at >= prompt_turn_started_at)
+        .unwrap_or(false)
+}
+
+fn runtime_turn_started_at_for_responding_snapshot(
+    snapshot: &AIRuntimeContextSnapshot,
+    prompt_turn_started_at: f64,
+    fallback: f64,
+) -> f64 {
+    if let Some(started_at) = snapshot.started_at {
+        if started_at >= prompt_turn_started_at {
+            return started_at;
+        }
+    }
+    snapshot.updated_at.max(fallback)
 }
 
 fn resolve_hook_event(
@@ -2233,12 +2295,6 @@ fn refresh_transcript_monitors(
     }
 }
 
-fn clear_transcript_monitors(monitors: &Arc<Mutex<HashMap<String, TranscriptMonitor>>>) {
-    if let Ok(mut monitors) = monitors.lock() {
-        monitors.clear();
-    }
-}
-
 fn scan_transcript_monitors(
     monitors: &mut HashMap<String, TranscriptMonitor>,
     now: f64,
@@ -2286,6 +2342,11 @@ fn should_poll_session(session: &AISessionSnapshot, reason: &str, now: f64) -> b
         return false;
     }
     session.state == "responding" || session.state == "needsInput" || !session.has_completed_turn
+}
+
+fn is_codex_transcript_session(session: &AISessionSnapshot) -> bool {
+    canonical_tool_name(&session.tool).as_deref() == Some("codex")
+        && normalized_string(session.transcript_path.as_deref()).is_some()
 }
 
 fn next_state(kind: &str, metadata: Option<&AIHookEventMetadata>) -> &'static str {
@@ -4822,6 +4883,119 @@ trusted_hash = "sha256:old-basic"
     }
 
     #[test]
+    fn runtime_snapshot_promotes_completed_session_back_to_responding() {
+        let mut core = AIRuntimeStateCore::default();
+        assert!(apply_hook_unlocked(
+            &mut core,
+            test_hook("promptSubmitted", 1000.0)
+        ));
+        assert!(apply_hook_unlocked(
+            &mut core,
+            AIHookEventPayload {
+                kind: "turnCompleted".to_string(),
+                total_tokens: Some(150),
+                updated_at: 1010.0,
+                metadata: Some(AIHookEventMetadata {
+                    has_completed_turn: Some(true),
+                    ..empty_metadata()
+                }),
+                ..test_hook("turnCompleted", 1010.0)
+            }
+        ));
+        assert!(matches!(
+            completed_phase_unlocked(&core, "project-1"),
+            AIProjectPhase::Completed { .. }
+        ));
+
+        assert!(apply_runtime_snapshot_unlocked(
+            &mut core,
+            "terminal-1",
+            AIRuntimeContextSnapshot {
+                tool: "codex".to_string(),
+                external_session_id: Some("session-1".to_string()),
+                model: Some("gpt-5.5".to_string()),
+                assistant_preview: None,
+                input_tokens: 120,
+                output_tokens: 80,
+                cached_input_tokens: 0,
+                total_tokens: 200,
+                updated_at: 1020.0,
+                started_at: Some(1020.0),
+                completed_at: None,
+                response_state: Some("responding".to_string()),
+                was_interrupted: false,
+                has_completed_turn: false,
+                session_origin: "fresh".to_string(),
+                source: "probe".to_string(),
+            }
+        ));
+
+        let session = core.sessions.get("terminal-1").unwrap();
+        assert_eq!(session.state, "responding");
+        assert!(!session.has_completed_turn);
+        assert!(matches!(
+            project_phase_unlocked(&core, "project-1"),
+            AIProjectPhase::Running { .. }
+        ));
+        assert_eq!(completed_phase_unlocked(&core, "project-1"), AIProjectPhase::Idle);
+    }
+
+    #[test]
+    fn runtime_snapshot_promotes_needs_input_session_back_to_responding() {
+        let mut core = AIRuntimeStateCore::default();
+        assert!(apply_hook_unlocked(
+            &mut core,
+            test_hook("promptSubmitted", 1000.0)
+        ));
+        assert!(apply_hook_unlocked(
+            &mut core,
+            AIHookEventPayload {
+                kind: "needsInput".to_string(),
+                updated_at: 1005.0,
+                metadata: Some(AIHookEventMetadata {
+                    notification_type: Some("permission".to_string()),
+                    ..empty_metadata()
+                }),
+                ..test_hook("needsInput", 1005.0)
+            }
+        ));
+        assert!(matches!(
+            project_phase_unlocked(&core, "project-1"),
+            AIProjectPhase::NeedsInput { .. }
+        ));
+
+        assert!(apply_runtime_snapshot_unlocked(
+            &mut core,
+            "terminal-1",
+            AIRuntimeContextSnapshot {
+                tool: "codex".to_string(),
+                external_session_id: Some("session-1".to_string()),
+                model: Some("gpt-5.5".to_string()),
+                assistant_preview: None,
+                input_tokens: 120,
+                output_tokens: 80,
+                cached_input_tokens: 0,
+                total_tokens: 200,
+                updated_at: 1020.0,
+                started_at: None,
+                completed_at: None,
+                response_state: Some("responding".to_string()),
+                was_interrupted: false,
+                has_completed_turn: false,
+                session_origin: "fresh".to_string(),
+                source: "probe".to_string(),
+            }
+        ));
+
+        let session = core.sessions.get("terminal-1").unwrap();
+        assert_eq!(session.state, "responding");
+        assert!(matches!(
+            project_phase_unlocked(&core, "project-1"),
+            AIProjectPhase::Running { .. }
+        ));
+    }
+
+    #[test]
     fn transcript_monitor_detects_tail_change_once_per_minimum_interval() {
         let transcript = write_temp_transcript("codex-tail", &["initial"]);
         let path = transcript.display().to_string();
@@ -4975,5 +5149,40 @@ trusted_hash = "sha256:old-basic"
         ));
         fs::write(&path, rows.join("\n") + "\n").unwrap();
         path
+    }
+
+    fn test_hook(kind: &str, updated_at: f64) -> AIHookEventPayload {
+        AIHookEventPayload {
+            kind: kind.to_string(),
+            terminal_id: "terminal-1".to_string(),
+            terminal_instance_id: Some("instance-1".to_string()),
+            project_id: "project-1".to_string(),
+            project_name: "Project".to_string(),
+            project_path: Some("/tmp/project".to_string()),
+            session_title: "Codex".to_string(),
+            tool: "codex".to_string(),
+            ai_session_id: Some("session-1".to_string()),
+            model: Some("gpt-5.5".to_string()),
+            input_tokens: None,
+            output_tokens: None,
+            cached_input_tokens: None,
+            total_tokens: None,
+            updated_at,
+            metadata: None,
+        }
+    }
+
+    fn empty_metadata() -> AIHookEventMetadata {
+        AIHookEventMetadata {
+            transcript_path: None,
+            notification_type: None,
+            source: None,
+            reason: None,
+            cwd: None,
+            target_tool_name: None,
+            message: None,
+            was_interrupted: None,
+            has_completed_turn: None,
+        }
     }
 }

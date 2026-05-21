@@ -31,9 +31,16 @@ import {
   useState,
   type CSSProperties,
   type Key,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { useAIHistorySnapshot, type AIHeatmapDay, type AITimeBucket, type AIUsageBreakdownItem } from "../ai/history";
+import {
+  useAIHistorySnapshot,
+  type AIHeatmapDay,
+  type AIHistorySnapshot,
+  type AITimeBucket,
+  type AIUsageBreakdownItem,
+} from "../ai/history";
 import { aiIndexingPresentation } from "../ai/panelPresentation";
 import { useAIRuntimeSnapshot, type AISessionSnapshot } from "../ai/runtime";
 import {
@@ -303,6 +310,8 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [isSubmittingCommit, setSubmittingCommit] = useState(false);
+  const [gitHistoryHeight, setGitHistoryHeight] = useState(190);
+  const gitContentRef = useRef<HTMLDivElement | null>(null);
   const git = useGitStatusSnapshot(project);
   const [isManualRefreshing, refreshGit] = useRefreshFeedback(git.refresh);
   const isRefreshingGit = git.isLoading || isManualRefreshing;
@@ -742,6 +751,25 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
         return;
     }
   };
+  const beginGitHistoryResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = gitHistoryHeight;
+    const contentHeight = gitContentRef.current?.clientHeight ?? 640;
+    const maxHeight = Math.max(180, Math.round(contentHeight * 0.6));
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextHeight = startHeight - (moveEvent.clientY - startY);
+      setGitHistoryHeight(Math.max(132, Math.min(maxHeight, Math.round(nextHeight))));
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+  };
 
   return (
     <>
@@ -1054,7 +1082,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
           }
         />
       ) : (
-        <div className="min-h-0 flex-1 flex flex-col">
+        <div ref={gitContentRef} className="min-h-0 flex-1 flex flex-col">
           <div className="flex-shrink-0 border-b border-line/80 p-3">
             <Textarea
               placeholder={tm("git.commit.message.placeholder", "Commit message")}
@@ -1318,7 +1346,13 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
             )}
           </div>
 
-          <div className="h-[190px] flex-shrink-0 border-t border-line/80 bg-surface-chrome/25">
+          <div className="relative flex-shrink-0 bg-surface-chrome/25" style={{ height: gitHistoryHeight }}>
+            <div
+              className="peer/git-history-resize absolute inset-x-0 top-[-5px] z-20 h-3 cursor-row-resize"
+              onPointerDown={beginGitHistoryResize}
+              aria-label={tm("common.resize", "Resize")}
+            />
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-line-strong/85 transition-colors peer-hover/git-history-resize:bg-brand-blue/70" />
             <PanelSection title={tm("git.history.title", "Git History")} className="h-full flex flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay pb-3">
                 {snapshot.commits.length > 0 ? (
@@ -3387,11 +3421,12 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
   const historySnapshot = history.snapshot;
   const { projectTotalTokens, todayTotalTokens, toolRankingRows, modelRankingRows } = useMemo(() => {
     const liveProjectTokens = displayedProjectTotals(projectTotals, statisticsMode);
+    const liveTodayTokens = displayedTodayProjectTotals(sessions, statisticsMode);
     return {
       projectTotalTokens:
         displayedProjectSummaryTotal(historySnapshot.projectSummary, statisticsMode) + liveProjectTokens,
       todayTotalTokens:
-        displayedProjectSummaryToday(historySnapshot.projectSummary, statisticsMode) + liveProjectTokens,
+        displayedProjectSummaryToday(historySnapshot, statisticsMode) + liveTodayTokens,
       toolRankingRows: toolRows(sessions, historySnapshot.toolBreakdown, statisticsMode),
       modelRankingRows: modelRows(sessions, historySnapshot.modelBreakdown, statisticsMode),
     };
@@ -3722,6 +3757,15 @@ function displayedProjectTotals(
   return Math.max(0, totals.totalTokens) + (mode === "includingCache" ? Math.max(0, totals.cachedInputTokens ?? 0) : 0);
 }
 
+function displayedTodayProjectTotals(sessions: AISessionSnapshot[], mode: AIStatisticsMode) {
+  const today = startOfLocalDay(new Date()).getTime();
+  return sessions.reduce((total, session) => {
+    const sessionDay = startOfLocalDay(new Date(session.updatedAt * 1000)).getTime();
+    if (sessionDay !== today) return total;
+    return total + displayedSessionDeltaTokens(session, mode);
+  }, 0);
+}
+
 function displayedProjectSummaryTotal(
   summary: { projectTotalTokens: number; projectCachedInputTokens: number },
   mode: AIStatisticsMode,
@@ -3729,11 +3773,33 @@ function displayedProjectSummaryTotal(
   return summary.projectTotalTokens + (mode === "includingCache" ? summary.projectCachedInputTokens : 0);
 }
 
-function displayedProjectSummaryToday(
-  summary: { todayTotalTokens: number; todayCachedInputTokens: number },
-  mode: AIStatisticsMode,
-) {
-  return summary.todayTotalTokens + (mode === "includingCache" ? summary.todayCachedInputTokens : 0);
+function displayedProjectSummaryToday(snapshot: AIHistorySnapshot, mode: AIStatisticsMode) {
+  const bucketTotal = snapshot.todayTimeBuckets.reduce((total, bucket) => total + displayedBucketTokens(bucket, mode), 0);
+  const today = startOfLocalDay(new Date()).getTime();
+  const heatmapTotal = snapshot.heatmap.reduce((total, day) => {
+    const dayStart = startOfLocalDay(new Date(day.day * 1000)).getTime();
+    return dayStart === today ? total + displayedHeatmapTokens(day, mode) : total;
+  }, 0);
+  const summaryTotal =
+    hasFreshTodayEvidence(snapshot, today)
+      ? Math.max(0, snapshot.projectSummary.todayTotalTokens) +
+        (mode === "includingCache" ? Math.max(0, snapshot.projectSummary.todayCachedInputTokens) : 0)
+      : 0;
+  return Math.max(summaryTotal, bucketTotal, heatmapTotal);
+}
+
+function hasFreshTodayEvidence(snapshot: AIHistorySnapshot, today: number) {
+  if (snapshot.todayTimeBuckets.some((bucket) => startOfLocalDay(new Date(bucket.start * 1000)).getTime() === today)) {
+    return true;
+  }
+  if (snapshot.heatmap.some((day) => startOfLocalDay(new Date(day.day * 1000)).getTime() === today)) {
+    return true;
+  }
+  const updatedAt = snapshot.projectSummary.currentSessionUpdatedAt;
+  if (updatedAt && startOfLocalDay(new Date(updatedAt * 1000)).getTime() === today) {
+    return true;
+  }
+  return Boolean(snapshot.indexedAt && startOfLocalDay(new Date(snapshot.indexedAt * 1000)).getTime() === today);
 }
 
 function displayedBucketTokens(bucket: AITimeBucket, mode: AIStatisticsMode) {

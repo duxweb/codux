@@ -77,6 +77,31 @@ function isTextEntryTarget(target: EventTarget | null) {
   return Boolean(field);
 }
 
+function isTerminalInputTarget(target: EventTarget | null) {
+  const element = target instanceof Element ? target : null;
+  return Boolean(element?.closest(".xterm, [data-codux-terminal-input='true']"));
+}
+
+function shouldSkipGlobalShortcutDispatch(event: KeyboardEvent) {
+  if (!isTerminalInputTarget(event.target)) return false;
+  return !isConfiguredShortcut(event, "terminal.split") &&
+    !isConfiguredShortcut(event, "terminal.tab") &&
+    !isConfiguredShortcut(event, "panel.git") &&
+    !isConfiguredShortcut(event, "panel.ai") &&
+    !isConfiguredShortcut(event, "view.terminal") &&
+    !isConfiguredShortcut(event, "view.files") &&
+    !isConfiguredShortcut(event, "view.review") &&
+    !isConfiguredShortcut(event, "close.active");
+}
+
+function worktreeIdsForProject(
+  project: WorkspaceProject,
+  snapshotsByKey: ReturnType<typeof useRuntimeStore.getState>["worktreeSnapshotByKey"],
+) {
+  const entry = snapshotsByKey[`${project.id}:${project.path}`];
+  return entry?.snapshot.worktrees.map((worktree) => worktree.id) ?? [project.id];
+}
+
 function App() {
   const cachedProjectSnapshot = window.__TAURI_INTERNALS__ ? readCachedProjectListSnapshot() : null;
   const initialProjects = cachedProjectSnapshot?.projects ?? (window.__TAURI_INTERNALS__ ? [] : fallbackProjects);
@@ -108,6 +133,7 @@ function App() {
   const [, startInspectorTransition] = useTransition();
   const focusScopeRef = useRef<ShortcutScope>("workspace");
   const activeWorkspaceKeyRef = useRef("");
+  const worktreeSnapshotByKey = useRuntimeStore((state) => state.worktreeSnapshotByKey);
 
   const applyProjectSnapshot = useCallback((snapshot: ProjectListSnapshot) => {
     writeCachedProjectListSnapshot(snapshot);
@@ -202,12 +228,12 @@ function App() {
     () =>
       projects.map((project) => {
         void aiVersion;
-        const phase = aggregateProjectPhase(project.id, selectedWorktreeByProject[project.id], (id) =>
+        const phase = aggregateProjectPhase(project.id, worktreeIdsForProject(project, worktreeSnapshotByKey), (id) =>
           resolveDisplayedProjectPhase(aiRuntime.projectPhase(id), aiRuntime.completedPhase(id)),
         );
         return { ...project, aiState: phaseToAIState(phase) };
       }),
-    [aiVersion, projects, selectedWorktreeByProject],
+    [aiVersion, projects, worktreeSnapshotByKey],
   );
   const pet = usePetLedger(projectsWithAIState, { enabled: isSecondaryStartupReady });
 
@@ -408,6 +434,7 @@ function App() {
   const selectWorktree = useCallback(
     (id: string) => {
       if (!selectedProjectWithAIState) return;
+      aiRuntime.dismissCompletion(id);
       setSelectedWorktreeByProject((existing) => {
         if (existing[selectedProjectWithAIState.id] === id) return existing;
         return {
@@ -538,6 +565,9 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldSkipGlobalShortcutDispatch(event)) {
+        return;
+      }
       const handled = dispatchShortcut(event, {
         focusScope: focusScopeRef.current,
         mainView,

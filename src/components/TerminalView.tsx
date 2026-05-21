@@ -23,6 +23,7 @@ type TerminalRendererAdapter = {
   focus: () => void;
   blur: () => void;
   fit: () => void;
+  refreshTheme: () => void;
   setFontSize: (fontSize: number) => void;
   setInputEnabled: (enabled: boolean) => void;
   copySelection: () => Promise<void>;
@@ -37,33 +38,34 @@ const MIN_ROWS = 8;
 const isWindowsTerminal = isWindowsPlatform();
 const useWebglTerminalRenderer = true;
 
-function cssVar(host: HTMLElement, name: string, fallback: string) {
-  return window.getComputedStyle(host).getPropertyValue(name).trim() || fallback;
+function cssVar(style: CSSStyleDeclaration, name: string, fallback: string) {
+  return style.getPropertyValue(name).trim() || fallback;
 }
 
 function xtermTheme(host: HTMLElement): ITheme {
+  const style = window.getComputedStyle(host);
   return {
-    background: cssVar(host, "--terminal-bg", "#101010"),
-    foreground: cssVar(host, "--terminal-fg", "#d8dee9"),
-    cursor: cssVar(host, "--terminal-cursor", "#d8dee9"),
-    cursorAccent: cssVar(host, "--terminal-bg", "#101010"),
+    background: cssVar(style, "--terminal-bg", "#101010"),
+    foreground: cssVar(style, "--terminal-fg", "#d8dee9"),
+    cursor: cssVar(style, "--terminal-cursor", "#d8dee9"),
+    cursorAccent: cssVar(style, "--terminal-bg", "#101010"),
     selectionBackground: "rgba(120, 160, 255, 0.28)",
-    black: cssVar(host, "--terminal-black", "#1f2328"),
-    red: cssVar(host, "--terminal-red", "#ff6b6b"),
-    green: cssVar(host, "--terminal-green", "#7bd88f"),
-    yellow: cssVar(host, "--terminal-yellow", "#f7d774"),
-    blue: cssVar(host, "--terminal-blue", "#82aaff"),
-    magenta: cssVar(host, "--terminal-magenta", "#c792ea"),
-    cyan: cssVar(host, "--terminal-cyan", "#89ddff"),
-    white: cssVar(host, "--terminal-white", "#d8dee9"),
-    brightBlack: cssVar(host, "--terminal-bright-black", "#6b7280"),
-    brightRed: cssVar(host, "--terminal-bright-red", "#ff8787"),
-    brightGreen: cssVar(host, "--terminal-bright-green", "#9be7aa"),
-    brightYellow: cssVar(host, "--terminal-bright-yellow", "#ffe08a"),
-    brightBlue: cssVar(host, "--terminal-bright-blue", "#9bbcff"),
-    brightMagenta: cssVar(host, "--terminal-bright-magenta", "#d7a8ff"),
-    brightCyan: cssVar(host, "--terminal-bright-cyan", "#a6eaff"),
-    brightWhite: cssVar(host, "--terminal-bright-white", "#ffffff"),
+    black: cssVar(style, "--terminal-black", "#1f2328"),
+    red: cssVar(style, "--terminal-red", "#ff6b6b"),
+    green: cssVar(style, "--terminal-green", "#7bd88f"),
+    yellow: cssVar(style, "--terminal-yellow", "#f7d774"),
+    blue: cssVar(style, "--terminal-blue", "#82aaff"),
+    magenta: cssVar(style, "--terminal-magenta", "#c792ea"),
+    cyan: cssVar(style, "--terminal-cyan", "#89ddff"),
+    white: cssVar(style, "--terminal-white", "#d8dee9"),
+    brightBlack: cssVar(style, "--terminal-bright-black", "#6b7280"),
+    brightRed: cssVar(style, "--terminal-bright-red", "#ff8787"),
+    brightGreen: cssVar(style, "--terminal-bright-green", "#9be7aa"),
+    brightYellow: cssVar(style, "--terminal-bright-yellow", "#ffe08a"),
+    brightBlue: cssVar(style, "--terminal-bright-blue", "#9bbcff"),
+    brightMagenta: cssVar(style, "--terminal-bright-magenta", "#d7a8ff"),
+    brightCyan: cssVar(style, "--terminal-bright-cyan", "#a6eaff"),
+    brightWhite: cssVar(style, "--terminal-bright-white", "#ffffff"),
   };
 }
 
@@ -101,6 +103,9 @@ function XtermRenderer({
     let disposed = false;
     let inputEnabled = false;
     let resizeFrame: number | null = null;
+    let pendingFitForce = false;
+    let lastFitWidth = -1;
+    let lastFitHeight = -1;
     let isSelecting = false;
     let unregisterInput: (() => void) | undefined;
 
@@ -206,9 +211,20 @@ function XtermRenderer({
       });
     }
 
-    const fit = () => {
+    const refreshTheme = () => {
       if (disposed || !host.isConnected) return;
       terminal.options.theme = xtermTheme(host);
+    };
+
+    const fit = (force = false) => {
+      if (disposed || !host.isConnected) return;
+      const width = host.clientWidth;
+      const height = host.clientHeight;
+      if (!force && width === lastFitWidth && height === lastFitHeight) {
+        return;
+      }
+      lastFitWidth = width;
+      lastFitHeight = height;
       const proposed = fitAddon.proposeDimensions();
       if (!proposed) return;
       const proposedCols = Math.floor(proposed.cols);
@@ -221,18 +237,30 @@ function XtermRenderer({
       }
     };
 
-    const scheduleFit = () => {
-      if (resizeFrame !== null) {
-        window.cancelAnimationFrame(resizeFrame);
-      }
+    const scheduleFit = (force = false) => {
+      pendingFitForce = pendingFitForce || force;
+      if (resizeFrame !== null) return;
       resizeFrame = window.requestAnimationFrame(() => {
+        const forceFit = pendingFitForce;
+        pendingFitForce = false;
         resizeFrame = null;
-        fit();
+        fit(forceFit);
       });
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (!inputEnabled) return false;
+      if (
+        event.type === "keydown" &&
+        event.metaKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        (event.key === "ArrowLeft" || event.key === "ArrowRight")
+      ) {
+        event.preventDefault();
+        onData(event.key === "ArrowLeft" ? "\x01" : "\x05");
+        return false;
+      }
       if (
         event.type === "keydown" &&
         event.altKey &&
@@ -254,9 +282,9 @@ function XtermRenderer({
       terminal.onResize(({ cols, rows }) => onResize(cols, rows)),
     );
 
-    const resizeObserver = new ResizeObserver(scheduleFit);
+    const resizeObserver = new ResizeObserver(() => scheduleFit());
     resizeObserver.observe(host);
-    scheduleFit();
+    scheduleFit(true);
 
     const adapter: TerminalRendererAdapter = {
       write: (data) => {
@@ -264,13 +292,11 @@ function XtermRenderer({
       },
       reset: (history) => {
         terminal.reset();
-        webglAddon?.clearTextureAtlas();
         if (history) terminal.write(history);
-        scheduleFit();
+        scheduleFit(true);
       },
       clear: () => {
         terminal.reset();
-        webglAddon?.clearTextureAtlas();
       },
       focus: () => {
         if (inputEnabled) terminal.focus();
@@ -279,11 +305,13 @@ function XtermRenderer({
         terminal.blur();
         host.classList.remove("focused");
       },
-      fit,
+      fit: () => fit(),
+      refreshTheme,
       setFontSize: (fontSize) => {
+        if (terminal.options.fontSize === fontSize) return;
         terminal.options.fontSize = fontSize;
         webglAddon?.clearTextureAtlas();
-        scheduleFit();
+        scheduleFit(true);
       },
       setInputEnabled: (enabled) => {
         inputEnabled = enabled;
@@ -517,7 +545,10 @@ export function TerminalView({
 
   useEffect(() => {
     const applySettings = () => {
-      adapterRef.current?.setFontSize(readTerminalFontSize(readAppSettings()));
+      const adapter = adapterRef.current;
+      if (!adapter) return;
+      adapter.setFontSize(readTerminalFontSize(readAppSettings()));
+      adapter.refreshTheme();
     };
     applySettings();
     return subscribeAppSettings(applySettings);

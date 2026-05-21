@@ -1,11 +1,12 @@
-use crate::ai_history::{AIGlobalHistorySnapshot, AIHistoryProjectRequest, AISessionSummary};
+use crate::ai_history::{AIHistoryProjectRequest, AISessionSummary};
+use crate::ai_usage_store::AIUsageProjectTotal;
 use crate::paths::app_support_dir;
 #[cfg(target_os = "macos")]
 use crate::paths::home_dir;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{engine::general_purpose, Engine as _};
-use chrono::{DateTime, Local, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Datelike, Local, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -88,8 +89,8 @@ pub struct PetProjectTokenTotal {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PetRefreshRequest {
-    #[serde(default)]
-    pub projects: Vec<AIHistoryProjectRequest>,
+    #[serde(rename = "projects", default)]
+    pub _projects: Vec<AIHistoryProjectRequest>,
 }
 
 #[derive(Debug, Clone)]
@@ -105,8 +106,8 @@ pub struct PetClaimRequest {
     pub species: String,
     pub custom_name: String,
     pub custom_pet: Option<PetCustomPet>,
-    #[serde(default)]
-    pub projects: Vec<AIHistoryProjectRequest>,
+    #[serde(rename = "projects", default)]
+    pub _projects: Vec<AIHistoryProjectRequest>,
 }
 
 #[derive(Debug, Clone)]
@@ -1013,51 +1014,40 @@ fn animation(state: &str, row: usize, frame_durations_ms: &[u64]) -> PetAnimatio
     }
 }
 
-pub fn refresh_input_from_summary(summary: AIGlobalHistorySnapshot) -> PetRefreshInput {
+pub fn refresh_input_from_indexed_history(
+    claimed_at: Option<i64>,
+    project_totals: Vec<AIUsageProjectTotal>,
+    all_time_total_tokens: i64,
+    sessions: Vec<AISessionSummary>,
+) -> PetRefreshInput {
     PetRefreshInput {
-        project_totals: project_totals_from_summary(&summary),
-        fallback_total_tokens: normalized_global_total(&summary),
-        computed_stats: pet_stats_from_sessions(&summary.sessions),
+        project_totals: if claimed_at.is_some() {
+            project_totals
+                .into_iter()
+                .map(|item| PetProjectTokenTotal {
+                    project_id: item.project_id,
+                    total_tokens: item.total_tokens,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
+        fallback_total_tokens: all_time_total_tokens.max(0),
+        computed_stats: pet_stats_from_sessions(&sessions),
     }
 }
 
-pub fn claim_input_from_summary(
+pub fn claim_input_from_indexed_history(
     request: PetClaimRequest,
-    summary: AIGlobalHistorySnapshot,
+    all_time_total_tokens: i64,
 ) -> PetClaimInput {
     PetClaimInput {
         species: request.species,
         custom_name: request.custom_name,
         custom_pet: request.custom_pet,
-        project_totals: project_totals_from_summary(&summary),
-        fallback_total_tokens: normalized_global_total(&summary),
+        project_totals: Vec::new(),
+        fallback_total_tokens: all_time_total_tokens.max(0),
     }
-}
-
-fn project_totals_from_summary(summary: &AIGlobalHistorySnapshot) -> Vec<PetProjectTokenTotal> {
-    let mut totals: HashMap<String, i64> = HashMap::new();
-    for session in &summary.sessions {
-        let project_id = session.project_id.trim();
-        if project_id.is_empty() {
-            continue;
-        }
-        *totals.entry(project_id.to_string()).or_default() += normalized_session_tokens(session);
-    }
-    totals
-        .into_iter()
-        .map(|(project_id, total_tokens)| PetProjectTokenTotal {
-            project_id,
-            total_tokens,
-        })
-        .collect()
-}
-
-fn normalized_global_total(summary: &AIGlobalHistorySnapshot) -> i64 {
-    (summary.total_tokens - summary.cached_input_tokens).max(0)
-}
-
-fn normalized_session_tokens(session: &AISessionSummary) -> i64 {
-    (session.total_tokens - session.cached_input_tokens).max(0)
 }
 
 fn refresh_state(state: &mut PetSnapshot, request: PetRefreshInput) {
@@ -1146,7 +1136,16 @@ fn reset_daily_tokens_if_needed(state: &mut PetSnapshot, now: i64) {
 }
 
 fn day_index(timestamp: i64) -> i64 {
-    timestamp.div_euclid(86_400)
+    let Some(date) = Local.timestamp_opt(timestamp, 0).single() else {
+        return timestamp.div_euclid(86_400);
+    };
+    let Some(start) = Local
+        .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+        .single()
+    else {
+        return timestamp.div_euclid(86_400);
+    };
+    start.timestamp().div_euclid(86_400)
 }
 
 fn apply_stats(state: &mut PetSnapshot, computed: PetStats, now: i64) {
@@ -2048,6 +2047,59 @@ mod tests {
                 .copied(),
             Some(130)
         );
+    }
+
+    #[test]
+    fn refresh_state_bootstraps_new_project_without_granting_old_history() {
+        let mut state = PetSnapshot {
+            claimed_at: Some(1),
+            current_experience_tokens: 100,
+            project_normalized_token_watermarks: HashMap::from([("project-a".to_string(), 130)]),
+            ..PetSnapshot::default()
+        };
+
+        refresh_state(
+            &mut state,
+            PetRefreshInput {
+                project_totals: vec![
+                    PetProjectTokenTotal {
+                        project_id: "project-a".to_string(),
+                        total_tokens: 130,
+                    },
+                    PetProjectTokenTotal {
+                        project_id: "project-b".to_string(),
+                        total_tokens: 900,
+                    },
+                ],
+                fallback_total_tokens: 1_030,
+                computed_stats: PetStats::default(),
+            },
+        );
+
+        assert_eq!(state.current_experience_tokens, 100);
+        assert_eq!(
+            state
+                .project_normalized_token_watermarks
+                .get("project-b")
+                .copied(),
+            Some(900)
+        );
+    }
+
+    #[test]
+    fn daily_experience_day_uses_local_calendar_day() {
+        let timestamp = Local
+            .with_ymd_and_hms(2026, 5, 22, 12, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp();
+        let start = Local
+            .with_ymd_and_hms(2026, 5, 22, 0, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp();
+
+        assert_eq!(day_index(timestamp), start.div_euclid(86_400));
     }
 
     #[test]

@@ -310,6 +310,32 @@ pub fn load_indexed_global_history(
     }))
 }
 
+pub fn global_today_normalized_tokens() -> Result<i64> {
+    let store = AIUsageStore::default();
+    let conn = store.connect()?;
+    store.global_today_normalized_tokens(&conn)
+}
+
+pub fn global_all_time_normalized_tokens() -> Result<i64> {
+    let store = AIUsageStore::default();
+    let conn = store.connect()?;
+    store.global_all_time_normalized_tokens(&conn)
+}
+
+pub fn indexed_sessions_since(cutoff: Option<f64>) -> Result<Vec<AISessionSummary>> {
+    let store = AIUsageStore::default();
+    let conn = store.connect()?;
+    store.indexed_sessions_since(&conn, cutoff)
+}
+
+pub fn normalized_project_totals_since(
+    cutoff: Option<f64>,
+) -> Result<Vec<crate::ai_usage_store::AIUsageProjectTotal>> {
+    let store = AIUsageStore::default();
+    let conn = store.connect()?;
+    store.normalized_project_totals_since(&conn, cutoff)
+}
+
 fn load_project_history_with_home(
     project: AIHistoryProjectRequest,
     home: &Path,

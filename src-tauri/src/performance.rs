@@ -12,6 +12,8 @@ pub struct PerformanceSnapshot {
 #[derive(Default)]
 pub struct PerformanceMonitor {
     previous: Mutex<Option<RawSample>>,
+    #[cfg(target_os = "macos")]
+    process_cache: Mutex<ProcessCache>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,7 +25,7 @@ struct RawSample {
 
 impl PerformanceMonitor {
     pub fn snapshot(&self) -> PerformanceSnapshot {
-        let Some(raw) = capture_raw_sample() else {
+        let Some(raw) = self.capture_raw_sample() else {
             return PerformanceSnapshot {
                 cpu_percent: 0.0,
                 memory_bytes: 0,
@@ -35,6 +37,16 @@ impl PerformanceMonitor {
             cpu_percent,
             memory_bytes: raw.memory_bytes,
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn capture_raw_sample(&self) -> Option<RawSample> {
+        capture_raw_sample(&self.process_cache)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn capture_raw_sample(&self) -> Option<RawSample> {
+        capture_raw_sample()
     }
 
     fn cpu_percent(&self, raw: &RawSample) -> f64 {
@@ -58,6 +70,13 @@ impl PerformanceMonitor {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct ProcessCache {
+    helper_pids: Vec<libc::pid_t>,
+    refreshed_at: Option<Instant>,
+}
+
 fn percent_delta(current: f64, previous: f64, wall_delta: f64) -> f64 {
     let cpu_delta = (current - previous).max(0.0);
     ((normalize_cpu_percent((cpu_delta / wall_delta) * 100.0)) * 10.0).round() / 10.0
@@ -79,15 +98,15 @@ fn normalize_cpu_percent(percent: f64) -> f64 {
 
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
-fn capture_raw_sample() -> Option<RawSample> {
+fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
     use libc::{c_char, c_int, c_void, gid_t, pid_t, uid_t};
-    use std::{ffi::CStr, mem};
+    use std::mem;
 
+    const CACHE_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
     const PROC_ALL_PIDS: u32 = 1;
     const PROC_PIDTASKINFO: c_int = 4;
     const PROC_PIDTBSDINFO: c_int = 3;
     const MAXCOMLEN: usize = 16;
-    const PROC_PIDPATHINFO_MAXSIZE: usize = 4096;
 
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -154,17 +173,20 @@ fn capture_raw_sample() -> Option<RawSample> {
             buffer: *mut c_void,
             buffersize: c_int,
         ) -> c_int;
-        fn proc_pidpath(pid: c_int, buffer: *mut c_void, buffersize: u32) -> c_int;
     }
 
     #[derive(Clone)]
     struct ProcessSample {
         pid: pid_t,
-        ppid: pid_t,
-        name: String,
-        path: String,
         cpu_seconds: f64,
         resident_bytes: u64,
+    }
+
+    struct ProcessIdentity {
+        pid: pid_t,
+        ppid: pid_t,
+        name: String,
+        started_at_micros: u64,
     }
 
     fn process_sample(pid: pid_t) -> Option<ProcessSample> {
@@ -182,6 +204,17 @@ fn capture_raw_sample() -> Option<RawSample> {
                 return None;
             }
 
+            Some(ProcessSample {
+                pid,
+                cpu_seconds: (task_info.total_user + task_info.total_system) as f64
+                    / 1_000_000_000.0,
+                resident_bytes: task_info.resident_size,
+            })
+        }
+    }
+
+    fn process_identity(pid: pid_t) -> Option<ProcessIdentity> {
+        unsafe {
             let mut bsd_info = mem::zeroed::<ProcBsdInfo>();
             let bsd_size = mem::size_of::<ProcBsdInfo>() as c_int;
             if proc_pidinfo(
@@ -195,30 +228,16 @@ fn capture_raw_sample() -> Option<RawSample> {
                 return None;
             }
 
-            let mut path_buffer = [0i8; PROC_PIDPATHINFO_MAXSIZE];
-            let path_len = proc_pidpath(
-                pid,
-                path_buffer.as_mut_ptr() as *mut c_void,
-                path_buffer.len() as u32,
-            );
-            let path = if path_len > 0 {
-                CStr::from_ptr(path_buffer.as_ptr())
-                    .to_string_lossy()
-                    .into_owned()
-            } else {
-                String::new()
-            };
-
-            Some(ProcessSample {
+            Some(ProcessIdentity {
                 pid,
                 ppid: bsd_info.ppid as pid_t,
                 name: c_char_array_to_string(&bsd_info.name)
                     .or_else(|| c_char_array_to_string(&bsd_info.comm))
                     .unwrap_or_default(),
-                path,
-                cpu_seconds: (task_info.total_user + task_info.total_system) as f64
-                    / 1_000_000_000.0,
-                resident_bytes: task_info.resident_size,
+                started_at_micros: bsd_info
+                    .start_tvsec
+                    .saturating_mul(1_000_000)
+                    .saturating_add(bsd_info.start_tvusec),
             })
         }
     }
@@ -257,10 +276,51 @@ fn capture_raw_sample() -> Option<RawSample> {
         }
     }
 
-    fn is_tauri_helper(sample: &ProcessSample, main: &ProcessSample) -> bool {
-        sample.ppid == main.pid
-            || (!main.path.is_empty() && sample.path.starts_with(&main.path))
-            || (!main.name.is_empty() && sample.name.starts_with(&main.name))
+    fn is_webkit_helper(name: &str) -> bool {
+        name.starts_with("com.apple.WebKit.")
+    }
+
+    fn refresh_helper_pids(cache: &mut ProcessCache, main_pid: pid_t, now: Instant) {
+        if cache
+            .refreshed_at
+            .is_some_and(|refreshed_at| now.duration_since(refreshed_at) < CACHE_REFRESH_INTERVAL)
+        {
+            return;
+        }
+
+        let Some(main_identity) = process_identity(main_pid) else {
+            return;
+        };
+        let earliest_webkit_start = main_identity.started_at_micros.saturating_sub(10_000_000);
+        let latest_webkit_start = main_identity.started_at_micros.saturating_add(120_000_000);
+
+        let mut helper_pids = Vec::new();
+
+        for pid in list_pids() {
+            if pid == main_pid {
+                continue;
+            }
+            let Some(identity) = process_identity(pid) else {
+                continue;
+            };
+
+            if identity.ppid == main_pid {
+                helper_pids.push(identity.pid);
+                continue;
+            }
+
+            if is_webkit_helper(&identity.name)
+                && identity.started_at_micros >= earliest_webkit_start
+                && identity.started_at_micros <= latest_webkit_start
+            {
+                helper_pids.push(identity.pid);
+            }
+        }
+
+        helper_pids.sort_unstable();
+        helper_pids.dedup();
+        cache.helper_pids = helper_pids;
+        cache.refreshed_at = Some(now);
     }
 
     let captured_at = Instant::now();
@@ -268,14 +328,18 @@ fn capture_raw_sample() -> Option<RawSample> {
     let mut cpu_seconds = main.cpu_seconds;
     let mut memory_bytes = main.resident_bytes;
 
-    for pid in list_pids() {
-        if pid == main.pid {
-            continue;
-        }
+    let helper_pids = if let Ok(mut cache) = cache.lock() {
+        refresh_helper_pids(&mut cache, main.pid, captured_at);
+        cache.helper_pids.clone()
+    } else {
+        Vec::new()
+    };
+
+    for pid in helper_pids {
         let Some(sample) = process_sample(pid) else {
             continue;
         };
-        if !is_tauri_helper(&sample, &main) {
+        if sample.pid == main.pid {
             continue;
         }
         cpu_seconds += sample.cpu_seconds;

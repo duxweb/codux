@@ -86,16 +86,53 @@ export function Titlebar({
   const [settings, setSettings] = useState(readAppSettings);
   const [activePopover, setActivePopover] = useState<TitlebarPopoverKey | null>(null);
   const globalHistory = useAIGlobalHistorySnapshot(projects);
-  const { globalTotals } = useAIRuntimeSnapshot();
+  const loadGlobalHistoryState = globalHistory.loadState;
+  const [globalTodayTokens, setGlobalTodayTokens] = useState<number | null>(null);
+  const [todayRuntimeBaselineDay, setTodayRuntimeBaselineDay] = useState(() => startOfLocalDay(new Date()).getTime());
+  const { sessions: globalRuntimeSessions } = useAIRuntimeSnapshot();
   const todayLevelTokens =
-    Math.max(0, globalHistory.snapshot.todayTotalTokens - globalHistory.snapshot.todayCachedInputTokens) +
-    globalTotals.totalTokens;
+    Math.max(0, globalTodayTokens ?? globalHistory.snapshot.todayTotalTokens) +
+    todayRuntimeTokens(globalRuntimeSessions, todayRuntimeBaselineDay);
   const leftChromeInset = isMacPlatform() ? "pl-[86px]" : "pl-4";
   const rightChromeInset = isWindowsPlatform() ? "pr-[150px]" : "pr-4";
   const hasProjectContext = Boolean(selectedProject);
 
   useEffect(() => subscribeAppSettings(setSettings), []);
   useEffect(() => setActivePopover(null), [mainView]);
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__ || projects.length === 0) return;
+    const refreshState = () => void loadGlobalHistoryState();
+    refreshState();
+    const timer = window.setInterval(refreshState, 60_000);
+    return () => window.clearInterval(timer);
+  }, [loadGlobalHistoryState, projects.length]);
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__) return;
+    let disposed = false;
+    const refreshTodayTokens = () => {
+      void invoke<number>("ai_history_global_today_normalized_tokens")
+        .then((next) => {
+          if (!disposed) setGlobalTodayTokens(Math.max(0, next));
+        })
+        .catch((error) => console.error("failed to load global today ai tokens", error));
+    };
+    refreshTodayTokens();
+    const timer = window.setInterval(refreshTodayTokens, 60_000);
+    const scheduleMidnightRefresh = () => {
+      const delay = millisecondsUntilNextLocalDay();
+      return window.setTimeout(() => {
+        setTodayRuntimeBaselineDay(startOfLocalDay(new Date()).getTime());
+        refreshTodayTokens();
+        midnightTimer = scheduleMidnightRefresh();
+      }, delay);
+    };
+    let midnightTimer = scheduleMidnightRefresh();
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.clearTimeout(midnightTimer);
+    };
+  }, []);
   const setPopoverOpen = (key: TitlebarPopoverKey, isOpen: boolean) => {
     setActivePopover(isOpen ? key : null);
   };
@@ -404,6 +441,29 @@ function dailyLevelTier(tokens: number) {
 
 function dailyLevelTitle(tier: DailyLevelTier) {
   return tm(`rank.${tier.id}`, tier.id);
+}
+
+function todayRuntimeTokens(
+  sessions: Array<{ startedAt?: number; updatedAt: number; totalTokens: number; baselineTotalTokens: number }>,
+  today: number,
+) {
+  return sessions.reduce((total, session) => {
+    const updatedDay = startOfLocalDay(new Date(session.updatedAt * 1000)).getTime();
+    if (updatedDay !== today) return total;
+    const startedDay = startOfLocalDay(new Date((session.startedAt ?? session.updatedAt) * 1000)).getTime();
+    const baseline = startedDay === today ? session.baselineTotalTokens : session.totalTokens;
+    return total + Math.max(0, session.totalTokens - baseline);
+  }, 0);
+}
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function millisecondsUntilNextLocalDay() {
+  const now = new Date();
+  const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return Math.max(1_000, nextDay.getTime() - now.getTime() + 100);
 }
 
 function mixHex(hex: string, otherHex: string, amount: number) {

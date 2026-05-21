@@ -7,13 +7,14 @@ function phaseMap(phases: Record<string, AIProjectPhase>) {
 }
 
 describe("project ai phase", () => {
-  it("uses the selected worktree phase for the parent project loading state", () => {
+  it("uses any worktree phase for the parent project loading state", () => {
     const phase = aggregateProjectPhase(
       "project-a",
-      "worktree-a",
+      ["worktree-a", "worktree-b"],
       phaseMap({
         "project-a": { kind: "idle" },
         "worktree-a": { kind: "running", tool: "codex" },
+        "worktree-b": { kind: "idle" },
       }),
     );
 
@@ -24,7 +25,7 @@ describe("project ai phase", () => {
   it("keeps needs-input above running and completed phases", () => {
     const phase = aggregateProjectPhase(
       "project-a",
-      "worktree-a",
+      ["worktree-a"],
       phaseMap({
         "project-a": { kind: "running", tool: "codex" },
         "worktree-a": { kind: "needsInput", tool: "claude" },
@@ -35,10 +36,10 @@ describe("project ai phase", () => {
     expect(phaseToAIState(phase)).toBe("review");
   });
 
-  it("prefers the latest completed phase when both ids completed", () => {
+  it("prefers the latest completed phase only when all ids completed", () => {
     const phase = aggregateProjectPhase(
       "project-a",
-      "worktree-a",
+      ["worktree-a"],
       phaseMap({
         "project-a": {
           kind: "completed",
@@ -62,6 +63,36 @@ describe("project ai phase", () => {
       updatedAt: 20,
     });
     expect(phaseToAIState(phase)).toBe("done");
+  });
+
+  it("keeps the project idle when only some worktrees are completed", () => {
+    const phase = aggregateProjectPhase(
+      "project-a",
+      ["worktree-a", "worktree-b"],
+      phaseMap({
+        "project-a": { kind: "completed", tool: "codex", wasInterrupted: false, updatedAt: 10 },
+        "worktree-a": { kind: "completed", tool: "claude", wasInterrupted: false, updatedAt: 20 },
+        "worktree-b": { kind: "idle" },
+      }),
+    );
+
+    expect(phase).toEqual({ kind: "idle" });
+    expect(phaseToAIState(phase)).toBe("idle");
+  });
+
+  it("keeps the project running until all worktrees are no longer active", () => {
+    const phase = aggregateProjectPhase(
+      "project-a",
+      ["worktree-a", "worktree-b"],
+      phaseMap({
+        "project-a": { kind: "completed", tool: "codex", wasInterrupted: false, updatedAt: 10 },
+        "worktree-a": { kind: "completed", tool: "claude", wasInterrupted: false, updatedAt: 20 },
+        "worktree-b": { kind: "running", tool: "gemini" },
+      }),
+    );
+
+    expect(phase).toEqual({ kind: "running", tool: "gemini" });
+    expect(phaseToAIState(phase)).toBe("running");
   });
 
   it("shows runtime activity ahead of completion presentation", () => {
