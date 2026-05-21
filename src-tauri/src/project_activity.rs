@@ -79,6 +79,14 @@ pub struct ProjectActivityCoordinator {
     last_global_ai_refresh: Mutex<Option<Instant>>,
     activation_queue: Mutex<VecDeque<ActivationRequest>>,
     activation_signal: Condvar,
+    git_refreshes: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
+    git_reviews: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct CoalescedRefreshState {
+    running: bool,
+    pending: bool,
 }
 
 impl ProjectActivityCoordinator {
@@ -152,7 +160,7 @@ impl ProjectActivityCoordinator {
                 tracked_project = tracked.clone();
             }
         }
-        refresh_git_project(app, tracked_project);
+        refresh_git_project(app, Arc::clone(&self.git_refreshes), tracked_project);
     }
 
     pub fn refresh_git_changed(
@@ -172,6 +180,7 @@ impl ProjectActivityCoordinator {
                 tracked.last_git_refresh = Some(Instant::now());
             }
         }
+        let git_refreshes = Arc::clone(&self.git_refreshes);
         thread::spawn(move || {
             let _ = app.emit(
                 "git:changed",
@@ -182,7 +191,7 @@ impl ProjectActivityCoordinator {
                 },
             );
             refresh_worktree_project(app.clone(), Arc::clone(&project_store), &project);
-            refresh_git_project(app, TrackedProject::from(project));
+            refresh_git_project(app, git_refreshes, TrackedProject::from(project));
         });
     }
 
@@ -196,9 +205,10 @@ impl ProjectActivityCoordinator {
             return;
         };
         self.mark_project_summary(&project);
+        let git_reviews = Arc::clone(&self.git_reviews);
         thread::spawn(move || {
             refresh_worktree_project(app.clone(), Arc::clone(&project_store), &project);
-            refresh_git_review_project(app, TrackedProject::from(project));
+            refresh_git_review_project(app, git_reviews, TrackedProject::from(project));
         });
     }
 
@@ -411,7 +421,7 @@ fn run_activity_tick(
             .unwrap_or_else(|| Duration::from_secs(min_git_refresh_seconds * 4))
             .max(Duration::from_secs(min_git_refresh_seconds * 4));
         for project in coordinator.projects_due_for_git(interval, background_interval) {
-            refresh_git_project(app.clone(), project);
+            refresh_git_project(app.clone(), Arc::clone(&coordinator.git_refreshes), project);
         }
     }
 
@@ -549,8 +559,15 @@ fn projects_due_by_interval(
         .collect()
 }
 
-fn refresh_git_project(app: AppHandle, project: TrackedProject) {
-    thread::spawn(move || {
+fn refresh_git_project(
+    app: AppHandle,
+    states: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
+    project: TrackedProject,
+) {
+    if !claim_coalesced_refresh(&states, &project.id) {
+        return;
+    }
+    thread::spawn(move || loop {
         let project_id = project.id.clone();
         let project_name = project.name.clone();
         let project_path = project.path.clone();
@@ -566,14 +583,69 @@ fn refresh_git_project(app: AppHandle, project: TrackedProject) {
                 },
             );
         }
-        emit_git_review(app, project_id, project_name, project_path);
+        emit_git_review(app.clone(), project_id, project_name, project_path);
+        if finish_coalesced_refresh(&states, &project.id) {
+            continue;
+        }
+        break;
     });
 }
 
-fn refresh_git_review_project(app: AppHandle, project: TrackedProject) {
-    thread::spawn(move || {
-        emit_git_review(app, project.id, project.name, project.path);
+fn refresh_git_review_project(
+    app: AppHandle,
+    states: Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
+    project: TrackedProject,
+) {
+    if !claim_coalesced_refresh(&states, &project.id) {
+        return;
+    }
+    thread::spawn(move || loop {
+        emit_git_review(
+            app.clone(),
+            project.id.clone(),
+            project.name.clone(),
+            project.path.clone(),
+        );
+        if finish_coalesced_refresh(&states, &project.id) {
+            continue;
+        }
+        break;
     });
+}
+
+fn claim_coalesced_refresh(
+    states: &Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
+    project_id: &str,
+) -> bool {
+    let Ok(mut guard) = states.lock() else {
+        return true;
+    };
+    let state = guard.entry(project_id.to_string()).or_default();
+    if state.running {
+        state.pending = true;
+        return false;
+    }
+    state.running = true;
+    state.pending = false;
+    true
+}
+
+fn finish_coalesced_refresh(
+    states: &Arc<Mutex<HashMap<String, CoalescedRefreshState>>>,
+    project_id: &str,
+) -> bool {
+    let Ok(mut guard) = states.lock() else {
+        return false;
+    };
+    let Some(state) = guard.get_mut(project_id) else {
+        return false;
+    };
+    if state.pending {
+        state.pending = false;
+        return true;
+    }
+    guard.remove(project_id);
+    false
 }
 
 fn emit_git_review(app: AppHandle, project_id: String, project_name: String, project_path: String) {
