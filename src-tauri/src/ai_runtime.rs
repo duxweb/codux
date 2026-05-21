@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fs;
 #[cfg(unix)]
 use std::io::Read;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 #[cfg(unix)]
 use std::net::Shutdown;
 #[cfg(unix)]
@@ -929,8 +929,19 @@ async fn ai_runtime_supervisor_loop(
         match message {
             AIRuntimeSupervisorMessage::HookFrame(frame) => {
                 let Some(payload) = runtime_frame_to_hook(&frame) else {
+                    runtime_log_line(
+                        "runtime-ingress",
+                        &format!("drop hook-frame reason=decode bytes={}", frame.len()),
+                    );
                     continue;
                 };
+                runtime_log_line(
+                    "runtime-ingress",
+                    &format!(
+                        "receive hook tool={} kind={} terminal={} project={}",
+                        payload.tool, payload.kind, payload.terminal_id, payload.project_id
+                    ),
+                );
                 let _ = app.emit(
                     "ai-runtime:event",
                     AIRuntimeEvent::Hook {
@@ -938,6 +949,14 @@ async fn ai_runtime_supervisor_loop(
                     },
                 );
                 let mutation = state.apply_hook(payload);
+                runtime_log_line(
+                    "runtime-ingress",
+                    if mutation.did_change {
+                        "apply hook result=changed"
+                    } else {
+                        "apply hook result=no-change"
+                    },
+                );
                 if mutation.did_change {
                     emit_runtime_state(&app, &state);
                 }
@@ -965,6 +984,9 @@ async fn ai_runtime_supervisor_loop(
                     continue;
                 }
                 let mutation = poll_runtime_sessions(&state, &registry, "interval", None);
+                if mutation.did_change {
+                    runtime_log_line("runtime-refresh", "poll reason=interval result=changed");
+                }
                 if mutation.did_change {
                     emit_runtime_state(&app, &state);
                 }
@@ -996,6 +1018,9 @@ async fn ai_runtime_supervisor_loop(
                     "transcript-tail",
                     Some(&terminal_ids),
                 );
+                if mutation.did_change {
+                    runtime_log_line("runtime-refresh", "poll reason=transcript-tail result=changed");
+                }
                 if mutation.did_change {
                     emit_runtime_state(&app, &state);
                 }
@@ -1121,9 +1146,20 @@ fn drain_runtime_event_dir(tx: &Sender<AIRuntimeSupervisorMessage>, dir: &Path) 
         let data = fs::read(&path).ok();
         let _ = fs::remove_file(&path);
         if age > RUNTIME_EVENT_FILE_MAX_AGE_SECONDS {
+            runtime_log_line(
+                "hook-file",
+                &format!(
+                    "drop event-file reason=stale age={age:.1}s file={}",
+                    path.display()
+                ),
+            );
             continue;
         }
         if let Some(data) = data.filter(|value| !value.is_empty()) {
+            runtime_log_line(
+                "hook-file",
+                &format!("drain event-file bytes={} file={}", data.len(), path.display()),
+            );
             let _ = tx.blocking_send(AIRuntimeSupervisorMessage::HookFrame(data));
         }
     }
@@ -2771,6 +2807,24 @@ fn runtime_temp_dir() -> PathBuf {
 
 fn runtime_root_dir() -> PathBuf {
     runtime_temp_dir().join("runtime-root")
+}
+
+fn runtime_live_log_path() -> PathBuf {
+    runtime_temp_dir().join("live.log")
+}
+
+fn runtime_log_line(category: &str, message: &str) {
+    let path = runtime_live_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| format!("{:.3}", duration.as_secs_f64()))
+        .unwrap_or_else(|_| "0.000".to_string());
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "[{timestamp}] [{category}] {message}");
+    }
 }
 
 fn runtime_assets_root() -> PathBuf {

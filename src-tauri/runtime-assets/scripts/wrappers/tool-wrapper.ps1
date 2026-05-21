@@ -13,6 +13,19 @@ $ErrorActionPreference = "SilentlyContinue"
 $wrapperDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $wrapperBin = Join-Path $wrapperDir "bin"
 
+function Write-Live-Log([string]$Message) {
+  if ([string]::IsNullOrWhiteSpace($env:DMUX_LOG_FILE)) { return }
+  try {
+    $parent = Split-Path -Parent $env:DMUX_LOG_FILE
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+      New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+    $stamp = Get-Date -Format "yyyy-MM-ddTHH:mm:sszzz"
+    Add-Content -LiteralPath $env:DMUX_LOG_FILE -Value "[$stamp] [wrapper] $Message"
+  } catch {
+  }
+}
+
 function Split-PathList([string]$Value) {
   if ([string]::IsNullOrWhiteSpace($Value)) { return @() }
   return $Value -split [Regex]::Escape([IO.Path]::PathSeparator)
@@ -200,6 +213,7 @@ if ([string]::IsNullOrWhiteSpace($searchPath)) {
 
 $realBin = Find-Real-Binary $Tool $searchPath
 if ([string]::IsNullOrWhiteSpace($realBin)) {
+  Write-Live-Log "launch failed tool=$Tool reason=missing-binary"
   Write-Error "$Tool is not installed or not available in PATH."
   exit 127
 }
@@ -225,7 +239,10 @@ if ($Tool -eq "codex" -and -not [string]::IsNullOrWhiteSpace($codexEffort) -and 
 }
 
 if ($Tool -eq "codex" -and -not (Is-Metadata-Invocation $launchArgs) -and -not (Has-Arg $launchArgs "--enable")) {
-  $launchArgs = @("--enable", (Codex-Hooks-Feature-Flag $realBin $searchPath)) + $launchArgs
+  $hooksFeature = Codex-Hooks-Feature-Flag $realBin $searchPath
+  $launchArgs = @("--enable", $hooksFeature) + $launchArgs
+} else {
+  $hooksFeature = ""
 }
 
 if ($permissionMode -eq "fullAccess") {
@@ -273,6 +290,12 @@ if ($Tool -eq "opencode") {
 }
 
 $launchDir = Resolve-Memory-Launch-Dir
+if ($Tool -eq "codex") {
+  Write-Live-Log "launch codex managed session=$env:DMUX_SESSION_ID project=$env:DMUX_PROJECT_ID binary=$realBin hooks=$hooksFeature"
+} else {
+  Write-Live-Log "launch managed tool=$Tool session=$env:DMUX_SESSION_ID project=$env:DMUX_PROJECT_ID binary=$realBin"
+}
 Invoke-Real-Binary $realBin $launchArgs $searchPath $launchDir
 $exitCode = if ($null -eq $script:DMUX_WRAPPER_EXIT_CODE) { 0 } else { $script:DMUX_WRAPPER_EXIT_CODE }
+Write-Live-Log "process exit tool=$Tool session=$env:DMUX_SESSION_ID code=$exitCode"
 exit $exitCode

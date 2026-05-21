@@ -670,6 +670,10 @@ impl TerminalEnvironment {
                 .to_string(),
         );
         values.insert(
+            "DMUX_LOG_FILE".to_string(),
+            runtime_temp_dir().join("live.log").display().to_string(),
+        );
+        values.insert(
             "DMUX_CLAUDE_SESSION_MAP_DIR".to_string(),
             request
                 .ai_runtime
