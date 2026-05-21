@@ -1,4 +1,12 @@
-import { useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useRef,
+  type ButtonHTMLAttributes,
+  type MutableRefObject,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { mergeProps, usePress, type PressEvent } from "react-aria";
 
 type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
@@ -9,7 +17,7 @@ type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
   preventFocusOnPress?: boolean;
 };
 
-export function PressableButton({
+export const PressableButton = forwardRef<HTMLButtonElement, Props>(function PressableButton({
   children,
   disabled,
   excludeFromTabOrder = true,
@@ -19,8 +27,9 @@ export function PressableButton({
   tabIndex,
   type = "button",
   ...props
-}: Props) {
+}: Props, forwardedRef) {
   const ref = useRef<HTMLButtonElement | null>(null);
+  const setRef = useMergedRef(ref, forwardedRef);
   const { pressProps } = usePress({
     ref,
     isDisabled: disabled,
@@ -32,12 +41,26 @@ export function PressableButton({
   return (
     <button
       {...mergeProps(props, pressProps)}
-      ref={ref}
+      ref={setRef}
       type={type}
       disabled={disabled}
-      tabIndex={excludeFromTabOrder ? -1 : tabIndex}
+      tabIndex={tabIndex ?? (excludeFromTabOrder ? -1 : undefined)}
     >
       {children}
     </button>
+  );
+});
+
+function useMergedRef<T>(localRef: MutableRefObject<T | null>, forwardedRef: Ref<T> | undefined) {
+  return useCallback(
+    (node: T | null) => {
+      localRef.current = node;
+      if (typeof forwardedRef === "function") {
+        forwardedRef(node);
+      } else if (forwardedRef) {
+        forwardedRef.current = node;
+      }
+    },
+    [forwardedRef, localRef],
   );
 }

@@ -1,4 +1,5 @@
 import { Button as HButton } from "@heroui/react";
+import { forwardRef } from "react";
 import type { ComponentProps, ReactNode } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "success";
@@ -48,7 +49,7 @@ const iconSizeMap: Record<ButtonSize, number> = {
   lg: 15,
 };
 
-export function Button({
+export const Button = forwardRef<HTMLButtonElement, Props>(function Button({
   variant = "secondary",
   size = "md",
   leading: Leading,
@@ -64,11 +65,12 @@ export function Button({
   onPointerDownCapture,
   preventFocusOnPress = true,
   ...rest
-}: Props) {
+}, ref) {
   const iconSize = iconSizeMap[size];
 
   return (
     <HButton
+      ref={ref}
       variant={heroVariantMap[variant]}
       size={size}
       isIconOnly={isIconOnly}
@@ -92,4 +94,4 @@ export function Button({
       {Trailing ? <Trailing size={iconSize} strokeWidth={2} /> : null}
     </HButton>
   );
-}
+});
