@@ -10,6 +10,8 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryProjectRequest {
@@ -238,7 +240,6 @@ pub fn index_global_history_fresh(
     let mut cached_input_tokens = 0;
     let mut today_total_tokens = 0;
     let mut today_cached_input_tokens = 0;
-    let mut sessions = Vec::new();
     let mut project_count = 0;
 
     for project in projects {
@@ -250,17 +251,15 @@ pub fn index_global_history_fresh(
         cached_input_tokens += snapshot.project_summary.project_cached_input_tokens;
         today_total_tokens += snapshot.project_summary.today_total_tokens;
         today_cached_input_tokens += snapshot.project_summary.today_cached_input_tokens;
-        sessions.extend(snapshot.sessions);
         project_count += 1;
     }
-    sessions.sort_by(|left, right| right.last_seen_at.total_cmp(&left.last_seen_at));
 
     AIGlobalHistorySnapshot {
         total_tokens,
         cached_input_tokens,
         today_total_tokens,
         today_cached_input_tokens,
-        sessions,
+        sessions: Vec::new(),
         project_count,
         indexed_at: now_seconds(),
     }
@@ -276,7 +275,6 @@ pub fn load_indexed_global_history(
     let mut cached_input_tokens = 0;
     let mut today_total_tokens = 0;
     let mut today_cached_input_tokens = 0;
-    let mut sessions = Vec::new();
     let mut indexed_count = 0;
     let requested_count = projects
         .iter()
@@ -294,20 +292,18 @@ pub fn load_indexed_global_history(
         cached_input_tokens += snapshot.project_summary.project_cached_input_tokens;
         today_total_tokens += snapshot.project_summary.today_total_tokens;
         today_cached_input_tokens += snapshot.project_summary.today_cached_input_tokens;
-        sessions.extend(snapshot.sessions);
         indexed_count += 1;
     }
 
     if indexed_count != requested_count {
         return Ok(None);
     }
-    sessions.sort_by(|left, right| right.last_seen_at.total_cmp(&left.last_seen_at));
     Ok(Some(AIGlobalHistorySnapshot {
         total_tokens,
         cached_input_tokens,
         today_total_tokens,
         today_cached_input_tokens,
-        sessions,
+        sessions: Vec::new(),
         project_count: indexed_count,
         indexed_at: now,
     }))
@@ -626,7 +622,8 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
         .collect::<Vec<_>>();
     sessions.sort_by(|left, right| right.last_seen_at.total_cmp(&left.last_seen_at));
 
-    let latest_session = sessions.first();
+    let latest_session = sessions.first().cloned();
+    sessions.truncate(RECENT_HISTORY_SESSION_LIMIT);
     AIHistorySnapshot {
         project_id: project.id.clone(),
         project_name: project.name.clone(),
@@ -634,18 +631,20 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
             project_id: project.id,
             project_name: project.name,
             current_session_tokens: latest_session
+                .as_ref()
                 .map(|session| session.total_tokens)
                 .unwrap_or(0),
             current_session_cached_input_tokens: latest_session
+                .as_ref()
                 .map(|session| session.cached_input_tokens)
                 .unwrap_or(0),
             project_total_tokens,
             project_cached_input_tokens,
             today_total_tokens,
             today_cached_input_tokens,
-            current_tool: latest_session.and_then(|session| session.last_tool.clone()),
-            current_model: latest_session.and_then(|session| session.last_model.clone()),
-            current_session_updated_at: latest_session.map(|session| session.last_seen_at),
+            current_tool: latest_session.as_ref().and_then(|session| session.last_tool.clone()),
+            current_model: latest_session.as_ref().and_then(|session| session.last_model.clone()),
+            current_session_updated_at: latest_session.as_ref().map(|session| session.last_seen_at),
         },
         sessions,
         heatmap: sorted_values(heatmap),

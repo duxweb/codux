@@ -118,7 +118,7 @@ export function TaskSidebar({
       changes: selectedWorktree.gitSummary.changes,
     };
   }, [selectedProject, selectedWorktree]);
-  const history = useAIHistorySnapshot(historyProject);
+  const history = useAIHistorySnapshot(historyProject, { includeSessions: true });
 
   const selectWorktree = useCallback(
     (id: string) => {

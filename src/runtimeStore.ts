@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AIGlobalHistorySnapshot, AIHistoryProjectState } from "./ai/history";
+import type { AIGlobalHistorySnapshot, AIHistoryProjectState, AIHistorySessionSummary } from "./ai/history";
 import type { PetSnapshot } from "./ai/petState";
 import type { AIRuntimeStateSnapshot } from "./ai/types";
 import type { GitReviewSnapshot } from "./git/review";
@@ -25,11 +25,17 @@ export type WorktreeCacheEntry = {
   updatedAt: number;
 };
 
+export type AIProjectSessionsCacheEntry = {
+  sessions: AIHistorySessionSummary[];
+  updatedAt: number;
+};
+
 type RuntimeState = {
   gitStatusByPath: Record<string, GitStatusCacheEntry>;
   gitReviewByKey: Record<string, GitReviewCacheEntry>;
   worktreeSnapshotByKey: Record<string, WorktreeCacheEntry>;
   aiProjectStateByKey: Record<string, AIHistoryProjectState>;
+  aiProjectSessionsByKey: Record<string, AIProjectSessionsCacheEntry>;
   aiGlobalHistory: AIGlobalHistorySnapshot | null;
   aiRuntimeSnapshot: AIRuntimeStateSnapshot | null;
   petSnapshot: PetSnapshot | null;
@@ -51,6 +57,7 @@ type RuntimeState = {
   setWorktreeLoading: (key: string, isLoading: boolean) => void;
   setWorktreeError: (key: string, error: string | null) => void;
   setAIProjectState: (key: string, state: AIHistoryProjectState) => void;
+  setAIProjectSessions: (key: string, entry: AIProjectSessionsCacheEntry) => void;
   setAIRuntimeSnapshot: (snapshot: AIRuntimeStateSnapshot | null) => void;
   setPetSnapshot: (snapshot: PetSnapshot | null) => void;
   setProjectListSnapshot: (snapshot: ProjectListSnapshot | null) => void;
@@ -68,6 +75,7 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
   gitReviewByKey: {},
   worktreeSnapshotByKey: {},
   aiProjectStateByKey: {},
+  aiProjectSessionsByKey: {},
   aiGlobalHistory: null,
   aiRuntimeSnapshot: null,
   petSnapshot: null,
@@ -142,7 +150,14 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
     set((state) => ({
       aiProjectStateByKey: {
         ...state.aiProjectStateByKey,
-        [key]: projectState,
+        [key]: stripAIProjectStateSessions(projectState),
+      },
+    })),
+  setAIProjectSessions: (key, entry) =>
+    set((state) => ({
+      aiProjectSessionsByKey: {
+        ...state.aiProjectSessionsByKey,
+        [key]: entry,
       },
     })),
   setAIRuntimeSnapshot: (snapshot) => set({ aiRuntimeSnapshot: snapshot }),
@@ -161,7 +176,7 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
         },
       };
     }),
-  setAIGlobalHistory: (snapshot) => set({ aiGlobalHistory: snapshot }),
+  setAIGlobalHistory: (snapshot) => set({ aiGlobalHistory: stripAIGlobalHistorySessions(snapshot) }),
   setAIGlobalStatus: (status) =>
     set((state) => ({
       aiGlobalStatus: {
@@ -170,3 +185,22 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
       },
     })),
 }));
+
+function stripAIProjectStateSessions(state: AIHistoryProjectState): AIHistoryProjectState {
+  if (!state.snapshot?.sessions.length) return state;
+  return {
+    ...state,
+    snapshot: {
+      ...state.snapshot,
+      sessions: [],
+    },
+  };
+}
+
+function stripAIGlobalHistorySessions(snapshot: AIGlobalHistorySnapshot | null): AIGlobalHistorySnapshot | null {
+  if (!snapshot?.sessions.length) return snapshot;
+  return {
+    ...snapshot,
+    sessions: [],
+  };
+}

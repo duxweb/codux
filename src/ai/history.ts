@@ -115,6 +115,10 @@ type AIHistoryRefreshOptions = {
   mode?: "foreground" | "silent";
 };
 
+type AIHistorySnapshotOptions = {
+  includeSessions?: boolean;
+};
+
 let aiHistoryCacheListenerPromise: Promise<UnlistenFn> | null = null;
 
 function projectHistoryKey(project: WorkspaceProject) {
@@ -144,10 +148,25 @@ function cacheAIHistoryEvent(event: AIHistoryEvent) {
     return;
   }
   if (event.kind === "projectState") {
+    if (event.state.snapshot?.sessions.length) {
+      store.setAIProjectSessions(projectStateKey(event.state), {
+        sessions: event.state.snapshot.sessions,
+        updatedAt: Date.now(),
+      });
+    }
     store.setAIProjectState(projectStateKey(event.state), event.state);
     return;
   }
   if (event.kind === "project") {
+    const entries = Object.entries(store.aiProjectStateByKey).filter(
+      ([, value]) => value.projectId === event.snapshot.projectId,
+    );
+    for (const [key] of entries) {
+      store.setAIProjectSessions(key, {
+        sessions: event.snapshot.sessions,
+        updatedAt: Date.now(),
+      });
+    }
     store.updateAIProjectStateByProjectId(event.snapshot.projectId, (previous) => ({
       ...previous,
       snapshot: event.snapshot,
@@ -176,12 +195,24 @@ export function ensureAIHistoryEventCacheSubscription() {
   });
 }
 
-export function useAIHistorySnapshot(project?: WorkspaceProject) {
+export function useAIHistorySnapshot(project?: WorkspaceProject, options: AIHistorySnapshotOptions = {}) {
+  const includeSessions = options.includeSessions === true;
   const projectCacheKey = project ? projectHistoryKey(project) : "";
   const cachedState = useRuntimeStore((state) =>
     projectCacheKey ? state.aiProjectStateByKey[projectCacheKey] : undefined,
   );
-  const snapshot = cachedState?.snapshot ?? emptyHistorySnapshot(project);
+  const cachedSessions =
+    useRuntimeStore((state) =>
+      includeSessions && projectCacheKey ? state.aiProjectSessionsByKey[projectCacheKey]?.sessions : undefined,
+    ) ?? [];
+  const storedSnapshot = cachedState?.snapshot ?? emptyHistorySnapshot(project);
+  const snapshot = useMemo(
+    () =>
+      storedSnapshot.sessions === cachedSessions
+        ? storedSnapshot
+        : { ...storedSnapshot, sessions: cachedSessions },
+    [cachedSessions, storedSnapshot],
+  );
   const isLoading = cachedState?.isLoading ?? false;
   const error = cachedState?.error ?? null;
   const detail = cachedState?.detail ?? "idle";
@@ -203,6 +234,12 @@ export function useAIHistorySnapshot(project?: WorkspaceProject) {
       stateVersionRef.current = next.version;
       if (!next.isLoading) {
         foregroundProjectIdRef.current = null;
+      }
+      if (next.snapshot?.sessions.length) {
+        useRuntimeStore.getState().setAIProjectSessions(projectHistoryKey(project), {
+          sessions: next.snapshot.sessions,
+          updatedAt: Date.now(),
+        });
       }
       useRuntimeStore.getState().setAIProjectState(projectHistoryKey(project), next);
     },
