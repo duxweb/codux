@@ -42,7 +42,7 @@ thiserror = "2.0"
 tokio = { version = "1", features = ["sync", "time"] }
 tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 uuid = { version = "1.11", features = ["serde", "v4", "v5"] }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_SystemServices", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_ProcessStatus", "Win32_System_Power", "Win32_System_SystemServices", "Win32_System_Threading"] }
 x25519-dalek = { version = "2.0", features = ["getrandom", "static_secrets"] }
 url = "2.5.7"
 webrtc = "0.20.0-alpha.1"

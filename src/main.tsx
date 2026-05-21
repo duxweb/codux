@@ -1,3 +1,4 @@
+import { uninstallPerformanceTimelineCleanup } from "./performanceTimeline";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
@@ -104,6 +105,7 @@ void bootstrapRoot()
   });
 
 const uninstallAppRuntime = () => {
+  uninstallPerformanceTimelineCleanup();
   uninstallDesktopBrowserBehavior();
   uninstallDevtoolsShortcut();
   uninstallSystemTheme();
