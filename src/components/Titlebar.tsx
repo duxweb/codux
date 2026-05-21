@@ -64,6 +64,11 @@ type Props = {
 
 type TitlebarPopoverKey = "pet" | "daily-level" | "remote";
 
+const TITLEBAR_ICON_BUTTON_CLASS = "no-drag !h-[28px] !w-[28px] !min-w-[28px] !px-0 rounded-[7px]";
+const TITLEBAR_TOOL_ICON_SIZE = 14;
+const TITLEBAR_BUTTON_ICON_SIZE = 11;
+const TITLEBAR_NAV_ICON_SIZE = 12;
+
 export function Titlebar({
   projects,
   selectedProject,
@@ -204,7 +209,7 @@ function PetPopoverButton({
     ? formatI18n(tm("titlebar.level.short_format", "Lv.%@"), info.level)
     : tm("pet.title.claim", "Claim");
   const triggerClassName =
-    "no-drag inline-flex h-[30px] items-center gap-1.5 rounded-[8px] border border-line bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-line-strong hover:bg-fill/10 data-[pressed]:border-brand-blue/30 data-[pressed]:bg-brand-blue/16";
+    "no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[7px] border border-line bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-line-strong hover:bg-fill/10 data-[pressed]:border-brand-blue/30 data-[pressed]:bg-brand-blue/16";
 
   if (!pet.snapshot.claimedAt) {
     return (
@@ -247,7 +252,7 @@ function PetTitlebarIcon({ isMaxLevel }: { isMaxLevel: boolean }) {
           : "bg-gradient-to-br from-brand-blue to-brand-blue-deep"
       }`}
     >
-      {isMaxLevel ? <PetCrownIcon className="h-[9px] w-[9px]" /> : <PetPawIcon className="h-[10px] w-[10px]" />}
+      {isMaxLevel ? <PetCrownIcon className="h-2 w-2" /> : <PetPawIcon className="h-[9px] w-[9px]" />}
     </span>
   );
 }
@@ -308,7 +313,7 @@ function DailyLevelPopoverButton({
           type="button"
           aria-label={tm("ai.today_level", "Today's Level")}
           title={tm("ai.today_level", "Today's Level")}
-          className="no-drag inline-flex h-[30px] items-center gap-1.5 rounded-[8px] border border-line bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-line-strong hover:bg-fill/10 data-[pressed]:bg-fill/12"
+          className="no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[7px] border border-line bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-line-strong hover:bg-fill/10 data-[pressed]:bg-fill/12"
         >
           <DailyLevelBadge tier={tier} size="sm" />
           <span className="leading-none">{dailyLevelTitle(tier)}</span>
@@ -369,7 +374,7 @@ function DailyLevelPanel({ tokens, currentTier }: { tokens: number; currentTier:
 
 function DailyLevelBadge({ tier, size }: { tier: DailyLevelTier; size: ButtonSize }) {
   const Icon = tier.icon;
-  const metrics = size === "lg" ? { box: 34, icon: 14 } : size === "md" ? { box: 24, icon: 10 } : { box: 19, icon: 8 };
+  const metrics = size === "lg" ? { box: 34, icon: 14 } : size === "md" ? { box: 24, icon: 10 } : { box: 18, icon: 8 };
   return (
     <span
       className="grid flex-shrink-0 place-items-center rounded-full text-on-brand"
@@ -435,9 +440,9 @@ function GlyphButton({
         variant="ghost"
         onPress={onPress}
         aria-label={tooltip}
-        className={`no-drag h-[30px] w-[30px] min-w-[30px] ${active ? "bg-fill/10 text-ink" : "text-ink-soft"}`}
+        className={`${TITLEBAR_ICON_BUTTON_CLASS} ${active ? "bg-fill/10 text-ink" : "text-ink-soft"}`}
       >
-        <Icon size={15} strokeWidth={1.85} />
+        <Icon size={TITLEBAR_TOOL_ICON_SIZE} strokeWidth={1.9} />
       </Button>
     </Tooltip>
   );
@@ -468,11 +473,11 @@ function MemoryStatusButton() {
       <button
         type="button"
         aria-label={tm("memory.manager.window.title", "Memory Manager")}
-        className={`no-drag relative inline-grid h-[30px] w-[30px] place-items-center rounded-[8px] border outline-none transition-colors hover:border-line-strong hover:bg-fill/10 ${activeSurface} ${tone}`}
+        className={`no-drag relative inline-grid h-[28px] w-[28px] place-items-center rounded-[7px] border outline-none transition-colors hover:border-line-strong hover:bg-fill/10 ${activeSurface} ${tone}`}
         data-active={isActive ? "true" : "false"}
         onClick={() => void openAppWindow("memory-manager")}
       >
-        <BrainCog size={16} strokeWidth={1.85} />
+        <BrainCog size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.1} />
         {isProcessing ? (
           <span
             className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-chrome border-t-brand-blue bg-surface-chrome motion-safe:animate-spin"
@@ -569,12 +574,12 @@ function PerformanceHUD() {
     <Tooltip label={tooltip} placement="bottom">
       <div className="flex items-center h-[26px] px-2 rounded-pill bg-fill/[0.05] border border-line text-xs font-medium text-ink-soft font-mono cursor-default">
         <span className={`flex items-center gap-1.5 px-1.5 ${cpuTone}`}>
-          <Cpu size={11} strokeWidth={2.2} />
+          <Cpu size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.2} />
           <span className="tabular-nums">{cpuText}</span>
         </span>
         <span className="w-px h-3 bg-line" />
         <span className="flex items-center gap-1.5 px-1.5">
-          <MemoryStick size={11} strokeWidth={2.2} />
+          <MemoryStick size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.2} />
           <span className="tabular-nums">{memoryText}</span>
         </span>
       </div>
@@ -627,7 +632,7 @@ function RemotePill({
               : "bg-fill/[0.05] border-line text-ink-soft hover:bg-fill/10"
           }`}
         >
-          <Wifi size={13} strokeWidth={2.2} />
+          <Wifi size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.25} />
           <span>{label}</span>
         </button>
       }
@@ -959,15 +964,15 @@ function ModeSwitcher({ mainView, setMainView }: { mainView: MainView; setMainVi
       aria-label={tm("titlebar.view_switcher", "View Switcher")}
       className="no-drag"
     >
-      <Tabs.List className="flex h-[30px] items-center gap-0.5 rounded-full border border-line bg-fill/[0.055] p-[3px]">
+      <Tabs.List className="flex h-[28px] items-center gap-0.5 rounded-full border border-line bg-fill/[0.055] p-[3px]">
         {items.map(({ id, icon: Icon, label }) => (
           <Tabs.Tab
             key={id}
             id={id}
-            className="h-[24px] min-w-[78px] rounded-full px-3 text-xs font-semibold text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink data-[selected]:bg-brand-blue data-[selected]:text-white"
+            className="h-[22px] min-w-[76px] rounded-full px-3 text-xs font-semibold text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink data-[selected]:bg-brand-blue data-[selected]:text-white"
           >
             <span className="inline-flex items-center justify-center gap-1.5">
-              <Icon size={12} strokeWidth={2.2} />
+              <Icon size={TITLEBAR_NAV_ICON_SIZE} strokeWidth={2.15} />
               <span>{label}</span>
             </span>
           </Tabs.Tab>

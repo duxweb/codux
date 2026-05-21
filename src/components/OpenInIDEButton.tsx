@@ -11,6 +11,8 @@ import { tm } from "../i18n";
 import type { WorkspaceProject } from "../types";
 import { Tooltip } from "./Tooltip";
 
+const OPEN_BUTTON_ICON_SIZE = 11;
+
 export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
   const [open, setOpen] = useState(false);
   const [applications, setApplications] = useState<ProjectOpenApplication[]>([]);
@@ -45,11 +47,11 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
             aria-label={tm("open.ide", "Open in IDE")}
           >
             <span className="grid h-full w-[30px] place-items-center rounded-l-pill">
-              <ArrowTopRight size={13} strokeWidth={2.2} />
+              <ArrowTopRight size={OPEN_BUTTON_ICON_SIZE} strokeWidth={2.35} />
             </span>
             <span className="h-3.5 w-px bg-line-strong/60" />
             <span className="grid h-full w-[22px] place-items-center rounded-r-pill">
-              <ChevronDown size={11} className="text-ink-mute" strokeWidth={2.4} />
+              <ChevronDown size={OPEN_BUTTON_ICON_SIZE} className="text-ink-mute" strokeWidth={2.4} />
             </span>
           </Dropdown.Trigger>
           <Dropdown.Popover
