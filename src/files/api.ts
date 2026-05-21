@@ -200,7 +200,7 @@ export function languageForPath(path: string) {
 }
 
 function previewEntries(rootPath: string, directoryPath?: string): FileEntry[] {
-  const root = rootPath || "/Volumes/Web/codux-tauri";
+  const root = rootPath || "/preview/workspace";
   if (directoryPath && directoryPath !== root) return [];
   return [
     previewEntry(root, "src", true),

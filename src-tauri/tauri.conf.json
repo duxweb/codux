@@ -46,7 +46,7 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": ["https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json"],
+      "endpoints": ["https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxRTg4MkJBQzYxMENDOApSV1RJREdHc0s0Z2VBaWh3NFFLMDhIK3R3NUJVRFlyUUR3dzZHUkNWUUtXdEg2UnZPVmUvaHVhQQo="
     }
   },

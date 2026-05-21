@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { LogicalPosition, LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { formatI18n, tm } from "./i18n";
@@ -343,7 +344,12 @@ export async function closeCurrentAppWindow() {
     window.location.hash = "";
     return;
   }
-  await getCurrentWindow().close();
+  try {
+    await invoke("app_window_close");
+  } catch (error) {
+    console.error("failed to close current app window through rust command", error);
+    await getCurrentWindow().destroy();
+  }
 }
 
 export async function resizeCurrentAppWindow(width: number, height: number) {

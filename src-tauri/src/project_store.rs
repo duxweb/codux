@@ -180,9 +180,9 @@ pub struct ProjectStore {
 }
 
 impl ProjectStore {
-    pub fn load_or_seed() -> Self {
+    pub fn load_or_default() -> Self {
         let state_file = state_file_path();
-        let snapshot = load_snapshot(&state_file).unwrap_or_else(seed_snapshot);
+        let snapshot = load_snapshot(&state_file).unwrap_or_else(default_snapshot);
         let snapshot = sanitize_snapshot(snapshot);
         let store = Self {
             snapshot: Mutex::new(snapshot),
@@ -633,7 +633,7 @@ fn sanitize_snapshot(snapshot: AppSnapshot) -> AppSnapshot {
     }
 }
 
-fn seed_snapshot() -> AppSnapshot {
+fn default_snapshot() -> AppSnapshot {
     AppSnapshot::default()
 }
 

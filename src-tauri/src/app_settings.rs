@@ -965,8 +965,8 @@ fn default_update_channel() -> &'static str {
 
 fn update_endpoint_for_channel(channel: &str) -> String {
     match channel {
-        "beta" => "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json",
-        _ => "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json",
+        "beta" => "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json",
+        _ => "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json",
     }
     .to_string()
 }
@@ -974,8 +974,8 @@ fn update_endpoint_for_channel(channel: &str) -> String {
 fn is_managed_update_endpoint(endpoint: &str) -> bool {
     matches!(
         endpoint,
-        "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json"
-            | "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json"
+        "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json"
+            | "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json"
     )
 }
 
@@ -984,6 +984,8 @@ fn is_legacy_update_endpoint(endpoint: &str) -> bool {
         endpoint,
         "https://github.com/duxweb/codux/releases/latest/download/codux-tauri-latest.json"
             | "https://github.com/duxweb/codux/releases/latest/download/latest.json"
+            | "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json"
+            | "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json"
     )
 }
 

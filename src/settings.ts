@@ -140,8 +140,8 @@ export type AIProviderSettings = {
 
 const SETTINGS_KEY = "codux:settings:v1";
 export const UPDATE_CHANNEL_ENDPOINTS: Record<"stable" | "beta", string> = {
-  stable: "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json",
-  beta: "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json",
+  stable: "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json",
+  beta: "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json",
 };
 const APP_VERSION = "1.0.0-beta.1";
 const DEFAULT_UPDATE_CHANNEL: "stable" | "beta" = APP_VERSION.includes("-") ? "beta" : "stable";
@@ -149,6 +149,8 @@ const DEFAULT_UPDATE_ENDPOINT = UPDATE_CHANNEL_ENDPOINTS[DEFAULT_UPDATE_CHANNEL]
 const LEGACY_UPDATE_ENDPOINTS = new Set([
   "https://github.com/duxweb/codux/releases/latest/download/codux-tauri-latest.json",
   "https://github.com/duxweb/codux/releases/latest/download/latest.json",
+  "https://github.com/duxweb/codux/releases/download/tauri-stable/latest.json",
+  "https://github.com/duxweb/codux/releases/download/tauri-beta/latest.json",
 ]);
 let cachedSettings: AppSettings | null = null;
 let settingsSyncPromise: Promise<AppSettings> | null = null;

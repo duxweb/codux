@@ -539,7 +539,7 @@ fn show_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings) -> ta
         let _ = window.set_max_size(Some(Size::Logical(LogicalSize::new(width, height))));
         let _ = window.set_always_on_top(true);
         let _ = window.set_focusable(false);
-        let _ = window.set_ignore_cursor_events(true);
+        let _ = window.set_ignore_cursor_events(false);
         start_desktop_pet_hit_test_loop(app.clone());
         if let (Some(position), Some(size)) = (previous_position, previous_size) {
             let next_position =
@@ -593,7 +593,7 @@ fn show_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings) -> ta
         }
     });
     let _ = window.set_visible_on_all_workspaces(true);
-    let _ = window.set_ignore_cursor_events(true);
+    let _ = window.set_ignore_cursor_events(false);
     let _ = window.show();
     start_desktop_pet_hit_test_loop(app.clone());
     desktop_pet_emit_placement(&window);
@@ -6151,7 +6151,7 @@ pub fn run() {
             let memory =
                 Arc::new(MemoryStore::load_or_create().map_err(|error| error.to_string())?);
             let _ = memory.recover_interrupted_extractions();
-            let projects = Arc::new(ProjectStore::load_or_seed());
+            let projects = Arc::new(ProjectStore::load_or_default());
             let ai_runtime = Arc::new(AIRuntimeBridge::new(
                 Arc::clone(&settings),
                 Arc::clone(&memory),

@@ -68,6 +68,7 @@ const MIN_TOP_PANE_RATIO = 0.12;
 const MIN_BOTTOM_RATIO = 0.18;
 const MAX_BOTTOM_RATIO = 0.72;
 const FALLBACK_PROJECT_ID = "00000000-0000-5000-8000-000000000001";
+const FALLBACK_PROJECT_PATH = "/preview/workspace";
 const FILE_WATCH_DEBOUNCE_MS = 180;
 const DEFAULT_EDITOR_SEARCH_QUERY: CodeEditorSearchQuery = {
   search: "",
@@ -114,7 +115,7 @@ type TerminalLaunchOptions = {
 export function Workspace({ mainView, selectedProject, onSessionChange, terminalFocusRequest = 0 }: Props) {
   const canUsePreviewFallback = !window.__TAURI_INTERNALS__;
   const projectId = selectedProject?.id ?? (canUsePreviewFallback ? FALLBACK_PROJECT_ID : "");
-  const cwd = selectedProject?.path ?? (canUsePreviewFallback ? "/Volumes/Web/codux-tauri" : "");
+  const cwd = selectedProject?.path ?? (canUsePreviewFallback ? FALLBACK_PROJECT_PATH : "");
   const fallbackProject = useMemo<WorkspaceProject | undefined>(() => {
     if (selectedProject) return selectedProject;
     if (!canUsePreviewFallback) return undefined;

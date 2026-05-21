@@ -1,8 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useRef } from "react";
 import { MinusSmall, Square2Stack, X, type AppIcon } from "../icons";
 import { tm } from "../i18n";
+import { PressableButton } from "./PressableButton";
+import { closeCurrentAppWindow } from "../windowing";
 
 type Props = {
   className?: string;
@@ -20,7 +20,7 @@ export function WindowsWindowControls({ className = "", closeOnly = false }: Pro
   };
   const close = () => {
     if (!window.__TAURI_INTERNALS__) return;
-    void invoke("app_window_close").catch((error) => console.error("failed to close window", error));
+    void closeCurrentAppWindow().catch((error) => console.error("failed to close window", error));
   };
 
   return (
@@ -47,35 +47,17 @@ function WindowControlButton({
   danger?: boolean;
   onPress: () => void;
 }) {
-  const lastPressAtRef = useRef(0);
-
-  const trigger = () => {
-    const now = performance.now();
-    if (now - lastPressAtRef.current < 250) return;
-    lastPressAtRef.current = now;
-    onPress();
-  };
-
   return (
-    <button
-      type="button"
+    <PressableButton
       aria-label={label}
       title={label}
       className={`grid h-[34px] w-[46px] place-items-center text-ink-soft transition-colors ${
         danger ? "hover:bg-brand-red hover:text-white" : "hover:bg-fill/10 hover:text-ink"
       }`}
       tabIndex={-1}
-      onPointerDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        trigger();
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
+      onPressUp={onPress}
     >
       <Icon size={13} strokeWidth={2} />
-    </button>
+    </PressableButton>
   );
 }

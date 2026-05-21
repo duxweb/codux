@@ -124,7 +124,7 @@ function syncInitialThemeAndLocale() {
 }
 
 function installDevtoolsShortcut() {
-  if (!window.__TAURI_INTERNALS__) return () => undefined;
+  if (!import.meta.env.DEV || !window.__TAURI_INTERNALS__) return () => undefined;
   const handleKeyDown = (event: KeyboardEvent) => {
     const isToggle =
       event.key === "F12" || (event.key.toLowerCase() === "i" && event.ctrlKey && event.shiftKey);

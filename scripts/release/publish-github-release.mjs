@@ -10,12 +10,11 @@ const dryRun = process.argv.includes("--dry-run");
 const version = requiredEnv("RELEASE_VERSION");
 const channel = requiredEnv("RELEASE_CHANNEL");
 const tagName = process.env.RELEASE_TAG || `v${version}`;
-const channelTag = `tauri-${channel}`;
 const repo = process.env.GITHUB_REPOSITORY || "duxweb/codux";
-const targetCommitish = process.env.RELEASE_TARGET_COMMITISH || resolveTargetCommitish();
 const notesPath = process.env.RELEASE_NOTES_PATH || path.join(root, "dist", `release-notes-${version}.md`);
 const artifactsDir = process.env.RELEASE_ARTIFACTS_DIR || path.join(root, "release-artifacts");
 const notes = fs.existsSync(notesPath) ? fs.readFileSync(notesPath, "utf8") : `Codux ${version}`;
+const manifestPath = path.join(root, "updates", channel, "latest.json");
 
 const assets = collectAssets(artifactsDir);
 if (!assets.length) {
@@ -27,45 +26,17 @@ const latestPath = path.join(artifactsDir, "latest.json");
 fs.writeFileSync(latestPath, `${JSON.stringify(latestJson, null, 2)}\n`, "utf8");
 
 if (!dryRun) {
-  run("gh", ["release", "delete", tagName, "--repo", repo, "--yes"], { allowFailure: true });
-  run("gh", [
-    "release",
-    "create",
-    tagName,
-    "--repo",
-    repo,
-    "--title",
-    `Codux ${version}`,
-    "--notes-file",
-    notesPath,
-    channel === "beta" ? "--prerelease" : "--latest",
-  ]);
+  upsertRelease();
 
   for (const asset of assets) {
     run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${asset.path}#${asset.name}`]);
   }
   run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${latestPath}#latest.json`]);
-
-  run("gh", ["release", "delete", channelTag, "--repo", repo, "--yes", "--cleanup-tag"], { allowFailure: true });
-  run("gh", [
-    "release",
-    "create",
-    channelTag,
-    "--repo",
-    repo,
-    "--target",
-    targetCommitish,
-    "--title",
-    `Codux ${channel}`,
-    "--notes",
-    `Codux ${channel} updater channel`,
-    channel === "beta" ? "--prerelease" : "--latest",
-  ]);
-  run("gh", ["release", "upload", channelTag, "--repo", repo, "--clobber", `${latestPath}#latest.json`]);
+  publishChannelManifest(latestPath);
 }
 
 console.log(
-  `${dryRun ? "Prepared" : "Published"} ${assets.length} assets to ${repo}@${tagName} and updater metadata to ${channelTag}`,
+  `${dryRun ? "Prepared" : "Published"} ${assets.length} assets and updater metadata to ${repo}@${tagName} (${channel})`,
 );
 
 function requiredEnv(name) {
@@ -220,18 +191,57 @@ function signaturePriority(name) {
   return 0;
 }
 
-function resolveTargetCommitish() {
-  const result = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" });
-  if (result.status === 0) {
-    return result.stdout.trim();
-  }
-  return tagName;
-}
-
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: "inherit", env: process.env });
   if (result.status !== 0 && !options.allowFailure) {
     throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status}`);
   }
   return result;
+}
+
+function upsertRelease() {
+  const releaseFlag = channel === "beta" ? "--prerelease" : "--latest";
+  const releaseExists = spawnSync("gh", ["release", "view", tagName, "--repo", repo], {
+    stdio: "ignore",
+    env: process.env,
+  }).status === 0;
+  if (releaseExists) {
+    run("gh", [
+      "release",
+      "edit",
+      tagName,
+      "--repo",
+      repo,
+      "--title",
+      `Codux ${version}`,
+      "--notes-file",
+      notesPath,
+      releaseFlag,
+    ]);
+    return;
+  }
+  run("gh", [
+    "release",
+    "create",
+    tagName,
+    "--repo",
+    repo,
+    "--title",
+    `Codux ${version}`,
+    "--notes-file",
+    notesPath,
+    releaseFlag,
+  ]);
+}
+
+function publishChannelManifest(sourcePath) {
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  fs.copyFileSync(sourcePath, manifestPath);
+  run("git", ["config", "user.name", "github-actions[bot]"]);
+  run("git", ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
+  run("git", ["add", manifestPath]);
+  const diff = spawnSync("git", ["diff", "--cached", "--quiet"], { stdio: "inherit", env: process.env });
+  if (diff.status === 0) return;
+  run("git", ["commit", "-m", `chore: update ${channel} updater manifest for ${version}`]);
+  run("git", ["push", "origin", "HEAD:main"]);
 }

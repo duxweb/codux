@@ -693,6 +693,9 @@ function PetSection() {
     const nextPet = { ...settings.pet, ...patch };
     const next = updateAppSettings({ pet: nextPet });
     setSettings(next);
+    if ("enabled" in patch || "desktopWidget" in patch) {
+      void flushAppSettings().catch((error) => console.error("failed to apply pet settings", error));
+    }
   };
   const setAIPet = (patch: Partial<typeof settings.ai.pet>) => {
     const next = updateAppSettings({

@@ -474,7 +474,7 @@ function HelpMenuButton({
       <DesktopMenuItem label={tm("menu.help.open_live_log", "Open Live Log")} onSelect={() => void openLiveLog()}>
         {tm("menu.help.open_live_log", "Open Live Log")}
       </DesktopMenuItem>
-      {window.__TAURI_INTERNALS__ ? (
+      {import.meta.env.DEV && window.__TAURI_INTERNALS__ ? (
         <DesktopMenuItem
           label={tm("menu.help.developer_tools", "Developer Tools")}
           onSelect={() => void toggleDeveloperTools()}
