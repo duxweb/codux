@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0-beta.1",
+  "notes": "## 中文\n\n## [1.0.0-beta.1] - 2026-05-21\n\n### 新增\n\n- 新增 Codux 的首个跨平台 Tauri 测试版，可从 `tauri` 分支构建 macOS 和 Windows 版本。\n- 新增基于 GitHub Release 通道的 Tauri updater，稳定版和测试版分别使用独立的 `latest.json` 端点。\n- 新增 Windows 桌面端支持，包括自绘窗口、兼容 Mica 的窗口效果、WebView2 终端渲染和 PowerShell 默认终端。\n\n### 调整\n\n- 将主工作区、项目 / worktree 侧栏、Git 面板、文件编辑器、AI 统计、记忆状态、桌面宠物、设置和远程配对界面迁移到 Tauri 应用。\n- 重构项目、Git、worktree、AI runtime、远程和宠物状态链路，由 Rust 持有持久化和运行态数据，React UI 只订阅 snapshot / event 展示。\n- 对齐 Tauri 应用身份、可见产品名、更新通道命名和发布资产，为后续替换 Codux Swift 版做准备。\n\n### 修复\n\n- 修复欢迎界面没有项目时仍显示项目侧栏和“初始化仓库”等项目操作的问题。\n- 修复 Windows 终端启动、AI runtime hook 接入、远程终端恢复和桌面宠物 CPU 占用等跨平台测试中发现的问题。\n- 修复更新配置未接入提示，补齐签名 Tauri updater 公钥和 GitHub 托管更新通道端点。\n\n---\n\n## English\n\n## [1.0.0-beta.1] - 2026-05-21\n\n### Added\n\n- Added the first cross-platform Tauri beta of Codux, covering macOS and Windows builds from the `tauri` branch.\n- Added Tauri updater support backed by GitHub Release channels, with separate stable and beta `latest.json` endpoints.\n- Added Windows desktop support with self-drawn chrome, Mica-compatible window effects, WebView2 terminal rendering, and PowerShell terminal defaults.\n\n### Changed\n\n- Ported the main workspace shell, project/worktree sidebars, Git panel, file editor, AI statistics, memory status, desktop pet, settings, and remote pairing surfaces to the Tauri application.\n- Reworked project, Git, worktree, AI runtime, remote, and pet state so Rust owns durable/runtime state while the React UI subscribes to snapshots and events.\n- Aligned the Tauri app identity, visible product name, updater channel naming, and release assets with the Codux replacement path.\n\n### Fixed\n\n- Fixed the welcome screen so project-dependent side panels and actions are hidden until a project is selected.\n- Fixed Windows terminal startup, AI runtime hook ingestion, remote terminal hydration, and desktop pet CPU usage regressions found during cross-platform testing.\n- Fixed the update configuration warning by wiring the signed Tauri updater key and managed GitHub channel endpoints.",
+  "pub_date": "2026-05-21T15:53:25.575Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXFTcER0SmEvT3ZQOWxJZEt6dFhEcGpSdS8yWXJHbUlKL1EwNFVZTWlaQ1ExVDJUMXd3K2NubUFlemdNWDNLcHBVTjRNc2pabU1abU5hQW8vSVQvUUEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Mzc4NjcyCWZpbGU6Q29kdXguYXBwLnRhci5negppZ0xBV2Nudjl1cGZKRVk3TDBNOHpQNjduMlU0bWdCMU1DM3BUelRJb2hvNzRSUEF1MTc0ZFI0RnVsc0dhaVd2ZERyTmQ2NGMvOGVIU3huWVlTNTFDQT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.1/macos-universal-macos-Codux.app.tar.gz"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXFTcER0SmEvT3ZQOWxJZEt6dFhEcGpSdS8yWXJHbUlKL1EwNFVZTWlaQ1ExVDJUMXd3K2NubUFlemdNWDNLcHBVTjRNc2pabU1abU5hQW8vSVQvUUEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Mzc4NjcyCWZpbGU6Q29kdXguYXBwLnRhci5negppZ0xBV2Nudjl1cGZKRVk3TDBNOHpQNjduMlU0bWdCMU1DM3BUelRJb2hvNzRSUEF1MTc0ZFI0RnVsc0dhaVd2ZERyTmQ2NGMvOGVIU3huWVlTNTFDQT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.1/macos-universal-macos-Codux.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXFTcER0SmEvT3ZQOWxJZEt6dFhEcGpSdS8yWXJHbUlKL1EwNFVZTWlaQ1ExVDJUMXd3K2NubUFlemdNWDNLcHBVTjRNc2pabU1abU5hQW8vSVQvUUEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Mzc4NjcyCWZpbGU6Q29kdXguYXBwLnRhci5negppZ0xBV2Nudjl1cGZKRVk3TDBNOHpQNjduMlU0bWdCMU1DM3BUelRJb2hvNzRSUEF1MTc0ZFI0RnVsc0dhaVd2ZERyTmQ2NGMvOGVIU3huWVlTNTFDQT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.1/macos-universal-macos-Codux.app.tar.gz"
+    },
+    "darwin-x86_64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXFTcER0SmEvT3ZQOWxJZEt6dFhEcGpSdS8yWXJHbUlKL1EwNFVZTWlaQ1ExVDJUMXd3K2NubUFlemdNWDNLcHBVTjRNc2pabU1abU5hQW8vSVQvUUEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Mzc4NjcyCWZpbGU6Q29kdXguYXBwLnRhci5negppZ0xBV2Nudjl1cGZKRVk3TDBNOHpQNjduMlU0bWdCMU1DM3BUelRJb2hvNzRSUEF1MTc0ZFI0RnVsc0dhaVd2ZERyTmQ2NGMvOGVIU3huWVlTNTFDQT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.1/macos-universal-macos-Codux.app.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXRHYnJlUkxNcUNSUzUvTlZORW5OSWJGcFE1L2s1OVl1SG5lb1A0WnZEcDh1WnpYZnVkY2pGc2xBOS95S0Frc29LYVhCUlZ5T3dzZkVIZ21sR1VFd2c0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Mzc4Nzg3CWZpbGU6Q29kdXhfMS4wLjAtMV94NjQtc2V0dXAuZXhlCnJZOUh4QkVRUnY0aUkvdnNKUzRRajNDZUxLWDRDbzNwNEtZY3ZXWk5ueEZ6M2ZQc3BFZVE0ZXBZbEZudWIxSUNYemREaUoySXJiaE5QNFA0dlNRcEJBPT0K",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.1/windows-x86_64-nsis-Codux_1.0.0-1_x64-setup.exe"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXRHYnJlUkxNcUNSUzUvTlZORW5OSWJGcFE1L2s1OVl1SG5lb1A0WnZEcDh1WnpYZnVkY2pGc2xBOS95S0Frc29LYVhCUlZ5T3dzZkVIZ21sR1VFd2c0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Mzc4Nzg3CWZpbGU6Q29kdXhfMS4wLjAtMV94NjQtc2V0dXAuZXhlCnJZOUh4QkVRUnY0aUkvdnNKUzRRajNDZUxLWDRDbzNwNEtZY3ZXWk5ueEZ6M2ZQc3BFZVE0ZXBZbEZudWIxSUNYemREaUoySXJiaE5QNFA0dlNRcEJBPT0K",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.1/windows-x86_64-nsis-Codux_1.0.0-1_x64-setup.exe"
+    },
+    "windows-x86_64-msi": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWpWZS9jbnlFNUJsUUJOM2h0UFZpS0ZJZ3R2UmZvRUk0WFVmRExLQk80MENFcFpEbFNOeDQ2U25BSzBPMXMyb044L2tuek4yZXArTkVxcHNkaDVCcndNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Mzc4Nzg3CWZpbGU6Q29kdXhfMS4wLjAtMV94NjRfZW4tVVMubXNpCkxveWZzMzVzNURJQ3JqMWRsMG1ndjUzbE5zYVZNSCthUUFLYjNCMVBUVWJqSnpkZEs1TCtlU3Z5OFNQRkdFM2ZKais5U0lQTmVhK01NaWxONllxZ0JRPT0K",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.1/windows-x86_64-msi-Codux_1.0.0-1_x64_en-US.msi"
+    }
+  }
+}
