@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MinusSmall, Square2Stack, X, type AppIcon } from "../icons";
 import { tm } from "../i18n";
@@ -18,7 +19,7 @@ export function WindowsWindowControls({ className = "" }: Props) {
   };
   const close = () => {
     if (!window.__TAURI_INTERNALS__) return;
-    void getCurrentWindow().close().catch((error) => console.error("failed to close window", error));
+    void invoke("app_window_close").catch((error) => console.error("failed to close window", error));
   };
 
   return (

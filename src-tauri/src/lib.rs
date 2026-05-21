@@ -2633,6 +2633,22 @@ fn app_toggle_devtools(
     }
 }
 
+#[tauri::command]
+fn app_window_close(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    if window.label() == "main" {
+        if !state.is_exiting.swap(true, Ordering::SeqCst) {
+            state.terminals.kill_all();
+            app.exit(0);
+        }
+        return Ok(());
+    }
+    window.destroy().map_err(|error| error.to_string())
+}
+
 struct RemoteHostService {
     app: tauri::AppHandle,
     settings: Arc<AppSettingsStore>,
@@ -6303,6 +6319,7 @@ pub fn run() {
             app_open_live_log,
             app_open_url,
             app_toggle_devtools,
+            app_window_close,
             terminal_create,
             terminal_write,
             terminal_resize,
