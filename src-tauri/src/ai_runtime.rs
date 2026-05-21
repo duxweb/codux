@@ -2847,8 +2847,113 @@ fn runtime_log_line(category: &str, message: &str) {
     }
 }
 
-fn runtime_assets_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("runtime-assets")
+const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
+    (
+        "scripts/shell-hooks/dmux-ai-hook.zsh",
+        include_bytes!("../runtime-assets/scripts/shell-hooks/dmux-ai-hook.zsh"),
+    ),
+    (
+        "scripts/shell-hooks/zsh/.zlogin",
+        include_bytes!("../runtime-assets/scripts/shell-hooks/zsh/.zlogin"),
+    ),
+    (
+        "scripts/shell-hooks/zsh/.zprofile",
+        include_bytes!("../runtime-assets/scripts/shell-hooks/zsh/.zprofile"),
+    ),
+    (
+        "scripts/shell-hooks/zsh/.zshenv",
+        include_bytes!("../runtime-assets/scripts/shell-hooks/zsh/.zshenv"),
+    ),
+    (
+        "scripts/shell-hooks/zsh/.zshrc",
+        include_bytes!("../runtime-assets/scripts/shell-hooks/zsh/.zshrc"),
+    ),
+    (
+        "scripts/wrappers/bin/claude",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/claude"),
+    ),
+    (
+        "scripts/wrappers/bin/claude-code",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/claude-code"),
+    ),
+    (
+        "scripts/wrappers/bin/claude-code.cmd",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/claude-code.cmd"),
+    ),
+    (
+        "scripts/wrappers/bin/claude.cmd",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/claude.cmd"),
+    ),
+    (
+        "scripts/wrappers/bin/codex",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/codex"),
+    ),
+    (
+        "scripts/wrappers/bin/codex.cmd",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/codex.cmd"),
+    ),
+    (
+        "scripts/wrappers/bin/codux-ssh",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/codux-ssh"),
+    ),
+    (
+        "scripts/wrappers/bin/codux-ssh.cmd",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/codux-ssh.cmd"),
+    ),
+    (
+        "scripts/wrappers/bin/gemini",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/gemini"),
+    ),
+    (
+        "scripts/wrappers/bin/gemini.cmd",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/gemini.cmd"),
+    ),
+    (
+        "scripts/wrappers/bin/opencode",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/opencode"),
+    ),
+    (
+        "scripts/wrappers/bin/opencode.cmd",
+        include_bytes!("../runtime-assets/scripts/wrappers/bin/opencode.cmd"),
+    ),
+    (
+        "scripts/wrappers/dmux-ai-state.cmd",
+        include_bytes!("../runtime-assets/scripts/wrappers/dmux-ai-state.cmd"),
+    ),
+    (
+        "scripts/wrappers/dmux-ai-state.ps1",
+        include_bytes!("../runtime-assets/scripts/wrappers/dmux-ai-state.ps1"),
+    ),
+    (
+        "scripts/wrappers/dmux-ai-state.sh",
+        include_bytes!("../runtime-assets/scripts/wrappers/dmux-ai-state.sh"),
+    ),
+    (
+        "scripts/wrappers/opencode-config/package.json",
+        include_bytes!("../runtime-assets/scripts/wrappers/opencode-config/package.json"),
+    ),
+    (
+        "scripts/wrappers/opencode-config/plugins/dmux-runtime.js",
+        include_bytes!("../runtime-assets/scripts/wrappers/opencode-config/plugins/dmux-runtime.js"),
+    ),
+    (
+        "scripts/wrappers/tool-wrapper.cmd",
+        include_bytes!("../runtime-assets/scripts/wrappers/tool-wrapper.cmd"),
+    ),
+    (
+        "scripts/wrappers/tool-wrapper.ps1",
+        include_bytes!("../runtime-assets/scripts/wrappers/tool-wrapper.ps1"),
+    ),
+    (
+        "scripts/wrappers/tool-wrapper.sh",
+        include_bytes!("../runtime-assets/scripts/wrappers/tool-wrapper.sh"),
+    ),
+];
+
+fn runtime_asset_content(relative_path: &str) -> Option<&'static [u8]> {
+    RUNTIME_ASSETS
+        .iter()
+        .find_map(|(path, content)| (*path == relative_path).then_some(*content))
 }
 
 fn install_tool_hooks(
@@ -3558,9 +3663,8 @@ fn stage_runtime_asset(
     #[cfg(not(unix))]
     let _ = executable;
 
-    let source = runtime_assets_root().join(relative_path);
-    let content = fs::read(&source)
-        .map_err(|error| format!("read asset {} failed: {error}", source.display()))?;
+    let content = runtime_asset_content(relative_path)
+        .ok_or_else(|| format!("runtime asset {relative_path} was not embedded"))?;
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -3571,7 +3675,7 @@ fn stage_runtime_asset(
     };
 
     if should_write {
-        fs::write(destination, &content).map_err(|error| error.to_string())?;
+        fs::write(destination, content).map_err(|error| error.to_string())?;
     }
 
     #[cfg(unix)]
@@ -3584,33 +3688,17 @@ fn stage_runtime_asset(
 }
 
 fn stage_runtime_dir(relative_path: &str, destination: &Path) -> Result<(), String> {
-    let source = runtime_assets_root().join(relative_path);
-    if !source.is_dir() {
-        return Err(format!(
-            "runtime asset directory {} not found",
-            source.display()
-        ));
+    let prefix = format!("{}/", relative_path.trim_end_matches('/'));
+    let mut staged = 0usize;
+    for (asset_path, _) in RUNTIME_ASSETS {
+        let Some(child_path) = asset_path.strip_prefix(&prefix) else {
+            continue;
+        };
+        stage_runtime_asset(asset_path, &destination.join(child_path), false)?;
+        staged += 1;
     }
-    copy_runtime_dir(&source, destination)
-}
-
-fn copy_runtime_dir(source: &Path, destination: &Path) -> Result<(), String> {
-    fs::create_dir_all(destination).map_err(|error| error.to_string())?;
-    let entries = fs::read_dir(source).map_err(|error| error.to_string())?;
-    for entry in entries {
-        let entry = entry.map_err(|error| error.to_string())?;
-        let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
-        if source_path.is_dir() {
-            copy_runtime_dir(&source_path, &destination_path)?;
-        } else {
-            let relative = source_path
-                .strip_prefix(runtime_assets_root())
-                .ok()
-                .and_then(|path| path.to_str())
-                .unwrap_or_else(|| source_path.to_str().unwrap_or(""));
-            stage_runtime_asset(relative, &destination_path, false)?;
-        }
+    if staged == 0 {
+        return Err(format!("runtime asset directory {relative_path} was not embedded"));
     }
     Ok(())
 }
