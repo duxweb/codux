@@ -57,9 +57,11 @@ function Find-Real-Binary([string]$Name, [string]$SearchPath) {
       default { @("$Name.cmd", "$Name.exe") }
     }
     foreach ($candidate in $candidateNames) {
-      $command = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-      if ($command -and $command.Source -and -not (Same-Directory (Split-Path -Parent $command.Source) $wrapperBin)) {
-        return $command.Source
+      $commands = @(Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue)
+      foreach ($command in $commands) {
+        if ($command -and $command.Source -and -not (Same-Directory (Split-Path -Parent $command.Source) $wrapperBin)) {
+          return $command.Source
+        }
       }
     }
   } finally {
