@@ -24,7 +24,13 @@ import { ensureGitReviewEventCacheSubscription } from "./git/review";
 import { ensureGitStatusEventCacheSubscription } from "./git/status";
 import { readCachedProjectListSnapshot, writeCachedProjectListSnapshot } from "./projectSnapshotCache";
 import { useRuntimeStore } from "./runtimeStore";
-import { dispatchShortcut, isConfiguredShortcut, registerShortcutHandler, type ShortcutScope } from "./shortcuts";
+import {
+  dispatchShortcut,
+  isConfiguredShortcut,
+  registerShortcutHandler,
+  shortcutDisplayValue,
+  type ShortcutScope,
+} from "./shortcuts";
 import { openAppWindow, revealMainAppWindow } from "./windowing";
 import { listenWorkspaceCommand } from "./workspaceCommands";
 import { ensureWorktreeSnapshotEventCacheSubscription, useWorktreeSnapshot } from "./worktree/snapshot";
@@ -33,7 +39,7 @@ import { runAfterFirstPaint, runWhenIdle } from "./startupScheduler";
 import { systemConfirm } from "./systemDialog";
 import { tm } from "./i18n";
 import { ensureTerminalLayoutsSnapshotSubscription } from "./terminalLayout";
-import { FolderOpen, FolderPlus } from "./icons";
+import { Columns2, FolderOpen, FolderPlus, GitBranch, Sparkles, Square2Stack } from "./icons";
 import type {
   MainView,
   ProjectListSnapshot,
@@ -776,23 +782,119 @@ function WelcomeWorkspace({
 }) {
   const title = tm("welcome.title_format", "Welcome to %@").replace("%@", "Codux");
   return (
-    <section className="flex h-full min-h-0 items-center justify-center px-10 py-12">
-      <div className="flex w-full max-w-[460px] flex-col items-center text-center">
-        <AppIconMark size={74} className="mb-5" />
-        <h1 className="text-[22px] font-semibold leading-tight tracking-normal text-ink">{title}</h1>
-        <p className="mt-2 max-w-[360px] text-sm leading-6 text-ink-soft">
-          {tm("welcome.subtitle", "Create a project in the sidebar to get started")}
-        </p>
-        <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-          <Button variant="primary" size="md" leading={FolderPlus} onPress={onCreateProject}>
-            {tm("project.create.title", "Create Project")}
-          </Button>
-          <Button variant="secondary" size="md" leading={FolderOpen} onPress={onOpenFolder}>
-            {tm("project.open_folder.title", "Open Folder")}
-          </Button>
+    <section className="flex h-full min-h-0 flex-col px-10 py-5">
+      <div className="flex flex-1 items-center justify-center">
+        <div className="flex w-full max-w-[360px] flex-col items-center text-center">
+          <AppIconMark size={72} className="mb-5 drop-shadow-[0_3px_6px_rgb(0_0_0_/_0.08)]" />
+          <h1 className="text-[22px] font-bold leading-tight tracking-normal text-ink/90">{title}</h1>
+          <p className="mt-1.5 max-w-[320px] text-[13px] leading-5 text-ink-soft/80">
+            {tm("welcome.subtitle", "Create a project in the sidebar to get started")}
+          </p>
+          <div className="mt-5 grid w-full gap-2.5">
+            <WelcomeActionButton
+              icon={FolderPlus}
+              label={tm("menu.file.new_project", "New Project")}
+              variant="primary"
+              onPress={onCreateProject}
+            />
+            <WelcomeActionButton
+              icon={FolderOpen}
+              label={tm("welcome.open_project", "Open Project")}
+              variant="secondary"
+              onPress={onOpenFolder}
+            />
+          </div>
         </div>
       </div>
+
+      <WelcomeShortcutHints />
     </section>
+  );
+}
+
+function WelcomeActionButton({
+  icon: Icon,
+  label,
+  variant,
+  onPress,
+}: {
+  icon: typeof FolderPlus;
+  label: string;
+  variant: "primary" | "secondary";
+  onPress: () => void;
+}) {
+  const isPrimary = variant === "primary";
+  return (
+    <Button
+      size="md"
+      variant={isPrimary ? "primary" : "secondary"}
+      onPress={onPress}
+      className={`mx-auto !h-auto min-w-[136px] rounded-[9px] px-4 py-2.5 text-[15px] font-medium shadow-[0_2px_5px_rgb(0_0_0_/_0.08)] active:scale-[0.985] ${
+        isPrimary
+          ? "border border-white/15 text-on-brand"
+          : "border border-line bg-fill/[0.09] text-ink hover:bg-fill/[0.13]"
+      }`}
+    >
+      <span className="inline-flex items-center justify-center gap-[9px]">
+        <Icon size={14} strokeWidth={2.2} />
+        <span>{label}</span>
+      </span>
+    </Button>
+  );
+}
+
+function WelcomeShortcutHints() {
+  const hints = [
+    {
+      id: "split",
+      icon: Columns2,
+      label: tm("titlebar.split", "Split"),
+      keys: shortcutDisplayValue("terminal.split", "⌘⇧\\"),
+    },
+    {
+      id: "tab",
+      icon: Square2Stack,
+      label: tm("titlebar.tab", "Tab"),
+      keys: shortcutDisplayValue("terminal.tab", "⌘⇧T"),
+    },
+    {
+      id: "git",
+      icon: GitBranch,
+      label: tm("titlebar.git", "Git"),
+      keys: shortcutDisplayValue("panel.git", "⌘⇧G"),
+    },
+    {
+      id: "ai",
+      icon: Sparkles,
+      label: tm("titlebar.ai", "AI"),
+      keys: shortcutDisplayValue("panel.ai", "⌘⇧A"),
+    },
+  ];
+
+  return (
+    <div className="flex flex-wrap items-start justify-center gap-x-6 gap-y-4 pb-0 text-ink-soft/80">
+      {hints.map((hint) => (
+        <WelcomeShortcutHint key={hint.id} icon={hint.icon} label={hint.label} keys={hint.keys} />
+      ))}
+    </div>
+  );
+}
+
+function WelcomeShortcutHint({
+  icon: Icon,
+  label,
+  keys,
+}: {
+  icon: typeof Columns2;
+  label: string;
+  keys: string;
+}) {
+  return (
+    <div className="grid min-w-[46px] justify-items-center gap-1">
+      <Icon size={13} strokeWidth={1.9} className="text-ink-faint/75" />
+      <div className="text-[11px] leading-none text-ink-soft/80">{label}</div>
+      <div className="text-[10px] font-medium leading-none text-ink-faint/75">{keys}</div>
+    </div>
   );
 }
 

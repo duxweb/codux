@@ -146,9 +146,9 @@ export function isConfiguredShortcut(event: KeyboardEvent, id: string) {
   return configuredShortcutKeys(id).some((shortcut) => isShortcut(event, shortcut));
 }
 
-export function shortcutDisplayValue(id: string) {
+export function shortcutDisplayValue(id: string, fallback?: string) {
   const keys = configuredShortcutKeys(id);
-  return keys.length > 0 ? keys.map(formatShortcutKeys).join(" / ") : tm("settings.shortcut.unset", "Not Set");
+  return keys.length > 0 ? keys.map(formatShortcutKeys).join(" / ") : (fallback ?? tm("settings.shortcut.unset", "Not Set"));
 }
 
 export function isShortcut(
