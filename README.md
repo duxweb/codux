@@ -97,15 +97,22 @@ Terminal input, output, file payloads, project lists, and AI stats are end-to-en
 
 Codux uses the built-in updater. Stable releases and beta releases are published from GitHub Releases, and the app checks the configured channel automatically.
 
-> **"Cannot be opened because the developer cannot be verified"**
->
-> Since Codux is not yet notarized by Apple, macOS may block the first launch. To fix this:
->
-> ```bash
-> sudo xattr -rd com.apple.quarantine /Applications/Codux.app
-> ```
->
-> Or go to **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to the Codux warning.
+### Which File Should I Download?
+
+| Platform | File | Use case |
+| :------- | :--- | :------- |
+| macOS | `macos-universal-formal.dmg` | Recommended macOS installer. Developer ID signed and notarized. |
+| macOS | `macos-universal-unsigned.dmg` | Fast fallback / test build. macOS Gatekeeper may require **Open Anyway** on first launch. |
+| macOS | `macos-universal-*-updater.app.tar.gz` | Automatic updater package. Do not install manually. |
+| Windows | `windows-x86_64-msi-*.msi` | Recommended Windows installer. |
+| Windows | `windows-x86_64-nsis-*.exe` | Alternative Windows installer. |
+| All | `latest.json` | Updater metadata. Do not download manually. |
+
+If macOS blocks an unsigned build, go to **System Settings > Privacy & Security** and click **Open Anyway** next to the Codux warning, or run:
+
+```bash
+sudo xattr -rd com.apple.quarantine /Applications/Codux.app
+```
 
 ### Development
 

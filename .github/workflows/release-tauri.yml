@@ -76,7 +76,7 @@ jobs:
       matrix:
         include:
           - id: macos-universal
-            platform: macos-latest
+            platform: macos-26
             args: --target universal-apple-darwin
             bundle_dir: src-tauri/target/universal-apple-darwin/release/bundle
             artifact_base_name: macos-universal-unsigned
@@ -91,6 +91,8 @@ jobs:
       SOURCE_REF: ${{ needs.metadata.outputs.source_ref }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      CMAKE_OSX_DEPLOYMENT_TARGET: "14.0"
 
     steps:
       - name: Checkout
@@ -128,6 +130,15 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Print macOS build environment
+        if: startsWith(matrix.id, 'macos-')
+        shell: bash
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          echo "MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
 
       - name: Apply release version
         shell: bash

@@ -97,15 +97,22 @@ Codux Mobile + Codux Service 是独立的远程访问栈，中继服务可以自
 
 Codux 使用内置更新器。稳定版和测试版都从 GitHub Releases 发布，应用会按当前配置的更新通道自动检测。
 
-> **提示"无法打开，因为无法验证开发者"？**
->
-> Codux 目前尚未通过 Apple 公证，macOS 可能会阻止首次启动。解决方法：
->
-> ```bash
-> sudo xattr -rd com.apple.quarantine /Applications/Codux.app
-> ```
->
-> 或者前往 **系统设置 > 隐私与安全性**，向下滚动找到 Codux 的提示，点击 **仍要打开**。
+### 应该下载哪个文件？
+
+| 平台 | 文件 | 用途 |
+| :--- | :--- | :--- |
+| macOS | `macos-universal-formal.dmg` | 推荐下载的 macOS 安装包，已使用 Developer ID 签名并通过 Apple 公证。 |
+| macOS | `macos-universal-unsigned.dmg` | 快速回退 / 测试包，首次启动时可能需要在 macOS Gatekeeper 中手动放行。 |
+| macOS | `macos-universal-*-updater.app.tar.gz` | 自动更新专用包，不需要手动下载安装。 |
+| Windows | `windows-x86_64-msi-*.msi` | 推荐下载的 Windows 安装包。 |
+| Windows | `windows-x86_64-nsis-*.exe` | Windows 备用安装包。 |
+| 全平台 | `latest.json` | 自动更新元数据，不需要手动下载。 |
+
+如果 macOS 阻止启动 unsigned 测试包，可以前往 **系统设置 > 隐私与安全性**，找到 Codux 提示后点击 **仍要打开**，或执行：
+
+```bash
+sudo xattr -rd com.apple.quarantine /Applications/Codux.app
+```
 
 ### 开发
 

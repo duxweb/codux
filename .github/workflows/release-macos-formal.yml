@@ -59,7 +59,7 @@ jobs:
 
   build:
     needs: metadata
-    runs-on: macos-latest
+    runs-on: macos-26
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -70,6 +70,8 @@ jobs:
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      CMAKE_OSX_DEPLOYMENT_TARGET: "14.0"
 
     steps:
       - name: Checkout
@@ -108,6 +110,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Print macOS build environment
+        shell: bash
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          echo "MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
 
       - name: Import Apple signing certificate
         shell: bash
