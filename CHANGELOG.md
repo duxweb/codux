@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0-beta.2] - 2026-05-22
+
+### Fixed
+
+- Fixed AI memory extraction so completed sessions from project worktrees are indexed into the root project memory while still resolving transcripts from the active worktree path.
+- Fixed the memory extraction queue to run provider calls asynchronously and publish live memory status snapshots to the React store.
+- Fixed worktree removal so deleted Git worktrees are pruned from the sidebar state immediately after confirmation.
+
+### Changed
+
+- Moved the Memory Manager “Index Now” action into the memory target sidebar header and added visible loading/error feedback.
+- Kept Memory Manager state, title-bar memory state, and Rust extraction events synchronized through `memory:status` and `memory:manager` events.
+
 ## [1.0.0-beta.1] - 2026-05-21
 
 ### Added

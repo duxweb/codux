@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { aggregateProjectPhase, phaseToAIState, resolveDisplayedProjectPhase } from "./ai/projectPhase";
 import { ensureAIHistoryEventCacheSubscription } from "./ai/history";
+import { ensureMemoryEventSubscription } from "./ai/memory";
 import { usePetLedger } from "./ai/petState";
 import { aiRuntime } from "./ai/runtime";
 import {
@@ -36,7 +37,7 @@ import { broadcastWorkspaceCommand, listenWorkspaceCommand } from "./workspaceCo
 import { ensureWorktreeSnapshotEventCacheSubscription, useWorktreeSnapshot } from "./worktree/snapshot";
 import { subscribeAppSettings } from "./settings";
 import { runAfterFirstPaint, runWhenIdle } from "./startupScheduler";
-import { systemConfirm } from "./systemDialog";
+import { systemConfirm, systemMessage } from "./systemDialog";
 import { tm } from "./i18n";
 import { ensureTerminalLayoutsSnapshotSubscription } from "./terminalLayout";
 import { Columns2, FolderOpen, FolderPlus, GitBranch, Sparkles, Square2Stack } from "./icons";
@@ -202,6 +203,7 @@ function App() {
             ensureGitStatusEventCacheSubscription();
             ensureGitReviewEventCacheSubscription();
             ensureAIHistoryEventCacheSubscription();
+            ensureMemoryEventSubscription();
             setSecondaryStartupReady(true);
           });
         });
@@ -510,7 +512,7 @@ function App() {
           projectPath: selectedProjectWithAIState.path,
           worktreePath: target.path,
         });
-        const nextSelected = next.worktrees[0]?.id;
+        const nextSelected = next.selectedWorktreeId || next.worktrees.find((item) => item.isDefault)?.id || next.worktrees[0]?.id;
         if (nextSelected) {
           setSelectedWorktreeByProject((existing) => ({
             ...existing,
@@ -519,6 +521,11 @@ function App() {
         }
       } catch (error) {
         console.error("failed to remove worktree", error);
+        void systemMessage(error instanceof Error ? error.message : String(error), {
+          title: tm("worktree.remove.title", "Remove Worktree"),
+          kind: "error",
+          okLabel: tm("common.ok", "OK"),
+        });
       }
     },
     [selectedProjectWithAIState, worktree],

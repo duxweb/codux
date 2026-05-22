@@ -54,7 +54,8 @@
       "memory.status.queued": "Memory queued",
       "memory.tier.archive": "Archive",
       "memory.tier.core": "Core",
-      "memory.tier.working": "Working"
+      "memory.tier.working": "Working",
+      "memory.manager.index_failed": "Memory indexing failed"
     },
     "en": {
       "memory.status.detail": "Memory queue: %lld pending, %lld running",
@@ -110,7 +111,8 @@
       "memory.status.merged": "Merged",
       "memory.tier.archive": "Archive",
       "memory.tier.core": "Core",
-      "memory.tier.working": "Working"
+      "memory.tier.working": "Working",
+      "memory.manager.index_failed": "Memory indexing failed"
     },
     "es": {
       "memory.kind.bug_lesson": "Bug Lesson",
@@ -166,7 +168,8 @@
       "memory.status.queued": "Memory queued",
       "memory.tier.archive": "Archive",
       "memory.tier.core": "Core",
-      "memory.tier.working": "Working"
+      "memory.tier.working": "Working",
+      "memory.manager.index_failed": "Memory indexing failed"
     },
     "fr": {
       "memory.kind.bug_lesson": "Bug Lesson",
@@ -222,7 +225,8 @@
       "memory.status.queued": "Memory queued",
       "memory.tier.archive": "Archive",
       "memory.tier.core": "Core",
-      "memory.tier.working": "Working"
+      "memory.tier.working": "Working",
+      "memory.manager.index_failed": "Memory indexing failed"
     },
     "ja": {
       "memory.kind.bug_lesson": "Bug Lesson",
@@ -278,7 +282,8 @@
       "memory.status.queued": "Memory queued",
       "memory.tier.archive": "Archive",
       "memory.tier.core": "Core",
-      "memory.tier.working": "Working"
+      "memory.tier.working": "Working",
+      "memory.manager.index_failed": "Memory indexing failed"
     },
     "ko": {
       "memory.kind.bug_lesson": "Bug Lesson",
@@ -334,7 +339,8 @@
       "memory.status.queued": "Memory queued",
       "memory.tier.archive": "Archive",
       "memory.tier.core": "Core",
-      "memory.tier.working": "Working"
+      "memory.tier.working": "Working",
+      "memory.manager.index_failed": "Memory indexing failed"
     },
     "pt-BR": {
       "memory.kind.bug_lesson": "Bug Lesson",
@@ -390,7 +396,8 @@
       "memory.status.queued": "Memory queued",
       "memory.tier.archive": "Archive",
       "memory.tier.core": "Core",
-      "memory.tier.working": "Working"
+      "memory.tier.working": "Working",
+      "memory.manager.index_failed": "Memory indexing failed"
     },
     "ru": {
       "memory.kind.bug_lesson": "Bug Lesson",
@@ -446,7 +453,8 @@
       "memory.status.queued": "Memory queued",
       "memory.tier.archive": "Archive",
       "memory.tier.core": "Core",
-      "memory.tier.working": "Working"
+      "memory.tier.working": "Working",
+      "memory.manager.index_failed": "Memory indexing failed"
     },
     "zh-Hans": {
       "memory.kind.bug_lesson": "问题经验",
@@ -502,7 +510,8 @@
       "memory.status.queued": "记忆排队",
       "memory.tier.archive": "归档",
       "memory.tier.core": "核心",
-      "memory.tier.working": "工作记忆"
+      "memory.tier.working": "工作记忆",
+      "memory.manager.index_failed": "记忆索引失败"
     },
     "zh-Hant": {
       "memory.kind.bug_lesson": "問題經驗",
@@ -558,7 +567,8 @@
       "memory.status.queued": "記憶排隊",
       "memory.tier.archive": "封存",
       "memory.tier.core": "核心",
-      "memory.tier.working": "工作記憶"
+      "memory.tier.working": "工作記憶",
+      "memory.manager.index_failed": "記憶索引失敗"
     }
   }
 }

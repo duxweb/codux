@@ -1245,9 +1245,19 @@ fn handle_runtime_completion(
     projects: Arc<ProjectStore>,
     completion: AIRuntimeCompletionEvent,
 ) {
-    dispatch_completion_notification(app, Arc::clone(&settings), completion.clone());
+    dispatch_completion_notification(app.clone(), Arc::clone(&settings), completion.clone());
     if let Some(session) = completion.session {
-        memory.handle_completed_session(settings, projects.projects_snapshot(), session);
+        memory.handle_completed_session(
+            settings,
+            projects.project_workspaces_snapshot(),
+            session,
+            move |event| {
+                let _ = app.emit("memory:status", event.status);
+                if let Some(manager) = event.manager {
+                    let _ = app.emit("memory:manager", manager);
+                }
+            },
+        );
     }
 }
 

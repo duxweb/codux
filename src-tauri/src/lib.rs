@@ -96,8 +96,8 @@ use llm::{
 };
 use memory::{
     MemoryExtractionStatusSnapshot, MemoryManagementRequest, MemoryManagementSnapshot,
-    MemoryManagerSnapshot, MemoryManagerSnapshotRequest, MemoryStore, MemorySummary,
-    MemorySummaryUpdateRequest,
+    MemoryManagerSnapshot, MemoryManagerSnapshotRequest, MemoryQueueStatusEvent, MemoryStore,
+    MemorySummary, MemorySummaryUpdateRequest,
 };
 use notify_channels::{
     dispatch_notification_channels, NotificationDispatchRequest, NotificationDispatchResult,
@@ -1211,6 +1211,13 @@ fn memory_manager_snapshot(
         .map_err(|error| error.to_string())
 }
 
+fn emit_memory_status_event(app: &tauri::AppHandle, event: MemoryQueueStatusEvent) {
+    let _ = app.emit("memory:status", event.status);
+    if let Some(manager) = event.manager {
+        let _ = app.emit("memory:manager", manager);
+    }
+}
+
 #[tauri::command]
 fn memory_archive_entry(state: tauri::State<'_, AppState>, entry_id: String) -> Result<(), String> {
     state
@@ -1250,12 +1257,18 @@ fn memory_update_summary(
 }
 
 #[tauri::command]
-fn memory_index_now(state: tauri::State<'_, AppState>) {
-    Arc::clone(&state.memory).process_sessions_now(
-        state.settings.snapshot().ai,
-        state.projects.projects_snapshot(),
-        state.ai_runtime.state_snapshot().sessions,
-    );
+fn memory_index_now(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<MemoryExtractionStatusSnapshot, String> {
+    Arc::clone(&state.memory)
+        .process_sessions_now(
+            state.settings.snapshot().ai,
+            state.projects.project_workspaces_snapshot(),
+            state.ai_runtime.state_snapshot().sessions,
+            move |event| emit_memory_status_event(&app, event),
+        )
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1952,13 +1965,8 @@ async fn worktree_remove(
         .worktrees
         .iter()
         .find(|worktree| worktree.is_default)
+        .or_else(|| snapshot.worktrees.first())
         .map(|worktree| worktree.path.clone())
-        .or_else(|| {
-            snapshot
-                .worktrees
-                .first()
-                .map(|worktree| worktree.path.clone())
-        })
         .unwrap_or_default();
     let _ = app.emit(
         "worktree:snapshot",

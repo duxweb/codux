@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { AIGlobalHistorySnapshot, AIHistoryProjectState, AIHistorySessionSummary } from "./ai/history";
 import type { PetSnapshot } from "./ai/petState";
+import type { MemoryExtractionStatusSnapshot, MemoryManagerSnapshot } from "./ai/memory";
 import type { AIRuntimeStateSnapshot } from "./ai/types";
 import type { GitReviewSnapshot } from "./git/review";
 import type { GitStatusSnapshot } from "./git/status";
@@ -40,6 +41,8 @@ type RuntimeState = {
   aiGlobalHistory: AIGlobalHistorySnapshot | null;
   aiRuntimeSnapshot: AIRuntimeStateSnapshot | null;
   petSnapshot: PetSnapshot | null;
+  memoryExtractionStatus: MemoryExtractionStatusSnapshot | null;
+  memoryManagerSnapshot: MemoryManagerSnapshot | null;
   projectListSnapshot: ProjectListSnapshot | null;
   remoteStatus: RemoteStatus | null;
   aiGlobalStatus: {
@@ -61,6 +64,8 @@ type RuntimeState = {
   setAIProjectSessions: (key: string, entry: AIProjectSessionsCacheEntry) => void;
   setAIRuntimeSnapshot: (snapshot: AIRuntimeStateSnapshot | null) => void;
   setPetSnapshot: (snapshot: PetSnapshot | null) => void;
+  setMemoryExtractionStatus: (snapshot: MemoryExtractionStatusSnapshot | null) => void;
+  setMemoryManagerSnapshot: (snapshot: MemoryManagerSnapshot | null) => void;
   setProjectListSnapshot: (snapshot: ProjectListSnapshot | null) => void;
   setRemoteStatus: (status: RemoteStatus | null) => void;
   updateAIProjectStateByProjectId: (
@@ -80,6 +85,8 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
   aiGlobalHistory: null,
   aiRuntimeSnapshot: null,
   petSnapshot: null,
+  memoryExtractionStatus: null,
+  memoryManagerSnapshot: null,
   projectListSnapshot: null,
   remoteStatus: null,
   aiGlobalStatus: {
@@ -163,6 +170,8 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
     })),
   setAIRuntimeSnapshot: (snapshot) => set({ aiRuntimeSnapshot: snapshot }),
   setPetSnapshot: (snapshot) => set({ petSnapshot: snapshot }),
+  setMemoryExtractionStatus: (snapshot) => set({ memoryExtractionStatus: snapshot }),
+  setMemoryManagerSnapshot: (snapshot) => set({ memoryManagerSnapshot: snapshot }),
   setProjectListSnapshot: (snapshot) => set({ projectListSnapshot: snapshot }),
   setRemoteStatus: (status) => set({ remoteStatus: status }),
   updateAIProjectStateByProjectId: (projectId, updater) =>

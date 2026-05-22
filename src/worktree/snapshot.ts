@@ -228,9 +228,20 @@ export function useWorktreeSnapshot(project?: WorkspaceProject) {
   const remove = useCallback(
     async (input: WorktreeRemoveInput) => {
       if (!window.__TAURI_INTERNALS__) return snapshot;
-      const next = await invoke<WorktreeSnapshot>("worktree_remove", { request: input });
-      applySnapshot(`${input.projectId}:${input.projectPath}`, next);
-      return next;
+      const requestKey = `${input.projectId}:${input.projectPath}`;
+      useRuntimeStore.getState().setWorktreeLoading(requestKey, true);
+      useRuntimeStore.getState().setWorktreeError(requestKey, null);
+      try {
+        const next = await invoke<WorktreeSnapshot>("worktree_remove", { request: input });
+        applySnapshot(requestKey, next);
+        return next;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        useRuntimeStore.getState().setWorktreeError(requestKey, message);
+        throw error;
+      } finally {
+        useRuntimeStore.getState().setWorktreeLoading(requestKey, false);
+      }
     },
     [applySnapshot, snapshot],
   );

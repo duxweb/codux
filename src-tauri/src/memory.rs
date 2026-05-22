@@ -2,7 +2,7 @@ use crate::ai_runtime::AISessionSnapshot;
 use crate::app_settings::{AIMemorySettings, AIProviderSettings, AISettings, AppSettingsStore};
 use crate::llm;
 use crate::paths::{app_support_dir, home_dir, runtime_temp_dir};
-use crate::project_store::ProjectRecord;
+use crate::project_store::{ProjectRecord, ProjectWorkspaceRecord};
 use anyhow::{anyhow, Context, Result};
 use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
@@ -190,6 +191,7 @@ pub struct MemoryExtractionTask {
     pub tool: String,
     pub session_id: String,
     pub transcript_path: String,
+    pub workspace_path: Option<String>,
     pub source_fingerprint: String,
     pub status: String,
     pub attempts: i64,
@@ -314,7 +316,40 @@ pub struct MemoryManagementSnapshot {
 pub struct MemoryStore {
     db_path: PathBuf,
     last_enqueued_at_by_session: Mutex<HashMap<String, f64>>,
-    processing_lock: Mutex<()>,
+    processing_queue: AtomicBool,
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryProjectContext {
+    pub project_id: String,
+    pub project_name: String,
+    pub workspace_path: String,
+}
+
+impl MemoryProjectContext {
+    fn from_workspace(workspace: &ProjectWorkspaceRecord) -> Self {
+        Self {
+            project_id: workspace.root_project_id.clone(),
+            project_name: workspace.root_project_name.clone(),
+            workspace_path: workspace.workspace_path.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryQueueStatusEvent {
+    pub status: MemoryExtractionStatusSnapshot,
+    pub manager: Option<MemoryManagerSnapshot>,
+}
+
+struct MemoryQueueProcessingGuard<'a> {
+    flag: &'a AtomicBool,
+}
+
+impl Drop for MemoryQueueProcessingGuard<'_> {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::Release);
+    }
 }
 
 impl MemoryStore {
@@ -324,7 +359,7 @@ impl MemoryStore {
         let store = Self {
             db_path: root.join("memory.sqlite3"),
             last_enqueued_at_by_session: Mutex::new(HashMap::new()),
-            processing_lock: Mutex::new(()),
+            processing_queue: AtomicBool::new(false),
         };
         store.configure()?;
         Ok(store)
@@ -608,22 +643,29 @@ impl MemoryStore {
     pub fn process_sessions_now(
         self: Arc<Self>,
         settings: AISettings,
-        projects: Vec<ProjectRecord>,
+        projects: Vec<ProjectWorkspaceRecord>,
         sessions: Vec<AISessionSnapshot>,
-    ) {
+        on_status: impl Fn(MemoryQueueStatusEvent) + Send + Sync + 'static,
+    ) -> Result<MemoryExtractionStatusSnapshot> {
         if !settings.memory.enabled {
-            return;
+            return self.extraction_status_snapshot();
         }
+        let initial_status = self.extraction_status_snapshot()?;
+        let on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync> = Arc::new(on_status);
         tauri::async_runtime::spawn(async move {
             for session in &sessions {
                 if let Err(error) = self.enqueue_session_for_manual_extraction(&projects, session) {
                     eprintln!("memory manual enqueue failed: {error}");
                 }
             }
-            if let Err(error) = self.process_queue(settings, projects) {
+            self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
+            if let Err(error) = self.process_queue(settings, projects, Arc::clone(&on_status)).await
+            {
                 eprintln!("memory manual extraction failed: {error}");
+                self.publish_queue_status(&[], Arc::as_ref(&on_status));
             }
         });
+        Ok(initial_status)
     }
 
     pub fn extraction_status_snapshot(&self) -> Result<MemoryExtractionStatusSnapshot> {
@@ -670,19 +712,30 @@ impl MemoryStore {
     pub fn handle_completed_session(
         self: Arc<Self>,
         settings: Arc<AppSettingsStore>,
-        projects: Vec<ProjectRecord>,
+        projects: Vec<ProjectWorkspaceRecord>,
         session: AISessionSnapshot,
+        on_status: impl Fn(MemoryQueueStatusEvent) + Send + Sync + 'static,
     ) {
+        let on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync> = Arc::new(on_status);
         tauri::async_runtime::spawn(async move {
             let configured = settings.snapshot().ai;
             if !configured.memory.enabled || !configured.memory.automatic_extraction_enabled {
                 return;
             }
+            let result = self.enqueue_session_if_ready(&configured.memory, &projects, &session);
+            if matches!(result, Ok(true)) {
+                self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
+            }
+            if let Err(error) = result {
+                eprintln!("memory extraction enqueue failed: {error}");
+                return;
+            }
             if let Err(error) = self
-                .enqueue_session_if_ready(&configured.memory, &projects, &session)
-                .and_then(|_| self.process_queue(configured, projects))
+                .process_queue(configured, projects, Arc::clone(&on_status))
+                .await
             {
                 eprintln!("memory extraction failed: {error}");
+                self.publish_queue_status(&[], Arc::as_ref(&on_status));
             }
         });
     }
@@ -749,6 +802,7 @@ impl MemoryStore {
                 tool TEXT NOT NULL,
                 session_id TEXT NOT NULL,
                 transcript_path TEXT NOT NULL,
+                workspace_path TEXT,
                 source_fingerprint TEXT NOT NULL UNIQUE,
                 status TEXT NOT NULL,
                 attempts INTEGER NOT NULL DEFAULT 0,
@@ -783,6 +837,7 @@ impl MemoryStore {
             "CREATE INDEX IF NOT EXISTS idx_memory_entries_scope_project_tier ON memory_entries(scope, project_id, tier);",
             "CREATE INDEX IF NOT EXISTS idx_memory_entries_tool ON memory_entries(tool_id);",
             "CREATE INDEX IF NOT EXISTS idx_memory_entries_hash ON memory_entries(scope, project_id, tool_id, normalized_hash);",
+            "ALTER TABLE memory_extraction_queue ADD COLUMN workspace_path TEXT;",
             "CREATE INDEX IF NOT EXISTS idx_memory_queue_status_time ON memory_extraction_queue(status, enqueued_at);",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_summaries_scope_project_tool ON memory_summaries(scope, COALESCE(project_id, ''), COALESCE(tool_id, ''));",
             "CREATE INDEX IF NOT EXISTS idx_memory_summary_versions_summary ON memory_summary_versions(summary_id, version);",
@@ -800,7 +855,12 @@ impl MemoryStore {
               AND length(content) <= 24;
             "#,
         ] {
-            conn.execute_batch(statement)?;
+            if let Err(error) = conn.execute_batch(statement) {
+                let message = error.to_string();
+                if !message.contains("duplicate column name") {
+                    return Err(error.into());
+                }
+            }
         }
         Ok(())
     }
@@ -1195,6 +1255,23 @@ impl MemoryStore {
                 updated_at: overview.updated_at,
             });
         }
+        for project in projects {
+            if rows
+                .iter()
+                .any(|row| row.scope == "project" && row.project_id.as_deref() == Some(project.id.as_str()))
+            {
+                continue;
+            }
+            rows.push(MemoryManagerTargetRow {
+                id: format!("project-{}", project.id),
+                scope: "project".to_string(),
+                project_id: Some(project.id.clone()),
+                title: project.name.clone(),
+                subtitle: project.path.clone(),
+                count: 0,
+                updated_at: None,
+            });
+        }
         Ok(rows)
     }
 
@@ -1279,7 +1356,7 @@ impl MemoryStore {
     fn enqueue_session_if_ready(
         &self,
         memory_settings: &AIMemorySettings,
-        projects: &[ProjectRecord],
+        projects: &[ProjectWorkspaceRecord],
         session: &AISessionSnapshot,
     ) -> Result<bool> {
         if session.state != "idle" || !session.has_completed_turn || session.was_interrupted {
@@ -1291,20 +1368,11 @@ impl MemoryStore {
         {
             return Ok(false);
         }
-        let Some(project) = projects
-            .iter()
-            .find(|project| project.id == session.project_id)
-            .or_else(|| {
-                session.project_path.as_ref().and_then(|path| {
-                    projects
-                        .iter()
-                        .find(|project| paths_equivalent(Some(project.path.as_str()), path))
-                })
-            })
+        let Some(project) = memory_project_context(projects, session)
         else {
             return Ok(false);
         };
-        let Some(source) = self.resolve_transcript_source(session, project) else {
+        let Some(source) = self.resolve_transcript_source(session, &project) else {
             return Ok(false);
         };
         let session_key = extraction_session_key(session);
@@ -1318,7 +1386,8 @@ impl MemoryStore {
                 }
             }
             if self.enqueue_extraction_if_needed(
-                &project.id,
+                &project.project_id,
+                &project.workspace_path,
                 &session.tool,
                 &session_identifier(session),
                 &source.location,
@@ -1333,30 +1402,22 @@ impl MemoryStore {
 
     fn enqueue_session_for_manual_extraction(
         &self,
-        projects: &[ProjectRecord],
+        projects: &[ProjectWorkspaceRecord],
         session: &AISessionSnapshot,
     ) -> Result<bool> {
         if session.state != "idle" || !session.has_completed_turn {
             return Ok(false);
         }
-        let Some(project) = projects
-            .iter()
-            .find(|project| project.id == session.project_id)
-            .or_else(|| {
-                session.project_path.as_ref().and_then(|path| {
-                    projects
-                        .iter()
-                        .find(|project| paths_equivalent(Some(project.path.as_str()), path))
-                })
-            })
+        let Some(project) = memory_project_context(projects, session)
         else {
             return Ok(false);
         };
-        let Some(source) = self.resolve_transcript_source(session, project) else {
+        let Some(source) = self.resolve_transcript_source(session, &project) else {
             return Ok(false);
         };
         self.enqueue_extraction_if_needed(
-            &project.id,
+            &project.project_id,
+            &project.workspace_path,
             &session.tool,
             &session_identifier(session),
             &source.location,
@@ -1367,6 +1428,7 @@ impl MemoryStore {
     fn enqueue_extraction_if_needed(
         &self,
         project_id: &str,
+        workspace_path: &str,
         tool: &str,
         session_id: &str,
         transcript_path: &str,
@@ -1384,8 +1446,8 @@ impl MemoryStore {
         conn.execute(
             r#"
             INSERT INTO memory_extraction_queue (
-                id, project_id, tool, session_id, transcript_path, source_fingerprint, status, attempts, error, enqueued_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', 0, NULL, ?7);
+                id, project_id, tool, session_id, transcript_path, workspace_path, source_fingerprint, status, attempts, error, enqueued_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', 0, NULL, ?8);
             "#,
             params![
                 Uuid::new_v4().to_string(),
@@ -1393,6 +1455,7 @@ impl MemoryStore {
                 tool,
                 session_id,
                 transcript_path,
+                workspace_path,
                 source_fingerprint,
                 now_seconds()
             ],
@@ -1400,35 +1463,70 @@ impl MemoryStore {
         Ok(true)
     }
 
-    fn process_queue(&self, settings: AISettings, projects: Vec<ProjectRecord>) -> Result<()> {
-        let _guard = self
-            .processing_lock
-            .try_lock()
-            .map_err(|_| anyhow!("memory extraction queue is already processing"))?;
+    async fn process_queue(
+        &self,
+        settings: AISettings,
+        projects: Vec<ProjectWorkspaceRecord>,
+        on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync>,
+    ) -> Result<()> {
+        if self
+            .processing_queue
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Ok(());
+        }
+        let _guard = MemoryQueueProcessingGuard {
+            flag: &self.processing_queue,
+        };
+        self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
+        let root_projects = root_projects_from_workspaces(&projects);
         let projects_by_id = projects
             .into_iter()
-            .map(|project| (project.id.clone(), project))
+            .filter(|project| project.id == project.root_project_id)
+            .map(|project| {
+                (
+                    project.root_project_id.clone(),
+                    MemoryProjectContext::from_workspace(&project),
+                )
+            })
             .collect::<HashMap<_, _>>();
         while let Some(task) = self.next_pending_extraction_task()? {
-            if let Err(error) = self.process_task(&settings, &projects_by_id, task.clone()) {
+            if let Err(error) = self
+                .process_task(
+                    &settings,
+                    &projects_by_id,
+                    &root_projects,
+                    task.clone(),
+                    Arc::clone(&on_status),
+                )
+                .await
+            {
                 let _ = self.mark_extraction_task_failed(&task.id, &error.to_string());
+                self.publish_queue_status_for_roots(&root_projects, Arc::as_ref(&on_status));
             }
         }
+        self.publish_queue_status_for_roots(&root_projects, Arc::as_ref(&on_status));
         Ok(())
     }
 
-    fn process_task(
+    async fn process_task(
         &self,
         settings: &AISettings,
-        projects_by_id: &HashMap<String, ProjectRecord>,
+        projects_by_id: &HashMap<String, MemoryProjectContext>,
+        root_projects: &[ProjectRecord],
         task: MemoryExtractionTask,
+        on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync>,
     ) -> Result<()> {
         self.mark_extraction_task_running(&task.id)?;
+        self.publish_queue_status_for_roots(root_projects, Arc::as_ref(&on_status));
         let Some(project) = projects_by_id.get(&task.project_id) else {
             self.mark_extraction_task_done(&task.id)?;
+            self.publish_queue_status_for_roots(root_projects, Arc::as_ref(&on_status));
             return Ok(());
         };
         let provider = select_memory_provider(settings, Some(&task.tool))
+            .cloned()
             .ok_or_else(|| anyhow!("No available AI provider is configured."))?;
         let transcript = self.resolve_transcript_for_task(&task, project)?;
         let user_summary = self
@@ -1436,7 +1534,7 @@ impl MemoryStore {
             .ok()
             .flatten();
         let project_summary = self
-            .current_summary(MemoryScope::Project, Some(&project.id), None)
+            .current_summary(MemoryScope::Project, Some(&project.project_id), None)
             .ok()
             .flatten();
         let user_memories = self
@@ -1451,7 +1549,7 @@ impl MemoryStore {
         let project_memories = self
             .list_entries(
                 MemoryScope::Project,
-                Some(&project.id),
+                Some(&project.project_id),
                 None,
                 &[MemoryTier::Working],
                 i64::from(settings.memory.max_injected_project_working_memories),
@@ -1463,18 +1561,17 @@ impl MemoryStore {
             project_summary.as_ref(),
             &user_memories,
             &project_memories,
-            &project.name,
+            &project.project_name,
             &settings.memory,
         );
-        let response_text = tauri::async_runtime::block_on(llm::complete_with_provider(
-            provider,
-            &prompt,
-            Some(extraction_system_prompt()),
-        ))
-        .map_err(|error| anyhow!(error))?;
+        let response_text =
+            llm::complete_with_provider(&provider, &prompt, Some(extraction_system_prompt()))
+                .await
+                .map_err(|error| anyhow!(error))?;
         let response = decode_extraction_response(&response_text)?;
         self.apply_extraction_response(response, &task, &settings.memory)?;
         self.mark_extraction_task_done(&task.id)?;
+        self.publish_queue_status_for_roots(root_projects, Arc::as_ref(&on_status));
         Ok(())
     }
 
@@ -1482,7 +1579,7 @@ impl MemoryStore {
         let conn = self.connect()?;
         conn.query_row(
             r#"
-            SELECT id, project_id, tool, session_id, transcript_path, source_fingerprint, status, attempts, error, enqueued_at
+            SELECT id, project_id, tool, session_id, transcript_path, workspace_path, source_fingerprint, status, attempts, error, enqueued_at
             FROM memory_extraction_queue
             WHERE status = 'pending'
             ORDER BY enqueued_at ASC
@@ -1974,7 +2071,7 @@ impl MemoryStore {
     fn resolve_transcript_source(
         &self,
         session: &AISessionSnapshot,
-        project: &ProjectRecord,
+        project: &MemoryProjectContext,
     ) -> Option<TranscriptSource> {
         let tool = normalized_non_empty(&session.tool)?.to_lowercase();
         let session_id = session_identifier(session);
@@ -1991,9 +2088,11 @@ impl MemoryStore {
         match tool.as_str() {
             "claude" => {
                 let ai_session = normalized_non_empty(session.ai_session_id.as_deref()?)?;
-                claude_project_log_paths(&project.path)
+                claude_project_log_paths(&project.workspace_path)
                     .into_iter()
-                    .find(|path| claude_log_contains_session(path, &ai_session, &project.path))
+                    .find(|path| {
+                        claude_log_contains_session(path, &ai_session, &project.workspace_path)
+                    })
                     .and_then(|path| {
                         transcript_source_if_readable(
                             &path.display().to_string(),
@@ -2005,7 +2104,7 @@ impl MemoryStore {
             }
             "codex" => {
                 let ai_session = normalized_non_empty(session.ai_session_id.as_deref()?)?;
-                find_codex_rollout_path(&project.path, &ai_session).and_then(|path| {
+                find_codex_rollout_path(&project.workspace_path, &ai_session).and_then(|path| {
                     transcript_source_if_readable(
                         &path.display().to_string(),
                         &tool,
@@ -2015,7 +2114,7 @@ impl MemoryStore {
                 })
             }
             "gemini" => {
-                let files = gemini_session_paths(&project.path);
+                let files = gemini_session_paths(&project.workspace_path);
                 let matching = session
                     .ai_session_id
                     .as_deref()
@@ -2052,13 +2151,18 @@ impl MemoryStore {
     fn resolve_transcript_for_task(
         &self,
         task: &MemoryExtractionTask,
-        project: &ProjectRecord,
+        project: &MemoryProjectContext,
     ) -> Result<String> {
+        let workspace_path = task
+            .workspace_path
+            .as_deref()
+            .and_then(normalized_non_empty)
+            .unwrap_or_else(|| project.workspace_path.clone());
         let tool = task.tool.to_lowercase();
         if Path::new(&task.transcript_path).is_file() {
             if tool == "opencode" && task.transcript_path.ends_with(".db") {
                 if let Some(text) = fetch_opencode_transcript(
-                    &project.path,
+                    &workspace_path,
                     &task.session_id,
                     &task.transcript_path,
                 ) {
@@ -2070,7 +2174,7 @@ impl MemoryStore {
         }
         match tool.as_str() {
             "claude" => {
-                for path in claude_project_log_paths(&project.path) {
+                for path in claude_project_log_paths(&workspace_path) {
                     if let Some(text) = read_transcript_file(&path.display().to_string(), 80, 8000)
                     {
                         return Ok(text);
@@ -2078,7 +2182,7 @@ impl MemoryStore {
                 }
             }
             "codex" => {
-                if let Some(path) = find_codex_rollout_path(&project.path, &task.session_id) {
+                if let Some(path) = find_codex_rollout_path(&workspace_path, &task.session_id) {
                     if let Some(text) = read_transcript_file(&path.display().to_string(), 80, 8000)
                     {
                         return Ok(text);
@@ -2086,7 +2190,7 @@ impl MemoryStore {
                 }
             }
             "gemini" => {
-                for path in gemini_session_paths(&project.path) {
+                for path in gemini_session_paths(&workspace_path) {
                     if let Some(text) = read_transcript_file(&path.display().to_string(), 80, 8000)
                     {
                         return Ok(text);
@@ -2095,7 +2199,7 @@ impl MemoryStore {
             }
             "opencode" => {
                 if let Some(text) = fetch_opencode_transcript(
-                    &project.path,
+                    &workspace_path,
                     &task.session_id,
                     &opencode_database_path().display().to_string(),
                 ) {
@@ -2108,6 +2212,73 @@ impl MemoryStore {
             "Unable to resolve transcript for memory extraction."
         ))
     }
+
+    fn publish_queue_status(
+        &self,
+        projects: &[ProjectWorkspaceRecord],
+        on_status: &(dyn Fn(MemoryQueueStatusEvent) + Send + Sync),
+    ) {
+        self.publish_queue_status_for_roots(
+            &root_projects_from_workspaces(projects),
+            on_status,
+        );
+    }
+
+    fn publish_queue_status_for_roots(
+        &self,
+        projects: &[ProjectRecord],
+        on_status: &(dyn Fn(MemoryQueueStatusEvent) + Send + Sync),
+    ) {
+        if let Ok(status) = self.extraction_status_snapshot() {
+            let manager = self
+                .manager_snapshot(
+                    MemoryManagerSnapshotRequest {
+                        scope: "user".to_string(),
+                        project_id: None,
+                        tab: "summary".to_string(),
+                        limit: Some(500),
+                    },
+                    projects,
+                )
+                .ok();
+            on_status(MemoryQueueStatusEvent { status, manager });
+        }
+    }
+}
+
+fn memory_project_context(
+    projects: &[ProjectWorkspaceRecord],
+    session: &AISessionSnapshot,
+) -> Option<MemoryProjectContext> {
+    projects
+        .iter()
+        .find(|project| project.id == session.project_id)
+        .or_else(|| {
+            session.project_path.as_ref().and_then(|path| {
+                projects.iter().find(|project| {
+                    paths_equivalent(Some(project.workspace_path.as_str()), path)
+                        || paths_equivalent(Some(project.root_project_path.as_str()), path)
+                })
+            })
+        })
+        .map(MemoryProjectContext::from_workspace)
+}
+
+fn root_projects_from_workspaces(projects: &[ProjectWorkspaceRecord]) -> Vec<ProjectRecord> {
+    let mut seen = HashSet::new();
+    projects
+        .iter()
+        .filter(|project| seen.insert(project.root_project_id.clone()))
+        .map(|project| ProjectRecord {
+            id: project.root_project_id.clone(),
+            name: project.root_project_name.clone(),
+            path: project.root_project_path.clone(),
+            badge_text: None,
+            badge_symbol: None,
+            badge_color_hex: None,
+            git_default_push_remote_name: project.git_default_push_remote_name.clone(),
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -2257,11 +2428,12 @@ fn memory_task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryExtra
         tool: row.get(2)?,
         session_id: row.get(3)?,
         transcript_path: row.get(4)?,
-        source_fingerprint: row.get(5)?,
-        status: row.get(6)?,
-        attempts: row.get(7)?,
-        error: row.get(8)?,
-        enqueued_at: row.get(9)?,
+        workspace_path: row.get(5)?,
+        source_fingerprint: row.get(6)?,
+        status: row.get(7)?,
+        attempts: row.get(8)?,
+        error: row.get(9)?,
+        enqueued_at: row.get(10)?,
     })
 }
 
