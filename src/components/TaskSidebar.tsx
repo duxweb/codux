@@ -48,6 +48,8 @@ type Props = {
   onRefreshWorktrees?: () => void;
   isBusy?: boolean;
   createRequest?: number;
+  canCreateWorktree?: boolean;
+  repositoryMessage?: string;
 };
 
 export function TaskSidebar({
@@ -63,6 +65,8 @@ export function TaskSidebar({
   onRefreshWorktrees,
   isBusy,
   createRequest = 0,
+  canCreateWorktree = true,
+  repositoryMessage = "",
 }: Props) {
   const [isCreating, setCreating] = useState(false);
   const [worktreeName, setWorktreeName] = useState("");
@@ -96,7 +100,7 @@ export function TaskSidebar({
       ]),
     [defaultWorktree.branch, gitSnapshot, selectedProject?.branch],
   );
-  const canCreate = worktreeName.trim().length > 0 && baseBranch.trim().length > 0 && !isBusy;
+  const canCreate = canCreateWorktree && worktreeName.trim().length > 0 && baseBranch.trim().length > 0 && !isBusy;
   const optimisticRowExists = optimisticSelectedId
     ? worktreeRows.some((worktree) => worktree.id === optimisticSelectedId)
     : false;
@@ -155,11 +159,12 @@ export function TaskSidebar({
   );
 
   const openCreateModal = useCallback(() => {
+    if (!canCreateWorktree) return;
     setCreating(true);
     setWorktreeName(timestampSlug());
     setBaseBranch(branchOptions[0] ?? "");
     setCreateError("");
-  }, [branchOptions]);
+  }, [branchOptions, canCreateWorktree]);
 
   useEffect(() => {
     if (createRequest <= 0) return;
@@ -225,14 +230,16 @@ export function TaskSidebar({
           >
             <RefreshCw size={12} strokeWidth={2.4} className={isBusy ? "animate-spin" : ""} />
           </PressableButton>
-          <PressableButton
-            className="w-6 h-6 grid place-items-center rounded-md text-ink-mute hover:text-ink hover:bg-fill/8 transition-colors disabled:opacity-50"
-            disabled={isBusy}
-            aria-label={tm("worktree.create.title", "New Worktree")}
-            onPressUp={openCreateModal}
-          >
-            <Plus size={12} strokeWidth={2.4} />
-          </PressableButton>
+          {canCreateWorktree && (
+            <PressableButton
+              className="w-6 h-6 grid place-items-center rounded-md text-ink-mute hover:text-ink hover:bg-fill/8 transition-colors disabled:opacity-50"
+              disabled={isBusy}
+              aria-label={tm("worktree.create.title", "New Worktree")}
+              onPressUp={openCreateModal}
+            >
+              <Plus size={12} strokeWidth={2.4} />
+            </PressableButton>
+          )}
         </div>
       </div>
       <div className="h-px bg-line opacity-60" />
@@ -258,6 +265,7 @@ export function TaskSidebar({
                 onReviewWorktree?.(worktree.worktree);
               }}
               applications={applications}
+              repositoryMessage={repositoryMessage}
             />
           ))
         ) : (
@@ -396,6 +404,7 @@ const WorktreeCard = memo(function WorktreeCard({
   onOpenFolder,
   onReview,
   applications,
+  repositoryMessage,
 }: {
   worktree: WorktreeRow;
   aiState: WorktreeAIState;
@@ -406,6 +415,7 @@ const WorktreeCard = memo(function WorktreeCard({
   onOpenFolder?: () => void;
   onReview?: () => void;
   applications: ProjectOpenApplication[];
+  repositoryMessage?: string;
 }) {
   const contextMenu = useContextMenu();
   const ideApplications = useMemo(() => applications.filter((item) => item.id !== "terminal"), [applications]);
@@ -482,6 +492,7 @@ const WorktreeCard = memo(function WorktreeCard({
               changes={worktree.changes ?? 0}
               additions={worktree.additions ?? 0}
               deletions={worktree.deletions ?? 0}
+              repositoryMessage={worktree.worktree.isDefault ? repositoryMessage : ""}
             />
           </div>
         </div>
@@ -505,8 +516,7 @@ function WorktreeActivityDot({ state }: { state: WorktreeAIState }) {
   if (state === "running") {
     return (
       <span className="relative grid h-3 w-3 place-items-center rounded-full">
-        <span className="h-2 w-2 rounded-full bg-brand-amber" />
-        <span className="absolute inset-0 rounded-full border border-brand-amber/20 border-t-brand-amber motion-safe:animate-spin" />
+        <span className="h-2.5 w-2.5 rounded-full bg-brand-amber" />
       </span>
     );
   }
@@ -523,11 +533,16 @@ function WorktreeGitSummary({
   changes,
   additions,
   deletions,
+  repositoryMessage,
 }: {
   changes: number;
   additions: number;
   deletions: number;
+  repositoryMessage?: string;
 }) {
+  if (repositoryMessage) {
+    return <div className="mt-1 truncate text-xs font-semibold text-ink-faint">{repositoryMessage}</div>;
+  }
   return (
     <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-xs font-semibold tabular-nums">
       <span className="min-w-0 truncate text-ink-faint">
@@ -542,11 +557,12 @@ function WorktreeGitSummary({
 }
 
 function fallbackDefaultWorktree(project?: WorkspaceProject): ProjectWorktreeSnapshot {
+  const branch = project?.branch?.trim() || "main";
   return {
     id: project?.id ?? "main",
     projectId: project?.id ?? "",
-    name: project?.branch ?? tm("worktree.branch.current", "current branch"),
-    branch: project?.branch ?? tm("worktree.branch.current", "current branch"),
+    name: branch,
+    branch,
     path: project?.path ?? "",
     status: "todo",
     isDefault: true,
@@ -564,10 +580,11 @@ function fallbackDefaultWorktree(project?: WorkspaceProject): ProjectWorktreeSna
 
 function toWorktreeRow(worktree: ProjectWorktreeSnapshot): WorktreeRow {
   const status = worktree.status;
+  const branch = worktree.branch?.trim() || "main";
   return {
     id: worktree.id,
-    title: worktree.name || branchTitle(worktree.branch) || worktree.branch || tm("worktree.default.name", "Default"),
-    branch: worktree.branch || worktree.path || tm("worktree.branch.current", "current branch"),
+    title: worktree.isDefault ? branch : worktree.name || branchTitle(branch) || branch,
+    branch: branch || worktree.path,
     changes: worktree.gitSummary.changes,
     incoming: worktree.gitSummary.incoming,
     outgoing: worktree.gitSummary.outgoing,

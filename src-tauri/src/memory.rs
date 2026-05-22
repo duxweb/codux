@@ -654,7 +654,9 @@ impl MemoryStore {
                 }
             }
             self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
-            if let Err(error) = self.process_queue(settings, projects, Arc::clone(&on_status)).await
+            if let Err(error) = self
+                .process_queue(settings, projects, Arc::clone(&on_status))
+                .await
             {
                 eprintln!("memory manual extraction failed: {error}");
                 self.publish_queue_status(&[], Arc::as_ref(&on_status));
@@ -1251,10 +1253,9 @@ impl MemoryStore {
             });
         }
         for project in projects {
-            if rows
-                .iter()
-                .any(|row| row.scope == "project" && row.project_id.as_deref() == Some(project.id.as_str()))
-            {
+            if rows.iter().any(|row| {
+                row.scope == "project" && row.project_id.as_deref() == Some(project.id.as_str())
+            }) {
                 continue;
             }
             rows.push(MemoryManagerTargetRow {
@@ -1363,8 +1364,7 @@ impl MemoryStore {
         {
             return Ok(false);
         }
-        let Some(project) = memory_project_context(projects, session)
-        else {
+        let Some(project) = memory_project_context(projects, session) else {
             return Ok(false);
         };
         let Some(source) = self.resolve_transcript_source(session, &project) else {
@@ -1403,8 +1403,7 @@ impl MemoryStore {
         if session.state != "idle" || !session.has_completed_turn {
             return Ok(false);
         }
-        let Some(project) = memory_project_context(projects, session)
-        else {
+        let Some(project) = memory_project_context(projects, session) else {
             return Ok(false);
         };
         let Some(source) = self.resolve_transcript_source(session, &project) else {
@@ -2213,10 +2212,7 @@ impl MemoryStore {
         projects: &[ProjectWorkspaceRecord],
         on_status: &(dyn Fn(MemoryQueueStatusEvent) + Send + Sync),
     ) {
-        self.publish_queue_status_for_roots(
-            &root_projects_from_workspaces(projects),
-            on_status,
-        );
+        self.publish_queue_status_for_roots(&root_projects_from_workspaces(projects), on_status);
     }
 
     fn publish_queue_status_for_roots(

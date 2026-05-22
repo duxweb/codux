@@ -6,29 +6,45 @@ pub fn app_support_dir() -> PathBuf {
         return home_dir()
             .join("Library")
             .join("Application Support")
-            .join("Codux");
+            .join(app_display_name());
     }
     #[cfg(target_os = "windows")]
     {
         if let Some(appdata) = std::env::var_os("APPDATA") {
-            return PathBuf::from(appdata).join("Codux");
+            return PathBuf::from(appdata).join(app_display_name());
         }
         return home_dir()
             .join("AppData")
             .join("Roaming")
-            .join("Codux");
+            .join(app_display_name());
     }
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
         if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
-            return PathBuf::from(config_home).join("codux");
+            return PathBuf::from(config_home).join(app_slug());
         }
-        return home_dir().join(".config").join("codux");
+        return home_dir().join(".config").join(app_slug());
     }
 }
 
 pub fn runtime_temp_dir() -> PathBuf {
-    std::env::temp_dir().join("codux")
+    std::env::temp_dir().join(app_slug())
+}
+
+pub fn app_display_name() -> &'static str {
+    if cfg!(debug_assertions) {
+        "Codux Dev"
+    } else {
+        "Codux"
+    }
+}
+
+pub fn app_slug() -> &'static str {
+    if cfg!(debug_assertions) {
+        "codux-dev"
+    } else {
+        "codux"
+    }
 }
 
 pub fn home_dir() -> PathBuf {

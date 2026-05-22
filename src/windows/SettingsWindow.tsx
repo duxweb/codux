@@ -40,6 +40,7 @@ import {
   type AIToolPermissionMode,
   type NotificationChannelSettings,
   type RemoteDeviceSettings,
+  type TerminalRendererMode,
 } from "../settings";
 import { appShortcutDefinitions, serializeShortcutSequence, shortcutDisplayValue } from "../shortcuts";
 import { restartNotice, systemMessage } from "../systemDialog";
@@ -165,6 +166,12 @@ const sleepPreventionOptions = [
 const statisticsModeOptions = [
   { value: "normalized", label: tm("settings.ai_statistics_mode.normalized", "Exclude Cache") },
   { value: "includingCache", label: tm("settings.ai_statistics_mode.including_cache", "Include Cache") },
+];
+
+const terminalRendererOptions: { value: TerminalRendererMode; label: string }[] = [
+  { value: "auto", label: tm("settings.terminal_renderer.auto", "Auto") },
+  { value: "dom", label: tm("settings.terminal_renderer.dom", "DOM") },
+  { value: "webgl", label: tm("settings.terminal_renderer.webgl", "WebGL") },
 ];
 
 const updateChannelOptions = [
@@ -663,6 +670,19 @@ function AppearanceSection() {
             max={28}
             value={settings.terminalFontSize}
             onChange={(event) => setSetting("terminalFontSize", event.currentTarget.value)}
+          />
+        </Field>
+        <Field
+          label={tm("settings.terminal_renderer", "Terminal Renderer")}
+          description={tm(
+            "settings.terminal_renderer.help",
+            "Auto uses DOM on macOS and WebGL on Windows. Restart terminal tabs to apply renderer changes.",
+          )}
+        >
+          <Select
+            value={settings.terminalRenderer}
+            onChange={(value) => setSetting("terminalRenderer", value as TerminalRendererMode)}
+            options={terminalRendererOptions}
           />
         </Field>
       </SettingsCard>

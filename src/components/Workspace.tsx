@@ -663,6 +663,7 @@ function TerminalMode({
               terminalId={pane.terminalId}
               detached={Boolean(pane.detached)}
               active={visible && pane.terminalId === activeTerminalId}
+              webglActive={visible && activeTerminalId === pane.terminalId && visibleTopPanes.length === 1}
               canClose={visibleTopPanes.length > 1}
               focusRequest={focusRequest}
               onActivate={() => activateTerminal(pane.terminalId, { focus: true })}
@@ -849,6 +850,7 @@ function TerminalPane({
   terminalId,
   detached,
   active,
+  webglActive,
   canClose,
   focusRequest,
   onActivate,
@@ -859,6 +861,7 @@ function TerminalPane({
   terminalId: string;
   detached: boolean;
   active: boolean;
+  webglActive: boolean;
   canClose: boolean;
   focusRequest: number;
   onActivate: () => void;
@@ -914,7 +917,13 @@ function TerminalPane({
           {tm("terminal.detached.message", "This terminal is open in a separate window.")}
         </div>
       ) : (
-        <TerminalView terminalId={terminalId} chrome={false} active={active} focusRequest={focusRequest} />
+        <TerminalView
+          terminalId={terminalId}
+          chrome={false}
+          active={active}
+          webglActive={webglActive}
+          focusRequest={focusRequest}
+        />
       )}
       {!active && <div className="terminal-pane-dim" aria-hidden="true" />}
     </section>

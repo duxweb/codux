@@ -545,7 +545,7 @@ function MemoryStatusButton() {
         <BrainCog size={TITLEBAR_MEMORY_ICON_SIZE} strokeWidth={2.1} />
         {isProcessing ? (
           <span
-            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-chrome border-t-brand-blue bg-surface-chrome motion-safe:animate-spin"
+            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-chrome bg-brand-blue"
             aria-hidden="true"
           />
         ) : isActive ? (

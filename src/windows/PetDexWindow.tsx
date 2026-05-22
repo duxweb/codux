@@ -4,6 +4,7 @@ import { openExternalUrl } from "../appActions";
 import { listenPetCustomPetInstalled } from "../ai/petCustomEvents";
 import {
   loadPetCatalog,
+  loadCustomPetSprite,
   usePetLedger,
   type PetCatalog,
   type PetCatalogItem,
@@ -14,7 +15,6 @@ import {
 import { Button } from "../components/Button";
 import { PetSprite } from "../components/PetSprite";
 import { PressableButton } from "../components/PressableButton";
-import { readAppSettings, subscribeAppSettings } from "../settings";
 import { systemConfirm, systemMessage } from "../systemDialog";
 import { formatI18n, tm } from "../i18n";
 import { openAppWindow } from "../windowing";
@@ -40,12 +40,11 @@ type SpotlightIdentity = { kind: "bundled"; item: PetCatalogItem } | { kind: "cu
 
 export function PetDexWindow() {
   const pet = usePetLedger([]);
-  const [settings, setSettings] = useState(readAppSettings);
   const [catalog, setCatalog] = useState<PetCatalog | null>(null);
   const [isWorking, setWorking] = useState(false);
   const [spotlight, setSpotlight] = useState<SpotlightIdentity | null>(null);
+  const currentCustomPet = useHydratedCustomPet(pet.snapshot.customPet ?? null);
 
-  useEffect(() => subscribeAppSettings(setSettings), []);
   useEffect(() => {
     void reloadCatalog();
   }, []);
@@ -195,11 +194,11 @@ export function PetDexWindow() {
                 <CurrentPetDetail
                   name={currentName}
                   species={pet.snapshot.species}
-                  customPet={pet.snapshot.customPet}
+                  customPet={currentCustomPet}
                   stats={pet.snapshot.currentStats}
                   totalXp={currentInfo.totalXp}
                   level={currentInfo.level}
-                  staticMode={settings.pet.staticMode}
+                  staticMode
                   claimedAt={pet.snapshot.claimedAt}
                 />
               ) : (
@@ -313,7 +312,7 @@ export function PetDexWindow() {
         {spotlight && (
           <DexSpotlightOverlay
             identity={spotlight}
-            staticMode={settings.pet.staticMode}
+            staticMode
             onClose={() => setSpotlight(null)}
           />
         )}
@@ -548,6 +547,32 @@ function DexSpotlightOverlay({
       </div>
     </div>
   );
+}
+
+function useHydratedCustomPet(pet: PetCustomPet | null): PetCustomPet | null {
+  const [hydrated, setHydrated] = useState<PetCustomPet | null>(pet?.spritesheetDataUrl ? pet : null);
+  const key = pet ? `${pet.directoryName}/${pet.spritesheetPath}` : "";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!pet) {
+      setHydrated(null);
+      return;
+    }
+    if (pet.spritesheetDataUrl) {
+      setHydrated(pet);
+      return;
+    }
+    setHydrated(pet);
+    void loadCustomPetSprite(pet).then((next) => {
+      if (!cancelled) setHydrated(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, pet]);
+
+  return hydrated;
 }
 
 function petDisplayName(species: string, customPet?: PetCustomPet | null, customName?: string) {

@@ -570,7 +570,7 @@ impl PetStore {
     pub fn snapshot(&self) -> Result<PetSnapshot, String> {
         self.state
             .lock()
-            .map(|state| hydrate_snapshot_custom_pets(state.clone()))
+            .map(|state| state.clone())
             .map_err(|_| "Pet store lock poisoned.".to_string())
     }
 
@@ -661,10 +661,9 @@ impl PetStore {
         apply(&mut state)?;
         let snapshot = sanitize_state(state.clone());
         *state = snapshot.clone();
-        let response = hydrate_snapshot_custom_pets(snapshot.clone());
         drop(state);
         self.save(&snapshot)?;
-        Ok(response)
+        Ok(snapshot)
     }
 
     fn save(&self, snapshot: &PetSnapshot) -> Result<(), String> {
@@ -1529,20 +1528,7 @@ fn sanitize_state(mut state: PetSnapshot) -> PetSnapshot {
     state
 }
 
-fn hydrate_snapshot_custom_pets(mut state: PetSnapshot) -> PetSnapshot {
-    state.custom_pet = state.custom_pet.map(hydrate_custom_pet_data_url);
-    state.legacy = state
-        .legacy
-        .into_iter()
-        .map(|mut record| {
-            record.custom_pet = record.custom_pet.map(hydrate_custom_pet_data_url);
-            record
-        })
-        .collect();
-    state
-}
-
-fn hydrate_custom_pet_data_url(mut pet: PetCustomPet) -> PetCustomPet {
+pub fn hydrate_custom_pet_data_url(mut pet: PetCustomPet) -> PetCustomPet {
     if pet
         .spritesheet_data_url
         .as_ref()

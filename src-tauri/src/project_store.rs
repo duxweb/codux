@@ -928,8 +928,11 @@ fn merge_worktree_state(
             || record.path != normalized_path
             || record.is_default != incoming_worktree.is_default;
         record.project_id = project_id.clone();
-        record.name =
-            normalized_string(&record.name).unwrap_or_else(|| incoming_worktree.name.clone());
+        record.name = if incoming_worktree.is_default {
+            incoming_worktree.name.clone()
+        } else {
+            normalized_string(&record.name).unwrap_or_else(|| incoming_worktree.name.clone())
+        };
         record.branch = incoming_worktree.branch.clone();
         record.path = normalized_path;
         record.is_default = incoming_worktree.is_default;
@@ -966,12 +969,10 @@ fn merge_worktree_state(
         .worktrees
         .retain(|worktree| worktree.project_id != project_id);
     snapshot.worktrees.extend(merged_records);
-    snapshot
-        .worktree_tasks
-        .retain(|task| {
-            !merged_ids.contains(&task.worktree_id)
-                && !existing_project_worktree_ids.contains(&task.worktree_id)
-        });
+    snapshot.worktree_tasks.retain(|task| {
+        !merged_ids.contains(&task.worktree_id)
+            && !existing_project_worktree_ids.contains(&task.worktree_id)
+    });
     snapshot.worktree_tasks.extend(merged_tasks.clone());
 
     let selected = snapshot
@@ -1338,7 +1339,13 @@ mod tests {
         let incoming = WorktreeSnapshot {
             project_id: "project-a".to_string(),
             selected_worktree_id: "project-a".to_string(),
-            worktrees: vec![test_worktree("project-a", "project-a", "Default", "/tmp/project-a", true)],
+            worktrees: vec![test_worktree(
+                "project-a",
+                "project-a",
+                "Default",
+                "/tmp/project-a",
+                true,
+            )],
             tasks: Vec::new(),
             error: None,
         };
@@ -1347,8 +1354,14 @@ mod tests {
 
         assert_eq!(result.selected_worktree_id, "project-a");
         assert_eq!(result.worktrees.len(), 1);
-        assert!(result.worktrees.iter().all(|worktree| worktree.id != "worktree-a"));
-        assert!(state.worktrees.iter().all(|worktree| worktree.id != "worktree-a"));
+        assert!(result
+            .worktrees
+            .iter()
+            .all(|worktree| worktree.id != "worktree-a"));
+        assert!(state
+            .worktrees
+            .iter()
+            .all(|worktree| worktree.id != "worktree-a"));
         assert!(state.worktree_tasks.is_empty());
     }
 

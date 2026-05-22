@@ -116,6 +116,7 @@ export function emptyWorktreeSnapshot(project?: WorkspaceProject): WorktreeSnaps
       error: null,
     };
   }
+  const branch = project.branch?.trim() || "main";
   return {
     projectId: project.id,
     selectedWorktreeId: project.id,
@@ -123,8 +124,8 @@ export function emptyWorktreeSnapshot(project?: WorkspaceProject): WorktreeSnaps
       {
         id: project.id,
         projectId: project.id,
-        name: project.branch || project.name,
-        branch: project.branch,
+        name: branch,
+        branch,
         path: project.path,
         status: "todo",
         isDefault: true,

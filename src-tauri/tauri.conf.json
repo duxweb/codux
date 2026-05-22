@@ -22,8 +22,8 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
-        "transparent": true,
-        "backgroundColor": "#00000000",
+        "transparent": false,
+        "backgroundColor": "#2c3037",
         "visible": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
@@ -32,12 +32,7 @@
           "x": 16,
           "y": 24
         },
-        "windowEffects": {
-          "effects": ["mica"],
-          "state": "active",
-          "radius": 12,
-          "color": "#171b223a"
-        }
+        "windowEffects": null
       }
     ],
     "security": {

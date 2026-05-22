@@ -1,4 +1,5 @@
 use crate::app_settings::AppSettingsStore;
+use crate::paths::app_display_name;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -165,7 +166,8 @@ impl PlatformSleepAssertion {
         }
 
         let assertion_type = cf_string("PreventUserIdleSystemSleep");
-        let name = cf_string("Codux active task");
+        let reason = format!("{} active task", app_display_name());
+        let name = cf_string(&reason);
         let mut id = 0;
         let result = unsafe {
             IOPMAssertionCreateWithName(assertion_type, K_IO_PM_ASSERTION_LEVEL_ON, name, &mut id)
@@ -247,7 +249,8 @@ impl PlatformSleepAssertion {
             POWER_REQUEST_CONTEXT_SIMPLE_STRING, REASON_CONTEXT, REASON_CONTEXT_0,
         };
 
-        let mut reason: Vec<u16> = "Codux active task".encode_utf16().chain([0]).collect();
+        let reason_text = format!("{} active task", app_display_name());
+        let mut reason: Vec<u16> = reason_text.encode_utf16().chain([0]).collect();
         let context = REASON_CONTEXT {
             Version: POWER_REQUEST_CONTEXT_VERSION,
             Flags: POWER_REQUEST_CONTEXT_SIMPLE_STRING,
@@ -312,13 +315,16 @@ impl PlatformSleepAssertion {
     fn create() -> Result<Self, String> {
         use std::process::{Command, Stdio};
 
-        let candidates: [(&str, &[&str]); 2] = [
+        let who = format!("--who={}", app_display_name());
+        let why = format!("--why={} active task", app_display_name());
+        let reason = format!("{} active task", app_display_name());
+        let candidates: [(&str, Vec<&str>); 2] = [
             (
                 "systemd-inhibit",
-                &[
+                vec![
                     "--what=idle:sleep",
-                    "--who=Codux",
-                    "--why=Codux active task",
+                    who.as_str(),
+                    why.as_str(),
                     "--mode=block",
                     "sleep",
                     "infinity",
@@ -326,11 +332,11 @@ impl PlatformSleepAssertion {
             ),
             (
                 "gnome-session-inhibit",
-                &[
+                vec![
                     "--inhibit",
                     "idle:suspend",
                     "--reason",
-                    "Codux active task",
+                    reason.as_str(),
                     "sleep",
                     "infinity",
                 ],
@@ -340,7 +346,7 @@ impl PlatformSleepAssertion {
         let mut errors = Vec::new();
         for (program, args) in candidates {
             match Command::new(program)
-                .args(args)
+                .args(&args)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

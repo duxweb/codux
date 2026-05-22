@@ -669,8 +669,12 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
             project_cached_input_tokens,
             today_total_tokens,
             today_cached_input_tokens,
-            current_tool: latest_session.as_ref().and_then(|session| session.last_tool.clone()),
-            current_model: latest_session.as_ref().and_then(|session| session.last_model.clone()),
+            current_tool: latest_session
+                .as_ref()
+                .and_then(|session| session.last_tool.clone()),
+            current_model: latest_session
+                .as_ref()
+                .and_then(|session| session.last_model.clone()),
             current_session_updated_at: latest_session.as_ref().map(|session| session.last_seen_at),
         },
         sessions,
@@ -1892,7 +1896,7 @@ fn paths_equivalent(left: Option<&str>, right: &str) -> bool {
     let Some(right) = normalized_history_path(right) else {
         return false;
     };
-    left == right || left.starts_with(&format!("{right}/"))
+    left == right
 }
 
 fn normalized_history_path(value: &str) -> Option<String> {
@@ -2020,17 +2024,17 @@ mod tests {
     }
 
     #[test]
-    fn matches_windows_extended_paths_and_project_children() {
+    fn matches_windows_extended_paths_without_matching_project_children() {
         assert!(paths_equivalent(
-            Some(r"\\?\F:\codux-tauri\src-tauri"),
+            Some(r"\\?\F:\codux-tauri"),
             r"F:\codux-tauri"
-        ));
-        assert!(paths_equivalent(
-            Some(r"F:\codux-tauri\src-tauri\"),
-            r"f:\codux-tauri"
         ));
         assert!(!paths_equivalent(
             Some(r"F:\codux-tauri-other"),
+            r"F:\codux-tauri"
+        ));
+        assert!(!paths_equivalent(
+            Some(r"F:\codux-tauri\.codux\worktrees\task-a"),
             r"F:\codux-tauri"
         ));
     }

@@ -128,6 +128,7 @@ export type AISessionSnapshot = {
   cachedInputTokens: number;
   totalTokens: number;
   baselineTotalTokens: number;
+  baselineCachedInputTokens: number;
   startedAt?: number;
   updatedAt: number;
   activeTurnStartedAt?: number;

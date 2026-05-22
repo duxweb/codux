@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "4";
+const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "6";
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 const SCHEMA_STATEMENTS: &[&str] = &[
@@ -1584,8 +1584,12 @@ fn build_snapshot_from_rows(
             project_cached_input_tokens,
             today_total_tokens,
             today_cached_input_tokens,
-            current_tool: latest_session.as_ref().and_then(|session| session.last_tool.clone()),
-            current_model: latest_session.as_ref().and_then(|session| session.last_model.clone()),
+            current_tool: latest_session
+                .as_ref()
+                .and_then(|session| session.last_tool.clone()),
+            current_model: latest_session
+                .as_ref()
+                .and_then(|session| session.last_model.clone()),
             current_session_updated_at: latest_session.as_ref().map(|session| session.last_seen_at),
         },
         sessions,

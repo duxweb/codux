@@ -1,17 +1,25 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal as XtermTerminal, type IDisposable, type ITheme } from "@xterm/xterm";
+import type { WebglAddon } from "@xterm/addon-webgl";
+import { Terminal as XtermTerminal, type IDisposable, type ITerminalAddon, type ITheme } from "@xterm/xterm";
 import { Copy, Maximize2, PanelBottomClose, Plus, RefreshCw, Square, TerminalSquare } from "../icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { readAppSettings, readTerminalFontSize, subscribeAppSettings } from "../settings";
+import {
+  readAppSettings,
+  readTerminalFontSize,
+  readTerminalRendererMode,
+  subscribeAppSettings,
+  type TerminalRendererMode,
+} from "../settings";
 import { registerTerminalInput } from "../terminal/focus";
+import { installTerminalTextInputAdapter, type TerminalTextInputAdapter } from "../terminal/inputAdapter";
 import {
   terminalReplayBuffer,
   terminalRuntime,
   type TerminalRuntimeEvent,
   type TerminalRuntimeSession,
 } from "../terminal/runtime";
+import { terminalControlSequence } from "../terminal/keymap";
 import { t } from "../i18n";
 import { isWindowsPlatform } from "../platform";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
@@ -24,6 +32,7 @@ type TerminalRendererAdapter = {
   blur: () => void;
   fit: () => void;
   refreshTheme: () => void;
+  setWebglEnabled: (enabled: boolean) => void;
   setFontSize: (fontSize: number) => void;
   setInputEnabled: (enabled: boolean) => void;
   copySelection: () => Promise<void>;
@@ -36,7 +45,17 @@ type TerminalRendererAdapter = {
 const MIN_COLS = 20;
 const MIN_ROWS = 8;
 const isWindowsTerminal = isWindowsPlatform();
-const useWebglTerminalRenderer = true;
+const TERMINAL_FONT_FAMILY =
+  '"Berkeley Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
+
+function resolveTerminalRenderer(mode: TerminalRendererMode) {
+  if (mode === "auto") return isWindowsTerminal ? "webgl" : "dom";
+  return mode;
+}
+
+function shouldUseWebgl(mode: TerminalRendererMode, active: boolean) {
+  return active && resolveTerminalRenderer(mode) === "webgl";
+}
 
 function cssVar(style: CSSStyleDeclaration, name: string, fallback: string) {
   return style.getPropertyValue(name).trim() || fallback;
@@ -85,11 +104,13 @@ type XtermWithSelectionInternals = XtermTerminal & {
 
 function XtermRenderer({
   className,
+  webglActive,
   onAdapter,
   onData,
   onResize,
 }: {
   className: string;
+  webglActive: boolean;
   onAdapter: (adapter: TerminalRendererAdapter | null) => void;
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
@@ -108,20 +129,25 @@ function XtermRenderer({
     let lastFitHeight = -1;
     let isSelecting = false;
     let unregisterInput: (() => void) | undefined;
+    let textInputAdapter: TerminalTextInputAdapter | null = null;
+    let webglAddon: WebglAddon | null = null;
+    let webglContextLossDisposable: IDisposable | null = null;
+    let webglLoadVersion = 0;
 
     const terminal = new XtermTerminal({
       allowProposedApi: true,
       allowTransparency: false,
       altClickMovesCursor: false,
       convertEol: isWindowsTerminal,
-      cursorBlink: !isWindowsTerminal,
+      cursorBlink: false,
       cursorInactiveStyle: "outline",
       disableStdin: true,
       drawBoldTextInBrightColors: true,
-      fontFamily: '"Berkeley Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+      fontFamily: TERMINAL_FONT_FAMILY,
       fontSize: readTerminalFontSize(),
       lineHeight: 1.25,
       macOptionIsMeta: true,
+      rescaleOverlappingGlyphs: true,
       rightClickSelectsWord: false,
       scrollback: 20000,
       showCursorImmediately: true,
@@ -136,9 +162,15 @@ function XtermRenderer({
     const fitAddon = new FitAddon();
     const unicode11Addon = new Unicode11Addon();
     const disposables: IDisposable[] = [];
-    let webglAddon: WebglAddon | null = null;
+    terminal.loadAddon(fitAddon);
+    terminal.loadAddon(unicode11Addon);
+    terminal.unicode.activeVersion = "11";
+    terminal.open(host);
 
-    const disposeWebglAddon = () => {
+    const disposeWebgl = () => {
+      webglLoadVersion += 1;
+      webglContextLossDisposable?.dispose();
+      webglContextLossDisposable = null;
       if (!webglAddon) return;
       try {
         webglAddon.dispose();
@@ -147,28 +179,34 @@ function XtermRenderer({
       }
     };
 
-    terminal.loadAddon(fitAddon);
-    terminal.loadAddon(unicode11Addon);
-    terminal.unicode.activeVersion = "11";
-    terminal.open(host);
-    if (useWebglTerminalRenderer) {
-      try {
-        const nextWebglAddon = new WebglAddon();
-        disposables.push(
-          nextWebglAddon.onContextLoss(() => {
-            if (webglAddon === nextWebglAddon) {
-              disposeWebglAddon();
-            } else {
-              nextWebglAddon.dispose();
-            }
-          }),
-        );
-        terminal.loadAddon(nextWebglAddon);
-        webglAddon = nextWebglAddon;
-      } catch (error) {
-        void error;
+    const enableWebgl = () => {
+      if (disposed || webglAddon) return;
+      const version = ++webglLoadVersion;
+      void import("@xterm/addon-webgl")
+        .then(({ WebglAddon }) => {
+          if (disposed || version !== webglLoadVersion || webglAddon) return;
+          const nextWebglAddon = new WebglAddon();
+          terminal.loadAddon(nextWebglAddon as ITerminalAddon);
+          webglContextLossDisposable = nextWebglAddon.onContextLoss(() => {
+            console.warn("xterm webgl context lost; falling back to DOM renderer");
+            disposeWebgl();
+          });
+          webglAddon = nextWebglAddon;
+        })
+        .catch((error) => {
+          console.warn("failed to load xterm webgl renderer", error);
+        });
+    };
+
+    const setWebglEnabled = (enabled: boolean) => {
+      if (enabled) {
+        enableWebgl();
+        return;
       }
-    }
+      disposeWebgl();
+    };
+
+    setWebglEnabled(shouldUseWebgl(readTerminalRendererMode(), webglActive && document.visibilityState !== "hidden"));
 
     const releaseSelectionDrag = (reason: string) => {
       if (!isSelecting) return;
@@ -189,8 +227,15 @@ function XtermRenderer({
       if (event.buttons !== 0) return;
       releaseSelectionDrag("move-without-button");
     };
+    const focusTerminalFromPointer = (event: PointerEvent) => {
+      if (event.button !== 0 || !inputEnabled) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[data-terminal-control]")) return;
+      terminal.focus();
+    };
 
     host.addEventListener("mousedown", markSelectionStart, true);
+    host.addEventListener("pointerdown", focusTerminalFromPointer, true);
     window.addEventListener("pointerup", releaseSelectionAfterMouseEnd, true);
     window.addEventListener("pointercancel", releaseSelectionAfterMouseEnd, true);
     window.addEventListener("mouseup", releaseSelectionAfterMouseEnd, true);
@@ -208,6 +253,11 @@ function XtermRenderer({
           terminal.blur();
           host.classList.remove("focused");
         },
+      });
+      textInputAdapter = installTerminalTextInputAdapter({
+        textarea,
+        isEnabled: () => inputEnabled,
+        write: onData,
       });
     }
 
@@ -250,26 +300,11 @@ function XtermRenderer({
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (!inputEnabled) return false;
-      if (
-        event.type === "keydown" &&
-        event.metaKey &&
-        !event.altKey &&
-        !event.ctrlKey &&
-        (event.key === "ArrowLeft" || event.key === "ArrowRight")
-      ) {
+      const sequence = terminalControlSequence(event);
+      if (sequence) {
         event.preventDefault();
-        onData(event.key === "ArrowLeft" ? "\x01" : "\x05");
-        return false;
-      }
-      if (
-        event.type === "keydown" &&
-        event.altKey &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        (event.key === "ArrowLeft" || event.key === "ArrowRight")
-      ) {
-        event.preventDefault();
-        onData(event.key === "ArrowLeft" ? "\x1bb" : "\x1bf");
+        event.stopPropagation();
+        onData(sequence);
         return false;
       }
       return true;
@@ -277,7 +312,9 @@ function XtermRenderer({
 
     disposables.push(
       terminal.onData((data) => {
-        if (inputEnabled) onData(data);
+        if (!inputEnabled) return;
+        textInputAdapter?.noteNativeData(data);
+        onData(data);
       }),
       terminal.onResize(({ cols, rows }) => onResize(cols, rows)),
     );
@@ -307,10 +344,10 @@ function XtermRenderer({
       },
       fit: () => fit(),
       refreshTheme,
+      setWebglEnabled,
       setFontSize: (fontSize) => {
         if (terminal.options.fontSize === fontSize) return;
         terminal.options.fontSize = fontSize;
-        webglAddon?.clearTextureAtlas();
         scheduleFit(true);
       },
       setInputEnabled: (enabled) => {
@@ -347,17 +384,19 @@ function XtermRenderer({
           resizeFrame = null;
         }
         host.removeEventListener("mousedown", markSelectionStart, true);
+        host.removeEventListener("pointerdown", focusTerminalFromPointer, true);
         window.removeEventListener("pointerup", releaseSelectionAfterMouseEnd, true);
         window.removeEventListener("pointercancel", releaseSelectionAfterMouseEnd, true);
         window.removeEventListener("mouseup", releaseSelectionAfterMouseEnd, true);
         window.removeEventListener("pointermove", releaseSelectionWhenMouseIsUp, true);
         window.removeEventListener("mousemove", releaseSelectionWhenMouseIsUp, true);
         window.removeEventListener("blur", releaseSelectionAfterWindowBlur);
+        textInputAdapter?.dispose();
         unregisterInput?.();
+        disposeWebgl();
         for (const disposable of disposables) {
           disposable.dispose();
         }
-        disposeWebglAddon();
         terminal.dispose();
       },
     };
@@ -367,7 +406,7 @@ function XtermRenderer({
     return () => {
       onAdapter(null);
     };
-  }, [onAdapter, onData, onResize]);
+  }, [onAdapter, onData, onResize, webglActive]);
 
   return <div ref={hostRef} className={className} />;
 }
@@ -376,6 +415,7 @@ type Props = {
   terminalId: string;
   chrome?: boolean;
   active?: boolean;
+  webglActive?: boolean;
   focusRequest?: number;
   onClose?: () => void;
   onDetach?: () => void;
@@ -392,6 +432,7 @@ export function TerminalView({
   terminalId,
   chrome = true,
   active = true,
+  webglActive = active,
   focusRequest = 0,
   onClose,
   onDetach,
@@ -547,12 +588,32 @@ export function TerminalView({
     const applySettings = () => {
       const adapter = adapterRef.current;
       if (!adapter) return;
-      adapter.setFontSize(readTerminalFontSize(readAppSettings()));
+      const settings = readAppSettings();
+      adapter.setFontSize(readTerminalFontSize(settings));
       adapter.refreshTheme();
+      adapter.setWebglEnabled(
+        shouldUseWebgl(readTerminalRendererMode(settings), webglActive && active && canAcceptInput),
+      );
     };
     applySettings();
     return subscribeAppSettings(applySettings);
-  }, [adapterVersion]);
+  }, [active, adapterVersion, canAcceptInput, webglActive]);
+
+  useEffect(() => {
+    const adapter = adapterRef.current;
+    if (!adapter) return;
+    const updateRendererActivity = () => {
+      adapter.setWebglEnabled(
+        shouldUseWebgl(
+          readTerminalRendererMode(),
+          webglActive && active && canAcceptInput && document.visibilityState !== "hidden",
+        ),
+      );
+    };
+    updateRendererActivity();
+    document.addEventListener("visibilitychange", updateRendererActivity);
+    return () => document.removeEventListener("visibilitychange", updateRendererActivity);
+  }, [active, adapterVersion, canAcceptInput, webglActive]);
 
   useEffect(() => {
     window.addEventListener("resize", scheduleFitAndResize);
@@ -662,6 +723,7 @@ export function TerminalView({
       )}
       <XtermRenderer
         className="terminal-host no-drag"
+        webglActive={webglActive && active && canAcceptInput}
         onAdapter={setAdapter}
         onData={writeTerminalInput}
         onResize={resizeTerminal}

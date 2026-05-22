@@ -90,6 +90,33 @@ describe("ai runtime store", () => {
     expect(store.completedPhase("project-1")).toEqual({ kind: "idle" });
   });
 
+  it("subtracts cached input baselines from live project totals", () => {
+    const sessionStore = new AISessionStore();
+
+    sessionStore.applyHook(
+      hook({
+        kind: "promptSubmitted",
+        totalTokens: 1_000,
+        cachedInputTokens: 10_000,
+        updatedAt: 1000,
+      }),
+    );
+    sessionStore.applyHook(
+      hook({
+        kind: "turnCompleted",
+        totalTokens: 1_200,
+        cachedInputTokens: 12_500,
+        updatedAt: 1010,
+        metadata: { hasCompletedTurn: true },
+      }),
+    );
+
+    expect(sessionStore.projectTotals("project-1")).toMatchObject({
+      totalTokens: 200,
+      cachedInputTokens: 2_500,
+    });
+  });
+
   it("does not revive a stale completion after newer active work ends without completion", () => {
     const store = new AIRuntimeStore();
 
@@ -305,6 +332,7 @@ describe("ai runtime store", () => {
         cachedInputTokens: 0,
         totalTokens: 0,
         baselineTotalTokens: 0,
+        baselineCachedInputTokens: 0,
         updatedAt: 1000,
         hasCompletedTurn: false,
         wasInterrupted: false,

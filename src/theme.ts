@@ -1,4 +1,4 @@
-import { Effect, EffectState, getCurrentWindow, type Effects, type Theme } from "@tauri-apps/api/window";
+import { getCurrentWindow, type Theme } from "@tauri-apps/api/window";
 import { readAppSettings, type AppSettings } from "./settings";
 
 export type AppTheme = "light" | "dark" | "graphite" | "midnight";
@@ -84,11 +84,6 @@ export type BackgroundColorOption = {
 export type ThemeColorOption = {
   label: string;
   color: string;
-};
-
-type ResolvedBackgroundTint = {
-  rgb: [number, number, number];
-  alpha: number;
 };
 
 export type TerminalThemePreview = {
@@ -901,19 +896,30 @@ function applyBackgroundOverride(root: HTMLElement, background: string) {
   const option = resolveBackgroundColorOption(background);
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
   if (!option || normalizeThemeName(option.label) === "auto") {
-    root.style.setProperty("--surface-window-tint", "color-mix(in oklab, var(--terminal-bg) 38%, transparent)");
-    root.style.setProperty("--surface-window-glass", "color-mix(in oklab, var(--terminal-bg) 26%, transparent)");
+    applyDerivedSurfacePalette(root, appTheme);
+    root.style.setProperty(
+      "--surface-window-tint",
+      appTheme === "light"
+        ? "color-mix(in oklab, var(--terminal-bg) 94%, black)"
+        : "color-mix(in oklab, var(--terminal-bg) 88%, white)",
+    );
+    root.style.setProperty(
+      "--surface-window-glass",
+      appTheme === "light"
+        ? "color-mix(in oklab, var(--terminal-bg) 97%, black)"
+        : "color-mix(in oklab, var(--terminal-bg) 94%, white)",
+    );
     return;
   }
   const color = appTheme === "light" ? option.light : option.dark;
   const anchor = appTheme === "light" ? "rgb(255 255 255)" : "var(--terminal-bg)";
   root.style.setProperty(
     "--surface-window-tint",
-    `color-mix(in oklab, ${color} ${appTheme === "light" ? "54%" : "48%"}, transparent)`,
+    `color-mix(in oklab, ${color} ${appTheme === "light" ? "18%" : "22%"}, ${anchor})`,
   );
   root.style.setProperty(
     "--surface-window-glass",
-    `color-mix(in oklab, ${color} ${appTheme === "light" ? "38%" : "32%"}, transparent)`,
+    `color-mix(in oklab, ${color} ${appTheme === "light" ? "12%" : "16%"}, ${anchor})`,
   );
   root.style.setProperty(
     "--color-surface-glass",
@@ -934,6 +940,35 @@ function applyBackgroundOverride(root: HTMLElement, background: string) {
   root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
   root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
   root.style.setProperty("--surface-editor", "var(--terminal-bg)");
+  applyDerivedBorderPalette(root, appTheme);
+}
+
+function applyDerivedSurfacePalette(root: HTMLElement, appTheme: "light" | "dark") {
+  const chromeMix = appTheme === "light" ? "95%, black" : "86%, white";
+  const panelMix = appTheme === "light" ? "97%, black" : "90%, white";
+  const cardMix = appTheme === "light" ? "98%, black" : "94%, white";
+  root.style.setProperty("--color-surface-glass", `color-mix(in oklab, var(--terminal-bg) ${chromeMix})`);
+  root.style.setProperty("--color-surface-chrome", `color-mix(in oklab, var(--terminal-bg) ${chromeMix})`);
+  root.style.setProperty("--color-surface-panel", `color-mix(in oklab, var(--terminal-bg) ${panelMix})`);
+  root.style.setProperty("--color-surface-card", `color-mix(in oklab, var(--terminal-bg) ${cardMix})`);
+  root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
+  root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
+  applyDerivedBorderPalette(root, appTheme);
+}
+
+function applyDerivedBorderPalette(root: HTMLElement, appTheme: "light" | "dark") {
+  root.style.setProperty(
+    "--color-line",
+    appTheme === "light"
+      ? "color-mix(in oklab, var(--terminal-bg) 86%, black)"
+      : "color-mix(in oklab, var(--terminal-bg) 76%, white)",
+  );
+  root.style.setProperty(
+    "--color-line-strong",
+    appTheme === "light"
+      ? "color-mix(in oklab, var(--terminal-bg) 76%, black)"
+      : "color-mix(in oklab, var(--terminal-bg) 64%, white)",
+  );
 }
 
 function applyThemeColorOverride(root: HTMLElement, themeColor: string) {
@@ -963,26 +998,6 @@ function resolveAccentForeground(color: string) {
   return luminance > 0.46 ? "rgb(28 35 46)" : "rgb(252 255 255)";
 }
 
-function resolveBackgroundTint(root: HTMLElement, background: string): ResolvedBackgroundTint {
-  const appTheme = root.dataset.theme === "light" ? "light" : "dark";
-  const option = resolveBackgroundColorOption(background);
-  const isCustom = Boolean(option && normalizeThemeName(option.label) !== "auto");
-  const terminalBg =
-    root.style.getPropertyValue("--terminal-bg").trim() ||
-    getComputedStyle(root).getPropertyValue("--terminal-bg").trim();
-  const color =
-    isCustom && option
-      ? appTheme === "light"
-        ? option.light
-        : option.dark
-      : terminalBg || (appTheme === "light" ? "#fbfcfe" : "#171b22");
-  const parsed = parseHexColor(color);
-  return {
-    rgb: parsed ? [parsed.r, parsed.g, parsed.b] : appTheme === "light" ? [251, 252, 254] : [23, 27, 34],
-    alpha: isCustom ? 104 : 78,
-  };
-}
-
 export function resolveBackgroundColorOption(background: string): BackgroundColorOption | undefined {
   const normalized = normalizeThemeName(background);
   return backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalized);
@@ -1010,22 +1025,11 @@ function applyNativeWindowTheme(settings: AppSettings, appTheme: AppTheme) {
   void currentWindow.setTheme(nativeTheme).catch((error) => {
     console.error("failed to apply native window theme", error);
   });
-  void currentWindow.setBackgroundColor("#00000000").catch((error) => {
-    console.error("failed to apply transparent native window background", error);
-  });
-
-  const { rgb, alpha } = resolveBackgroundTint(document.documentElement, settings.background);
-  const effects: Effects = {
-    effects:
-      appTheme === "light"
-        ? [Effect.Sidebar, Effect.TabbedLight, Effect.Acrylic, Effect.Mica]
-        : [Effect.Sidebar, Effect.TabbedDark, Effect.Acrylic, Effect.Mica],
-    state: EffectState.Active,
-    radius: 12,
-    color: [...rgb, alpha],
-  };
-  void currentWindow.setEffects(effects).catch((error) => {
-    console.error("failed to apply native window effects", error);
+  const background =
+    getComputedStyle(document.documentElement).getPropertyValue("--surface-window-tint").trim() ||
+    (appTheme === "light" ? "#fbfcfe" : "#171b22");
+  void currentWindow.setBackgroundColor(background).catch((error) => {
+    console.error("failed to apply native window background", error);
   });
 }
 

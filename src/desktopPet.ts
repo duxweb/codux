@@ -35,7 +35,14 @@ type PetSnapshot = {
   species: string;
   customPet?: {
     displayName?: string | null;
+    id?: string;
+    description?: string;
+    spritesheetPath?: string;
+    directoryName?: string;
     spritesheetDataUrl?: string | null;
+    sourcePageUrl?: string | null;
+    sourceZipUrl?: string | null;
+    installedAt?: number | null;
   } | null;
   customName?: string | null;
   dailyExperienceTokens: number;
@@ -76,6 +83,7 @@ let currentState: DesktopPetAnimationState = "idle";
 let currentSpriteKey = "";
 let currentSpriteUrl = "";
 let currentActiveFrameCounts: number[] | null = null;
+let currentCustomSpriteRequestKey = "";
 let lastBubbleText = "";
 let lastBubbleVisible = false;
 let lastBubbleTone: DesktopPetActivityTone = "normal";
@@ -185,6 +193,21 @@ function updateSpriteSource() {
   const customSource = pet?.customPet?.spritesheetDataUrl;
   if (customSource) {
     applySpriteSource("custom", customSource);
+    return;
+  }
+  const customPet = pet?.customPet;
+  if (customPet?.directoryName && customPet.spritesheetPath) {
+    const key = `custom:${customPet.directoryName}/${customPet.spritesheetPath}`;
+    if (currentCustomSpriteRequestKey !== key) {
+      currentCustomSpriteRequestKey = key;
+      void invoke<NonNullable<PetSnapshot["customPet"]>>("pet_custom_sprite", { pet: customPet })
+        .then((next) => {
+          if (currentCustomSpriteRequestKey !== key || !next.spritesheetDataUrl) return;
+          pet = pet ? { ...pet, customPet: next } : pet;
+          applySpriteSource(key, next.spritesheetDataUrl);
+        })
+        .catch(() => undefined);
+    }
     return;
   }
 

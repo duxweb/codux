@@ -8,7 +8,6 @@ import {
   Info,
   MoreHorizontal,
   Plus,
-  RefreshCw,
   Server,
   Settings,
   TerminalSquare,
@@ -291,9 +290,6 @@ function ProjectRow({
                 {project.name}
               </div>
               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-ink-faint">
-                {project.aiState === "running" && (
-                  <RefreshCw size={11} className="flex-shrink-0 animate-spin text-brand-amber" />
-                )}
                 {project.aiState === "running"
                   ? tm("agent.status.running", "Running")
                   : project.aiState === "review"
@@ -345,8 +341,7 @@ function ProjectActivityBadge({ state }: { state: WorkspaceProject["aiState"] })
   if (state === "running") {
     return (
       <span className="absolute -right-0.5 -top-0.5 grid h-3 w-3 place-items-center rounded-full">
-        <span className="h-2 w-2 rounded-full bg-brand-amber" />
-        <span className="absolute inset-0 rounded-full border border-brand-amber/20 border-t-brand-amber motion-safe:animate-spin" />
+        <span className="h-2.5 w-2.5 rounded-full bg-brand-amber" />
       </span>
     );
   }

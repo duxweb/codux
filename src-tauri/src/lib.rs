@@ -104,9 +104,9 @@ use notify_channels::{
 };
 use performance::{PerformanceMonitor, PerformanceSnapshot};
 use pet::{
-    PetCatalog, PetClaimRequest, PetCustomPet, PetCustomPetInstallPreview,
-    PetCustomPetInstallRequest, PetRefreshRequest, PetRenameRequest, PetRestoreRequest,
-    PetSnapshot, PetStore,
+    hydrate_custom_pet_data_url, PetCatalog, PetClaimRequest, PetCustomPet,
+    PetCustomPetInstallPreview, PetCustomPetInstallRequest, PetRefreshRequest, PetRenameRequest,
+    PetRestoreRequest, PetSnapshot, PetStore,
 };
 use power::PowerManager;
 use project_activity::{GitReviewEvent, ProjectActivityCoordinator, WorktreeSnapshotEvent};
@@ -132,10 +132,6 @@ use std::{thread, time::Duration};
 use tauri::async_runtime::JoinHandle;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::utils::config::Color;
-#[cfg(target_os = "windows")]
-use tauri::utils::config::WindowEffectsConfig;
-#[cfg(target_os = "windows")]
-use tauri::window::Effect;
 use tauri::WindowEvent;
 use tauri::Wry;
 use tauri::{Emitter, Manager};
@@ -382,16 +378,17 @@ impl MenuLabels {
     fn load(settings: &AppSettings) -> Self {
         let locale = locale_from_language_setting(&settings.language);
         let tr = |key: &str, fallback: &str| i18n::translate(&locale, key, fallback);
+        let app_name = paths::app_display_name();
         Self {
-            app_name: "Codux".to_string(),
-            about: tr("menu.app.about_format", "About %@").replace("%@", "Codux"),
+            app_name: app_name.to_string(),
+            about: tr("menu.app.about_format", "About %@").replace("%@", app_name),
             app_menu_settings: tr("menu.app.settings", "Settings..."),
             check_updates: tr("menu.app.check_updates", "Check for Updates..."),
             services: tr("menu.app.services", "Services"),
-            hide_app: tr("menu.app.hide_format", "Hide %@").replace("%@", "Codux"),
+            hide_app: tr("menu.app.hide_format", "Hide %@").replace("%@", app_name),
             hide_others: tr("menu.app.hide_others", "Hide Others"),
             show_all: tr("menu.app.show_all", "Show All"),
-            quit: tr("menu.app.quit_format", "Quit %@").replace("%@", "Codux"),
+            quit: tr("menu.app.quit_format", "Quit %@").replace("%@", app_name),
             file: tr("menu.file", "File"),
             workspace: tr("menu.workspace", "Workspace"),
             view: tr("menu.view", "View"),
@@ -627,7 +624,8 @@ fn start_desktop_pet_hit_test_loop(app: tauri::AppHandle) {
                 ticks_since_layout_refresh = 0;
             }
             let has_bubble = hit_state.has_bubble.load(Ordering::Relaxed);
-            let click_through = desktop_pet_should_click_through(&window, cached_layout, has_bubble);
+            let click_through =
+                desktop_pet_should_click_through(&window, cached_layout, has_bubble);
             if click_through != last_click_through {
                 let _ = window.set_ignore_cursor_events(click_through);
                 last_click_through = click_through;
@@ -665,8 +663,7 @@ fn desktop_pet_should_click_through(
     };
     let local_x = (cursor.x - f64::from(layout.position.x)) / layout.scale_factor;
     let local_y = (cursor.y - f64::from(layout.position.y)) / layout.scale_factor;
-    if local_x < 0.0 || local_y < 0.0 || local_x > layout.width || local_y > layout.height
-    {
+    if local_x < 0.0 || local_y < 0.0 || local_x > layout.width || local_y > layout.height {
         return true;
     }
     !desktop_pet_local_point_is_hotspot(layout, local_x, local_y, has_bubble)
@@ -683,7 +680,8 @@ fn desktop_pet_local_point_is_hotspot(
     } else {
         layout.width - 24.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_X
     };
-    let sprite_y = layout.height - 8.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP;
+    let sprite_y =
+        layout.height - 8.0 - DESKTOP_PET_SPRITE_SIZE + DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP;
     let sprite_width = DESKTOP_PET_SPRITE_SIZE - DESKTOP_PET_SPRITE_VISIBLE_INSET_X * 2.0;
     let sprite_height = DESKTOP_PET_SPRITE_SIZE
         - DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP
@@ -2036,6 +2034,13 @@ async fn pet_custom_install_preview(
 #[tauri::command]
 async fn pet_custom_install(request: PetCustomPetInstallRequest) -> Result<PetCustomPet, String> {
     PetStore::install_custom_pet(request).await
+}
+
+#[tauri::command]
+async fn pet_custom_sprite(pet: PetCustomPet) -> Result<PetCustomPet, String> {
+    tauri::async_runtime::spawn_blocking(move || hydrate_custom_pet_data_url(pet))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -5267,7 +5272,7 @@ fn remote_host_name() -> String {
         .or_else(|_| std::env::var("HOSTNAME"))
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "Codux".to_string())
+        .unwrap_or_else(|| paths::app_display_name().to_string())
 }
 
 fn remote_random_token() -> String {
@@ -6072,14 +6077,30 @@ fn configure_windows_main_window(app: &tauri::AppHandle) {
         return;
     };
     let _ = window.set_decorations(false);
-    let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
-    let _ = window.set_effects(WindowEffectsConfig {
-        effects: vec![Effect::Mica],
-        state: None,
-        radius: None,
-        color: None,
-    });
+    let _ = window.set_background_color(Some(Color(44, 48, 55, 255)));
 }
+
+#[cfg(debug_assertions)]
+fn configure_debug_identity(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_title(paths::app_display_name());
+    }
+    configure_debug_process_name();
+}
+
+#[cfg(not(debug_assertions))]
+fn configure_debug_identity(_app: &tauri::AppHandle) {}
+
+#[cfg(all(debug_assertions, target_os = "macos"))]
+fn configure_debug_process_name() {
+    use objc2_foundation::{NSProcessInfo, NSString};
+
+    let name = NSString::from_str(paths::app_display_name());
+    NSProcessInfo::processInfo().setProcessName(&name);
+}
+
+#[cfg(all(debug_assertions, not(target_os = "macos")))]
+fn configure_debug_process_name() {}
 
 pub fn run() {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -6221,6 +6242,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
+            configure_debug_identity(app.handle());
             #[cfg(target_os = "windows")]
             configure_windows_main_window(app.handle());
             let settings = Arc::clone(&setup_settings);
@@ -6460,6 +6482,7 @@ pub fn run() {
             pet_catalog,
             pet_custom_install_preview,
             pet_custom_install,
+            pet_custom_sprite,
             pet_refresh,
             pet_snapshot,
             pet_claim,

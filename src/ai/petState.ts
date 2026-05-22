@@ -145,6 +145,14 @@ export function usePetLedger(projects: WorkspaceProject[] = [], options: { enabl
   const runtime = useAIRuntimeSnapshot();
   const cachedSnapshot = useRuntimeStore((state) => state.petSnapshot);
   const setPetSnapshot = useRuntimeStore((state) => state.setPetSnapshot);
+  const projectKey = useMemo(
+    () =>
+      projects
+        .map((project) => `${project.rootProjectId ?? project.id}\u001f${project.name}\u001f${project.path}`)
+        .join("\u001e"),
+    [projects],
+  );
+  const projectRequests = useMemo(() => projectRequestsFromKey(projectKey), [projectKey]);
   const [snapshot, setLocalSnapshot] = useState<PetSnapshot>(() => cachedSnapshot ?? emptyPetSnapshot(0, emptyStats));
   const [isSnapshotLoading, setSnapshotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,7 +170,8 @@ export function usePetLedger(projects: WorkspaceProject[] = [], options: { enabl
     setSnapshotLoading(true);
     setError(null);
     try {
-      const next = projects.length > 0 ? await refreshPetLedger(projects) : await invoke<PetSnapshot>("pet_snapshot");
+      const next =
+        projectRequests.length > 0 ? await refreshPetLedger(projectRequests) : await invoke<PetSnapshot>("pet_snapshot");
       setPetSnapshot(next);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -170,7 +179,7 @@ export function usePetLedger(projects: WorkspaceProject[] = [], options: { enabl
     } finally {
       setSnapshotLoading(false);
     }
-  }, [isEnabled, projects, setPetSnapshot]);
+  }, [isEnabled, projectRequests, setPetSnapshot]);
 
   const refresh = useCallback(async () => {
     await loadSnapshot();
@@ -198,7 +207,7 @@ export function usePetLedger(projects: WorkspaceProject[] = [], options: { enabl
             species,
             customName,
             customPet,
-            projects: projects.map(projectRequest),
+            projects: projectRequests,
           },
         });
         setPetSnapshot(next);
@@ -208,7 +217,7 @@ export function usePetLedger(projects: WorkspaceProject[] = [], options: { enabl
         setSnapshotLoading(false);
       }
     },
-    [projects, setPetSnapshot, snapshot],
+    [projectRequests, setPetSnapshot, snapshot],
   );
 
   const rename = useCallback(
@@ -324,11 +333,15 @@ export async function installCustomPet(pageUrl: string, displayName = ""): Promi
   });
 }
 
-async function refreshPetLedger(projects: WorkspaceProject[]) {
+export async function loadCustomPetSprite(pet: PetCustomPet): Promise<PetCustomPet> {
+  if (pet.spritesheetDataUrl) return pet;
+  if (!window.__TAURI_INTERNALS__) return pet;
+  return invoke<PetCustomPet>("pet_custom_sprite", { pet });
+}
+
+async function refreshPetLedger(projects: ReturnType<typeof projectRequest>[]) {
   return invoke<PetSnapshot>("pet_refresh", {
-    request: {
-      projects: projects.map(projectRequest),
-    },
+    request: { projects },
   });
 }
 
@@ -340,6 +353,15 @@ function projectRequest(project: WorkspaceProject) {
     name,
     path: project.path,
   };
+}
+
+function projectRequestsFromKey(projectKey: string): ReturnType<typeof projectRequest>[] {
+  if (!projectKey) return [];
+  return projectKey.split("\u001e").map((item) => {
+    const [id = "", rawName = "", path = ""] = item.split("\u001f");
+    const name = rawName.split(" · ")[0] || rawName;
+    return { id, name, path };
+  });
 }
 
 export function petSnapshotWithLiveTokens(snapshot: PetSnapshot, liveTokens: number): PetSnapshot {

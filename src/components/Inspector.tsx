@@ -37,6 +37,7 @@ import {
 import {
   useAIHistorySnapshot,
   type AIHeatmapDay,
+  type AIHistorySessionSummary,
   type AIHistorySnapshot,
   type AITimeBucket,
   type AIUsageBreakdownItem,
@@ -3408,8 +3409,8 @@ function shellQuote(value: string) {
 const MemoAIPanel = memo(AIPanel);
 
 function AIPanel({ project }: { project?: WorkspaceProject }) {
-  const { sessions, projectTotals } = useAIRuntimeSnapshot(project?.id);
-  const history = useAIHistorySnapshot(project);
+  const { sessions } = useAIRuntimeSnapshot(project?.id);
+  const history = useAIHistorySnapshot(project, { includeSessions: true });
   const [statisticsMode, setStatisticsMode] = useState<AIStatisticsMode>(
     () => readAppSettings().statisticsMode as AIStatisticsMode,
   );
@@ -3419,22 +3420,23 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
   const isForegroundAIIndexing = history.isForegroundLoading || isManualRefreshFeedbackVisible;
   const displayedProgress = isManualRefreshFeedbackVisible && !history.isLoading ? 1 : history.progress;
   const historySnapshot = history.snapshot;
+  const indexedBaselines = useMemo(() => indexedSessionBaselines(historySnapshot.sessions), [historySnapshot.sessions]);
   const { projectTotalTokens, todayTotalTokens, toolRankingRows, modelRankingRows } = useMemo(() => {
-    const liveProjectTokens = displayedProjectTotals(projectTotals, statisticsMode);
-    const liveTodayTokens = displayedTodayProjectTotals(sessions, statisticsMode);
+    const liveProjectTokens = displayedLiveProjectTotals(sessions, indexedBaselines, statisticsMode);
+    const liveTodayTokens = displayedTodayProjectTotals(sessions, indexedBaselines, statisticsMode);
     return {
       projectTotalTokens:
         displayedProjectSummaryTotal(historySnapshot.projectSummary, statisticsMode) + liveProjectTokens,
       todayTotalTokens:
         displayedProjectSummaryToday(historySnapshot, statisticsMode) + liveTodayTokens,
-      toolRankingRows: toolRows(sessions, historySnapshot.toolBreakdown, statisticsMode),
-      modelRankingRows: modelRows(sessions, historySnapshot.modelBreakdown, statisticsMode),
+      toolRankingRows: toolRows(sessions, historySnapshot.toolBreakdown, indexedBaselines, statisticsMode),
+      modelRankingRows: modelRows(sessions, historySnapshot.modelBreakdown, indexedBaselines, statisticsMode),
     };
   }, [
     historySnapshot.modelBreakdown,
     historySnapshot.projectSummary,
     historySnapshot.toolBreakdown,
-    projectTotals,
+    indexedBaselines,
     sessions,
     statisticsMode,
   ]);
@@ -3524,7 +3526,12 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
         </div>
 
         <PanelCard title={tm("ai.today_usage", "Today's Usage")}>
-          <BarsRow sessions={sessions} buckets={historySnapshot.todayTimeBuckets} mode={statisticsMode} />
+          <BarsRow
+            sessions={sessions}
+            buckets={historySnapshot.todayTimeBuckets}
+            indexedBaselines={indexedBaselines}
+            mode={statisticsMode}
+          />
           <div className="flex justify-between mt-1 text-xs text-ink-faint">
             <span>00:00</span>
             <span>06:00</span>
@@ -3535,7 +3542,12 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
         </PanelCard>
 
         <PanelCard title={tm("ai.recent_usage", "Recent Usage")}>
-          <HeatmapGrid sessions={sessions} days={historySnapshot.heatmap} mode={statisticsMode} />
+          <HeatmapGrid
+            sessions={sessions}
+            days={historySnapshot.heatmap}
+            indexedBaselines={indexedBaselines}
+            mode={statisticsMode}
+          />
         </PanelCard>
 
         <PanelCard title={tm("ai.breakdown.tool_ranking", "Tool Ranking")}>
@@ -3686,17 +3698,30 @@ const LiveSessionRow = memo(function LiveSessionRow({
   );
 });
 
-function toolRows(sessions: AISessionSnapshot[], historyRows: AIUsageBreakdownItem[], mode: AIStatisticsMode) {
-  return rankRows(sessions, historyRows, (session) => session.tool, mode);
+type IndexedSessionBaselines = Map<string, { totalTokens: number; cachedInputTokens: number }>;
+
+function toolRows(
+  sessions: AISessionSnapshot[],
+  historyRows: AIUsageBreakdownItem[],
+  indexedBaselines: IndexedSessionBaselines,
+  mode: AIStatisticsMode,
+) {
+  return rankRows(sessions, historyRows, indexedBaselines, (session) => session.tool, mode);
 }
 
-function modelRows(sessions: AISessionSnapshot[], historyRows: AIUsageBreakdownItem[], mode: AIStatisticsMode) {
-  return rankRows(sessions, historyRows, (session) => normalizeRankModelName(session.model), mode);
+function modelRows(
+  sessions: AISessionSnapshot[],
+  historyRows: AIUsageBreakdownItem[],
+  indexedBaselines: IndexedSessionBaselines,
+  mode: AIStatisticsMode,
+) {
+  return rankRows(sessions, historyRows, indexedBaselines, (session) => normalizeRankModelName(session.model), mode);
 }
 
 function rankRows(
   sessions: AISessionSnapshot[],
   historyRows: AIUsageBreakdownItem[],
+  indexedBaselines: IndexedSessionBaselines,
   keyOf: (session: AISessionSnapshot) => string | null,
   mode: AIStatisticsMode,
 ) {
@@ -3708,7 +3733,7 @@ function rankRows(
   for (const session of sessions) {
     const key = keyOf(session);
     if (!key || !isDisplayableModelOrToolKey(key)) continue;
-    const value = displayedSessionDeltaTokens(session, mode);
+    const value = displayedSessionDeltaTokens(session, mode, indexedBaselines);
     totals.set(key, (totals.get(key) ?? 0) + value);
   }
   const max = Math.max(...totals.values(), 1);
@@ -3742,27 +3767,76 @@ function sessionDeltaTokens(session: AISessionSnapshot) {
   return Math.max(0, session.totalTokens - session.baselineTotalTokens);
 }
 
-function displayedSessionDeltaTokens(session: AISessionSnapshot, mode: AIStatisticsMode) {
-  return sessionDeltaTokens(session) + (mode === "includingCache" ? Math.max(0, session.cachedInputTokens) : 0);
+function displayedSessionDeltaTokens(
+  session: AISessionSnapshot,
+  mode: AIStatisticsMode,
+  indexedBaselines: IndexedSessionBaselines = new Map(),
+  today?: number,
+) {
+  const indexedBaseline = indexedBaselineForSession(session, indexedBaselines);
+  const updatedDay = startOfLocalDay(new Date(session.updatedAt * 1000)).getTime();
+  if (today != null && updatedDay !== today) return 0;
+  const startedDay = startOfLocalDay(new Date((session.startedAt ?? session.updatedAt) * 1000)).getTime();
+  const todayTotalBaseline = today != null && startedDay !== today ? session.totalTokens : 0;
+  const todayCachedBaseline = today != null && startedDay !== today ? session.cachedInputTokens : 0;
+  const totalBaseline = Math.max(session.baselineTotalTokens, indexedBaseline.totalTokens, todayTotalBaseline);
+  const cachedBaseline = Math.max(
+    session.baselineCachedInputTokens ?? 0,
+    indexedBaseline.cachedInputTokens,
+    todayCachedBaseline,
+  );
+  const totalDelta = Math.max(0, session.totalTokens - totalBaseline);
+  const cachedDelta = Math.max(0, session.cachedInputTokens - cachedBaseline);
+  return totalDelta + (mode === "includingCache" ? cachedDelta : 0);
+}
+
+function displayedLiveProjectTotals(
+  sessions: AISessionSnapshot[],
+  indexedBaselines: IndexedSessionBaselines,
+  mode: AIStatisticsMode,
+) {
+  return sessions.reduce((total, session) => total + displayedSessionDeltaTokens(session, mode, indexedBaselines), 0);
+}
+
+function indexedSessionBaselines(sessions: AIHistorySessionSummary[]): IndexedSessionBaselines {
+  const baselines: IndexedSessionBaselines = new Map();
+  for (const session of sessions) {
+    const key = indexedSessionKey(session.lastTool, session.externalSessionId);
+    if (!key) continue;
+    const previous = baselines.get(key) ?? { totalTokens: 0, cachedInputTokens: 0 };
+    baselines.set(key, {
+      totalTokens: Math.max(previous.totalTokens, session.totalTokens),
+      cachedInputTokens: Math.max(previous.cachedInputTokens, session.cachedInputTokens),
+    });
+  }
+  return baselines;
+}
+
+function indexedBaselineForSession(session: AISessionSnapshot, baselines: IndexedSessionBaselines) {
+  const key = indexedSessionKey(session.tool, session.aiSessionId);
+  if (!key) return { totalTokens: 0, cachedInputTokens: 0 };
+  return baselines.get(key) ?? { totalTokens: 0, cachedInputTokens: 0 };
+}
+
+function indexedSessionKey(tool?: string | null, externalSessionId?: string | null) {
+  const normalizedTool = tool?.trim().toLowerCase();
+  const normalizedSessionId = externalSessionId?.trim();
+  if (!normalizedTool || !normalizedSessionId) return null;
+  return `${normalizedTool}|${normalizedSessionId}`;
 }
 
 function displayedLiveSessionTotal(session: AISessionSnapshot, mode: AIStatisticsMode) {
   return Math.max(0, session.totalTokens) + (mode === "includingCache" ? Math.max(0, session.cachedInputTokens) : 0);
 }
 
-function displayedProjectTotals(
-  totals: { totalTokens: number; cachedInputTokens?: number | null },
+function displayedTodayProjectTotals(
+  sessions: AISessionSnapshot[],
+  indexedBaselines: IndexedSessionBaselines,
   mode: AIStatisticsMode,
 ) {
-  return Math.max(0, totals.totalTokens) + (mode === "includingCache" ? Math.max(0, totals.cachedInputTokens ?? 0) : 0);
-}
-
-function displayedTodayProjectTotals(sessions: AISessionSnapshot[], mode: AIStatisticsMode) {
   const today = startOfLocalDay(new Date()).getTime();
   return sessions.reduce((total, session) => {
-    const sessionDay = startOfLocalDay(new Date(session.updatedAt * 1000)).getTime();
-    if (sessionDay !== today) return total;
-    return total + displayedSessionDeltaTokens(session, mode);
+    return total + displayedSessionDeltaTokens(session, mode, indexedBaselines, today);
   }, 0);
 }
 
@@ -3817,10 +3891,12 @@ function displayedBreakdownTokens(row: AIUsageBreakdownItem, mode: AIStatisticsM
 const BarsRow = memo(function BarsRow({
   sessions,
   buckets,
+  indexedBaselines,
   mode,
 }: {
   sessions: AISessionSnapshot[];
   buckets: AITimeBucket[];
+  indexedBaselines: IndexedSessionBaselines;
   mode: AIStatisticsMode;
 }) {
   const data = useMemo(() => {
@@ -3845,10 +3921,15 @@ const BarsRow = memo(function BarsRow({
     for (const session of sessions) {
       const date = new Date(session.updatedAt * 1000);
       if (startOfLocalDay(date).getTime() !== today.getTime()) continue;
-      values[todayBucketIndex(date)].value += displayedSessionDeltaTokens(session, mode);
+      values[todayBucketIndex(date)].value += displayedSessionDeltaTokens(
+        session,
+        mode,
+        indexedBaselines,
+        today.getTime(),
+      );
     }
     return values;
-  }, [buckets, mode, sessions]);
+  }, [buckets, indexedBaselines, mode, sessions]);
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="flex items-end gap-px h-[64px]">
@@ -3891,10 +3972,12 @@ const HEATMAP_DEFAULT_LAYOUT = { columns: 15, cellSize: 9 };
 const HeatmapGrid = memo(function HeatmapGrid({
   sessions,
   days,
+  indexedBaselines,
   mode,
 }: {
   sessions: AISessionSnapshot[];
   days: AIHeatmapDay[];
+  indexedBaselines: IndexedSessionBaselines;
   mode: AIStatisticsMode;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -3944,7 +4027,7 @@ const HeatmapGrid = memo(function HeatmapGrid({
       const day = startOfLocalDay(new Date(session.updatedAt * 1000));
       const existing = values.get(day.getTime()) ?? { value: 0, requestCount: 0 };
       values.set(day.getTime(), {
-        value: existing.value + displayedSessionDeltaTokens(session, mode),
+        value: existing.value + displayedSessionDeltaTokens(session, mode, indexedBaselines),
         requestCount: existing.requestCount,
       });
     }
@@ -3967,7 +4050,7 @@ const HeatmapGrid = memo(function HeatmapGrid({
       .filter((value) => value > 0)
       .sort((a, b) => a - b);
     return { cells, nonZero };
-  }, [columns, days, mode, sessions]);
+  }, [columns, days, indexedBaselines, mode, sessions]);
 
   const intensity = (v: number) => {
     if (v <= 0) return 0.14;

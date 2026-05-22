@@ -34,6 +34,17 @@ const commonShortcutKeys: Record<string, ShortcutDefinition["keys"]> = {
   "panel.ai": [{ key: "a", meta: true, shift: true }],
 };
 
+const terminalCommandsToSkipShell = new Set([
+  "close.active",
+  "panel.ai",
+  "panel.git",
+  "terminal.split",
+  "terminal.tab",
+  "view.files",
+  "view.review",
+  "view.terminal",
+]);
+
 type ShortcutRegistration = {
   id: number;
   scope: ShortcutScope;
@@ -152,6 +163,10 @@ export function configuredShortcutKeys(id: string) {
 
 export function isConfiguredShortcut(event: KeyboardEvent, id: string) {
   return configuredShortcutKeys(id).some((shortcut) => isShortcut(event, shortcut));
+}
+
+export function shouldTerminalSkipShell(event: KeyboardEvent) {
+  return [...terminalCommandsToSkipShell].some((id) => isConfiguredShortcut(event, id));
 }
 
 export function shortcutDisplayValue(id: string, fallback?: string) {

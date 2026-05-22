@@ -48,6 +48,8 @@ pub struct AppSettings {
     pub theme_color: String,
     #[serde(default = "default_terminal_font_size")]
     pub terminal_font_size: String,
+    #[serde(default = "default_terminal_renderer")]
+    pub terminal_renderer: String,
     #[serde(default = "default_icon_style")]
     pub icon_style: String,
     #[serde(default)]
@@ -371,6 +373,7 @@ impl Default for AppSettings {
             background: default_background(),
             theme_color: default_theme_color(),
             terminal_font_size: default_terminal_font_size(),
+            terminal_renderer: default_terminal_renderer(),
             icon_style: default_icon_style(),
             notification_channels: HashMap::new(),
             shortcuts: HashMap::new(),
@@ -581,6 +584,7 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
     if settings.terminal_font_size.trim().is_empty() {
         settings.terminal_font_size = default_terminal_font_size();
     }
+    settings.terminal_renderer = sanitize_terminal_renderer(&settings.terminal_renderer);
     if settings.icon_style.trim().is_empty() {
         settings.icon_style = default_icon_style();
     }
@@ -941,6 +945,18 @@ fn default_theme_color() -> String {
 
 fn default_terminal_font_size() -> String {
     "14".to_string()
+}
+
+fn default_terminal_renderer() -> String {
+    "auto".to_string()
+}
+
+fn sanitize_terminal_renderer(value: &str) -> String {
+    match value.trim() {
+        "dom" => "dom".to_string(),
+        "webgl" => "webgl".to_string(),
+        _ => default_terminal_renderer(),
+    }
 }
 
 fn default_icon_style() -> String {

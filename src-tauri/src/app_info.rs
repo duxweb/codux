@@ -1,6 +1,6 @@
 use crate::ai_runtime::{AIRuntimeBridgeSnapshot, AIRuntimeStateSnapshot};
 use crate::app_settings::AppSettings;
-use crate::paths::{app_support_dir, runtime_temp_dir};
+use crate::paths::{app_display_name, app_support_dir, runtime_temp_dir};
 use crate::performance::PerformanceSnapshot;
 use crate::project_store::ProjectListSnapshot;
 use crate::ssh::SSHProfilesSnapshot;
@@ -83,10 +83,7 @@ pub fn about_metadata(app: &AppHandle) -> AppAboutMetadata {
     let package = app.package_info();
     let config = app.config();
     AppAboutMetadata {
-        name: config
-            .product_name
-            .clone()
-            .unwrap_or_else(|| package.name.clone()),
+        name: app_display_name().to_string(),
         version: config
             .version
             .clone()
@@ -497,14 +494,20 @@ pub fn export_diagnostics(
 pub fn open_runtime_log() -> Result<(), String> {
     open_or_create_text_file(
         &runtime_log_path(),
-        "Codux runtime log\nThe runtime has not written log entries yet.\n",
+        &format!(
+            "{} runtime log\nThe runtime has not written log entries yet.\n",
+            app_display_name()
+        ),
     )
 }
 
 pub fn open_live_log() -> Result<(), String> {
     open_or_create_text_file(
         &live_log_path(),
-        "Codux live log\nAI hook and polling activity is handled by the Rust runtime.\n",
+        &format!(
+            "{} live log\nAI hook and polling activity is handled by the Rust runtime.\n",
+            app_display_name()
+        ),
     )
 }
 

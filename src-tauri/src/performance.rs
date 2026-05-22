@@ -395,9 +395,7 @@ fn capture_raw_sample() -> Option<RawSample> {
     use windows_sys::Win32::System::ProcessStatus::{
         GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX2,
     };
-    use windows_sys::Win32::System::Threading::{
-        GetCurrentProcess, GetProcessTimes,
-    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
 
     fn filetime_seconds(value: FILETIME) -> f64 {
         let ticks = ((value.dwHighDateTime as u64) << 32) | value.dwLowDateTime as u64;

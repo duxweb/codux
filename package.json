@@ -12,7 +12,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "preview": "vite preview --host 127.0.0.1",
-    "tauri": "tauri"
+    "tauri": "node scripts/dev/tauri.cjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

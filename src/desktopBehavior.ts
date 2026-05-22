@@ -9,6 +9,8 @@ const TEXT_ENTRY_SELECTOR = [
   "[contenteditable='plaintext-only']",
   ".cm-editor",
   ".xterm",
+  ".xterm-helper-textarea",
+  "[data-codux-terminal-input='true']",
   "[data-allow-tab-navigation]",
 ].join(", ");
 const FOCUSABLE_CHROME_SELECTOR = ["button", "a[href]", "[role='button']", "[tabindex]"].join(", ");
@@ -60,7 +62,7 @@ function preventBrowserFileDrop(event: DragEvent) {
 }
 
 function preventDesktopKeyboardDefaults(event: KeyboardEvent) {
-  if (closestElement(event.target, TEXT_ENTRY_SELECTOR)) {
+  if (isTextEntryEvent(event)) {
     return;
   }
 
@@ -102,6 +104,12 @@ function clearChromeFocusAfterPointer(event: PointerEvent) {
 
 function closestElement(target: EventTarget | null, selector: string) {
   return target instanceof Element ? target.closest(selector) : null;
+}
+
+function isTextEntryEvent(event: KeyboardEvent) {
+  if (closestElement(event.target, TEXT_ENTRY_SELECTOR)) return true;
+  const active = document.activeElement;
+  return active instanceof Element && Boolean(active.closest(TEXT_ENTRY_SELECTOR));
 }
 
 function isPlainPrintableKey(event: KeyboardEvent) {

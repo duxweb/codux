@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Codux Dev",
+  "identifier": "com.duxweb.dmux.dev",
+  "bundle": {
+    "macOS": {
+      "bundleName": "Codux Dev"
+    }
+  }
+}

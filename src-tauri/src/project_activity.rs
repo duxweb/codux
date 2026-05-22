@@ -399,7 +399,6 @@ impl ProjectActivityCoordinator {
             &mut project.last_ai_refresh
         })
     }
-
 }
 
 fn run_activity_tick(

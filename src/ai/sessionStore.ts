@@ -17,6 +17,7 @@ const RUNNING_STALE_MS = 90_000;
 export class AISessionStore {
   private sessions = new Map<string, AISessionSnapshot>();
   private logicalBaselines = new Map<string, number>();
+  private logicalCachedBaselines = new Map<string, number>();
   private dismissedCompletedAt = new Map<string, number>();
   private latestActiveStartedAtByProject = new Map<string, number>();
   private listeners = new Set<SessionStoreListener>();
@@ -84,7 +85,8 @@ export class AISessionStore {
     return sessions.reduce(
       (total, session) => ({
         totalTokens: total.totalTokens + Math.max(0, session.totalTokens - session.baselineTotalTokens),
-        cachedInputTokens: total.cachedInputTokens + Math.max(0, session.cachedInputTokens),
+        cachedInputTokens:
+          total.cachedInputTokens + Math.max(0, session.cachedInputTokens - session.baselineCachedInputTokens),
         running: total.running + (session.state === "responding" ? 1 : 0),
         needsInput: total.needsInput + (session.state === "needsInput" ? 1 : 0),
         completed: total.completed + (session.hasCompletedTurn ? 1 : 0),
@@ -136,10 +138,17 @@ export class AISessionStore {
     const aiSessionId = normalize(event.aiSessionID) ?? base?.aiSessionId;
     const logicalKey = aiSessionId ? `${tool}:${aiSessionId}` : undefined;
     const totalTokens = numberOr(base?.totalTokens, event.totalTokens);
+    const cachedInputTokens = numberOr(base?.cachedInputTokens, event.cachedInputTokens);
     const baselineTotalTokens =
       base?.baselineTotalTokens ?? (logicalKey ? (this.logicalBaselines.get(logicalKey) ?? totalTokens) : 0);
+    const baselineCachedInputTokens =
+      base?.baselineCachedInputTokens ??
+      (logicalKey ? (this.logicalCachedBaselines.get(logicalKey) ?? cachedInputTokens) : 0);
     if (logicalKey && !this.logicalBaselines.has(logicalKey)) {
       this.logicalBaselines.set(logicalKey, baselineTotalTokens);
+    }
+    if (logicalKey && !this.logicalCachedBaselines.has(logicalKey)) {
+      this.logicalCachedBaselines.set(logicalKey, baselineCachedInputTokens);
     }
 
     const state = nextState(event.kind, event.metadata);
@@ -184,9 +193,10 @@ export class AISessionStore {
       isRunning: state === "responding",
       inputTokens: numberOr(base?.inputTokens, event.inputTokens),
       outputTokens: numberOr(base?.outputTokens, event.outputTokens),
-      cachedInputTokens: numberOr(base?.cachedInputTokens, event.cachedInputTokens),
+      cachedInputTokens,
       totalTokens,
       baselineTotalTokens,
+      baselineCachedInputTokens,
       startedAt: base?.startedAt ?? now,
       updatedAt: Math.max(base?.updatedAt ?? 0, now),
       activeTurnStartedAt,

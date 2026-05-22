@@ -84,8 +84,10 @@ struct GitWorktreeEntry {
 
 pub fn worktree_snapshot(project_id: String, project_path: String) -> WorktreeSnapshot {
     let now = Utc::now().timestamp();
-    let root_path = repository_root(&project_path).unwrap_or_else(|| normalize_path(&project_path));
-    let default_branch = current_branch(&root_path).unwrap_or_default();
+    let repository_root_path = repository_root(&project_path);
+    let is_repository = repository_root_path.is_some();
+    let root_path = repository_root_path.unwrap_or_else(|| normalize_path(&project_path));
+    let default_branch = current_branch(&root_path).unwrap_or_else(|| "main".to_string());
     let mut error = None;
     let mut worktrees = Vec::new();
     let mut tasks = Vec::new();
@@ -102,51 +104,55 @@ pub fn worktree_snapshot(project_id: String, project_path: String) -> WorktreeSn
     );
     worktrees.push(default);
 
-    match list_worktrees(&root_path) {
-        Ok(entries) => {
-            let default_path = normalize_path(&root_path);
-            for entry in entries {
-                let entry_path = normalize_path(&entry.path);
-                if entry.is_bare || entry_path == default_path {
-                    continue;
-                }
-                let branch = if entry.branch.trim().is_empty() {
-                    if entry.is_detached && !entry.head.trim().is_empty() {
-                        format!("detached {}", short_hash(&entry.head))
-                    } else {
-                        "detached HEAD".to_string()
+    if is_repository {
+        match list_worktrees(&root_path) {
+            Ok(entries) => {
+                let default_path = normalize_path(&root_path);
+                for entry in entries {
+                    let entry_path = normalize_path(&entry.path);
+                    if entry.is_bare || entry_path == default_path {
+                        continue;
                     }
-                } else {
-                    entry.branch
-                };
-                let id = worktree_uuid(&project_id, &entry_path);
-                let name = worktree_display_name(&branch, &entry_path);
-                worktrees.push(project_worktree(
-                    id.clone(),
-                    project_id.clone(),
-                    name.clone(),
-                    branch,
-                    entry_path,
-                    "todo".to_string(),
-                    false,
-                    now,
-                ));
-                tasks.push(WorktreeTaskSnapshot {
-                    worktree_id: id,
-                    title: name,
-                    base_branch: default_branch.clone(),
-                    base_commit: commit_hash(&default_branch, &root_path),
-                    status: "todo".to_string(),
-                    created_at: now,
-                    updated_at: now,
-                    started_at: None,
-                    completed_at: None,
-                });
+                    let branch = if entry.branch.trim().is_empty() {
+                        if entry.is_detached && !entry.head.trim().is_empty() {
+                            format!("detached {}", short_hash(&entry.head))
+                        } else {
+                            "detached HEAD".to_string()
+                        }
+                    } else {
+                        entry.branch
+                    };
+                    let id = worktree_uuid(&project_id, &entry_path);
+                    let name = worktree_display_name(&branch, &entry_path);
+                    worktrees.push(project_worktree(
+                        id.clone(),
+                        project_id.clone(),
+                        name.clone(),
+                        branch,
+                        entry_path,
+                        "todo".to_string(),
+                        false,
+                        now,
+                    ));
+                    tasks.push(WorktreeTaskSnapshot {
+                        worktree_id: id,
+                        title: name,
+                        base_branch: default_branch.clone(),
+                        base_commit: commit_hash(&default_branch, &root_path),
+                        status: "todo".to_string(),
+                        created_at: now,
+                        updated_at: now,
+                        started_at: None,
+                        completed_at: None,
+                    });
+                }
+            }
+            Err(next_error) => {
+                error = Some(next_error);
             }
         }
-        Err(next_error) => {
-            error = Some(next_error);
-        }
+    } else {
+        error = Some("non_git_repository".to_string());
     }
 
     WorktreeSnapshot {

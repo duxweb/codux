@@ -2,7 +2,7 @@ use crate::app_settings::{locale_from_language_setting, AppSettingsStore};
 use crate::i18n::translate;
 use crate::memory::MemoryStore;
 use crate::notify_channels::{dispatch_notification_channels, NotificationDispatchRequest};
-use crate::paths::home_dir;
+use crate::paths::{app_slug, home_dir, runtime_temp_dir};
 use crate::project_store::ProjectStore;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -151,6 +151,9 @@ pub struct AISessionSnapshot {
     pub cached_input_tokens: i64,
     pub total_tokens: i64,
     pub baseline_total_tokens: i64,
+    pub baseline_cached_input_tokens: i64,
+    #[serde(skip_serializing)]
+    pub baseline_resolved: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<f64>,
     pub updated_at: f64,
@@ -1032,7 +1035,10 @@ async fn ai_runtime_supervisor_loop(
                     Some(&terminal_ids),
                 );
                 if mutation.did_change {
-                    runtime_log_line("runtime-refresh", "poll reason=transcript-tail result=changed");
+                    runtime_log_line(
+                        "runtime-refresh",
+                        "poll reason=transcript-tail result=changed",
+                    );
                 }
                 if mutation.did_change {
                     emit_runtime_state(&app, &state);
@@ -1168,7 +1174,11 @@ fn drain_runtime_event_dir(tx: &Sender<AIRuntimeSupervisorMessage>, dir: &Path) 
         if let Some(data) = data.filter(|value| !value.is_empty()) {
             runtime_log_line(
                 "hook-file",
-                &format!("drain event-file bytes={} file={}", data.len(), path.display()),
+                &format!(
+                    "drain event-file bytes={} file={}",
+                    data.len(),
+                    path.display()
+                ),
             );
             let _ = tx.blocking_send(AIRuntimeSupervisorMessage::HookFrame(data));
         }
@@ -1269,6 +1279,7 @@ fn locale_from_setting(language: &str) -> String {
 struct AIRuntimeStateCore {
     sessions: HashMap<String, AISessionSnapshot>,
     logical_baselines: HashMap<String, i64>,
+    logical_cached_baselines: HashMap<String, i64>,
     dismissed_completed_at: HashMap<String, f64>,
     latest_active_started_at_by_project: HashMap<String, f64>,
     notified_completion_at: HashMap<String, f64>,
@@ -1547,6 +1558,10 @@ fn apply_hook_unlocked(core: &mut AIRuntimeStateCore, event: AIHookEventPayload)
         .as_ref()
         .map(|session_id| format!("{tool}:{session_id}"));
     let total_tokens = number_or(base.map(|session| session.total_tokens), event.total_tokens);
+    let cached_input_tokens = number_or(
+        base.map(|session| session.cached_input_tokens),
+        event.cached_input_tokens,
+    );
     let baseline_total_tokens = base
         .map(|session| session.baseline_total_tokens)
         .or_else(|| {
@@ -1555,10 +1570,21 @@ fn apply_hook_unlocked(core: &mut AIRuntimeStateCore, event: AIHookEventPayload)
                 .and_then(|key| core.logical_baselines.get(key).copied())
         })
         .unwrap_or(total_tokens);
+    let baseline_cached_input_tokens = base
+        .map(|session| session.baseline_cached_input_tokens)
+        .or_else(|| {
+            logical_key
+                .as_ref()
+                .and_then(|key| core.logical_cached_baselines.get(key).copied())
+        })
+        .unwrap_or(cached_input_tokens);
     if let Some(key) = logical_key {
         core.logical_baselines
-            .entry(key)
+            .entry(key.clone())
             .or_insert(baseline_total_tokens);
+        core.logical_cached_baselines
+            .entry(key)
+            .or_insert(baseline_cached_input_tokens);
     }
 
     let state = next_state(&event.kind, event.metadata.as_ref());
@@ -1631,12 +1657,13 @@ fn apply_hook_unlocked(core: &mut AIRuntimeStateCore, event: AIHookEventPayload)
             base.map(|session| session.output_tokens),
             event.output_tokens,
         ),
-        cached_input_tokens: number_or(
-            base.map(|session| session.cached_input_tokens),
-            event.cached_input_tokens,
-        ),
+        cached_input_tokens,
         total_tokens,
         baseline_total_tokens,
+        baseline_cached_input_tokens,
+        baseline_resolved: base
+            .map(|session| session.baseline_resolved)
+            .unwrap_or(false),
         started_at: base.and_then(|session| session.started_at).or(Some(now)),
         updated_at: base
             .map(|session| session.updated_at)
@@ -1742,7 +1769,8 @@ fn apply_runtime_snapshot_unlocked(
         } else if session.state == "needsInput" {
             true
         } else if let Some(observed_started_at) = session.runtime_turn_started_at {
-            observed_started_at >= prompt_turn_started_at && snapshot.updated_at >= observed_started_at
+            observed_started_at >= prompt_turn_started_at
+                && snapshot.updated_at >= observed_started_at
         } else {
             false
         };
@@ -1759,6 +1787,26 @@ fn apply_runtime_snapshot_unlocked(
         note_latest_active_started_at(core, &session.project_id, started_at);
     }
 
+    let (
+        baseline_total_tokens,
+        baseline_cached_input_tokens,
+        baseline_resolved,
+    ) = if session.baseline_resolved {
+        (
+            session.baseline_total_tokens,
+            session.baseline_cached_input_tokens,
+            true,
+        )
+    } else if snapshot.session_origin == "restored" {
+        (
+            snapshot.total_tokens.max(0),
+            snapshot.cached_input_tokens.max(0),
+            true,
+        )
+    } else {
+        (session.baseline_total_tokens, session.baseline_cached_input_tokens, true)
+    };
+
     let next = AISessionSnapshot {
         tool: canonical_tool_name(&snapshot.tool).unwrap_or(session.tool.clone()),
         ai_session_id: normalized_string(snapshot.external_session_id.as_deref())
@@ -1773,6 +1821,9 @@ fn apply_runtime_snapshot_unlocked(
             .cached_input_tokens
             .max(snapshot.cached_input_tokens.max(0)),
         total_tokens: session.total_tokens.max(snapshot.total_tokens.max(0)),
+        baseline_total_tokens,
+        baseline_cached_input_tokens,
+        baseline_resolved,
         updated_at: snapshot_updated_at,
         active_turn_started_at,
         runtime_turn_started_at,
@@ -1783,6 +1834,16 @@ fn apply_runtime_snapshot_unlocked(
         ..session
     };
 
+    if let Some(ai_session_id) = next.ai_session_id.as_ref() {
+        let key = format!("{}:{ai_session_id}", next.tool);
+        core.logical_baselines
+            .entry(key.clone())
+            .or_insert(next.baseline_total_tokens);
+        core.logical_cached_baselines
+            .entry(key)
+            .or_insert(next.baseline_cached_input_tokens);
+    }
+
     if core.sessions.get(terminal_id) == Some(&next) {
         return false;
     }
@@ -1790,7 +1851,10 @@ fn apply_runtime_snapshot_unlocked(
     true
 }
 
-fn snapshot_started_after_prompt_turn(snapshot: &AIRuntimeContextSnapshot, prompt_turn_started_at: f64) -> bool {
+fn snapshot_started_after_prompt_turn(
+    snapshot: &AIRuntimeContextSnapshot,
+    prompt_turn_started_at: f64,
+) -> bool {
     snapshot
         .started_at
         .map(|started_at| started_at >= prompt_turn_started_at)
@@ -2156,7 +2220,8 @@ fn project_totals_unlocked(core: &AIRuntimeStateCore, project_id: Option<&str>) 
         })
         .fold(AIProjectTotals::default(), |mut total, session| {
             total.total_tokens += (session.total_tokens - session.baseline_total_tokens).max(0);
-            total.cached_input_tokens += session.cached_input_tokens.max(0);
+            total.cached_input_tokens +=
+                (session.cached_input_tokens - session.baseline_cached_input_tokens).max(0);
             total.running += usize::from(session.state == "responding");
             total.needs_input += usize::from(session.state == "needsInput");
             total.completed += usize::from(session.has_completed_turn);
@@ -2884,10 +2949,6 @@ fn opencode_value_timestamp(value: &serde_json::Value) -> Option<f64> {
     parse_iso8601_seconds(&raw)
 }
 
-fn runtime_temp_dir() -> PathBuf {
-    std::env::temp_dir().join("codux-tauri")
-}
-
 fn runtime_root_dir() -> PathBuf {
     runtime_temp_dir().join("runtime-root")
 }
@@ -3005,7 +3066,9 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
     ),
     (
         "scripts/wrappers/opencode-config/plugins/dmux-runtime.js",
-        include_bytes!("../runtime-assets/scripts/wrappers/opencode-config/plugins/dmux-runtime.js"),
+        include_bytes!(
+            "../runtime-assets/scripts/wrappers/opencode-config/plugins/dmux-runtime.js"
+        ),
     ),
     (
         "scripts/wrappers/tool-wrapper.cmd",
@@ -3047,7 +3110,7 @@ fn install_tool_hooks(
     }
 
     for (event_key, action, timeout, is_async) in definitions {
-        let command = hook_command(runtime.managed_hook_script(), action, "codux-tauri", tool);
+        let command = hook_command(runtime.managed_hook_script(), action, app_slug(), tool);
         let mut hook = serde_json::Map::new();
         hook.insert(
             "type".to_string(),
@@ -3769,7 +3832,9 @@ fn stage_runtime_dir(relative_path: &str, destination: &Path) -> Result<(), Stri
         staged += 1;
     }
     if staged == 0 {
-        return Err(format!("runtime asset directory {relative_path} was not embedded"));
+        return Err(format!(
+            "runtime asset directory {relative_path} was not embedded"
+        ));
     }
     Ok(())
 }
@@ -3958,16 +4023,28 @@ struct UsageTotals {
 
 fn parse_usage_totals(value: &serde_json::Value) -> Option<UsageTotals> {
     let object = value.as_object()?;
-    let input_tokens = json_i64(object.get("input_tokens"))
-        + json_i64(object.get("cached_input_tokens"))
-        + json_i64(object.get("cache_read_input_tokens"));
-    let output_tokens = json_i64(object.get("output_tokens"));
-    let cached_input_tokens = json_i64(object.get("cached_input_tokens"))
-        + json_i64(object.get("cache_read_input_tokens"));
-    let total_tokens = object
-        .get("total_tokens")
+    let raw_input_tokens = json_i64(object.get("input_tokens"));
+    let raw_output_tokens = json_i64(object.get("output_tokens"));
+    let cached_input_tokens = object
+        .get("cached_input_tokens")
         .and_then(|value| value.as_i64())
-        .unwrap_or(input_tokens + output_tokens);
+        .unwrap_or_else(|| json_i64(object.get("cache_read_input_tokens")));
+    let reasoning_output_tokens = json_i64(object.get("reasoning_output_tokens"));
+    if raw_input_tokens == 0 && raw_output_tokens == 0 {
+        if let Some(raw_total_tokens) = object.get("total_tokens").and_then(|value| value.as_i64()) {
+            if raw_total_tokens > 0 {
+                return Some(UsageTotals {
+                    input_tokens: raw_total_tokens,
+                    output_tokens: 0,
+                    cached_input_tokens,
+                    total_tokens: raw_total_tokens,
+                });
+            }
+        }
+    }
+    let input_tokens = (raw_input_tokens - cached_input_tokens).max(0);
+    let output_tokens = (raw_output_tokens - reasoning_output_tokens).max(0);
+    let total_tokens = input_tokens + output_tokens + reasoning_output_tokens;
     if input_tokens == 0 && output_tokens == 0 && cached_input_tokens == 0 && total_tokens == 0 {
         return None;
     }
@@ -3984,15 +4061,32 @@ fn resolve_runtime_usage(
     base_usage: Option<UsageTotals>,
     last_usage: Option<UsageTotals>,
 ) -> Option<UsageTotals> {
-    if let (Some(total), Some(base)) = (total_usage.clone(), base_usage) {
-        return Some(UsageTotals {
-            input_tokens: (total.input_tokens - base.input_tokens).max(0),
-            output_tokens: (total.output_tokens - base.output_tokens).max(0),
-            cached_input_tokens: (total.cached_input_tokens - base.cached_input_tokens).max(0),
-            total_tokens: (total.total_tokens - base.total_tokens).max(0),
-        });
+    if total_usage.is_none() && last_usage.is_none() {
+        return None;
     }
-    last_usage.or(total_usage)
+    let Some(last_usage) = last_usage else {
+        return total_usage;
+    };
+    let base_usage = base_usage.unwrap_or_default();
+    if let Some(total_usage) = total_usage {
+        let total_with_cache = total_usage.total_tokens + total_usage.cached_input_tokens;
+        let base_with_cache = base_usage.total_tokens + base_usage.cached_input_tokens;
+        if total_with_cache > base_with_cache {
+            return Some(total_usage);
+        }
+        if total_with_cache == base_with_cache {
+            let last_with_cache = last_usage.total_tokens + last_usage.cached_input_tokens;
+            if last_with_cache == total_with_cache {
+                return Some(total_usage);
+            }
+        }
+    }
+    Some(UsageTotals {
+        input_tokens: base_usage.input_tokens + last_usage.input_tokens,
+        output_tokens: base_usage.output_tokens + last_usage.output_tokens,
+        cached_input_tokens: base_usage.cached_input_tokens + last_usage.cached_input_tokens,
+        total_tokens: base_usage.total_tokens + last_usage.total_tokens,
+    })
 }
 
 fn codex_assistant_preview(row_type: Option<&str>, payload: &serde_json::Value) -> Option<String> {
@@ -4232,9 +4326,7 @@ fn parse_claude_log_runtime_state(
             aggregate.cached_input_tokens += json_i64(usage.get("cache_creation_input_tokens"))
                 + json_i64(usage.get("cache_read_input_tokens"));
             aggregate.total_tokens += json_i64(usage.get("input_tokens"))
-                + json_i64(usage.get("output_tokens"))
-                + json_i64(usage.get("cache_creation_input_tokens"))
-                + json_i64(usage.get("cache_read_input_tokens"));
+                + json_i64(usage.get("output_tokens"));
         }
     }
 
@@ -4681,9 +4773,7 @@ trusted_hash = "sha256:old-basic"
         assert!(!updated.contains("sha256:old-literal"));
         assert!(!updated.contains("sha256:old-basic"));
         assert_eq!(updated.matches("[hooks.state.").count(), 1);
-        assert!(updated.contains(
-            r#"[hooks.state."C:\\Users\\dux\\.codex\\hooks.json:stop:0:0"]"#
-        ));
+        assert!(updated.contains(r#"[hooks.state."C:\\Users\\dux\\.codex\\hooks.json:stop:0:0"]"#));
         assert!(updated.contains("trusted_hash = \"sha256:new\""));
     }
 
@@ -4806,6 +4896,133 @@ trusted_hash = "sha256:old-basic"
         let frame = br#"{"kind":"unknown","payload":{}}"#;
 
         assert!(runtime_frame_to_hook(frame).is_none());
+    }
+
+    #[test]
+    fn codex_usage_totals_exclude_cache_and_reasoning_from_standard_totals() {
+        let usage = parse_usage_totals(&serde_json::json!({
+            "input_tokens": 19446,
+            "cached_input_tokens": 4480,
+            "output_tokens": 323,
+            "reasoning_output_tokens": 61,
+            "total_tokens": 19769
+        }))
+        .unwrap();
+
+        assert_eq!(usage.input_tokens, 14966);
+        assert_eq!(usage.output_tokens, 262);
+        assert_eq!(usage.cached_input_tokens, 4480);
+        assert_eq!(usage.total_tokens, 15289);
+    }
+
+    #[test]
+    fn codex_usage_totals_keep_raw_total_when_only_total_is_reported() {
+        let usage = parse_usage_totals(&serde_json::json!({
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_input_tokens": 7,
+            "total_tokens": 42
+        }))
+        .unwrap();
+
+        assert_eq!(usage.input_tokens, 42);
+        assert_eq!(usage.output_tokens, 0);
+        assert_eq!(usage.cached_input_tokens, 7);
+        assert_eq!(usage.total_tokens, 42);
+    }
+
+    #[test]
+    fn codex_runtime_usage_matches_swift_total_last_resolution() {
+        let total = UsageTotals {
+            input_tokens: 110,
+            output_tokens: 30,
+            cached_input_tokens: 20,
+            total_tokens: 140,
+        };
+        let base = UsageTotals {
+            input_tokens: 100,
+            output_tokens: 20,
+            cached_input_tokens: 10,
+            total_tokens: 120,
+        };
+        let last = UsageTotals {
+            input_tokens: 10,
+            output_tokens: 10,
+            cached_input_tokens: 10,
+            total_tokens: 20,
+        };
+
+        let usage = resolve_runtime_usage(Some(total), Some(base), Some(last)).unwrap();
+
+        assert_eq!(usage.input_tokens, 110);
+        assert_eq!(usage.output_tokens, 30);
+        assert_eq!(usage.cached_input_tokens, 20);
+        assert_eq!(usage.total_tokens, 140);
+    }
+
+    #[test]
+    fn codex_runtime_usage_adds_last_usage_when_total_does_not_advance() {
+        let base = UsageTotals {
+            input_tokens: 100,
+            output_tokens: 20,
+            cached_input_tokens: 10,
+            total_tokens: 120,
+        };
+        let last = UsageTotals {
+            input_tokens: 8,
+            output_tokens: 12,
+            cached_input_tokens: 2,
+            total_tokens: 20,
+        };
+
+        let usage = resolve_runtime_usage(Some(base.clone()), Some(base), Some(last)).unwrap();
+
+        assert_eq!(usage.input_tokens, 108);
+        assert_eq!(usage.output_tokens, 32);
+        assert_eq!(usage.cached_input_tokens, 12);
+        assert_eq!(usage.total_tokens, 140);
+    }
+
+    #[test]
+    fn runtime_snapshot_sets_restored_session_baseline() {
+        let mut core = AIRuntimeStateCore::default();
+        assert!(apply_hook_unlocked(
+            &mut core,
+            test_hook("promptSubmitted", 1000.0)
+        ));
+
+        assert!(apply_runtime_snapshot_unlocked(
+            &mut core,
+            "terminal-1",
+            AIRuntimeContextSnapshot {
+                tool: "codex".to_string(),
+                external_session_id: Some("session-1".to_string()),
+                model: Some("gpt-5.5".to_string()),
+                assistant_preview: None,
+                input_tokens: 1_000,
+                output_tokens: 200,
+                cached_input_tokens: 3_000,
+                total_tokens: 1_200,
+                updated_at: 1005.0,
+                started_at: Some(900.0),
+                completed_at: None,
+                response_state: Some("responding".to_string()),
+                was_interrupted: false,
+                has_completed_turn: false,
+                session_origin: "restored".to_string(),
+                source: "probe".to_string(),
+            }
+        ));
+
+        let session = core.sessions.get("terminal-1").unwrap();
+        assert_eq!(session.baseline_total_tokens, 1_200);
+        assert_eq!(session.baseline_cached_input_tokens, 3_000);
+        assert!(session.baseline_resolved);
+        assert_eq!(project_totals_unlocked(&core, Some("project-1")).total_tokens, 0);
+        assert_eq!(
+            project_totals_unlocked(&core, Some("project-1")).cached_input_tokens,
+            0
+        );
     }
 
     #[test]
@@ -4947,7 +5164,10 @@ trusted_hash = "sha256:old-basic"
             project_phase_unlocked(&core, "project-1"),
             AIProjectPhase::Running { .. }
         ));
-        assert_eq!(completed_phase_unlocked(&core, "project-1"), AIProjectPhase::Idle);
+        assert_eq!(
+            completed_phase_unlocked(&core, "project-1"),
+            AIProjectPhase::Idle
+        );
     }
 
     #[test]

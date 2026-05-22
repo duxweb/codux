@@ -1,7 +1,7 @@
 use crate::ai_runtime::{AIRuntimeBridge, AIRuntimeTerminalBinding};
 use crate::app_settings::{AIRuntimeToolSettings, AppSettingsStore};
 use crate::memory::{MemoryLaunchRequest, MemoryStore};
-use crate::paths::runtime_temp_dir;
+use crate::paths::{app_display_name, app_slug, runtime_temp_dir};
 use crate::ssh::ssh_profiles_file_path;
 use anyhow::{anyhow, Context, Result};
 use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, MasterPty, PtySize};
@@ -229,7 +229,10 @@ impl TerminalManager {
 
     pub fn kill_all(&self) {
         let sessions = match self.sessions.lock() {
-            Ok(mut sessions) => sessions.drain().map(|(_, session)| session).collect::<Vec<_>>(),
+            Ok(mut sessions) => sessions
+                .drain()
+                .map(|(_, session)| session)
+                .collect::<Vec<_>>(),
             Err(_) => return,
         };
 
@@ -484,25 +487,37 @@ impl TerminalSession {
             .name(format!("codux-terminal-reader-{id}"))
             .spawn(move || {
                 let mut buffer = vec![0_u8; OUTPUT_CHUNK_BYTES];
+                let mut pending_utf8 = Vec::new();
                 loop {
                     match reader.read(&mut buffer) {
-                        Ok(0) => break,
+                        Ok(0) => {
+                            let data = flush_utf8_decoder(&mut pending_utf8);
+                            if !data.is_empty() {
+                                emit(TerminalEvent::Output {
+                                    session_id: id.clone(),
+                                    data,
+                                });
+                            }
+                            break;
+                        }
                         Ok(count) => {
                             let bytes = &buffer[..count];
                             if let Ok(mut history) = session.history.lock() {
                                 history.push(bytes);
                             }
+                            let data = decode_utf8_output(bytes, &mut pending_utf8);
                             if let Ok(mut info) = session.info.lock() {
                                 info.last_active_at = chrono::Utc::now().to_rfc3339();
                                 info.buffer_characters =
-                                    info.buffer_characters.saturating_add(data_chars(bytes));
+                                    info.buffer_characters.saturating_add(data.chars().count());
                                 info.has_buffer = true;
                             }
-                            let data = String::from_utf8_lossy(bytes).to_string();
-                            emit(TerminalEvent::Output {
-                                session_id: id.clone(),
-                                data,
-                            });
+                            if !data.is_empty() {
+                                emit(TerminalEvent::Output {
+                                    session_id: id.clone(),
+                                    data,
+                                });
+                            }
                         }
                         Err(error) => {
                             emit(TerminalEvent::Error {
@@ -539,8 +554,35 @@ impl TerminalSession {
     }
 }
 
-fn data_chars(bytes: &[u8]) -> usize {
-    String::from_utf8_lossy(bytes).chars().count()
+fn decode_utf8_output(bytes: &[u8], pending: &mut Vec<u8>) -> String {
+    if pending.is_empty() {
+        return decode_utf8_complete_prefix(bytes, pending);
+    }
+    pending.extend_from_slice(bytes);
+    let combined = std::mem::take(pending);
+    decode_utf8_complete_prefix(&combined, pending)
+}
+
+fn decode_utf8_complete_prefix(bytes: &[u8], pending: &mut Vec<u8>) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => text.to_string(),
+        Err(error) => {
+            let valid_up_to = error.valid_up_to();
+            let (valid, rest) = bytes.split_at(valid_up_to);
+            if error.error_len().is_none() {
+                pending.extend_from_slice(rest);
+                return String::from_utf8_lossy(valid).to_string();
+            }
+            String::from_utf8_lossy(bytes).to_string()
+        }
+    }
+}
+
+fn flush_utf8_decoder(pending: &mut Vec<u8>) -> String {
+    if pending.is_empty() {
+        return String::new();
+    }
+    String::from_utf8_lossy(&std::mem::take(pending)).to_string()
 }
 
 struct TerminalEnvironmentRequest<'a> {
@@ -615,7 +657,7 @@ impl TerminalEnvironment {
         values.insert("PATH".to_string(), path);
 
         values.insert("TERM".to_string(), "xterm-256color".to_string());
-        values.insert("TERM_PROGRAM".to_string(), "Codux".to_string());
+        values.insert("TERM_PROGRAM".to_string(), app_display_name().to_string());
         values.insert(
             "TERM_PROGRAM_VERSION".to_string(),
             env!("CARGO_PKG_VERSION").to_string(),
@@ -657,7 +699,7 @@ impl TerminalEnvironment {
             "DMUX_SESSION_INSTANCE_ID".to_string(),
             request.process_instance_id.to_string(),
         );
-        values.insert("DMUX_RUNTIME_OWNER".to_string(), "codux-tauri".to_string());
+        values.insert("DMUX_RUNTIME_OWNER".to_string(), app_slug().to_string());
         values.insert(
             "DMUX_RUNTIME_SOCKET".to_string(),
             request.ai_runtime.socket_path().display().to_string(),
@@ -1181,4 +1223,24 @@ fn windows_shell_candidates() -> Vec<String> {
     }
     candidates.push("powershell.exe".to_string());
     candidates
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utf8_decoder_keeps_split_multibyte_characters() {
+        let mut pending = Vec::new();
+        assert_eq!(decode_utf8_output(&[0xe6, 0x8e], &mut pending), "");
+        assert_eq!(decode_utf8_output(&[0xa8], &mut pending), "推");
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn utf8_decoder_preserves_valid_prefix_before_split_character() {
+        let mut pending = Vec::new();
+        assert_eq!(decode_utf8_output(&[b'a', 0xe9, 0x94], &mut pending), "a");
+        assert_eq!(decode_utf8_output(&[0x99], &mut pending), "错");
+    }
 }

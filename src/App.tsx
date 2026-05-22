@@ -20,7 +20,6 @@ import { ProjectSidebar } from "./components/ProjectSidebar";
 import { TaskSidebar } from "./components/TaskSidebar";
 import { Titlebar } from "./components/Titlebar";
 import { Workspace } from "./components/Workspace";
-import { fallbackProjects } from "./data/mock";
 import { ensureGitReviewEventCacheSubscription } from "./git/review";
 import { ensureGitStatusEventCacheSubscription } from "./git/status";
 import { readCachedProjectListSnapshot, writeCachedProjectListSnapshot } from "./projectSnapshotCache";
@@ -30,6 +29,7 @@ import {
   isConfiguredShortcut,
   registerShortcutHandler,
   shortcutDisplayValue,
+  shouldTerminalSkipShell,
   type ShortcutScope,
 } from "./shortcuts";
 import { openAppWindow, revealMainAppWindow } from "./windowing";
@@ -38,6 +38,7 @@ import { ensureWorktreeSnapshotEventCacheSubscription, useWorktreeSnapshot } fro
 import { subscribeAppSettings } from "./settings";
 import { runAfterFirstPaint, runWhenIdle } from "./startupScheduler";
 import { systemConfirm, systemMessage } from "./systemDialog";
+import { isTerminalInputActive } from "./terminal/focus";
 import { tm } from "./i18n";
 import { ensureTerminalLayoutsSnapshotSubscription } from "./terminalLayout";
 import { Columns2, FolderOpen, FolderPlus, GitBranch, Sparkles, Square2Stack } from "./icons";
@@ -59,6 +60,7 @@ const EMPTY_WORKTREES: ProjectWorktreeSnapshot[] = [];
 const EMPTY_WORKTREE_AI_STATE: Record<string, WorkspaceProject["aiState"]> = {};
 const MemoProjectSidebar = memo(ProjectSidebar);
 const MemoTaskSidebar = memo(TaskSidebar);
+const NON_GIT_WORKTREE_ERROR = "non_git_repository";
 
 function hydrate(project: HydratableProject, index: number): WorkspaceProject {
   return {
@@ -78,21 +80,9 @@ function isTextEntryTarget(target: EventTarget | null) {
   return Boolean(field);
 }
 
-function isTerminalInputTarget(target: EventTarget | null) {
-  const element = target instanceof Element ? target : null;
-  return Boolean(element?.closest(".xterm, [data-codux-terminal-input='true']"));
-}
-
 function shouldSkipGlobalShortcutDispatch(event: KeyboardEvent) {
-  if (!isTerminalInputTarget(event.target)) return false;
-  return !isConfiguredShortcut(event, "terminal.split") &&
-    !isConfiguredShortcut(event, "terminal.tab") &&
-    !isConfiguredShortcut(event, "panel.git") &&
-    !isConfiguredShortcut(event, "panel.ai") &&
-    !isConfiguredShortcut(event, "view.terminal") &&
-    !isConfiguredShortcut(event, "view.files") &&
-    !isConfiguredShortcut(event, "view.review") &&
-    !isConfiguredShortcut(event, "close.active");
+  if (!isTerminalInputActive(event.target)) return false;
+  return !shouldTerminalSkipShell(event);
 }
 
 function worktreeIdsForProject(
@@ -105,17 +95,13 @@ function worktreeIdsForProject(
 
 function App() {
   const cachedProjectSnapshot = window.__TAURI_INTERNALS__ ? readCachedProjectListSnapshot() : null;
-  const initialProjects = cachedProjectSnapshot?.projects ?? (window.__TAURI_INTERNALS__ ? [] : fallbackProjects);
+  const initialProjects = cachedProjectSnapshot?.projects ?? [];
   const [projects, setProjects] = useState<WorkspaceProject[]>(() => initialProjects.map(hydrate));
   const [selectedProjectId, setSelectedProjectId] = useState(() =>
-    window.__TAURI_INTERNALS__
-      ? (cachedProjectSnapshot?.selectedProjectId ?? initialProjects[0]?.id ?? "")
-      : (fallbackProjects[0]?.id ?? ""),
+    cachedProjectSnapshot?.selectedProjectId ?? initialProjects[0]?.id ?? "",
   );
   const [activeProjectId, setActiveProjectId] = useState(() =>
-    window.__TAURI_INTERNALS__
-      ? (cachedProjectSnapshot?.selectedProjectId ?? initialProjects[0]?.id ?? "")
-      : (fallbackProjects[0]?.id ?? ""),
+    cachedProjectSnapshot?.selectedProjectId ?? initialProjects[0]?.id ?? "",
   );
   const [inspectorProject, setInspectorProject] = useState<WorkspaceProject | undefined>(() => undefined);
   const [mainView, setMainView] = useState<MainView>("terminal");
@@ -264,6 +250,8 @@ function App() {
   }, []);
   const worktree = useWorktreeSnapshot(isSecondaryStartupReady ? selectedProjectWithAIState : undefined);
   const worktreeSnapshot = worktree.snapshot;
+  const isNonGitWorktree = worktreeSnapshot.error === NON_GIT_WORKTREE_ERROR;
+  const canCreateWorktree = !worktreeSnapshot.error;
   const worktreeAIStateById = useMemo(() => {
     void aiVersion;
     return Object.fromEntries(
@@ -390,6 +378,7 @@ function App() {
         },
         toggleRightPanel,
         createTask: () => {
+          if (!canCreateWorktree) return;
           setTaskSidebarExpanded(true);
           setShortcutFocusScope("task-sidebar");
           setTaskCreateRequest((value) => value + 1);
@@ -406,7 +395,7 @@ function App() {
           );
         },
       }),
-    [openProjectFolder, projectsWithAIState, requestTerminalFocus, selectedProjectWithAIState],
+    [canCreateWorktree, openProjectFolder, projectsWithAIState, requestTerminalFocus, selectedProjectWithAIState],
   );
 
   const selectProject = useCallback(
@@ -459,6 +448,7 @@ function App() {
   const createWorktreeForSelectedProject = useCallback(
     async (input?: { branchName: string; baseBranch?: string | null }) => {
       if (!selectedProjectWithAIState) return;
+      if (!canCreateWorktree) return;
       const branchName = input?.branchName.trim();
       if (!branchName) return;
       const baseBranch = input?.baseBranch?.trim() || selectedWorktree?.branch || selectedProjectWithAIState.branch;
@@ -484,7 +474,7 @@ function App() {
         setCreatingWorktree(false);
       }
     },
-    [selectedProjectWithAIState, selectedWorktree?.branch, worktree],
+    [canCreateWorktree, selectedProjectWithAIState, selectedWorktree?.branch, worktree],
   );
 
   const removeWorktreeForSelectedProject = useCallback(
@@ -565,7 +555,11 @@ function App() {
     (project: WorkspaceProject) => {
       selectProject(project.id);
       setTaskSidebarExpanded(true);
-      setTaskCreateRequest((value) => value + 1);
+      const key = `${project.id}:${project.path}`;
+      const snapshot = useRuntimeStore.getState().worktreeSnapshotByKey[key]?.snapshot;
+      if (!snapshot?.error) {
+        setTaskCreateRequest((value) => value + 1);
+      }
     },
     [selectProject],
   );
@@ -675,6 +669,7 @@ function App() {
   useEffect(() => {
     return registerShortcutHandler("task-sidebar", (event) => {
       if (isConfiguredShortcut(event, "task.create")) {
+        if (!canCreateWorktree) return true;
         setTaskSidebarExpanded(true);
         setTaskCreateRequest((value) => value + 1);
         return true;
@@ -698,7 +693,7 @@ function App() {
       }
       return false;
     });
-  }, [selectWorktree, selectedWorktreeId, worktreeSnapshot.worktrees]);
+  }, [canCreateWorktree, selectWorktree, selectedWorktreeId, worktreeSnapshot.worktrees]);
 
   useEffect(() => {
     return registerShortcutHandler("right-sidebar", (event) => {
@@ -773,7 +768,7 @@ function App() {
         />
 
         <div className="flex-1 min-w-0 flex">
-          <div className="flex-1 min-w-0 flex rounded-tl-workspace overflow-hidden border-t border-l border-line-strong bg-surface-terminal/95">
+          <div className="flex-1 min-w-0 flex rounded-tl-workspace overflow-hidden border-t border-l border-line bg-surface-terminal/95">
             {selectedProjectWithAIState && (
               <aside
                 className={`flex-shrink-0 overflow-hidden border-r border-line bg-fill/[0.025] transition-[width,opacity] duration-150 ${
@@ -789,6 +784,8 @@ function App() {
                     worktrees={taskSidebarWorktrees}
                     selectedWorktreeId={selectedWorktreeId}
                     aiStateByWorktreeId={taskSidebarAIStateById}
+                    canCreateWorktree={canCreateWorktree}
+                    repositoryMessage={isNonGitWorktree ? tm("worktree.repository.non_git", "Non-Git repository") : ""}
                     onSelectWorktree={selectWorktree}
                     onCreateWorktree={createWorktreeForSelectedProject}
                     onRemoveWorktree={removeWorktreeForSelectedProject}
@@ -821,7 +818,7 @@ function App() {
 
           {visibleRightPanel && (
             <div
-              className="w-[320px] flex-shrink-0 border-t border-l border-line-strong"
+              className="w-[320px] flex-shrink-0 border-t border-l border-line"
               onPointerDown={() => setShortcutFocusScope("right-sidebar")}
               onFocusCapture={() => setShortcutFocusScope("right-sidebar")}
             >
