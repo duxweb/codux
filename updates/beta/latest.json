@@ -1,23 +1,23 @@
 {
   "version": "1.0.0-beta.4",
   "notes": "## 中文\n\n## [1.0.0-beta.4] - 2026-05-22\n\n### 调整\n\n- 将 macOS 发布包拆分为快速 unsigned 包和单独触发的 Developer ID 公证 formal 包，并使用清晰的文件名区分不同包类型。\n- 将 macOS CI 构建固定到 macOS 26 runner，同时保持部署目标为 macOS 14.0，减少打包版本中系统红绿灯位置受构建环境漂移影响。\n- 在中英文 README 中补充发布包下载说明，方便区分 DMG 安装包、自动更新包、Windows 安装包和更新元数据。\n\n### 修复\n\n- formal macOS 发布任务改用独立文件名追加到同一个 Release，避免覆盖现有发布资产，并在更新元数据中保留已有 Windows 入口。\n- 不再把 updater 签名文件作为 GitHub Release 的可见资产上传，但仍用于生成 `latest.json`。\n\n---\n\n## English\n\n## [1.0.0-beta.4] - 2026-05-22\n\n### Changed\n\n- Split macOS release packaging into fast unsigned builds and separately triggered Developer ID notarized formal builds, with clear asset names for each package type.\n- Pinned macOS CI builds to the macOS 26 runner while keeping the deployment target at macOS 14.0 to reduce system traffic-light layout drift in packaged builds.\n- Added release download guidance to the English and Chinese READMEs so users can distinguish DMG installers, updater packages, Windows installers, and updater metadata.\n\n### Fixed\n\n- Prevented formal macOS release jobs from overwriting existing release assets by publishing formal packages under distinct names and merging updater metadata with existing Windows entries.\n- Stopped uploading updater signature files as visible GitHub Release assets while still using them to generate `latest.json`.",
-  "pub_date": "2026-05-22T14:55:04.829Z",
+  "pub_date": "2026-05-22T16:19:55.629Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXY2Y3V5NkRybWQ4ZkdZQlFVUW9xN1dpakNlc2RjRnBCRWYwT2UyeDBmM0h4RWpiQ0NpN1czNU8zZHZlU2F4UjlpRktwZ1gzVUhWSm1rR2JuM1JTcWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYxNDYwCWZpbGU6Q29kdXguYXBwLnRhci5negoxOG5tOVM0R2kxQW9SSjl3TjhnRHI1c3AwbzZwQUtNcEN6b3g4ZFFrL3lCSTBWRDZPUUdkVDc5UjYveVpFUGszd0kxQW9lVlorSkRISTBKbmhyU0JCZz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.4/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQW0vcmY0WER5OEFUaEY3a1htZGpwY3VjK1lXbnhYSUJRQmI3UGpnb2ZDWks2OWdvd3o4VDJPZ1d3MmZNN1cxekJXS2JMdWxBb2U0SnY5T1ZoYjQ4UUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDY2NzM2CWZpbGU6Q29kdXguYXBwLnRhci5nego5RWJzMEVrWTFaZzdBV01mZk9nQW8xaVNTMVBrQU1SVDdJTnlaQWlHMVk2eTVrWXcrVDJ4NzJ0aUFNbmtTMVoyYThiMnBWekFleTZkOElYNEoyUVVCUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.4/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXY2Y3V5NkRybWQ4ZkdZQlFVUW9xN1dpakNlc2RjRnBCRWYwT2UyeDBmM0h4RWpiQ0NpN1czNU8zZHZlU2F4UjlpRktwZ1gzVUhWSm1rR2JuM1JTcWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYxNDYwCWZpbGU6Q29kdXguYXBwLnRhci5negoxOG5tOVM0R2kxQW9SSjl3TjhnRHI1c3AwbzZwQUtNcEN6b3g4ZFFrL3lCSTBWRDZPUUdkVDc5UjYveVpFUGszd0kxQW9lVlorSkRISTBKbmhyU0JCZz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.4/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQW0vcmY0WER5OEFUaEY3a1htZGpwY3VjK1lXbnhYSUJRQmI3UGpnb2ZDWks2OWdvd3o4VDJPZ1d3MmZNN1cxekJXS2JMdWxBb2U0SnY5T1ZoYjQ4UUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDY2NzM2CWZpbGU6Q29kdXguYXBwLnRhci5nego5RWJzMEVrWTFaZzdBV01mZk9nQW8xaVNTMVBrQU1SVDdJTnlaQWlHMVk2eTVrWXcrVDJ4NzJ0aUFNbmtTMVoyYThiMnBWekFleTZkOElYNEoyUVVCUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.4/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXY2Y3V5NkRybWQ4ZkdZQlFVUW9xN1dpakNlc2RjRnBCRWYwT2UyeDBmM0h4RWpiQ0NpN1czNU8zZHZlU2F4UjlpRktwZ1gzVUhWSm1rR2JuM1JTcWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYxNDYwCWZpbGU6Q29kdXguYXBwLnRhci5negoxOG5tOVM0R2kxQW9SSjl3TjhnRHI1c3AwbzZwQUtNcEN6b3g4ZFFrL3lCSTBWRDZPUUdkVDc5UjYveVpFUGszd0kxQW9lVlorSkRISTBKbmhyU0JCZz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.4/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQW0vcmY0WER5OEFUaEY3a1htZGpwY3VjK1lXbnhYSUJRQmI3UGpnb2ZDWks2OWdvd3o4VDJPZ1d3MmZNN1cxekJXS2JMdWxBb2U0SnY5T1ZoYjQ4UUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDY2NzM2CWZpbGU6Q29kdXguYXBwLnRhci5nego5RWJzMEVrWTFaZzdBV01mZk9nQW8xaVNTMVBrQU1SVDdJTnlaQWlHMVk2eTVrWXcrVDJ4NzJ0aUFNbmtTMVoyYThiMnBWekFleTZkOElYNEoyUVVCUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.4/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXY2Y3V5NkRybWQ4ZkdZQlFVUW9xN1dpakNlc2RjRnBCRWYwT2UyeDBmM0h4RWpiQ0NpN1czNU8zZHZlU2F4UjlpRktwZ1gzVUhWSm1rR2JuM1JTcWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYxNDYwCWZpbGU6Q29kdXguYXBwLnRhci5negoxOG5tOVM0R2kxQW9SSjl3TjhnRHI1c3AwbzZwQUtNcEN6b3g4ZFFrL3lCSTBWRDZPUUdkVDc5UjYveVpFUGszd0kxQW9lVlorSkRISTBKbmhyU0JCZz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.4/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQW0vcmY0WER5OEFUaEY3a1htZGpwY3VjK1lXbnhYSUJRQmI3UGpnb2ZDWks2OWdvd3o4VDJPZ1d3MmZNN1cxekJXS2JMdWxBb2U0SnY5T1ZoYjQ4UUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDY2NzM2CWZpbGU6Q29kdXguYXBwLnRhci5nego5RWJzMEVrWTFaZzdBV01mZk9nQW8xaVNTMVBrQU1SVDdJTnlaQWlHMVk2eTVrWXcrVDJ4NzJ0aUFNbmtTMVoyYThiMnBWekFleTZkOElYNEoyUVVCUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.0-beta.4/macos-universal-formal-updater.app.tar.gz"
     },
     "windows-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxGdlhTa2d0QUlnaC80ZWNNeFRXZ3lITjB6Y3IwNldsM21WWXAvNzJ0QXBEZmg4ZGJQaC9CZjNzN3VQbUdkQzBZYWRrNmRyNmd1V1FON0lONnhxdkFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYxNjQ2CWZpbGU6Q29kdXhfMS4wLjAtNF94NjQtc2V0dXAuZXhlCnJmVDV1NlNKQlZWUjlDaXhrbEZacDd3emJZRGFJWitTV2J2QmtkTWNxUkkwZzNITkpobVBtSjR6Y2xPekMyQTMvQVZHTFhteVZwVXdVcUR3UWYwM0NnPT0K",
