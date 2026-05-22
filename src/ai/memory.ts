@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
+import { useRuntimeStore } from "../runtimeStore";
 
 export type MemoryExtractionStatus = "idle" | "queued" | "processing" | "failed";
 
@@ -120,15 +122,20 @@ export async function updateMemorySummary(request: { summaryId: string; content:
 }
 
 export async function indexMemoryNow() {
-  await invoke("memory_index_now");
+  if (!window.__TAURI_INTERNALS__) return idleSnapshot;
+  const snapshot = await invoke<MemoryExtractionStatusSnapshot>("memory_index_now");
+  useRuntimeStore.getState().setMemoryExtractionStatus(snapshot);
+  return snapshot;
 }
 
 export function useMemoryExtractionStatus(refreshMs = 5000) {
-  const [snapshot, setSnapshot] = useState<MemoryExtractionStatusSnapshot>(idleSnapshot);
+  const storeSnapshot = useRuntimeStore((state) => state.memoryExtractionStatus);
+  const [snapshot, setSnapshot] = useState<MemoryExtractionStatusSnapshot>(storeSnapshot ?? idleSnapshot);
 
   useEffect(() => {
     if (!window.__TAURI_INTERNALS__) {
       setSnapshot(idleSnapshot);
+      useRuntimeStore.getState().setMemoryExtractionStatus(idleSnapshot);
       return;
     }
     let cancelled = false;
@@ -138,6 +145,7 @@ export function useMemoryExtractionStatus(refreshMs = 5000) {
       void readMemoryExtractionStatus()
         .then((next) => {
           if (cancelled) return;
+          useRuntimeStore.getState().setMemoryExtractionStatus(next);
           setSnapshot((current) => (memoryStatusEquals(current, next) ? current : next));
           const isActive = next.status === "queued" || next.status === "processing";
           const nextRefreshMs = isActive ? refreshMs : Math.max(refreshMs * 6, 30_000);
@@ -156,7 +164,25 @@ export function useMemoryExtractionStatus(refreshMs = 5000) {
     };
   }, [refreshMs]);
 
-  return snapshot;
+  return storeSnapshot ?? snapshot;
+}
+
+let memoryEventSubscriptionPromise: Promise<UnlistenFn[]> | null = null;
+
+export function ensureMemoryEventSubscription() {
+  if (!window.__TAURI_INTERNALS__ || memoryEventSubscriptionPromise) return;
+  memoryEventSubscriptionPromise = Promise.all([
+    listen<MemoryExtractionStatusSnapshot>("memory:status", (event) => {
+      useRuntimeStore.getState().setMemoryExtractionStatus(event.payload);
+    }),
+    listen<MemoryManagerSnapshot>("memory:manager", (event) => {
+      useRuntimeStore.getState().setMemoryManagerSnapshot(event.payload);
+    }),
+  ]).catch((error) => {
+    memoryEventSubscriptionPromise = null;
+    console.error("failed to subscribe memory events", error);
+    return [];
+  });
 }
 
 function memoryStatusEquals(left: MemoryExtractionStatusSnapshot, right: MemoryExtractionStatusSnapshot) {

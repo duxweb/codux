@@ -85,7 +85,7 @@ describe("desktop pet activity", () => {
     expect(nextDesktopPetActivityRefreshMs([session({ updatedAt: 100, hasCompletedTurn: true })], 129.5)).toBe(500);
   });
 
-  it("uses orange attention tone for permission requests and expires them after thirty seconds", () => {
+  it("uses orange attention tone for permission requests until runtime leaves needs input", () => {
     const permission = session({
       state: "needsInput",
       updatedAt: 100,
@@ -97,10 +97,18 @@ describe("desktop pet activity", () => {
       tone: "attention",
     });
     expect(desktopPetActivityLine([permission], 131)).toEqual({
+      text: "codex needs permission for Shell",
+      tone: "attention",
+    });
+    expect(desktopPetActivityLine([{ ...permission, state: "responding" }], 131)).toEqual({
+      text: "codex is running",
+      tone: "normal",
+    });
+    expect(desktopPetActivityLine([{ ...permission, state: "idle" }], 131)).toEqual({
       text: "",
       tone: "normal",
     });
-    expect(nextDesktopPetActivityRefreshMs([permission], 129.5)).toBe(500);
+    expect(nextDesktopPetActivityRefreshMs([permission], 129.5)).toBeNull();
   });
 
   it("prioritizes permission, then recent completion, then running sessions", () => {

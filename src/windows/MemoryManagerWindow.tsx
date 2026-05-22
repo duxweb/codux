@@ -16,6 +16,7 @@ import {
 } from "../ai/memory";
 import { Button } from "../components/Button";
 import { PressableButton } from "../components/PressableButton";
+import { useRuntimeStore } from "../runtimeStore";
 import { FileArchive, Folder, PencilSquare, RefreshCw, Trash, Users, Zap, type AppIcon } from "../icons";
 import { formatI18n, tm } from "../i18n";
 import { readAppSettings } from "../settings";
@@ -62,7 +63,9 @@ export function MemoryManagerWindow() {
   const [snapshot, setSnapshot] = useState<MemoryManagerSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setLoading] = useState(true);
+  const [isIndexingNow, setIndexingNow] = useState(false);
   const [editingSummary, setEditingSummary] = useState<MemorySummary | null>(null);
+  const cachedSnapshot = useRuntimeStore((state) => state.memoryManagerSnapshot);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +77,7 @@ export function MemoryManagerWindow() {
         tab,
         limit: 500,
       });
+      useRuntimeStore.getState().setMemoryManagerSnapshot(next);
       setSnapshot(next);
       if (
         target.scope === "project" &&
@@ -93,6 +97,11 @@ export function MemoryManagerWindow() {
     void load().finally(() => revealCurrentAppWindow());
   }, [load]);
 
+  useEffect(() => {
+    if (!cachedSnapshot) return;
+    setSnapshot(cachedSnapshot);
+  }, [cachedSnapshot]);
+
   const overview = snapshot?.currentOverview;
   const isIndexing = snapshot?.extraction.status === "queued" || snapshot?.extraction.status === "processing";
 
@@ -106,11 +115,18 @@ export function MemoryManagerWindow() {
         <aside className="min-h-0 border-r border-line/60 bg-fill/[0.025]">
           <div className="flex h-full flex-col">
             <div className="px-4 pb-4 pt-5">
-              <div className="flex items-center gap-2 text-[17px] font-bold">
-                <span className="grid h-7 w-7 place-items-center rounded-md bg-brand-blue/12 text-brand-blue">
-                  <Zap size={15} strokeWidth={2} />
-                </span>
-                {tm("memory.manager.title", "Memory")}
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1 truncate text-[17px] font-bold">{tm("memory.manager.title", "Memory")}</div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  isIconOnly
+                  disabled={isIndexing || isIndexingNow}
+                  aria-label={tm("memory.manager.index_now", "Index Now")}
+                  onPress={() => void indexNow(load, setIndexingNow)}
+                >
+                  <Zap size={13} className={isIndexing || isIndexingNow ? "motion-safe:animate-pulse" : ""} />
+                </Button>
               </div>
               <div className="mt-1 text-xs leading-relaxed text-ink-mute">
                 {tm("memory.manager.subtitle", "Browse and clean extracted memories")}
@@ -151,15 +167,6 @@ export function MemoryManagerWindow() {
                 </p>
               </div>
               <div className="no-drag ml-auto flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  leading={Zap}
-                  disabled={isIndexing}
-                  onPress={() => void indexNow(load)}
-                >
-                  {tm("memory.manager.index_now", "Index Now")}
-                </Button>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -537,9 +544,19 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   );
 }
 
-async function indexNow(load: () => Promise<void>) {
-  await indexMemoryNow();
-  await load();
+async function indexNow(load: () => Promise<void>, setIndexingNow: (value: boolean) => void) {
+  setIndexingNow(true);
+  try {
+    await indexMemoryNow();
+    await load();
+  } catch (reason) {
+    await systemMessage(reason instanceof Error ? reason.message : String(reason), {
+      title: tm("memory.manager.index_failed", "Memory indexing failed"),
+      kind: "error",
+    });
+  } finally {
+    setIndexingNow(false);
+  }
 }
 
 async function archiveEntry(entry: MemoryEntry, load: () => Promise<void>) {

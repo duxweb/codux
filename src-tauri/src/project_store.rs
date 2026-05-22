@@ -127,6 +127,16 @@ pub struct ProjectSummary {
     pub git_default_push_remote_name: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProjectWorkspaceRecord {
+    pub id: String,
+    pub root_project_id: String,
+    pub root_project_name: String,
+    pub root_project_path: String,
+    pub workspace_path: String,
+    pub git_default_push_remote_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectCreateRequest {
@@ -219,6 +229,38 @@ impl ProjectStore {
             .lock()
             .map(|value| value.projects.clone())
             .unwrap_or_default()
+    }
+
+    pub fn project_workspaces_snapshot(&self) -> Vec<ProjectWorkspaceRecord> {
+        let Ok(snapshot) = self.snapshot.lock() else {
+            return Vec::new();
+        };
+        let mut rows = Vec::new();
+        for project in &snapshot.projects {
+            rows.push(ProjectWorkspaceRecord {
+                id: project.id.clone(),
+                root_project_id: project.id.clone(),
+                root_project_name: project.name.clone(),
+                root_project_path: project.path.clone(),
+                workspace_path: project.path.clone(),
+                git_default_push_remote_name: project.git_default_push_remote_name.clone(),
+            });
+            for worktree in snapshot
+                .worktrees
+                .iter()
+                .filter(|worktree| worktree.project_id == project.id)
+            {
+                rows.push(ProjectWorkspaceRecord {
+                    id: worktree.id.clone(),
+                    root_project_id: project.id.clone(),
+                    root_project_name: project.name.clone(),
+                    root_project_path: project.path.clone(),
+                    workspace_path: worktree.path.clone(),
+                    git_default_push_remote_name: project.git_default_push_remote_name.clone(),
+                });
+            }
+        }
+        rows
     }
 
     pub fn workspace_summary_by_path(&self, path: &str) -> Option<ProjectSummary> {
@@ -862,6 +904,12 @@ fn merge_worktree_state(
         .iter()
         .map(|task| (task.worktree_id.clone(), task.clone()))
         .collect::<HashMap<_, _>>();
+    let existing_project_worktree_ids = snapshot
+        .worktrees
+        .iter()
+        .filter(|worktree| worktree.project_id == project_id)
+        .map(|worktree| worktree.id.clone())
+        .collect::<HashSet<_>>();
     let mut stored_tasks_by_id = snapshot
         .worktree_tasks
         .iter()
@@ -920,7 +968,10 @@ fn merge_worktree_state(
     snapshot.worktrees.extend(merged_records);
     snapshot
         .worktree_tasks
-        .retain(|task| !merged_ids.contains(&task.worktree_id));
+        .retain(|task| {
+            !merged_ids.contains(&task.worktree_id)
+                && !existing_project_worktree_ids.contains(&task.worktree_id)
+        });
     snapshot.worktree_tasks.extend(merged_tasks.clone());
 
     let selected = snapshot
@@ -1237,6 +1288,68 @@ mod tests {
                 .map(String::as_str),
             Some("project-a")
         );
+    }
+
+    #[test]
+    fn merge_worktree_state_removes_worktrees_missing_from_incoming_snapshot() {
+        let mut selected = HashMap::new();
+        selected.insert("project-a".to_string(), "worktree-a".to_string());
+        let mut state = AppSnapshot {
+            projects: vec![test_project("project-a")],
+            worktrees: vec![
+                ProjectWorktreeRecord {
+                    id: "project-a".to_string(),
+                    project_id: "project-a".to_string(),
+                    name: "Default".to_string(),
+                    branch: "main".to_string(),
+                    path: "/tmp/project-a".to_string(),
+                    status: "todo".to_string(),
+                    is_default: true,
+                    created_at: 1,
+                    updated_at: 1,
+                },
+                ProjectWorktreeRecord {
+                    id: "worktree-a".to_string(),
+                    project_id: "project-a".to_string(),
+                    name: "Removed task".to_string(),
+                    branch: "task/a".to_string(),
+                    path: "/tmp/project-a-worktree".to_string(),
+                    status: "review".to_string(),
+                    is_default: false,
+                    created_at: 1,
+                    updated_at: 2,
+                },
+            ],
+            worktree_tasks: vec![WorktreeTaskRecord {
+                worktree_id: "worktree-a".to_string(),
+                title: "Removed task".to_string(),
+                base_branch: "main".to_string(),
+                base_commit: None,
+                status: "review".to_string(),
+                created_at: 1,
+                updated_at: 2,
+                started_at: None,
+                completed_at: None,
+            }],
+            terminal_layouts: HashMap::new(),
+            selected_project_id: Some("project-a".to_string()),
+            selected_worktree_id_by_project: selected,
+        };
+        let incoming = WorktreeSnapshot {
+            project_id: "project-a".to_string(),
+            selected_worktree_id: "project-a".to_string(),
+            worktrees: vec![test_worktree("project-a", "project-a", "Default", "/tmp/project-a", true)],
+            tasks: Vec::new(),
+            error: None,
+        };
+
+        let result = merge_worktree_state(&mut state, incoming).unwrap();
+
+        assert_eq!(result.selected_worktree_id, "project-a");
+        assert_eq!(result.worktrees.len(), 1);
+        assert!(result.worktrees.iter().all(|worktree| worktree.id != "worktree-a"));
+        assert!(state.worktrees.iter().all(|worktree| worktree.id != "worktree-a"));
+        assert!(state.worktree_tasks.is_empty());
     }
 
     #[test]

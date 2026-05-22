@@ -175,7 +175,6 @@ impl AIHistoryIndexer {
         projects: Vec<AIHistoryProjectRequest>,
     ) -> Result<AIGlobalHistorySnapshot, String> {
         if let Some(snapshot) = indexed_global_snapshot(projects.clone()).await? {
-            let _ = self.tx.send(AIHistoryJob::RefreshGlobal { projects }).await;
             return Ok(snapshot);
         }
 

@@ -21,7 +21,6 @@ export type DesktopPetActivityLine = {
 type Translate = (key: string, fallback: string) => string;
 
 const DESKTOP_PET_COMPLETED_STATUS_SECONDS = 30;
-const DESKTOP_PET_PERMISSION_STATUS_SECONDS = 30;
 
 export function desktopPetActivityLine(
   sessions: AISessionSnapshot[],
@@ -32,8 +31,7 @@ export function desktopPetActivityLine(
     .filter(
       (session) =>
         session.state === "needsInput" &&
-        isPermissionRequestNotificationType(session.notificationType) &&
-        now - session.updatedAt <= DESKTOP_PET_PERMISSION_STATUS_SECONDS,
+        isPermissionRequestNotificationType(session.notificationType),
     )
     .sort(compareUpdatedDesc)[0];
   if (permission) {
@@ -49,9 +47,7 @@ export function desktopPetActivityLine(
     };
   }
 
-  const needsInput = sessions
-    .filter((session) => session.state === "needsInput" && !isExpiredPermissionFallback(session, now))
-    .sort(compareUpdatedDesc)[0];
+  const needsInput = sessions.filter((session) => session.state === "needsInput").sort(compareUpdatedDesc)[0];
   if (needsInput) {
     return {
       text:
@@ -88,11 +84,6 @@ export function nextDesktopPetActivityRefreshMs(sessions: AISessionSnapshot[], n
     ...sessions
       .filter((session) => isVisibleCompleted(session, now))
       .map((session) => session.updatedAt + DESKTOP_PET_COMPLETED_STATUS_SECONDS),
-    ...sessions
-      .filter(
-        (session) => session.state === "needsInput" && isPermissionRequestNotificationType(session.notificationType),
-      )
-      .map((session) => session.updatedAt + DESKTOP_PET_PERMISSION_STATUS_SECONDS),
   ]
     .filter((expiresAt) => expiresAt > now)
     .sort((left, right) => left - right)[0];
@@ -111,7 +102,7 @@ export function desktopPetAnimationState({
   now: number;
 }): DesktopPetAnimationState {
   if (!claimed) return "waiting";
-  const needsInput = sessions.some((session) => session.state === "needsInput" && !isExpiredPermissionFallback(session, now));
+  const needsInput = sessions.some((session) => session.state === "needsInput");
   if (needsInput) return "review";
 
   const completed = sessions.filter((session) => isVisibleCompleted(session, now)).sort(compareUpdatedDesc)[0];
@@ -132,13 +123,6 @@ function compareUpdatedDesc(left: AISessionSnapshot, right: AISessionSnapshot) {
 
 function isPermissionRequestNotificationType(value?: string | null) {
   return value === "PermissionRequest" || value === "permission-request" || value === "permission_request";
-}
-
-function isExpiredPermissionFallback(session: AISessionSnapshot, now: number) {
-  return (
-    isPermissionRequestNotificationType(session.notificationType) &&
-    now - session.updatedAt > DESKTOP_PET_PERMISSION_STATUS_SECONDS
-  );
 }
 
 function isVisibleCompleted(session: AISessionSnapshot, now: number) {

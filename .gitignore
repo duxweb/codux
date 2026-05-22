@@ -1,6 +1,7 @@
 node_modules/
 dist/
 src-tauri/target/
+.codux/
 .DS_Store
 *.log
 *.local

@@ -334,6 +334,35 @@ export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options
   const globalStatus = useRuntimeStore((state) => state.aiGlobalStatus);
   const snapshot = cachedGlobalHistory ?? emptyGlobalHistorySnapshot;
   const enabled = options.enabled !== false;
+  const projectRequests = useMemo(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        path: project.path,
+      })),
+    [projects],
+  );
+  const loadState = useCallback(async () => {
+    if (!window.__TAURI_INTERNALS__ || !shouldLoadGlobalHistory(enabled, projectRequests.length)) {
+      useRuntimeStore.getState().setAIGlobalHistory(null);
+      useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
+      return;
+    }
+    try {
+      const next = await invoke<AIGlobalHistorySnapshot | null>("ai_history_global_state", {
+        projects: projectRequests,
+      });
+      useRuntimeStore.getState().setAIGlobalHistory(next);
+      useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
+    } catch (reason) {
+      console.error("failed to load global ai history state", reason);
+      useRuntimeStore.getState().setAIGlobalStatus({
+        isLoading: false,
+        error: reason instanceof Error ? reason.message : String(reason),
+      });
+    }
+  }, [enabled, projectRequests]);
   const refresh = useCallback(async () => {
     if (!window.__TAURI_INTERNALS__ || !shouldLoadGlobalHistory(enabled, projects.length)) {
       useRuntimeStore.getState().setAIGlobalHistory(null);
@@ -343,11 +372,7 @@ export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options
     useRuntimeStore.getState().setAIGlobalStatus({ isLoading: true, error: null });
     try {
       await invoke("ai_history_refresh_global", {
-        projects: projects.map((project) => ({
-          id: project.id,
-          name: project.name,
-          path: project.path,
-        })),
+        projects: projectRequests,
       });
     } catch (reason) {
       console.error("failed to load global ai history", reason);
@@ -356,16 +381,17 @@ export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options
         error: reason instanceof Error ? reason.message : String(reason),
       });
     }
-  }, [enabled, projects]);
+  }, [enabled, projectRequests, projects.length]);
 
   return useMemo(
     () => ({
       snapshot,
       isLoading: globalStatus.isLoading,
       error: globalStatus.error,
+      loadState,
       refresh,
     }),
-    [globalStatus.error, globalStatus.isLoading, refresh, snapshot],
+    [globalStatus.error, globalStatus.isLoading, loadState, refresh, snapshot],
   );
 }
 

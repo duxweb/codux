@@ -46,11 +46,11 @@ pub struct GitStatusEvent {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitReviewEvent {
-    project_id: String,
-    project_name: String,
-    project_path: String,
-    base_branch: Option<String>,
-    snapshot: GitReviewSnapshot,
+    pub project_id: String,
+    pub project_name: String,
+    pub project_path: String,
+    pub base_branch: Option<String>,
+    pub snapshot: GitReviewSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,7 +76,6 @@ pub struct ProjectActivityCoordinator {
     main_window_focused: AtomicBool,
     activated_git_projects: Mutex<HashSet<String>>,
     activated_ai_projects: Mutex<HashSet<String>>,
-    last_global_ai_refresh: Mutex<Option<Instant>>,
     activation_queue: Mutex<VecDeque<ActivationRequest>>,
     activation_signal: Condvar,
     git_jobs: GitJobQueue,
@@ -91,7 +90,6 @@ impl Default for ProjectActivityCoordinator {
             main_window_focused: AtomicBool::new(false),
             activated_git_projects: Mutex::new(HashSet::new()),
             activated_ai_projects: Mutex::new(HashSet::new()),
-            last_global_ai_refresh: Mutex::new(None),
             activation_queue: Mutex::new(VecDeque::new()),
             activation_signal: Condvar::new(),
             git_jobs: GitJobQueue::new(),
@@ -277,9 +275,6 @@ impl ProjectActivityCoordinator {
         if let Ok(mut activated) = self.activated_ai_projects.lock() {
             activated.clear();
         }
-        if let Ok(mut last) = self.last_global_ai_refresh.lock() {
-            *last = None;
-        }
     }
 
     pub fn start(
@@ -359,9 +354,6 @@ impl ProjectActivityCoordinator {
                 tracked.last_ai_refresh = Some(Instant::now());
             }
         }
-        if let Ok(mut last) = self.last_global_ai_refresh.lock() {
-            *last = Some(Instant::now());
-        }
         async_runtime::spawn(async move {
             let _ = ai_history.refresh_project(project.into()).await;
         });
@@ -408,28 +400,6 @@ impl ProjectActivityCoordinator {
         })
     }
 
-    fn tracked_projects(&self) -> Vec<TrackedProject> {
-        self.projects
-            .lock()
-            .map(|projects| projects.values().cloned().collect())
-            .unwrap_or_default()
-    }
-
-    fn global_ai_due(&self, interval: Duration) -> bool {
-        let now = Instant::now();
-        let Ok(mut last) = self.last_global_ai_refresh.lock() else {
-            return false;
-        };
-        let Some(previous) = *last else {
-            *last = Some(now);
-            return false;
-        };
-        let is_due = now.duration_since(previous) >= interval;
-        if is_due {
-            *last = Some(now);
-        }
-        is_due
-    }
 }
 
 fn run_activity_tick(
@@ -465,19 +435,6 @@ fn run_activity_tick(
             async_runtime::spawn(async move {
                 let _ = ai_history.refresh_project(project.into()).await;
             });
-        }
-        if coordinator.global_ai_due(interval) {
-            let projects = coordinator
-                .tracked_projects()
-                .into_iter()
-                .map(AIHistoryProjectRequest::from)
-                .collect::<Vec<_>>();
-            if !projects.is_empty() {
-                let ai_history = Arc::clone(ai_history);
-                async_runtime::spawn(async move {
-                    let _ = ai_history.refresh_global(projects).await;
-                });
-            }
         }
     }
 }

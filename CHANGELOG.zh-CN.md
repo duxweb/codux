@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [1.0.0-beta.2] - 2026-05-22
+
+### 修复
+
+- 修复 AI 记忆抽取在 worktree 会话中不会触发的问题：所有 worktree 统一写入根项目记忆，同时使用当前 worktree 路径解析会话 transcript。
+- 修复记忆抽取队列内部阻塞异步运行时的问题，改为异步调用 provider，并向 React 状态推送实时记忆状态。
+- 修复 worktree 右键移除确认后侧栏列表仍保留旧 worktree 的问题。
+
+### 调整
+
+- 将记忆管理器的“立即索引”移动到左侧记忆目标标题右侧，并补充 loading / 失败提示反馈。
+- 通过 `memory:status` 和 `memory:manager` 事件同步记忆管理器、顶部记忆按钮和 Rust 抽取队列状态。
+
 ## [1.0.0-beta.1] - 2026-05-21
 
 ### 新增

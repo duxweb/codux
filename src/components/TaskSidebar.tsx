@@ -70,7 +70,7 @@ export function TaskSidebar({
   const [createError, setCreateError] = useState("");
   const [applications, setApplications] = useState<ProjectOpenApplication[]>([]);
   const [optimisticSelectedId, setOptimisticSelectedId] = useState("");
-  const [historyHeight, setHistoryHeight] = useState(220);
+  const [historyHeight, setHistoryHeight] = useState<number | null>(null);
   const [statisticsMode, setStatisticsMode] = useState<AIStatisticsMode>(
     () => readAppSettings().statisticsMode as AIStatisticsMode,
   );
@@ -193,8 +193,9 @@ export function TaskSidebar({
   const beginHistoryResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startY = event.clientY;
-    const startHeight = historyHeight;
-    const maxHeight = Math.max(180, Math.round((asideRef.current?.clientHeight ?? 640) * 0.58));
+    const asideHeight = asideRef.current?.clientHeight ?? 640;
+    const startHeight = historyHeight ?? Math.round(asideHeight * 0.3);
+    const maxHeight = Math.max(180, Math.round(asideHeight * 0.58));
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextHeight = startHeight - (moveEvent.clientY - startY);
       setHistoryHeight(Math.max(156, Math.min(maxHeight, Math.round(nextHeight))));
@@ -265,7 +266,7 @@ export function TaskSidebar({
           </div>
         )}
       </div>
-      <div className="relative flex-none bg-transparent" style={{ height: historyHeight }}>
+      <div className="relative flex-none bg-transparent" style={{ height: historyHeight ?? "30%" }}>
         <div
           className="peer/history-resize absolute inset-x-0 top-[-4px] z-10 h-3 cursor-row-resize"
           onPointerDown={beginHistoryResize}
@@ -503,8 +504,8 @@ function formatOpenTitle(label: string) {
 function WorktreeActivityDot({ state }: { state: WorktreeAIState }) {
   if (state === "running") {
     return (
-      <span className="relative grid h-2.5 w-2.5 place-items-center rounded-full">
-        <span className="h-1.5 w-1.5 rounded-full bg-brand-amber" />
+      <span className="relative grid h-3 w-3 place-items-center rounded-full">
+        <span className="h-2 w-2 rounded-full bg-brand-amber" />
         <span className="absolute inset-0 rounded-full border border-brand-amber/20 border-t-brand-amber motion-safe:animate-spin" />
       </span>
     );

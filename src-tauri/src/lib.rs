@@ -96,8 +96,8 @@ use llm::{
 };
 use memory::{
     MemoryExtractionStatusSnapshot, MemoryManagementRequest, MemoryManagementSnapshot,
-    MemoryManagerSnapshot, MemoryManagerSnapshotRequest, MemoryStore, MemorySummary,
-    MemorySummaryUpdateRequest,
+    MemoryManagerSnapshot, MemoryManagerSnapshotRequest, MemoryQueueStatusEvent, MemoryStore,
+    MemorySummary, MemorySummaryUpdateRequest,
 };
 use notify_channels::{
     dispatch_notification_channels, NotificationDispatchRequest, NotificationDispatchResult,
@@ -109,7 +109,7 @@ use pet::{
     PetSnapshot, PetStore,
 };
 use power::PowerManager;
-use project_activity::{ProjectActivityCoordinator, WorktreeSnapshotEvent};
+use project_activity::{GitReviewEvent, ProjectActivityCoordinator, WorktreeSnapshotEvent};
 use project_store::{
     ProjectCloseRequest, ProjectCreateRequest, ProjectDefaultPushRemoteRequest,
     ProjectListSnapshot, ProjectReorderRequest, ProjectSelectWorktreeRequest, ProjectStore,
@@ -1211,6 +1211,13 @@ fn memory_manager_snapshot(
         .map_err(|error| error.to_string())
 }
 
+fn emit_memory_status_event(app: &tauri::AppHandle, event: MemoryQueueStatusEvent) {
+    let _ = app.emit("memory:status", event.status);
+    if let Some(manager) = event.manager {
+        let _ = app.emit("memory:manager", manager);
+    }
+}
+
 #[tauri::command]
 fn memory_archive_entry(state: tauri::State<'_, AppState>, entry_id: String) -> Result<(), String> {
     state
@@ -1250,12 +1257,18 @@ fn memory_update_summary(
 }
 
 #[tauri::command]
-fn memory_index_now(state: tauri::State<'_, AppState>) {
-    Arc::clone(&state.memory).process_sessions_now(
-        state.settings.snapshot().ai,
-        state.projects.projects_snapshot(),
-        state.ai_runtime.state_snapshot().sessions,
-    );
+fn memory_index_now(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<MemoryExtractionStatusSnapshot, String> {
+    Arc::clone(&state.memory)
+        .process_sessions_now(
+            state.settings.snapshot().ai,
+            state.projects.project_workspaces_snapshot(),
+            state.ai_runtime.state_snapshot().sessions,
+            move |event| emit_memory_status_event(&app, event),
+        )
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1323,6 +1336,14 @@ async fn ai_history_global_state(
 }
 
 #[tauri::command]
+async fn ai_history_global_today_normalized_tokens() -> Result<i64, String> {
+    tauri::async_runtime::spawn_blocking(ai_history::global_today_normalized_tokens)
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn ai_history_session_rename(
     state: tauri::State<'_, AppState>,
     project: AIHistoryProjectRequest,
@@ -1366,6 +1387,35 @@ fn emit_git_status_snapshot(
                 .as_ref()
                 .map(|value| value.path.clone())
                 .unwrap_or_else(|| project_path.to_string()),
+            snapshot,
+        },
+    );
+}
+
+fn emit_git_review_snapshot(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    project_path: &str,
+    base_branch: Option<String>,
+    snapshot: GitReviewSnapshot,
+) {
+    let project = state.projects.workspace_summary_by_path(project_path);
+    let _ = app.emit(
+        "git:review",
+        GitReviewEvent {
+            project_id: project
+                .as_ref()
+                .map(|value| value.id.clone())
+                .unwrap_or_default(),
+            project_name: project
+                .as_ref()
+                .map(|value| value.name.clone())
+                .unwrap_or_default(),
+            project_path: project
+                .as_ref()
+                .map(|value| value.path.clone())
+                .unwrap_or_else(|| project_path.to_string()),
+            base_branch,
             snapshot,
         },
     );
@@ -1529,8 +1579,15 @@ fn git_sync(
 }
 
 #[tauri::command]
-fn git_review(project_path: String, base_branch: Option<String>) -> GitReviewSnapshot {
-    load_git_review(project_path, base_branch)
+fn git_review(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+    base_branch: Option<String>,
+) -> GitReviewSnapshot {
+    let snapshot = load_git_review(project_path.clone(), base_branch.clone());
+    emit_git_review_snapshot(&app, &state, &project_path, base_branch, snapshot.clone());
+    snapshot
 }
 
 #[tauri::command]
@@ -1908,13 +1965,8 @@ async fn worktree_remove(
         .worktrees
         .iter()
         .find(|worktree| worktree.is_default)
+        .or_else(|| snapshot.worktrees.first())
         .map(|worktree| worktree.path.clone())
-        .or_else(|| {
-            snapshot
-                .worktrees
-                .first()
-                .map(|worktree| worktree.path.clone())
-        })
         .unwrap_or_default();
     let _ = app.emit(
         "worktree:snapshot",
@@ -1937,11 +1989,28 @@ fn performance_snapshot(state: tauri::State<'_, AppState>) -> PerformanceSnapsho
 async fn pet_refresh(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
-    request: PetRefreshRequest,
+    _request: PetRefreshRequest,
 ) -> Result<PetSnapshot, String> {
     let pet = Arc::clone(&state.pet);
-    let summary = state.ai_history.global_summary(request.projects).await?;
-    let input = pet::refresh_input_from_summary(summary);
+    let current_snapshot = pet.snapshot()?;
+    let claimed_at = current_snapshot.claimed_at;
+    let cutoff = claimed_at.map(|value| value as f64);
+    let input = tauri::async_runtime::spawn_blocking(move || {
+        let project_totals = ai_history::normalized_project_totals_since(cutoff)
+            .map_err(|error| error.to_string())?;
+        let all_time_total_tokens =
+            ai_history::global_all_time_normalized_tokens().map_err(|error| error.to_string())?;
+        let sessions =
+            ai_history::indexed_sessions_since(cutoff).map_err(|error| error.to_string())?;
+        Ok::<_, String>(pet::refresh_input_from_indexed_history(
+            claimed_at,
+            project_totals,
+            all_time_total_tokens,
+            sessions,
+        ))
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     let snapshot = tauri::async_runtime::spawn_blocking(move || pet.refresh(input))
         .await
         .map_err(|error| error.to_string())??;
@@ -1984,9 +2053,16 @@ async fn pet_claim(
     request: PetClaimRequest,
 ) -> Result<PetSnapshot, String> {
     let pet = Arc::clone(&state.pet);
-    let projects = request.projects.clone();
-    let summary = state.ai_history.global_summary(projects).await?;
-    let input = pet::claim_input_from_summary(request, summary);
+    let input = tauri::async_runtime::spawn_blocking(move || {
+        let all_time_total_tokens =
+            ai_history::global_all_time_normalized_tokens().map_err(|error| error.to_string())?;
+        Ok::<_, String>(pet::claim_input_from_indexed_history(
+            request,
+            all_time_total_tokens,
+        ))
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     let snapshot = tauri::async_runtime::spawn_blocking(move || pet.claim(input))
         .await
         .map_err(|error| error.to_string())??;
@@ -6323,6 +6399,7 @@ pub fn run() {
             ai_history_global_summary,
             ai_history_refresh_global,
             ai_history_global_state,
+            ai_history_global_today_normalized_tokens,
             ai_history_session_rename,
             ai_history_session_remove,
             git_status,

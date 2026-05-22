@@ -130,6 +130,85 @@ describe("ai runtime store", () => {
     expect(store.completedPhase("project-1")).toEqual({ kind: "idle" });
   });
 
+  it("lets runtime polling start a new turn after an undismissed completion", () => {
+    const sessionStore = new AISessionStore();
+
+    sessionStore.applyHook(hook({ kind: "promptSubmitted", updatedAt: 1000 }));
+    sessionStore.applyHook(
+      hook({
+        kind: "turnCompleted",
+        totalTokens: 150,
+        updatedAt: 1010,
+        metadata: { hasCompletedTurn: true },
+      }),
+    );
+
+    expect(sessionStore.completedPhase("project-1").kind).toBe("completed");
+    expect(
+      sessionStore.applyRuntimeSnapshot("term-1", {
+        tool: "codex",
+        externalSessionID: "ai-1",
+        model: "gpt-5.5",
+        inputTokens: 120,
+        outputTokens: 80,
+        cachedInputTokens: 0,
+        totalTokens: 200,
+        updatedAt: 1020,
+        startedAt: 1020,
+        responseState: "responding",
+        wasInterrupted: false,
+        hasCompletedTurn: false,
+        sessionOrigin: "fresh",
+        source: "probe",
+      }),
+    ).toBe(true);
+
+    expect(sessionStore.projectPhase("project-1")).toEqual({ kind: "running", tool: "codex" });
+    expect(sessionStore.completedPhase("project-1")).toEqual({ kind: "idle" });
+    expect(sessionStore.snapshots("project-1")[0]).toMatchObject({
+      state: "responding",
+      hasCompletedTurn: false,
+    });
+  });
+
+  it("lets runtime polling resume running after a permission prompt", () => {
+    const sessionStore = new AISessionStore();
+
+    sessionStore.applyHook(hook({ kind: "promptSubmitted", updatedAt: 1000 }));
+    sessionStore.applyHook(
+      hook({
+        kind: "needsInput",
+        updatedAt: 1005,
+        metadata: { notificationType: "permission" },
+      }),
+    );
+
+    expect(sessionStore.projectPhase("project-1")).toEqual({ kind: "needsInput", tool: "codex" });
+    expect(
+      sessionStore.applyRuntimeSnapshot("term-1", {
+        tool: "codex",
+        externalSessionID: "ai-1",
+        model: "gpt-5.5",
+        inputTokens: 120,
+        outputTokens: 55,
+        cachedInputTokens: 0,
+        totalTokens: 175,
+        updatedAt: 1015,
+        responseState: "responding",
+        wasInterrupted: false,
+        hasCompletedTurn: false,
+        sessionOrigin: "fresh",
+        source: "probe",
+      }),
+    ).toBe(true);
+
+    expect(sessionStore.projectPhase("project-1")).toEqual({ kind: "running", tool: "codex" });
+    expect(sessionStore.snapshots("project-1")[0]).toMatchObject({
+      state: "responding",
+      hasCompletedTurn: false,
+    });
+  });
+
   it("does not expose a terminal-input fallback for AI state", () => {
     const store = new AIRuntimeStore();
 
