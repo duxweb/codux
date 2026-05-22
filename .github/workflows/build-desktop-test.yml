@@ -88,9 +88,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Resolve test build version
+        id: version
+        shell: bash
+        run: |
+          ref="${{ inputs.ref }}"
+          if [[ "$ref" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            version="${ref#v}"
+          else
+            version="1.0.0-test.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Apply test build version
         shell: bash
-        run: node scripts/release/prepare-release.mjs "${{ inputs.ref }}" beta
+        run: node scripts/release/prepare-release.mjs "${{ steps.version.outputs.version }}" beta
 
       - name: Import Apple signing certificate
         if: startsWith(inputs.mac_signing, 'developer-id')
@@ -187,11 +199,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Resolve test build version
+        id: version
+        shell: bash
+        run: |
+          ref="${{ inputs.ref }}"
+          if [[ "$ref" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            version="${ref#v}"
+          else
+            version="1.0.0-test.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Apply test build version
         shell: bash
         env:
           RELEASE_WINDOWS_BUNDLE_VERSION: true
-        run: node scripts/release/prepare-release.mjs "${{ inputs.ref }}" beta
+        run: node scripts/release/prepare-release.mjs "${{ steps.version.outputs.version }}" beta
 
       - name: Build desktop bundle
         shell: bash
