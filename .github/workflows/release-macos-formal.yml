@@ -1,18 +1,14 @@
-name: Release Desktop
+name: Release macOS Formal
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Source tag to build, for example v1.0.0-beta.1."
-        required: false
-        default: v1.0.0-beta.1
+        description: "Existing release tag to build, for example v1.0.0-beta.3."
+        required: true
         type: string
       channel:
-        description: "Updater channel to publish."
+        description: "Updater channel to update."
         required: false
         default: auto
         type: choice
@@ -33,19 +29,12 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       channel: ${{ steps.meta.outputs.channel }}
-      source_ref: ${{ steps.ref.outputs.source_ref }}
-    env:
-      SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      source_ref: ${{ inputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-
-      - name: Resolve source ref
-        id: ref
-        shell: bash
-        run: echo "source_ref=${SOURCE_REF}" >> "$GITHUB_OUTPUT"
+          ref: ${{ inputs.tag }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -59,38 +48,28 @@ jobs:
           RELEASE_NOTES_PATH: dist/release-notes.md
         run: |
           mkdir -p dist
-          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
-          node scripts/release/prepare-release.mjs "${SOURCE_REF}" "${requested_channel}"
+          node scripts/release/prepare-release.mjs "${{ inputs.tag }}" "${{ inputs.channel }}"
 
       - name: Upload release notes
         uses: actions/upload-artifact@v4
         with:
-          name: release-notes
+          name: release-notes-formal
           path: dist/release-notes.md
           if-no-files-found: error
 
   build:
     needs: metadata
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - id: macos-universal
-            platform: macos-latest
-            args: --target universal-apple-darwin
-            bundle_dir: src-tauri/target/universal-apple-darwin/release/bundle
-            artifact_base_name: macos-universal-unsigned
-          - id: windows-x86_64
-            platform: windows-latest
-            args: ""
-            bundle_dir: src-tauri/target/release/bundle
-            windows_bundle_version: true
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
     env:
-      SOURCE_REF: ${{ needs.metadata.outputs.source_ref }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -112,7 +91,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ startsWith(matrix.id, 'macos-') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Cache Rust build
         uses: actions/cache@v4
@@ -121,46 +100,56 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: rust-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: formal-rust-${{ runner.os }}-macos-universal-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            rust-${{ runner.os }}-${{ matrix.id }}-
+            formal-rust-${{ runner.os }}-macos-universal-
+            rust-${{ runner.os }}-macos-universal-
             rust-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Import Apple signing certificate
+        shell: bash
+        run: |
+          certificate_path="$RUNNER_TEMP/apple-certificate.p12"
+          keychain_path="$RUNNER_TEMP/apple-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | sed 's/[\" ]//g')
+          security find-identity -v -p codesigning "$keychain_path"
+
       - name: Apply release version
         shell: bash
         env:
           RELEASE_NOTES_PATH: dist/release-notes.md
-          RELEASE_WINDOWS_BUNDLE_VERSION: ${{ matrix.windows_bundle_version || '' }}
         run: |
           mkdir -p dist
-          node scripts/release/prepare-release.mjs "${SOURCE_REF}" "${{ needs.metadata.outputs.channel }}"
+          node scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
 
-      - name: Build desktop bundle
+      - name: Build notarized desktop bundle
         shell: bash
-        run: |
-          extra_args=()
-          if [[ "${{ matrix.id }}" == macos-* ]]; then
-            extra_args+=(--config '{"bundle":{"macOS":{"signingIdentity":"-","hardenedRuntime":false}}}')
-          fi
-          pnpm tauri build ${{ matrix.args }} "${extra_args[@]}"
+        run: pnpm tauri build --target universal-apple-darwin
 
-      - name: Stage bundle artifacts
+      - name: Stage formal macOS artifacts
         shell: bash
         env:
-          BUNDLE_SOURCE_DIR: ${{ matrix.bundle_dir }}
-          RELEASE_BUILD_ID: ${{ matrix.id }}
-          RELEASE_ARTIFACT_BASENAME: ${{ matrix.artifact_base_name || '' }}
+          BUNDLE_SOURCE_DIR: src-tauri/target/universal-apple-darwin/release/bundle
+          RELEASE_BUILD_ID: macos-universal-formal
+          RELEASE_ARTIFACT_BASENAME: macos-universal-formal
           RELEASE_STAGE_DIR: release-artifacts
         run: node scripts/release/stage-bundle-artifacts.mjs
 
-      - name: Upload bundle artifacts
+      - name: Upload formal macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-${{ matrix.id }}
-          path: release-artifacts/${{ matrix.id }}/*
+          name: bundle-macos-universal-formal
+          path: release-artifacts/macos-universal-formal/*
           if-no-files-found: error
 
   publish:
@@ -173,7 +162,9 @@ jobs:
       RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
       RELEASE_TAG: ${{ needs.metadata.outputs.source_ref }}
       RELEASE_NOTES_PATH: dist/release-notes.md
-      RELEASE_ARTIFACTS_DIR: release-artifacts
+      RELEASE_ARTIFACTS_DIR: release-artifacts/macos-universal-formal
+      RELEASE_REQUIRE_EXISTING: true
+      RELEASE_MERGE_EXISTING_LATEST: true
       RELEASE_UPLOAD_SIG_ASSETS: false
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -191,15 +182,14 @@ jobs:
       - name: Download release notes
         uses: actions/download-artifact@v4
         with:
-          name: release-notes
+          name: release-notes-formal
           path: dist
 
-      - name: Download bundle artifacts
+      - name: Download formal macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: bundle-*
-          path: release-artifacts
-          merge-multiple: true
+          name: bundle-macos-universal-formal
+          path: release-artifacts/macos-universal-formal
 
-      - name: Publish GitHub release and updater metadata
+      - name: Publish formal macOS assets and updater metadata
         run: node scripts/release/publish-github-release.mjs
