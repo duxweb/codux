@@ -1,6 +1,9 @@
 name: Release macOS Formal
 
 on:
+  workflow_run:
+    workflows: ["Release Desktop"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -25,16 +28,27 @@ env:
 
 jobs:
   metadata:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v')) }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
       channel: ${{ steps.meta.outputs.channel }}
-      source_ref: ${{ inputs.tag }}
+      source_ref: ${{ steps.ref.outputs.source_ref }}
     steps:
+      - name: Resolve source ref
+        id: ref
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+          WORKFLOW_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || '' }}
+        run: |
+          source_ref="${DISPATCH_TAG:-$WORKFLOW_TAG}"
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ steps.ref.outputs.source_ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,7 +62,8 @@ jobs:
           RELEASE_NOTES_PATH: dist/release-notes.md
         run: |
           mkdir -p dist
-          node scripts/release/prepare-release.mjs "${{ inputs.tag }}" "${{ inputs.channel }}"
+          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
+          node scripts/release/prepare-release.mjs "${{ steps.ref.outputs.source_ref }}" "${requested_channel}"
 
       - name: Upload release notes
         uses: actions/upload-artifact@v4
