@@ -521,6 +521,16 @@ impl AIRuntimeBridge {
                 .join("tool-wrapper.sh"),
             true,
         )?;
+        #[cfg(not(windows))]
+        stage_runtime_asset(
+            "scripts/wrappers/codux-ssh-expect.exp",
+            &self
+                .root_dir
+                .join("scripts")
+                .join("wrappers")
+                .join("codux-ssh-expect.exp"),
+            true,
+        )?;
         #[cfg(windows)]
         stage_runtime_asset(
             "scripts/wrappers/tool-wrapper.cmd",
@@ -539,6 +549,16 @@ impl AIRuntimeBridge {
                 .join("scripts")
                 .join("wrappers")
                 .join("tool-wrapper.ps1"),
+            false,
+        )?;
+        #[cfg(windows)]
+        stage_runtime_asset(
+            "scripts/wrappers/codux-ssh.ps1",
+            &self
+                .root_dir
+                .join("scripts")
+                .join("wrappers")
+                .join("codux-ssh.ps1"),
             false,
         )?;
         stage_runtime_dir(
@@ -1787,25 +1807,26 @@ fn apply_runtime_snapshot_unlocked(
         note_latest_active_started_at(core, &session.project_id, started_at);
     }
 
-    let (
-        baseline_total_tokens,
-        baseline_cached_input_tokens,
-        baseline_resolved,
-    ) = if session.baseline_resolved {
-        (
-            session.baseline_total_tokens,
-            session.baseline_cached_input_tokens,
-            true,
-        )
-    } else if snapshot.session_origin == "restored" {
-        (
-            snapshot.total_tokens.max(0),
-            snapshot.cached_input_tokens.max(0),
-            true,
-        )
-    } else {
-        (session.baseline_total_tokens, session.baseline_cached_input_tokens, true)
-    };
+    let (baseline_total_tokens, baseline_cached_input_tokens, baseline_resolved) =
+        if session.baseline_resolved {
+            (
+                session.baseline_total_tokens,
+                session.baseline_cached_input_tokens,
+                true,
+            )
+        } else if snapshot.session_origin == "restored" {
+            (
+                snapshot.total_tokens.max(0),
+                snapshot.cached_input_tokens.max(0),
+                true,
+            )
+        } else {
+            (
+                session.baseline_total_tokens,
+                session.baseline_cached_input_tokens,
+                true,
+            )
+        };
 
     let next = AISessionSnapshot {
         tool: canonical_tool_name(&snapshot.tool).unwrap_or(session.tool.clone()),
@@ -3033,6 +3054,14 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../runtime-assets/scripts/wrappers/bin/codux-ssh.cmd"),
     ),
     (
+        "scripts/wrappers/codux-ssh-expect.exp",
+        include_bytes!("../runtime-assets/scripts/wrappers/codux-ssh-expect.exp"),
+    ),
+    (
+        "scripts/wrappers/codux-ssh.ps1",
+        include_bytes!("../runtime-assets/scripts/wrappers/codux-ssh.ps1"),
+    ),
+    (
         "scripts/wrappers/bin/gemini",
         include_bytes!("../runtime-assets/scripts/wrappers/bin/gemini"),
     ),
@@ -4031,7 +4060,8 @@ fn parse_usage_totals(value: &serde_json::Value) -> Option<UsageTotals> {
         .unwrap_or_else(|| json_i64(object.get("cache_read_input_tokens")));
     let reasoning_output_tokens = json_i64(object.get("reasoning_output_tokens"));
     if raw_input_tokens == 0 && raw_output_tokens == 0 {
-        if let Some(raw_total_tokens) = object.get("total_tokens").and_then(|value| value.as_i64()) {
+        if let Some(raw_total_tokens) = object.get("total_tokens").and_then(|value| value.as_i64())
+        {
             if raw_total_tokens > 0 {
                 return Some(UsageTotals {
                     input_tokens: raw_total_tokens,
@@ -4325,8 +4355,8 @@ fn parse_claude_log_runtime_state(
             aggregate.output_tokens += json_i64(usage.get("output_tokens"));
             aggregate.cached_input_tokens += json_i64(usage.get("cache_creation_input_tokens"))
                 + json_i64(usage.get("cache_read_input_tokens"));
-            aggregate.total_tokens += json_i64(usage.get("input_tokens"))
-                + json_i64(usage.get("output_tokens"));
+            aggregate.total_tokens +=
+                json_i64(usage.get("input_tokens")) + json_i64(usage.get("output_tokens"));
         }
     }
 
@@ -5018,7 +5048,10 @@ trusted_hash = "sha256:old-basic"
         assert_eq!(session.baseline_total_tokens, 1_200);
         assert_eq!(session.baseline_cached_input_tokens, 3_000);
         assert!(session.baseline_resolved);
-        assert_eq!(project_totals_unlocked(&core, Some("project-1")).total_tokens, 0);
+        assert_eq!(
+            project_totals_unlocked(&core, Some("project-1")).total_tokens,
+            0
+        );
         assert_eq!(
             project_totals_unlocked(&core, Some("project-1")).cached_input_tokens,
             0

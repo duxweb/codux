@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
@@ -53,6 +53,15 @@ pub struct UpdateInstallResult {
     pub downloaded_bytes: u64,
     pub total_bytes: Option<u64>,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInstallProgressEvent {
+    pub phase: String,
+    pub version: Option<String>,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -222,19 +231,70 @@ pub async fn install_update(
     let version = update.version.clone();
     let downloaded = std::sync::Arc::new(std::sync::Mutex::new((0_u64, None)));
     let progress = std::sync::Arc::clone(&downloaded);
-    update
-        .download_and_install(
+    let finish_progress = std::sync::Arc::clone(&downloaded);
+    let event_app = app.clone();
+    let event_version = version.clone();
+    let _ = app.emit(
+        "app:update-install-progress",
+        UpdateInstallProgressEvent {
+            phase: "downloading".to_string(),
+            version: Some(version.clone()),
+            downloaded_bytes: 0,
+            total_bytes: None,
+        },
+    );
+    let bytes = update
+        .download(
             move |chunk_length, content_length| {
+                let mut downloaded_bytes = 0_u64;
+                let mut total_bytes = content_length;
                 if let Ok(mut state) = progress.lock() {
                     state.0 = state.0.saturating_add(chunk_length as u64);
                     state.1 = content_length;
+                    downloaded_bytes = state.0;
+                    total_bytes = state.1;
+                }
+                let _ = event_app.emit(
+                    "app:update-install-progress",
+                    UpdateInstallProgressEvent {
+                        phase: "downloading".to_string(),
+                        version: Some(event_version.clone()),
+                        downloaded_bytes,
+                        total_bytes,
+                    },
+                );
+            },
+            {
+                let app = app.clone();
+                let version = version.clone();
+                move || {
+                    let (downloaded_bytes, total_bytes) =
+                        finish_progress.lock().map(|state| *state).unwrap_or_default();
+                    let _ = app.emit(
+                        "app:update-install-progress",
+                        UpdateInstallProgressEvent {
+                            phase: "installing".to_string(),
+                            version: Some(version),
+                            downloaded_bytes,
+                            total_bytes,
+                        },
+                    );
                 }
             },
-            || {},
         )
         .await
         .map_err(|error| error.to_string())?;
+    update.install(bytes).map_err(|error| error.to_string())?;
     let (downloaded_bytes, total_bytes) = downloaded.lock().map(|state| *state).unwrap_or_default();
+    let _ = app.emit(
+        "app:update-install-progress",
+        UpdateInstallProgressEvent {
+            phase: "finished".to_string(),
+            version: Some(version.clone()),
+            downloaded_bytes,
+            total_bytes,
+        },
+    );
     Ok(UpdateInstallResult {
         installed: true,
         version: Some(version),

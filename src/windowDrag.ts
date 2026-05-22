@@ -1,8 +1,7 @@
 import type { PointerEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-const NO_DRAG_SELECTOR = [
-  ".no-drag",
+const INTERACTIVE_SELECTOR = [
   "button",
   "a",
   "input",
@@ -17,7 +16,10 @@ export function startWindowDrag(event: PointerEvent<HTMLElement>) {
   if (!window.__TAURI_INTERNALS__) return;
   if (event.button !== 0) return;
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest(NO_DRAG_SELECTOR)) return;
+  if (target?.closest(INTERACTIVE_SELECTOR)) return;
+  const noDragRegion = target?.closest(".no-drag");
+  const dragRegion = target?.closest("[data-tauri-drag-region]");
+  if (noDragRegion && (!dragRegion || !noDragRegion.contains(dragRegion))) return;
   event.preventDefault();
 
   const currentWindow = getCurrentWindow();

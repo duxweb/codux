@@ -199,7 +199,7 @@ export function TaskSidebar({
     event.preventDefault();
     const startY = event.clientY;
     const asideHeight = asideRef.current?.clientHeight ?? 640;
-    const startHeight = historyHeight ?? Math.round(asideHeight * 0.3);
+    const startHeight = historyHeight ?? Math.round(asideHeight * 0.4);
     const maxHeight = Math.max(180, Math.round(asideHeight * 0.58));
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextHeight = startHeight - (moveEvent.clientY - startY);
@@ -274,13 +274,16 @@ export function TaskSidebar({
           </div>
         )}
       </div>
-      <div className="relative flex-none bg-transparent" style={{ height: historyHeight ?? "30%" }}>
+      <div
+        className="relative flex-none bg-transparent"
+        style={{ height: historyHeight ?? "40%" }}
+      >
         <div
           className="peer/history-resize absolute inset-x-0 top-[-4px] z-10 h-3 cursor-row-resize"
           onPointerDown={beginHistoryResize}
           aria-label={tm("common.resize", "Resize")}
         />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-brand-blue/0 transition-colors peer-hover/history-resize:bg-brand-blue/70" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-line transition-colors peer-hover/history-resize:bg-line-strong" />
         <div className="flex h-[38px] items-center justify-between gap-2 bg-fill/[0.045] px-3.5 py-1.5">
           <span className="truncate text-sm font-semibold text-ink-soft">
             {tm("ai.sessions.history", "Session History")}
@@ -515,7 +518,8 @@ function formatOpenTitle(label: string) {
 function WorktreeActivityDot({ state }: { state: WorktreeAIState }) {
   if (state === "running") {
     return (
-      <span className="relative grid h-3 w-3 place-items-center rounded-full">
+      <span className="relative grid h-4 w-4 place-items-center rounded-full" aria-hidden="true">
+        <span className="absolute inset-0 rounded-full border border-brand-amber/35 border-t-brand-amber motion-safe:animate-spin" />
         <span className="h-2.5 w-2.5 rounded-full bg-brand-amber" />
       </span>
     );

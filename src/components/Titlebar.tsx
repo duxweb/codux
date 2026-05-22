@@ -141,7 +141,7 @@ export function Titlebar({
     <header
       data-tauri-drag-region
       className="absolute top-0 left-0 right-0 h-[var(--titlebar-height)] z-30 drag-region"
-      onPointerDown={startWindowDrag}
+      onPointerDownCapture={startWindowDrag}
     >
       <div className="absolute inset-0 flex items-center justify-between drag-region" data-tauri-drag-region>
         <div className={`flex items-center gap-2.5 ${leftChromeInset} no-drag`}>
@@ -534,11 +534,15 @@ function MemoryStatusButton() {
         ? "border-brand-red/45 bg-brand-red/12 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-red)_18%,transparent)]"
         : "border-line bg-fill/[0.06]";
   return (
-    <Tooltip label={<MemoryStatusTooltip snapshot={snapshot} />} placement="bottom">
+    <Tooltip
+      label={<MemoryStatusTooltip snapshot={snapshot} />}
+      placement="bottom"
+      triggerClassName="inline-flex h-[28px] items-center align-middle"
+    >
       <button
         type="button"
         aria-label={tm("memory.manager.window.title", "Memory Manager")}
-        className={`no-drag relative inline-grid h-[28px] w-[28px] place-items-center rounded-[7px] border outline-none transition-colors hover:border-line-strong hover:bg-fill/10 ${activeSurface} ${tone}`}
+        className={`no-drag relative box-border inline-grid h-[28px] w-[28px] place-items-center rounded-[7px] border p-0 leading-none outline-none transition-colors hover:border-line-strong hover:bg-fill/10 ${activeSurface} ${tone}`}
         data-active={isActive ? "true" : "false"}
         onClick={() => void openAppWindow("memory-manager")}
       >

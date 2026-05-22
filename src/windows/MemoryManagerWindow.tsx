@@ -22,6 +22,7 @@ import { formatI18n, tm } from "../i18n";
 import { readAppSettings } from "../settings";
 import { systemConfirm, systemMessage } from "../systemDialog";
 import { revealCurrentAppWindow } from "../windowing";
+import { startWindowDrag } from "../windowDrag";
 import { WindowFrame } from "./WindowFrame";
 
 type Target = {
@@ -149,7 +150,11 @@ export function MemoryManagerWindow() {
         </aside>
 
         <section className="flex min-h-0 min-w-0 flex-col">
-          <header className="drag-region border-b border-line/60 px-5 pb-4 pt-5" data-tauri-drag-region>
+          <header
+            className="drag-region border-b border-line/60 px-5 pb-4 pt-5"
+            data-tauri-drag-region
+            onPointerDownCapture={startWindowDrag}
+          >
             <div className="flex items-start gap-3">
               <div className="min-w-0 drag-region" data-tauri-drag-region>
                 <h1 className="truncate text-[20px] font-bold leading-tight drag-region" data-tauri-drag-region>

@@ -18,7 +18,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { checkForUpdates, type UpdateInstallResult, type UpdateStatus } from "../appActions";
+import { checkForUpdates } from "../appActions";
 import { Button } from "../components/Button";
 import { AppIconMark, appIconStyles } from "../components/AppIconMark";
 import { PressableButton } from "../components/PressableButton";
@@ -266,7 +266,11 @@ export function SettingsWindow() {
     <div className="app-shell h-screen grid grid-cols-[200px_minmax(0,1fr)] text-ink">
       {isWindowsPlatform() && <WindowsWindowControls closeOnly className="h-12" />}
       <aside className="min-h-0 border-r border-line bg-surface-chrome/45 flex flex-col">
-        <div className="h-14 flex-shrink-0 drag-region" data-tauri-drag-region onPointerDown={startWindowDrag} />
+        <div
+          className="h-14 flex-shrink-0 drag-region"
+          data-tauri-drag-region
+          onPointerDownCapture={startWindowDrag}
+        />
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 no-drag">
           <div className="grid gap-1.5">
             {sections.map((item) => (
@@ -289,7 +293,7 @@ export function SettingsWindow() {
         <header
           className={`absolute left-0 right-0 top-0 z-20 h-[92px] flex flex-col justify-end pl-6 ${titleRightInset} pb-4 drag-region`}
           data-tauri-drag-region
-          onPointerDown={startWindowDrag}
+          onPointerDownCapture={startWindowDrag}
           style={{
             background: "linear-gradient(to top, transparent 0%, var(--color-surface-chrome) 50%)",
           }}
@@ -344,9 +348,6 @@ function useSyncedSettings() {
 
 function GeneralSection() {
   const [settings, setSettings] = useSyncedSettings();
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
-  const [isCheckingUpdates, setCheckingUpdates] = useState(false);
-  const [isInstallingUpdate, setInstallingUpdate] = useState(false);
   const setSetting = <K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) => {
     const next = updateAppSettings({ [key]: value });
     setSettings(next);
@@ -357,56 +358,6 @@ function GeneralSection() {
       );
     }
   };
-  const refreshUpdateStatus = useCallback(async () => {
-    if (!window.__TAURI_INTERNALS__) return;
-    setCheckingUpdates(true);
-    try {
-      setUpdateStatus(await invoke<UpdateStatus>("app_update_status"));
-    } catch (error) {
-      setUpdateStatus({
-        configured: false,
-        checking: false,
-        available: false,
-        automaticInstallSupported: false,
-        signedUpdaterConfigured: false,
-        manifestEndpointConfigured: false,
-        currentVersion: "",
-        latestVersion: null,
-        downloadUrl: null,
-        notes: null,
-        channel: settings.update.channel,
-        installationMode: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setCheckingUpdates(false);
-    }
-  }, [settings.update.channel]);
-  const installUpdate = async () => {
-    if (!window.__TAURI_INTERNALS__) return;
-    setInstallingUpdate(true);
-    try {
-      const result = await invoke<UpdateInstallResult>("app_update_install");
-      await systemMessage(tm("update.installed.message", result.message), {
-        title: tm("update.installed.title", "Update Installed"),
-        kind: "info",
-        buttons: { ok: "OK" },
-      });
-      await refreshUpdateStatus();
-    } catch (error) {
-      await systemMessage(error instanceof Error ? error.message : String(error), {
-        title: tm("update.install_failed.title", "Unable to Install Update"),
-        kind: "warning",
-        buttons: { ok: "OK" },
-      });
-    } finally {
-      setInstallingUpdate(false);
-    }
-  };
-
-  useEffect(() => {
-    void refreshUpdateStatus();
-  }, [refreshUpdateStatus, settings.update.enabled]);
 
   return (
     <SettingsForm className="max-w-[640px]">
@@ -490,75 +441,21 @@ function GeneralSection() {
             options={updateChannelOptions}
           />
         </Field>
-        <FormRow
-          label={tm("settings.update.status", "Update Status")}
-          description={updateStatusDescription(updateStatus, isCheckingUpdates)}
-        >
+        <FormRow label={tm("settings.update.status", "Update Status")}>
           <div className="flex items-center gap-2">
-            <span className="rounded-md border border-line bg-fill/[0.04] px-2 py-1 text-xs font-medium text-ink-faint">
-              {updateModeLabel(updateStatus)}
-            </span>
             <Button
               size="sm"
               variant="secondary"
-              disabled={isCheckingUpdates || !settings.update.enabled}
-              onPress={() => void checkForUpdates().then(refreshUpdateStatus)}
+              disabled={!settings.update.enabled}
+              onPress={() => void checkForUpdates()}
             >
-              {isCheckingUpdates ? tm("update.checking", "Checking...") : tm("about.updates", "Check for Updates")}
+              {tm("about.updates", "Check for Updates")}
             </Button>
-            {updateStatus?.available && updateStatus.automaticInstallSupported && (
-              <Button size="sm" variant="primary" disabled={isInstallingUpdate} onPress={() => void installUpdate()}>
-                {isInstallingUpdate
-                  ? tm("update.installing", "Installing...")
-                  : tm("update.available.install", "Install")}
-              </Button>
-            )}
           </div>
         </FormRow>
       </SettingsCard>
     </SettingsForm>
   );
-}
-
-function updateModeLabel(status: UpdateStatus | null) {
-  if (!status) return tm("update.checking", "Checking");
-  if (status.installationMode === "disabled") {
-    return tm("settings.update.mode.disabled", "Off");
-  }
-  if (status.automaticInstallSupported) {
-    return tm("settings.update.mode.automatic", "Automatic");
-  }
-  if (status.manifestEndpointConfigured) {
-    return tm("settings.update.mode.manual_manifest", "Manual");
-  }
-  if (status.signedUpdaterConfigured) {
-    return tm("settings.update.mode.signed_config", "Signed Config");
-  }
-  if (!status.configured) return tm("settings.update.mode.manual_manifest", "Manual");
-  return status.installationMode;
-}
-
-function updateStatusDescription(status: UpdateStatus | null, checking: boolean) {
-  if (checking || !status) {
-    return tm("settings.update.status.checking_github", "Checking GitHub releases...");
-  }
-  if (status.installationMode === "disabled") {
-    return tm("settings.update.status.disabled", "Update checks are turned off.");
-  }
-  if (status.available) {
-    return formatI18n(
-      tm("settings.update.status.available_format", "Version %@ is available. Current version: %@."),
-      status.latestVersion ?? status.currentVersion,
-      status.currentVersion,
-    );
-  }
-  if (status.latestVersion) {
-    return formatI18n(
-      tm("settings.update.status.latest_format", "Current version %@ is up to date."),
-      status.currentVersion,
-    );
-  }
-  return tm("settings.update.status.error", "Unable to check updates. Please try again later.");
 }
 
 function shellOptionsForPlatform() {

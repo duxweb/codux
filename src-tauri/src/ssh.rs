@@ -2,8 +2,12 @@ use crate::paths::app_support_dir;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
 use std::sync::Mutex;
+use std::thread;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +52,13 @@ pub struct SSHProfilesSnapshot {
 pub struct SSHLaunchCommand {
     pub command: String,
     pub log_command: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SSHProfileTestResult {
+    pub ok: bool,
+    pub message: String,
 }
 
 pub struct SSHStore {
@@ -116,15 +127,46 @@ impl SSHStore {
         if !profiles.iter().any(|profile| profile.id == profile_id) {
             return Err("SSH connection not found.".to_string());
         }
-        let command = format!(
-            "codux-ssh {}; printf '\\n[SSH session ended]\\n'; exec \"$SHELL\" -l",
-            shell_quote(&profile_id)
-        );
+        let command = ssh_terminal_command(&profile_id);
         let log_command = format!("codux-ssh {}", shell_quote(&profile_id));
         Ok(SSHLaunchCommand {
             command,
             log_command,
         })
+    }
+
+    pub fn test_profile(
+        &self,
+        request: SSHProfileUpsertRequest,
+        wrapper_bin_dir: &Path,
+    ) -> Result<SSHProfileTestResult, String> {
+        let profile = sanitize_request(request)?;
+        let wrapper = ssh_wrapper_path(wrapper_bin_dir);
+        if !wrapper.exists() {
+            return Err("codux-ssh wrapper is not ready.".to_string());
+        }
+        let profiles_file = write_test_profile_file(&profile)?;
+        let output = run_ssh_test_command(&wrapper, &profile.id, &profiles_file);
+        let _ = fs::remove_file(&profiles_file);
+        let output = output?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.success() && stdout.contains("codux-ssh-ok") {
+            return Ok(SSHProfileTestResult {
+                ok: true,
+                message: "SSH connection test succeeded.".to_string(),
+            });
+        }
+        let detail = stderr.trim();
+        let message = if detail.is_empty() {
+            format!(
+                "SSH connection test failed with status {}.",
+                output.status.code().unwrap_or(-1)
+            )
+        } else {
+            detail.to_string()
+        };
+        Ok(SSHProfileTestResult { ok: false, message })
     }
 
     fn save(&self) -> Result<(), String> {
@@ -141,8 +183,113 @@ impl SSHStore {
     }
 }
 
+fn write_test_profile_file(profile: &SSHConnectionProfile) -> Result<PathBuf, String> {
+    let path = std::env::temp_dir().join(format!("codux-ssh-test-{}.json", Uuid::new_v4()));
+    let data = serde_json::to_vec_pretty(&vec![profile]).map_err(|error| error.to_string())?;
+    fs::write(&path, data).map_err(|error| error.to_string())?;
+    Ok(path)
+}
+
+fn ssh_wrapper_path(wrapper_bin_dir: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        wrapper_bin_dir.join("codux-ssh.cmd")
+    }
+    #[cfg(not(windows))]
+    {
+        wrapper_bin_dir.join("codux-ssh")
+    }
+}
+
+fn run_ssh_test_command(
+    wrapper: &Path,
+    profile_id: &str,
+    profiles_file: &Path,
+) -> Result<Output, String> {
+    let mut child = Command::new(wrapper)
+        .arg(profile_id)
+        .arg("--")
+        .arg("echo codux-ssh-ok")
+        .env("CODUX_SSH_PROFILES_FILE", profiles_file)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("Unable to run SSH test: {error}"))?;
+    let stdout = read_child_pipe(child.stdout.take());
+    let stderr = read_child_pipe(child.stderr.take());
+    let start = Instant::now();
+
+    loop {
+        if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+            return Ok(Output {
+                status,
+                stdout: stdout.join().unwrap_or_default(),
+                stderr: stderr.join().unwrap_or_default(),
+            });
+        }
+        if start.elapsed() >= Duration::from_secs(12) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout.join();
+            let _ = stderr.join();
+            return Err("SSH connection test timed out.".to_string());
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn read_child_pipe<T>(pipe: Option<T>) -> thread::JoinHandle<Vec<u8>>
+where
+    T: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let Some(mut pipe) = pipe else {
+            return Vec::new();
+        };
+        let mut bytes = Vec::new();
+        let _ = pipe.read_to_end(&mut bytes);
+        bytes
+    })
+}
+
 pub fn ssh_profiles_file_path() -> PathBuf {
     app_support_dir().join("ssh_profiles.json")
+}
+
+pub fn render_ssh_launch_context() -> Option<String> {
+    let mut profiles = sanitize_profiles(load_profiles(&ssh_profiles_file_path())?);
+    render_ssh_launch_context_for_profiles(&mut profiles)
+}
+
+fn render_ssh_launch_context_for_profiles(profiles: &mut Vec<SSHConnectionProfile>) -> Option<String> {
+    if profiles.is_empty() {
+        return None;
+    }
+    profiles.sort_by(|left, right| {
+        display_name(left)
+            .to_lowercase()
+            .cmp(&display_name(right).to_lowercase())
+    });
+    let mut lines = vec![
+        "Codux exposes saved SSH connections through terminal commands.".to_string(),
+        "For one-off remote command execution, use `codux-ssh <profile-id> -- '<remote-command>'`.".to_string(),
+        "For an interactive SSH session only when the user explicitly asks to connect/open SSH, use `codux-ssh <profile-id>`.".to_string(),
+        "When the user asks to run a command on a saved SSH profile by name, host, or user, prefer the one-off remote command form.".to_string(),
+        "Do not ask for, print, infer, or expose saved passwords, passphrases, or private key paths.".to_string(),
+        "Available SSH profiles:".to_string(),
+    ];
+    lines.extend(profiles.iter().map(|profile| {
+        format!(
+            "- {}: id={}, endpoint={}@{}:{}, credential={}",
+            display_name(profile),
+            profile.id,
+            profile.username,
+            profile.host,
+            profile.port,
+            credential_label(profile)
+        )
+    }));
+    Some(lines.join("\n"))
 }
 
 fn load_profiles(path: &Path) -> Option<Vec<SSHConnectionProfile>> {
@@ -193,6 +340,11 @@ fn sanitize_request(request: SSHProfileUpsertRequest) -> Result<SSHConnectionPro
         .unwrap_or_default()
         .trim()
         .to_string();
+    let password = request.password.and_then(|value| normalized(&value));
+    let key_passphrase = request.key_passphrase.and_then(|value| normalized(&value));
+    if credential_kind == "password" && password.is_none() {
+        return Err("Password cannot be empty.".to_string());
+    }
     if credential_kind == "privateKey" && private_key_path.is_empty() {
         return Err("Private key path cannot be empty.".to_string());
     }
@@ -209,8 +361,8 @@ fn sanitize_request(request: SSHProfileUpsertRequest) -> Result<SSHConnectionPro
         credential_kind,
         private_key_path,
         updated_at: Utc::now().timestamp(),
-        password: request.password.and_then(|value| normalized(&value)),
-        key_passphrase: request.key_passphrase.and_then(|value| normalized(&value)),
+        password,
+        key_passphrase,
     })
 }
 
@@ -227,6 +379,98 @@ fn normalized(value: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
+fn credential_label(profile: &SSHConnectionProfile) -> &'static str {
+    match profile.credential_kind.as_str() {
+        "password" => "password",
+        "privateKey" => "privateKey",
+        _ => "sshAgent",
+    }
+}
+
+#[cfg(windows)]
+fn ssh_terminal_command(profile_id: &str) -> String {
+    format!(
+        "codux-ssh {}; Write-Host ''; Write-Host '[SSH session ended]'",
+        powershell_quote(profile_id)
+    )
+}
+
+#[cfg(not(windows))]
+fn ssh_terminal_command(profile_id: &str) -> String {
+    format!(
+        "codux-ssh {}; printf '\\n[SSH session ended]\\n'; exec \"$SHELL\" -l",
+        shell_quote(profile_id)
+    )
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(windows)]
+fn powershell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile_with_secret() -> SSHConnectionProfile {
+        SSHConnectionProfile {
+            id: "profile-1".to_string(),
+            name: "Production".to_string(),
+            host: "example.com".to_string(),
+            port: 2222,
+            username: "root".to_string(),
+            credential_kind: "password".to_string(),
+            private_key_path: "/Users/me/.ssh/id_ed25519".to_string(),
+            updated_at: 1,
+            password: Some("secret-password".to_string()),
+            key_passphrase: Some("secret-passphrase".to_string()),
+        }
+    }
+
+    #[test]
+    fn password_profiles_require_password() {
+        let result = sanitize_request(SSHProfileUpsertRequest {
+            id: None,
+            name: "Production".to_string(),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            credential_kind: "password".to_string(),
+            private_key_path: None,
+            password: None,
+            key_passphrase: None,
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn launch_context_lists_profiles_without_secrets() {
+        let mut profiles = vec![profile_with_secret()];
+        let context = render_ssh_launch_context_for_profiles(&mut profiles).unwrap();
+        assert!(context.contains("codux-ssh <profile-id>"));
+        assert!(context.contains("codux-ssh <profile-id> -- '<remote-command>'"));
+        assert!(context.contains("Production"));
+        assert!(context.contains("root@example.com:2222"));
+        assert!(context.contains("profile-1"));
+        assert!(!context.contains("secret-password"));
+        assert!(!context.contains("secret-passphrase"));
+        assert!(!context.contains("/Users/me/.ssh/id_ed25519"));
+    }
+
+    #[test]
+    fn launch_command_only_references_profile_id() {
+        let profile = profile_with_secret();
+        let store = SSHStore {
+            profiles: Mutex::new(vec![profile]),
+            state_file: PathBuf::from("/tmp/codux-ssh-test.json"),
+        };
+        let command = store.launch_command("profile-1".to_string()).unwrap();
+        assert!(command.command.contains("codux-ssh"));
+        assert!(command.command.contains("profile-1"));
+        assert!(!command.command.contains("secret-password"));
+    }
 }

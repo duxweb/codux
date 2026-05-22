@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0-beta.3] - 2026-05-22
+
+### Added
+
+- Added a saved SSH profile modal with credential testing, double-click connect, context-menu actions, and a `codux-ssh` runtime command that AI tools can discover through the shared injected context.
+- Added a dedicated update download/install progress flow after the update notes confirmation dialog.
+
+### Changed
+
+- Improved terminal output delivery by preserving raw PTY bytes through the React terminal runtime, reducing garbled CJK output when AI tools redraw previous terminal content.
+- Tuned idle performance and memory reporting for the dev build, including lower terminal replay/scrollback limits and macOS physical-footprint based process memory sampling.
+- Refined SSH panel row typography, title-bar drag behavior, update UI copy, user-agreement handling, and theme border contrast.
+
+### Fixed
+
+- Fixed terminal cursor blinking and removed stale terminal-input debug logging from the active runtime path.
+- Fixed project/worktree activity and memory extraction background errors so they are written to the runtime live log instead of leaking noisy stderr output.
+- Fixed update installation progress events so the UI can show download, install, and completion states before restart.
+
 ## [1.0.0-beta.2] - 2026-05-22
 
 ### Fixed

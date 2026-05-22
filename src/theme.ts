@@ -960,14 +960,14 @@ function applyDerivedBorderPalette(root: HTMLElement, appTheme: "light" | "dark"
   root.style.setProperty(
     "--color-line",
     appTheme === "light"
-      ? "color-mix(in oklab, var(--terminal-bg) 86%, black)"
-      : "color-mix(in oklab, var(--terminal-bg) 76%, white)",
+      ? "color-mix(in oklab, var(--terminal-bg) 91%, black)"
+      : "color-mix(in oklab, var(--terminal-bg) 83%, white)",
   );
   root.style.setProperty(
     "--color-line-strong",
     appTheme === "light"
-      ? "color-mix(in oklab, var(--terminal-bg) 76%, black)"
-      : "color-mix(in oklab, var(--terminal-bg) 64%, white)",
+      ? "color-mix(in oklab, var(--terminal-bg) 84%, black)"
+      : "color-mix(in oklab, var(--terminal-bg) 72%, white)",
   );
 }
 

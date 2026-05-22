@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { tm } from "./i18n";
 import { openLocalizedDialog, saveLocalizedDialog } from "./localizedDialog";
 import { systemConfirm, systemMessage } from "./systemDialog";
+import { showUpdateDialog } from "./updateDialog";
 import type { WorkspaceProject } from "./types";
 import { openAppWindow } from "./windowing";
 import { dispatchWorkspaceCommand, type WorkspaceCommand } from "./workspaceCommands";
@@ -46,82 +47,19 @@ export type UpdateInstallResult = {
   message: string;
 };
 
+export type UpdateInstallProgressEvent = {
+  phase: "downloading" | "installing" | "finished";
+  version?: string | null;
+  downloadedBytes: number;
+  totalBytes?: number | null;
+};
+
 export async function showAbout() {
   await openAppWindow("about");
 }
 
 export async function checkForUpdates() {
-  const status = window.__TAURI_INTERNALS__
-    ? await invoke<UpdateStatus>("app_update_status")
-    : {
-        configured: false,
-        checking: false,
-        available: false,
-        automaticInstallSupported: false,
-        signedUpdaterConfigured: false,
-        manifestEndpointConfigured: false,
-        currentVersion: fallbackAbout().version,
-        latestVersion: null,
-        downloadUrl: null,
-        notes: null,
-        channel: null,
-        installationMode: "preview",
-        message: tm("update.not_configured.preview", "Update channel is not configured in browser preview."),
-      };
-
-  if (!status.configured) {
-    await systemMessage(status.message, {
-      title: tm("update.not_configured.title", "Updates Not Configured"),
-      kind: "info",
-      buttons: { ok: "OK" },
-    });
-    return;
-  }
-
-  if (status.available) {
-    const notes = status.notes?.trim();
-    const message = [
-      tm("update.available.message_format", "A new version v%@ is available. You are currently using v%@.")
-        .replace("%@", status.latestVersion ?? status.currentVersion)
-        .replace("%@", status.currentVersion),
-      notes ? `${tm("update.available.notes_title", "Release Notes")}\n${notes}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    const shouldInstall = await systemConfirm(message, {
-      title: tm("update.available.title", "Update Available"),
-      kind: "info",
-      okLabel: status.automaticInstallSupported
-        ? tm("update.available.install", "Install")
-        : tm("update.available.open", "Download"),
-      cancelLabel: tm("update.available.later", "Later"),
-    });
-    if (!shouldInstall) return;
-    if (status.automaticInstallSupported && window.__TAURI_INTERNALS__) {
-      const result = await invoke<UpdateInstallResult>("app_update_install");
-      await systemMessage(tm("update.installed.message", result.message), {
-        title: tm("update.installed.title", "Update Installed"),
-        kind: "info",
-        buttons: { ok: "OK" },
-      });
-      return;
-    }
-    if (status.downloadUrl) {
-      await openExternalUrl(status.downloadUrl);
-    }
-    return;
-  }
-
-  await systemMessage(
-    tm("update.latest.message_format", "Current version: v%@\nLatest release: v%@")
-      .replace("%@", status.currentVersion)
-      .replace("%@", status.latestVersion ?? status.currentVersion),
-    {
-      title: tm("update.latest.title", "You're up to date."),
-      kind: "info",
-      buttons: { ok: "OK" },
-    },
-  );
+  await showUpdateDialog();
 }
 
 export async function exportDiagnostics() {
@@ -327,16 +265,4 @@ function timestampSlug() {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(
     now.getHours(),
   )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
-
-function fallbackAbout(): AppAboutMetadata {
-  return {
-    name: "Codux",
-    version: "0.1.0",
-    identifier: "com.duxweb.dmux",
-    description: "Codux desktop workspace",
-    targetOs: "web",
-    targetArch: "browser",
-    buildProfile: "preview",
-  };
 }

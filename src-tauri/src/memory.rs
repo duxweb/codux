@@ -10,7 +10,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -231,6 +231,7 @@ pub struct MemoryLaunchRequest {
     pub project_id: String,
     pub project_name: String,
     pub settings: AISettings,
+    pub extra_context: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -368,9 +369,13 @@ impl MemoryStore {
         request: MemoryLaunchRequest,
     ) -> Option<MemoryLaunchArtifacts> {
         let global_prompt = normalized_non_empty(&request.settings.global_prompt);
+        let extra_context = request
+            .extra_context
+            .as_deref()
+            .and_then(normalized_non_empty);
         let should_inject_memory =
             request.settings.memory.enabled && request.settings.memory.automatic_injection_enabled;
-        if global_prompt.is_none() && !should_inject_memory {
+        if global_prompt.is_none() && extra_context.is_none() && !should_inject_memory {
             return None;
         }
 
@@ -381,24 +386,27 @@ impl MemoryStore {
         let prompt_file = root.join("memory-prompt.txt");
         let index_file = root.join("MEMORY.md");
 
-        let claude_context = self.collect_context(
+        let mut claude_context = self.collect_context(
             &request.project_id,
             &request.project_name,
             "claude",
             &request.settings,
         );
-        let codex_context = self.collect_context(
+        let mut codex_context = self.collect_context(
             &request.project_id,
             &request.project_name,
             "codex",
             &request.settings,
         );
-        let gemini_context = self.collect_context(
+        let mut gemini_context = self.collect_context(
             &request.project_id,
             &request.project_name,
             "gemini",
             &request.settings,
         );
+        claude_context.extra_context = extra_context.clone();
+        codex_context.extra_context = extra_context.clone();
+        gemini_context.extra_context = extra_context;
         let memory_context = MemoryContextPayload::merged([
             claude_context.clone(),
             codex_context.clone(),
@@ -650,7 +658,7 @@ impl MemoryStore {
         tauri::async_runtime::spawn(async move {
             for session in &sessions {
                 if let Err(error) = self.enqueue_session_for_manual_extraction(&projects, session) {
-                    eprintln!("memory manual enqueue failed: {error}");
+                    append_memory_log("manual-enqueue", &format!("failed: {error}"));
                 }
             }
             self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
@@ -658,7 +666,7 @@ impl MemoryStore {
                 .process_queue(settings, projects, Arc::clone(&on_status))
                 .await
             {
-                eprintln!("memory manual extraction failed: {error}");
+                append_memory_log("manual-extraction", &format!("failed: {error}"));
                 self.publish_queue_status(&[], Arc::as_ref(&on_status));
             }
         });
@@ -724,14 +732,14 @@ impl MemoryStore {
                 self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
             }
             if let Err(error) = result {
-                eprintln!("memory extraction enqueue failed: {error}");
+                append_memory_log("auto-enqueue", &format!("failed: {error}"));
                 return;
             }
             if let Err(error) = self
                 .process_queue(configured, projects, Arc::clone(&on_status))
                 .await
             {
-                eprintln!("memory extraction failed: {error}");
+                append_memory_log("auto-extraction", &format!("failed: {error}"));
                 self.publish_queue_status(&[], Arc::as_ref(&on_status));
             }
         });
@@ -954,6 +962,7 @@ impl MemoryStore {
         MemoryContextPayload {
             project_name: project_name.to_string(),
             global_prompt: normalized_non_empty(&settings.global_prompt),
+            extra_context: None,
             user_summary: user_summary.and_then(|summary| {
                 trimmed_memory_text(
                     Some(&summary.content),
@@ -2276,6 +2285,7 @@ fn root_projects_from_workspaces(projects: &[ProjectWorkspaceRecord]) -> Vec<Pro
 struct MemoryContextPayload {
     project_name: String,
     global_prompt: Option<String>,
+    extra_context: Option<String>,
     user_summary: Option<String>,
     project_summary: Option<String>,
     user_core_fallback: Vec<MemoryEntry>,
@@ -2304,6 +2314,7 @@ impl MemoryContextPayload {
             return MemoryContextPayload {
                 project_name: String::new(),
                 global_prompt: None,
+                extra_context: None,
                 user_summary: None,
                 project_summary: None,
                 user_core_fallback: Vec::new(),
@@ -2317,6 +2328,11 @@ impl MemoryContextPayload {
         };
         let mut all = vec![first.clone()];
         all.extend(iterator);
+        first.extra_context = join_optional_sections(
+            all.iter()
+                .filter_map(|item| item.extra_context.as_deref())
+                .collect(),
+        );
         first.user_core_fallback = unique_entries(
             all.iter()
                 .flat_map(|item| item.user_core_fallback.clone())
@@ -2484,6 +2500,12 @@ fn render_index_text(context: &MemoryContextPayload, root: &Path) -> String {
     if let Some(prompt) = &context.global_prompt {
         sections.push(render_summary_section("Global instructions", prompt));
     }
+    if let Some(extra_context) = &context.extra_context {
+        sections.push(render_summary_section(
+            "Codux runtime capabilities",
+            extra_context,
+        ));
+    }
     if !context.has_memory() {
         return sections.join("\n\n");
     }
@@ -2620,6 +2642,29 @@ fn render_index_entry_list(title: &str, entries: &[MemoryEntry]) -> String {
 
 fn render_summary_section(title: &str, content: &str) -> String {
     format!("[{title}]\n{content}")
+}
+
+fn join_optional_sections(sections: Vec<&str>) -> Option<String> {
+    let mut unique = Vec::new();
+    for section in sections {
+        let Some(section) = normalized_non_empty(section) else {
+            continue;
+        };
+        if !unique.iter().any(|item: &String| item == &section) {
+            unique.push(section);
+        }
+    }
+    normalized_non_empty(&unique.join("\n\n"))
+}
+
+fn append_memory_log(category: &str, message: &str) {
+    let path = runtime_temp_dir().join("live.log");
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "[memory] [{category}] {message}");
+    }
 }
 
 fn trim_index_lines(text: &str, max_lines: usize) -> String {

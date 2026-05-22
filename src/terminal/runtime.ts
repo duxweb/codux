@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { TerminalEvent, TerminalSession } from "../types";
 import { readConfiguredShell } from "../settings";
 
-const MAX_REPLAY_CHARS = 160_000;
+const MAX_REPLAY_CHARS = 80_000;
 
 export type TerminalRuntimeSession = TerminalSession & {
   key: string;
@@ -16,7 +16,7 @@ export type TerminalRuntimeSession = TerminalSession & {
 };
 
 export type TerminalRuntimeEvent =
-  | { type: "output"; data: string; session: TerminalRuntimeSessionSnapshot }
+  | { type: "output"; text: string; bytes: Uint8Array; session: TerminalRuntimeSessionSnapshot }
   | { type: "reset"; session: TerminalRuntimeSession; history?: string }
   | { type: "state"; session: TerminalRuntimeSession }
   | { type: "closed"; sessionId: string };
@@ -392,7 +392,11 @@ export class TerminalRuntime {
           hasSnapshot: true,
           state: "running",
         });
-        this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)!, history });
+        this.emit(sessionId, {
+          type: "reset",
+          session: this.sessions.get(sessionId)!,
+          history: trimReplayBuffer(history),
+        });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -429,8 +433,8 @@ export class TerminalRuntime {
     if (!sessionIds?.size) return;
 
     for (const sessionId of sessionIds) {
-      if (event.kind === "output" && event.data) {
-        this.appendOutput(sessionId, event.data);
+      if (event.kind === "output" && (event.text || event.bytesBase64)) {
+        this.appendOutput(sessionId, event.text ?? "", decodeBase64Bytes(event.bytesBase64));
         continue;
       }
 
@@ -468,16 +472,21 @@ export class TerminalRuntime {
     }
   }
 
-  private appendOutput(sessionId: string, data: string) {
+  private appendOutput(sessionId: string, text: string, bytes?: Uint8Array) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    session.replayBuffer = trimReplayBuffer(session.replayBuffer + data);
+    session.replayBuffer = trimReplayBuffer(session.replayBuffer + text);
     if (session.backendId && session.state === "starting") {
       session.state = "running";
       this.emit(sessionId, { type: "state", session: { ...session } });
     }
-    this.emit(sessionId, { type: "output", data, session: sessionSnapshot(session) });
+    this.emit(sessionId, {
+      type: "output",
+      text,
+      bytes: bytes ?? encodeTerminalText(text),
+      session: sessionSnapshot(session),
+    });
   }
 
   private updateSession(sessionId: string, patch: Partial<Omit<TerminalRuntimeSession, "id" | "key">>) {
@@ -524,6 +533,24 @@ export function terminalReplayBuffer(session?: TerminalRuntimeSession) {
 function trimReplayBuffer(value: string) {
   if (value.length <= MAX_REPLAY_CHARS) return value;
   return value.slice(value.length - MAX_REPLAY_CHARS);
+}
+
+function decodeBase64Bytes(value?: string) {
+  if (!value) return undefined;
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeTerminalText(value: string) {
+  return new TextEncoder().encode(value);
 }
 
 function nextAnimationFrame() {

@@ -21,7 +21,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Button as HeroButton, Dropdown, ProgressBar, Spinner } from "@heroui/react";
+import { Button as HeroButton, Dropdown, Modal, ProgressBar, Spinner } from "@heroui/react";
 import {
   memo,
   useCallback,
@@ -3427,8 +3427,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
     return {
       projectTotalTokens:
         displayedProjectSummaryTotal(historySnapshot.projectSummary, statisticsMode) + liveProjectTokens,
-      todayTotalTokens:
-        displayedProjectSummaryToday(historySnapshot, statisticsMode) + liveTodayTokens,
+      todayTotalTokens: displayedProjectSummaryToday(historySnapshot, statisticsMode) + liveTodayTokens,
       toolRankingRows: toolRows(sessions, historySnapshot.toolBreakdown, indexedBaselines, statisticsMode),
       modelRankingRows: modelRows(sessions, historySnapshot.modelBreakdown, indexedBaselines, statisticsMode),
     };
@@ -3848,17 +3847,19 @@ function displayedProjectSummaryTotal(
 }
 
 function displayedProjectSummaryToday(snapshot: AIHistorySnapshot, mode: AIStatisticsMode) {
-  const bucketTotal = snapshot.todayTimeBuckets.reduce((total, bucket) => total + displayedBucketTokens(bucket, mode), 0);
+  const bucketTotal = snapshot.todayTimeBuckets.reduce(
+    (total, bucket) => total + displayedBucketTokens(bucket, mode),
+    0,
+  );
   const today = startOfLocalDay(new Date()).getTime();
   const heatmapTotal = snapshot.heatmap.reduce((total, day) => {
     const dayStart = startOfLocalDay(new Date(day.day * 1000)).getTime();
     return dayStart === today ? total + displayedHeatmapTokens(day, mode) : total;
   }, 0);
-  const summaryTotal =
-    hasFreshTodayEvidence(snapshot, today)
-      ? Math.max(0, snapshot.projectSummary.todayTotalTokens) +
-        (mode === "includingCache" ? Math.max(0, snapshot.projectSummary.todayCachedInputTokens) : 0)
-      : 0;
+  const summaryTotal = hasFreshTodayEvidence(snapshot, today)
+    ? Math.max(0, snapshot.projectSummary.todayTotalTokens) +
+      (mode === "includingCache" ? Math.max(0, snapshot.projectSummary.todayCachedInputTokens) : 0)
+    : 0;
   return Math.max(summaryTotal, bucketTotal, heatmapTotal);
 }
 
@@ -4216,7 +4217,7 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
   const sshRowLabels = useMemo<SSHRowLabels>(
     () => ({
       connect: tm("ssh.profile.connect", "Connect"),
-      copy: tm("common.copy", "Copy"),
+      copy: tm("ssh.profile.copy_command", "Copy SSH Command"),
       edit: tm("ssh.profile.edit", "Edit SSH Connection"),
       remove: tm("common.remove", "Remove"),
       actions: tm("files.panel.actions", "Actions"),
@@ -4269,24 +4270,15 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
   };
 
   const upsertProfile = async (nextDraft: SSHProfileDraft) => {
-    const host = nextDraft.host.trim();
-    const username = nextDraft.username.trim();
-    if (!host || !username) return;
-    const port = Math.max(1, Math.min(65535, Number(nextDraft.port || 22) || 22));
+    const validationError = sshDraftValidationError(nextDraft);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     try {
       setSaving(true);
       const snapshot = await invoke<SSHProfilesSnapshot>("ssh_profile_upsert", {
-        request: {
-          id: nextDraft.id ?? null,
-          name: nextDraft.name.trim(),
-          host,
-          port,
-          username,
-          credentialKind: nextDraft.credentialKind,
-          privateKeyPath: nextDraft.credentialKind === "privateKey" ? nextDraft.privateKeyPath.trim() : "",
-          password: nextDraft.credentialKind === "password" ? nextDraft.password.trim() : "",
-          keyPassphrase: nextDraft.credentialKind === "privateKey" ? nextDraft.keyPassphrase.trim() : "",
-        },
+        request: draftToSSHProfileRequest(nextDraft),
       });
       setProfiles(snapshot.profiles);
       setDraft(null);
@@ -4355,18 +4347,11 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
           </div>
         }
         trailing={
-          <>
-            <PanelIconButton
-              icon={Plus}
-              tooltip={tm("ssh.profile.add", "Add SSH Connection")}
-              onClick={() => startProfileEdit()}
-            />
-            <PanelIconButton
-              icon={RefreshCw}
-              tooltip={tm("common.refresh", "Refresh")}
-              onClick={() => void refresh()}
-            />
-          </>
+          <PanelIconButton
+            icon={Plus}
+            tooltip={tm("ssh.profile.add", "Add SSH Connection")}
+            onClick={() => startProfileEdit()}
+          />
         }
       />
       {profiles.length === 0 && !draft ? (
@@ -4389,16 +4374,6 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
         />
       ) : (
         <div className="flex-1 overflow-y-auto scrollbar-overlay p-3 grid auto-rows-min gap-2">
-          {draft && (
-            <SSHProfileEditor
-              draft={draft}
-              isSaving={isSaving}
-              onChange={setDraft}
-              onCancel={() => setDraft(null)}
-              onPickPrivateKey={() => void pickPrivateKey()}
-              onSubmit={() => void upsertProfile(draft)}
-            />
-          )}
           {profiles.map((profile) => (
             <SSHProfileRow
               key={profile.id}
@@ -4413,6 +4388,16 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
           ))}
         </div>
       )}
+      <SSHProfileDialog
+        draft={draft}
+        isSaving={isSaving}
+        onChange={setDraft}
+        onCancel={() => setDraft(null)}
+        onPickPrivateKey={() => void pickPrivateKey()}
+        onSubmit={() => {
+          if (draft) void upsertProfile(draft);
+        }}
+      />
       {error && (
         <div className="mx-3 mb-3 rounded-md border border-brand-red/30 bg-brand-red/10 px-2.5 py-2 text-xs text-brand-red">
           {error}
@@ -4434,7 +4419,12 @@ type SSHProfileDraft = {
   keyPassphrase: string;
 };
 
-function SSHProfileEditor({
+type SSHProfileTestResult = {
+  ok: boolean;
+  message: string;
+};
+
+function SSHProfileDialog({
   draft,
   isSaving,
   onChange,
@@ -4442,139 +4432,244 @@ function SSHProfileEditor({
   onPickPrivateKey,
   onSubmit,
 }: {
-  draft: SSHProfileDraft;
+  draft: SSHProfileDraft | null;
   isSaving: boolean;
-  onChange: (draft: SSHProfileDraft) => void;
+  onChange: (draft: SSHProfileDraft | null) => void;
   onCancel: () => void;
   onPickPrivateKey: () => void;
   onSubmit: () => void;
 }) {
-  const canSubmit = draft.host.trim().length > 0 && draft.username.trim().length > 0 && !isSaving;
+  const validationError = draft ? sshDraftValidationError(draft) : null;
+  const [showValidation, setShowValidation] = useState(false);
+  const [isTesting, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<SSHProfileTestResult | null>(null);
+  const canSubmit = Boolean(draft) && !validationError && !isSaving;
+  useEffect(() => {
+    setShowValidation(false);
+    setTestResult(null);
+  }, [Boolean(draft), draft?.id]);
   const set = <DraftKey extends keyof SSHProfileDraft>(key: DraftKey, value: SSHProfileDraft[DraftKey]) => {
-    onChange({ ...draft, [key]: value });
+    if (draft) {
+      setShowValidation(false);
+      setTestResult(null);
+      onChange({ ...draft, [key]: value });
+    }
+  };
+  const testConnection = async () => {
+    if (!draft || isTesting || isSaving) return;
+    if (validationError) {
+      setShowValidation(true);
+      setTestResult(null);
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(
+        await invoke<SSHProfileTestResult>("ssh_profile_test", {
+          request: draftToSSHProfileRequest(draft),
+        }),
+      );
+    } catch (error) {
+      setTestResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
-    <PanelCard
-      title={draft.id ? tm("ssh.profile.edit", "Edit SSH Connection") : tm("ssh.profile.add", "Add SSH Connection")}
-      divider
-      className="bg-fill/[0.045]"
-    >
-      <form
-        className="grid gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (canSubmit) onSubmit();
-        }}
-      >
-        <SSHFormField label={tm("ssh.profile.name", "Name")}>
-          <TextInput
-            value={draft.name}
-            onChange={(event) => set("name", event.currentTarget.value)}
-            className="h-8 text-xs"
-          />
-        </SSHFormField>
-        <div className="grid grid-cols-[minmax(0,1fr)_72px] gap-2">
-          <SSHFormField label={tm("ssh.profile.host", "Host")} required>
-            <TextInput
-              value={draft.host}
-              onChange={(event) => set("host", event.currentTarget.value)}
-              className="h-8 text-xs"
-              required
-            />
-          </SSHFormField>
-          <SSHFormField label={tm("ssh.profile.port", "Port")}>
-            <TextInput
-              value={draft.port}
-              inputMode="numeric"
-              onChange={(event) => set("port", event.currentTarget.value.replace(/[^\d]/g, ""))}
-              className="h-8 text-xs"
-            />
-          </SSHFormField>
-        </div>
-        <SSHFormField label={tm("ssh.profile.username", "Username")} required>
-          <TextInput
-            value={draft.username}
-            onChange={(event) => set("username", event.currentTarget.value)}
-            className="h-8 text-xs"
-            required
-          />
-        </SSHFormField>
-        <SSHFormField label={tm("ssh.profile.credential", "Credential")}>
-          <Select
-            value={draft.credentialKind}
-            onChange={(value) => set("credentialKind", normalizeCredentialKind(value))}
-            options={[
-              { value: "none", label: tm("common.none", "None") },
-              { value: "password", label: tm("ssh.profile.password", "Password") },
-              { value: "privateKey", label: tm("ssh.profile.private_key", "Private Key") },
-            ]}
-            ariaLabel={tm("ssh.profile.credential", "Credential")}
-            className="w-full"
-          />
-        </SSHFormField>
-        {draft.credentialKind === "password" && (
-          <SSHFormField label={tm("ssh.profile.password", "Password")}>
-            <TextInput
-              value={draft.password}
-              type="password"
-              onChange={(event) => set("password", event.currentTarget.value)}
-              className="h-8 text-xs"
-            />
-          </SSHFormField>
-        )}
-        {draft.credentialKind === "privateKey" && (
-          <>
-            <SSHFormField label={tm("ssh.profile.private_key", "Private Key")}>
-              <div className="flex gap-1.5">
-                <TextInput
-                  value={draft.privateKeyPath}
-                  onChange={(event) => set("privateKeyPath", event.currentTarget.value)}
-                  className="h-8 text-xs"
-                />
-                <HeroButton
-                  size="sm"
-                  variant="secondary"
-                  className="h-8 min-w-0 px-2 text-xs"
-                  onPress={onPickPrivateKey}
-                >
-                  {tm("common.choose", "Choose")}
-                </HeroButton>
-              </div>
-            </SSHFormField>
-            <SSHFormField label={tm("ssh.profile.key_passphrase", "Key Passphrase")}>
-              <TextInput
-                value={draft.keyPassphrase}
-                type="password"
-                onChange={(event) => set("keyPassphrase", event.currentTarget.value)}
-                className="h-8 text-xs"
-              />
-            </SSHFormField>
-          </>
-        )}
-        <div className="mt-1 flex justify-end gap-1.5">
-          <HeroButton size="sm" variant="ghost" className="h-8 min-w-0 px-3 text-xs" onPress={onCancel}>
-            {tm("common.cancel", "Cancel")}
-          </HeroButton>
-          <HeroButton
-            size="sm"
-            variant="primary"
-            className="h-8 min-w-0 px-3 text-xs"
-            type="submit"
-            isDisabled={!canSubmit}
-          >
-            {isSaving ? tm("common.processing", "Processing") : tm("common.save", "Save")}
-          </HeroButton>
-        </div>
-      </form>
-    </PanelCard>
+    <Modal isOpen={Boolean(draft)} onOpenChange={(isOpen) => (!isOpen ? onCancel() : undefined)}>
+      <Modal.Backdrop className="no-drag fixed inset-0 z-[9000] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
+        <Modal.Container size="md" placement="center">
+          <Modal.Dialog className="no-drag w-[min(520px,calc(100vw-32px))] rounded-[12px] border border-line-strong bg-surface-chrome p-4 text-ink shadow-pop outline-none">
+            {draft && (
+              <form
+                noValidate
+                className="grid gap-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (validationError) {
+                    setShowValidation(true);
+                    setTestResult(null);
+                    return;
+                  }
+                  if (canSubmit) onSubmit();
+                }}
+              >
+                <Modal.Header className="p-0">
+                  <div className="min-w-0">
+                    <Modal.Heading className="text-sm font-semibold text-ink">
+                      {draft.id
+                        ? tm("ssh.profile.edit", "Edit SSH Connection")
+                        : tm("ssh.profile.add", "Add SSH Connection")}
+                    </Modal.Heading>
+                    <p className="mt-1 text-sm leading-relaxed text-ink-faint">
+                      {tm("ssh.profile.dialog.message", "Saved credentials are kept in Codux local app data.")}
+                    </p>
+                  </div>
+                </Modal.Header>
+                <div className="grid gap-2.5">
+                  <SSHFormField label={tm("ssh.profile.name", "Name")}>
+                    <TextInput
+                      value={draft.name}
+                      onChange={(event) => set("name", event.currentTarget.value)}
+                      placeholder={tm("ssh.profile.name.placeholder", "Production Server")}
+                      className="h-9 text-sm"
+                    />
+                  </SSHFormField>
+                  <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-2.5">
+                    <SSHFormField label={tm("ssh.profile.host", "Host")} required>
+                      <TextInput
+                        value={draft.host}
+                        onChange={(event) => set("host", event.currentTarget.value)}
+                        className="h-9 text-sm"
+                        required
+                      />
+                    </SSHFormField>
+                    <SSHFormField label={tm("ssh.profile.port", "Port")}>
+                      <TextInput
+                        value={draft.port}
+                        inputMode="numeric"
+                        onChange={(event) => set("port", event.currentTarget.value.replace(/[^\d]/g, ""))}
+                        className="h-9 text-sm"
+                      />
+                    </SSHFormField>
+                  </div>
+                  <SSHFormField label={tm("ssh.profile.username", "Username")} required>
+                    <TextInput
+                      value={draft.username}
+                      onChange={(event) => set("username", event.currentTarget.value)}
+                      className="h-9 text-sm"
+                      required
+                    />
+                  </SSHFormField>
+                  <SSHFormField label={tm("ssh.profile.credential", "Credential")}>
+                    <Select
+                      value={draft.credentialKind}
+                      onChange={(value) => set("credentialKind", normalizeCredentialKind(value))}
+                      options={[
+                        { value: "none", label: tm("ssh.credential.none", "None / SSH Agent") },
+                        { value: "password", label: tm("ssh.credential.password", "Password") },
+                        { value: "privateKey", label: tm("ssh.credential.private_key", "Private Key") },
+                      ]}
+                      ariaLabel={tm("ssh.profile.credential", "Credential")}
+                      className="w-full"
+                    />
+                  </SSHFormField>
+                  {draft.credentialKind === "password" && (
+                    <SSHFormField label={tm("ssh.profile.password", "Password")} required>
+                      <TextInput
+                        value={draft.password}
+                        type="password"
+                        onChange={(event) => set("password", event.currentTarget.value)}
+                        placeholder={tm("ssh.profile.password.placeholder", "Stored locally")}
+                        className="h-9 text-sm"
+                      />
+                    </SSHFormField>
+                  )}
+                  {draft.credentialKind === "privateKey" && (
+                    <>
+                      <SSHFormField label={tm("ssh.profile.private_key", "Private Key")} required>
+                        <div className="flex gap-2">
+                          <TextInput
+                            value={draft.privateKeyPath}
+                            onChange={(event) => set("privateKeyPath", event.currentTarget.value)}
+                            className="h-9 text-sm"
+                          />
+                          <HeroButton
+                            size="sm"
+                            variant="secondary"
+                            className="h-9 min-w-0 px-3 text-sm"
+                            onPress={onPickPrivateKey}
+                          >
+                            {tm("common.choose", "Choose")}
+                          </HeroButton>
+                        </div>
+                      </SSHFormField>
+                      <SSHFormField label={tm("ssh.profile.key_passphrase", "Key Passphrase")}>
+                        <TextInput
+                          value={draft.keyPassphrase}
+                          type="password"
+                          onChange={(event) => set("keyPassphrase", event.currentTarget.value)}
+                          placeholder={tm("ssh.profile.key_passphrase.placeholder", "Optional, stored locally")}
+                          className="h-9 text-sm"
+                        />
+                      </SSHFormField>
+                    </>
+                  )}
+                </div>
+                {showValidation && validationError ? (
+                  <div className="rounded-md border border-brand-red/25 bg-brand-red/10 px-2.5 py-2 text-sm text-brand-red">
+                    {validationError}
+                  </div>
+                ) : null}
+                {testResult ? (
+                  <div
+                    className={`rounded-md border px-2.5 py-2 text-sm ${
+                      testResult.ok
+                        ? "border-brand-green/25 bg-brand-green/10 text-brand-green"
+                        : "border-brand-red/25 bg-brand-red/10 text-brand-red"
+                    }`}
+                  >
+                    {testResult.ok
+                      ? tm("ssh.profile.test.succeeded", "Connection test succeeded.")
+                      : testResult.message}
+                  </div>
+                ) : null}
+                <Modal.Footer className="flex justify-end gap-2 p-0 pt-1">
+                  <HeroButton
+                    size="sm"
+                    variant="secondary"
+                    className="mr-auto h-8 min-w-0 px-3 text-sm"
+                    onPress={() => void testConnection()}
+                    isDisabled={!draft || isTesting || isSaving}
+                  >
+                    {isTesting ? tm("ssh.profile.test.testing", "Testing...") : tm("ssh.profile.test", "Test")}
+                  </HeroButton>
+                  <HeroButton size="sm" variant="ghost" className="h-8 min-w-0 px-3 text-sm" onPress={onCancel}>
+                    {tm("common.cancel", "Cancel")}
+                  </HeroButton>
+                  <HeroButton
+                    size="sm"
+                    variant="primary"
+                    className="h-8 min-w-0 px-3 text-sm"
+                    type="submit"
+                    isDisabled={!draft || isSaving}
+                  >
+                    {isSaving ? tm("common.processing", "Processing") : tm("common.save", "Save")}
+                  </HeroButton>
+                </Modal.Footer>
+              </form>
+            )}
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+    </Modal>
   );
+}
+
+function draftToSSHProfileRequest(draft: SSHProfileDraft) {
+  const port = Math.max(1, Math.min(65535, Number(draft.port || 22) || 22));
+  return {
+    id: draft.id ?? null,
+    name: draft.name.trim(),
+    host: draft.host.trim(),
+    port,
+    username: draft.username.trim(),
+    credentialKind: draft.credentialKind,
+    privateKeyPath: draft.credentialKind === "privateKey" ? draft.privateKeyPath.trim() : "",
+    password: draft.credentialKind === "password" ? draft.password.trim() : "",
+    keyPassphrase: draft.credentialKind === "privateKey" ? draft.keyPassphrase.trim() : "",
+  };
 }
 
 function SSHFormField({ label, required, children }: { label: ReactNode; required?: boolean; children: ReactNode }) {
   return (
     <label className="grid gap-1">
-      <span className="text-[11px] font-semibold text-ink-soft">
+      <span className="text-sm font-medium text-ink-soft">
         {label}
         {required ? <span className="ml-0.5 text-brand-red">*</span> : null}
       </span>
@@ -4600,7 +4695,7 @@ function SSHProfileRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const contextMenu = useContextMenu();
   const tint =
     profile.credentialKind === "privateKey"
       ? "text-brand-blue bg-brand-blue/14"
@@ -4608,64 +4703,50 @@ function SSHProfileRow({
         ? "text-brand-amber bg-brand-amber/14"
         : "text-ink-mute bg-fill/[0.055]";
   return (
-    <div
-      className="group relative rounded-[8px] border border-line bg-fill/[0.035] p-2.5 pr-10 grid grid-cols-[30px_minmax(0,1fr)] items-center gap-2.5 hover:bg-fill/[0.055] transition-colors"
-      onDoubleClick={() => {
-        if (!disabled) onConnect();
-      }}
-    >
-      <span className={`w-[30px] h-[30px] rounded-[7px] grid place-items-center ${tint}`}>
-        {profile.credentialKind === "privateKey" ? <KeyRound size={13} /> : <Server size={13} />}
-      </span>
-      <div className="min-w-0">
-        <div className="text-xs font-semibold text-ink truncate">{sshDisplayName(profile)}</div>
-        <div className="text-xs text-ink-faint truncate">
-          {profile.username}@{profile.host}:{profile.port}
+    <>
+      <div
+        className="grid grid-cols-[30px_minmax(0,1fr)] items-center gap-2.5 rounded-[8px] border border-line bg-fill/[0.035] p-2.5 transition-colors hover:bg-fill/[0.055]"
+        onDoubleClick={() => {
+          if (!disabled) onConnect();
+        }}
+        onContextMenu={contextMenu.openMenu}
+      >
+        <span className={`grid h-[30px] w-[30px] place-items-center rounded-[7px] ${tint}`}>
+          {profile.credentialKind === "privateKey" ? <KeyRound size={13} /> : <Server size={13} />}
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-ink">{sshDisplayName(profile)}</div>
+          <div className="truncate text-xs text-ink-faint">
+            {profile.username}@{profile.host}:{profile.port}
+          </div>
         </div>
       </div>
-      <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded bg-surface-chrome/95 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto">
-        <PressableButton
-          className="h-6 rounded-md px-2 text-xs font-semibold text-ink-soft hover:bg-fill/8 hover:text-ink disabled:opacity-45"
-          disabled={disabled}
-          onPressUp={onConnect}
-        >
+      <ContextMenu
+        ariaLabel={`${sshDisplayName(profile)} ${labels.actions}`}
+        menu={contextMenu.menu}
+        onClose={contextMenu.closeMenu}
+      >
+        <ContextMenuItem disabled={disabled} label={labels.connect} onSelect={onConnect}>
           {labels.connect}
-        </PressableButton>
-        <DesktopMenu
-          ariaLabel={`${sshDisplayName(profile)} ${labels.actions}`}
-          isOpen={menuOpen}
-          onOpenChange={setMenuOpen}
-          trigger={
-            <button
-              type="button"
-              className="grid h-6 w-6 place-items-center rounded text-ink-faint hover:bg-fill/8 hover:text-ink"
-              aria-label={`${sshDisplayName(profile)} ${labels.actions}`}
-            >
-              <MoreHorizontal size={13} />
-            </button>
-          }
+        </ContextMenuItem>
+        <ContextMenuItem
+          label={labels.copy}
+          onSelect={() => {
+            void navigator.clipboard?.writeText(sshCommandPreview(profile));
+            onCopy();
+          }}
         >
-          <DesktopMenuItem disabled={disabled} label={labels.connect} onSelect={onConnect}>
-            {labels.connect}
-          </DesktopMenuItem>
-          <DesktopMenuItem
-            label={labels.copy}
-            onSelect={() => {
-              void navigator.clipboard?.writeText(`${profile.username}@${profile.host}:${profile.port}`);
-              onCopy();
-            }}
-          >
-            {labels.copy}
-          </DesktopMenuItem>
-          <DesktopMenuItem label={labels.edit} onSelect={onEdit}>
-            {labels.edit}
-          </DesktopMenuItem>
-          <DesktopMenuItem label={labels.remove} onSelect={onDelete}>
-            {labels.remove}
-          </DesktopMenuItem>
-        </DesktopMenu>
-      </div>
-    </div>
+          {labels.copy}
+        </ContextMenuItem>
+        <ContextMenuItem label={labels.edit} onSelect={onEdit}>
+          {labels.edit}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem label={labels.remove} onSelect={onDelete}>
+          {labels.remove}
+        </ContextMenuItem>
+      </ContextMenu>
+    </>
   );
 }
 
@@ -4680,6 +4761,22 @@ type SSHRowLabels = {
 function normalizeCredentialKind(value?: string): SSHCredentialKind {
   if (value === "password" || value === "privateKey") return value;
   return "none";
+}
+
+function sshDraftValidationError(draft: SSHProfileDraft) {
+  if (!draft.host.trim()) return tm("ssh.profile.validation.host", "Host cannot be empty.");
+  if (!draft.username.trim()) return tm("ssh.profile.validation.username", "Username cannot be empty.");
+  const port = Number(draft.port || 22);
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    return tm("ssh.profile.validation.port", "Port must be between 1 and 65535.");
+  }
+  if (draft.credentialKind === "password" && !draft.password.trim()) {
+    return tm("ssh.profile.validation.password", "Password cannot be empty.");
+  }
+  if (draft.credentialKind === "privateKey" && !draft.privateKeyPath.trim()) {
+    return tm("ssh.profile.validation.private_key", "Private key path cannot be empty.");
+  }
+  return null;
 }
 
 function profileToDraft(profile?: SSHConnectionProfile): SSHProfileDraft {
@@ -4698,4 +4795,9 @@ function profileToDraft(profile?: SSHConnectionProfile): SSHProfileDraft {
 
 function sshDisplayName(profile: SSHConnectionProfile) {
   return profile.name.trim() || `${profile.username}@${profile.host}`;
+}
+
+function sshCommandPreview(profile: SSHConnectionProfile) {
+  const destination = `${profile.username}@${profile.host}`;
+  return profile.port === 22 ? `ssh ${destination}` : `ssh -p ${profile.port} ${destination}`;
 }

@@ -17,6 +17,7 @@
       "ssh.profile.choose_key.title": "Choose Private Key",
       "ssh.profile.connect": "Connect",
       "ssh.profile.connecting_format": "Connecting to %@.",
+      "ssh.profile.copy_command": "Copy SSH Command",
       "ssh.profile.credential": "Anmeldedaten",
       "ssh.profile.delete": "Delete SSH Connection",
       "ssh.profile.delete.message_format": "Delete %@? The saved local credential will also be removed.",
@@ -34,7 +35,15 @@
       "ssh.profile.port": "Port",
       "ssh.profile.private_key": "Private Key",
       "ssh.profile.saved": "Saved SSH connection.",
-      "ssh.profile.username": "Username"
+      "ssh.profile.test": "Testen",
+      "ssh.profile.test.succeeded": "Verbindungstest erfolgreich.",
+      "ssh.profile.test.testing": "Wird getestet...",
+      "ssh.profile.username": "Username",
+      "ssh.profile.validation.host": "Host cannot be empty.",
+      "ssh.profile.validation.password": "Password cannot be empty.",
+      "ssh.profile.validation.port": "Port must be between 1 and 65535.",
+      "ssh.profile.validation.private_key": "Private key path cannot be empty.",
+      "ssh.profile.validation.username": "Username cannot be empty."
     },
     "en": {
       "ssh.credential.none": "None / SSH Agent",
@@ -42,6 +51,10 @@
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
       "ssh.panel.empty.title": "No SSH Connections",
+      "ssh.panel.loading": "Reading SSH connections",
+      "ssh.panel.status.no_project": "Select a project before connecting.",
+      "ssh.panel.status.ready": "Ready",
+      "ssh.panel.status.refreshed": "SSH connections refreshed",
       "ssh.panel.subtitle": "Global Connections",
       "ssh.panel.title": "SSH",
       "ssh.profile.add": "Add SSH Connection",
@@ -49,10 +62,11 @@
       "ssh.profile.choose_key.title": "Choose Private Key",
       "ssh.profile.connect": "Connect",
       "ssh.profile.connecting_format": "Connecting to %@.",
+      "ssh.profile.copy_command": "Copy SSH Command",
       "ssh.profile.credential": "Credential",
-      "ssh.profile.deleted": "Deleted SSH connection.",
       "ssh.profile.delete": "Delete SSH Connection",
       "ssh.profile.delete.message_format": "Delete %@? The saved local credential will also be removed.",
+      "ssh.profile.deleted": "Deleted SSH connection.",
       "ssh.profile.dialog.message": "Saved credentials are kept in Codux local app data.",
       "ssh.profile.edit": "Edit SSH Connection",
       "ssh.profile.host": "Host",
@@ -66,11 +80,15 @@
       "ssh.profile.port": "Port",
       "ssh.profile.private_key": "Private Key",
       "ssh.profile.saved": "Saved SSH connection.",
+      "ssh.profile.test": "Test",
+      "ssh.profile.test.succeeded": "Connection test succeeded.",
+      "ssh.profile.test.testing": "Testing...",
       "ssh.profile.username": "Username",
-      "ssh.panel.loading": "Reading SSH connections",
-      "ssh.panel.status.ready": "Ready",
-      "ssh.panel.status.refreshed": "SSH connections refreshed",
-      "ssh.panel.status.no_project": "Select a project before connecting."
+      "ssh.profile.validation.host": "Host cannot be empty.",
+      "ssh.profile.validation.password": "Password cannot be empty.",
+      "ssh.profile.validation.port": "Port must be between 1 and 65535.",
+      "ssh.profile.validation.private_key": "Private key path cannot be empty.",
+      "ssh.profile.validation.username": "Username cannot be empty."
     },
     "es": {
       "ssh.credential.none": "None / SSH Agent",
@@ -89,6 +107,7 @@
       "ssh.profile.choose_key.title": "Choose Private Key",
       "ssh.profile.connect": "Connect",
       "ssh.profile.connecting_format": "Connecting to %@.",
+      "ssh.profile.copy_command": "Copy SSH Command",
       "ssh.profile.credential": "Credencial",
       "ssh.profile.delete": "Delete SSH Connection",
       "ssh.profile.delete.message_format": "Delete %@? The saved local credential will also be removed.",
@@ -106,7 +125,15 @@
       "ssh.profile.port": "Port",
       "ssh.profile.private_key": "Private Key",
       "ssh.profile.saved": "Saved SSH connection.",
-      "ssh.profile.username": "Username"
+      "ssh.profile.test": "Probar",
+      "ssh.profile.test.succeeded": "La prueba de conexión se completó correctamente.",
+      "ssh.profile.test.testing": "Probando...",
+      "ssh.profile.username": "Username",
+      "ssh.profile.validation.host": "Host cannot be empty.",
+      "ssh.profile.validation.password": "Password cannot be empty.",
+      "ssh.profile.validation.port": "Port must be between 1 and 65535.",
+      "ssh.profile.validation.private_key": "Private key path cannot be empty.",
+      "ssh.profile.validation.username": "Username cannot be empty."
     },
     "fr": {
       "ssh.credential.none": "None / SSH Agent",
@@ -125,6 +152,7 @@
       "ssh.profile.choose_key.title": "Choose Private Key",
       "ssh.profile.connect": "Connect",
       "ssh.profile.connecting_format": "Connecting to %@.",
+      "ssh.profile.copy_command": "Copy SSH Command",
       "ssh.profile.credential": "Identifiant",
       "ssh.profile.delete": "Delete SSH Connection",
       "ssh.profile.delete.message_format": "Delete %@? The saved local credential will also be removed.",
@@ -142,7 +170,15 @@
       "ssh.profile.port": "Port",
       "ssh.profile.private_key": "Private Key",
       "ssh.profile.saved": "Saved SSH connection.",
-      "ssh.profile.username": "Username"
+      "ssh.profile.test": "Tester",
+      "ssh.profile.test.succeeded": "Test de connexion réussi.",
+      "ssh.profile.test.testing": "Test en cours...",
+      "ssh.profile.username": "Username",
+      "ssh.profile.validation.host": "Host cannot be empty.",
+      "ssh.profile.validation.password": "Password cannot be empty.",
+      "ssh.profile.validation.port": "Port must be between 1 and 65535.",
+      "ssh.profile.validation.private_key": "Private key path cannot be empty.",
+      "ssh.profile.validation.username": "Username cannot be empty."
     },
     "ja": {
       "ssh.credential.none": "None / SSH Agent",
@@ -161,6 +197,7 @@
       "ssh.profile.choose_key.title": "Choose Private Key",
       "ssh.profile.connect": "Connect",
       "ssh.profile.connecting_format": "Connecting to %@.",
+      "ssh.profile.copy_command": "Copy SSH Command",
       "ssh.profile.credential": "認証情報",
       "ssh.profile.delete": "Delete SSH Connection",
       "ssh.profile.delete.message_format": "Delete %@? The saved local credential will also be removed.",
@@ -178,7 +215,15 @@
       "ssh.profile.port": "Port",
       "ssh.profile.private_key": "Private Key",
       "ssh.profile.saved": "Saved SSH connection.",
-      "ssh.profile.username": "Username"
+      "ssh.profile.test": "テスト",
+      "ssh.profile.test.succeeded": "接続テストに成功しました。",
+      "ssh.profile.test.testing": "テスト中...",
+      "ssh.profile.username": "Username",
+      "ssh.profile.validation.host": "Host cannot be empty.",
+      "ssh.profile.validation.password": "Password cannot be empty.",
+      "ssh.profile.validation.port": "Port must be between 1 and 65535.",
+      "ssh.profile.validation.private_key": "Private key path cannot be empty.",
+      "ssh.profile.validation.username": "Username cannot be empty."
     },
     "ko": {
       "ssh.credential.none": "None / SSH Agent",
@@ -197,6 +242,7 @@
       "ssh.profile.choose_key.title": "Choose Private Key",
       "ssh.profile.connect": "Connect",
       "ssh.profile.connecting_format": "Connecting to %@.",
+      "ssh.profile.copy_command": "Copy SSH Command",
       "ssh.profile.credential": "인증 정보",
       "ssh.profile.delete": "Delete SSH Connection",
       "ssh.profile.delete.message_format": "Delete %@? The saved local credential will also be removed.",
@@ -214,7 +260,15 @@
       "ssh.profile.port": "Port",
       "ssh.profile.private_key": "Private Key",
       "ssh.profile.saved": "Saved SSH connection.",
-      "ssh.profile.username": "Username"
+      "ssh.profile.test": "테스트",
+      "ssh.profile.test.succeeded": "연결 테스트에 성공했습니다.",
+      "ssh.profile.test.testing": "테스트 중...",
+      "ssh.profile.username": "Username",
+      "ssh.profile.validation.host": "Host cannot be empty.",
+      "ssh.profile.validation.password": "Password cannot be empty.",
+      "ssh.profile.validation.port": "Port must be between 1 and 65535.",
+      "ssh.profile.validation.private_key": "Private key path cannot be empty.",
+      "ssh.profile.validation.username": "Username cannot be empty."
     },
     "pt-BR": {
       "ssh.credential.none": "None / SSH Agent",
@@ -233,6 +287,7 @@
       "ssh.profile.choose_key.title": "Choose Private Key",
       "ssh.profile.connect": "Connect",
       "ssh.profile.connecting_format": "Connecting to %@.",
+      "ssh.profile.copy_command": "Copy SSH Command",
       "ssh.profile.credential": "Credencial",
       "ssh.profile.delete": "Delete SSH Connection",
       "ssh.profile.delete.message_format": "Delete %@? The saved local credential will also be removed.",
@@ -250,7 +305,15 @@
       "ssh.profile.port": "Port",
       "ssh.profile.private_key": "Private Key",
       "ssh.profile.saved": "Saved SSH connection.",
-      "ssh.profile.username": "Username"
+      "ssh.profile.test": "Testar",
+      "ssh.profile.test.succeeded": "Teste de conexão bem-sucedido.",
+      "ssh.profile.test.testing": "Testando...",
+      "ssh.profile.username": "Username",
+      "ssh.profile.validation.host": "Host cannot be empty.",
+      "ssh.profile.validation.password": "Password cannot be empty.",
+      "ssh.profile.validation.port": "Port must be between 1 and 65535.",
+      "ssh.profile.validation.private_key": "Private key path cannot be empty.",
+      "ssh.profile.validation.username": "Username cannot be empty."
     },
     "ru": {
       "ssh.credential.none": "None / SSH Agent",
@@ -269,6 +332,7 @@
       "ssh.profile.choose_key.title": "Choose Private Key",
       "ssh.profile.connect": "Connect",
       "ssh.profile.connecting_format": "Connecting to %@.",
+      "ssh.profile.copy_command": "Copy SSH Command",
       "ssh.profile.credential": "Учетные данные",
       "ssh.profile.delete": "Delete SSH Connection",
       "ssh.profile.delete.message_format": "Delete %@? The saved local credential will also be removed.",
@@ -286,7 +350,15 @@
       "ssh.profile.port": "Port",
       "ssh.profile.private_key": "Private Key",
       "ssh.profile.saved": "Saved SSH connection.",
-      "ssh.profile.username": "Username"
+      "ssh.profile.test": "Проверить",
+      "ssh.profile.test.succeeded": "Проверка подключения выполнена успешно.",
+      "ssh.profile.test.testing": "Проверка...",
+      "ssh.profile.username": "Username",
+      "ssh.profile.validation.host": "Host cannot be empty.",
+      "ssh.profile.validation.password": "Password cannot be empty.",
+      "ssh.profile.validation.port": "Port must be between 1 and 65535.",
+      "ssh.profile.validation.private_key": "Private key path cannot be empty.",
+      "ssh.profile.validation.username": "Username cannot be empty."
     },
     "zh-Hans": {
       "ssh.credential.none": "无 / SSH Agent",
@@ -305,6 +377,7 @@
       "ssh.profile.choose_key.title": "选择私钥",
       "ssh.profile.connect": "连接",
       "ssh.profile.connecting_format": "正在连接 %@。",
+      "ssh.profile.copy_command": "复制 SSH 命令",
       "ssh.profile.credential": "凭证",
       "ssh.profile.delete": "删除 SSH 连接",
       "ssh.profile.delete.message_format": "删除 %@？已保存的本地凭证也会一并移除。",
@@ -322,7 +395,15 @@
       "ssh.profile.port": "端口",
       "ssh.profile.private_key": "私钥",
       "ssh.profile.saved": "已保存 SSH 连接。",
-      "ssh.profile.username": "用户名"
+      "ssh.profile.test": "测试",
+      "ssh.profile.test.succeeded": "连接测试成功。",
+      "ssh.profile.test.testing": "正在测试...",
+      "ssh.profile.username": "用户名",
+      "ssh.profile.validation.host": "主机不能为空。",
+      "ssh.profile.validation.password": "密码不能为空。",
+      "ssh.profile.validation.port": "端口必须在 1 到 65535 之间。",
+      "ssh.profile.validation.private_key": "私钥路径不能为空。",
+      "ssh.profile.validation.username": "用户名不能为空。"
     },
     "zh-Hant": {
       "ssh.credential.none": "無 / SSH Agent",
@@ -341,6 +422,7 @@
       "ssh.profile.choose_key.title": "選擇私鑰",
       "ssh.profile.connect": "連線",
       "ssh.profile.connecting_format": "正在連線 %@。",
+      "ssh.profile.copy_command": "複製 SSH 命令",
       "ssh.profile.credential": "憑證",
       "ssh.profile.delete": "刪除 SSH 連線",
       "ssh.profile.delete.message_format": "刪除 %@？已儲存的本機憑證也會一併移除。",
@@ -358,7 +440,15 @@
       "ssh.profile.port": "連接埠",
       "ssh.profile.private_key": "私鑰",
       "ssh.profile.saved": "已儲存 SSH 連線。",
-      "ssh.profile.username": "使用者名稱"
+      "ssh.profile.test": "測試",
+      "ssh.profile.test.succeeded": "連線測試成功。",
+      "ssh.profile.test.testing": "正在測試...",
+      "ssh.profile.username": "使用者名稱",
+      "ssh.profile.validation.host": "主機不能為空。",
+      "ssh.profile.validation.password": "密碼不能為空。",
+      "ssh.profile.validation.port": "連接埠必須在 1 到 65535 之間。",
+      "ssh.profile.validation.private_key": "私鑰路徑不能為空。",
+      "ssh.profile.validation.username": "使用者名稱不能為空。"
     }
   }
 }

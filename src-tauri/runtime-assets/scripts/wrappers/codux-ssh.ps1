@@ -1,0 +1,82 @@
+$ErrorActionPreference = "Stop"
+
+if ($args.Count -lt 1 -or [string]::IsNullOrWhiteSpace([string]$args[0])) {
+  [Console]::Error.WriteLine("codux-ssh: missing profile id")
+  exit 64
+}
+
+$profileId = ([string]$args[0]).ToLowerInvariant()
+$remoteArgs = @()
+if ($args.Count -gt 1) {
+  if ([string]$args[1] -ne "--") {
+    [Console]::Error.WriteLine("usage: codux-ssh <profile-id> [-- <remote-command>]")
+    exit 64
+  }
+  if ($args.Count -lt 3) {
+    [Console]::Error.WriteLine("codux-ssh: missing remote command after --")
+    exit 64
+  }
+  $remoteArgs = @($args[2..($args.Count - 1)])
+}
+
+$profilesFile = $env:CODUX_SSH_PROFILES_FILE
+if ([string]::IsNullOrWhiteSpace($profilesFile)) {
+  [Console]::Error.WriteLine("codux-ssh: CODUX_SSH_PROFILES_FILE is not set")
+  exit 66
+}
+if (-not (Test-Path -LiteralPath $profilesFile)) {
+  [Console]::Error.WriteLine("codux-ssh: unable to read SSH profile file")
+  exit 66
+}
+
+try {
+  $root = Get-Content -LiteralPath $profilesFile -Raw -Encoding UTF8 | ConvertFrom-Json
+} catch {
+  [Console]::Error.WriteLine("codux-ssh: failed to read SSH profiles: $($_.Exception.Message)")
+  exit 66
+}
+
+$profiles = @($root)
+if ($root.PSObject.Properties.Name -contains "sshProfiles") {
+  $profiles = @($root.sshProfiles)
+}
+
+$sshProfile = $profiles |
+  Where-Object { [string]$_.id -and ([string]$_.id).ToLowerInvariant() -eq $profileId } |
+  Select-Object -First 1
+if (-not $sshProfile) {
+  [Console]::Error.WriteLine("codux-ssh: SSH profile not found")
+  exit 67
+}
+
+$hostName = ([string]$sshProfile.host).Trim()
+$user = ([string]$sshProfile.username).Trim()
+if ([string]::IsNullOrWhiteSpace($hostName) -or [string]::IsNullOrWhiteSpace($user)) {
+  [Console]::Error.WriteLine("codux-ssh: SSH profile is missing host or username")
+  exit 65
+}
+
+$port = 22
+if ($sshProfile.port -ne $null) {
+  $port = [int]$sshProfile.port
+}
+if ($port -lt 1 -or $port -gt 65535) {
+  $port = 22
+}
+
+$sshArgs = @("-p", [string]$port)
+if ([string]$sshProfile.credentialKind -eq "privateKey" -and [string]$sshProfile.privateKeyPath) {
+  $keyPath = [Environment]::ExpandEnvironmentVariables([string]$sshProfile.privateKeyPath)
+  if ($keyPath.StartsWith("~/") -or $keyPath.StartsWith("~\")) {
+    $keyPath = Join-Path $HOME $keyPath.Substring(2)
+  }
+  $sshArgs += @("-i", $keyPath)
+}
+if ([string]$sshProfile.credentialKind -eq "password") {
+  Write-Host "codux-ssh: saved password profiles require an interactive SSH prompt on Windows."
+}
+
+$sshArgs += "$user@$hostName"
+$sshArgs += $remoteArgs
+& ssh @sshArgs
+exit $LASTEXITCODE

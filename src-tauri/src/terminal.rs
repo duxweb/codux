@@ -2,10 +2,11 @@ use crate::ai_runtime::{AIRuntimeBridge, AIRuntimeTerminalBinding};
 use crate::app_settings::{AIRuntimeToolSettings, AppSettingsStore};
 use crate::memory::{MemoryLaunchRequest, MemoryStore};
 use crate::paths::{app_display_name, app_slug, runtime_temp_dir};
-use crate::ssh::ssh_profiles_file_path;
+use crate::ssh::{render_ssh_launch_context, ssh_profiles_file_path};
 use anyhow::{anyhow, Context, Result};
+use base64::{engine::general_purpose, Engine as _};
 use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, MasterPty, PtySize};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::fs;
@@ -119,7 +120,9 @@ pub enum TerminalEvent {
     Output {
         #[serde(rename = "sessionId")]
         session_id: String,
-        data: String,
+        text: String,
+        #[serde(rename = "bytesBase64", serialize_with = "serialize_terminal_bytes")]
+        bytes: Vec<u8>,
     },
     Exit {
         #[serde(rename = "sessionId")]
@@ -465,7 +468,7 @@ impl TerminalSession {
             .history
             .lock()
             .map_err(|_| anyhow!("terminal history lock poisoned"))?;
-        Ok(history.to_string_lossy())
+        Ok(history.to_text_lossy())
     }
 
     fn info(&self) -> Option<TerminalSessionSnapshot> {
@@ -493,9 +496,11 @@ impl TerminalSession {
                         Ok(0) => {
                             let data = flush_utf8_decoder(&mut pending_utf8);
                             if !data.is_empty() {
+                                let bytes = data.as_bytes();
                                 emit(TerminalEvent::Output {
                                     session_id: id.clone(),
-                                    data,
+                                    bytes: bytes.to_vec(),
+                                    text: data,
                                 });
                             }
                             break;
@@ -512,12 +517,11 @@ impl TerminalSession {
                                     info.buffer_characters.saturating_add(data.chars().count());
                                 info.has_buffer = true;
                             }
-                            if !data.is_empty() {
-                                emit(TerminalEvent::Output {
-                                    session_id: id.clone(),
-                                    data,
-                                });
-                            }
+                            emit(TerminalEvent::Output {
+                                session_id: id.clone(),
+                                bytes: bytes.to_vec(),
+                                text: data,
+                            });
                         }
                         Err(error) => {
                             emit(TerminalEvent::Error {
@@ -583,6 +587,17 @@ fn flush_utf8_decoder(pending: &mut Vec<u8>) -> String {
         return String::new();
     }
     String::from_utf8_lossy(&std::mem::take(pending)).to_string()
+}
+
+fn encode_terminal_bytes(bytes: &[u8]) -> String {
+    general_purpose::STANDARD.encode(bytes)
+}
+
+fn serialize_terminal_bytes<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&encode_terminal_bytes(bytes))
 }
 
 struct TerminalEnvironmentRequest<'a> {
@@ -760,6 +775,7 @@ impl TerminalEnvironment {
                 project_id: project_id.to_string(),
                 project_name: project_name.clone(),
                 settings: ai_settings,
+                extra_context: render_ssh_launch_context(),
             })
         {
             values.insert(
@@ -826,7 +842,7 @@ impl RingHistory {
         }
     }
 
-    fn to_string_lossy(&self) -> String {
+    fn to_text_lossy(&self) -> String {
         let mut bytes = Vec::with_capacity(self.len);
         for chunk in &self.chunks {
             bytes.extend_from_slice(chunk);
@@ -835,7 +851,7 @@ impl RingHistory {
     }
 
     fn len_lossy(&self) -> usize {
-        self.to_string_lossy().chars().count()
+        self.to_text_lossy().chars().count()
     }
 }
 
@@ -1242,5 +1258,27 @@ mod tests {
         let mut pending = Vec::new();
         assert_eq!(decode_utf8_output(&[b'a', 0xe9, 0x94], &mut pending), "a");
         assert_eq!(decode_utf8_output(&[0x99], &mut pending), "错");
+    }
+
+    #[test]
+    fn terminal_output_bytes_are_base64_encoded() {
+        assert_eq!(encode_terminal_bytes("推".as_bytes()), "5o6o");
+    }
+
+    #[test]
+    fn terminal_output_event_serializes_bytes_at_boundary() {
+        let event = TerminalEvent::Output {
+            session_id: "term-1".to_string(),
+            text: "推".to_string(),
+            bytes: "推".as_bytes().to_vec(),
+        };
+        let value = serde_json::to_value(event).expect("terminal event should serialize");
+
+        assert_eq!(value["kind"], "output");
+        assert_eq!(value["sessionId"], "term-1");
+        assert_eq!(value["text"], "推");
+        assert_eq!(value["bytesBase64"], "5o6o");
+        assert!(value.get("bytes").is_none());
+        assert!(value.get("data").is_none());
     }
 }

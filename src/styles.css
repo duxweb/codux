@@ -17,8 +17,8 @@
   --color-surface-terminal: rgb(28 31 37);
   --color-surface-editor: rgb(20 23 28);
 
-  --color-line: color-mix(in oklab, var(--terminal-bg) 76%, white);
-  --color-line-strong: color-mix(in oklab, var(--terminal-bg) 64%, white);
+  --color-line: color-mix(in oklab, var(--terminal-bg) 83%, white);
+  --color-line-strong: color-mix(in oklab, var(--terminal-bg) 72%, white);
 
   --color-brand-blue: rgb(59 130 246);
   --color-brand-blue-deep: rgb(37 99 235);
@@ -61,6 +61,42 @@
     color-mix(in oklab, var(--color-fill) 18%, transparent) 0 2px,
     transparent 2px 6px
   );
+
+  --background: var(--surface-window-tint);
+  --foreground: var(--color-ink);
+  --surface: var(--color-surface-card);
+  --surface-foreground: var(--color-ink);
+  --surface-secondary: var(--color-surface-panel);
+  --surface-secondary-foreground: var(--color-ink);
+  --surface-tertiary: var(--color-surface-glass);
+  --surface-tertiary-foreground: var(--color-ink);
+  --overlay: var(--color-surface-chrome);
+  --overlay-foreground: var(--color-ink);
+  --muted: var(--color-ink-faint);
+  --default: color-mix(in oklab, var(--color-fill) 7%, transparent);
+  --default-hover: color-mix(in oklab, var(--color-fill) 11%, transparent);
+  --default-foreground: var(--color-ink);
+  --border: var(--color-line);
+  --separator: var(--color-line);
+  --field-background: color-mix(in oklab, var(--color-fill) 5%, transparent);
+  --field-foreground: var(--color-ink);
+  --field-placeholder: var(--color-ink-faint);
+  --field-border: var(--color-line);
+  --field-border-width: 1px;
+  --field-hover: color-mix(in oklab, var(--color-fill) 8%, transparent);
+  --field-focus: color-mix(in oklab, var(--color-fill) 6%, transparent);
+  --field-border-hover: var(--color-line-strong);
+  --field-border-focus: var(--color-brand-blue);
+  --success: var(--color-brand-green);
+  --success-foreground: var(--color-on-brand);
+  --warning: var(--color-brand-amber);
+  --warning-foreground: var(--color-on-brand);
+  --danger: var(--color-brand-red);
+  --danger-foreground: var(--color-on-brand);
+  --radius: 0.5rem;
+  --field-radius: 8px;
+  --overlay-shadow: var(--shadow-pop);
+  --field-shadow: none;
 
   --terminal-bg: #171b22;
   --terminal-fg: #d7dfeb;
@@ -125,8 +161,8 @@
   --color-surface-card: rgb(255 255 255);
   --color-surface-terminal: rgb(250 251 253);
   --color-surface-editor: rgb(247 249 252);
-  --color-line: color-mix(in oklab, var(--terminal-bg) 86%, black);
-  --color-line-strong: color-mix(in oklab, var(--terminal-bg) 76%, black);
+  --color-line: color-mix(in oklab, var(--terminal-bg) 91%, black);
+  --color-line-strong: color-mix(in oklab, var(--terminal-bg) 84%, black);
 
   --surface-window-tint: color-mix(in oklab, var(--terminal-bg) 94%, black);
   --surface-window-glass: color-mix(in oklab, var(--terminal-bg) 97%, black);
@@ -174,8 +210,8 @@
   --color-surface-card: rgb(22 24 28);
   --color-surface-terminal: rgb(24 26 30);
   --color-surface-editor: rgb(23 25 29);
-  --color-line: rgb(54 58 66);
-  --color-line-strong: rgb(72 77 87);
+  --color-line: rgb(45 49 56);
+  --color-line-strong: rgb(60 65 74);
   --color-brand-blue: rgb(96 165 250);
   --color-brand-blue-deep: rgb(59 130 246);
 
@@ -197,8 +233,8 @@
   --color-surface-card: rgb(13 18 27);
   --color-surface-terminal: rgb(15 21 31);
   --color-surface-editor: rgb(14 20 29);
-  --color-line: rgb(40 51 68);
-  --color-line-strong: rgb(55 68 89);
+  --color-line: rgb(31 41 56);
+  --color-line-strong: rgb(43 55 74);
   --color-brand-blue: rgb(96 165 250);
   --color-brand-blue-deep: rgb(59 130 246);
 
@@ -457,6 +493,86 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+.select__trigger {
+  min-height: 34px;
+  border-radius: 8px;
+  border-color: var(--color-line);
+  background: color-mix(in oklab, var(--color-fill) 5%, transparent);
+  color: var(--color-ink);
+  box-shadow: none;
+}
+
+.select__trigger:hover,
+.select__trigger[data-hovered="true"] {
+  border-color: var(--color-line-strong);
+  background: color-mix(in oklab, var(--color-fill) 8%, transparent);
+}
+
+.select__trigger:focus-visible,
+.select__trigger[data-focus-visible="true"] {
+  border-color: var(--color-brand-blue);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-brand-blue) 22%, transparent);
+}
+
+.select__value {
+  color: var(--color-ink);
+}
+
+.select__indicator,
+.list-box-item__indicator,
+.menu-item__indicator {
+  color: var(--color-ink-mute);
+}
+
+.select__popover,
+.popover,
+.dropdown__popover {
+  border: 1px solid var(--color-line-strong);
+  border-radius: 10px;
+  background: var(--color-surface-chrome);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-pop);
+}
+
+.select__popover [data-slot="list-box"],
+.dropdown__popover [data-slot="dropdown-menu"] {
+  padding: 4px;
+}
+
+.list-box-item,
+.menu-item {
+  min-height: 28px;
+  border-radius: 7px;
+  color: var(--color-ink-soft);
+  font-size: 13px;
+}
+
+.list-box-item:hover,
+.list-box-item[data-hovered="true"],
+.list-box-item[data-focus="true"],
+.list-box-item[data-focused="true"],
+.menu-item:hover,
+.menu-item[data-hovered="true"],
+.menu-item[data-focus="true"],
+.menu-item[data-focused="true"] {
+  background: color-mix(in oklab, var(--color-fill) 9%, transparent);
+  color: var(--color-ink);
+}
+
+.list-box-item[aria-selected="true"],
+.list-box-item[data-selected="true"],
+.menu-item[aria-selected="true"],
+.menu-item[data-selected="true"],
+.menu-item[aria-checked="true"] {
+  background: color-mix(in oklab, var(--color-brand-blue) 16%, transparent);
+  color: var(--color-ink);
+}
+
+.list-box-item[data-disabled="true"],
+.menu-item[data-disabled="true"] {
+  opacity: 0.5;
 }
 
 .terminal-view {

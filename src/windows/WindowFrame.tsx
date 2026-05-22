@@ -21,7 +21,7 @@ export function WindowFrame({ title, children, footer, mainClassName, mainScroll
       <header
         className="relative h-12 flex flex-shrink-0 items-center border-b border-line/45 bg-surface-chrome/70 drag-region"
         data-tauri-drag-region
-        onPointerDown={startWindowDrag}
+        onPointerDownCapture={startWindowDrag}
       >
         <div className={`min-w-0 w-full drag-region ${titleInsetClass}`} data-tauri-drag-region>
           <div

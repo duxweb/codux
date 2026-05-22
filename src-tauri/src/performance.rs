@@ -179,7 +179,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
     struct ProcessSample {
         pid: pid_t,
         cpu_seconds: f64,
-        resident_bytes: u64,
+        footprint_bytes: u64,
     }
 
     struct ProcessIdentity {
@@ -208,8 +208,65 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
                 pid,
                 cpu_seconds: (task_info.total_user + task_info.total_system) as f64
                     / 1_000_000_000.0,
-                resident_bytes: task_info.resident_size,
+                footprint_bytes: process_footprint(pid).unwrap_or(task_info.resident_size),
             })
+        }
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct RUsageInfoV4 {
+        uuid: [u8; 16],
+        user_time: u64,
+        system_time: u64,
+        pkg_idle_wkups: u64,
+        interrupt_wkups: u64,
+        pageins: u64,
+        wired_size: u64,
+        resident_size: u64,
+        phys_footprint: u64,
+        proc_start_abstime: u64,
+        proc_exit_abstime: u64,
+        child_user_time: u64,
+        child_system_time: u64,
+        child_pkg_idle_wkups: u64,
+        child_interrupt_wkups: u64,
+        child_pageins: u64,
+        child_elapsed_abstime: u64,
+        diskio_bytesread: u64,
+        diskio_byteswritten: u64,
+        cpu_time_qos_default: u64,
+        cpu_time_qos_maintenance: u64,
+        cpu_time_qos_background: u64,
+        cpu_time_qos_utility: u64,
+        cpu_time_qos_legacy: u64,
+        cpu_time_qos_user_initiated: u64,
+        cpu_time_qos_user_interactive: u64,
+        billed_system_time: u64,
+        serviced_system_time: u64,
+        logical_writes: u64,
+        lifetime_max_phys_footprint: u64,
+        instructions: u64,
+        cycles: u64,
+        billed_energy: u64,
+        serviced_energy: u64,
+        interval_max_phys_footprint: u64,
+        runnable_time: u64,
+    }
+
+    #[link(name = "proc")]
+    extern "C" {
+        fn proc_pid_rusage(pid: c_int, flavor: c_int, buffer: *mut c_void) -> c_int;
+    }
+
+    fn process_footprint(pid: pid_t) -> Option<u64> {
+        const RUSAGE_INFO_V4: c_int = 4;
+        unsafe {
+            let mut usage = mem::zeroed::<RUsageInfoV4>();
+            if proc_pid_rusage(pid, RUSAGE_INFO_V4, &mut usage as *mut _ as *mut c_void) != 0 {
+                return None;
+            }
+            (usage.phys_footprint > 0).then_some(usage.phys_footprint)
         }
     }
 
@@ -326,7 +383,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
     let captured_at = Instant::now();
     let main = process_sample(unsafe { libc::getpid() })?;
     let mut cpu_seconds = main.cpu_seconds;
-    let mut memory_bytes = main.resident_bytes;
+    let mut memory_bytes = main.footprint_bytes;
 
     let helper_pids = if let Ok(mut cache) = cache.lock() {
         refresh_helper_pids(&mut cache, main.pid, captured_at);
@@ -343,7 +400,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
             continue;
         }
         cpu_seconds += sample.cpu_seconds;
-        memory_bytes = memory_bytes.saturating_add(sample.resident_bytes);
+        memory_bytes = memory_bytes.saturating_add(sample.footprint_bytes);
     }
 
     Some(RawSample {

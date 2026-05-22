@@ -110,7 +110,7 @@ describe("terminal runtime", () => {
       payload: {
         kind: "output",
         sessionId: "backend-1",
-        data: "➜  project git:(main) ",
+        text: "➜  project git:(main) ",
       },
     });
     expect(runtime.getSession(session.id)?.state).toBe("running");
@@ -129,7 +129,7 @@ describe("terminal runtime", () => {
           payload: {
             kind: "output",
             sessionId: "backend-early",
-            data: "early prompt",
+            text: "early prompt",
           },
         });
         return Promise.resolve("backend-early");
@@ -183,7 +183,7 @@ describe("terminal runtime", () => {
       payload: {
         kind: "output",
         sessionId: "backend-1",
-        data: "line 1",
+        text: "line 1",
       },
     });
     await Promise.resolve();
@@ -191,5 +191,82 @@ describe("terminal runtime", () => {
     expect(events).toHaveLength(1);
     expect((events[0] as { session: { history?: string } }).session.history).toBeUndefined();
     expect(runtime.getSession(session.id)?.replayBuffer).toBe("line 1");
+  });
+
+  it("keeps raw terminal bytes on output events when the backend provides them", async () => {
+    const runtime = new TerminalRuntime();
+    const session = runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "分屏 1",
+      cwd: "/project",
+    });
+    const events: unknown[] = [];
+    runtime.subscribe(session.id, (event) => {
+      if (event.type === "output") events.push(event);
+    });
+
+    runtime.ensureStarted(session.id);
+    runtime.resize(session.id, 100, 30);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    eventHandler?.({
+      payload: {
+        kind: "output",
+        sessionId: "backend-1",
+        text: "推",
+        bytesBase64: "5o6o",
+      },
+    });
+    await Promise.resolve();
+
+    expect(events).toHaveLength(1);
+    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e, 0xa8]);
+    expect(runtime.getSession(session.id)?.replayBuffer).toBe("推");
+  });
+
+  it("delivers raw bytes even when a UTF-8 character is split across backend chunks", async () => {
+    const runtime = new TerminalRuntime();
+    const session = runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "分屏 1",
+      cwd: "/project",
+    });
+    const events: unknown[] = [];
+    runtime.subscribe(session.id, (event) => {
+      if (event.type === "output") events.push(event);
+    });
+
+    runtime.ensureStarted(session.id);
+    runtime.resize(session.id, 100, 30);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    eventHandler?.({
+      payload: {
+        kind: "output",
+        sessionId: "backend-1",
+        text: "",
+        bytesBase64: "5o4=",
+      },
+    });
+    eventHandler?.({
+      payload: {
+        kind: "output",
+        sessionId: "backend-1",
+        text: "推",
+        bytesBase64: "qA==",
+      },
+    });
+    await Promise.resolve();
+
+    expect(events).toHaveLength(2);
+    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e]);
+    expect(Array.from((events[1] as { bytes: Uint8Array }).bytes)).toEqual([0xa8]);
+    expect(runtime.getSession(session.id)?.replayBuffer).toBe("推");
   });
 });

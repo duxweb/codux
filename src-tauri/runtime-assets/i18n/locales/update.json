@@ -17,7 +17,15 @@
       "update.not_configured.title": "Updates nicht konfiguriert",
       "update.not_configured.preview": "Update-Kanal ist in der Browser-Vorschau nicht konfiguriert.",
       "update.available.notes_title": "Release Notes",
-      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it.",
+      "update.progress.bytes_format": "%@ of %@",
+      "update.progress.downloading": "Downloading update...",
+      "update.progress.finished": "Installation is complete.",
+      "update.progress.installing": "Installing update...",
+      "update.progress.title": "Installing Update",
+      "update.progress.version_format": "Version v%@",
+      "update.release_notes.empty": "No release notes were provided for this update.",
+      "update.version.summary_format": "Current v%@ · Latest v%@"
     },
     "en": {
       "update.available.later": "Later",
@@ -36,7 +44,15 @@
       "update.not_configured.title": "Updates Not Configured",
       "update.not_configured.preview": "Update channel is not configured in browser preview.",
       "update.available.notes_title": "Release Notes",
-      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it."
+      "update.installed.message": "The update was downloaded and installed. Restart Codux to finish applying it.",
+      "update.progress.bytes_format": "%@ of %@",
+      "update.progress.downloading": "Downloading update...",
+      "update.progress.finished": "Installation is complete.",
+      "update.progress.installing": "Installing update...",
+      "update.progress.title": "Installing Update",
+      "update.progress.version_format": "Version v%@",
+      "update.release_notes.empty": "No release notes were provided for this update.",
+      "update.version.summary_format": "Current v%@ · Latest v%@"
     },
     "es": {
       "update.available.later": "Más tarde",
@@ -169,7 +185,15 @@
       "update.not_configured.title": "更新未配置",
       "update.not_configured.preview": "浏览器预览中未配置更新渠道。",
       "update.available.notes_title": "更新内容",
-      "update.installed.message": "更新已下载并安装，重启 Codux 后生效。"
+      "update.installed.message": "更新已下载并安装，重启 Codux 后生效。",
+      "update.progress.bytes_format": "%@ / %@",
+      "update.progress.downloading": "正在下载更新...",
+      "update.progress.finished": "安装已完成。",
+      "update.progress.installing": "正在安装更新...",
+      "update.progress.title": "正在安装更新",
+      "update.progress.version_format": "版本 v%@",
+      "update.release_notes.empty": "此版本没有提供更新日志。",
+      "update.version.summary_format": "当前 v%@ · 最新 v%@"
     },
     "zh-Hant": {
       "update.available.later": "稍後再說",
@@ -188,7 +212,15 @@
       "update.not_configured.title": "更新未配置",
       "update.not_configured.preview": "瀏覽器預覽中未配置更新渠道。",
       "update.available.notes_title": "更新內容",
-      "update.installed.message": "更新已下載並安裝，重新啟動 Codux 後生效。"
+      "update.installed.message": "更新已下載並安裝，重新啟動 Codux 後生效。",
+      "update.progress.bytes_format": "%@ / %@",
+      "update.progress.downloading": "正在下載更新...",
+      "update.progress.finished": "安裝已完成。",
+      "update.progress.installing": "正在安裝更新...",
+      "update.progress.title": "正在安裝更新",
+      "update.progress.version_format": "版本 v%@",
+      "update.release_notes.empty": "此版本沒有提供更新紀錄。",
+      "update.version.summary_format": "目前 v%@ · 最新 v%@"
     }
   }
 }

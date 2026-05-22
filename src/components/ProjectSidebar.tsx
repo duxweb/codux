@@ -340,7 +340,8 @@ function ProjectActivityBadge({ state }: { state: WorkspaceProject["aiState"] })
 
   if (state === "running") {
     return (
-      <span className="absolute -right-0.5 -top-0.5 grid h-3 w-3 place-items-center rounded-full">
+      <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full" aria-hidden="true">
+        <span className="absolute inset-0 rounded-full border border-brand-amber/35 border-t-brand-amber motion-safe:animate-spin" />
         <span className="h-2.5 w-2.5 rounded-full bg-brand-amber" />
       </span>
     );

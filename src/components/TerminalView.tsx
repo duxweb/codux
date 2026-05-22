@@ -25,7 +25,7 @@ import { isWindowsPlatform } from "../platform";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 
 type TerminalRendererAdapter = {
-  write: (data: string) => void;
+  write: (data: string | Uint8Array) => void;
   reset: (history?: string) => void;
   clear: () => void;
   focus: () => void;
@@ -139,7 +139,7 @@ function XtermRenderer({
       allowTransparency: false,
       altClickMovesCursor: false,
       convertEol: isWindowsTerminal,
-      cursorBlink: false,
+      cursorBlink: true,
       cursorInactiveStyle: "outline",
       disableStdin: true,
       drawBoldTextInBrightColors: true,
@@ -149,7 +149,7 @@ function XtermRenderer({
       macOptionIsMeta: true,
       rescaleOverlappingGlyphs: true,
       rightClickSelectsWord: false,
-      scrollback: 20000,
+      scrollback: 5000,
       showCursorImmediately: true,
       theme: xtermTheme(host),
       windowsPty: isWindowsTerminal
@@ -499,7 +499,7 @@ export function TerminalView({
 
     const applyEvent = (event: TerminalRuntimeEvent) => {
       if (event.type === "output") {
-        adapter.write(event.data);
+        adapter.write(event.bytes);
         return;
       }
       if (event.type === "reset") {

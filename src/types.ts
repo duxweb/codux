@@ -53,7 +53,8 @@ export interface TerminalSession {
 export interface TerminalEvent {
   kind: "output" | "exit" | "error";
   sessionId: string;
-  data?: string;
+  text?: string;
+  bytesBase64?: string;
   exitCode?: number | null;
   message?: string;
 }

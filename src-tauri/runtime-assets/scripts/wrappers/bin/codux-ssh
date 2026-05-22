@@ -1,53 +1,163 @@
 #!/bin/zsh
-set -euo pipefail
+set -uo pipefail
 
 profile_id="${1:-}"
-profiles_file="${CODUX_SSH_PROFILES_FILE:-$HOME/Library/Application Support/Codux/ssh_profiles.json}"
+if [[ -z "${profile_id}" ]]; then
+  print -u2 -- "codux-ssh: missing profile id"
+  exit 64
+fi
+shift
 
-if [[ -z "$profile_id" ]]; then
-  echo "usage: codux-ssh <profile-id>" >&2
+remote_command=()
+if [[ "${1:-}" == "--" ]]; then
+  shift
+  if [[ $# -eq 0 ]]; then
+    print -u2 -- "codux-ssh: missing remote command after --"
+    exit 64
+  fi
+  remote_command=("$@")
+elif [[ $# -gt 0 ]]; then
+  print -u2 -- "usage: codux-ssh <profile-id> [-- <remote-command>]"
   exit 64
 fi
 
-exec python3 - "$profile_id" "$profiles_file" <<'PY'
+profiles_file="${CODUX_SSH_PROFILES_FILE:-}"
+if [[ -z "${profiles_file}" && -n "${DMUX_APP_SUPPORT_ROOT:-}" ]]; then
+  profiles_file="${DMUX_APP_SUPPORT_ROOT}/ssh_profiles.json"
+fi
+if [[ -z "${profiles_file}" ]]; then
+  profiles_file="${HOME}/Library/Application Support/Codux/ssh_profiles.json"
+fi
+
+if [[ ! -r "${profiles_file}" ]]; then
+  print -u2 -- "codux-ssh: unable to read SSH profile file"
+  exit 66
+fi
+
+profile_shell="$(
+  CODUX_SSH_PROFILE_ID="${profile_id}" CODUX_SSH_PROFILES_FILE="${profiles_file}" /usr/bin/python3 <<'PY'
 import json
 import os
 import shlex
 import sys
 
-profile_id = sys.argv[1]
-profiles_file = sys.argv[2]
+profile_id = os.environ.get("CODUX_SSH_PROFILE_ID", "").lower()
+profiles_file = os.environ.get("CODUX_SSH_PROFILES_FILE", "")
 
 try:
     with open(profiles_file, "r", encoding="utf-8") as handle:
-        profiles = json.load(handle)
-except FileNotFoundError:
-    print(f"codux-ssh: profile store not found: {profiles_file}", file=sys.stderr)
-    sys.exit(66)
+        root = json.load(handle)
 except Exception as exc:
-    print(f"codux-ssh: failed to read profiles: {exc}", file=sys.stderr)
-    sys.exit(65)
+    print(f"codux-ssh: failed to read SSH profiles: {exc}", file=sys.stderr)
+    raise SystemExit(66)
 
-profile = next((item for item in profiles if item.get("id") == profile_id), None)
-if not profile:
-    print(f"codux-ssh: profile not found: {profile_id}", file=sys.stderr)
-    sys.exit(67)
+profiles = root.get("sshProfiles") if isinstance(root, dict) else root
+if not isinstance(profiles, list):
+    print("codux-ssh: invalid SSH profile file", file=sys.stderr)
+    raise SystemExit(65)
+
+profile = None
+for candidate in profiles:
+    if str(candidate.get("id", "")).lower() == profile_id:
+        profile = candidate
+        break
+
+if profile is None:
+    print("codux-ssh: SSH profile not found", file=sys.stderr)
+    raise SystemExit(67)
 
 host = str(profile.get("host") or "").strip()
 username = str(profile.get("username") or "").strip()
-port = int(profile.get("port") or 22)
-credential_kind = str(profile.get("credentialKind") or "none")
-key_path = str(profile.get("privateKeyPath") or "").strip()
-
 if not host or not username:
-    print("codux-ssh: profile is missing host or username", file=sys.stderr)
-    sys.exit(65)
+    print("codux-ssh: SSH profile is missing host or username", file=sys.stderr)
+    raise SystemExit(65)
 
-args = ["ssh", "-p", str(max(1, min(port, 65535)))]
-if credential_kind == "privateKey" and key_path:
-    args.extend(["-i", key_path])
-args.append(f"{username}@{host}")
+try:
+    port = int(profile.get("port") or 22)
+except Exception:
+    port = 22
+port = min(max(port, 1), 65535)
 
-print("+ " + " ".join(shlex.quote(arg) for arg in args), flush=True)
-os.execvp("ssh", args)
+credential_kind = str(profile.get("credentialKind") or "none")
+private_key_path = str(profile.get("privateKeyPath") or "").strip()
+password = str(profile.get("password") or "") if credential_kind == "password" else ""
+key_passphrase = str(profile.get("keyPassphrase") or "") if credential_kind == "privateKey" else ""
+
+ssh_args = ["ssh", "-p", str(port)]
+if credential_kind == "privateKey" and private_key_path:
+    ssh_args.extend(["-i", os.path.expanduser(private_key_path)])
+ssh_args.append(f"{username}@{host}")
+
+def emit_scalar(name, value):
+    print(f"{name}={shlex.quote(value)}")
+
+def emit_array(name, values):
+    print(f"{name}=({' '.join(shlex.quote(value) for value in values)})")
+
+emit_scalar("ssh_password", password)
+emit_scalar("ssh_key_passphrase", key_passphrase)
+emit_array("ssh_args", ssh_args)
 PY
+)"
+profile_status=$?
+if [[ ${profile_status} -ne 0 ]]; then
+  exit ${profile_status}
+fi
+eval "${profile_shell}"
+
+sanitize_ssh_locale_environment() {
+  unset LANG
+  unset LC_ALL
+  unset LC_CTYPE
+  unset LC_MESSAGES
+  unset LC_COLLATE
+  unset LC_NUMERIC
+  unset LC_TIME
+  unset LC_MONETARY
+  unset LC_MEASUREMENT
+  unset LC_IDENTIFICATION
+  unset LC_PAPER
+  unset LC_NAME
+  unset LC_ADDRESS
+  unset LC_TELEPHONE
+  unset LC_RESPONSETIME
+  unset LANGUAGE
+}
+
+ssh_bin="$(command -v ssh 2>/dev/null || true)"
+if [[ -z "${ssh_bin}" ]]; then
+  ssh_bin="/usr/bin/ssh"
+fi
+if [[ ! -x "${ssh_bin}" ]]; then
+  print -u2 -- "codux-ssh: ssh executable not found"
+  exit 127
+fi
+ssh_args[1]="${ssh_bin}"
+if [[ ${#remote_command[@]} -gt 0 ]]; then
+  ssh_args+=("${remote_command[@]}")
+fi
+
+sanitize_ssh_locale_environment
+
+if [[ -z "${ssh_password}${ssh_key_passphrase}" ]]; then
+  exec "${ssh_args[@]}"
+fi
+
+expect_bin="$(command -v expect 2>/dev/null || true)"
+if [[ -z "${expect_bin}" ]]; then
+  expect_bin="/usr/bin/expect"
+fi
+if [[ ! -x "${expect_bin}" ]]; then
+  print -u2 -- "codux-ssh: expect is required for saved SSH credentials"
+  exit 127
+fi
+
+expect_script="${0:A:h}/../codux-ssh-expect.exp"
+if [[ ! -r "${expect_script}" ]]; then
+  print -u2 -- "codux-ssh: bundled expect helper is missing"
+  exit 127
+fi
+
+export CODUX_SSH_PASSWORD="${ssh_password}"
+export CODUX_SSH_KEY_PASSPHRASE="${ssh_key_passphrase}"
+exec "${expect_bin}" "${expect_script}" "${ssh_args[@]}"

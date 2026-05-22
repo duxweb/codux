@@ -3,10 +3,13 @@ use crate::ai_history_indexer::AIHistoryIndexer;
 use crate::app_settings::AppSettingsStore;
 use crate::background_queue::{SerialJob, SerialJobQueue};
 use crate::git::{git_review, git_status, GitReviewSnapshot, GitStatusSnapshot};
+use crate::paths::runtime_temp_dir;
 use crate::project_store::{ProjectRecord, ProjectStore, ProjectSummary};
 use crate::worktree::{worktree_snapshot, WorktreeSnapshot};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -667,7 +670,7 @@ fn refresh_worktree_project_now(
     {
         Ok(snapshot) => snapshot,
         Err(error) => {
-            eprintln!("failed to refresh worktree snapshot: {error}");
+            append_activity_log("worktree", &format!("refresh snapshot failed: {error}"));
             return;
         }
     };
@@ -701,4 +704,14 @@ fn coalesced_refresh_key(path: &str) -> String {
         key = key.to_ascii_lowercase();
     }
     key
+}
+
+fn append_activity_log(category: &str, message: &str) {
+    let path = runtime_temp_dir().join("live.log");
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "[project-activity] [{category}] {message}");
+    }
 }

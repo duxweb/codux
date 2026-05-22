@@ -120,7 +120,7 @@ use remote_p2p::{RemoteP2PHostTransport, RemoteP2PLane, RemoteP2PSignal};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::{json, Value};
 use sha2::{Digest as _, Sha256};
-use ssh::{SSHLaunchCommand, SSHProfileUpsertRequest, SSHProfilesSnapshot, SSHStore};
+use ssh::{SSHLaunchCommand, SSHProfileTestResult, SSHProfileUpsertRequest, SSHProfilesSnapshot, SSHStore};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Seek as _, Write as _};
@@ -2151,6 +2151,21 @@ async fn ssh_profile_delete(
 }
 
 #[tauri::command]
+async fn ssh_profile_test(
+    state: tauri::State<'_, AppState>,
+    request: SSHProfileUpsertRequest,
+) -> Result<SSHProfileTestResult, String> {
+    let ssh = Arc::clone(&state.ssh);
+    let ai_runtime = Arc::clone(&state.ai_runtime);
+    tauri::async_runtime::spawn_blocking(move || {
+        ai_runtime.prepare()?;
+        ssh.test_profile(request, ai_runtime.wrapper_bin_dir())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn ssh_launch_command(
     state: tauri::State<'_, AppState>,
     profile_id: String,
@@ -3332,6 +3347,10 @@ impl RemoteHostService {
         let Some(envelope) = self.decrypt_envelope_if_needed(raw).await else {
             return;
         };
+        self.handle_remote_envelope(app, envelope).await;
+    }
+
+    async fn handle_remote_envelope(self: &Arc<Self>, app: tauri::AppHandle, envelope: RemoteEnvelope) {
         match envelope.kind.as_str() {
             "pairing.request" => {
                 self.handle_pairing_request(envelope, &app).await;
@@ -3460,28 +3479,30 @@ impl RemoteHostService {
 
     async fn handle_p2p_message(self: Arc<Self>, device_id: String, data: Vec<u8>) {
         let Ok(envelope) = serde_json::from_slice::<RemoteEnvelope>(&data) else {
+            remote_runtime_log(
+                "p2p-recv",
+                &format!("drop reason=decode device={device_id} bytes={}", data.len()),
+            );
             return;
         };
-        let _ = tauri::async_runtime::spawn_blocking(move || {
-            self.handle_p2p_envelope_sync(envelope.with_device_id(device_id));
-        })
-        .await;
-    }
-
-    fn handle_p2p_envelope_sync(self: &Arc<Self>, envelope: RemoteEnvelope) {
-        match envelope.kind.as_str() {
-            "terminal.buffer" => self.handle_terminal_buffer(&envelope),
-            "terminal.input" => self.handle_terminal_input(&envelope),
-            "terminal.resize" => self.handle_terminal_resize(&envelope),
-            "terminal.close" => self.handle_terminal_close(&envelope),
-            "terminal.signal" => self.handle_terminal_signal(&envelope),
-            "terminal.upload" => self.handle_terminal_upload(&envelope),
-            "terminal.upload.start" => self.handle_terminal_upload_start(&envelope),
-            "terminal.upload.chunk" => self.handle_terminal_upload_chunk(&envelope),
-            "terminal.upload.finish" => self.handle_terminal_upload_finish(&envelope),
-            "terminal.upload.cancel" => self.handle_terminal_upload_cancel(&envelope),
-            _ => {}
-        }
+        remote_runtime_log(
+            "p2p-recv",
+            &format!(
+                "type={} session={} device={} bytes={}",
+                envelope.kind,
+                envelope.session_id.as_deref().unwrap_or("-"),
+                device_id,
+                data.len()
+            ),
+        );
+        let Some(envelope) = self
+            .decrypt_envelope_if_needed(envelope.with_device_id(device_id))
+            .await
+        else {
+            remote_runtime_log("p2p-recv", "drop reason=decrypt-or-sequence");
+            return;
+        };
+        self.handle_remote_envelope(self.app.clone(), envelope).await;
     }
 
     async fn handle_pairing_request(&self, envelope: RemoteEnvelope, app: &tauri::AppHandle) {
@@ -4044,6 +4065,15 @@ impl RemoteHostService {
             self.send_error(envelope, &error);
             return;
         }
+        remote_runtime_log(
+            "terminal-buffer",
+            &format!(
+                "request session={} device={} offset={}",
+                session_id,
+                envelope.device_id.as_deref().unwrap_or("-"),
+                offset
+            ),
+        );
         self.send_terminal_buffer(session_id, envelope.device_id.as_deref(), offset);
     }
 
@@ -4502,8 +4532,21 @@ impl RemoteHostService {
         self.register_terminal_viewer(session_id, device_id);
         match self.terminals.snapshot(session_id) {
             Ok(data) => {
-                let clamped = offset.min(data.len());
-                let chunk = data.get(clamped..).unwrap_or_default().to_string();
+                let total_characters = data.chars().count();
+                let clamped = offset.min(total_characters);
+                let chunk: String = data.chars().skip(clamped).collect();
+                remote_runtime_log(
+                    "terminal-buffer",
+                    &format!(
+                        "send session={} device={} requestedOffset={} offset={} bufferLen={} chunkLen={}",
+                        session_id,
+                        device_id.unwrap_or("-"),
+                        offset,
+                        clamped,
+                        total_characters,
+                        chunk.chars().count()
+                    ),
+                );
                 self.send_terminal_data(
                     "terminal.output",
                     device_id,
@@ -4512,11 +4555,15 @@ impl RemoteHostService {
                         "data": chunk,
                         "buffer": true,
                         "offset": clamped,
-                        "bufferLength": data.chars().count(),
+                        "bufferLength": total_characters,
                     }),
                 );
             }
             Err(error) => {
+                remote_runtime_log(
+                    "terminal-buffer",
+                    &format!("error session={} message={}", session_id, error),
+                );
                 self.send_relay(
                     "error",
                     device_id,
@@ -4601,7 +4648,10 @@ impl RemoteHostService {
     }
 
     fn handle_terminal_event(&self, event: TerminalEvent) {
-        if let TerminalEvent::Output { session_id, data } = event {
+        if let TerminalEvent::Output {
+            session_id, text, ..
+        } = event
+        {
             let viewers = self
                 .terminal_viewers_by_session
                 .lock()
@@ -4617,12 +4667,22 @@ impl RemoteHostService {
                 .map(|value| value.chars().count())
                 .unwrap_or(0);
             for device_id in viewers {
+                remote_runtime_log(
+                    "terminal-output",
+                    &format!(
+                        "stream session={} device={} chunkLen={} bufferLen={}",
+                        session_id,
+                        device_id,
+                        text.chars().count(),
+                        buffer_length
+                    ),
+                );
                 self.send_terminal_data(
                     "terminal.output",
                     Some(&device_id),
                     Some(&session_id),
                     json!({
-                        "data": data,
+                        "data": text,
                         "bufferLength": buffer_length,
                     }),
                 );
@@ -4662,15 +4722,43 @@ impl RemoteHostService {
             return;
         };
         let lane = remote_p2p_lane(kind);
+        let relay_also = kind == "terminal.output"
+            && payload.get("buffer").and_then(Value::as_bool).unwrap_or(false);
         let relay_text = self.outgoing_relay_text(kind, device_id, session_id, payload);
         let socket_tx = self.socket_tx.lock().ok().and_then(|value| value.clone());
         let device_id = device_id.map(str::to_string);
+        let kind_label = kind.to_string();
+        let session_label = session_id.map(str::to_string);
+        let data_len = data.len();
         tauri::async_runtime::spawn(async move {
-            if p2p.send(data, device_id.as_deref(), lane).await {
+            let sent_p2p = p2p.send(data, device_id.as_deref(), lane).await;
+            remote_runtime_log(
+                "p2p-send",
+                &format!(
+                    "type={} session={} device={} ok={} bytes={}",
+                    kind_label,
+                    session_label.as_deref().unwrap_or("-"),
+                    device_id.as_deref().unwrap_or("-"),
+                    sent_p2p,
+                    data_len
+                ),
+            );
+            if sent_p2p && !relay_also {
                 return;
             }
             if let (Some(tx), Some(text)) = (socket_tx, relay_text) {
-                let _ = tx.send(text);
+                let relay_ok = tx.send(text).is_ok();
+                remote_runtime_log(
+                    "relay-fallback",
+                    &format!(
+                        "type={} session={} device={} reason={} ok={}",
+                        kind_label,
+                        session_label.as_deref().unwrap_or("-"),
+                        device_id.as_deref().unwrap_or("-"),
+                        if sent_p2p { "buffer-ack-copy" } else { "p2p-send-failed" },
+                        relay_ok
+                    ),
+                );
             }
         });
     }
@@ -4880,6 +4968,17 @@ fn remote_http_client() -> Result<reqwest::Client, String> {
         .timeout(Duration::from_secs(12))
         .build()
         .map_err(remote_error_message)
+}
+
+fn remote_runtime_log(category: &str, message: &str) {
+    let path = paths::app_support_dir().join("runtime.log");
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let timestamp = chrono::Local::now().to_rfc3339();
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "[{timestamp}] [{category}] {message}");
+    }
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -5564,7 +5663,7 @@ const MENU_CREATE_TASK: &str = "create-task";
 const MENU_EDITOR_SAVE: &str = "editor-save";
 const MENU_EDITOR_SEARCH: &str = "editor-search";
 const MENU_CLOSE_ACTIVE: &str = "close-active";
-const CODUX_WEBSITE_URL: &str = "https://codux.dev";
+const CODUX_WEBSITE_URL: &str = "https://codux.dux.cn";
 const CODUX_GITHUB_URL: &str = "https://github.com/duxweb/codux";
 
 fn apply_desktop_pet_menu_action(app: &tauri::AppHandle, id: &str) {
@@ -6492,6 +6591,7 @@ pub fn run() {
             ssh_profiles,
             ssh_profile_upsert,
             ssh_profile_delete,
+            ssh_profile_test,
             ssh_launch_command,
         ])
         .build(tauri::generate_context!())
