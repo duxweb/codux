@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [1.0.0-beta.4] - 2026-05-22
+
+### 调整
+
+- 将 macOS 发布包拆分为快速 unsigned 包和单独触发的 Developer ID 公证 formal 包，并使用清晰的文件名区分不同包类型。
+- 将 macOS CI 构建固定到 macOS 26 runner，同时保持部署目标为 macOS 14.0，减少打包版本中系统红绿灯位置受构建环境漂移影响。
+- 在中英文 README 中补充发布包下载说明，方便区分 DMG 安装包、自动更新包、Windows 安装包和更新元数据。
+
+### 修复
+
+- formal macOS 发布任务改用独立文件名追加到同一个 Release，避免覆盖现有发布资产，并在更新元数据中保留已有 Windows 入口。
+- 不再把 updater 签名文件作为 GitHub Release 的可见资产上传，但仍用于生成 `latest.json`。
+
 ## [1.0.0-beta.3] - 2026-05-22
 
 ### 新增

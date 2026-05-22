@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0-beta.4] - 2026-05-22
+
+### Changed
+
+- Split macOS release packaging into fast unsigned builds and separately triggered Developer ID notarized formal builds, with clear asset names for each package type.
+- Pinned macOS CI builds to the macOS 26 runner while keeping the deployment target at macOS 14.0 to reduce system traffic-light layout drift in packaged builds.
+- Added release download guidance to the English and Chinese READMEs so users can distinguish DMG installers, updater packages, Windows installers, and updater metadata.
+
+### Fixed
+
+- Prevented formal macOS release jobs from overwriting existing release assets by publishing formal packages under distinct names and merging updater metadata with existing Windows entries.
+- Stopped uploading updater signature files as visible GitHub Release assets while still using them to generate `latest.json`.
+
 ## [1.0.0-beta.3] - 2026-05-22
 
 ### Added
