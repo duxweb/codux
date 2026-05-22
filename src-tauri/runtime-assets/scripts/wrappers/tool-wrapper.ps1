@@ -145,20 +145,6 @@ function Extract-Model([string[]]$Args) {
   return ""
 }
 
-function Resolve-Memory-Launch-Dir {
-  $root = $env:DMUX_AI_MEMORY_WORKSPACE_ROOT
-  $link = $env:DMUX_AI_MEMORY_WORKSPACE_LINK
-  if ([string]::IsNullOrWhiteSpace($root) -or [string]::IsNullOrWhiteSpace($link)) { return "" }
-  $fileName = switch ($Tool) {
-    "claude" { "CLAUDE.md" }
-    "claude-code" { "CLAUDE.md" }
-    "gemini" { "GEMINI.md" }
-    default { "AGENTS.md" }
-  }
-  if (Test-Path -LiteralPath (Join-Path $root $fileName)) { return $link }
-  return ""
-}
-
 function Is-Metadata-Invocation([string[]]$CommandArgs) {
   if ($CommandArgs.Count -eq 0) { return $false }
   foreach ($arg in $CommandArgs) {
@@ -289,7 +275,7 @@ if ($Tool -eq "opencode") {
   $env:OPENCODE_CONFIG_DIR = Join-Path $wrapperDir "opencode-config"
 }
 
-$launchDir = Resolve-Memory-Launch-Dir
+$launchDir = ""
 if ($Tool -eq "codex") {
   Write-Live-Log "launch codex managed session=$env:DMUX_SESSION_ID project=$env:DMUX_PROJECT_ID binary=$realBin hooks=$hooksFeature"
 } else {

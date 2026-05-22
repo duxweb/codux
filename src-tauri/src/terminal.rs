@@ -717,7 +717,6 @@ impl TerminalEnvironment {
             .prepare_launch_artifacts(MemoryLaunchRequest {
                 project_id: project_id.to_string(),
                 project_name: project_name.clone(),
-                project_path: project_path.to_string(),
                 settings: ai_settings,
             })
         {
@@ -726,12 +725,12 @@ impl TerminalEnvironment {
                 artifacts.workspace_root,
             );
             values.insert(
-                "DMUX_AI_MEMORY_WORKSPACE_LINK".to_string(),
-                artifacts.workspace_link,
-            );
-            values.insert(
                 "DMUX_AI_MEMORY_PROMPT_FILE".to_string(),
                 artifacts.prompt_file,
+            );
+            values.insert(
+                "DMUX_AI_MEMORY_INDEX_FILE".to_string(),
+                artifacts.index_file,
             );
         }
 

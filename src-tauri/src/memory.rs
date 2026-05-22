@@ -222,7 +222,6 @@ pub struct MemoryExtractionStatusSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct MemoryLaunchArtifacts {
     pub workspace_root: String,
-    pub workspace_link: String,
     pub prompt_file: String,
     pub index_file: String,
 }
@@ -231,7 +230,6 @@ pub struct MemoryLaunchArtifacts {
 pub struct MemoryLaunchRequest {
     pub project_id: String,
     pub project_name: String,
-    pub project_path: String,
     pub settings: AISettings,
 }
 
@@ -380,7 +378,6 @@ impl MemoryStore {
             .join("runtime-root")
             .join("memory-workspaces")
             .join(safe_path_segment(&request.project_id));
-        let workspace_link = root.join("workspace");
         let prompt_file = root.join("memory-prompt.txt");
         let index_file = root.join("MEMORY.md");
 
@@ -444,7 +441,6 @@ impl MemoryStore {
         if fs::create_dir_all(&root).is_err() {
             return None;
         }
-        replace_workspace_link(&workspace_link, Path::new(&request.project_path)).ok()?;
         fs::write(&prompt_file, prompt_text).ok()?;
         fs::write(&index_file, index_text).ok()?;
         fs::write(
@@ -473,7 +469,6 @@ impl MemoryStore {
 
         Some(MemoryLaunchArtifacts {
             workspace_root: root.display().to_string(),
-            workspace_link: workspace_link.display().to_string(),
             prompt_file: prompt_file.display().to_string(),
             index_file: index_file.display().to_string(),
         })
@@ -2497,7 +2492,7 @@ fn render_index_text(context: &MemoryContextPayload, root: &Path) -> String {
         return sections.join("\n\n");
     }
     sections.push(format!(
-        "# MEMORY.md\n\nProject context: {}\nApply relevant memory as guidance, not as source of truth.\nPrefer current repository state and user instructions over stale memory.\n\n## Load order\n1. Use this index first.\n2. Open topic files only when they are relevant to the current task.\n3. Full transcripts are not injected; use memory search only when history is needed.\n\n## Topic files\n- `memory-user.md`: cross-project user preferences and habits.\n- `memory-project.md`: project-specific decisions, conventions, and facts.\n- `memory-recent.md`: fresh working notes from recent sessions.\n- `memory-search.md`: search-only memory guidance and current injection limits.\n\nMemory workspace: {}\nProject workspace symlink: `workspace/`",
+        "# MEMORY.md\n\nProject context: {}\nApply relevant memory as guidance, not as source of truth.\nPrefer current repository state and user instructions over stale memory.\n\n## Load order\n1. Use this index first.\n2. Open topic files only when they are relevant to the current task.\n3. Full transcripts are not injected; use memory search only when history is needed.\n\n## Topic files\n- `memory-user.md`: cross-project user preferences and habits.\n- `memory-project.md`: project-specific decisions, conventions, and facts.\n- `memory-recent.md`: fresh working notes from recent sessions.\n- `memory-search.md`: search-only memory guidance and current injection limits.\n\nMemory files directory: {}",
         context.project_name,
         root.display()
     ));
@@ -2665,22 +2660,6 @@ fn document_tool_name(tool: &str) -> &'static str {
         "gemini" => "Gemini",
         _ => "AI tool",
     }
-}
-
-fn replace_workspace_link(link: &Path, target: &Path) -> Result<()> {
-    if link.exists() || link.symlink_metadata().is_ok() {
-        let _ = fs::remove_file(link);
-        let _ = fs::remove_dir_all(link);
-    }
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(target, link)?;
-    }
-    #[cfg(windows)]
-    {
-        std::os::windows::fs::symlink_dir(target, link)?;
-    }
-    Ok(())
 }
 
 fn unique_entries(entries: Vec<MemoryEntry>) -> Vec<MemoryEntry> {
