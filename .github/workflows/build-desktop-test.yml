@@ -35,25 +35,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
-    name: build-test (${{ matrix.id }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - id: macos-universal
-            platform: macos-latest
-            args: --target universal-apple-darwin
-            bundle_dir: src-tauri/target/universal-apple-darwin/release/bundle
-            enabled_input: macos
-          - id: windows-x86_64
-            platform: windows-latest
-            args: ""
-            bundle_dir: src-tauri/target/release/bundle
-            enabled_input: windows
-
-    if: ${{ inputs.platform == 'all' || inputs.platform == matrix.enabled_input }}
-    runs-on: ${{ matrix.platform }}
+  macos:
+    name: build-test (macos-universal)
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'macos' }}
+    runs-on: macos-latest
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -85,7 +70,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ startsWith(matrix.id, 'macos-') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Cache Rust build
         uses: actions/cache@v4
@@ -94,17 +79,21 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: test-rust-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: test-rust-${{ runner.os }}-macos-universal-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            test-rust-${{ runner.os }}-${{ matrix.id }}-
-            rust-${{ runner.os }}-${{ matrix.id }}-
+            test-rust-${{ runner.os }}-macos-universal-
+            rust-${{ runner.os }}-macos-universal-
             rust-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Apply test build version
+        shell: bash
+        run: node scripts/release/prepare-release.mjs "${{ inputs.ref }}" beta
+
       - name: Import Apple signing certificate
-        if: startsWith(matrix.id, 'macos-') && startsWith(inputs.mac_signing, 'developer-id')
+        if: startsWith(inputs.mac_signing, 'developer-id')
         shell: bash
         run: |
           certificate_path="$RUNNER_TEMP/apple-certificate.p12"
@@ -123,35 +112,102 @@ jobs:
         shell: bash
         run: |
           extra_args=()
-          if [[ "${{ matrix.id }}" == macos-* ]]; then
-            case "${{ inputs.mac_signing }}" in
-              developer-id-skip-stapling)
-                extra_args+=(--skip-stapling)
-                ;;
-              developer-id-notarized)
-                ;;
-              adhoc)
-                unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID KEYCHAIN_PASSWORD
-                extra_args+=(--config '{"bundle":{"macOS":{"signingIdentity":"-","hardenedRuntime":false}}}')
-                ;;
-              unsigned)
-                extra_args+=(--no-sign)
-                ;;
-            esac
-          fi
-          pnpm tauri build ${{ matrix.args }} "${extra_args[@]}"
+          case "${{ inputs.mac_signing }}" in
+            developer-id-skip-stapling)
+              extra_args+=(--skip-stapling)
+              ;;
+            developer-id-notarized)
+              ;;
+            adhoc)
+              unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID KEYCHAIN_PASSWORD
+              extra_args+=(--config '{"bundle":{"macOS":{"signingIdentity":"-","hardenedRuntime":false}}}')
+              ;;
+            unsigned)
+              extra_args+=(--no-sign)
+              ;;
+          esac
+          pnpm tauri build --target universal-apple-darwin "${extra_args[@]}"
 
       - name: Stage bundle artifacts
         shell: bash
         env:
-          BUNDLE_SOURCE_DIR: ${{ matrix.bundle_dir }}
-          RELEASE_BUILD_ID: ${{ matrix.id }}-test
+          BUNDLE_SOURCE_DIR: src-tauri/target/universal-apple-darwin/release/bundle
+          RELEASE_BUILD_ID: macos-universal-test
           RELEASE_STAGE_DIR: release-artifacts
         run: node scripts/release/stage-bundle-artifacts.mjs
 
       - name: Upload bundle artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: test-bundle-${{ matrix.id }}
-          path: release-artifacts/${{ matrix.id }}-test/*
+          name: test-bundle-macos-universal
+          path: release-artifacts/macos-universal-test/*
+          if-no-files-found: error
+
+  windows:
+    name: build-test (windows-x86_64)
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'windows' }}
+    runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: test-rust-${{ runner.os }}-windows-x86_64-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            test-rust-${{ runner.os }}-windows-x86_64-
+            rust-${{ runner.os }}-windows-x86_64-
+            rust-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply test build version
+        shell: bash
+        env:
+          RELEASE_WINDOWS_BUNDLE_VERSION: true
+        run: node scripts/release/prepare-release.mjs "${{ inputs.ref }}" beta
+
+      - name: Build desktop bundle
+        shell: bash
+        run: pnpm tauri build
+
+      - name: Stage bundle artifacts
+        shell: bash
+        env:
+          BUNDLE_SOURCE_DIR: src-tauri/target/release/bundle
+          RELEASE_BUILD_ID: windows-x86_64-test
+          RELEASE_STAGE_DIR: release-artifacts
+        run: node scripts/release/stage-bundle-artifacts.mjs
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-bundle-windows-x86_64
+          path: release-artifacts/windows-x86_64-test/*
           if-no-files-found: error
