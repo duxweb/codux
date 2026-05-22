@@ -1,0 +1,157 @@
+name: Build Desktop Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or commit to build."
+        required: false
+        default: main
+        type: string
+      platform:
+        description: "Platform to build."
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - macos
+          - windows
+      mac_signing:
+        description: "macOS signing mode."
+        required: false
+        default: developer-id-skip-stapling
+        type: choice
+        options:
+          - developer-id-skip-stapling
+          - developer-id-notarized
+          - adhoc
+          - unsigned
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: build-test (${{ matrix.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos-universal
+            platform: macos-latest
+            args: --target universal-apple-darwin
+            bundle_dir: src-tauri/target/universal-apple-darwin/release/bundle
+            enabled_input: macos
+          - id: windows-x86_64
+            platform: windows-latest
+            args: ""
+            bundle_dir: src-tauri/target/release/bundle
+            enabled_input: windows
+
+    if: ${{ inputs.platform == 'all' || inputs.platform == matrix.enabled_input }}
+    runs-on: ${{ matrix.platform }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.id, 'macos-') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: test-rust-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            test-rust-${{ runner.os }}-${{ matrix.id }}-
+            rust-${{ runner.os }}-${{ matrix.id }}-
+            rust-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Import Apple signing certificate
+        if: startsWith(matrix.id, 'macos-') && startsWith(inputs.mac_signing, 'developer-id')
+        shell: bash
+        run: |
+          certificate_path="$RUNNER_TEMP/apple-certificate.p12"
+          keychain_path="$RUNNER_TEMP/apple-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | sed 's/[\" ]//g')
+          security find-identity -v -p codesigning "$keychain_path"
+
+      - name: Build desktop bundle
+        shell: bash
+        run: |
+          extra_args=()
+          if [[ "${{ matrix.id }}" == macos-* ]]; then
+            case "${{ inputs.mac_signing }}" in
+              developer-id-skip-stapling)
+                extra_args+=(--skip-stapling)
+                ;;
+              developer-id-notarized)
+                ;;
+              adhoc)
+                unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID KEYCHAIN_PASSWORD
+                extra_args+=(--config '{"bundle":{"macOS":{"signingIdentity":"-","hardenedRuntime":false}}}')
+                ;;
+              unsigned)
+                extra_args+=(--no-sign)
+                ;;
+            esac
+          fi
+          pnpm tauri build ${{ matrix.args }} "${extra_args[@]}"
+
+      - name: Stage bundle artifacts
+        shell: bash
+        env:
+          BUNDLE_SOURCE_DIR: ${{ matrix.bundle_dir }}
+          RELEASE_BUILD_ID: ${{ matrix.id }}-test
+          RELEASE_STAGE_DIR: release-artifacts
+        run: node scripts/release/stage-bundle-artifacts.mjs
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-bundle-${{ matrix.id }}
+          path: release-artifacts/${{ matrix.id }}-test/*
+          if-no-files-found: error
