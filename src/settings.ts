@@ -16,7 +16,6 @@ export type AppSettings = {
   background: string;
   themeColor: string;
   terminalFontSize: string;
-  terminalRenderer: TerminalRendererMode;
   iconStyle: string;
   notificationChannels: Record<string, NotificationChannelSettings>;
   shortcuts: Record<string, string>;
@@ -27,8 +26,6 @@ export type AppSettings = {
 };
 
 export type AIStatisticsMode = "normalized" | "includingCache";
-
-export type TerminalRendererMode = "auto" | "dom" | "webgl";
 
 export type NotificationChannelSettings = {
   enabled: boolean;
@@ -231,7 +228,6 @@ export const defaultSettings: AppSettings = {
   background: "Auto",
   themeColor: "Blue",
   terminalFontSize: "14",
-  terminalRenderer: "auto",
   iconStyle: "default",
   notificationChannels: {},
   shortcuts: {},
@@ -442,7 +438,6 @@ function normalizeAppSettings(settings: Partial<AppSettings>): AppSettings {
     },
     ai: normalizeAISettings(settings.ai, settings.pet),
     statisticsMode: normalizeStatisticsMode(settings.statisticsMode),
-    terminalRenderer: normalizeTerminalRendererMode(settings.terminalRenderer),
   };
 }
 
@@ -506,11 +501,6 @@ function inferThemeColorFromLegacyBackground(value?: string) {
 
 export function normalizeStatisticsMode(value?: string): AIStatisticsMode {
   return value === "includingCache" ? "includingCache" : "normalized";
-}
-
-export function normalizeTerminalRendererMode(value?: string): TerminalRendererMode {
-  if (value === "dom" || value === "webgl") return value;
-  return "auto";
 }
 
 function normalizeRemoteSettings(settings?: Partial<RemoteSettings>): RemoteSettings {
@@ -630,10 +620,6 @@ export function readTerminalFontSize(settings = readAppSettings()) {
   const parsed = Number(settings.terminalFontSize);
   if (!Number.isFinite(parsed)) return 14;
   return Math.max(10, Math.min(28, Math.round(parsed)));
-}
-
-export function readTerminalRendererMode(settings = readAppSettings()) {
-  return normalizeTerminalRendererMode(settings.terminalRenderer);
 }
 
 export function readConfiguredShell(settings = readAppSettings()) {

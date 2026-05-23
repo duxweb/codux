@@ -663,7 +663,6 @@ function TerminalMode({
               terminalId={pane.terminalId}
               detached={Boolean(pane.detached)}
               active={visible && pane.terminalId === activeTerminalId}
-              webglActive={visible && activeTerminalId === pane.terminalId && visibleTopPanes.length === 1}
               canClose={visibleTopPanes.length > 1}
               focusRequest={focusRequest}
               onActivate={() => activateTerminal(pane.terminalId, { focus: true })}
@@ -850,7 +849,6 @@ function TerminalPane({
   terminalId,
   detached,
   active,
-  webglActive,
   canClose,
   focusRequest,
   onActivate,
@@ -861,7 +859,6 @@ function TerminalPane({
   terminalId: string;
   detached: boolean;
   active: boolean;
-  webglActive: boolean;
   canClose: boolean;
   focusRequest: number;
   onActivate: () => void;
@@ -921,7 +918,6 @@ function TerminalPane({
           terminalId={terminalId}
           chrome={false}
           active={active}
-          webglActive={webglActive}
           focusRequest={focusRequest}
         />
       )}

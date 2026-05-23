@@ -10,7 +10,6 @@ import {
   GitBranch,
   KeyRound,
   Minus,
-  MoreHorizontal,
   Plus,
   RefreshCw,
   Server,
@@ -3431,14 +3430,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
       toolRankingRows: toolRows(sessions, historySnapshot.toolBreakdown, indexedBaselines, statisticsMode),
       modelRankingRows: modelRows(sessions, historySnapshot.modelBreakdown, indexedBaselines, statisticsMode),
     };
-  }, [
-    historySnapshot.modelBreakdown,
-    historySnapshot.projectSummary,
-    historySnapshot.toolBreakdown,
-    indexedBaselines,
-    sessions,
-    statisticsMode,
-  ]);
+  }, [historySnapshot, indexedBaselines, sessions, statisticsMode]);
   const refreshAIHistory = useCallback(async () => {
     manualRefreshStartedAtRef.current = Date.now();
     setManualRefreshFeedbackVisible(true);
@@ -3760,10 +3752,6 @@ function formatTokens(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return String(Math.max(0, Math.floor(value)));
-}
-
-function sessionDeltaTokens(session: AISessionSnapshot) {
-  return Math.max(0, session.totalTokens - session.baselineTotalTokens);
 }
 
 function displayedSessionDeltaTokens(
@@ -4440,6 +4428,7 @@ function SSHProfileDialog({
   onSubmit: () => void;
 }) {
   const validationError = draft ? sshDraftValidationError(draft) : null;
+  const draftIdentity = draft ? (draft.id ?? "new") : "closed";
   const [showValidation, setShowValidation] = useState(false);
   const [isTesting, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<SSHProfileTestResult | null>(null);
@@ -4447,7 +4436,7 @@ function SSHProfileDialog({
   useEffect(() => {
     setShowValidation(false);
     setTestResult(null);
-  }, [Boolean(draft), draft?.id]);
+  }, [draftIdentity]);
   const set = <DraftKey extends keyof SSHProfileDraft>(key: DraftKey, value: SSHProfileDraft[DraftKey]) => {
     if (draft) {
       setShowValidation(false);

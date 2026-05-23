@@ -361,7 +361,9 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
             if pointer.is_null() {
                 None
             } else {
-                Some(mem::transmute::<*mut libc::c_void, ResponsibilityFn>(pointer))
+                Some(mem::transmute::<*mut libc::c_void, ResponsibilityFn>(
+                    pointer,
+                ))
             }
         });
 
@@ -539,13 +541,8 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
     }
 
     fn process_handle(pid: u32) -> Option<HANDLE> {
-        let handle = unsafe {
-            OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
-                0,
-                pid,
-            )
-        };
+        let handle =
+            unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, 0, pid) };
         (!handle.is_null()).then_some(handle)
     }
 

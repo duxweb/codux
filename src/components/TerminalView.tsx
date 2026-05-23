@@ -7,9 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   readAppSettings,
   readTerminalFontSize,
-  readTerminalRendererMode,
   subscribeAppSettings,
-  type TerminalRendererMode,
 } from "../settings";
 import { registerTerminalInput } from "../terminal/focus";
 import { installTerminalTextInputAdapter, type TerminalTextInputAdapter } from "../terminal/inputAdapter";
@@ -44,24 +42,22 @@ type TerminalRendererAdapter = {
 
 const MIN_COLS = 20;
 const MIN_ROWS = 8;
-const ACTIVE_WRITE_INTERVAL_MS = 16;
-const INACTIVE_WRITE_INTERVAL_MS = 80;
+const INTERACTIVE_WRITE_INTERVAL_MS = 16;
+const STREAM_WRITE_INTERVAL_MS = 72;
+const INACTIVE_WRITE_INTERVAL_MS = 200;
 const MAX_QUEUED_WRITE_BYTES = 256 * 1024;
+const MAX_WRITE_BYTES_PER_FLUSH = 96 * 1024;
+const MAX_WRITE_TEXT_PER_FLUSH = 96 * 1024;
+const INTERACTIVE_WRITE_MIN_DELAY_MS = 8;
+const STREAM_WRITE_MIN_DELAY_MS = 40;
+const INACTIVE_WRITE_MIN_DELAY_MS = 96;
+const OVERFLOW_WRITE_MIN_DELAY_MS = 4;
+const LOCAL_INPUT_LOW_LATENCY_MS = 350;
 const isWindowsTerminal = isWindowsPlatform();
 const TERMINAL_FONT_FAMILY =
   '"Berkeley Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
 
-type TerminalResolvedRenderer = "dom" | "webgl";
-
-function resolveTerminalRenderer(mode: TerminalRendererMode): TerminalResolvedRenderer {
-  if (mode === "auto") return isWindowsTerminal ? "webgl" : "dom";
-  return mode;
-}
-
-function resolveViewTerminalRenderer(mode: TerminalRendererMode, webglAllowed: boolean): TerminalResolvedRenderer {
-  if (!webglAllowed) return "dom";
-  return resolveTerminalRenderer(mode);
-}
+type TerminalResolvedRenderer = "webgl";
 
 function cssVar(style: CSSStyleDeclaration, name: string, fallback: string) {
   return style.getPropertyValue(name).trim() || fallback;
@@ -110,14 +106,12 @@ type XtermWithSelectionInternals = XtermTerminal & {
 
 function XtermRenderer({
   className,
-  webglActive,
   writeActive,
   onAdapter,
   onData,
   onResize,
 }: {
   className: string;
-  webglActive: boolean;
   writeActive: boolean;
   onAdapter: (adapter: TerminalRendererAdapter | null) => void;
   onData: (data: string) => void;
@@ -149,9 +143,9 @@ function XtermRenderer({
     let webglRemoveTextureAtlasDisposable: IDisposable | null = null;
     let webglLoadVersion = 0;
     let writeTimer: number | null = null;
-    let writeFrame: number | null = null;
     let writeInFlight = false;
     let lastWriteFlushAt = 0;
+    let lastLocalInputAt = 0;
     let queuedText = "";
     const queuedBytes: Uint8Array[] = [];
     let queuedByteLength = 0;
@@ -254,20 +248,11 @@ function XtermRenderer({
         });
     };
 
-    const setRenderer = (renderer: TerminalResolvedRenderer) => {
-      if (renderer === "webgl") {
-        enableWebgl();
-        return;
-      }
-      disposeWebgl();
+    const setRenderer = (_renderer: TerminalResolvedRenderer) => {
+      enableWebgl();
     };
 
-    setRenderer(
-      resolveViewTerminalRenderer(
-        readTerminalRendererMode(),
-        webglActive && document.visibilityState !== "hidden",
-      ),
-    );
+    setRenderer("webgl");
 
     const releaseSelectionDrag = (reason: string) => {
       if (!isSelecting) return;
@@ -327,76 +312,108 @@ function XtermRenderer({
       terminal.options.theme = xtermTheme(host);
     };
 
+    const hasQueuedWrites = () => queuedBytes.length > 0 || queuedText.length > 0;
+
+    const takeQueuedBytes = (budget: number) => {
+      const length = Math.min(Math.max(0, budget), queuedByteLength);
+      const chunk = new Uint8Array(length);
+      let offset = 0;
+      while (offset < length && queuedBytes.length > 0) {
+        const source = queuedBytes[0];
+        const remaining = length - offset;
+        if (source.length <= remaining) {
+          chunk.set(source, offset);
+          offset += source.length;
+          queuedBytes.shift();
+          queuedByteLength -= source.length;
+          continue;
+        }
+        chunk.set(source.subarray(0, remaining), offset);
+        queuedBytes[0] = source.subarray(remaining);
+        queuedByteLength -= remaining;
+        offset = length;
+      }
+      return chunk;
+    };
+
+    const takeQueuedText = (budget: number) => {
+      const chunk = queuedText.slice(0, budget);
+      queuedText = queuedText.slice(chunk.length);
+      return chunk;
+    };
+
+    const clearQueuedWrites = () => {
+      queuedText = "";
+      queuedBytes.length = 0;
+      queuedByteLength = 0;
+    };
+
     const flushQueuedWrites = () => {
       writeTimer = null;
-      writeFrame = null;
       if (disposed) return;
       if (writeInFlight) return;
-      if (queuedBytes.length === 0 && !queuedText) return;
+      if (!hasQueuedWrites()) return;
 
       writeInFlight = true;
       lastWriteFlushAt = performance.now();
       const finishWrite = () => {
         writeInFlight = false;
-        if (!disposed && (queuedBytes.length > 0 || queuedText)) {
+        if (!disposed && hasQueuedWrites()) {
           scheduleQueuedWrite();
         }
       };
 
-      const text = queuedText;
-      queuedText = "";
       if (queuedBytes.length > 0) {
-        const totalLength = queuedBytes.reduce((sum, chunk) => sum + chunk.length, 0);
-        const combined = new Uint8Array(totalLength);
-        let offset = 0;
-        for (const chunk of queuedBytes) {
-          combined.set(chunk, offset);
-          offset += chunk.length;
-        }
-        queuedBytes.length = 0;
-        queuedByteLength = 0;
-        if (text) {
-          terminal.write(combined);
-          terminal.write(text, finishWrite);
-        } else {
-          terminal.write(combined, finishWrite);
-        }
+        terminal.write(takeQueuedBytes(MAX_WRITE_BYTES_PER_FLUSH), finishWrite);
         return;
       }
-      terminal.write(text, finishWrite);
+      terminal.write(takeQueuedText(MAX_WRITE_TEXT_PER_FLUSH), finishWrite);
     };
 
     const scheduleQueuedWrite = () => {
-      if (writeTimer !== null || writeFrame !== null || writeInFlight) return;
-      if (writeActiveRef.current && queuedByteLength < MAX_QUEUED_WRITE_BYTES) {
-        writeFrame = window.requestAnimationFrame(flushQueuedWrites);
-        return;
-      }
-      const interval = writeActiveRef.current ? ACTIVE_WRITE_INTERVAL_MS : INACTIVE_WRITE_INTERVAL_MS;
+      if (writeTimer !== null || writeInFlight) return;
+      const now = performance.now();
+      const lowLatency = now - lastLocalInputAt < LOCAL_INPUT_LOW_LATENCY_MS;
+      const interval = lowLatency
+        ? INTERACTIVE_WRITE_INTERVAL_MS
+        : writeActiveRef.current
+          ? STREAM_WRITE_INTERVAL_MS
+          : INACTIVE_WRITE_INTERVAL_MS;
       const elapsed = performance.now() - lastWriteFlushAt;
-      const delay = queuedByteLength >= MAX_QUEUED_WRITE_BYTES ? 0 : Math.max(0, interval - elapsed);
+      const minDelay = lowLatency
+        ? INTERACTIVE_WRITE_MIN_DELAY_MS
+        : writeActiveRef.current
+          ? STREAM_WRITE_MIN_DELAY_MS
+          : INACTIVE_WRITE_MIN_DELAY_MS;
+      const delay =
+        queuedByteLength >= MAX_QUEUED_WRITE_BYTES
+          ? OVERFLOW_WRITE_MIN_DELAY_MS
+          : Math.max(minDelay, interval - elapsed);
       writeTimer = window.setTimeout(flushQueuedWrites, delay);
     };
 
     const writeQueued = (data: string | Uint8Array) => {
       if (disposed) return;
       if (typeof data === "string") {
+        if (!data) return;
         queuedText += data;
       } else {
+        if (data.length === 0) return;
         queuedBytes.push(data);
         queuedByteLength += data.length;
       }
       scheduleQueuedWrite();
     };
 
+    const sendTerminalInput = (data: string) => {
+      lastLocalInputAt = performance.now();
+      onData(data);
+    };
+
     const flushQueuedWritesNow = () => {
       if (writeTimer !== null) {
         window.clearTimeout(writeTimer);
         writeTimer = null;
-      }
-      if (writeFrame !== null) {
-        window.cancelAnimationFrame(writeFrame);
-        writeFrame = null;
       }
       flushQueuedWrites();
     };
@@ -439,7 +456,7 @@ function XtermRenderer({
       if (sequence) {
         event.preventDefault();
         event.stopPropagation();
-        onData(sequence);
+        sendTerminalInput(sequence);
         return false;
       }
       return true;
@@ -449,7 +466,7 @@ function XtermRenderer({
       terminal.onData((data) => {
         if (!inputEnabled) return;
         textInputAdapter?.noteNativeData(data);
-        onData(data);
+        sendTerminalInput(data);
       }),
       terminal.onResize(({ cols, rows }) => onResize(cols, rows)),
     );
@@ -464,17 +481,19 @@ function XtermRenderer({
       },
       reset: (history) => {
         flushQueuedWritesNow();
+        clearQueuedWrites();
         terminal.reset();
-        if (history) terminal.write(history);
+        if (history) writeQueued(history);
         scheduleFit(true);
       },
       clear: () => {
         flushQueuedWritesNow();
+        clearQueuedWrites();
         terminal.reset();
       },
       focus: () => {
         if (!inputEnabled) return;
-        terminal.options.cursorBlink = true;
+        terminal.options.cursorBlink = false;
         terminal.focus();
       },
       blur: () => {
@@ -493,7 +512,7 @@ function XtermRenderer({
       setInputEnabled: (enabled) => {
         inputEnabled = enabled;
         terminal.options.disableStdin = !enabled;
-        terminal.options.cursorBlink = enabled && document.activeElement === textarea;
+        terminal.options.cursorBlink = false;
         host.toggleAttribute("data-input-disabled", !enabled);
         if (!enabled) {
           terminal.blur();
@@ -529,13 +548,7 @@ function XtermRenderer({
           window.clearTimeout(writeTimer);
           writeTimer = null;
         }
-        if (writeFrame !== null) {
-          window.cancelAnimationFrame(writeFrame);
-          writeFrame = null;
-        }
-        queuedText = "";
-        queuedBytes.length = 0;
-        queuedByteLength = 0;
+        clearQueuedWrites();
         host.removeEventListener("mousedown", markSelectionStart, true);
         host.removeEventListener("pointerdown", focusTerminalFromPointer, true);
         window.removeEventListener("pointerup", releaseSelectionAfterMouseEnd, true);
@@ -569,7 +582,7 @@ function releaseWebglCanvas(canvas: HTMLCanvasElement) {
   try {
     gl = canvas.getContext("webgl2") as WebGL2RenderingContext | null;
   } catch {
-    gl = null;
+    // Some WebKit builds throw after context loss; fall back to webgl below.
   }
   if (!gl) {
     try {
@@ -621,7 +634,6 @@ type Props = {
   terminalId: string;
   chrome?: boolean;
   active?: boolean;
-  webglActive?: boolean;
   focusRequest?: number;
   onClose?: () => void;
   onDetach?: () => void;
@@ -638,7 +650,6 @@ export function TerminalView({
   terminalId,
   chrome = true,
   active = true,
-  webglActive = active,
   focusRequest = 0,
   onClose,
   onDetach,
@@ -773,7 +784,6 @@ export function TerminalView({
   useEffect(() => {
     const adapter = adapterRef.current;
     if (!adapter) return;
-    fitAndResize();
 
     if (!active || !canAcceptInput) {
       adapter.setInputEnabled(false);
@@ -797,29 +807,22 @@ export function TerminalView({
       const settings = readAppSettings();
       adapter.setFontSize(readTerminalFontSize(settings));
       adapter.refreshTheme();
-      adapter.setRenderer(
-        resolveViewTerminalRenderer(readTerminalRendererMode(settings), webglActive && canAcceptInput),
-      );
+      adapter.setRenderer("webgl");
     };
     applySettings();
     return subscribeAppSettings(applySettings);
-  }, [adapterVersion, canAcceptInput, webglActive]);
+  }, [adapterVersion]);
 
   useEffect(() => {
     const adapter = adapterRef.current;
     if (!adapter) return;
     const updateRendererActivity = () => {
-      adapter.setRenderer(
-        resolveViewTerminalRenderer(
-          readTerminalRendererMode(),
-          webglActive && canAcceptInput && document.visibilityState !== "hidden",
-        ),
-      );
+      adapter.setRenderer("webgl");
     };
     updateRendererActivity();
     document.addEventListener("visibilitychange", updateRendererActivity);
     return () => document.removeEventListener("visibilitychange", updateRendererActivity);
-  }, [adapterVersion, canAcceptInput, webglActive]);
+  }, [adapterVersion]);
 
   useEffect(() => {
     window.addEventListener("resize", scheduleFitAndResize);
@@ -928,8 +931,8 @@ export function TerminalView({
         </div>
       )}
       <XtermRenderer
+        key="xterm"
         className="terminal-host no-drag"
-        webglActive={webglActive && canAcceptInput}
         writeActive={active && canAcceptInput}
         onAdapter={setAdapter}
         onData={writeTerminalInput}

@@ -63,7 +63,7 @@ export class TerminalRuntime {
     string,
     {
       chunks: Array<{ text: string; bytes?: Uint8Array }>;
-      frame: number | null;
+      scheduled: boolean;
     }
   >();
   private outputTextDecoders = new Map<string, TextDecoder>();
@@ -490,9 +490,12 @@ export class TerminalRuntime {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    const decodedText = this.decodeOutputText(sessionId, bytes);
+    const shouldDecodeForReplay = !session.backendId || !window.__TAURI_INTERNALS__;
+    const decodedText = shouldDecodeForReplay ? this.decodeOutputText(sessionId, bytes) : "";
     const outputText = text || decodedText;
-    session.replayBuffer = trimReplayBuffer(session.replayBuffer + outputText);
+    if (outputText) {
+      session.replayBuffer = trimReplayBuffer(session.replayBuffer + outputText);
+    }
     if (session.backendId && session.state === "starting") {
       session.state = "running";
       this.emit(sessionId, { type: "state", session: { ...session } });
@@ -503,23 +506,18 @@ export class TerminalRuntime {
   private enqueueOutput(sessionId: string, text: string, bytes?: Uint8Array) {
     let queue = this.outputQueues.get(sessionId);
     if (!queue) {
-      queue = { chunks: [], frame: null };
+      queue = { chunks: [], scheduled: false };
       this.outputQueues.set(sessionId, queue);
     }
     queue.chunks.push({ text, bytes });
-    if (queue.frame !== null) return;
-    queue.frame = scheduleAnimationFrame(() => {
-      this.flushOutputQueue(sessionId);
-    });
+    if (queue.scheduled) return;
+    queue.scheduled = true;
+    queueMicrotask(() => this.flushOutputQueue(sessionId));
   }
 
   private flushOutputQueue(sessionId: string) {
     const queue = this.outputQueues.get(sessionId);
     if (!queue) return;
-    if (queue.frame !== null) {
-      cancelScheduledAnimationFrame(queue.frame);
-      queue.frame = null;
-    }
     this.outputQueues.delete(sessionId);
     const session = this.sessions.get(sessionId);
     if (!session || queue.chunks.length === 0) return;
@@ -540,13 +538,11 @@ export class TerminalRuntime {
   }
 
   private emit(sessionId: string, event: TerminalRuntimeEvent) {
-    queueMicrotask(() => {
-      const listeners = this.listeners.get(sessionId);
-      if (!listeners?.size) return;
-      for (const listener of listeners) {
-        listener(event);
-      }
-    });
+    const listeners = this.listeners.get(sessionId);
+    if (!listeners?.size) return;
+    for (const listener of [...listeners]) {
+      listener(event);
+    }
   }
 
   private decodeOutputText(sessionId: string, bytes?: Uint8Array) {
@@ -600,6 +596,14 @@ function trimReplayBuffer(value: string) {
 
 function decodeBase64Bytes(value?: string) {
   if (!value) return undefined;
+  const fromBase64 = (Uint8Array as typeof Uint8Array & { fromBase64?: (value: string) => Uint8Array }).fromBase64;
+  if (fromBase64) {
+    try {
+      return fromBase64(value);
+    } catch {
+      // Fall back to atob for older WebKit/WebView2 builds.
+    }
+  }
   try {
     const binary = atob(value);
     const bytes = new Uint8Array(binary.length);
@@ -620,16 +624,14 @@ function combineTerminalChunks(chunks: Array<{ text: string; bytes?: Uint8Array 
   if (chunks.length === 1) {
     const chunk = chunks[0];
     return {
-      text: chunk.text,
+      text: "",
       bytes: chunk.bytes ?? encodeTerminalText(chunk.text),
     };
   }
 
-  let text = "";
   let totalLength = 0;
   const encodedChunks: Uint8Array[] = [];
   for (const chunk of chunks) {
-    text += chunk.text;
     const bytes = chunk.bytes ?? encodeTerminalText(chunk.text);
     encodedChunks.push(bytes);
     totalLength += bytes.length;
@@ -641,7 +643,7 @@ function combineTerminalChunks(chunks: Array<{ text: string; bytes?: Uint8Array 
     combined.set(chunk, offset);
     offset += chunk.length;
   }
-  return { text, bytes: combined };
+  return { text: "", bytes: combined };
 }
 
 function nextAnimationFrame() {
@@ -651,21 +653,6 @@ function nextAnimationFrame() {
   return new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => resolve());
   });
-}
-
-function scheduleAnimationFrame(callback: FrameRequestCallback) {
-  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
-    return setTimeout(() => callback(performance.now()), 0) as unknown as number;
-  }
-  return window.requestAnimationFrame(callback);
-}
-
-function cancelScheduledAnimationFrame(frame: number) {
-  if (typeof window === "undefined" || typeof window.cancelAnimationFrame !== "function") {
-    clearTimeout(frame);
-    return;
-  }
-  window.cancelAnimationFrame(frame);
 }
 
 function delay(ms: number) {

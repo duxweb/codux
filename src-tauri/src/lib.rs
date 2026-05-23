@@ -4687,11 +4687,7 @@ impl RemoteHostService {
             if viewers.is_empty() {
                 return;
             }
-            let buffer_length = self
-                .terminals
-                .snapshot(&session_id)
-                .map(|value| value.chars().count())
-                .unwrap_or(0);
+            let buffer_length = self.terminals.buffer_characters(&session_id).unwrap_or(0);
             for device_id in viewers {
                 remote_runtime_log(
                     "terminal-output",

@@ -48,9 +48,29 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/icons.tsx", "src/main.tsx", "src/components/AppIconMark.tsx", "src/components/ContextMenu.tsx"],
+    files: [
+      "src/icons.tsx",
+      "src/main.tsx",
+      "src/updateDialog.tsx",
+      "src/components/AppIconMark.tsx",
+      "src/components/ContextMenu.tsx",
+    ],
     rules: {
       "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: ["scripts/**/*.cjs"],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: "commonjs",
+      globals: {
+        ...globals.node,
+        ...globals.es2020,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   prettier,

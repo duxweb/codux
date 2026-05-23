@@ -46,7 +46,7 @@ describe("terminal runtime", () => {
     });
   });
 
-  it("emits state events to subscribers asynchronously via microtask", async () => {
+  it("emits state events to subscribers without queueing extra microtasks", () => {
     const runtime = new TerminalRuntime();
     const session = runtime.ensureTerminal({
       projectId: "project-a",
@@ -68,9 +68,6 @@ describe("terminal runtime", () => {
       cwd: "/project",
     });
 
-    expect(events).toEqual([]);
-
-    await Promise.resolve();
     expect(events).toEqual(["state:新标题"]);
   });
 
@@ -273,7 +270,7 @@ describe("terminal runtime", () => {
     expect(runtime.getSession(session.id)?.replayBuffer).toBe("推");
   });
 
-  it("rebuilds replay text from byte-only backend events", async () => {
+  it("keeps byte-only backend output out of the frontend replay buffer", async () => {
     const runtime = new TerminalRuntime();
     const session = runtime.ensureTerminal({
       projectId: "project-a",
@@ -311,6 +308,6 @@ describe("terminal runtime", () => {
 
     expect(events).toHaveLength(1);
     expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e, 0xa8]);
-    expect(runtime.getSession(session.id)?.replayBuffer).toBe("推");
+    expect(runtime.getSession(session.id)?.replayBuffer).toBe("");
   });
 });

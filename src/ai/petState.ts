@@ -132,6 +132,12 @@ export type PetLedger = {
   restoreArchived: (legacyId: string) => Promise<void>;
 };
 
+type PetProjectRequest = {
+  id: string;
+  name: string;
+  path: string;
+};
+
 const emptyStats: PetStats = {
   wisdom: 0,
   chaos: 0,
@@ -339,23 +345,13 @@ export async function loadCustomPetSprite(pet: PetCustomPet): Promise<PetCustomP
   return invoke<PetCustomPet>("pet_custom_sprite", { pet });
 }
 
-async function refreshPetLedger(projects: ReturnType<typeof projectRequest>[]) {
+async function refreshPetLedger(projects: PetProjectRequest[]) {
   return invoke<PetSnapshot>("pet_refresh", {
     request: { projects },
   });
 }
 
-function projectRequest(project: WorkspaceProject) {
-  const id = project.rootProjectId ?? project.id;
-  const name = project.name.split(" · ")[0] || project.name;
-  return {
-    id,
-    name,
-    path: project.path,
-  };
-}
-
-function projectRequestsFromKey(projectKey: string): ReturnType<typeof projectRequest>[] {
+function projectRequestsFromKey(projectKey: string): PetProjectRequest[] {
   if (!projectKey) return [];
   return projectKey.split("\u001e").map((item) => {
     const [id = "", rawName = "", path = ""] = item.split("\u001f");

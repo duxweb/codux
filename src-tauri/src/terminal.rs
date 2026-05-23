@@ -24,8 +24,8 @@ use uuid::Uuid;
 
 const MAX_HISTORY_BYTES: usize = 2_000_000;
 const OUTPUT_CHUNK_BYTES: usize = 16 * 1024;
-const OUTPUT_BATCH_BYTES: usize = 64 * 1024;
-const OUTPUT_BATCH_DELAY: Duration = Duration::from_millis(16);
+const OUTPUT_BATCH_BYTES: usize = 192 * 1024;
+const OUTPUT_BATCH_DELAY: Duration = Duration::from_millis(32);
 
 #[cfg(windows)]
 const FALLBACK_PATH: &str = "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0";
@@ -277,6 +277,11 @@ impl TerminalManager {
         session.snapshot()
     }
 
+    pub fn buffer_characters(&self, session_id: &str) -> Result<usize, TerminalError> {
+        let session = self.session(session_id)?;
+        session.buffer_characters()
+    }
+
     fn session(&self, session_id: &str) -> Result<Arc<TerminalSession>, TerminalError> {
         self.sessions
             .lock()
@@ -493,13 +498,21 @@ impl TerminalSession {
             .history
             .lock()
             .map_err(|_| anyhow!("terminal history lock poisoned"))?;
-        Ok(history.to_text_lossy())
+        Ok(history.to_text())
+    }
+
+    fn buffer_characters(&self) -> Result<usize, TerminalError> {
+        let history = self
+            .history
+            .lock()
+            .map_err(|_| anyhow!("terminal history lock poisoned"))?;
+        Ok(history.len_chars())
     }
 
     fn info(&self) -> Option<TerminalSessionSnapshot> {
         let mut info = self.info.lock().ok()?.clone();
         if let Ok(history) = self.history.lock() {
-            info.buffer_characters = history.len_lossy();
+            info.buffer_characters = history.len_chars();
             info.has_buffer = info.buffer_characters > 0;
         }
         Some(info)
@@ -576,7 +589,7 @@ impl TerminalSession {
                                     &mut pending_utf8,
                                     &mut pending_bytes,
                                 );
-                                Self::emit_pending_utf8(&id, &emit, &mut pending_utf8);
+                                Self::emit_pending_utf8(&id, &session, &emit, &mut pending_utf8);
                                 return;
                             }
                             Ok(TerminalReaderMessage::Error(message)) => {
@@ -613,7 +626,7 @@ impl TerminalSession {
                         &mut pending_utf8,
                         &mut pending_bytes,
                     );
-                    Self::emit_pending_utf8(&id, &emit, &mut pending_utf8);
+                    Self::emit_pending_utf8(&id, &session, &emit, &mut pending_utf8);
                     return;
                 }
                 Ok(TerminalReaderMessage::Error(message)) => {
@@ -645,14 +658,24 @@ impl TerminalSession {
         if pending_bytes.is_empty() {
             return;
         }
-        if let Ok(mut history) = session.history.lock() {
-            history.push(pending_bytes);
-        }
         let text = decode_utf8_output(pending_bytes, pending_utf8);
+        let mut buffer_characters = None;
+        if !text.is_empty() {
+            if let Ok(mut history) = session.history.lock() {
+                history.push_text(&text);
+                buffer_characters = Some(history.len_chars());
+            }
+        }
         if let Ok(mut info) = session.info.lock() {
             info.last_active_at = chrono::Utc::now().to_rfc3339();
-            info.buffer_characters = info.buffer_characters.saturating_add(text.chars().count());
-            info.has_buffer = true;
+            if let Some(chars) = buffer_characters {
+                info.buffer_characters = chars;
+                info.has_buffer = chars > 0;
+            } else if !text.is_empty() {
+                info.buffer_characters =
+                    info.buffer_characters.saturating_add(text.chars().count());
+                info.has_buffer = true;
+            }
         }
         emit(TerminalEvent::Output {
             session_id: id.to_string(),
@@ -661,10 +684,31 @@ impl TerminalSession {
         });
     }
 
-    fn emit_pending_utf8(id: &str, emit: &EventSink, pending_utf8: &mut Vec<u8>) {
+    fn emit_pending_utf8(
+        id: &str,
+        session: &Arc<Self>,
+        emit: &EventSink,
+        pending_utf8: &mut Vec<u8>,
+    ) {
         let text = flush_utf8_decoder(pending_utf8);
         if text.is_empty() {
             return;
+        }
+        let mut buffer_characters = None;
+        if let Ok(mut history) = session.history.lock() {
+            history.push_text(&text);
+            buffer_characters = Some(history.len_chars());
+        }
+        if let Ok(mut info) = session.info.lock() {
+            info.last_active_at = chrono::Utc::now().to_rfc3339();
+            if let Some(chars) = buffer_characters {
+                info.buffer_characters = chars;
+                info.has_buffer = chars > 0;
+            } else {
+                info.buffer_characters =
+                    info.buffer_characters.saturating_add(text.chars().count());
+                info.has_buffer = true;
+            }
         }
         emit(TerminalEvent::Output {
             session_id: id.to_string(),
@@ -950,45 +994,50 @@ fn write_tool_permission_settings(settings: &AIRuntimeToolSettings) -> Option<Pa
 
 struct RingHistory {
     max_bytes: usize,
-    len: usize,
-    chunks: VecDeque<Vec<u8>>,
+    len_bytes: usize,
+    len_chars: usize,
+    chunks: VecDeque<String>,
 }
 
 impl RingHistory {
     fn new(max_bytes: usize) -> Self {
         Self {
             max_bytes,
-            len: 0,
+            len_bytes: 0,
+            len_chars: 0,
             chunks: VecDeque::new(),
         }
     }
 
-    fn push(&mut self, bytes: &[u8]) {
-        if bytes.is_empty() {
+    fn push_text(&mut self, text: &str) {
+        if text.is_empty() {
             return;
         }
-        self.chunks.push_back(bytes.to_vec());
-        self.len += bytes.len();
+        let chunk = text.to_string();
+        self.len_bytes += chunk.len();
+        self.len_chars += chunk.chars().count();
+        self.chunks.push_back(chunk);
 
-        while self.len > self.max_bytes {
+        while self.len_bytes > self.max_bytes {
             if let Some(chunk) = self.chunks.pop_front() {
-                self.len = self.len.saturating_sub(chunk.len());
+                self.len_bytes = self.len_bytes.saturating_sub(chunk.len());
+                self.len_chars = self.len_chars.saturating_sub(chunk.chars().count());
             } else {
                 break;
             }
         }
     }
 
-    fn to_text_lossy(&self) -> String {
-        let mut bytes = Vec::with_capacity(self.len);
+    fn to_text(&self) -> String {
+        let mut text = String::with_capacity(self.len_bytes);
         for chunk in &self.chunks {
-            bytes.extend_from_slice(chunk);
+            text.push_str(chunk);
         }
-        String::from_utf8_lossy(&bytes).to_string()
+        text
     }
 
-    fn len_lossy(&self) -> usize {
-        self.to_text_lossy().chars().count()
+    fn len_chars(&self) -> usize {
+        self.len_chars
     }
 }
 
@@ -1433,5 +1482,28 @@ mod tests {
         assert_eq!(value["sessionId"], "term-1");
         assert!(value.get("text").is_none());
         assert_eq!(value["bytesBase64"], "5o6o");
+    }
+
+    #[test]
+    fn ring_history_tracks_character_length_without_redecoding() {
+        let mut history = RingHistory::new(32);
+
+        history.push_text("ab");
+        history.push_text("推理");
+
+        assert_eq!(history.to_text(), "ab推理");
+        assert_eq!(history.len_chars(), 4);
+    }
+
+    #[test]
+    fn ring_history_updates_character_length_when_trimming() {
+        let mut history = RingHistory::new(6);
+
+        history.push_text("abc");
+        history.push_text("推");
+        history.push_text("de");
+
+        assert_eq!(history.to_text(), "推de");
+        assert_eq!(history.len_chars(), 3);
     }
 }

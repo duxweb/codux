@@ -303,12 +303,7 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Aus",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta",
-      "settings.terminal_renderer": "Terminal-Renderer",
-      "settings.terminal_renderer.auto": "Automatisch",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "Automatisch nutzt DOM unter macOS und WebGL unter Windows. Starten Sie Terminal-Tabs neu, damit die Renderer-Änderung wirksam wird."
+      "settings.update.channel.beta": "Beta"
     },
     "en": {
       "settings.ai_auto_refresh": "AI Auto Refresh",
@@ -613,12 +608,7 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Off",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta",
-      "settings.terminal_renderer": "Terminal Renderer",
-      "settings.terminal_renderer.auto": "Auto",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "Auto uses DOM on macOS and WebGL on Windows. Restart terminal tabs to apply renderer changes."
+      "settings.update.channel.beta": "Beta"
     },
     "es": {
       "settings.ai_auto_refresh": "Actualización automática de IA",
@@ -923,12 +913,7 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Desactivado",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta",
-      "settings.terminal_renderer": "Renderizador del terminal",
-      "settings.terminal_renderer.auto": "Automático",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "Automático usa DOM en macOS y WebGL en Windows. Reinicia las pestañas de terminal para aplicar el cambio de renderizador."
+      "settings.update.channel.beta": "Beta"
     },
     "fr": {
       "settings.ai_auto_refresh": "Actualisation auto IA",
@@ -1233,12 +1218,7 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Désactivé",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta",
-      "settings.terminal_renderer": "Moteur de rendu du terminal",
-      "settings.terminal_renderer.auto": "Automatique",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "Automatique utilise DOM sur macOS et WebGL sur Windows. Redémarrez les onglets de terminal pour appliquer le changement de rendu."
+      "settings.update.channel.beta": "Beta"
     },
     "ja": {
       "settings.ai_auto_refresh": "AI 自動更新",
@@ -1543,12 +1523,7 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "オフ",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta",
-      "settings.terminal_renderer": "ターミナル描画方式",
-      "settings.terminal_renderer.auto": "自動",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "自動では macOS で DOM、Windows で WebGL を使用します。描画方式の変更はターミナルタブの再起動後に反映されます。"
+      "settings.update.channel.beta": "Beta"
     },
     "ko": {
       "settings.ai_auto_refresh": "AI 자동 새로고침",
@@ -1853,12 +1828,7 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "꺼짐",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta",
-      "settings.terminal_renderer": "터미널 렌더러",
-      "settings.terminal_renderer.auto": "자동",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "자동은 macOS에서 DOM, Windows에서 WebGL을 사용합니다. 렌더러 변경은 터미널 탭을 다시 시작하면 적용됩니다."
+      "settings.update.channel.beta": "Beta"
     },
     "pt-BR": {
       "settings.ai_auto_refresh": "Atualização automática de IA",
@@ -2163,12 +2133,7 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Desativado",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta",
-      "settings.terminal_renderer": "Renderizador do terminal",
-      "settings.terminal_renderer.auto": "Automático",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "Automático usa DOM no macOS e WebGL no Windows. Reinicie as abas de terminal para aplicar a alteração do renderizador."
+      "settings.update.channel.beta": "Beta"
     },
     "ru": {
       "settings.ai_auto_refresh": "Автообновление ИИ",
@@ -2473,12 +2438,7 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Отключено",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta",
-      "settings.terminal_renderer": "Рендерер терминала",
-      "settings.terminal_renderer.auto": "Авто",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "Авто использует DOM в macOS и WebGL в Windows. Перезапустите вкладки терминала, чтобы применить изменение рендерера."
+      "settings.update.channel.beta": "Beta"
     },
     "zh-Hans": {
       "settings.ai_auto_refresh": "AI 自动刷新",
@@ -2783,12 +2743,7 @@
       "settings.update.status.error": "暂时无法检查更新，请稍后重试。",
       "settings.update.mode.disabled": "已关闭",
       "settings.update.channel.stable": "稳定版",
-      "settings.update.channel.beta": "测试版",
-      "settings.terminal_renderer": "终端渲染方式",
-      "settings.terminal_renderer.auto": "自动",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "自动模式在 macOS 使用 DOM，在 Windows 使用 WebGL。重启终端标签后生效。"
+      "settings.update.channel.beta": "测试版"
     },
     "zh-Hant": {
       "settings.ai_auto_refresh": "AI 自動重新整理",
@@ -3093,12 +3048,7 @@
       "settings.update.status.error": "暫時無法檢查更新，請稍後再試。",
       "settings.update.mode.disabled": "已關閉",
       "settings.update.channel.stable": "穩定版",
-      "settings.update.channel.beta": "測試版",
-      "settings.terminal_renderer": "終端渲染方式",
-      "settings.terminal_renderer.auto": "自動",
-      "settings.terminal_renderer.dom": "DOM",
-      "settings.terminal_renderer.webgl": "WebGL",
-      "settings.terminal_renderer.help": "自動模式在 macOS 使用 DOM，在 Windows 使用 WebGL。重新啟動終端標籤後生效。"
+      "settings.update.channel.beta": "測試版"
     }
   }
 }

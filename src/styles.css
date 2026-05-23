@@ -729,18 +729,22 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
   @apply flex-1 min-w-0 min-h-0 overflow-hidden relative;
   background: var(--terminal-bg);
   contain: layout paint style;
+  width: 100%;
+  max-width: 100%;
 }
 
 .terminal-host .xterm {
   width: 100%;
+  max-width: 100%;
   height: 100%;
   padding: 0;
+  overflow: hidden;
   contain: layout paint style;
 }
 
 .terminal-host .xterm-viewport {
   overflow-y: scroll !important;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
   background: var(--terminal-bg) !important;
 }
@@ -752,10 +756,6 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 .terminal-host .xterm-rows {
   contain: layout paint style;
-}
-
-.terminal-renderer-placeholder {
-  @apply grid place-items-center text-xs text-ink-faint;
 }
 
 .terminal-host {

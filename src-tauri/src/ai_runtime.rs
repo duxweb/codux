@@ -29,10 +29,10 @@ const RUNNING_STALE_SECONDS: f64 = 90.0;
 const POLL_INTERVAL_SECONDS: u64 = 5;
 const RUNNING_STATE_RENEWAL_SECONDS: f64 = 30.0;
 const CODEX_INTERVAL_POLL_MINIMUM_SECONDS: f64 = 60.0;
-const CODEX_LIVE_TRANSCRIPT_TAIL_BYTES: u64 = 256 * 1024;
-const CODEX_LIVE_TRANSCRIPT_TAIL_LINES: usize = 400;
-const TRANSCRIPT_MONITOR_INTERVAL_MS: u64 = 2_000;
-const TRANSCRIPT_POLL_MINIMUM_SECONDS: f64 = 1.5;
+const CODEX_LIVE_TRANSCRIPT_TAIL_BYTES: u64 = 128 * 1024;
+const CODEX_LIVE_TRANSCRIPT_TAIL_LINES: usize = 260;
+const TRANSCRIPT_MONITOR_INTERVAL_MS: u64 = 3_000;
+const TRANSCRIPT_POLL_MINIMUM_SECONDS: f64 = 3.0;
 const RUNTIME_EVENT_FILE_MAX_AGE_SECONDS: f64 = 300.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5481,7 +5481,7 @@ trusted_hash = "sha256:old-basic"
             .unwrap();
         assert!(scan_transcript_monitors(&mut monitors, 101.0).is_empty());
         assert_eq!(
-            scan_transcript_monitors(&mut monitors, 102.0),
+            scan_transcript_monitors(&mut monitors, 103.0),
             vec!["terminal-1".to_string()]
         );
     }
