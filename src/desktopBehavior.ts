@@ -13,6 +13,26 @@ const TEXT_ENTRY_SELECTOR = [
   "[data-codux-terminal-input='true']",
   "[data-allow-tab-navigation]",
 ].join(", ");
+const KEYBOARD_MANAGED_SELECTOR = [
+  TEXT_ENTRY_SELECTOR,
+  "[role='tab']",
+  "[role='tablist']",
+  "[role='menu']",
+  "[role='menuitem']",
+  "[role='menuitemcheckbox']",
+  "[role='menuitemradio']",
+  "[role='listbox']",
+  "[role='option']",
+  "[role='combobox']",
+  "[role='dialog']",
+  "[aria-haspopup='menu']",
+  "[aria-haspopup='listbox']",
+  "[data-slot='tabs']",
+  "[data-slot='tab-list']",
+  "[data-slot='dropdown-menu']",
+  "[data-slot='list-box']",
+  "[data-slot='popover']",
+].join(", ");
 const TEXT_SELECTION_SELECTOR = [
   TEXT_ENTRY_SELECTOR,
   "[data-allow-text-selection]",
@@ -90,7 +110,11 @@ function preventDesktopKeyboardDefaults(event: KeyboardEvent) {
     return;
   }
 
-  if (event.key === "Tab" && !closestElement(event.target, TEXT_ENTRY_SELECTOR)) {
+  if (
+    event.key === "Tab" &&
+    !closestElement(event.target, KEYBOARD_MANAGED_SELECTOR) &&
+    !closestElement(document.activeElement, KEYBOARD_MANAGED_SELECTOR)
+  ) {
     event.preventDefault();
     return;
   }
