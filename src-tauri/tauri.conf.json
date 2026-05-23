@@ -23,7 +23,7 @@
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
-        "backgroundColor": "#2c3037",
+        "backgroundColor": "#14171d",
         "visible": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,

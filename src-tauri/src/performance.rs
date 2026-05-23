@@ -1,5 +1,7 @@
 use serde::Serialize;
 use std::sync::Mutex;
+#[cfg(target_os = "macos")]
+use std::sync::OnceLock;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize)]
@@ -12,7 +14,7 @@ pub struct PerformanceSnapshot {
 #[derive(Default)]
 pub struct PerformanceMonitor {
     previous: Mutex<Option<RawSample>>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     process_cache: Mutex<ProcessCache>,
 }
 
@@ -44,7 +46,12 @@ impl PerformanceMonitor {
         capture_raw_sample(&self.process_cache)
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    fn capture_raw_sample(&self) -> Option<RawSample> {
+        capture_raw_sample(&self.process_cache)
+    }
+
+    #[cfg(all(not(target_os = "macos"), not(windows)))]
     fn capture_raw_sample(&self) -> Option<RawSample> {
         capture_raw_sample()
     }
@@ -70,12 +77,18 @@ impl PerformanceMonitor {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 #[derive(Default)]
 struct ProcessCache {
-    helper_pids: Vec<libc::pid_t>,
+    helper_pids: Vec<MonitoredPid>,
     refreshed_at: Option<Instant>,
 }
+
+#[cfg(target_os = "macos")]
+type MonitoredPid = libc::pid_t;
+
+#[cfg(windows)]
+type MonitoredPid = u32;
 
 fn percent_delta(current: f64, previous: f64, wall_delta: f64) -> f64 {
     let cpu_delta = (current - previous).max(0.0);
@@ -102,7 +115,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
     use libc::{c_char, c_int, c_void, gid_t, pid_t, uid_t};
     use std::mem;
 
-    const CACHE_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
+    const CACHE_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
     const PROC_ALL_PIDS: u32 = 1;
     const PROC_PIDTASKINFO: c_int = 4;
     const PROC_PIDTBSDINFO: c_int = 3;
@@ -334,7 +347,28 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
     }
 
     fn is_webkit_helper(name: &str) -> bool {
-        name.starts_with("com.apple.WebKit.")
+        name.starts_with("com.apple.WebKit")
+    }
+
+    fn responsible_pid(pid: pid_t) -> Option<pid_t> {
+        type ResponsibilityFn = unsafe extern "C" fn(pid_t) -> pid_t;
+        static RESPONSIBILITY_FN: OnceLock<Option<ResponsibilityFn>> = OnceLock::new();
+
+        let function = RESPONSIBILITY_FN.get_or_init(|| unsafe {
+            let symbol = b"responsibility_get_pid_responsible_for_pid\0";
+            let handle = (-2isize) as *mut libc::c_void;
+            let pointer = libc::dlsym(handle, symbol.as_ptr().cast());
+            if pointer.is_null() {
+                None
+            } else {
+                Some(mem::transmute::<*mut libc::c_void, ResponsibilityFn>(pointer))
+            }
+        });
+
+        function.and_then(|function| {
+            let responsible = unsafe { function(pid) };
+            (responsible > 0).then_some(responsible)
+        })
     }
 
     fn refresh_helper_pids(cache: &mut ProcessCache, main_pid: pid_t, now: Instant) {
@@ -349,7 +383,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
             return;
         };
         let earliest_webkit_start = main_identity.started_at_micros.saturating_sub(10_000_000);
-        let latest_webkit_start = main_identity.started_at_micros.saturating_add(120_000_000);
+        let latest_webkit_start = main_identity.started_at_micros.saturating_add(600_000_000);
 
         let mut helper_pids = Vec::new();
 
@@ -366,11 +400,14 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
                 continue;
             }
 
-            if is_webkit_helper(&identity.name)
-                && identity.started_at_micros >= earliest_webkit_start
-                && identity.started_at_micros <= latest_webkit_start
-            {
-                helper_pids.push(identity.pid);
+            if is_webkit_helper(&identity.name) {
+                if responsible_pid(identity.pid) == Some(main_pid)
+                    || (identity.started_at_micros >= earliest_webkit_start
+                        && identity.started_at_micros <= latest_webkit_start
+                        && responsible_pid(identity.pid).is_none())
+                {
+                    helper_pids.push(identity.pid);
+                }
             }
         }
 
@@ -446,13 +483,23 @@ fn timeval_seconds(value: libc::timeval) -> f64 {
 }
 
 #[cfg(windows)]
-fn capture_raw_sample() -> Option<RawSample> {
+fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
+    use std::collections::HashSet;
     use std::mem;
-    use windows_sys::Win32::Foundation::{FILETIME, HANDLE};
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
     use windows_sys::Win32::System::ProcessStatus::{
         GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX2,
     };
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, GetCurrentProcessId, GetProcessTimes, OpenProcess,
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
+    };
+
+    const CACHE_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
     fn filetime_seconds(value: FILETIME) -> f64 {
         let ticks = ((value.dwHighDateTime as u64) << 32) | value.dwLowDateTime as u64;
@@ -491,16 +538,107 @@ fn capture_raw_sample() -> Option<RawSample> {
         Some((cpu_seconds, memory_bytes))
     }
 
+    fn process_handle(pid: u32) -> Option<HANDLE> {
+        let handle = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
+                0,
+                pid,
+            )
+        };
+        (!handle.is_null()).then_some(handle)
+    }
+
+    fn list_process_entries() -> Vec<PROCESSENTRY32W> {
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Vec::new();
+        }
+
+        let mut entries = Vec::new();
+        let mut entry = PROCESSENTRY32W {
+            dwSize: mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+
+        let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+        while ok {
+            entries.push(entry);
+            ok = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+        }
+
+        unsafe {
+            CloseHandle(snapshot);
+        }
+        entries
+    }
+
+    fn refresh_helper_pids(cache: &mut ProcessCache, main_pid: u32, now: Instant) {
+        if cache
+            .refreshed_at
+            .is_some_and(|refreshed_at| now.duration_since(refreshed_at) < CACHE_REFRESH_INTERVAL)
+        {
+            return;
+        }
+
+        let entries = list_process_entries();
+        let mut known_parents = HashSet::from([main_pid]);
+        let mut helper_pids = Vec::new();
+        let mut changed = true;
+
+        while changed {
+            changed = false;
+            for entry in &entries {
+                let pid = entry.th32ProcessID;
+                if pid == 0 || pid == main_pid || known_parents.contains(&pid) {
+                    continue;
+                }
+                if known_parents.contains(&entry.th32ParentProcessID) {
+                    helper_pids.push(pid);
+                    known_parents.insert(pid);
+                    changed = true;
+                }
+            }
+        }
+
+        helper_pids.sort_unstable();
+        helper_pids.dedup();
+        cache.helper_pids = helper_pids;
+        cache.refreshed_at = Some(now);
+    }
+
     let captured_at = Instant::now();
     let process = unsafe { GetCurrentProcess() };
     if process.is_null() {
         return None;
     }
     let (cpu_seconds, memory_bytes) = process_sample(process)?;
+    let main_pid = unsafe { GetCurrentProcessId() };
+    let helper_pids = if let Ok(mut cache) = cache.lock() {
+        refresh_helper_pids(&mut cache, main_pid, captured_at);
+        cache.helper_pids.clone()
+    } else {
+        Vec::new()
+    };
+
+    let mut total_cpu_seconds = cpu_seconds;
+    let mut total_memory_bytes = memory_bytes;
+    for pid in helper_pids {
+        let Some(handle) = process_handle(pid) else {
+            continue;
+        };
+        if let Some((cpu_seconds, memory_bytes)) = process_sample(handle) {
+            total_cpu_seconds += cpu_seconds;
+            total_memory_bytes = total_memory_bytes.saturating_add(memory_bytes);
+        }
+        unsafe {
+            CloseHandle(handle);
+        }
+    }
 
     Some(RawSample {
         captured_at,
-        cpu_seconds,
-        memory_bytes,
+        cpu_seconds: total_cpu_seconds,
+        memory_bytes: total_memory_bytes,
     })
 }

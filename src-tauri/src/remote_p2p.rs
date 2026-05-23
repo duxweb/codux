@@ -262,12 +262,14 @@ impl RemoteP2PHostTransport {
             if let Some(peer) = peer.as_ref() {
                 peer.set_channel(is_upload, dc.clone());
             }
+            let high_watermark = if is_upload {
+                UPLOAD_BUFFERED_AMOUNT_HIGH_WATERMARK
+            } else {
+                TERMINAL_BUFFERED_AMOUNT_HIGH_WATERMARK
+            };
+            let _ = dc.set_buffered_amount_high_threshold(high_watermark).await;
             let _ = dc
-                .set_buffered_amount_low_threshold(if is_upload {
-                    UPLOAD_BUFFERED_AMOUNT_HIGH_WATERMARK / 2
-                } else {
-                    TERMINAL_BUFFERED_AMOUNT_HIGH_WATERMARK / 2
-                })
+                .set_buffered_amount_low_threshold(high_watermark / 2)
                 .await;
 
             while let Some(event) = dc.poll().await {
@@ -321,7 +323,7 @@ impl RemoteP2PHostTransport {
 
     fn handle_connection_state(&self, device_id: String, state: RTCPeerConnectionState) {
         match state {
-            RTCPeerConnectionState::Connected => self.notify_state(&device_id, "connected", None),
+            RTCPeerConnectionState::Connected => {}
             RTCPeerConnectionState::Failed => self.notify_state(&device_id, "failed", None),
             RTCPeerConnectionState::Disconnected => {
                 self.notify_state(&device_id, "disconnected", None)
@@ -412,14 +414,11 @@ impl RemoteP2PPeer {
 
     fn channel(&self, lane: RemoteP2PLane) -> Option<Arc<dyn DataChannel>> {
         if matches!(lane, RemoteP2PLane::Upload) {
-            if let Some(channel) = self
+            return self
                 .upload_channel
                 .lock()
                 .ok()
-                .and_then(|value| value.clone())
-            {
-                return Some(channel);
-            }
+                .and_then(|value| value.clone());
         }
         self.terminal_channel
             .lock()

@@ -5,13 +5,12 @@ use crate::notify_channels::{dispatch_notification_channels, NotificationDispatc
 use crate::paths::{app_slug, home_dir, runtime_temp_dir};
 use crate::project_store::ProjectStore;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{value::RawValue, Value};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::borrow::Cow;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
-#[cfg(unix)]
-use std::io::Read;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, Write};
 #[cfg(unix)]
 use std::net::Shutdown;
 #[cfg(unix)]
@@ -30,8 +29,10 @@ const RUNNING_STALE_SECONDS: f64 = 90.0;
 const POLL_INTERVAL_SECONDS: u64 = 5;
 const RUNNING_STATE_RENEWAL_SECONDS: f64 = 30.0;
 const CODEX_INTERVAL_POLL_MINIMUM_SECONDS: f64 = 60.0;
+const CODEX_LIVE_TRANSCRIPT_TAIL_BYTES: u64 = 256 * 1024;
+const CODEX_LIVE_TRANSCRIPT_TAIL_LINES: usize = 400;
 const TRANSCRIPT_MONITOR_INTERVAL_MS: u64 = 2_000;
-const TRANSCRIPT_POLL_MINIMUM_SECONDS: f64 = 5.0;
+const TRANSCRIPT_POLL_MINIMUM_SECONDS: f64 = 1.5;
 const RUNTIME_EVENT_FILE_MAX_AGE_SECONDS: f64 = 300.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2430,6 +2431,9 @@ fn transcript_signature(path: &Path) -> Option<TranscriptSignature> {
 }
 
 fn should_poll_session(session: &AISessionSnapshot, reason: &str, now: f64) -> bool {
+    if reason == "transcript-tail" && is_codex_transcript_session(session) {
+        return true;
+    }
     if canonical_tool_name(&session.tool).as_deref() == Some("codex")
         && normalized_string(session.transcript_path.as_deref()).is_some()
         && reason == "interval"
@@ -2633,7 +2637,17 @@ fn probe_codex_runtime(request: &AIRuntimeProbeRequest) -> Option<AIRuntimeConte
             let external_id = normalized_string(request.external_session_id.as_deref())?;
             find_codex_rollout_path(&project_path, &external_id)
         })?;
-    let parsed = parse_codex_runtime_state(&file_path, Some(&project_path))?;
+    let parsed = request
+        .started_at
+        .and_then(|started_at| {
+            parse_codex_runtime_state_tail(
+                &file_path,
+                Some(&project_path),
+                started_at,
+                request.updated_at,
+            )
+        })
+        .or_else(|| parse_codex_runtime_state(&file_path, Some(&project_path)))?;
     Some(AIRuntimeContextSnapshot {
         tool: "codex".to_string(),
         external_session_id: normalized_string(request.external_session_id.as_deref()),
@@ -3891,6 +3905,80 @@ fn parse_codex_runtime_state(
 ) -> Option<CodexParsedState> {
     let file = fs::File::open(file_path).ok()?;
     let reader = BufReader::new(file);
+    parse_codex_runtime_lines(
+        reader.lines().map_while(Result::ok),
+        project_path,
+        None,
+        None,
+    )
+}
+
+fn parse_codex_runtime_state_tail(
+    file_path: &Path,
+    project_path: Option<&str>,
+    fallback_started_at: f64,
+    fallback_updated_at: f64,
+) -> Option<CodexParsedState> {
+    let metadata = fs::metadata(file_path).ok()?;
+    if metadata.len() <= CODEX_LIVE_TRANSCRIPT_TAIL_BYTES {
+        return parse_codex_runtime_state(file_path, project_path);
+    }
+    let mut file = fs::File::open(file_path).ok()?;
+    let start = metadata
+        .len()
+        .saturating_sub(CODEX_LIVE_TRANSCRIPT_TAIL_BYTES);
+    file.seek(std::io::SeekFrom::Start(start)).ok()?;
+    let mut reader = BufReader::with_capacity(32 * 1024, file);
+    if start > 0 {
+        let mut partial = String::new();
+        reader.read_line(&mut partial).ok()?;
+    }
+    let lines = read_recent_jsonl_lines(reader, CODEX_LIVE_TRANSCRIPT_TAIL_LINES)?;
+    parse_codex_runtime_lines(
+        lines.into_iter(),
+        project_path,
+        Some(fallback_started_at),
+        Some(fallback_updated_at),
+    )
+}
+
+fn read_recent_jsonl_lines<R>(mut reader: R, limit: usize) -> Option<Vec<String>>
+where
+    R: BufRead,
+{
+    if limit == 0 {
+        return Some(Vec::new());
+    }
+    let mut lines = VecDeque::with_capacity(limit);
+    loop {
+        let mut line = String::new();
+        let bytes = reader.read_line(&mut line).ok()?;
+        if bytes == 0 {
+            break;
+        }
+        while line.ends_with(['\n', '\r']) {
+            line.pop();
+        }
+        if line.is_empty() {
+            continue;
+        }
+        if lines.len() == limit {
+            lines.pop_front();
+        }
+        lines.push_back(line);
+    }
+    Some(lines.into_iter().collect())
+}
+
+fn parse_codex_runtime_lines<I>(
+    lines: I,
+    project_path: Option<&str>,
+    fallback_started_at: Option<f64>,
+    fallback_updated_at: Option<f64>,
+) -> Option<CodexParsedState>
+where
+    I: Iterator<Item = String>,
+{
     let mut state = CodexParsedState {
         origin: "unknown".to_string(),
         ..Default::default()
@@ -3898,32 +3986,32 @@ fn parse_codex_runtime_state(
     let mut latest_cumulative_usage: Option<UsageTotals> = None;
     let mut usage_at_turn_start: Option<UsageTotals> = None;
 
-    for line in reader.lines().map_while(Result::ok) {
-        let Ok(row) = serde_json::from_str::<serde_json::Value>(&line) else {
+    for line in lines {
+        let Ok(row) = serde_json::from_str::<CodexTranscriptRow>(&line) else {
             continue;
         };
-        let timestamp = row
-            .get("timestamp")
-            .and_then(|value| value.as_str())
-            .and_then(parse_iso8601_seconds);
+        let timestamp = row.timestamp.as_deref().and_then(parse_iso8601_seconds);
         if let Some(timestamp) = timestamp {
             state.updated_at = Some(state.updated_at.unwrap_or(timestamp).max(timestamp));
         }
-        let row_type = row.get("type").and_then(|value| value.as_str());
-        let payload = row.get("payload").unwrap_or(&serde_json::Value::Null);
+        let row_type = row.row_type.as_deref();
+        let payload = row
+            .payload
+            .and_then(|payload| serde_json::from_str::<CodexPayloadFields>(payload.get()).ok())
+            .unwrap_or_default();
 
-        if let Some(preview) = codex_assistant_preview(row_type, payload) {
+        if let Some(preview) = codex_assistant_preview(row_type, &payload) {
             state.assistant_preview = Some(preview);
         }
 
         if row_type == Some("turn_context") {
             if project_path
-                .map(|project| payload.get("cwd").and_then(|value| value.as_str()) == Some(project))
+                .map(|project| payload.cwd.as_deref() == Some(project))
                 .unwrap_or(true)
             {
                 if let Some(model) = payload
-                    .get("model")
-                    .and_then(|value| value.as_str())
+                    .model
+                    .as_deref()
                     .and_then(|value| normalized_string(Some(value)))
                 {
                     state.model = Some(model);
@@ -3932,13 +4020,13 @@ fn parse_codex_runtime_state(
             continue;
         }
 
-        let event_type = payload.get("type").and_then(|value| value.as_str());
+        let event_type = payload.payload_type.as_deref();
         let is_final_answer = (row_type == Some("event_msg")
             && event_type == Some("agent_message")
-            && payload.get("phase").and_then(|value| value.as_str()) == Some("final_answer"))
+            && payload.phase.as_deref() == Some("final_answer"))
             || (row_type == Some("response_item")
                 && event_type == Some("message")
-                && payload.get("phase").and_then(|value| value.as_str()) == Some("final_answer"));
+                && payload.phase.as_deref() == Some("final_answer"));
         if is_final_answer {
             let completed_at = timestamp.or(state.updated_at);
             if completed_at >= state.completed_at {
@@ -3954,19 +4042,13 @@ fn parse_codex_runtime_state(
         }
         match event_type {
             Some("task_started") => {
-                state.started_at = payload
-                    .get("started_at")
-                    .and_then(|value| value.as_f64())
-                    .or(timestamp);
+                state.started_at = payload.started_at.or(timestamp);
                 usage_at_turn_start = latest_cumulative_usage.clone();
                 state.was_interrupted = false;
                 state.has_completed_turn = false;
             }
             Some("task_complete") => {
-                let completed_at = payload
-                    .get("completed_at")
-                    .and_then(|value| value.as_f64())
-                    .or(timestamp);
+                let completed_at = payload.completed_at.or(timestamp);
                 if completed_at >= state.completed_at {
                     state.completed_at = completed_at;
                     state.was_interrupted = false;
@@ -3974,10 +4056,7 @@ fn parse_codex_runtime_state(
                 }
             }
             Some("turn_aborted") => {
-                let completed_at = payload
-                    .get("completed_at")
-                    .and_then(|value| value.as_f64())
-                    .or(timestamp);
+                let completed_at = payload.completed_at.or(timestamp);
                 if completed_at >= state.completed_at {
                     state.completed_at = completed_at;
                     state.was_interrupted = true;
@@ -3985,9 +4064,17 @@ fn parse_codex_runtime_state(
                 }
             }
             Some("token_count") => {
-                let info = payload.get("info").unwrap_or(&serde_json::Value::Null);
-                let total_usage = info.get("total_token_usage").and_then(parse_usage_totals);
-                let last_usage = info.get("last_token_usage").and_then(parse_usage_totals);
+                let info = payload
+                    .info
+                    .and_then(|info| serde_json::from_str::<CodexTokenInfo>(info.get()).ok());
+                let total_usage = info
+                    .as_ref()
+                    .and_then(|info| info.total_token_usage.as_ref())
+                    .and_then(usage_totals_from_fields);
+                let last_usage = info
+                    .as_ref()
+                    .and_then(|info| info.last_token_usage.as_ref())
+                    .and_then(usage_totals_from_fields);
                 if let Some(total_usage) = total_usage.clone() {
                     latest_cumulative_usage = Some(total_usage);
                 }
@@ -4009,6 +4096,17 @@ fn parse_codex_runtime_state(
         }
     }
 
+    if state.started_at.is_none() {
+        state.started_at = fallback_started_at;
+    }
+    if let Some(fallback_updated_at) = fallback_updated_at {
+        state.updated_at = Some(
+            state
+                .updated_at
+                .unwrap_or(fallback_updated_at)
+                .max(fallback_updated_at),
+        );
+    }
     state.response_state = match (state.started_at, state.completed_at) {
         (Some(started_at), Some(completed_at)) if completed_at >= started_at => {
             Some("idle".to_string())
@@ -4042,6 +4140,58 @@ fn parse_codex_runtime_state(
     Some(state)
 }
 
+#[derive(Deserialize)]
+struct CodexTranscriptRow<'a> {
+    #[serde(borrow)]
+    timestamp: Option<Cow<'a, str>>,
+    #[serde(rename = "type", borrow)]
+    row_type: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    payload: Option<&'a RawValue>,
+}
+
+#[derive(Default, Deserialize)]
+struct CodexPayloadFields<'a> {
+    #[serde(rename = "type", borrow)]
+    payload_type: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    phase: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    cwd: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    model: Option<Cow<'a, str>>,
+    started_at: Option<f64>,
+    completed_at: Option<f64>,
+    #[serde(borrow)]
+    info: Option<&'a RawValue>,
+    #[serde(borrow)]
+    message: Option<&'a RawValue>,
+    #[serde(borrow)]
+    text: Option<&'a RawValue>,
+    #[serde(borrow)]
+    content: Option<&'a RawValue>,
+    #[serde(borrow)]
+    summary: Option<&'a RawValue>,
+    #[serde(borrow)]
+    summary_text: Option<&'a RawValue>,
+}
+
+#[derive(Default, Deserialize)]
+struct CodexTokenInfo {
+    total_token_usage: Option<UsageTotalsFields>,
+    last_token_usage: Option<UsageTotalsFields>,
+}
+
+#[derive(Default, Deserialize)]
+struct UsageTotalsFields {
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
+    cached_input_tokens: Option<i64>,
+    cache_read_input_tokens: Option<i64>,
+    reasoning_output_tokens: Option<i64>,
+    total_tokens: Option<i64>,
+}
+
 #[derive(Clone, Default)]
 struct UsageTotals {
     input_tokens: i64,
@@ -4050,18 +4200,16 @@ struct UsageTotals {
     total_tokens: i64,
 }
 
-fn parse_usage_totals(value: &serde_json::Value) -> Option<UsageTotals> {
-    let object = value.as_object()?;
-    let raw_input_tokens = json_i64(object.get("input_tokens"));
-    let raw_output_tokens = json_i64(object.get("output_tokens"));
-    let cached_input_tokens = object
-        .get("cached_input_tokens")
-        .and_then(|value| value.as_i64())
-        .unwrap_or_else(|| json_i64(object.get("cache_read_input_tokens")));
-    let reasoning_output_tokens = json_i64(object.get("reasoning_output_tokens"));
+fn usage_totals_from_fields(fields: &UsageTotalsFields) -> Option<UsageTotals> {
+    let raw_input_tokens = fields.input_tokens.unwrap_or(0);
+    let raw_output_tokens = fields.output_tokens.unwrap_or(0);
+    let cached_input_tokens = fields
+        .cached_input_tokens
+        .or(fields.cache_read_input_tokens)
+        .unwrap_or(0);
+    let reasoning_output_tokens = fields.reasoning_output_tokens.unwrap_or(0);
     if raw_input_tokens == 0 && raw_output_tokens == 0 {
-        if let Some(raw_total_tokens) = object.get("total_tokens").and_then(|value| value.as_i64())
-        {
+        if let Some(raw_total_tokens) = fields.total_tokens {
             if raw_total_tokens > 0 {
                 return Some(UsageTotals {
                     input_tokens: raw_total_tokens,
@@ -4084,6 +4232,13 @@ fn parse_usage_totals(value: &serde_json::Value) -> Option<UsageTotals> {
         cached_input_tokens,
         total_tokens,
     })
+}
+
+#[cfg(test)]
+fn parse_usage_totals(value: &serde_json::Value) -> Option<UsageTotals> {
+    serde_json::from_value::<UsageTotalsFields>(value.clone())
+        .ok()
+        .and_then(|fields| usage_totals_from_fields(&fields))
 }
 
 fn resolve_runtime_usage(
@@ -4119,39 +4274,44 @@ fn resolve_runtime_usage(
     })
 }
 
-fn codex_assistant_preview(row_type: Option<&str>, payload: &serde_json::Value) -> Option<String> {
-    let payload_type = payload.get("type").and_then(|value| value.as_str());
+fn codex_assistant_preview(
+    row_type: Option<&str>,
+    payload: &CodexPayloadFields<'_>,
+) -> Option<String> {
+    let payload_type = payload.payload_type.as_deref();
     match row_type {
         Some("event_msg") if payload_type == Some("agent_message") => {
-            sanitized_preview_from_values(&[
-                payload.get("message"),
-                payload.get("text"),
-                payload.get("content"),
-            ])
+            sanitized_preview_from_raw_values(&[payload.message, payload.text, payload.content])
         }
         Some("response_item") if payload_type == Some("reasoning") => {
-            sanitized_preview_from_values(&[
-                payload.get("summary"),
-                payload.get("summary_text"),
-                payload.get("text"),
+            sanitized_preview_from_raw_values(&[
+                payload.summary,
+                payload.summary_text,
+                payload.text,
             ])
         }
         Some("response_item") if payload_type == Some("agentMessage") => {
-            sanitized_preview_from_values(&[
-                payload.get("text"),
-                payload.get("content"),
-                payload.get("message"),
-            ])
+            sanitized_preview_from_raw_values(&[payload.text, payload.content, payload.message])
         }
         Some("response_item") if payload_type == Some("message") => {
-            sanitized_preview_from_values(&[
-                payload.get("content"),
-                payload.get("message"),
-                payload.get("text"),
-            ])
+            sanitized_preview_from_raw_values(&[payload.content, payload.message, payload.text])
         }
         _ => None,
     }
+}
+
+fn sanitized_preview_from_raw_values(values: &[Option<&RawValue>]) -> Option<String> {
+    let parsed = values
+        .iter()
+        .map(|value| {
+            value.and_then(|value| serde_json::from_str::<serde_json::Value>(value.get()).ok())
+        })
+        .collect::<Vec<_>>();
+    let refs = parsed
+        .iter()
+        .map(|value| value.as_ref())
+        .collect::<Vec<_>>();
+    sanitized_preview_from_values(&refs)
 }
 
 fn sanitized_preview_from_values(values: &[Option<&serde_json::Value>]) -> Option<String> {
@@ -5077,6 +5237,38 @@ trusted_hash = "sha256:old-basic"
     }
 
     #[test]
+    fn codex_transcript_tail_parser_reads_large_file_recent_rows() {
+        let path = std::env::temp_dir().join(format!(
+            "codex-tail-large-{}-{}.jsonl",
+            std::process::id(),
+            now_seconds().to_bits()
+        ));
+        let mut content = String::new();
+        for index in 0..5_000 {
+            content.push_str(&format!(
+                r#"{{"timestamp":"2026-04-21T02:00:00Z","type":"event_msg","payload":{{"type":"agent_message","message":"old-{index}"}}}}"#
+            ));
+            content.push('\n');
+        }
+        content.push_str(
+            r#"{"timestamp":"2026-04-21T03:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4","cwd":"/tmp/codex-project"}}"#,
+        );
+        content.push('\n');
+        content.push_str(
+            r#"{"timestamp":"2026-04-21T03:00:01Z","type":"event_msg","payload":{"type":"task_started","started_at":1713668401}}"#,
+        );
+        content.push('\n');
+        fs::write(&path, content).unwrap();
+
+        let parsed =
+            parse_codex_runtime_state_tail(&path, Some("/tmp/codex-project"), 0.0, 0.0).unwrap();
+
+        assert_eq!(parsed.model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(parsed.response_state.as_deref(), Some("responding"));
+        assert!(!parsed.has_completed_turn);
+    }
+
+    #[test]
     fn codex_probe_applies_interrupted_snapshot_without_stop_hook() {
         let transcript = write_temp_transcript(
             "codex-probe-abort",
@@ -5287,11 +5479,33 @@ trusted_hash = "sha256:old-basic"
             .unwrap()
             .write_all(b"again\n")
             .unwrap();
-        assert!(scan_transcript_monitors(&mut monitors, 102.0).is_empty());
+        assert!(scan_transcript_monitors(&mut monitors, 101.0).is_empty());
         assert_eq!(
-            scan_transcript_monitors(&mut monitors, 106.0),
+            scan_transcript_monitors(&mut monitors, 102.0),
             vec!["terminal-1".to_string()]
         );
+    }
+
+    #[test]
+    fn transcript_tail_poll_checks_completed_codex_sessions() {
+        let transcript = write_temp_transcript("codex-tail-poll", &["initial"]);
+        let path = transcript.display().to_string();
+        let mut core = AIRuntimeStateCore::default();
+        assert!(apply_hook_unlocked(
+            &mut core,
+            AIHookEventPayload {
+                metadata: Some(AIHookEventMetadata {
+                    transcript_path: Some(path),
+                    has_completed_turn: Some(true),
+                    ..empty_metadata()
+                }),
+                ..test_hook("turnCompleted", 1010.0)
+            }
+        ));
+        let session = core.sessions.get("terminal-1").unwrap();
+        assert_eq!(session.state, "idle");
+        assert!(session.has_completed_turn);
+        assert!(should_poll_session(session, "transcript-tail", 1020.0));
     }
 
     #[test]

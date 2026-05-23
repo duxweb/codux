@@ -59,6 +59,14 @@ export class TerminalRuntime {
   private eventUnlisten?: UnlistenFn;
   private eventListenPromise?: Promise<void>;
   private backendStartQueue = Promise.resolve();
+  private outputQueues = new Map<
+    string,
+    {
+      chunks: Array<{ text: string; bytes?: Uint8Array }>;
+      frame: number | null;
+    }
+  >();
+  private outputTextDecoders = new Map<string, TextDecoder>();
   private sequence = 0;
 
   ensureTerminal(options: EnsureTerminalOptions) {
@@ -217,6 +225,8 @@ export class TerminalRuntime {
     this.initialSizeResolvers.delete(sessionId);
     this.startOptions.delete(sessionId);
     this.startingSessions.delete(sessionId);
+    this.outputTextDecoders.delete(sessionId);
+    this.flushOutputQueue(sessionId);
     if (session.backendId) {
       this.unregisterBackendSession(session.backendId, sessionId);
     }
@@ -249,6 +259,7 @@ export class TerminalRuntime {
       hasSnapshot: false,
       state: "starting",
     });
+    this.outputTextDecoders.delete(sessionId);
     this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)!, history: "" });
     this.enqueueBackendStart(sessionId, {
       projectId: session.projectId,
@@ -282,6 +293,8 @@ export class TerminalRuntime {
     this.initialSizeResolvers.delete(sessionId);
     this.startOptions.delete(sessionId);
     this.startingSessions.delete(sessionId);
+    this.outputTextDecoders.delete(sessionId);
+    this.flushOutputQueue(sessionId);
     this.emit(sessionId, { type: "closed", sessionId });
     this.listeners.delete(sessionId);
   }
@@ -443,6 +456,7 @@ export class TerminalRuntime {
           state: "exited",
           exitCode: event.exitCode,
         });
+        this.flushTextDecoder(sessionId);
         this.appendOutput(sessionId, `\r\n[process exited${event.exitCode == null ? "" : `: ${event.exitCode}`}]`);
         continue;
       }
@@ -476,15 +490,44 @@ export class TerminalRuntime {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    session.replayBuffer = trimReplayBuffer(session.replayBuffer + text);
+    const decodedText = this.decodeOutputText(sessionId, bytes);
+    const outputText = text || decodedText;
+    session.replayBuffer = trimReplayBuffer(session.replayBuffer + outputText);
     if (session.backendId && session.state === "starting") {
       session.state = "running";
       this.emit(sessionId, { type: "state", session: { ...session } });
     }
+    this.enqueueOutput(sessionId, outputText, bytes);
+  }
+
+  private enqueueOutput(sessionId: string, text: string, bytes?: Uint8Array) {
+    let queue = this.outputQueues.get(sessionId);
+    if (!queue) {
+      queue = { chunks: [], frame: null };
+      this.outputQueues.set(sessionId, queue);
+    }
+    queue.chunks.push({ text, bytes });
+    if (queue.frame !== null) return;
+    queue.frame = scheduleAnimationFrame(() => {
+      this.flushOutputQueue(sessionId);
+    });
+  }
+
+  private flushOutputQueue(sessionId: string) {
+    const queue = this.outputQueues.get(sessionId);
+    if (!queue) return;
+    if (queue.frame !== null) {
+      cancelScheduledAnimationFrame(queue.frame);
+      queue.frame = null;
+    }
+    this.outputQueues.delete(sessionId);
+    const session = this.sessions.get(sessionId);
+    if (!session || queue.chunks.length === 0) return;
+    const { text, bytes } = combineTerminalChunks(queue.chunks);
     this.emit(sessionId, {
       type: "output",
       text,
-      bytes: bytes ?? encodeTerminalText(text),
+      bytes,
       session: sessionSnapshot(session),
     });
   }
@@ -500,10 +543,30 @@ export class TerminalRuntime {
     queueMicrotask(() => {
       const listeners = this.listeners.get(sessionId);
       if (!listeners?.size) return;
-      for (const listener of [...listeners]) {
+      for (const listener of listeners) {
         listener(event);
       }
     });
+  }
+
+  private decodeOutputText(sessionId: string, bytes?: Uint8Array) {
+    if (!bytes?.length) return "";
+    let decoder = this.outputTextDecoders.get(sessionId);
+    if (!decoder) {
+      decoder = new TextDecoder();
+      this.outputTextDecoders.set(sessionId, decoder);
+    }
+    return decoder.decode(bytes, { stream: true });
+  }
+
+  private flushTextDecoder(sessionId: string) {
+    const decoder = this.outputTextDecoders.get(sessionId);
+    if (!decoder) return;
+    const remaining = decoder.decode();
+    this.outputTextDecoders.delete(sessionId);
+    if (remaining) {
+      this.appendOutput(sessionId, remaining);
+    }
   }
 }
 
@@ -553,6 +616,34 @@ function encodeTerminalText(value: string) {
   return new TextEncoder().encode(value);
 }
 
+function combineTerminalChunks(chunks: Array<{ text: string; bytes?: Uint8Array }>) {
+  if (chunks.length === 1) {
+    const chunk = chunks[0];
+    return {
+      text: chunk.text,
+      bytes: chunk.bytes ?? encodeTerminalText(chunk.text),
+    };
+  }
+
+  let text = "";
+  let totalLength = 0;
+  const encodedChunks: Uint8Array[] = [];
+  for (const chunk of chunks) {
+    text += chunk.text;
+    const bytes = chunk.bytes ?? encodeTerminalText(chunk.text);
+    encodedChunks.push(bytes);
+    totalLength += bytes.length;
+  }
+
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of encodedChunks) {
+    combined.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return { text, bytes: combined };
+}
+
 function nextAnimationFrame() {
   if (typeof window === "undefined") {
     return Promise.resolve();
@@ -560,6 +651,21 @@ function nextAnimationFrame() {
   return new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => resolve());
   });
+}
+
+function scheduleAnimationFrame(callback: FrameRequestCallback) {
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    return setTimeout(() => callback(performance.now()), 0) as unknown as number;
+  }
+  return window.requestAnimationFrame(callback);
+}
+
+function cancelScheduledAnimationFrame(frame: number) {
+  if (typeof window === "undefined" || typeof window.cancelAnimationFrame !== "function") {
+    clearTimeout(frame);
+    return;
+  }
+  window.cancelAnimationFrame(frame);
 }
 
 function delay(ms: number) {

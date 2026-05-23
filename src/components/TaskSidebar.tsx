@@ -518,9 +518,9 @@ function formatOpenTitle(label: string) {
 function WorktreeActivityDot({ state }: { state: WorktreeAIState }) {
   if (state === "running") {
     return (
-      <span className="relative grid h-4 w-4 place-items-center rounded-full" aria-hidden="true">
+      <span className="relative grid h-3.5 w-3.5 place-items-center rounded-full" aria-hidden="true">
         <span className="absolute inset-0 rounded-full border border-brand-amber/35 border-t-brand-amber motion-safe:animate-spin" />
-        <span className="h-2.5 w-2.5 rounded-full bg-brand-amber" />
+        <span className="h-2 w-2 rounded-full bg-brand-amber" />
       </span>
     );
   }

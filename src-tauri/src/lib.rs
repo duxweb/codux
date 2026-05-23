@@ -120,7 +120,9 @@ use remote_p2p::{RemoteP2PHostTransport, RemoteP2PLane, RemoteP2PSignal};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::{json, Value};
 use sha2::{Digest as _, Sha256};
-use ssh::{SSHLaunchCommand, SSHProfileTestResult, SSHProfileUpsertRequest, SSHProfilesSnapshot, SSHStore};
+use ssh::{
+    SSHLaunchCommand, SSHProfileTestResult, SSHProfileUpsertRequest, SSHProfilesSnapshot, SSHStore,
+};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Seek as _, Write as _};
@@ -881,7 +883,7 @@ fn create_terminal_session(
 ) -> Result<String, String> {
     terminals
         .create(config, move |event| {
-            let _ = app.emit("terminal:event", event.clone());
+            let _ = app.emit("terminal:event", event.for_webview());
             remote.handle_terminal_event(event);
         })
         .map_err(|error| error.to_string())
@@ -3350,7 +3352,11 @@ impl RemoteHostService {
         self.handle_remote_envelope(app, envelope).await;
     }
 
-    async fn handle_remote_envelope(self: &Arc<Self>, app: tauri::AppHandle, envelope: RemoteEnvelope) {
+    async fn handle_remote_envelope(
+        self: &Arc<Self>,
+        app: tauri::AppHandle,
+        envelope: RemoteEnvelope,
+    ) {
         match envelope.kind.as_str() {
             "pairing.request" => {
                 self.handle_pairing_request(envelope, &app).await;
@@ -3455,6 +3461,14 @@ impl RemoteHostService {
             "terminal.upload.cancel" => {
                 self.handle_terminal_upload_cancel(&envelope);
             }
+            "p2p.ping" => {
+                self.send_terminal_data(
+                    "p2p.pong",
+                    envelope.device_id.as_deref(),
+                    None,
+                    envelope.payload.clone(),
+                );
+            }
             "p2p.offer" => {
                 self.ensure_p2p_transport();
                 if let (Some(p2p), Some(device_id)) = (
@@ -3502,7 +3516,8 @@ impl RemoteHostService {
             remote_runtime_log("p2p-recv", "drop reason=decrypt-or-sequence");
             return;
         };
-        self.handle_remote_envelope(self.app.clone(), envelope).await;
+        self.handle_remote_envelope(self.app.clone(), envelope)
+            .await;
     }
 
     async fn handle_pairing_request(&self, envelope: RemoteEnvelope, app: &tauri::AppHandle) {
@@ -4191,9 +4206,10 @@ impl RemoteHostService {
                 .and_then(Value::as_str)
                 .unwrap_or("upload.png"),
         );
+        let kind = remote_terminal_upload_kind(&envelope.payload);
         match self.write_terminal_upload_file(session_id, &name, &bytes) {
             Ok(path) => {
-                self.finish_terminal_upload(envelope.device_id.as_deref(), session_id, path)
+                self.finish_terminal_upload(envelope.device_id.as_deref(), session_id, path, &kind)
             }
             Err(error) => self.send_error(envelope, &error),
         }
@@ -4247,6 +4263,7 @@ impl RemoteHostService {
                 .and_then(Value::as_str)
                 .unwrap_or("upload.png"),
         );
+        let kind = remote_terminal_upload_kind(&envelope.payload);
         let directory = remote_terminal_upload_directory(session_id);
         if let Err(error) = fs::create_dir_all(&directory) {
             self.send_terminal_upload_ack(envelope, "start", None, false, Some(&error.to_string()));
@@ -4281,6 +4298,7 @@ impl RemoteHostService {
                     total_chunks,
                     partial_path,
                     final_path,
+                    kind,
                     received_chunks: HashSet::new(),
                     received_bytes: 0,
                 },
@@ -4451,6 +4469,7 @@ impl RemoteHostService {
             session.device_id.as_deref(),
             &session.session_id,
             session.final_path,
+            &session.kind,
         );
     }
 
@@ -4482,8 +4501,14 @@ impl RemoteHostService {
         Ok(path)
     }
 
-    fn finish_terminal_upload(&self, device_id: Option<&str>, session_id: &str, path: PathBuf) {
-        let text = format!("{} ", path.to_string_lossy());
+    fn finish_terminal_upload(
+        &self,
+        device_id: Option<&str>,
+        session_id: &str,
+        path: PathBuf,
+        kind: &str,
+    ) {
+        let text = format!("{} ", terminal_upload_path_input(&path));
         let _ = self.terminals.write(session_id, text.as_bytes());
         self.send_terminal_data(
             "terminal.uploaded",
@@ -4492,6 +4517,7 @@ impl RemoteHostService {
             json!({
                 "path": path.to_string_lossy().to_string(),
                 "name": path.file_name().and_then(|value| value.to_str()).unwrap_or_default(),
+                "kind": kind,
                 "mode": "path",
                 "tool": Value::Null,
                 "inserted": true,
@@ -4722,8 +4748,6 @@ impl RemoteHostService {
             return;
         };
         let lane = remote_p2p_lane(kind);
-        let relay_also = kind == "terminal.output"
-            && payload.get("buffer").and_then(Value::as_bool).unwrap_or(false);
         let relay_text = self.outgoing_relay_text(kind, device_id, session_id, payload);
         let socket_tx = self.socket_tx.lock().ok().and_then(|value| value.clone());
         let device_id = device_id.map(str::to_string);
@@ -4743,7 +4767,7 @@ impl RemoteHostService {
                     data_len
                 ),
             );
-            if sent_p2p && !relay_also {
+            if sent_p2p {
                 return;
             }
             if let (Some(tx), Some(text)) = (socket_tx, relay_text) {
@@ -4755,7 +4779,7 @@ impl RemoteHostService {
                         kind_label,
                         session_label.as_deref().unwrap_or("-"),
                         device_id.as_deref().unwrap_or("-"),
-                        if sent_p2p { "buffer-ack-copy" } else { "p2p-send-failed" },
+                        "p2p-send-failed",
                         relay_ok
                     ),
                 );
@@ -5022,6 +5046,7 @@ struct RemoteTerminalUploadSession {
     total_chunks: usize,
     partial_path: PathBuf,
     final_path: PathBuf,
+    kind: String,
     received_chunks: HashSet<usize>,
     received_bytes: u64,
 }
@@ -5307,6 +5332,82 @@ fn sanitized_remote_upload_name(value: &str) -> String {
         "upload.png".to_string()
     } else {
         cleaned
+    }
+}
+
+fn remote_terminal_upload_kind(payload: &Value) -> String {
+    let kind = payload
+        .get("kind")
+        .and_then(Value::as_str)
+        .unwrap_or("image")
+        .trim()
+        .to_ascii_lowercase();
+    if kind == "file" {
+        "file".to_string()
+    } else {
+        "image".to_string()
+    }
+}
+
+fn terminal_upload_path_input(path: &Path) -> String {
+    quote_terminal_path(&path.to_string_lossy())
+}
+
+#[cfg(windows)]
+fn quote_terminal_path(value: &str) -> String {
+    if value
+        .chars()
+        .any(|ch| ch.is_whitespace() || matches!(ch, '&' | '(' | ')' | '[' | ']' | '{' | '}'))
+    {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+#[cfg(not(windows))]
+fn quote_terminal_path(value: &str) -> String {
+    if value.chars().any(|ch| {
+        ch.is_whitespace()
+            || matches!(
+                ch,
+                '\'' | '"' | '\\' | '$' | '`' | '!' | '&' | '(' | ')' | ';' | '<' | '>' | '|'
+            )
+    }) {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    } else {
+        value.to_string()
+    }
+}
+
+#[cfg(test)]
+mod remote_upload_tests {
+    use super::quote_terminal_path;
+
+    #[test]
+    fn leaves_plain_terminal_path_unquoted() {
+        assert_eq!(
+            quote_terminal_path("/tmp/CoduxUploads/file.txt"),
+            "/tmp/CoduxUploads/file.txt"
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn quotes_unix_terminal_path_with_spaces() {
+        assert_eq!(
+            quote_terminal_path("/tmp/Codux Uploads/file name.txt"),
+            "'/tmp/Codux Uploads/file name.txt'"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn quotes_windows_terminal_path_with_spaces() {
+        assert_eq!(
+            quote_terminal_path(r"C:\Users\Codux User\AppData\Local\Temp\file name.txt"),
+            r#""C:\Users\Codux User\AppData\Local\Temp\file name.txt""#
+        );
     }
 }
 

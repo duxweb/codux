@@ -1114,7 +1114,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 </Dropdown.Trigger>
                 <Dropdown.Popover
                   placement="bottom end"
-                  className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome p-1 shadow-pop backdrop-blur-2xl"
+                  className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-popover p-1 shadow-pop"
                 >
                   <Dropdown.Menu
                     aria-label={tm("git.commit.options", "Commit Options")}

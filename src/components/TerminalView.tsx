@@ -32,7 +32,7 @@ type TerminalRendererAdapter = {
   blur: () => void;
   fit: () => void;
   refreshTheme: () => void;
-  setWebglEnabled: (enabled: boolean) => void;
+  setRenderer: (renderer: TerminalResolvedRenderer) => void;
   setFontSize: (fontSize: number) => void;
   setInputEnabled: (enabled: boolean) => void;
   copySelection: () => Promise<void>;
@@ -44,17 +44,23 @@ type TerminalRendererAdapter = {
 
 const MIN_COLS = 20;
 const MIN_ROWS = 8;
+const ACTIVE_WRITE_INTERVAL_MS = 16;
+const INACTIVE_WRITE_INTERVAL_MS = 80;
+const MAX_QUEUED_WRITE_BYTES = 256 * 1024;
 const isWindowsTerminal = isWindowsPlatform();
 const TERMINAL_FONT_FAMILY =
   '"Berkeley Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
 
-function resolveTerminalRenderer(mode: TerminalRendererMode) {
+type TerminalResolvedRenderer = "dom" | "webgl";
+
+function resolveTerminalRenderer(mode: TerminalRendererMode): TerminalResolvedRenderer {
   if (mode === "auto") return isWindowsTerminal ? "webgl" : "dom";
   return mode;
 }
 
-function shouldUseWebgl(mode: TerminalRendererMode, active: boolean) {
-  return active && resolveTerminalRenderer(mode) === "webgl";
+function resolveViewTerminalRenderer(mode: TerminalRendererMode, webglAllowed: boolean): TerminalResolvedRenderer {
+  if (!webglAllowed) return "dom";
+  return resolveTerminalRenderer(mode);
 }
 
 function cssVar(style: CSSStyleDeclaration, name: string, fallback: string) {
@@ -105,17 +111,21 @@ type XtermWithSelectionInternals = XtermTerminal & {
 function XtermRenderer({
   className,
   webglActive,
+  writeActive,
   onAdapter,
   onData,
   onResize,
 }: {
   className: string;
   webglActive: boolean;
+  writeActive: boolean;
   onAdapter: (adapter: TerminalRendererAdapter | null) => void;
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const writeActiveRef = useRef(writeActive);
+  writeActiveRef.current = writeActive;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -131,15 +141,27 @@ function XtermRenderer({
     let unregisterInput: (() => void) | undefined;
     let textInputAdapter: TerminalTextInputAdapter | null = null;
     let webglAddon: WebglAddon | null = null;
+    let webglCanvases: HTMLCanvasElement[] = [];
+    const webglTextureCanvases = new Set<HTMLCanvasElement>();
     let webglContextLossDisposable: IDisposable | null = null;
+    let webglTextureAtlasDisposable: IDisposable | null = null;
+    let webglAddTextureAtlasDisposable: IDisposable | null = null;
+    let webglRemoveTextureAtlasDisposable: IDisposable | null = null;
     let webglLoadVersion = 0;
+    let writeTimer: number | null = null;
+    let writeFrame: number | null = null;
+    let writeInFlight = false;
+    let lastWriteFlushAt = 0;
+    let queuedText = "";
+    const queuedBytes: Uint8Array[] = [];
+    let queuedByteLength = 0;
 
     const terminal = new XtermTerminal({
       allowProposedApi: true,
       allowTransparency: false,
       altClickMovesCursor: false,
       convertEol: isWindowsTerminal,
-      cursorBlink: true,
+      cursorBlink: false,
       cursorInactiveStyle: "outline",
       disableStdin: true,
       drawBoldTextInBrightColors: true,
@@ -149,7 +171,7 @@ function XtermRenderer({
       macOptionIsMeta: true,
       rescaleOverlappingGlyphs: true,
       rightClickSelectsWord: false,
-      scrollback: 5000,
+      scrollback: 2000,
       showCursorImmediately: true,
       theme: xtermTheme(host),
       windowsPty: isWindowsTerminal
@@ -171,10 +193,26 @@ function XtermRenderer({
       webglLoadVersion += 1;
       webglContextLossDisposable?.dispose();
       webglContextLossDisposable = null;
+      webglTextureAtlasDisposable?.dispose();
+      webglTextureAtlasDisposable = null;
+      webglAddTextureAtlasDisposable?.dispose();
+      webglAddTextureAtlasDisposable = null;
+      webglRemoveTextureAtlasDisposable?.dispose();
+      webglRemoveTextureAtlasDisposable = null;
+      for (const canvas of webglCanvases) {
+        releaseWebglCanvas(canvas);
+      }
+      webglCanvases = [];
+      for (const canvas of webglTextureCanvases) {
+        releaseCanvasBackingStore(canvas);
+      }
+      webglTextureCanvases.clear();
       if (!webglAddon) return;
+      const addon = webglAddon;
       try {
-        webglAddon.dispose();
+        addon.dispose();
       } finally {
+        clearWebglAddonReferences(addon);
         webglAddon = null;
       }
     };
@@ -182,6 +220,8 @@ function XtermRenderer({
     const enableWebgl = () => {
       if (disposed || webglAddon) return;
       const version = ++webglLoadVersion;
+      const element = terminal.element;
+      const existingCanvases = new Set(element?.querySelectorAll<HTMLCanvasElement>("canvas") ?? []);
       void import("@xterm/addon-webgl")
         .then(({ WebglAddon }) => {
           if (disposed || version !== webglLoadVersion || webglAddon) return;
@@ -191,22 +231,43 @@ function XtermRenderer({
             console.warn("xterm webgl context lost; falling back to DOM renderer");
             disposeWebgl();
           });
+          webglTextureAtlasDisposable = nextWebglAddon.onChangeTextureAtlas((canvas) => {
+            webglTextureCanvases.add(canvas);
+          });
+          webglAddTextureAtlasDisposable = nextWebglAddon.onAddTextureAtlasCanvas((canvas) => {
+            webglTextureCanvases.add(canvas);
+          });
+          webglRemoveTextureAtlasDisposable = nextWebglAddon.onRemoveTextureAtlasCanvas((canvas) => {
+            webglTextureCanvases.delete(canvas);
+            releaseCanvasBackingStore(canvas);
+          });
+          if (nextWebglAddon.textureAtlas) {
+            webglTextureCanvases.add(nextWebglAddon.textureAtlas);
+          }
           webglAddon = nextWebglAddon;
+          webglCanvases = [
+            ...(terminal.element?.querySelectorAll<HTMLCanvasElement>("canvas") ?? []),
+          ].filter((canvas) => !existingCanvases.has(canvas));
         })
         .catch((error) => {
           console.warn("failed to load xterm webgl renderer", error);
         });
     };
 
-    const setWebglEnabled = (enabled: boolean) => {
-      if (enabled) {
+    const setRenderer = (renderer: TerminalResolvedRenderer) => {
+      if (renderer === "webgl") {
         enableWebgl();
         return;
       }
       disposeWebgl();
     };
 
-    setWebglEnabled(shouldUseWebgl(readTerminalRendererMode(), webglActive && document.visibilityState !== "hidden"));
+    setRenderer(
+      resolveViewTerminalRenderer(
+        readTerminalRendererMode(),
+        webglActive && document.visibilityState !== "hidden",
+      ),
+    );
 
     const releaseSelectionDrag = (reason: string) => {
       if (!isSelecting) return;
@@ -264,6 +325,80 @@ function XtermRenderer({
     const refreshTheme = () => {
       if (disposed || !host.isConnected) return;
       terminal.options.theme = xtermTheme(host);
+    };
+
+    const flushQueuedWrites = () => {
+      writeTimer = null;
+      writeFrame = null;
+      if (disposed) return;
+      if (writeInFlight) return;
+      if (queuedBytes.length === 0 && !queuedText) return;
+
+      writeInFlight = true;
+      lastWriteFlushAt = performance.now();
+      const finishWrite = () => {
+        writeInFlight = false;
+        if (!disposed && (queuedBytes.length > 0 || queuedText)) {
+          scheduleQueuedWrite();
+        }
+      };
+
+      const text = queuedText;
+      queuedText = "";
+      if (queuedBytes.length > 0) {
+        const totalLength = queuedBytes.reduce((sum, chunk) => sum + chunk.length, 0);
+        const combined = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of queuedBytes) {
+          combined.set(chunk, offset);
+          offset += chunk.length;
+        }
+        queuedBytes.length = 0;
+        queuedByteLength = 0;
+        if (text) {
+          terminal.write(combined);
+          terminal.write(text, finishWrite);
+        } else {
+          terminal.write(combined, finishWrite);
+        }
+        return;
+      }
+      terminal.write(text, finishWrite);
+    };
+
+    const scheduleQueuedWrite = () => {
+      if (writeTimer !== null || writeFrame !== null || writeInFlight) return;
+      if (writeActiveRef.current && queuedByteLength < MAX_QUEUED_WRITE_BYTES) {
+        writeFrame = window.requestAnimationFrame(flushQueuedWrites);
+        return;
+      }
+      const interval = writeActiveRef.current ? ACTIVE_WRITE_INTERVAL_MS : INACTIVE_WRITE_INTERVAL_MS;
+      const elapsed = performance.now() - lastWriteFlushAt;
+      const delay = queuedByteLength >= MAX_QUEUED_WRITE_BYTES ? 0 : Math.max(0, interval - elapsed);
+      writeTimer = window.setTimeout(flushQueuedWrites, delay);
+    };
+
+    const writeQueued = (data: string | Uint8Array) => {
+      if (disposed) return;
+      if (typeof data === "string") {
+        queuedText += data;
+      } else {
+        queuedBytes.push(data);
+        queuedByteLength += data.length;
+      }
+      scheduleQueuedWrite();
+    };
+
+    const flushQueuedWritesNow = () => {
+      if (writeTimer !== null) {
+        window.clearTimeout(writeTimer);
+        writeTimer = null;
+      }
+      if (writeFrame !== null) {
+        window.cancelAnimationFrame(writeFrame);
+        writeFrame = null;
+      }
+      flushQueuedWrites();
     };
 
     const fit = (force = false) => {
@@ -325,26 +460,31 @@ function XtermRenderer({
 
     const adapter: TerminalRendererAdapter = {
       write: (data) => {
-        terminal.write(data);
+        writeQueued(data);
       },
       reset: (history) => {
+        flushQueuedWritesNow();
         terminal.reset();
         if (history) terminal.write(history);
         scheduleFit(true);
       },
       clear: () => {
+        flushQueuedWritesNow();
         terminal.reset();
       },
       focus: () => {
-        if (inputEnabled) terminal.focus();
+        if (!inputEnabled) return;
+        terminal.options.cursorBlink = true;
+        terminal.focus();
       },
       blur: () => {
         terminal.blur();
+        terminal.options.cursorBlink = false;
         host.classList.remove("focused");
       },
       fit: () => fit(),
       refreshTheme,
-      setWebglEnabled,
+      setRenderer,
       setFontSize: (fontSize) => {
         if (terminal.options.fontSize === fontSize) return;
         terminal.options.fontSize = fontSize;
@@ -353,9 +493,11 @@ function XtermRenderer({
       setInputEnabled: (enabled) => {
         inputEnabled = enabled;
         terminal.options.disableStdin = !enabled;
+        terminal.options.cursorBlink = enabled && document.activeElement === textarea;
         host.toggleAttribute("data-input-disabled", !enabled);
         if (!enabled) {
           terminal.blur();
+          terminal.options.cursorBlink = false;
           host.classList.remove("focused");
         }
       },
@@ -383,6 +525,17 @@ function XtermRenderer({
           window.cancelAnimationFrame(resizeFrame);
           resizeFrame = null;
         }
+        if (writeTimer !== null) {
+          window.clearTimeout(writeTimer);
+          writeTimer = null;
+        }
+        if (writeFrame !== null) {
+          window.cancelAnimationFrame(writeFrame);
+          writeFrame = null;
+        }
+        queuedText = "";
+        queuedBytes.length = 0;
+        queuedByteLength = 0;
         host.removeEventListener("mousedown", markSelectionStart, true);
         host.removeEventListener("pointerdown", focusTerminalFromPointer, true);
         window.removeEventListener("pointerup", releaseSelectionAfterMouseEnd, true);
@@ -406,9 +559,62 @@ function XtermRenderer({
     return () => {
       onAdapter(null);
     };
-  }, [onAdapter, onData, onResize, webglActive]);
+  }, [onAdapter, onData, onResize]);
 
   return <div ref={hostRef} className={className} />;
+}
+
+function releaseWebglCanvas(canvas: HTMLCanvasElement) {
+  let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
+  try {
+    gl = canvas.getContext("webgl2") as WebGL2RenderingContext | null;
+  } catch {
+    gl = null;
+  }
+  if (!gl) {
+    try {
+      gl = canvas.getContext("webgl") as WebGLRenderingContext | null;
+    } catch {
+      gl = null;
+    }
+  }
+  if (gl) {
+    try {
+      const extension = gl.getExtension("WEBGL_lose_context");
+      if (extension && !gl.isContextLost()) extension.loseContext();
+    } catch {
+      // Best-effort cleanup for WebKit GPU resources.
+    }
+  }
+  try {
+    releaseCanvasBackingStore(canvas);
+  } catch {
+    // Best-effort cleanup for WebKit GPU resources.
+  }
+}
+
+function releaseCanvasBackingStore(canvas: HTMLCanvasElement) {
+  canvas.width = 0;
+  canvas.height = 0;
+}
+
+function clearWebglAddonReferences(addon: WebglAddon) {
+  try {
+    const internals = addon as unknown as {
+      _renderer?: Record<string, unknown> | null;
+      _renderService?: unknown;
+    };
+    if (internals._renderer) {
+      internals._renderer._canvas = null;
+      internals._renderer._gl = null;
+      internals._renderer._charAtlas = null;
+      internals._renderer._atlas = null;
+    }
+    internals._renderer = null;
+    internals._renderService = null;
+  } catch {
+    // xterm internals vary by version; disposal above is the source of truth.
+  }
 }
 
 type Props = {
@@ -591,29 +797,29 @@ export function TerminalView({
       const settings = readAppSettings();
       adapter.setFontSize(readTerminalFontSize(settings));
       adapter.refreshTheme();
-      adapter.setWebglEnabled(
-        shouldUseWebgl(readTerminalRendererMode(settings), webglActive && active && canAcceptInput),
+      adapter.setRenderer(
+        resolveViewTerminalRenderer(readTerminalRendererMode(settings), webglActive && canAcceptInput),
       );
     };
     applySettings();
     return subscribeAppSettings(applySettings);
-  }, [active, adapterVersion, canAcceptInput, webglActive]);
+  }, [adapterVersion, canAcceptInput, webglActive]);
 
   useEffect(() => {
     const adapter = adapterRef.current;
     if (!adapter) return;
     const updateRendererActivity = () => {
-      adapter.setWebglEnabled(
-        shouldUseWebgl(
+      adapter.setRenderer(
+        resolveViewTerminalRenderer(
           readTerminalRendererMode(),
-          webglActive && active && canAcceptInput && document.visibilityState !== "hidden",
+          webglActive && canAcceptInput && document.visibilityState !== "hidden",
         ),
       );
     };
     updateRendererActivity();
     document.addEventListener("visibilitychange", updateRendererActivity);
     return () => document.removeEventListener("visibilitychange", updateRendererActivity);
-  }, [active, adapterVersion, canAcceptInput, webglActive]);
+  }, [adapterVersion, canAcceptInput, webglActive]);
 
   useEffect(() => {
     window.addEventListener("resize", scheduleFitAndResize);
@@ -723,7 +929,8 @@ export function TerminalView({
       )}
       <XtermRenderer
         className="terminal-host no-drag"
-        webglActive={webglActive && active && canAcceptInput}
+        webglActive={webglActive && canAcceptInput}
+        writeActive={active && canAcceptInput}
         onAdapter={setAdapter}
         onData={writeTerminalInput}
         onResize={resizeTerminal}

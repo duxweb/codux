@@ -15,7 +15,6 @@ import {
   loadPetActiveFrameCounts,
   petAnimations,
   petAtlas,
-  petFrameDelay,
 } from "./petAnimation";
 import { syncAppSettingsFromRust } from "./settings";
 import "./desktopPet.css";
@@ -57,6 +56,8 @@ type PlacementSnapshot = {
 };
 
 const spriteSize = 112;
+const desktopPetFrameDelayMs = 1000;
+const desktopPetLoopPauseMs = 3000;
 const visibleWidth = (petAtlas.cellWidth * spriteSize) / petAtlas.cellHeight;
 const spriteLoaders = import.meta.glob("./assets/pets/*/spritesheet.png", {
   query: "?url",
@@ -84,6 +85,8 @@ let currentSpriteKey = "";
 let currentSpriteUrl = "";
 let currentActiveFrameCounts: number[] | null = null;
 let currentCustomSpriteRequestKey = "";
+let dragPointerStart: { x: number; y: number } | null = null;
+let dragStarted = false;
 let lastBubbleText = "";
 let lastBubbleVisible = false;
 let lastBubbleTone: DesktopPetActivityTone = "normal";
@@ -105,8 +108,37 @@ function installWindowEvents() {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    dragPointerStart = { x: event.clientX, y: event.clientY };
+    dragStarted = false;
+    spriteHotspot.setPointerCapture?.(event.pointerId);
+  });
+  spriteHotspot.addEventListener("pointermove", (event) => {
+    if (!dragPointerStart || dragStarted || (event.buttons & 1) !== 1) return;
+    const distance = Math.hypot(
+      event.clientX - dragPointerStart.x,
+      event.clientY - dragPointerStart.y,
+    );
+    if (distance < 4) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragStarted = true;
     void invoke("desktop_pet_start_drag").catch(() => undefined);
   });
+  spriteHotspot.addEventListener("pointerup", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragPointerStart = null;
+    dragStarted = false;
+  });
+  spriteHotspot.addEventListener("pointercancel", () => {
+    dragPointerStart = null;
+    dragStarted = false;
+  });
+  spriteHotspot.addEventListener("click", consumeMouseEvent);
+  spriteHotspot.addEventListener("dblclick", consumeMouseEvent);
+  bubble.addEventListener("click", consumeMouseEvent);
+  bubble.addEventListener("dblclick", consumeMouseEvent);
   spriteHotspot.addEventListener("contextmenu", openContextMenu);
   bubble.addEventListener("contextmenu", openContextMenu);
 
@@ -133,6 +165,11 @@ function openContextMenu(event: MouseEvent) {
   event.preventDefault();
   event.stopPropagation();
   void invoke("desktop_pet_show_context_menu").catch(() => undefined);
+}
+
+function consumeMouseEvent(event: MouseEvent) {
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 async function loadSettings() {
@@ -262,21 +299,17 @@ function updateSpriteAnimation() {
   stopFrameTimer();
   applyFrame();
   if (settings?.pet.staticMode) return;
-  scheduleFrame();
+  scheduleFrame(desktopPetFrameDelayMs);
 }
 
-function scheduleFrame() {
-  const animation = animations[currentState] ?? animations.idle;
+function scheduleFrame(delayMs: number) {
   const frameCount = currentFrameCount();
-  const delay = frameDelay(
-    animation.frameDurationsMs[currentFrame % frameCount] ?? 180,
-    currentState,
-  );
+  if (frameCount <= 1) return;
   frameTimer = window.setTimeout(() => {
     currentFrame = (currentFrame + 1) % frameCount;
     applyFrame();
-    scheduleFrame();
-  }, delay);
+    scheduleFrame(currentFrame === 0 ? desktopPetLoopPauseMs : desktopPetFrameDelayMs);
+  }, delayMs);
 }
 
 function stopFrameTimer() {
@@ -318,8 +351,4 @@ function setBubbleLine(text: string, tone: DesktopPetActivityTone = "normal") {
   bubble.dataset.tone = nextTone;
   bubbleText.textContent = nextText;
   void invoke("desktop_pet_set_bubble_visible", { visible: isVisible }).catch(() => undefined);
-}
-
-function frameDelay(delayMs: number, state: DesktopPetAnimationState) {
-  return petFrameDelay(delayMs, state);
 }

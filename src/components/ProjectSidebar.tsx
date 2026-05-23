@@ -311,8 +311,8 @@ function ProjectRow({
           {tm("worktree.create.title", "New Worktree")}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem label={tm("common.edit", "Edit")} onSelect={onEdit}>
-          {tm("common.edit", "Edit")}
+        <ContextMenuItem label={tm("sidebar.project.edit", "Edit Project")} onSelect={onEdit}>
+          {tm("sidebar.project.edit", "Edit Project")}
         </ContextMenuItem>
         <ContextMenuItem label={tm("sidebar.project.open_folder", "Open Folder")} onSelect={onReveal}>
           {tm("sidebar.project.open_folder", "Open Folder")}
@@ -340,16 +340,16 @@ function ProjectActivityBadge({ state }: { state: WorkspaceProject["aiState"] })
 
   if (state === "running") {
     return (
-      <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full" aria-hidden="true">
+      <span className="absolute -right-0.5 -top-0.5 grid h-3.5 w-3.5 place-items-center rounded-full" aria-hidden="true">
         <span className="absolute inset-0 rounded-full border border-brand-amber/35 border-t-brand-amber motion-safe:animate-spin" />
-        <span className="h-2.5 w-2.5 rounded-full bg-brand-amber" />
+        <span className="h-2 w-2 rounded-full bg-brand-amber" />
       </span>
     );
   }
 
   return (
     <span
-      className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ${
+      className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-white ${
         state === "review" ? "bg-brand-amber" : "bg-brand-green"
       }`}
     />

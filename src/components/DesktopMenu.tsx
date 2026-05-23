@@ -37,7 +37,7 @@ export function DesktopMenu({
         <Dropdown.Popover
           placement={toHeroPlacement(placement)}
           offset={6}
-          className="desktop-menu-popover w-[240px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl"
+          className="desktop-menu-popover w-[240px] rounded-[10px] border border-line-strong bg-surface-popover p-1 text-ink shadow-pop"
           style={{ width }}
         >
           <Dropdown.Menu aria-label={ariaLabel} className="grid gap-0.5" shouldCloseOnSelect={false}>
@@ -111,7 +111,7 @@ export function DesktopSubmenu({
         <Dropdown.Popover
           placement="right top"
           offset={6}
-          className="desktop-menu-popover w-[240px] rounded-[10px] border border-line-strong bg-surface-chrome/95 p-1 text-ink shadow-pop backdrop-blur-xl"
+          className="desktop-menu-popover w-[240px] rounded-[10px] border border-line-strong bg-surface-popover p-1 text-ink shadow-pop"
           style={{ width: "min(240px, calc(100vw - 24px))" }}
         >
           <Dropdown.Menu aria-label={label} className="grid gap-0.5" shouldCloseOnSelect={false}>

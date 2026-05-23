@@ -694,7 +694,7 @@ function RemotePill({
         <button
           type="button"
           aria-label={tooltip}
-          className={`pill-base border transition-colors gap-1.5 no-drag ${
+          className={`no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[9px] border px-2.5 py-0 text-[12.5px] font-medium transition-colors ${
             enabled
               ? "bg-brand-green/12 border-brand-green/30 text-brand-green hover:bg-brand-green/16"
               : "bg-fill/[0.05] border-line text-ink-soft hover:bg-fill/10"
@@ -829,7 +829,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
             src={pet.snapshot.customPet?.spritesheetDataUrl}
             state="idle"
             size={110}
-            staticMode={false}
+            staticMode
           />
         </div>
 

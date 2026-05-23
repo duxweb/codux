@@ -236,8 +236,8 @@ function SymbolCell({
       aria-label={symbol.id === "none" ? tm("common.none", "None") : symbol.id}
       className={`relative aspect-square rounded-[8px] grid place-items-center transition-colors ${
         selected
-          ? "bg-fill/[0.12] border border-line-strong"
-          : "bg-fill/[0.05] border border-line hover:bg-fill/[0.08] hover:border-line-strong"
+          ? "bg-fill/[0.12] border border-line-strong opacity-100"
+          : "bg-fill/[0.05] border border-line opacity-60 hover:opacity-85 hover:bg-fill/[0.08] hover:border-line-strong"
       }`}
     >
       {symbol.icon ? (
@@ -253,16 +253,17 @@ function ColorDot({ color, selected, onPress }: { color: string; selected: boole
   return (
     <PressableButton
       onPressUp={onPress}
-      className="relative w-7 h-7 rounded-full transition-transform hover:scale-[1.08]"
-      style={{ background: color, boxShadow: "0 1px 2px rgb(0 0 0 / 0.25)" }}
+      className={`relative w-7 h-7 rounded-full transition-[opacity,transform] hover:scale-[1.08] ${
+        selected ? "opacity-100" : "opacity-65 hover:opacity-90"
+      }`}
+      style={{
+        background: color,
+        boxShadow: selected
+          ? "0 0 0 2px rgb(255 255 255 / 0.96), 0 0 0 4px rgb(0 0 0 / 0.42), 0 2px 5px rgb(0 0 0 / 0.28)"
+          : "0 1px 2px rgb(0 0 0 / 0.25)",
+      }}
       aria-label={color}
-    >
-      {selected && (
-        <span
-          className="absolute -inset-[3px] rounded-full pointer-events-none"
-          style={{ boxShadow: "0 0 0 2px rgb(var(--color-ink-soft) / 0.85)" }}
-        />
-      )}
-    </PressableButton>
+      aria-pressed={selected}
+    />
   );
 }

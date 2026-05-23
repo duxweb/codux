@@ -268,8 +268,10 @@ pub async fn install_update(
                 let app = app.clone();
                 let version = version.clone();
                 move || {
-                    let (downloaded_bytes, total_bytes) =
-                        finish_progress.lock().map(|state| *state).unwrap_or_default();
+                    let (downloaded_bytes, total_bytes) = finish_progress
+                        .lock()
+                        .map(|state| *state)
+                        .unwrap_or_default();
                     let _ = app.emit(
                         "app:update-install-progress",
                         UpdateInstallProgressEvent {

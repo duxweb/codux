@@ -69,7 +69,7 @@ export function ContextMenu({
       <div
         role="menu"
         aria-label={ariaLabel}
-        className="fixed z-[10000] min-w-[184px] rounded-[10px] border border-line-strong bg-surface-chrome p-1 text-ink shadow-pop backdrop-blur-2xl"
+        className="fixed z-[10000] min-w-[184px] rounded-[10px] border border-line-strong bg-surface-popover p-1 text-ink shadow-pop"
         style={{
           left: menu.x,
           top: menu.y,

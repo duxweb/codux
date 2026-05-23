@@ -19,7 +19,7 @@ export function WindowFrame({ title, children, footer, mainClassName, mainScroll
   return (
     <div className="app-shell h-screen overflow-hidden text-ink flex flex-col">
       <header
-        className="relative h-12 flex flex-shrink-0 items-center border-b border-line/45 bg-surface-chrome/70 drag-region"
+        className="relative h-12 flex flex-shrink-0 items-center border-b border-line/45 bg-[var(--surface-window-tint)] drag-region"
         data-tauri-drag-region
         onPointerDownCapture={startWindowDrag}
       >
@@ -41,7 +41,7 @@ export function WindowFrame({ title, children, footer, mainClassName, mainScroll
       </main>
 
       {footer !== undefined && (
-        <footer className="min-h-[62px] flex-shrink-0 px-5 py-2.5 flex items-center justify-end gap-2 border-t border-line/45 bg-surface-chrome/70 no-drag">
+        <footer className="min-h-[62px] flex-shrink-0 px-5 py-2.5 flex items-center justify-end gap-2 border-t border-line/45 bg-[var(--surface-window-tint)] no-drag">
           {footer}
         </footer>
       )}

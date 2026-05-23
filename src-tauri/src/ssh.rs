@@ -261,7 +261,9 @@ pub fn render_ssh_launch_context() -> Option<String> {
     render_ssh_launch_context_for_profiles(&mut profiles)
 }
 
-fn render_ssh_launch_context_for_profiles(profiles: &mut Vec<SSHConnectionProfile>) -> Option<String> {
+fn render_ssh_launch_context_for_profiles(
+    profiles: &mut Vec<SSHConnectionProfile>,
+) -> Option<String> {
     if profiles.is_empty() {
         return None;
     }

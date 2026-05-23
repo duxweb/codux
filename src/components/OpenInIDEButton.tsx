@@ -56,7 +56,7 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
           </Dropdown.Trigger>
           <Dropdown.Popover
             placement="bottom end"
-            className="min-w-[210px] rounded-[10px] border border-line-strong bg-surface-chrome p-1 shadow-pop backdrop-blur-2xl"
+            className="min-w-[210px] rounded-[10px] border border-line-strong bg-surface-popover p-1 shadow-pop"
           >
             <Dropdown.Menu
               aria-label={tm("open.ide", "Open in IDE")}

@@ -35,6 +35,7 @@ describe("terminal runtime", () => {
       configurable: true,
       value: {
         requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(callback, 0),
+        cancelAnimationFrame: (id: number) => clearTimeout(id),
         setTimeout,
         __TAURI_INTERNALS__: {},
       },
@@ -186,6 +187,7 @@ describe("terminal runtime", () => {
         text: "line 1",
       },
     });
+    await vi.runOnlyPendingTimersAsync();
     await Promise.resolve();
 
     expect(events).toHaveLength(1);
@@ -220,6 +222,7 @@ describe("terminal runtime", () => {
         bytesBase64: "5o6o",
       },
     });
+    await vi.runOnlyPendingTimersAsync();
     await Promise.resolve();
 
     expect(events).toHaveLength(1);
@@ -262,11 +265,52 @@ describe("terminal runtime", () => {
         bytesBase64: "qA==",
       },
     });
+    await vi.runOnlyPendingTimersAsync();
     await Promise.resolve();
 
-    expect(events).toHaveLength(2);
-    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e]);
-    expect(Array.from((events[1] as { bytes: Uint8Array }).bytes)).toEqual([0xa8]);
+    expect(events).toHaveLength(1);
+    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e, 0xa8]);
+    expect(runtime.getSession(session.id)?.replayBuffer).toBe("推");
+  });
+
+  it("rebuilds replay text from byte-only backend events", async () => {
+    const runtime = new TerminalRuntime();
+    const session = runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "分屏 1",
+      cwd: "/project",
+    });
+    const events: unknown[] = [];
+    runtime.subscribe(session.id, (event) => {
+      if (event.type === "output") events.push(event);
+    });
+
+    runtime.ensureStarted(session.id);
+    runtime.resize(session.id, 100, 30);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    eventHandler?.({
+      payload: {
+        kind: "output",
+        sessionId: "backend-1",
+        bytesBase64: "5o4=",
+      },
+    });
+    eventHandler?.({
+      payload: {
+        kind: "output",
+        sessionId: "backend-1",
+        bytesBase64: "qA==",
+      },
+    });
+    await vi.runOnlyPendingTimersAsync();
+    await Promise.resolve();
+
+    expect(events).toHaveLength(1);
+    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e, 0xa8]);
     expect(runtime.getSession(session.id)?.replayBuffer).toBe("推");
   });
 });

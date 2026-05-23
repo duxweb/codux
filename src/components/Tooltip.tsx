@@ -36,7 +36,7 @@ export function Tooltip({
       <HTooltip.Content
         placement={placement}
         showArrow={false}
-        className={`max-w-[260px] rounded-md border border-line-strong bg-surface-chrome px-2 py-1 text-[11.5px] font-medium text-ink-soft shadow-pop ${contentClassName ?? ""}`}
+        className={`max-w-[260px] rounded-md border border-line-strong bg-surface-popover px-2 py-1 text-[11.5px] font-medium text-ink-soft shadow-pop ${contentClassName ?? ""}`}
       >
         {label}
       </HTooltip.Content>

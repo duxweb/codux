@@ -63,10 +63,14 @@ type ManagedThemeVariable =
   | "--link"
   | "--color-surface-glass"
   | "--color-surface-chrome"
+  | "--color-surface-popover"
   | "--color-surface-panel"
   | "--color-surface-card"
   | "--color-surface-terminal"
-  | "--color-surface-editor";
+  | "--color-surface-editor"
+  | "--scrollbar-thumb"
+  | "--scrollbar-thumb-hover"
+  | "--focus-ring";
 
 export type TerminalThemeOption = {
   value: string;
@@ -234,10 +238,14 @@ const managedThemeVariables: ManagedThemeVariable[] = [
   "--link",
   "--color-surface-glass",
   "--color-surface-chrome",
+  "--color-surface-popover",
   "--color-surface-panel",
   "--color-surface-card",
   "--color-surface-terminal",
   "--color-surface-editor",
+  "--scrollbar-thumb",
+  "--scrollbar-thumb-hover",
+  "--focus-ring",
 ];
 
 const terminalThemeProfiles: Record<string, TerminalThemeProfile | string> = {
@@ -895,80 +903,49 @@ function applyAppearanceOverrides(root: HTMLElement, background: string, themeCo
 function applyBackgroundOverride(root: HTMLElement, background: string) {
   const option = resolveBackgroundColorOption(background);
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
+  const terminalBackground = resolvedTerminalBackground(root, appTheme);
   if (!option || normalizeThemeName(option.label) === "auto") {
-    applyDerivedSurfacePalette(root, appTheme);
-    root.style.setProperty(
-      "--surface-window-tint",
-      appTheme === "light"
-        ? "color-mix(in oklab, var(--terminal-bg) 94%, black)"
-        : "color-mix(in oklab, var(--terminal-bg) 88%, white)",
-    );
-    root.style.setProperty(
-      "--surface-window-glass",
-      appTheme === "light"
-        ? "color-mix(in oklab, var(--terminal-bg) 97%, black)"
-        : "color-mix(in oklab, var(--terminal-bg) 94%, white)",
-    );
+    applyDerivedSurfacePalette(root, appTheme, terminalBackground);
+    root.style.setProperty("--surface-window-tint", mixColor(terminalBackground, "#000000", appTheme === "light" ? 0.06 : 0.12));
+    root.style.setProperty("--surface-window-glass", mixColor(terminalBackground, "#000000", appTheme === "light" ? 0.03 : 0.06));
     return;
   }
   const color = appTheme === "light" ? option.light : option.dark;
-  const anchor = appTheme === "light" ? "rgb(255 255 255)" : "var(--terminal-bg)";
-  root.style.setProperty(
-    "--surface-window-tint",
-    `color-mix(in oklab, ${color} ${appTheme === "light" ? "18%" : "22%"}, ${anchor})`,
-  );
-  root.style.setProperty(
-    "--surface-window-glass",
-    `color-mix(in oklab, ${color} ${appTheme === "light" ? "12%" : "16%"}, ${anchor})`,
-  );
-  root.style.setProperty(
-    "--color-surface-glass",
-    `color-mix(in oklab, ${color} ${appTheme === "light" ? "36%" : "58%"}, ${anchor})`,
-  );
-  root.style.setProperty(
-    "--color-surface-chrome",
-    `color-mix(in oklab, ${color} ${appTheme === "light" ? "30%" : "46%"}, ${anchor})`,
-  );
-  root.style.setProperty(
-    "--color-surface-panel",
-    `color-mix(in oklab, ${color} ${appTheme === "light" ? "22%" : "32%"}, ${anchor})`,
-  );
-  root.style.setProperty(
-    "--color-surface-card",
-    `color-mix(in oklab, ${color} ${appTheme === "light" ? "12%" : "22%"}, ${anchor})`,
-  );
+  const anchor = appTheme === "light" ? "#ffffff" : mixColor(terminalBackground, "#000000", 0.12);
+  root.style.setProperty("--surface-window-tint", mixColor(color, anchor, appTheme === "light" ? 0.82 : 0.88));
+  root.style.setProperty("--surface-window-glass", mixColor(color, anchor, appTheme === "light" ? 0.88 : 0.92));
+  root.style.setProperty("--color-surface-glass", mixColor(color, anchor, appTheme === "light" ? 0.64 : 0.42));
+  root.style.setProperty("--color-surface-chrome", mixColor(color, anchor, appTheme === "light" ? 0.7 : 0.54));
+  root.style.setProperty("--color-surface-popover", appTheme === "light" ? "#ffffff" : mixColor(terminalBackground, "#000000", 0.18));
+  root.style.setProperty("--color-surface-panel", mixColor(color, anchor, appTheme === "light" ? 0.78 : 0.68));
+  root.style.setProperty("--color-surface-card", mixColor(color, anchor, appTheme === "light" ? 0.88 : 0.78));
   root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
   root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
   root.style.setProperty("--surface-editor", "var(--terminal-bg)");
-  applyDerivedBorderPalette(root, appTheme);
+  applyDerivedBorderPalette(root, appTheme, terminalBackground);
 }
 
-function applyDerivedSurfacePalette(root: HTMLElement, appTheme: "light" | "dark") {
-  const chromeMix = appTheme === "light" ? "95%, black" : "86%, white";
-  const panelMix = appTheme === "light" ? "97%, black" : "90%, white";
-  const cardMix = appTheme === "light" ? "98%, black" : "94%, white";
-  root.style.setProperty("--color-surface-glass", `color-mix(in oklab, var(--terminal-bg) ${chromeMix})`);
-  root.style.setProperty("--color-surface-chrome", `color-mix(in oklab, var(--terminal-bg) ${chromeMix})`);
-  root.style.setProperty("--color-surface-panel", `color-mix(in oklab, var(--terminal-bg) ${panelMix})`);
-  root.style.setProperty("--color-surface-card", `color-mix(in oklab, var(--terminal-bg) ${cardMix})`);
+function applyDerivedSurfacePalette(root: HTMLElement, appTheme: "light" | "dark", terminalBackground: string) {
+  const anchor = appTheme === "light" ? "#000000" : "#ffffff";
+  root.style.setProperty("--color-surface-glass", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.05 : 0.14));
+  root.style.setProperty("--color-surface-chrome", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.05 : 0.14));
+  root.style.setProperty("--color-surface-popover", appTheme === "light" ? "#ffffff" : mixColor(terminalBackground, "#000000", 0.18));
+  root.style.setProperty("--color-surface-panel", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.03 : 0.1));
+  root.style.setProperty("--color-surface-card", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.02 : 0.06));
   root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
   root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
-  applyDerivedBorderPalette(root, appTheme);
+  root.style.setProperty("--scrollbar-thumb", appTheme === "light" ? "rgb(18 25 36 / 0.16)" : "rgb(255 255 255 / 0.16)");
+  root.style.setProperty(
+    "--scrollbar-thumb-hover",
+    appTheme === "light" ? "rgb(18 25 36 / 0.28)" : "rgb(255 255 255 / 0.28)",
+  );
+  applyDerivedBorderPalette(root, appTheme, terminalBackground);
 }
 
-function applyDerivedBorderPalette(root: HTMLElement, appTheme: "light" | "dark") {
-  root.style.setProperty(
-    "--color-line",
-    appTheme === "light"
-      ? "color-mix(in oklab, var(--terminal-bg) 91%, black)"
-      : "color-mix(in oklab, var(--terminal-bg) 83%, white)",
-  );
-  root.style.setProperty(
-    "--color-line-strong",
-    appTheme === "light"
-      ? "color-mix(in oklab, var(--terminal-bg) 84%, black)"
-      : "color-mix(in oklab, var(--terminal-bg) 72%, white)",
-  );
+function applyDerivedBorderPalette(root: HTMLElement, appTheme: "light" | "dark", terminalBackground: string) {
+  const anchor = appTheme === "light" ? "#000000" : "#ffffff";
+  root.style.setProperty("--color-line", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.09 : 0.17));
+  root.style.setProperty("--color-line-strong", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.12 : 0.22));
 }
 
 function applyThemeColorOverride(root: HTMLElement, themeColor: string) {
@@ -976,18 +953,19 @@ function applyThemeColorOverride(root: HTMLElement, themeColor: string) {
   const color = option?.color ?? "#3b82f6";
   const foreground = resolveAccentForeground(color);
   root.style.setProperty("--color-brand-blue", color);
-  root.style.setProperty("--color-brand-blue-deep", `color-mix(in oklab, ${color} 78%, black)`);
+  root.style.setProperty("--color-brand-blue-deep", mixColor(color, "#000000", 0.22));
   root.style.setProperty("--color-on-brand", foreground);
   applyAccentColor(root, color, foreground);
 }
 
 function applyAccentColor(root: HTMLElement, color: string, foreground: string) {
   root.style.setProperty("--accent", color);
-  root.style.setProperty("--accent-hover", `color-mix(in oklab, ${color} 88%, ${foreground})`);
+  root.style.setProperty("--accent-hover", mixColor(color, foreground, 0.12));
   root.style.setProperty("--accent-foreground", foreground);
-  root.style.setProperty("--accent-soft", `color-mix(in oklab, ${color} 16%, transparent)`);
+  root.style.setProperty("--accent-soft", rgbaColor(color, 0.16));
   root.style.setProperty("--accent-soft-foreground", color);
   root.style.setProperty("--focus", color);
+  root.style.setProperty("--focus-ring", rgbaColor(color, 0.22));
   root.style.setProperty("--link", color);
 }
 
@@ -1045,6 +1023,18 @@ function mixColor(foreground: string, background: string, backgroundRatio: numbe
   return `rgb(${Math.round(fg.r * foregroundRatio + bg.r * backgroundRatio)} ${Math.round(
     fg.g * foregroundRatio + bg.g * backgroundRatio,
   )} ${Math.round(fg.b * foregroundRatio + bg.b * backgroundRatio)})`;
+}
+
+function rgbaColor(color: string, alpha: number) {
+  const parsed = parseHexColor(color);
+  if (!parsed) return color;
+  return `rgb(${parsed.r} ${parsed.g} ${parsed.b} / ${alpha})`;
+}
+
+function resolvedTerminalBackground(root: HTMLElement, appTheme: "light" | "dark") {
+  const value = root.style.getPropertyValue("--terminal-bg").trim();
+  if (parseHexColor(value)) return value;
+  return appTheme === "light" ? "#fffcf0" : "#0f151f";
 }
 
 function parseHexColor(value: string) {

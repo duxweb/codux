@@ -397,10 +397,29 @@ impl ProjectActivityCoordinator {
         })
     }
 
-    fn projects_due_for_ai(&self, interval: Duration) -> Vec<TrackedProject> {
-        projects_due(&self.projects, interval, |project| {
-            &mut project.last_ai_refresh
-        })
+    fn projects_due_for_ai(
+        &self,
+        foreground_interval: Duration,
+        background_interval: Duration,
+    ) -> Vec<TrackedProject> {
+        let active_project_id = self
+            .active_project_id
+            .lock()
+            .ok()
+            .and_then(|value| value.clone());
+        let is_foreground = self.main_window_visible.load(Ordering::Relaxed)
+            || self.main_window_focused.load(Ordering::Relaxed);
+        projects_due_by_interval_mut(
+            &self.projects,
+            |project| {
+                if is_foreground && active_project_id.as_deref() == Some(project.id.as_str()) {
+                    foreground_interval
+                } else {
+                    background_interval
+                }
+            },
+            |project| &mut project.last_ai_refresh,
+        )
     }
 }
 
@@ -415,7 +434,9 @@ fn run_activity_tick(
     let configured = settings.snapshot();
     let git_interval =
         configured_interval_seconds(&configured.git_refresh, min_git_refresh_seconds);
-    let ai_interval =
+    let ai_foreground_interval =
+        configured_interval_seconds(&configured.ai_refresh, min_ai_refresh_seconds);
+    let ai_background_interval =
         configured_interval_seconds(&configured.ai_background_refresh, min_ai_refresh_seconds);
 
     if let Some(interval) = git_interval {
@@ -431,8 +452,15 @@ fn run_activity_tick(
         }
     }
 
-    if let Some(interval) = ai_interval {
-        for project in coordinator.projects_due_for_ai(interval) {
+    if let Some(foreground_interval) = ai_foreground_interval.or(ai_background_interval) {
+        let background_interval = ai_background_interval
+            .unwrap_or_else(|| {
+                foreground_interval
+                    .checked_mul(4)
+                    .unwrap_or_else(|| Duration::from_secs(min_ai_refresh_seconds * 4))
+            })
+            .max(foreground_interval);
+        for project in coordinator.projects_due_for_ai(foreground_interval, background_interval) {
             let ai_history = Arc::clone(ai_history);
             async_runtime::spawn(async move {
                 let _ = ai_history.refresh_project(project.into()).await;
@@ -589,9 +617,18 @@ fn upsert_project(
     inserted
 }
 
-fn projects_due(
+fn projects_due_by_interval(
     projects: &Mutex<HashMap<String, TrackedProject>>,
-    interval: Duration,
+    interval_for_project: impl Fn(&TrackedProject) -> Duration,
+) -> Vec<TrackedProject> {
+    projects_due_by_interval_mut(projects, interval_for_project, |project| {
+        &mut project.last_git_refresh
+    })
+}
+
+fn projects_due_by_interval_mut(
+    projects: &Mutex<HashMap<String, TrackedProject>>,
+    interval_for_project: impl Fn(&TrackedProject) -> Duration,
     last_refresh: impl Fn(&mut TrackedProject) -> &mut Option<Instant>,
 ) -> Vec<TrackedProject> {
     let now = Instant::now();
@@ -601,6 +638,7 @@ fn projects_due(
     guard
         .values_mut()
         .filter_map(|project| {
+            let interval = interval_for_project(project);
             let last = last_refresh(project);
             let is_due = last
                 .map(|value| now.duration_since(value) >= interval)
@@ -609,31 +647,6 @@ fn projects_due(
                 return None;
             }
             *last = Some(now);
-            Some(project.clone())
-        })
-        .collect()
-}
-
-fn projects_due_by_interval(
-    projects: &Mutex<HashMap<String, TrackedProject>>,
-    interval_for_project: impl Fn(&TrackedProject) -> Duration,
-) -> Vec<TrackedProject> {
-    let now = Instant::now();
-    let Ok(mut guard) = projects.lock() else {
-        return Vec::new();
-    };
-    guard
-        .values_mut()
-        .filter_map(|project| {
-            let interval = interval_for_project(project);
-            let is_due = project
-                .last_git_refresh
-                .map(|value| now.duration_since(value) >= interval)
-                .unwrap_or(true);
-            if !is_due {
-                return None;
-            }
-            project.last_git_refresh = Some(now);
             Some(project.clone())
         })
         .collect()
@@ -713,5 +726,90 @@ fn append_activity_log(category: &str, message: &str) {
     }
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "[project-activity] [{category}] {message}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ai_refresh_uses_foreground_and_background_intervals() {
+        let coordinator = ProjectActivityCoordinator::new();
+        let now = Instant::now();
+        {
+            let mut projects = coordinator.projects.lock().unwrap();
+            projects.insert(
+                "active".to_string(),
+                TrackedProject {
+                    id: "active".to_string(),
+                    name: "Active".to_string(),
+                    path: "/tmp/active".to_string(),
+                    last_git_refresh: None,
+                    last_ai_refresh: Some(now - Duration::from_secs(180)),
+                },
+            );
+            projects.insert(
+                "background".to_string(),
+                TrackedProject {
+                    id: "background".to_string(),
+                    name: "Background".to_string(),
+                    path: "/tmp/background".to_string(),
+                    last_git_refresh: None,
+                    last_ai_refresh: Some(now - Duration::from_secs(180)),
+                },
+            );
+        }
+        *coordinator.active_project_id.lock().unwrap() = Some("active".to_string());
+        coordinator.mark_main_window_visible(true);
+
+        let due =
+            coordinator.projects_due_for_ai(Duration::from_secs(120), Duration::from_secs(600));
+
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].id, "active");
+    }
+
+    #[test]
+    fn ai_background_refresh_runs_when_background_project_is_due() {
+        let coordinator = ProjectActivityCoordinator::new();
+        let now = Instant::now();
+        {
+            let mut projects = coordinator.projects.lock().unwrap();
+            projects.insert(
+                "active".to_string(),
+                TrackedProject {
+                    id: "active".to_string(),
+                    name: "Active".to_string(),
+                    path: "/tmp/active".to_string(),
+                    last_git_refresh: None,
+                    last_ai_refresh: Some(now - Duration::from_secs(700)),
+                },
+            );
+            projects.insert(
+                "background".to_string(),
+                TrackedProject {
+                    id: "background".to_string(),
+                    name: "Background".to_string(),
+                    path: "/tmp/background".to_string(),
+                    last_git_refresh: None,
+                    last_ai_refresh: Some(now - Duration::from_secs(700)),
+                },
+            );
+        }
+        *coordinator.active_project_id.lock().unwrap() = Some("active".to_string());
+        coordinator.mark_main_window_visible(true);
+
+        let due =
+            coordinator.projects_due_for_ai(Duration::from_secs(120), Duration::from_secs(600));
+        let ids = due
+            .into_iter()
+            .map(|project| project.id)
+            .collect::<HashSet<_>>();
+
+        assert_eq!(
+            ids,
+            HashSet::from(["active".to_string(), "background".to_string()])
+        );
     }
 }

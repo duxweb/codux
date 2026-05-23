@@ -16,13 +16,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 #[cfg(not(windows))]
 use std::sync::OnceLock;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
 
 const MAX_HISTORY_BYTES: usize = 2_000_000;
 const OUTPUT_CHUNK_BYTES: usize = 16 * 1024;
+const OUTPUT_BATCH_BYTES: usize = 64 * 1024;
+const OUTPUT_BATCH_DELAY: Duration = Duration::from_millis(16);
 
 #[cfg(windows)]
 const FALLBACK_PATH: &str = "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0";
@@ -120,6 +123,7 @@ pub enum TerminalEvent {
     Output {
         #[serde(rename = "sessionId")]
         session_id: String,
+        #[serde(skip_serializing_if = "String::is_empty")]
         text: String,
         #[serde(rename = "bytesBase64", serialize_with = "serialize_terminal_bytes")]
         bytes: Vec<u8>,
@@ -137,6 +141,21 @@ pub enum TerminalEvent {
     },
 }
 
+impl TerminalEvent {
+    pub fn for_webview(&self) -> Self {
+        match self {
+            TerminalEvent::Output {
+                session_id, bytes, ..
+            } => TerminalEvent::Output {
+                session_id: session_id.clone(),
+                text: String::new(),
+                bytes: bytes.clone(),
+            },
+            _ => self.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum TerminalError {
     #[error("terminal session not found: {0}")]
@@ -146,6 +165,12 @@ pub enum TerminalError {
 }
 
 type EventSink = Arc<dyn Fn(TerminalEvent) + Send + Sync + 'static>;
+
+enum TerminalReaderMessage {
+    Data(Vec<u8>),
+    Eof,
+    Error(String),
+}
 
 pub struct TerminalManager {
     sessions: Mutex<HashMap<String, Arc<TerminalSession>>>,
@@ -486,54 +511,166 @@ impl TerminalSession {
         session: Arc<Self>,
         emit: EventSink,
     ) {
+        let (tx, rx) = mpsc::channel::<TerminalReaderMessage>();
+        let emitter_id = id.clone();
+        let emitter_session = Arc::clone(&session);
+        let emitter_sink = Arc::clone(&emit);
+        thread::Builder::new()
+            .name(format!("codux-terminal-emitter-{emitter_id}"))
+            .spawn(move || {
+                Self::run_output_emitter(emitter_id, emitter_session, emitter_sink, rx);
+            })
+            .expect("failed to spawn terminal emitter");
+
         thread::Builder::new()
             .name(format!("codux-terminal-reader-{id}"))
             .spawn(move || {
                 let mut buffer = vec![0_u8; OUTPUT_CHUNK_BYTES];
-                let mut pending_utf8 = Vec::new();
                 loop {
                     match reader.read(&mut buffer) {
                         Ok(0) => {
-                            let data = flush_utf8_decoder(&mut pending_utf8);
-                            if !data.is_empty() {
-                                let bytes = data.as_bytes();
-                                emit(TerminalEvent::Output {
-                                    session_id: id.clone(),
-                                    bytes: bytes.to_vec(),
-                                    text: data,
-                                });
-                            }
+                            let _ = tx.send(TerminalReaderMessage::Eof);
                             break;
                         }
                         Ok(count) => {
-                            let bytes = &buffer[..count];
-                            if let Ok(mut history) = session.history.lock() {
-                                history.push(bytes);
+                            if tx
+                                .send(TerminalReaderMessage::Data(buffer[..count].to_vec()))
+                                .is_err()
+                            {
+                                break;
                             }
-                            let data = decode_utf8_output(bytes, &mut pending_utf8);
-                            if let Ok(mut info) = session.info.lock() {
-                                info.last_active_at = chrono::Utc::now().to_rfc3339();
-                                info.buffer_characters =
-                                    info.buffer_characters.saturating_add(data.chars().count());
-                                info.has_buffer = true;
-                            }
-                            emit(TerminalEvent::Output {
-                                session_id: id.clone(),
-                                bytes: bytes.to_vec(),
-                                text: data,
-                            });
                         }
                         Err(error) => {
-                            emit(TerminalEvent::Error {
-                                session_id: id.clone(),
-                                message: error.to_string(),
-                            });
+                            let _ = tx.send(TerminalReaderMessage::Error(error.to_string()));
                             break;
                         }
                     }
                 }
             })
             .expect("failed to spawn terminal reader");
+    }
+
+    fn run_output_emitter(
+        id: String,
+        session: Arc<Self>,
+        emit: EventSink,
+        rx: mpsc::Receiver<TerminalReaderMessage>,
+    ) {
+        let mut pending_utf8 = Vec::new();
+        let mut pending_bytes = Vec::with_capacity(OUTPUT_CHUNK_BYTES);
+
+        loop {
+            match rx.recv() {
+                Ok(TerminalReaderMessage::Data(bytes)) => {
+                    pending_bytes.extend_from_slice(&bytes);
+                    while pending_bytes.len() < OUTPUT_BATCH_BYTES {
+                        match rx.recv_timeout(OUTPUT_BATCH_DELAY) {
+                            Ok(TerminalReaderMessage::Data(bytes)) => {
+                                pending_bytes.extend_from_slice(&bytes);
+                            }
+                            Ok(TerminalReaderMessage::Eof) => {
+                                Self::emit_output_batch(
+                                    &id,
+                                    &session,
+                                    &emit,
+                                    &mut pending_utf8,
+                                    &mut pending_bytes,
+                                );
+                                Self::emit_pending_utf8(&id, &emit, &mut pending_utf8);
+                                return;
+                            }
+                            Ok(TerminalReaderMessage::Error(message)) => {
+                                Self::emit_output_batch(
+                                    &id,
+                                    &session,
+                                    &emit,
+                                    &mut pending_utf8,
+                                    &mut pending_bytes,
+                                );
+                                emit(TerminalEvent::Error {
+                                    session_id: id,
+                                    message,
+                                });
+                                return;
+                            }
+                            Err(mpsc::RecvTimeoutError::Timeout) => break,
+                            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                        }
+                    }
+                    Self::emit_output_batch(
+                        &id,
+                        &session,
+                        &emit,
+                        &mut pending_utf8,
+                        &mut pending_bytes,
+                    );
+                }
+                Ok(TerminalReaderMessage::Eof) => {
+                    Self::emit_output_batch(
+                        &id,
+                        &session,
+                        &emit,
+                        &mut pending_utf8,
+                        &mut pending_bytes,
+                    );
+                    Self::emit_pending_utf8(&id, &emit, &mut pending_utf8);
+                    return;
+                }
+                Ok(TerminalReaderMessage::Error(message)) => {
+                    Self::emit_output_batch(
+                        &id,
+                        &session,
+                        &emit,
+                        &mut pending_utf8,
+                        &mut pending_bytes,
+                    );
+                    emit(TerminalEvent::Error {
+                        session_id: id,
+                        message,
+                    });
+                    return;
+                }
+                Err(_) => return,
+            }
+        }
+    }
+
+    fn emit_output_batch(
+        id: &str,
+        session: &Arc<Self>,
+        emit: &EventSink,
+        pending_utf8: &mut Vec<u8>,
+        pending_bytes: &mut Vec<u8>,
+    ) {
+        if pending_bytes.is_empty() {
+            return;
+        }
+        if let Ok(mut history) = session.history.lock() {
+            history.push(pending_bytes);
+        }
+        let text = decode_utf8_output(pending_bytes, pending_utf8);
+        if let Ok(mut info) = session.info.lock() {
+            info.last_active_at = chrono::Utc::now().to_rfc3339();
+            info.buffer_characters = info.buffer_characters.saturating_add(text.chars().count());
+            info.has_buffer = true;
+        }
+        emit(TerminalEvent::Output {
+            session_id: id.to_string(),
+            bytes: std::mem::take(pending_bytes),
+            text,
+        });
+    }
+
+    fn emit_pending_utf8(id: &str, emit: &EventSink, pending_utf8: &mut Vec<u8>) {
+        let text = flush_utf8_decoder(pending_utf8);
+        if text.is_empty() {
+            return;
+        }
+        emit(TerminalEvent::Output {
+            session_id: id.to_string(),
+            bytes: text.as_bytes().to_vec(),
+            text,
+        });
     }
 
     fn spawn_waiter(id: String, session: Arc<Self>, emit: EventSink) {
@@ -1280,5 +1417,21 @@ mod tests {
         assert_eq!(value["bytesBase64"], "5o6o");
         assert!(value.get("bytes").is_none());
         assert!(value.get("data").is_none());
+    }
+
+    #[test]
+    fn terminal_output_webview_event_omits_text_payload() {
+        let event = TerminalEvent::Output {
+            session_id: "term-1".to_string(),
+            text: "推".to_string(),
+            bytes: "推".as_bytes().to_vec(),
+        };
+        let value =
+            serde_json::to_value(event.for_webview()).expect("terminal event should serialize");
+
+        assert_eq!(value["kind"], "output");
+        assert_eq!(value["sessionId"], "term-1");
+        assert!(value.get("text").is_none());
+        assert_eq!(value["bytesBase64"], "5o6o");
     }
 }

@@ -773,14 +773,14 @@ function reorderById<T extends { id: string }>(items: T[], sourceId: string, tar
 function workspaceGridStyle(bottomRatio: number, hasBottomTabs: boolean): CSSProperties {
   if (!hasBottomTabs) {
     return {
-      gridTemplateRows: "minmax(180px, 1fr) 1px 44px",
+      gridTemplateRows: "minmax(0, 1fr) 1px 44px",
     };
   }
 
   const bottom = `${(bottomRatio * 100).toFixed(3)}fr`;
   const top = `${((1 - bottomRatio) * 100).toFixed(3)}fr`;
   return {
-    gridTemplateRows: `minmax(180px, ${top}) 1px minmax(160px, ${bottom})`,
+    gridTemplateRows: `minmax(0, ${top}) 1px minmax(0, ${bottom})`,
   };
 }
 
@@ -791,7 +791,7 @@ function topGridStyle(count: number, ratios: number[]): CSSProperties {
   const normalized = normalizeRatios(ratios, count);
   return {
     gridTemplateColumns: Array.from({ length: count }, (_, index) =>
-      index === 0 ? `minmax(180px, ${normalized[index]}fr)` : `1px minmax(180px, ${normalized[index]}fr)`,
+      index === 0 ? `minmax(0, ${normalized[index]}fr)` : `1px minmax(0, ${normalized[index]}fr)`,
     ).join(" "),
   };
 }

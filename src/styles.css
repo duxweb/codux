@@ -12,13 +12,14 @@
 
   --color-surface-glass: rgb(28 32 40);
   --color-surface-chrome: rgb(34 38 46);
+  --color-surface-popover: rgb(18 22 29);
   --color-surface-panel: rgb(28 32 40);
   --color-surface-card: rgb(18 21 27);
   --color-surface-terminal: rgb(28 31 37);
   --color-surface-editor: rgb(20 23 28);
 
-  --color-line: color-mix(in oklab, var(--terminal-bg) 83%, white);
-  --color-line-strong: color-mix(in oklab, var(--terminal-bg) 72%, white);
+  --color-line: rgb(67 76 91);
+  --color-line-strong: rgb(78 88 104);
 
   --color-brand-blue: rgb(59 130 246);
   --color-brand-blue-deep: rgb(37 99 235);
@@ -33,9 +34,9 @@
   --color-brand-pink-deep: rgb(219 39 119);
 
   --accent: var(--color-brand-blue);
-  --accent-hover: color-mix(in oklab, var(--color-brand-blue) 88%, var(--color-fill));
+  --accent-hover: rgb(82 145 247);
   --accent-foreground: var(--color-on-brand);
-  --accent-soft: color-mix(in oklab, var(--color-brand-blue) 16%, transparent);
+  --accent-soft: rgb(59 130 246 / 0.16);
   --accent-soft-foreground: var(--color-brand-blue);
   --focus: var(--color-brand-blue);
   --link: var(--color-brand-blue);
@@ -45,7 +46,7 @@
   --radius-glyph: 7px;
 
   --shadow-pop: 0 10px 30px -12px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.25);
-  --shadow-badge: inset 0 1px 0 color-mix(in oklab, var(--color-fill) 8%, transparent), 0 2px 6px rgb(0 0 0 / 0.2);
+  --shadow-badge: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 2px 6px rgb(0 0 0 / 0.2);
 }
 
 :root {
@@ -53,12 +54,15 @@
 
   --titlebar-height: 42px;
 
-  --surface-window-tint: color-mix(in oklab, var(--terminal-bg) 88%, white);
-  --surface-window-glass: color-mix(in oklab, var(--terminal-bg) 94%, white);
-  --surface-editor: color-mix(in oklab, var(--color-surface-editor) 65%, transparent);
+  --surface-window-tint: rgb(20 24 30);
+  --surface-window-glass: rgb(22 27 34);
+  --surface-editor: rgb(20 23 28 / 0.65);
+  --scrollbar-thumb: rgb(255 255 255 / 0.16);
+  --scrollbar-thumb-hover: rgb(255 255 255 / 0.28);
+  --focus-ring: rgb(59 130 246 / 0.22);
   --minimap-stripes: repeating-linear-gradient(
     to bottom,
-    color-mix(in oklab, var(--color-fill) 18%, transparent) 0 2px,
+    rgb(255 255 255 / 0.18) 0 2px,
     transparent 2px 6px
   );
 
@@ -70,21 +74,21 @@
   --surface-secondary-foreground: var(--color-ink);
   --surface-tertiary: var(--color-surface-glass);
   --surface-tertiary-foreground: var(--color-ink);
-  --overlay: var(--color-surface-chrome);
+  --overlay: var(--color-surface-popover);
   --overlay-foreground: var(--color-ink);
   --muted: var(--color-ink-faint);
-  --default: color-mix(in oklab, var(--color-fill) 7%, transparent);
-  --default-hover: color-mix(in oklab, var(--color-fill) 11%, transparent);
+  --default: rgb(255 255 255 / 0.07);
+  --default-hover: rgb(255 255 255 / 0.11);
   --default-foreground: var(--color-ink);
   --border: var(--color-line);
   --separator: var(--color-line);
-  --field-background: color-mix(in oklab, var(--color-fill) 5%, transparent);
+  --field-background: rgb(255 255 255 / 0.05);
   --field-foreground: var(--color-ink);
   --field-placeholder: var(--color-ink-faint);
   --field-border: var(--color-line);
   --field-border-width: 1px;
-  --field-hover: color-mix(in oklab, var(--color-fill) 8%, transparent);
-  --field-focus: color-mix(in oklab, var(--color-fill) 6%, transparent);
+  --field-hover: rgb(255 255 255 / 0.08);
+  --field-focus: rgb(255 255 255 / 0.06);
   --field-border-hover: var(--color-line-strong);
   --field-border-focus: var(--color-brand-blue);
   --success: var(--color-brand-green);
@@ -131,7 +135,7 @@
   --editor-class: var(--terminal-bright-yellow);
   --editor-property: var(--terminal-cyan);
   --editor-operator: var(--terminal-red);
-  --editor-punctuation: color-mix(in oklab, var(--terminal-fg) 72%, var(--terminal-bg));
+  --editor-punctuation: rgb(168 177 190);
   --editor-meta: var(--terminal-bright-black);
   --editor-link: var(--terminal-blue);
   --editor-heading: var(--terminal-bright-blue);
@@ -157,19 +161,20 @@
   --color-fill: rgb(18 25 36);
   --color-surface-glass: rgb(248 250 253);
   --color-surface-chrome: rgb(249 250 252);
+  --color-surface-popover: rgb(255 255 255);
   --color-surface-panel: rgb(244 247 251);
   --color-surface-card: rgb(255 255 255);
   --color-surface-terminal: rgb(250 251 253);
   --color-surface-editor: rgb(247 249 252);
-  --color-line: color-mix(in oklab, var(--terminal-bg) 91%, black);
-  --color-line-strong: color-mix(in oklab, var(--terminal-bg) 84%, black);
+  --color-line: rgb(225 227 231);
+  --color-line-strong: rgb(219 222 227);
 
-  --surface-window-tint: color-mix(in oklab, var(--terminal-bg) 94%, black);
-  --surface-window-glass: color-mix(in oklab, var(--terminal-bg) 97%, black);
-  --surface-editor: color-mix(in oklab, var(--color-surface-editor) 92%, transparent);
+  --surface-window-tint: rgb(236 238 241);
+  --surface-window-glass: rgb(243 244 246);
+  --surface-editor: rgb(247 249 252 / 0.92);
   --minimap-stripes: repeating-linear-gradient(
     to bottom,
-    color-mix(in oklab, var(--color-fill) 14%, transparent) 0 2px,
+    rgb(18 25 36 / 0.14) 0 2px,
     transparent 2px 6px
   );
   --shadow-pop: 0 14px 34px -18px rgb(24 35 52 / 0.24), 0 2px 8px rgb(24 35 52 / 0.12);
@@ -206,12 +211,13 @@
   --color-ink-faint: rgb(96 107 120);
   --color-surface-glass: rgb(33 35 39);
   --color-surface-chrome: rgb(38 40 45);
+  --color-surface-popover: rgb(24 26 30);
   --color-surface-panel: rgb(31 34 39);
   --color-surface-card: rgb(22 24 28);
   --color-surface-terminal: rgb(24 26 30);
   --color-surface-editor: rgb(23 25 29);
   --color-line: rgb(45 49 56);
-  --color-line-strong: rgb(60 65 74);
+  --color-line-strong: rgb(52 57 66);
   --color-brand-blue: rgb(96 165 250);
   --color-brand-blue-deep: rgb(59 130 246);
 
@@ -229,12 +235,13 @@
   --color-ink-faint: rgb(86 104 132);
   --color-surface-glass: rgb(20 27 38);
   --color-surface-chrome: rgb(23 31 43);
+  --color-surface-popover: rgb(13 18 27);
   --color-surface-panel: rgb(18 25 36);
   --color-surface-card: rgb(13 18 27);
   --color-surface-terminal: rgb(15 21 31);
   --color-surface-editor: rgb(14 20 29);
   --color-line: rgb(31 41 56);
-  --color-line-strong: rgb(43 55 74);
+  --color-line-strong: rgb(37 49 67);
   --color-brand-blue: rgb(96 165 250);
   --color-brand-blue-deep: rgb(59 130 246);
 
@@ -289,7 +296,7 @@
 
   .scrollbar-overlay {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklab, var(--color-fill) 18%, transparent) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
     scrollbar-gutter: auto;
     overflow: overlay;
   }
@@ -301,11 +308,11 @@
 
   .scrollbar-overlay::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background-color: color-mix(in oklab, var(--color-fill) 16%, transparent);
+    background-color: var(--scrollbar-thumb);
   }
 
   .scrollbar-overlay::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklab, var(--color-fill) 28%, transparent);
+    background-color: var(--scrollbar-thumb-hover);
   }
 }
 
@@ -346,7 +353,7 @@
   }
 
   html.standalone-window:not(.terminal-window) body {
-    background: var(--color-surface-chrome);
+    background: var(--surface-window-tint);
   }
 
   button {
@@ -450,7 +457,7 @@
 
 html.standalone-window:not(.terminal-window) .app-shell {
   isolation: auto;
-  background: var(--color-surface-chrome);
+  background: var(--surface-window-tint);
 }
 
 html.standalone-window:not(.terminal-window) .app-shell::after {
@@ -480,11 +487,11 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 ::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background-color: color-mix(in oklab, var(--color-fill) 16%, transparent);
+  background-color: var(--scrollbar-thumb);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in oklab, var(--color-fill) 30%, transparent);
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 ::-webkit-scrollbar-track {
@@ -499,7 +506,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
   min-height: 34px;
   border-radius: 8px;
   border-color: var(--color-line);
-  background: color-mix(in oklab, var(--color-fill) 5%, transparent);
+  background: var(--field-background);
   color: var(--color-ink);
   box-shadow: none;
 }
@@ -507,13 +514,13 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .select__trigger:hover,
 .select__trigger[data-hovered="true"] {
   border-color: var(--color-line-strong);
-  background: color-mix(in oklab, var(--color-fill) 8%, transparent);
+  background: var(--field-hover);
 }
 
 .select__trigger:focus-visible,
 .select__trigger[data-focus-visible="true"] {
   border-color: var(--color-brand-blue);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-brand-blue) 22%, transparent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .select__value {
@@ -531,7 +538,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .dropdown__popover {
   border: 1px solid var(--color-line-strong);
   border-radius: 10px;
-  background: var(--color-surface-chrome);
+  background: var(--color-surface-popover);
   color: var(--color-ink);
   box-shadow: var(--shadow-pop);
 }
@@ -557,7 +564,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .menu-item[data-hovered="true"],
 .menu-item[data-focus="true"],
 .menu-item[data-focused="true"] {
-  background: color-mix(in oklab, var(--color-fill) 9%, transparent);
+  background: var(--default-hover);
   color: var(--color-ink);
 }
 
@@ -566,7 +573,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .menu-item[aria-selected="true"],
 .menu-item[data-selected="true"],
 .menu-item[aria-checked="true"] {
-  background: color-mix(in oklab, var(--color-brand-blue) 16%, transparent);
+  background: var(--accent-soft);
   color: var(--color-ink);
 }
 
@@ -588,6 +595,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .terminal-split-grid,
 .terminal-bottom-area {
   background: var(--terminal-bg);
+  contain: layout paint style;
 }
 
 .terminal-split-grid {
@@ -598,6 +606,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .terminal-tab-pane {
   @apply relative min-w-0 min-h-0 overflow-hidden p-4;
   background: var(--terminal-bg);
+  contain: layout paint style;
 }
 
 .terminal-pane.is-active {
@@ -606,7 +615,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 .terminal-pane-dim {
   @apply pointer-events-none absolute inset-0 z-[5] transition-opacity duration-150;
-  background: color-mix(in oklab, var(--terminal-bg) 42%, transparent);
+  background: rgb(0 0 0 / 0.42);
 }
 
 .terminal-split-divider {
@@ -629,7 +638,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 .terminal-split-divider::before {
   @apply absolute block content-[''];
-  background: color-mix(in oklab, var(--color-line) 55%, transparent);
+  background: var(--color-line);
 }
 
 .terminal-split-divider.vertical::before {
@@ -655,7 +664,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 .terminal-split-divider:hover::before,
 .terminal-split-divider.dragging::before {
-  background: color-mix(in oklab, var(--color-brand-blue) 75%, transparent);
+  background: var(--color-brand-blue);
 }
 
 .tab-strip,
@@ -719,20 +728,30 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .terminal-host {
   @apply flex-1 min-w-0 min-h-0 overflow-hidden relative;
   background: var(--terminal-bg);
+  contain: layout paint style;
 }
 
 .terminal-host .xterm {
+  width: 100%;
   height: 100%;
   padding: 0;
+  contain: layout paint style;
 }
 
 .terminal-host .xterm-viewport {
+  overflow-y: scroll !important;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   background: var(--terminal-bg) !important;
 }
 
 .terminal-host .xterm-screen {
-  width: 100% !important;
+  max-width: 100%;
+  contain: layout paint style;
+}
+
+.terminal-host .xterm-rows {
+  contain: layout paint style;
 }
 
 .terminal-renderer-placeholder {
@@ -744,7 +763,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 }
 
 .terminal-context-menu {
-  @apply absolute z-50 w-[174px] rounded-[8px] border border-line-strong bg-surface-chrome/95 p-1 shadow-pop backdrop-blur-xl;
+  @apply absolute z-50 w-[174px] rounded-[8px] border border-line-strong bg-surface-popover p-1 shadow-pop;
 }
 
 .terminal-context-menu-item {

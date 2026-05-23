@@ -106,7 +106,7 @@ export function DesktopPopover({
           <div
             ref={refs.setFloating}
             className={mergeClassName(
-              "z-50 rounded-[10px] border border-line-strong bg-surface-chrome/95 text-ink shadow-pop outline-none backdrop-blur-xl no-drag",
+              "z-50 rounded-[10px] border border-line-strong bg-surface-popover text-ink shadow-pop outline-none no-drag",
               className,
             )}
             style={{

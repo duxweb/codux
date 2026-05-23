@@ -136,7 +136,7 @@ const windowConfig: Record<AppWindowKind, WindowConfig> = {
   },
 };
 
-const opaqueAppWindowBackground = "#22262e";
+const opaqueAppWindowBackground = "#14171d";
 const childWindowTrafficLightPosition = () => (isMacPlatform() ? new LogicalPosition(14, 24) : undefined);
 const usesNativeOverlayTitlebar = () => isMacPlatform();
 const childWindowDecorations = (kind?: AppWindowKind) => kind !== "desktop-pet" && !isWindowsPlatform();

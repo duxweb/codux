@@ -265,7 +265,7 @@ export function SettingsWindow() {
   return (
     <div className="app-shell h-screen grid grid-cols-[200px_minmax(0,1fr)] text-ink">
       {isWindowsPlatform() && <WindowsWindowControls closeOnly className="h-12" />}
-      <aside className="min-h-0 border-r border-line bg-surface-chrome/45 flex flex-col">
+      <aside className="min-h-0 border-r border-line bg-[var(--surface-window-tint)] flex flex-col">
         <div
           className="h-14 flex-shrink-0 drag-region"
           data-tauri-drag-region
@@ -295,7 +295,7 @@ export function SettingsWindow() {
           data-tauri-drag-region
           onPointerDownCapture={startWindowDrag}
           style={{
-            background: "linear-gradient(to top, transparent 0%, var(--color-surface-chrome) 50%)",
+            background: "linear-gradient(to top, transparent 0%, var(--surface-window-tint) 50%)",
           }}
         >
           <div className="text-lg font-semibold tracking-tight drag-region" data-tauri-drag-region>
@@ -569,13 +569,7 @@ function AppearanceSection() {
             onChange={(event) => setSetting("terminalFontSize", event.currentTarget.value)}
           />
         </Field>
-        <Field
-          label={tm("settings.terminal_renderer", "Terminal Renderer")}
-          description={tm(
-            "settings.terminal_renderer.help",
-            "Auto uses DOM on macOS and WebGL on Windows. Restart terminal tabs to apply renderer changes.",
-          )}
-        >
+        <Field label={tm("settings.terminal_renderer", "Terminal Renderer")}>
           <Select
             value={settings.terminalRenderer}
             onChange={(value) => setSetting("terminalRenderer", value as TerminalRendererMode)}
