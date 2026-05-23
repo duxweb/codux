@@ -97,6 +97,10 @@ pub struct PetSettings {
 pub struct AISettings {
     #[serde(default)]
     pub global_prompt: String,
+    #[serde(default = "default_git_commit_message_tone")]
+    pub git_commit_message_tone: String,
+    #[serde(default)]
+    pub git_commit_message_style_rules: String,
     #[serde(default)]
     pub runtime_tools: AIRuntimeToolSettings,
     #[serde(default)]
@@ -290,6 +294,8 @@ impl Default for AISettings {
     fn default() -> Self {
         Self {
             global_prompt: String::new(),
+            git_commit_message_tone: default_git_commit_message_tone(),
+            git_commit_message_style_rules: String::new(),
             runtime_tools: AIRuntimeToolSettings::default(),
             memory: AIMemorySettings::default(),
             pet: AIPetSettings::default(),
@@ -631,6 +637,21 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
 
 fn sanitize_ai_settings(mut ai: AISettings) -> AISettings {
     ai.global_prompt = ai.global_prompt.trim().chars().take(20_000).collect();
+    ai.git_commit_message_tone = ai
+        .git_commit_message_tone
+        .trim()
+        .chars()
+        .take(120)
+        .collect();
+    if ai.git_commit_message_tone.is_empty() {
+        ai.git_commit_message_tone = default_git_commit_message_tone();
+    }
+    ai.git_commit_message_style_rules = ai
+        .git_commit_message_style_rules
+        .trim()
+        .chars()
+        .take(4_000)
+        .collect();
     ai.runtime_tools = sanitize_runtime_tool_settings(ai.runtime_tools);
     ai.memory.max_injected_user_working_memories =
         ai.memory.max_injected_user_working_memories.clamp(0, 24);
@@ -850,6 +871,10 @@ fn default_ai_memory_provider_id() -> String {
 
 fn default_ai_pet_provider_id() -> String {
     "automatic".to_string()
+}
+
+fn default_git_commit_message_tone() -> String {
+    "concise".to_string()
 }
 
 fn default_ai_tool_permission_mode() -> String {

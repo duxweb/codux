@@ -1,4 +1,4 @@
-use crate::git::{git_brief_status, git_command_output};
+use crate::git::{git_brief_status, git_checkout_branch, git_merge_branch, GitBranchRequest};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -240,10 +240,7 @@ pub fn remove_worktree(request: WorktreeRemoveRequest) -> Result<WorktreeSnapsho
     } else {
         None
     };
-    git_output(
-        Path::new(&root),
-        &["worktree", "remove", request.worktree_path.as_str()],
-    )?;
+    remove_worktree_with_git2(&root, &request.worktree_path)?;
     if let Some(branch) = branch_to_delete.as_deref() {
         delete_local_branch(&root, branch)?;
     }
@@ -266,13 +263,18 @@ pub fn merge_worktree(request: WorktreeMergeRequest) -> Result<WorktreeSnapshot,
     if branch == base_branch {
         return Err("The default worktree cannot be merged into itself.".to_string());
     }
-    let cwd = Path::new(&root);
     if current_branch(&root).as_deref() != Some(base_branch.as_str()) {
-        git_output(cwd, &["checkout", base_branch.as_str()])?;
+        git_checkout_branch(GitBranchRequest {
+            project_path: root.clone(),
+            branch: base_branch.clone(),
+        })?;
     }
-    git_output(cwd, &["merge", "--no-ff", branch.as_str()])?;
+    git_merge_branch(GitBranchRequest {
+        project_path: root.clone(),
+        branch: branch.clone(),
+    })?;
     if request.remove_branch.unwrap_or(false) {
-        git_output(cwd, &["worktree", "remove", request.worktree_path.as_str()])?;
+        remove_worktree_with_git2(&root, &request.worktree_path)?;
         delete_local_branch(&root, &branch)?;
     }
     Ok(worktree_snapshot(request.project_id, request.project_path))
@@ -347,6 +349,31 @@ fn list_worktrees(path: &str) -> Result<Vec<GitWorktreeEntry>, String> {
         });
     }
     Ok(entries)
+}
+
+fn remove_worktree_with_git2(root: &str, worktree_path: &str) -> Result<(), String> {
+    let repo = GitRepository::discover(root).map_err(|error| error.message().to_string())?;
+    let target_path = normalize_path(worktree_path);
+    let names = repo
+        .worktrees()
+        .map_err(|error| error.message().to_string())?;
+    for name in names.iter().flatten().flatten() {
+        let worktree = repo
+            .find_worktree(name)
+            .map_err(|error| error.message().to_string())?;
+        if normalize_path(&worktree.path().to_string_lossy()) != target_path {
+            continue;
+        }
+        if Path::new(&target_path).exists() {
+            std::fs::remove_dir_all(&target_path).map_err(|error| error.to_string())?;
+        }
+        let mut options = git2::WorktreePruneOptions::new();
+        options.valid(true);
+        return worktree
+            .prune(Some(&mut options))
+            .map_err(|error| error.message().to_string());
+    }
+    Err("Worktree not found.".to_string())
 }
 
 fn create_worktree_with_git2(
@@ -545,10 +572,6 @@ fn head_tree(repo: &GitRepository) -> Result<git2::Tree<'_>, git2::Error> {
     repo.head()?.peel_to_commit()?.tree()
 }
 
-fn git_output(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    git_command_output(cwd, args)
-}
-
 fn managed_worktree_path(project_path: &str, branch_name: &str) -> PathBuf {
     let root = repository_root(project_path).unwrap_or_else(|| normalize_path(project_path));
     PathBuf::from(root)
@@ -721,24 +744,20 @@ mod tests {
     fn merge_worktree_merges_branch_into_default_worktree() {
         let temp = TempDir::new("merge-worktree");
         let root = create_repo_with_commit(&temp.path);
-        let worktree_path = temp.path.join(".codux").join("worktrees").join("feature");
-        git_output(Path::new(&root), &["config", "user.name", "Codux"]).expect("configure name");
-        git_output(
-            Path::new(&root),
-            &["config", "user.email", "codux@example.test"],
-        )
-        .expect("configure email");
-        git_output(
-            Path::new(&root),
-            &[
-                "worktree",
-                "add",
-                "-b",
-                "feature/test-merge",
-                worktree_path.to_string_lossy().as_ref(),
-            ],
-        )
+        let snapshot = create_worktree(WorktreeCreateRequest {
+            project_id: "project".to_string(),
+            project_path: root.clone(),
+            base_branch: current_branch(&root),
+            branch_name: "feature/test-merge".to_string(),
+            task_title: None,
+        })
         .expect("create worktree");
+        let worktree_path = snapshot
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.branch == "feature/test-merge")
+            .map(|worktree| PathBuf::from(&worktree.path))
+            .expect("created worktree path");
         commit_file(&worktree_path, "README.md", "hello\nfeature\n", "feature");
 
         merge_worktree(WorktreeMergeRequest {

@@ -865,6 +865,27 @@ function AISection() {
         </div>
       </SettingsCard>
 
+      <SettingsCard title={tm("settings.ai.git_commit_message", "Git Commit Message")}>
+        <Field label={tm("settings.ai.git_commit_message_tone", "Tone")}>
+          <TextInput
+            value={ai.gitCommitMessageTone}
+            onChange={(event) => setAI({ gitCommitMessageTone: event.currentTarget.value })}
+            placeholder={tm("settings.ai.git_commit_message_tone_placeholder", "concise, conventional")}
+          />
+        </Field>
+        <Field label={tm("settings.ai.git_commit_message_style_rules", "Style Rules")}>
+          <Textarea
+            value={ai.gitCommitMessageStyleRules}
+            rows={3}
+            onChange={(event) => setAI({ gitCommitMessageStyleRules: event.currentTarget.value })}
+            placeholder={tm(
+              "settings.ai.git_commit_message_style_rules_placeholder",
+              "Example: use Conventional Commits, keep subject under 72 characters.",
+            )}
+          />
+        </Field>
+      </SettingsCard>
+
       <SettingsCard title={tm("settings.ai.section.memory", "Memory")}>
         <FormRow label={tm("settings.ai.memory.enabled", "Enable Memory")}>
           <Toggle checked={ai.memory.enabled} onChange={(enabled) => setMemory({ enabled })} />

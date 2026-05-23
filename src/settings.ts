@@ -73,6 +73,8 @@ export type PetSettings = {
 
 export type AISettings = {
   globalPrompt: string;
+  gitCommitMessageTone: string;
+  gitCommitMessageStyleRules: string;
   runtimeTools: AIRuntimeToolSettings;
   memory: AIMemorySettings;
   pet: AIPetSettings;
@@ -177,6 +179,8 @@ export const defaultSettings: AppSettings = {
   },
   ai: {
     globalPrompt: "",
+    gitCommitMessageTone: "concise",
+    gitCommitMessageStyleRules: "",
     runtimeTools: {
       codex: "default",
       claudeCode: "default",
@@ -552,6 +556,8 @@ function normalizeAISettings(settings?: Partial<AISettings>, legacyPet?: Partial
   return {
     ...defaultSettings.ai,
     ...(settings ?? {}),
+    gitCommitMessageTone: normalizeGitCommitMessageTone(settings?.gitCommitMessageTone),
+    gitCommitMessageStyleRules: normalizeBoundedText(settings?.gitCommitMessageStyleRules, 4000),
     runtimeTools: normalizeRuntimeTools(settings?.runtimeTools),
     memory: {
       ...defaultSettings.ai.memory,
@@ -578,6 +584,14 @@ function normalizeAISettings(settings?: Partial<AISettings>, legacyPet?: Partial
       priority: provider.priority,
     })),
   };
+}
+
+function normalizeGitCommitMessageTone(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 120) : "concise";
+}
+
+function normalizeBoundedText(value: unknown, maxLength: number) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
 function normalizeRuntimeTools(settings?: Partial<AIRuntimeToolSettings>): AIRuntimeToolSettings {

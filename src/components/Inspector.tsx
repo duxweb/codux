@@ -85,7 +85,7 @@ import { openGitDiffWindow } from "../windowing";
 import { systemConfirm } from "../systemDialog";
 import { formatI18n, tm } from "../i18n";
 import { openLocalizedDialog } from "../localizedDialog";
-import { readAppSettings, subscribeAppSettings, type AIStatisticsMode } from "../settings";
+import { readAppSettings, subscribeAppSettings, type AISettings, type AIStatisticsMode } from "../settings";
 import { revealProjectInFileManager } from "../ide";
 
 type Props = {
@@ -310,6 +310,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [isSubmittingCommit, setSubmittingCommit] = useState(false);
+  const [isGeneratingCommitMessage, setGeneratingCommitMessage] = useState(false);
   const [gitHistoryHeight, setGitHistoryHeight] = useState(190);
   const gitContentRef = useRef<HTMLDivElement | null>(null);
   const git = useGitStatusSnapshot(project);
@@ -1023,7 +1024,21 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
             <PanelIconButton
               icon={Sparkles}
               tooltip={tm("git.commit.generate_message", "Generate Commit Message")}
-              onClick={() => setCommitMessage(generateCommitMessage(snapshot))}
+              busy={isGeneratingCommitMessage}
+              disabled={isGeneratingCommitMessage}
+              onClick={() => {
+                setGeneratingCommitMessage(true);
+                void generateCommitMessage(snapshot)
+                  .then((message) => {
+                    if (message) setCommitMessage(message);
+                  })
+                  .catch((error) => {
+                    console.error("failed to generate commit message", error);
+                    const fallback = fallbackCommitMessage(snapshot);
+                    if (fallback) setCommitMessage(fallback);
+                  })
+                  .finally(() => setGeneratingCommitMessage(false));
+              }}
             />
             <PanelIconButton
               icon={RefreshCw}
@@ -1882,7 +1897,28 @@ function compactGitDecorations(decorations: string[]) {
     .map((decoration) => decoration.replace(/^HEAD -> /, "HEAD→").replace(/^origin\//, "o/"));
 }
 
-function generateCommitMessage(snapshot: GitStatusSnapshot) {
+async function generateCommitMessage(snapshot: GitStatusSnapshot) {
+  const fallback = fallbackCommitMessage(snapshot);
+  if (!fallback || !window.__TAURI_INTERNALS__) return fallback;
+  const ai = readAppSettings().ai;
+  const prompt = buildCommitMessagePrompt(snapshot, ai);
+  const response = await invoke<{ text: string }>("llm_complete", {
+    request: {
+      providerId: null,
+      purpose: "gitCommitMessage",
+      systemPrompt: [
+        "You generate Git commit messages.",
+        "Return only the final commit message text.",
+        "Do not wrap it in quotes or markdown.",
+        "Use one concise subject line unless the style rules explicitly ask for a body.",
+      ].join("\n"),
+      prompt,
+    },
+  });
+  return sanitizeGeneratedCommitMessage(response.text) || fallback;
+}
+
+function fallbackCommitMessage(snapshot: GitStatusSnapshot) {
   const files = [...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked]
     .map((file) => file.path)
     .filter(Boolean);
@@ -1896,6 +1932,32 @@ function generateCommitMessage(snapshot: GitStatusSnapshot) {
       ? formatI18n(tm("git.commit.generate.more_files_format", " and %@ more files"), String(files.length - 3))
       : "";
   return formatI18n(tm("git.commit.generate.simple_summary_format", "Update %@%@"), summary, suffix);
+}
+
+function buildCommitMessagePrompt(snapshot: GitStatusSnapshot, ai: AISettings) {
+  const files = [...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked].slice(0, 80);
+  const fileLines = files
+    .map((file) => `- ${file.path} [index:${file.indexStatus.trim() || "-"} worktree:${file.worktreeStatus.trim() || "-"}]`)
+    .join("\n");
+  return [
+    `Tone: ${ai.gitCommitMessageTone || "concise"}`,
+    ai.gitCommitMessageStyleRules ? `Style rules:\n${ai.gitCommitMessageStyleRules}` : "",
+    `Current branch: ${snapshot.branch}`,
+    `Changed files:\n${fileLines}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function sanitizeGeneratedCommitMessage(value: string) {
+  return value
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[a-zA-Z]*\n?|\n?```/g, ""))
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 1200)
+    .trim();
 }
 
 function gitCommitActionLabel(action: GitCommitAction) {

@@ -303,7 +303,12 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Aus",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta"
+      "settings.update.channel.beta": "Beta",
+      "settings.ai.git_commit_message": "Git Commit Message",
+      "settings.ai.git_commit_message_tone": "Tone",
+      "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
+      "settings.ai.git_commit_message_style_rules": "Style Rules",
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
     },
     "en": {
       "settings.ai_auto_refresh": "AI Auto Refresh",
@@ -608,7 +613,12 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Off",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta"
+      "settings.update.channel.beta": "Beta",
+      "settings.ai.git_commit_message": "Git Commit Message",
+      "settings.ai.git_commit_message_tone": "Tone",
+      "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
+      "settings.ai.git_commit_message_style_rules": "Style Rules",
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
     },
     "es": {
       "settings.ai_auto_refresh": "Actualización automática de IA",
@@ -913,7 +923,12 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Desactivado",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta"
+      "settings.update.channel.beta": "Beta",
+      "settings.ai.git_commit_message": "Git Commit Message",
+      "settings.ai.git_commit_message_tone": "Tone",
+      "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
+      "settings.ai.git_commit_message_style_rules": "Style Rules",
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
     },
     "fr": {
       "settings.ai_auto_refresh": "Actualisation auto IA",
@@ -1218,7 +1233,12 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Désactivé",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta"
+      "settings.update.channel.beta": "Beta",
+      "settings.ai.git_commit_message": "Git Commit Message",
+      "settings.ai.git_commit_message_tone": "Tone",
+      "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
+      "settings.ai.git_commit_message_style_rules": "Style Rules",
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
     },
     "ja": {
       "settings.ai_auto_refresh": "AI 自動更新",
@@ -1523,7 +1543,12 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "オフ",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta"
+      "settings.update.channel.beta": "Beta",
+      "settings.ai.git_commit_message": "Git Commit Message",
+      "settings.ai.git_commit_message_tone": "Tone",
+      "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
+      "settings.ai.git_commit_message_style_rules": "Style Rules",
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
     },
     "ko": {
       "settings.ai_auto_refresh": "AI 자동 새로고침",
@@ -1828,7 +1853,12 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "꺼짐",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta"
+      "settings.update.channel.beta": "Beta",
+      "settings.ai.git_commit_message": "Git Commit Message",
+      "settings.ai.git_commit_message_tone": "Tone",
+      "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
+      "settings.ai.git_commit_message_style_rules": "Style Rules",
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
     },
     "pt-BR": {
       "settings.ai_auto_refresh": "Atualização automática de IA",
@@ -2133,7 +2163,12 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Desativado",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta"
+      "settings.update.channel.beta": "Beta",
+      "settings.ai.git_commit_message": "Git Commit Message",
+      "settings.ai.git_commit_message_tone": "Tone",
+      "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
+      "settings.ai.git_commit_message_style_rules": "Style Rules",
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
     },
     "ru": {
       "settings.ai_auto_refresh": "Автообновление ИИ",
@@ -2438,7 +2473,12 @@
       "settings.update.status.error": "Unable to check updates. Please try again later.",
       "settings.update.mode.disabled": "Отключено",
       "settings.update.channel.stable": "Stable",
-      "settings.update.channel.beta": "Beta"
+      "settings.update.channel.beta": "Beta",
+      "settings.ai.git_commit_message": "Git Commit Message",
+      "settings.ai.git_commit_message_tone": "Tone",
+      "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
+      "settings.ai.git_commit_message_style_rules": "Style Rules",
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
     },
     "zh-Hans": {
       "settings.ai_auto_refresh": "AI 自动刷新",
@@ -2743,7 +2783,12 @@
       "settings.update.status.error": "暂时无法检查更新，请稍后重试。",
       "settings.update.mode.disabled": "已关闭",
       "settings.update.channel.stable": "稳定版",
-      "settings.update.channel.beta": "测试版"
+      "settings.update.channel.beta": "测试版",
+      "settings.ai.git_commit_message": "Git 提交消息",
+      "settings.ai.git_commit_message_tone": "语气",
+      "settings.ai.git_commit_message_tone_placeholder": "简洁、规范",
+      "settings.ai.git_commit_message_style_rules": "风格规则",
+      "settings.ai.git_commit_message_style_rules_placeholder": "例如：使用 Conventional Commits，标题不超过 72 个字符。"
     },
     "zh-Hant": {
       "settings.ai_auto_refresh": "AI 自動重新整理",
@@ -3048,7 +3093,12 @@
       "settings.update.status.error": "暫時無法檢查更新，請稍後再試。",
       "settings.update.mode.disabled": "已關閉",
       "settings.update.channel.stable": "穩定版",
-      "settings.update.channel.beta": "測試版"
+      "settings.update.channel.beta": "測試版",
+      "settings.ai.git_commit_message": "Git 提交訊息",
+      "settings.ai.git_commit_message_tone": "語氣",
+      "settings.ai.git_commit_message_tone_placeholder": "簡潔、規範",
+      "settings.ai.git_commit_message_style_rules": "風格規則",
+      "settings.ai.git_commit_message_style_rules_placeholder": "例如：使用 Conventional Commits，標題不超過 72 個字元。"
     }
   }
 }

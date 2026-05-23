@@ -3,16 +3,14 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::AppHandle;
 
 const REVIEW_UNTRACKED_LINE_COUNT_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
 const GIT_WATCH_DEBOUNCE_MS: u64 = 250;
-static GIT_COMMAND_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 type GitRepository = git2::Repository;
 
@@ -651,37 +649,16 @@ pub fn git_status(project_path: String) -> GitStatusSnapshot {
 }
 
 pub fn git_stage(request: GitPathsRequest) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&request.project_path)?;
-    if request.paths.is_empty() {
-        git_output(Path::new(&root), &["add", "-A"])?;
-    } else {
-        let mut args = vec!["add", "--"];
-        let paths = request.paths.iter().map(String::as_str).collect::<Vec<_>>();
-        args.extend(paths);
-        git_output(Path::new(&root), &args)?;
-    }
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    stage_paths_git2(&repo, &request.paths)?;
     Ok(git_status(root))
 }
 
 pub fn git_unstage(request: GitPathsRequest) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&request.project_path)?;
-    if has_resolvable_head(&root) {
-        if request.paths.is_empty() {
-            git_output(Path::new(&root), &["reset", "HEAD", "--", "."])?;
-        } else {
-            let mut args = vec!["reset", "HEAD", "--"];
-            let paths = request.paths.iter().map(String::as_str).collect::<Vec<_>>();
-            args.extend(paths);
-            git_output(Path::new(&root), &args)?;
-        }
-    } else if request.paths.is_empty() {
-        git_output(Path::new(&root), &["rm", "--cached", "-r", "."])?;
-    } else {
-        let mut args = vec!["rm", "--cached", "-r", "--"];
-        let paths = request.paths.iter().map(String::as_str).collect::<Vec<_>>();
-        args.extend(paths);
-        git_output(Path::new(&root), &args)?;
-    }
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    unstage_paths_git2(&repo, &request.paths)?;
     Ok(git_status(root))
 }
 
@@ -690,8 +667,9 @@ pub fn git_commit(request: GitCommitRequest) -> Result<GitStatusSnapshot, String
     if message.is_empty() {
         return Err("Commit message cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["commit", "-m", message])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    create_commit_git2(&repo, message, false)?;
     Ok(git_status(root))
 }
 
@@ -700,16 +678,17 @@ pub fn git_commit_action(request: GitCommitActionRequest) -> Result<GitStatusSna
     if message.is_empty() {
         return Err("Commit message cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["commit", "-m", message])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    create_commit_git2(&repo, message, false)?;
     match request.action.as_str() {
         "commit" => {}
         "commitAndPush" => {
-            git_output(Path::new(&root), &["push"])?;
+            push_current_branch_git2(&repo, None, false)?;
         }
         "commitAndSync" => {
-            git_output(Path::new(&root), &["pull", "--rebase"])?;
-            git_output(Path::new(&root), &["push"])?;
+            pull_current_branch_git2(&repo)?;
+            push_current_branch_git2(&repo, None, false)?;
         }
         _ => return Err(format!("Unknown commit action: {}", request.action)),
     }
@@ -723,8 +702,9 @@ pub fn git_amend_last_commit_message(
     if message.is_empty() {
         return Err("Commit message cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["commit", "--amend", "-m", message])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    create_commit_git2(&repo, message, true)?;
     Ok(git_status(root))
 }
 
@@ -739,8 +719,9 @@ pub fn git_last_commit_message(project_path: String) -> Result<String, String> {
 }
 
 pub fn git_undo_last_commit(project_path: String) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&project_path)?;
-    git_output(Path::new(&root), &["reset", "--soft", "HEAD~1"])?;
+    let repo = open_git_repository(&project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    soft_reset_to_parent_git2(&repo)?;
     Ok(git_status(root))
 }
 
@@ -770,7 +751,7 @@ pub fn git_init(project_path: String) -> Result<GitStatusSnapshot, String> {
     if !path.exists() {
         return Err(format!("Project path does not exist: {}", path.display()));
     }
-    git_output(path, &["init"])?;
+    GitRepository::init(path).map_err(|error| error.message().to_string())?;
     Ok(git_status(path.display().to_string()))
 }
 
@@ -780,36 +761,14 @@ pub fn git_clone(request: GitCloneRequest) -> Result<GitStatusSnapshot, String> 
         return Err("Remote URL cannot be empty.".to_string());
     }
     let project_path = Path::new(request.project_path.trim());
-    let parent = project_path
-        .parent()
-        .ok_or_else(|| "Project path has no parent directory.".to_string())?;
-    let folder_name = project_path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "Project folder name is invalid.".to_string())?;
-    git_output(parent, &["clone", "--progress", remote_url, folder_name])?;
+    clone_repository_git2(remote_url, project_path)?;
     Ok(git_status(project_path.display().to_string()))
 }
 
 pub fn git_discard(request: GitPathsRequest) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&request.project_path)?;
-    if request.paths.is_empty() {
-        let _ = git_output_permissive(
-            Path::new(&root),
-            &["restore", "--staged", "--worktree", "--", "."],
-        );
-        let _ = git_output_permissive(Path::new(&root), &["clean", "-fd"]);
-    } else {
-        let mut restore_args = vec!["restore", "--staged", "--worktree", "--"];
-        let paths = request.paths.iter().map(String::as_str).collect::<Vec<_>>();
-        restore_args.extend(paths.iter().copied());
-        let _ = git_output_permissive(Path::new(&root), &restore_args);
-
-        let mut clean_args = vec!["clean", "-fd", "--"];
-        clean_args.extend(paths);
-        let _ = git_output_permissive(Path::new(&root), &clean_args);
-    }
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    discard_paths_git2(&repo, &request.paths)?;
     Ok(git_status(root))
 }
 
@@ -846,8 +805,9 @@ pub fn git_checkout_branch(request: GitBranchRequest) -> Result<GitStatusSnapsho
     if branch.is_empty() {
         return Err("Branch name cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["checkout", branch])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    checkout_branch_git2(&repo, branch)?;
     Ok(git_status(root))
 }
 
@@ -856,23 +816,14 @@ pub fn git_create_branch(request: GitCreateBranchRequest) -> Result<GitStatusSna
     if branch.is_empty() {
         return Err("Branch name cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
     let from = request
         .from
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    if request.checkout {
-        if let Some(from) = from {
-            git_output(Path::new(&root), &["checkout", "-b", branch, from])?;
-        } else {
-            git_output(Path::new(&root), &["checkout", "-b", branch])?;
-        }
-    } else if let Some(from) = from {
-        git_output(Path::new(&root), &["branch", branch, from])?;
-    } else {
-        git_output(Path::new(&root), &["branch", branch])?;
-    }
+    create_branch_git2(&repo, branch, from, request.checkout)?;
     Ok(git_status(root))
 }
 
@@ -886,11 +837,9 @@ pub fn git_checkout_remote_branch(request: GitBranchRequest) -> Result<GitStatus
         .map(|(_, branch)| branch)
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(remote_branch);
-    let root = repository_root(&request.project_path)?;
-    git_output(
-        Path::new(&root),
-        &["checkout", "-b", local_name, "--track", remote_branch],
-    )?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    checkout_remote_branch_git2(&repo, remote_branch, local_name)?;
     Ok(git_status(root))
 }
 
@@ -899,8 +848,9 @@ pub fn git_merge_branch(request: GitBranchRequest) -> Result<GitStatusSnapshot, 
     if branch.is_empty() {
         return Err("Branch name cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["merge", branch])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    merge_branch_git2(&repo, branch, false)?;
     Ok(git_status(root))
 }
 
@@ -909,8 +859,9 @@ pub fn git_squash_merge_branch(request: GitBranchRequest) -> Result<GitStatusSna
     if branch.is_empty() {
         return Err("Branch name cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["merge", "--squash", branch])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    merge_branch_git2(&repo, branch, true)?;
     Ok(git_status(root))
 }
 
@@ -919,11 +870,9 @@ pub fn git_delete_branch(request: GitDeleteBranchRequest) -> Result<GitStatusSna
     if branch.is_empty() {
         return Err("Branch name cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(
-        Path::new(&root),
-        &["branch", if request.force { "-D" } else { "-d" }, branch],
-    )?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    delete_branch_git2(&repo, branch, request.force)?;
     Ok(git_status(root))
 }
 
@@ -932,8 +881,9 @@ pub fn git_checkout_commit(request: GitCommitRefRequest) -> Result<GitStatusSnap
     if commit.is_empty() {
         return Err("Commit cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["checkout", commit])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    checkout_commit_git2(&repo, commit)?;
     Ok(git_status(root))
 }
 
@@ -942,8 +892,9 @@ pub fn git_revert_commit(request: GitCommitRefRequest) -> Result<GitStatusSnapsh
     if commit.is_empty() {
         return Err("Commit cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["revert", "--no-edit", commit])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    revert_commit_git2(&repo, commit)?;
     Ok(git_status(root))
 }
 
@@ -952,10 +903,11 @@ pub fn git_restore_commit(request: GitRestoreCommitRequest) -> Result<GitStatusS
     if commit.is_empty() {
         return Err("Commit cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["reset", "--hard", commit])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    hard_reset_git2(&repo, commit)?;
     if request.force_remote {
-        git_output(Path::new(&root), &["push", "--force-with-lease"])?;
+        push_current_branch_git2(&repo, None, true)?;
     }
     Ok(git_status(root))
 }
@@ -969,8 +921,10 @@ pub fn git_add_remote(request: GitRemoteRequest) -> Result<GitStatusSnapshot, St
     if url.is_empty() {
         return Err("Remote URL cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["remote", "add", name, url])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    repo.remote(name, url)
+        .map_err(|error| error.message().to_string())?;
     Ok(git_status(root))
 }
 
@@ -979,8 +933,10 @@ pub fn git_remove_remote(request: GitRemoteRequest) -> Result<GitStatusSnapshot,
     if name.is_empty() {
         return Err("Remote name cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
-    git_output(Path::new(&root), &["remote", "remove", name])?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    repo.remote_delete(name)
+        .map_err(|error| error.message().to_string())?;
     Ok(git_status(root))
 }
 
@@ -1019,15 +975,17 @@ pub fn git_append_gitignore(request: GitPathsRequest) -> Result<GitStatusSnapsho
 }
 
 pub fn git_fetch(project_path: String) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&project_path)?;
-    git_output(Path::new(&root), &["fetch"])?;
+    let repo = open_git_repository(&project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    fetch_all_remotes_git2(&repo)?;
     Ok(git_status(root))
 }
 
 pub fn git_sync(project_path: String) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&project_path)?;
-    git_output(Path::new(&root), &["pull", "--rebase"])?;
-    git_output(Path::new(&root), &["push"])?;
+    let repo = open_git_repository(&project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    pull_current_branch_git2(&repo)?;
+    push_current_branch_git2(&repo, None, false)?;
     Ok(git_status(root))
 }
 
@@ -1036,12 +994,13 @@ pub fn git_push_remote(request: GitPushRemoteRequest) -> Result<GitStatusSnapsho
     if remote.is_empty() {
         return Err("Remote name cannot be empty.".to_string());
     }
-    let root = repository_root(&request.project_path)?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
     let branch = current_local_branch_name(&root)?;
     if branch.is_empty() {
         return Err("Cannot push detached HEAD to a remote.".to_string());
     }
-    git_output(Path::new(&root), &["push", "-u", remote, branch.as_str()])?;
+    push_current_branch_git2(&repo, Some(remote), false)?;
     Ok(git_status(root))
 }
 
@@ -1055,7 +1014,8 @@ pub fn git_push_remote_branch(
     let (remote, branch_name) = remote_branch
         .split_once('/')
         .ok_or_else(|| "Remote branch must include a remote name.".to_string())?;
-    let root = repository_root(&request.project_path)?;
+    let repo = open_git_repository(&request.project_path)?;
+    let root = repo_root(&repo).display().to_string();
     let local_branch = match request
         .local_branch
         .as_deref()
@@ -1069,25 +1029,28 @@ pub fn git_push_remote_branch(
         return Err("Cannot push detached HEAD to a remote branch.".to_string());
     }
     let refspec = format!("{local_branch}:{branch_name}");
-    git_output(Path::new(&root), &["push", remote, refspec.as_str()])?;
+    push_refspec_git2(&repo, remote, &refspec, false)?;
     Ok(git_status(root))
 }
 
 pub fn git_pull(project_path: String) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&project_path)?;
-    git_output(Path::new(&root), &["pull", "--rebase"])?;
+    let repo = open_git_repository(&project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    pull_current_branch_git2(&repo)?;
     Ok(git_status(root))
 }
 
 pub fn git_push(project_path: String) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&project_path)?;
-    git_output(Path::new(&root), &["push"])?;
+    let repo = open_git_repository(&project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    push_current_branch_git2(&repo, None, false)?;
     Ok(git_status(root))
 }
 
 pub fn git_force_push(project_path: String) -> Result<GitStatusSnapshot, String> {
-    let root = repository_root(&project_path)?;
-    git_output(Path::new(&root), &["push", "--force-with-lease"])?;
+    let repo = open_git_repository(&project_path)?;
+    let root = repo_root(&repo).display().to_string();
+    push_current_branch_git2(&repo, None, true)?;
     Ok(git_status(root))
 }
 
@@ -1364,6 +1327,591 @@ fn git_status_from_repo(repo: &GitRepository) -> GitStatusSnapshot {
         is_repository: true,
         error: None,
     }
+}
+
+fn stage_paths_git2(repo: &GitRepository, paths: &[String]) -> Result<(), String> {
+    let mut index = repo.index().map_err(|error| error.message().to_string())?;
+    if paths.is_empty() {
+        index
+            .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .map_err(|error| error.message().to_string())?;
+    } else {
+        for path in normalized_pathspecs(paths) {
+            if repo_root(repo).join(&path).exists() {
+                index
+                    .add_path(Path::new(&path))
+                    .map_err(|error| error.message().to_string())?;
+            } else {
+                let _ = index.remove_path(Path::new(&path));
+            }
+        }
+    }
+    index.write().map_err(|error| error.message().to_string())
+}
+
+fn unstage_paths_git2(repo: &GitRepository, paths: &[String]) -> Result<(), String> {
+    if let Ok(head) = repo.head() {
+        let target = head
+            .peel(git2::ObjectType::Commit)
+            .map_err(|error| error.message().to_string())?;
+        let pathspecs = if paths.is_empty() {
+            vec![".".to_string()]
+        } else {
+            normalized_pathspecs(paths)
+        };
+        repo.reset_default(Some(&target), pathspecs.iter().map(String::as_str))
+            .map_err(|error| error.message().to_string())
+    } else {
+        let mut index = repo.index().map_err(|error| error.message().to_string())?;
+        if paths.is_empty() {
+            index.clear().map_err(|error| error.message().to_string())?;
+        } else {
+            for path in normalized_pathspecs(paths) {
+                let _ = index.remove_path(Path::new(&path));
+            }
+        }
+        index.write().map_err(|error| error.message().to_string())
+    }
+}
+
+fn discard_paths_git2(repo: &GitRepository, paths: &[String]) -> Result<(), String> {
+    unstage_paths_git2(repo, paths)?;
+    let mut checkout = git2::build::CheckoutBuilder::new();
+    checkout
+        .force()
+        .remove_untracked(true)
+        .recreate_missing(true);
+    if !paths.is_empty() {
+        checkout.disable_pathspec_match(true);
+        for path in normalized_pathspecs(paths) {
+            checkout.path(path);
+        }
+    }
+    repo.checkout_head(Some(&mut checkout))
+        .map_err(|error| error.message().to_string())
+}
+
+fn create_commit_git2(
+    repo: &GitRepository,
+    message: &str,
+    amend: bool,
+) -> Result<git2::Oid, String> {
+    let mut index = repo.index().map_err(|error| error.message().to_string())?;
+    if index.has_conflicts() {
+        return Err("Cannot commit while the index has conflicts.".to_string());
+    }
+    let tree_id = index
+        .write_tree()
+        .map_err(|error| error.message().to_string())?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|error| error.message().to_string())?;
+    if !amend && !commit_tree_has_changes(repo, &tree) {
+        return Err("No staged changes to commit.".to_string());
+    }
+    let signature = repo_signature(repo)?;
+    if amend {
+        let parent = repo
+            .head()
+            .and_then(|head| head.peel_to_commit())
+            .map_err(|error| error.message().to_string())?;
+        return parent
+            .amend(
+                Some("HEAD"),
+                Some(&signature),
+                Some(&signature),
+                None,
+                Some(message),
+                Some(&tree),
+            )
+            .map_err(|error| error.message().to_string());
+    }
+    let parents = repo
+        .head()
+        .ok()
+        .and_then(|head| head.peel_to_commit().ok())
+        .into_iter()
+        .collect::<Vec<_>>();
+    let parent_refs = parents.iter().collect::<Vec<_>>();
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        message,
+        &tree,
+        &parent_refs,
+    )
+    .map_err(|error| error.message().to_string())
+}
+
+fn commit_tree_has_changes(repo: &GitRepository, tree: &git2::Tree<'_>) -> bool {
+    if let Ok(head) = repo.head().and_then(|head| head.peel_to_commit()) {
+        return head.tree_id() != tree.id();
+    }
+    !tree.is_empty()
+}
+
+fn repo_signature(repo: &GitRepository) -> Result<git2::Signature<'_>, String> {
+    repo.signature()
+        .or_else(|_| git2::Signature::now("Codux", "codux@example.local"))
+        .map_err(|error| error.message().to_string())
+}
+
+fn soft_reset_to_parent_git2(repo: &GitRepository) -> Result<(), String> {
+    let head = repo
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|error| error.message().to_string())?;
+    let parent = head
+        .parent(0)
+        .map_err(|error| error.message().to_string())?;
+    let target = parent.as_object();
+    repo.reset(target, git2::ResetType::Soft, None)
+        .map_err(|error| error.message().to_string())
+}
+
+fn checkout_branch_git2(repo: &GitRepository, branch: &str) -> Result<(), String> {
+    let reference_name = if branch.starts_with("refs/") {
+        branch.to_string()
+    } else {
+        format!("refs/heads/{branch}")
+    };
+    let reference = repo
+        .find_reference(&reference_name)
+        .map_err(|error| error.message().to_string())?;
+    let object = reference
+        .peel(git2::ObjectType::Commit)
+        .map_err(|error| error.message().to_string())?;
+    let mut checkout = git2::build::CheckoutBuilder::new();
+    checkout.safe();
+    repo.checkout_tree(&object, Some(&mut checkout))
+        .map_err(|error| error.message().to_string())?;
+    repo.set_head(&reference_name)
+        .map_err(|error| error.message().to_string())
+}
+
+fn create_branch_git2(
+    repo: &GitRepository,
+    branch: &str,
+    from: Option<&str>,
+    checkout: bool,
+) -> Result<(), String> {
+    let commit = match from {
+        Some(from) => repo
+            .revparse_single(from)
+            .and_then(|object| object.peel_to_commit())
+            .map_err(|error| error.message().to_string())?,
+        None => repo
+            .head()
+            .and_then(|head| head.peel_to_commit())
+            .map_err(|error| error.message().to_string())?,
+    };
+    repo.branch(branch, &commit, false)
+        .map_err(|error| error.message().to_string())?;
+    if checkout {
+        checkout_branch_git2(repo, branch)?;
+    }
+    Ok(())
+}
+
+fn checkout_remote_branch_git2(
+    repo: &GitRepository,
+    remote_branch: &str,
+    local_name: &str,
+) -> Result<(), String> {
+    let remote_ref = format!("refs/remotes/{remote_branch}");
+    let commit = repo
+        .find_reference(&remote_ref)
+        .and_then(|reference| reference.peel_to_commit())
+        .map_err(|error| error.message().to_string())?;
+    let mut branch = repo
+        .branch(local_name, &commit, false)
+        .map_err(|error| error.message().to_string())?;
+    branch
+        .set_upstream(Some(remote_branch))
+        .map_err(|error| error.message().to_string())?;
+    checkout_branch_git2(repo, local_name)
+}
+
+fn checkout_commit_git2(repo: &GitRepository, reference: &str) -> Result<(), String> {
+    let object = repo
+        .revparse_single(reference)
+        .map_err(|error| error.message().to_string())?;
+    let mut checkout = git2::build::CheckoutBuilder::new();
+    checkout.safe();
+    repo.checkout_tree(&object, Some(&mut checkout))
+        .map_err(|error| error.message().to_string())?;
+    repo.set_head_detached(object.id())
+        .map_err(|error| error.message().to_string())
+}
+
+fn hard_reset_git2(repo: &GitRepository, reference: &str) -> Result<(), String> {
+    let object = repo
+        .revparse_single(reference)
+        .map_err(|error| error.message().to_string())?;
+    let mut checkout = git2::build::CheckoutBuilder::new();
+    checkout.force().remove_untracked(true);
+    repo.reset(&object, git2::ResetType::Hard, Some(&mut checkout))
+        .map_err(|error| error.message().to_string())
+}
+
+fn delete_branch_git2(repo: &GitRepository, branch: &str, force: bool) -> Result<(), String> {
+    if current_branch_name(repo) == branch {
+        return Err(format!("Cannot delete the checked out branch: {branch}"));
+    }
+    let mut local_branch = repo
+        .find_branch(branch, git2::BranchType::Local)
+        .map_err(|error| error.message().to_string())?;
+    if !force {
+        let head = repo.head().ok().and_then(|head| head.target());
+        let target = local_branch.get().target();
+        if let (Some(head), Some(target)) = (head, target) {
+            if !repo.graph_descendant_of(head, target).unwrap_or(false) {
+                return Err(format!("Branch {branch} is not fully merged."));
+            }
+        }
+    }
+    local_branch
+        .delete()
+        .map_err(|error| error.message().to_string())
+}
+
+fn revert_commit_git2(repo: &GitRepository, reference: &str) -> Result<(), String> {
+    let commit = repo
+        .revparse_single(reference)
+        .and_then(|object| object.peel_to_commit())
+        .map_err(|error| error.message().to_string())?;
+    repo.revert(&commit, None)
+        .map_err(|error| error.message().to_string())?;
+    if repo
+        .index()
+        .map_err(|error| error.message().to_string())?
+        .has_conflicts()
+    {
+        return Err("Revert produced conflicts. Resolve them manually.".to_string());
+    }
+    let summary = commit.summary().ok().flatten().unwrap_or(reference);
+    create_commit_git2(repo, &format!("Revert \"{summary}\""), false)?;
+    repo.cleanup_state()
+        .map_err(|error| error.message().to_string())
+}
+
+fn merge_branch_git2(repo: &GitRepository, branch: &str, squash: bool) -> Result<(), String> {
+    let annotated = annotated_commit_for_branch(repo, branch)?;
+    let (analysis, _) = repo
+        .merge_analysis(&[&annotated])
+        .map_err(|error| error.message().to_string())?;
+    if analysis.is_up_to_date() {
+        return Ok(());
+    }
+    if analysis.is_fast_forward() && !squash {
+        let target = annotated.id();
+        fast_forward_head(repo, target)?;
+        return Ok(());
+    }
+    let head_commit = repo
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|error| error.message().to_string())?;
+    let their_commit = repo
+        .find_commit(annotated.id())
+        .map_err(|error| error.message().to_string())?;
+    let mut index = repo
+        .merge_commits(&head_commit, &their_commit, None)
+        .map_err(|error| error.message().to_string())?;
+    if index.has_conflicts() {
+        repo.checkout_index(Some(&mut index), None)
+            .map_err(|error| error.message().to_string())?;
+        return Err("Merge produced conflicts. Resolve them manually.".to_string());
+    }
+    let tree_id = index
+        .write_tree_to(repo)
+        .map_err(|error| error.message().to_string())?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|error| error.message().to_string())?;
+    repo.checkout_tree(
+        tree.as_object(),
+        Some(git2::build::CheckoutBuilder::new().safe()),
+    )
+    .map_err(|error| error.message().to_string())?;
+    repo.index()
+        .and_then(|mut repo_index| {
+            repo_index.read_tree(&tree)?;
+            repo_index.write()
+        })
+        .map_err(|error| error.message().to_string())?;
+    if !squash {
+        let signature = repo_signature(repo)?;
+        let message = format!("Merge branch '{branch}'");
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            &message,
+            &tree,
+            &[&head_commit, &their_commit],
+        )
+        .map_err(|error| error.message().to_string())?;
+    }
+    repo.cleanup_state()
+        .map_err(|error| error.message().to_string())
+}
+
+fn annotated_commit_for_branch<'repo>(
+    repo: &'repo GitRepository,
+    branch: &str,
+) -> Result<git2::AnnotatedCommit<'repo>, String> {
+    let object = repo
+        .revparse_single(branch)
+        .or_else(|_| repo.revparse_single(&format!("refs/heads/{branch}")))
+        .map_err(|error| error.message().to_string())?;
+    repo.find_annotated_commit(object.id())
+        .map_err(|error| error.message().to_string())
+}
+
+fn fast_forward_head(repo: &GitRepository, target: git2::Oid) -> Result<(), String> {
+    let head_name = repo
+        .head()
+        .ok()
+        .and_then(|head| head.name().ok().map(str::to_string))
+        .ok_or_else(|| "Cannot fast-forward detached HEAD.".to_string())?;
+    let mut reference = repo
+        .find_reference(&head_name)
+        .map_err(|error| error.message().to_string())?;
+    reference
+        .set_target(target, "Fast-forward")
+        .map_err(|error| error.message().to_string())?;
+    repo.set_head(&head_name)
+        .map_err(|error| error.message().to_string())?;
+    let mut checkout = git2::build::CheckoutBuilder::new();
+    checkout.force();
+    repo.checkout_head(Some(&mut checkout))
+        .map_err(|error| error.message().to_string())
+}
+
+fn clone_repository_git2(remote_url: &str, project_path: &Path) -> Result<(), String> {
+    let mut fetch_options = git2::FetchOptions::new();
+    fetch_options.remote_callbacks(git_remote_callbacks());
+    let mut builder = git2::build::RepoBuilder::new();
+    builder.fetch_options(fetch_options);
+    builder
+        .clone(remote_url, project_path)
+        .map(|_| ())
+        .map_err(|error| error.message().to_string())
+}
+
+fn fetch_all_remotes_git2(repo: &GitRepository) -> Result<(), String> {
+    let names = repo
+        .remotes()
+        .map_err(|error| error.message().to_string())?;
+    for name in names.iter().flatten().flatten() {
+        fetch_remote_git2(repo, name)?;
+    }
+    Ok(())
+}
+
+fn fetch_remote_git2(repo: &GitRepository, remote_name: &str) -> Result<(), String> {
+    let mut remote = repo
+        .find_remote(remote_name)
+        .map_err(|error| error.message().to_string())?;
+    let mut options = git2::FetchOptions::new();
+    options.remote_callbacks(git_remote_callbacks());
+    remote
+        .fetch(&[] as &[&str], Some(&mut options), None)
+        .map_err(|error| error.message().to_string())
+}
+
+fn pull_current_branch_git2(repo: &GitRepository) -> Result<(), String> {
+    let branch_name = current_branch_name(repo);
+    if branch_name == "HEAD" || branch_name == "uninitialized" {
+        return Err("Cannot pull detached HEAD.".to_string());
+    }
+    let mut branch = repo
+        .find_branch(&branch_name, git2::BranchType::Local)
+        .map_err(|error| error.message().to_string())?;
+    let upstream = branch
+        .upstream()
+        .map_err(|_| "The current branch does not have an upstream.".to_string())?;
+    let upstream_name = upstream
+        .name()
+        .ok()
+        .flatten()
+        .ok_or_else(|| "The upstream branch name is invalid.".to_string())?
+        .to_string();
+    let remote_name = upstream_name
+        .split_once('/')
+        .map(|(remote, _)| remote)
+        .ok_or_else(|| "The upstream branch is missing a remote name.".to_string())?;
+    fetch_remote_git2(repo, remote_name)?;
+    branch = repo
+        .find_branch(&branch_name, git2::BranchType::Local)
+        .map_err(|error| error.message().to_string())?;
+    let local_oid = branch
+        .get()
+        .target()
+        .ok_or_else(|| "The current branch target is invalid.".to_string())?;
+    let upstream_ref = repo
+        .find_reference(&format!("refs/remotes/{upstream_name}"))
+        .map_err(|error| error.message().to_string())?;
+    let upstream_oid = upstream_ref
+        .target()
+        .ok_or_else(|| "The upstream target is invalid.".to_string())?;
+    let (ahead, behind) = repo
+        .graph_ahead_behind(local_oid, upstream_oid)
+        .map_err(|error| error.message().to_string())?;
+    if behind == 0 {
+        return Ok(());
+    }
+    if ahead > 0 {
+        return rebase_current_branch_git2(repo, upstream_oid);
+    }
+    fast_forward_head(repo, upstream_oid)
+}
+
+fn rebase_current_branch_git2(repo: &GitRepository, upstream_oid: git2::Oid) -> Result<(), String> {
+    let upstream = repo
+        .find_annotated_commit(upstream_oid)
+        .map_err(|error| error.message().to_string())?;
+    let mut options = git2::RebaseOptions::new();
+    let mut rebase = repo
+        .rebase(None, Some(&upstream), None, Some(&mut options))
+        .map_err(|error| error.message().to_string())?;
+    let signature = repo_signature(repo)?;
+    while let Some(operation) = rebase.next() {
+        operation.map_err(|error| error.message().to_string())?;
+        if repo
+            .index()
+            .map_err(|error| error.message().to_string())?
+            .has_conflicts()
+        {
+            return Err("Pull rebase produced conflicts. Resolve them manually.".to_string());
+        }
+        rebase
+            .commit(None, &signature, None)
+            .map_err(|error| error.message().to_string())?;
+    }
+    rebase
+        .finish(Some(&signature))
+        .map_err(|error| error.message().to_string())
+}
+
+fn push_current_branch_git2(
+    repo: &GitRepository,
+    remote_override: Option<&str>,
+    force: bool,
+) -> Result<(), String> {
+    let branch = current_branch_name(repo);
+    if branch == "HEAD" || branch == "uninitialized" {
+        return Err("Cannot push detached HEAD.".to_string());
+    }
+    let remote = remote_override
+        .map(str::to_string)
+        .or_else(|| upstream_remote_for_branch(repo, &branch))
+        .or_else(|| first_remote_name(repo))
+        .ok_or_else(|| "No Git remote is configured.".to_string())?;
+    let refspec = if force {
+        format!("+refs/heads/{branch}:refs/heads/{branch}")
+    } else {
+        format!("refs/heads/{branch}:refs/heads/{branch}")
+    };
+    push_refspec_git2(repo, &remote, &refspec, force)?;
+    if let Ok(mut branch_ref) = repo.find_branch(&branch, git2::BranchType::Local) {
+        let _ = branch_ref.set_upstream(Some(&format!("{remote}/{branch}")));
+    }
+    Ok(())
+}
+
+fn push_refspec_git2(
+    repo: &GitRepository,
+    remote_name: &str,
+    refspec: &str,
+    _force: bool,
+) -> Result<(), String> {
+    let mut remote = repo
+        .find_remote(remote_name)
+        .map_err(|error| error.message().to_string())?;
+    let mut options = git2::PushOptions::new();
+    options.remote_callbacks(git_remote_callbacks());
+    remote
+        .push(&[refspec], Some(&mut options))
+        .map_err(|error| error.message().to_string())
+}
+
+fn upstream_remote_for_branch(repo: &GitRepository, branch: &str) -> Option<String> {
+    let local = repo.find_branch(branch, git2::BranchType::Local).ok()?;
+    let upstream = local.upstream().ok()?;
+    let name = upstream.name().ok().flatten()?;
+    name.split_once('/').map(|(remote, _)| remote.to_string())
+}
+
+fn first_remote_name(repo: &GitRepository) -> Option<String> {
+    repo.remotes()
+        .ok()?
+        .iter()
+        .flatten()
+        .flatten()
+        .next()
+        .map(str::to_string)
+}
+
+fn git_remote_callbacks<'a>() -> git2::RemoteCallbacks<'a> {
+    let mut callbacks = git2::RemoteCallbacks::new();
+    callbacks.credentials(|url, username_from_url, allowed| {
+        if allowed.is_ssh_key() || allowed.is_ssh_memory() {
+            let username = username_from_url.unwrap_or("git");
+            if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
+                return Ok(cred);
+            }
+            for key in default_ssh_key_paths() {
+                if key.exists() {
+                    if let Ok(cred) = git2::Cred::ssh_key(username, None, &key, None) {
+                        return Ok(cred);
+                    }
+                }
+            }
+        }
+        if allowed.is_user_pass_plaintext() {
+            if let Ok(config) = git2::Config::open_default() {
+                if let Some((username, password)) = git2::CredentialHelper::new(url)
+                    .config(&config)
+                    .username(username_from_url)
+                    .execute()
+                {
+                    return git2::Cred::userpass_plaintext(&username, &password);
+                }
+            }
+        }
+        if allowed.is_username() {
+            return git2::Cred::username(username_from_url.unwrap_or("git"));
+        }
+        if allowed.is_default() {
+            return git2::Cred::default();
+        }
+        Err(git2::Error::from_str(
+            "No compatible Git credential was found.",
+        ))
+    });
+    callbacks
+}
+
+fn default_ssh_key_paths() -> Vec<PathBuf> {
+    let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
+        return Vec::new();
+    };
+    let ssh = PathBuf::from(home).join(".ssh");
+    ["id_ed25519", "id_rsa", "id_ecdsa"]
+        .into_iter()
+        .map(|name| ssh.join(name))
+        .collect()
+}
+
+fn normalized_pathspecs(paths: &[String]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|path| path.trim().replace('\\', "/"))
+        .filter(|path| !path.is_empty())
+        .collect()
 }
 
 fn current_branch_name(repo: &GitRepository) -> String {
@@ -2015,67 +2563,6 @@ fn review_status(value: &str) -> String {
     .to_string()
 }
 
-fn git_output(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    git_command_output(cwd, args)
-}
-
-fn git_output_permissive(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    git_command_output_permissive(cwd, args)
-}
-
-pub(crate) fn git_command_output(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    let output = run_git_command(cwd, args)?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("git {:?} failed", args)
-        } else {
-            stderr
-        });
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-pub(crate) fn git_command_output_permissive(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    let output = run_git_command(cwd, args)?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    if output.status.success() || !stdout.trim().is_empty() {
-        return Ok(stdout);
-    }
-    Ok(String::new())
-}
-
-fn run_git_command(cwd: &Path, args: &[&str]) -> Result<Output, String> {
-    const GIT_COMMAND_TIMEOUT: Duration = Duration::from_secs(8);
-    let _guard = GIT_COMMAND_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .map_err(|_| "Git command queue is unavailable.".to_string())?;
-    let mut child = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|error| error.to_string())?;
-    let deadline = Instant::now() + GIT_COMMAND_TIMEOUT;
-    loop {
-        if child
-            .try_wait()
-            .map_err(|error| error.to_string())?
-            .is_some()
-        {
-            return child.wait_with_output().map_err(|error| error.to_string());
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("git {:?} timed out", args));
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-}
-
 fn repository_root(path: &str) -> Result<String, String> {
     open_git_repository(path).map(|repo| repo_root(&repo).display().to_string())
 }
@@ -2091,15 +2578,29 @@ fn current_local_branch_name(path: &str) -> Result<String, String> {
         .map_err(|error| error.message().to_string())
 }
 
-fn has_resolvable_head(path: &str) -> bool {
-    open_git_repository(path)
-        .map(|repo| repo.head().ok().and_then(|head| head.target()).is_some())
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir()
+                .join(format!("codux-git-test-{name}-{}", uuid::Uuid::new_v4()));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
 
     #[test]
     fn git_watch_filter_allows_worktree_and_known_metadata() {
@@ -2185,5 +2686,219 @@ mod tests {
 
         assert!(empty);
         assert!(paths.is_empty());
+    }
+
+    #[test]
+    fn stage_commit_branch_and_discard_use_git2() {
+        let temp = TempDir::new("local-ops");
+        let root = create_repo(&temp.path);
+
+        fs::write(temp.path.join("README.md"), "hello\n").expect("write file");
+        git_stage(GitPathsRequest {
+            project_path: root.clone(),
+            paths: vec!["README.md".to_string()],
+        })
+        .expect("stage");
+        git_commit(GitCommitRequest {
+            project_path: root.clone(),
+            message: "initial".to_string(),
+        })
+        .expect("commit");
+
+        git_create_branch(GitCreateBranchRequest {
+            project_path: root.clone(),
+            branch: "feature/test".to_string(),
+            from: None,
+            checkout: true,
+        })
+        .expect("create branch");
+        assert_eq!(current_local_branch_name(&root).unwrap(), "feature/test");
+
+        fs::write(temp.path.join("README.md"), "changed\n").expect("modify");
+        git_stage(GitPathsRequest {
+            project_path: root.clone(),
+            paths: vec!["README.md".to_string()],
+        })
+        .expect("stage modified");
+        git_discard(GitPathsRequest {
+            project_path: root.clone(),
+            paths: vec!["README.md".to_string()],
+        })
+        .expect("discard");
+
+        let status = git_status(root);
+        assert!(status.staged.is_empty());
+        assert!(status.unstaged.is_empty());
+    }
+
+    #[test]
+    fn commit_rejects_empty_index_like_git_cli() {
+        let temp = TempDir::new("empty-commit");
+        let root = create_repo(&temp.path);
+
+        let result = git_commit(GitCommitRequest {
+            project_path: root.clone(),
+            message: "empty".to_string(),
+        });
+        assert!(result.is_err());
+
+        fs::write(temp.path.join("README.md"), "hello\n").expect("write file");
+        git_stage(GitPathsRequest {
+            project_path: root.clone(),
+            paths: vec![],
+        })
+        .expect("stage all");
+        git_commit(GitCommitRequest {
+            project_path: root.clone(),
+            message: "initial".to_string(),
+        })
+        .expect("initial commit");
+
+        let result = git_commit(GitCommitRequest {
+            project_path: root,
+            message: "empty after head".to_string(),
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn amend_allows_message_only_changes() {
+        let temp = TempDir::new("amend-message");
+        let root = create_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "hello\n").expect("write file");
+        git_stage(GitPathsRequest {
+            project_path: root.clone(),
+            paths: vec![],
+        })
+        .expect("stage all");
+        git_commit(GitCommitRequest {
+            project_path: root.clone(),
+            message: "initial".to_string(),
+        })
+        .expect("initial commit");
+
+        git_amend_last_commit_message(GitCommitRequest {
+            project_path: root.clone(),
+            message: "renamed initial".to_string(),
+        })
+        .expect("amend message");
+
+        assert_eq!(git_last_commit_message(root).unwrap(), "renamed initial");
+    }
+
+    #[test]
+    fn fetch_push_and_pull_use_git2_with_file_remote() {
+        let temp = TempDir::new("remote-ops");
+        let bare_path = temp.path.join("origin.git");
+        let local_path = temp.path.join("local");
+        let peer_path = temp.path.join("peer");
+        fs::create_dir_all(&local_path).expect("create local");
+        fs::create_dir_all(&peer_path).expect("create peer");
+        GitRepository::init_bare(&bare_path).expect("init bare remote");
+
+        let local = create_repo(&local_path);
+        let repo = GitRepository::discover(&local).expect("open local");
+        repo.remote("origin", &bare_path.to_string_lossy())
+            .expect("add remote");
+        drop(repo);
+        write_and_commit(&local_path, "README.md", "local\n", "initial");
+        git_push_remote(GitPushRemoteRequest {
+            project_path: local.clone(),
+            remote: "origin".to_string(),
+        })
+        .expect("push");
+
+        clone_repository_git2(&bare_path.to_string_lossy(), &peer_path).expect("clone peer");
+        write_and_commit(&peer_path, "peer.txt", "peer\n", "peer change");
+        let peer = peer_path.to_string_lossy().to_string();
+        git_push(peer).expect("push peer");
+
+        git_pull(local.clone()).expect("pull local");
+        assert!(local_path.join("peer.txt").exists());
+
+        let status = git_status(local);
+        assert!(status.remotes.iter().any(|remote| remote.name == "origin"));
+    }
+
+    #[test]
+    fn pull_rebases_local_commits_with_git2() {
+        let temp = TempDir::new("pull-rebase");
+        let bare_path = temp.path.join("origin.git");
+        let local_path = temp.path.join("local");
+        let peer_path = temp.path.join("peer");
+        fs::create_dir_all(&local_path).expect("create local");
+        fs::create_dir_all(&peer_path).expect("create peer");
+        GitRepository::init_bare(&bare_path).expect("init bare remote");
+
+        let local = create_repo(&local_path);
+        let repo = GitRepository::discover(&local).expect("open local");
+        repo.remote("origin", &bare_path.to_string_lossy())
+            .expect("add remote");
+        drop(repo);
+        write_and_commit(&local_path, "README.md", "initial\n", "initial");
+        git_push_remote(GitPushRemoteRequest {
+            project_path: local.clone(),
+            remote: "origin".to_string(),
+        })
+        .expect("push initial");
+
+        clone_repository_git2(&bare_path.to_string_lossy(), &peer_path).expect("clone peer");
+        write_and_commit(&peer_path, "peer.txt", "peer\n", "peer change");
+        git_push(peer_path.to_string_lossy().to_string()).expect("push peer");
+
+        write_and_commit(&local_path, "local.txt", "local\n", "local change");
+        git_pull(local.clone()).expect("pull with rebase");
+
+        assert!(local_path.join("peer.txt").exists());
+        assert!(local_path.join("local.txt").exists());
+        let repo = GitRepository::discover(local_path).expect("open local");
+        let branch = repo
+            .find_branch("master", git2::BranchType::Local)
+            .or_else(|_| repo.find_branch("main", git2::BranchType::Local))
+            .expect("current branch");
+        let upstream = branch.upstream().expect("upstream");
+        let local_oid = branch.get().target().expect("local oid");
+        let upstream_oid = upstream.get().target().expect("upstream oid");
+        let (ahead, behind) = repo
+            .graph_ahead_behind(local_oid, upstream_oid)
+            .expect("ahead behind");
+        assert_eq!((ahead, behind), (1, 0));
+    }
+
+    fn create_repo(path: &Path) -> String {
+        let repo = GitRepository::init(path).expect("init repo");
+        let mut config = repo.config().expect("config");
+        config.set_str("user.name", "Codux").expect("user name");
+        config
+            .set_str("user.email", "codux@example.test")
+            .expect("user email");
+        path.to_string_lossy().to_string()
+    }
+
+    fn write_and_commit(repo_path: &Path, relative_path: &str, content: &str, message: &str) {
+        let repo = GitRepository::discover(repo_path).expect("open repo");
+        fs::write(repo_path.join(relative_path), content).expect("write file");
+        let mut index = repo.index().expect("index");
+        index.add_path(Path::new(relative_path)).expect("add path");
+        index.write().expect("write index");
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("tree");
+        let signature = repo_signature(&repo).expect("signature");
+        let parents = repo
+            .head()
+            .ok()
+            .and_then(|head| head.peel_to_commit().ok())
+            .into_iter()
+            .collect::<Vec<_>>();
+        let parent_refs = parents.iter().collect::<Vec<_>>();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parent_refs,
+        )
+        .expect("commit");
     }
 }

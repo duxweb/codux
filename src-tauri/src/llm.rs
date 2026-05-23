@@ -225,6 +225,7 @@ fn select_provider<'a>(
     let selector = match purpose {
         "petSpeech" => settings.pet.speech_provider_id.as_str(),
         "memory" => settings.memory.default_extractor_provider_id.as_str(),
+        "gitCommitMessage" => "automatic",
         _ => "automatic",
     };
     if selector != "automatic" {

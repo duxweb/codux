@@ -1837,6 +1837,7 @@ dependencies = [
  "libc",
  "libgit2-sys",
  "log",
+ "url",
 ]
 
 [[package]]
