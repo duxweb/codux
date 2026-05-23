@@ -375,12 +375,12 @@
 
   button:focus,
   button:focus-visible,
-  [role="button"]:focus,
-  [role="button"]:focus-visible,
   button[data-focus="true"],
   button[data-focus-visible="true"],
-  [role="button"][data-focus="true"],
-  [role="button"][data-focus-visible="true"] {
+  [data-codux-button]:focus,
+  [data-codux-button]:focus-visible,
+  [data-codux-button][data-focus="true"],
+  [data-codux-button][data-focus-visible="true"] {
     outline: none;
     box-shadow: none;
     --tw-ring-offset-shadow: 0 0 #0000;

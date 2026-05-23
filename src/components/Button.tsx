@@ -77,6 +77,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button({
       isDisabled={disabled}
       excludeFromTabOrder={excludeFromTabOrder}
       preventFocusOnPress={preventFocusOnPress}
+      data-codux-button="true"
       className={`${block ? "w-full" : ""} focus:outline-none focus-visible:outline-none ${variantClassNameMap[variant] ?? ""} ${className ?? ""}`}
       onPointerDownCapture={(event) => {
         onPointerDownCapture?.(event);

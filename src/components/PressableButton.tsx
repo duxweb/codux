@@ -44,6 +44,7 @@ export const PressableButton = forwardRef<HTMLButtonElement, Props>(function Pre
       ref={setRef}
       type={type}
       disabled={disabled}
+      data-codux-button="true"
       tabIndex={tabIndex ?? (excludeFromTabOrder ? -1 : undefined)}
     >
       {children}
