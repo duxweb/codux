@@ -3586,7 +3586,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
             indexedBaselines={indexedBaselines}
             mode={statisticsMode}
           />
-          <div className="flex justify-between mt-1 text-xs text-ink-faint">
+          <div className="flex justify-between mt-1 text-xs text-ink-mute">
             <span>00:00</span>
             <span>06:00</span>
             <span>12:00</span>
@@ -3745,7 +3745,7 @@ const LiveSessionRow = memo(function LiveSessionRow({
           <div className="text-base font-semibold tabular-nums text-ink leading-none">
             {formatTokens(displayedLiveSessionTotal(session, mode))}
           </div>
-          <div className="mt-1 text-xs text-ink-faint">{tm("ai.metric.session_total", "Session Total")}</div>
+          <div className="mt-1 text-xs text-ink-mute">{tm("ai.metric.session_total", "Session Total")}</div>
         </div>
       </div>
     </Tooltip>

@@ -203,7 +203,7 @@ export const defaultSettings: AppSettings = {
       maxSummaryVersions: 10,
       summaryTargetTokenBudget: 900,
       maxInjectedSummaryTokens: 900,
-      extractionIdleDelaySeconds: 120,
+      extractionIdleDelaySeconds: 300,
       sessionExtractionCooldownSeconds: 900,
       maxExtractionTranscriptLines: 80,
       maxExtractionTranscriptTokens: 8000,

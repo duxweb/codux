@@ -495,24 +495,23 @@ impl AIRuntimeBridge {
             &self.managed_hook_script,
             true,
         )?;
+        let wrapper_dir = self.root_dir.join("scripts").join("wrappers");
+        #[cfg(not(windows))]
+        stage_runtime_asset(
+            "scripts/wrappers/dmux-ai-state.ps1",
+            &wrapper_dir.join("dmux-ai-state.ps1"),
+            false,
+        )?;
         #[cfg(windows)]
         stage_runtime_asset(
             "scripts/wrappers/dmux-ai-state.cmd",
-            &self
-                .root_dir
-                .join("scripts")
-                .join("wrappers")
-                .join("dmux-ai-state.cmd"),
+            &wrapper_dir.join("dmux-ai-state.cmd"),
             false,
         )?;
         #[cfg(windows)]
         stage_runtime_asset(
             "scripts/wrappers/dmux-ai-state.ps1",
-            &self
-                .root_dir
-                .join("scripts")
-                .join("wrappers")
-                .join("dmux-ai-state.ps1"),
+            &wrapper_dir.join("dmux-ai-state.ps1"),
             false,
         )?;
         stage_runtime_asset(
@@ -784,6 +783,8 @@ impl AIRuntimeBridge {
             &[
                 ("SessionStart", "session-start", 10, false),
                 ("UserPromptSubmit", "prompt-submit", 10, false),
+                ("PreCompact", "pre-compact", 10, false),
+                ("PostCompact", "post-compact", 10, false),
                 ("Stop", "stop", 10, false),
                 ("StopFailure", "stop-failure", 10, false),
                 ("SessionEnd", "session-end", 1, false),
@@ -827,6 +828,8 @@ impl AIRuntimeBridge {
                 &[
                     ("SessionStart", "session-start"),
                     ("UserPromptSubmit", "prompt-submit"),
+                    ("PreCompact", "pre-compact"),
+                    ("PostCompact", "post-compact"),
                     ("Stop", "stop"),
                     ("StopFailure", "stop-failure"),
                     ("SessionEnd", "session-end"),
@@ -2457,6 +2460,7 @@ fn next_state(kind: &str, metadata: Option<&AIHookEventMetadata>) -> &'static st
     match kind {
         "promptSubmitted" => "responding",
         "sessionStarted" => "idle",
+        "memoryRefreshing" => "responding",
         "needsInput" => "needsInput",
         "turnCompleted" | "sessionEnded" => "idle",
         _ if metadata
@@ -4040,7 +4044,9 @@ where
             if user_message_at > state.last_user_message_at {
                 state.last_user_message_at = user_message_at;
                 if let Some(user_message_at) = user_message_at {
-                    if state.completed_at.is_some_and(|completed_at| user_message_at > completed_at)
+                    if state
+                        .completed_at
+                        .is_some_and(|completed_at| user_message_at > completed_at)
                     {
                         state.started_at = Some(user_message_at);
                         usage_at_turn_start = latest_cumulative_usage.clone();
@@ -5040,6 +5046,60 @@ trusted_hash = "sha256:old-basic"
     }
 
     #[test]
+    fn tool_hook_config_status_requires_claude_compaction_hooks() {
+        let root = std::env::temp_dir().join(format!(
+            "codux-claude-hooks-{}-{}.json",
+            std::process::id(),
+            now_seconds().to_bits()
+        ));
+        fs::write(
+            &root,
+            r#"{
+              "hooks": {
+                "PreCompact": [
+                  {
+                    "matcher": "",
+                    "hooks": [
+                      {
+                        "type": "command",
+                        "command": "'/tmp/dmux-ai-state.sh' 'pre-compact' 'codux-tauri' 'claude'",
+                        "timeout": 10
+                      }
+                    ]
+                  }
+                ],
+                "PostCompact": [
+                  {
+                    "matcher": "",
+                    "hooks": [
+                      {
+                        "type": "command",
+                        "command": "'/tmp/dmux-ai-state.sh' 'post-compact' 'codux-tauri' 'claude'",
+                        "timeout": 10
+                      }
+                    ]
+                  }
+                ]
+              }
+            }"#,
+        )
+        .unwrap();
+
+        let status = tool_hook_config_status(
+            &root,
+            "claude",
+            &[
+                ("PreCompact", "pre-compact"),
+                ("PostCompact", "post-compact"),
+            ],
+        );
+
+        assert!(status.configured);
+        assert!(status.missing.is_empty());
+        let _ = fs::remove_file(root);
+    }
+
+    #[test]
     fn opencode_runtime_envelope_maps_to_standard_hook_payload() {
         let payload = opencode_runtime_to_hook(AIToolUsageEnvelope {
             session_id: "term-1".to_string(),
@@ -5111,6 +5171,35 @@ trusted_hash = "sha256:old-basic"
         assert_eq!(payload.kind, "promptSubmitted");
         assert_eq!(payload.terminal_id, "term-1");
         assert_eq!(payload.project_id, "project-1");
+    }
+
+    #[test]
+    fn runtime_frame_parser_accepts_memory_refreshing_envelope() {
+        let frame = br#"{
+          "kind": "ai-hook",
+          "payload": {
+            "kind": "memoryRefreshing",
+            "terminalID": "term-1",
+            "projectID": "project-1",
+            "projectName": "Project",
+            "sessionTitle": "Claude",
+            "tool": "claude",
+            "updatedAt": 1000,
+            "metadata": { "source": "post-compact" }
+          }
+        }"#;
+
+        let payload = runtime_frame_to_hook(frame).unwrap();
+
+        assert_eq!(payload.kind, "memoryRefreshing");
+        assert_eq!(payload.tool, "claude");
+        assert_eq!(
+            payload
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.source.as_deref()),
+            Some("post-compact")
+        );
     }
 
     #[test]
@@ -5249,6 +5338,24 @@ trusted_hash = "sha256:old-basic"
             project_totals_unlocked(&core, Some("project-1")).cached_input_tokens,
             0
         );
+    }
+
+    #[test]
+    fn memory_refreshing_hook_keeps_session_running() {
+        let mut core = AIRuntimeStateCore::default();
+        let mut event = test_hook("memoryRefreshing", 1000.0);
+        event.tool = "claude".to_string();
+        event.metadata = Some(AIHookEventMetadata {
+            source: Some("post-compact".to_string()),
+            ..empty_metadata()
+        });
+
+        assert!(apply_hook_unlocked(&mut core, event));
+
+        let session = core.sessions.get("terminal-1").unwrap();
+        assert_eq!(session.state, "responding");
+        assert!(session.is_running);
+        assert_eq!(session.status, "running");
     }
 
     #[test]
@@ -5603,7 +5710,10 @@ trusted_hash = "sha256:old-basic"
         ));
 
         let session = core.sessions.get("terminal-1").unwrap();
-        assert_eq!(session.transcript_path.as_deref(), Some(transcript.to_str().unwrap()));
+        assert_eq!(
+            session.transcript_path.as_deref(),
+            Some(transcript.to_str().unwrap())
+        );
         assert!(is_codex_transcript_session(session));
     }
 

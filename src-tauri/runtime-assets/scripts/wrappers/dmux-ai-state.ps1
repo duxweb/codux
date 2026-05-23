@@ -126,6 +126,31 @@ function Resolve-SessionId($Payload) {
   return $null
 }
 
+function Write-ClaudeMemoryAdditionalContext([string]$HookEventName = "UserPromptSubmit") {
+  if ([string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_INDEX_FILE)) { return }
+  if (-not (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_INDEX_FILE)) { return }
+  try {
+    $text = Get-Content -LiteralPath $env:DMUX_AI_MEMORY_INDEX_FILE -Raw -Encoding UTF8
+  } catch {
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($text)) { return }
+  $prefix = "Codux memory refresh: the conversation may have been compacted, or this is a new user turn. Re-apply relevant durable memory below. Prefer current user instructions and repository state over stale memory. Memory index file: $env:DMUX_AI_MEMORY_INDEX_FILE`n`n"
+  $payload = $prefix + $text.Trim()
+  $suffix = "`n[Codux memory refresh truncated]"
+  if ($payload.Length -gt 9500) {
+    $payload = $payload.Substring(0, 9500 - $suffix.Length) + $suffix
+  }
+  $response = [ordered]@{
+    hookSpecificOutput = [ordered]@{
+      hookEventName = $HookEventName
+      additionalContext = $payload
+    }
+    suppressOutput = $true
+  }
+  $response | ConvertTo-Json -Depth 8 -Compress
+}
+
 function Get-EventKind([string]$Value) {
   switch ($Value) {
     "session-start" { return "sessionStarted" }
@@ -133,6 +158,8 @@ function Get-EventKind([string]$Value) {
     "prompt-submit" { return "promptSubmitted" }
     "codex-prompt-submit" { return "promptSubmitted" }
     "before-agent" { return "promptSubmitted" }
+    "pre-compact" { return "memoryRefreshing" }
+    "post-compact" { return "memoryRefreshing" }
     "permission-request" { return "needsInput" }
     "codex-permission-request" { return "needsInput" }
     "permission-denied" { return "needsInput" }
@@ -156,6 +183,8 @@ function Get-Source([string]$Value, $Payload) {
     "codex-prompt-submit" { return "user-input" }
     "elicitation-result" { return "user-input" }
     "before-agent" { return "user-input" }
+    "pre-compact" { return "pre-compact" }
+    "post-compact" { return "post-compact" }
     default {
       $source = Find-FirstString $Payload @("source")
       if (-not [string]::IsNullOrWhiteSpace($source)) { return $source }
@@ -245,4 +274,10 @@ if ($null -eq $payload) {
 }
 
 Write-AIHookEvent $kind $payload
+if (($Tool -eq "claude" -or $Tool -eq "claude-code") -and $Action -eq "prompt-submit") {
+  Write-ClaudeMemoryAdditionalContext "UserPromptSubmit"
+} elseif (($Tool -eq "claude" -or $Tool -eq "claude-code") -and
+    $Action -eq "session-start" -and (Find-FirstString $payload @("source")) -eq "compact") {
+  Write-ClaudeMemoryAdditionalContext "SessionStart"
+}
 exit 0

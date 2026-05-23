@@ -409,6 +409,15 @@ impl AppSettingsStore {
             .unwrap_or_default()
     }
 
+    pub fn reload_snapshot(&self) -> AppSettings {
+        let next =
+            sanitize_settings(load_settings(&self.state_file).unwrap_or_else(|| self.snapshot()));
+        if let Ok(mut settings) = self.settings.lock() {
+            *settings = next.clone();
+        }
+        next
+    }
+
     pub fn replace(&self, next: AppSettings) -> Result<AppSettings, String> {
         let next = sanitize_settings(next);
         {
@@ -904,7 +913,7 @@ fn default_memory_max_injected_summary_tokens() -> i32 {
 }
 
 fn default_memory_extraction_idle_delay_seconds() -> i32 {
-    120
+    300
 }
 
 fn default_memory_session_extraction_cooldown_seconds() -> i32 {

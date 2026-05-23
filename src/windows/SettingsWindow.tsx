@@ -144,6 +144,7 @@ const shellOptions = shellOptionsForPlatform();
 const gitRefreshOptions = intervalOptions([30, 60, 120, 300, 600]);
 const aiRefreshOptions = intervalOptions([60, 120, 180, 300, 600]);
 const aiBackgroundRefreshOptions = intervalOptions([300, 600, 900, 1800]);
+const memoryExtractionIntervalOptions = intervalOptions([60, 120, 300, 600, 900]);
 const monitorRefreshOptions = intervalOptions([1, 2, 3, 5, 10]);
 const petSpeechModeOptions = ["mixed", "off", "encourage", "roast", "flirty", "chuunibyou"].map((value) => ({
   value,
@@ -201,9 +202,6 @@ const aiProviderKindOptions = [
   { value: "openAICompatible", label: "OpenAI-Compatible API" },
   { value: "anthropic", label: "Claude API" },
 ];
-
-const memoryUserWorkingOptions = numberOptions(0, 24);
-const memoryProjectWorkingOptions = numberOptions(0, 32);
 
 const aiProviderDefaults = {
   openAICompatible: {
@@ -893,6 +891,13 @@ function AISection() {
               onChange={(automaticExtractionEnabled) => setMemory({ automaticExtractionEnabled })}
             />
           </FormRow>
+          <Field label={tm("settings.ai.memory.extraction_interval", "Extraction Interval")}>
+            <Select
+              value={String(ai.memory.extractionIdleDelaySeconds)}
+              onChange={(value) => setMemory({ extractionIdleDelaySeconds: Number(value) })}
+              options={memoryExtractionIntervalOptions}
+            />
+          </Field>
           <FormRow label={tm("settings.ai.memory.cross_project_user", "Cross-Project User Memory")}>
             <Toggle
               checked={ai.memory.allowCrossProjectUserRecall}
@@ -909,20 +914,6 @@ function AISection() {
               value={ai.memory.defaultExtractorProviderId}
               onChange={(defaultExtractorProviderId) => setMemory({ defaultExtractorProviderId })}
               options={providerOptions}
-            />
-          </Field>
-          <Field label={tm("settings.ai.memory.user_working_recall", "User Working Recall")}>
-            <Select
-              value={String(ai.memory.maxInjectedUserWorkingMemories)}
-              onChange={(value) => setMemory({ maxInjectedUserWorkingMemories: Number(value) })}
-              options={memoryUserWorkingOptions}
-            />
-          </Field>
-          <Field label={tm("settings.ai.memory.project_working_recall", "Project Working Recall")}>
-            <Select
-              value={String(ai.memory.maxInjectedProjectWorkingMemories)}
-              onChange={(value) => setMemory({ maxInjectedProjectWorkingMemories: Number(value) })}
-              options={memoryProjectWorkingOptions}
             />
           </Field>
         </SettingsCard>

@@ -44,8 +44,6 @@
       "settings.ai.memory.enabled": "Speicher aktivieren",
       "settings.ai.memory.extraction_provider.automatic": "Automatisch",
       "settings.ai.memory.extraction_provider.automatic_help": "Automatisch verwendet zuerst das aktuelle Terminalwerkzeug und danach die Anbieterpriorität.",
-      "settings.ai.memory.project_working_recall": "Projekt-Arbeitsspeicherabruf",
-      "settings.ai.memory.user_working_recall": "Benutzer-Arbeitsspeicherabruf",
       "settings.ai.permission.full_access_toggle": "Vollzugriff",
       "settings.ai.provider.add": "API-Kanal hinzufügen",
       "settings.ai.provider.anthropic_help": "Verwendet die Anthropic Messages API unter /v1/messages.",
@@ -306,7 +304,8 @@
       "settings.ai.git_commit_message_tone": "Tone",
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
-      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
+      "settings.ai.memory.extraction_interval": "Extraktionsintervall"
     },
     "en": {
       "settings.ai_auto_refresh": "AI Auto Refresh",
@@ -352,8 +351,6 @@
       "settings.ai.memory.enabled": "Enable Memory",
       "settings.ai.memory.extraction_provider.automatic": "Automatic",
       "settings.ai.memory.extraction_provider.automatic_help": "Automatic uses selected memory providers by priority.",
-      "settings.ai.memory.project_working_recall": "Project Working Recall",
-      "settings.ai.memory.user_working_recall": "User Working Recall",
       "settings.ai.permission.full_access_toggle": "Full Access",
       "settings.ai.provider.add": "Add API Channel",
       "settings.ai.provider.anthropic_help": "Uses Anthropic Messages API at /v1/messages.",
@@ -616,7 +613,8 @@
       "settings.ai.git_commit_message_style_rules": "Style Rules",
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
       "settings.app_icon.restart_pending": "App icon changes apply fully after restart.",
-      "settings.app_icon.restart_message": "Restart Codux to apply the selected app icon everywhere."
+      "settings.app_icon.restart_message": "Restart Codux to apply the selected app icon everywhere.",
+      "settings.ai.memory.extraction_interval": "Extraction Interval"
     },
     "es": {
       "settings.ai_auto_refresh": "Actualización automática de IA",
@@ -662,8 +660,6 @@
       "settings.ai.memory.enabled": "Activar memoria",
       "settings.ai.memory.extraction_provider.automatic": "Automático",
       "settings.ai.memory.extraction_provider.automatic_help": "Automático usa primero la herramienta del terminal actual y luego recurre a la prioridad del proveedor.",
-      "settings.ai.memory.project_working_recall": "Recuperación de memoria de proyecto",
-      "settings.ai.memory.user_working_recall": "Recuperación de memoria de usuario",
       "settings.ai.permission.full_access_toggle": "Acceso completo",
       "settings.ai.provider.add": "Agregar canal API",
       "settings.ai.provider.anthropic_help": "Usa la API Anthropic Messages en /v1/messages.",
@@ -924,7 +920,8 @@
       "settings.ai.git_commit_message_tone": "Tone",
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
-      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
+      "settings.ai.memory.extraction_interval": "Intervalo de extracción"
     },
     "fr": {
       "settings.ai_auto_refresh": "Actualisation auto IA",
@@ -970,8 +967,6 @@
       "settings.ai.memory.enabled": "Activer la mémoire",
       "settings.ai.memory.extraction_provider.automatic": "Automatique",
       "settings.ai.memory.extraction_provider.automatic_help": "Automatique utilise d'abord l'outil du terminal actuel, puis se rabat sur la priorité des fournisseurs.",
-      "settings.ai.memory.project_working_recall": "Rappel de mémoire de projet",
-      "settings.ai.memory.user_working_recall": "Rappel de mémoire utilisateur",
       "settings.ai.permission.full_access_toggle": "Accès complet",
       "settings.ai.provider.add": "Ajouter un canal API",
       "settings.ai.provider.anthropic_help": "Utilise l'API Anthropic Messages sur /v1/messages.",
@@ -1232,7 +1227,8 @@
       "settings.ai.git_commit_message_tone": "Tone",
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
-      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
+      "settings.ai.memory.extraction_interval": "Intervalle d’extraction"
     },
     "ja": {
       "settings.ai_auto_refresh": "AI 自動更新",
@@ -1278,8 +1274,6 @@
       "settings.ai.memory.enabled": "メモリを有効化",
       "settings.ai.memory.extraction_provider.automatic": "自動",
       "settings.ai.memory.extraction_provider.automatic_help": "自動では現在のターミナルツールを優先し、その後プロバイダーの優先度にフォールバックします。",
-      "settings.ai.memory.project_working_recall": "プロジェクト作業メモリ数",
-      "settings.ai.memory.user_working_recall": "ユーザー作業メモリ数",
       "settings.ai.permission.full_access_toggle": "フルアクセス",
       "settings.ai.provider.add": "API チャンネルを追加",
       "settings.ai.provider.anthropic_help": "/v1/messages の Anthropic Messages API を使用します。",
@@ -1540,7 +1534,8 @@
       "settings.ai.git_commit_message_tone": "Tone",
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
-      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
+      "settings.ai.memory.extraction_interval": "抽出間隔"
     },
     "ko": {
       "settings.ai_auto_refresh": "AI 자동 새로고침",
@@ -1586,8 +1581,6 @@
       "settings.ai.memory.enabled": "메모리 활성화",
       "settings.ai.memory.extraction_provider.automatic": "자동",
       "settings.ai.memory.extraction_provider.automatic_help": "자동은 현재 터미널 도구를 먼저 사용하고, 이후 제공자 우선순위로 대체합니다.",
-      "settings.ai.memory.project_working_recall": "프로젝트 작업 메모리 수",
-      "settings.ai.memory.user_working_recall": "사용자 작업 메모리 수",
       "settings.ai.permission.full_access_toggle": "전체 권한",
       "settings.ai.provider.add": "API 채널 추가",
       "settings.ai.provider.anthropic_help": "/v1/messages의 Anthropic Messages API를 사용합니다.",
@@ -1848,7 +1841,8 @@
       "settings.ai.git_commit_message_tone": "Tone",
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
-      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
+      "settings.ai.memory.extraction_interval": "추출 간격"
     },
     "pt-BR": {
       "settings.ai_auto_refresh": "Atualização automática de IA",
@@ -1894,8 +1888,6 @@
       "settings.ai.memory.enabled": "Ativar memória",
       "settings.ai.memory.extraction_provider.automatic": "Automático",
       "settings.ai.memory.extraction_provider.automatic_help": "Automático usa primeiro a ferramenta do terminal atual e depois recorre à prioridade do provedor.",
-      "settings.ai.memory.project_working_recall": "Recuperação de memória do projeto",
-      "settings.ai.memory.user_working_recall": "Recuperação de memória do usuário",
       "settings.ai.permission.full_access_toggle": "Acesso total",
       "settings.ai.provider.add": "Adicionar canal de API",
       "settings.ai.provider.anthropic_help": "Usa a API Anthropic Messages em /v1/messages.",
@@ -2156,7 +2148,8 @@
       "settings.ai.git_commit_message_tone": "Tone",
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
-      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
+      "settings.ai.memory.extraction_interval": "Intervalo de extração"
     },
     "ru": {
       "settings.ai_auto_refresh": "Автообновление ИИ",
@@ -2202,8 +2195,6 @@
       "settings.ai.memory.enabled": "Включить память",
       "settings.ai.memory.extraction_provider.automatic": "Автоматически",
       "settings.ai.memory.extraction_provider.automatic_help": "Автоматически сначала использует инструмент текущего терминала, затем приоритет поставщиков.",
-      "settings.ai.memory.project_working_recall": "Вызов рабочей памяти проекта",
-      "settings.ai.memory.user_working_recall": "Вызов рабочей памяти пользователя",
       "settings.ai.permission.full_access_toggle": "Полный доступ",
       "settings.ai.provider.add": "Добавить API-канал",
       "settings.ai.provider.anthropic_help": "Использует Anthropic Messages API на /v1/messages.",
@@ -2464,7 +2455,8 @@
       "settings.ai.git_commit_message_tone": "Tone",
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
-      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters."
+      "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
+      "settings.ai.memory.extraction_interval": "Интервал извлечения"
     },
     "zh-Hans": {
       "settings.ai_auto_refresh": "AI 自动刷新",
@@ -2510,8 +2502,6 @@
       "settings.ai.memory.enabled": "启用记忆",
       "settings.ai.memory.extraction_provider.automatic": "自动",
       "settings.ai.memory.extraction_provider.automatic_help": "自动按已选择的记忆提供方优先级提取。",
-      "settings.ai.memory.project_working_recall": "项目工作记忆数量",
-      "settings.ai.memory.user_working_recall": "用户工作记忆数量",
       "settings.ai.permission.full_access_toggle": "完全权限",
       "settings.ai.provider.add": "添加 API 通道",
       "settings.ai.provider.anthropic_help": "使用 /v1/messages 的 Anthropic Messages API。",
@@ -2774,7 +2764,8 @@
       "settings.ai.git_commit_message_style_rules": "风格规则",
       "settings.ai.git_commit_message_style_rules_placeholder": "例如：使用 Conventional Commits，标题不超过 72 个字符。",
       "settings.app_icon.restart_pending": "应用图标会在重启后完整生效。",
-      "settings.app_icon.restart_message": "重启 Codux 后，所选应用图标会完整生效。"
+      "settings.app_icon.restart_message": "重启 Codux 后，所选应用图标会完整生效。",
+      "settings.ai.memory.extraction_interval": "自动提取间隔"
     },
     "zh-Hant": {
       "settings.ai_auto_refresh": "AI 自動重新整理",
@@ -2820,8 +2811,6 @@
       "settings.ai.memory.enabled": "啟用記憶",
       "settings.ai.memory.extraction_provider.automatic": "自動",
       "settings.ai.memory.extraction_provider.automatic_help": "自動按已選擇的記憶提供方優先級擷取。",
-      "settings.ai.memory.project_working_recall": "專案工作記憶數量",
-      "settings.ai.memory.user_working_recall": "使用者工作記憶數量",
       "settings.ai.permission.full_access_toggle": "完整權限",
       "settings.ai.provider.add": "新增 API 通道",
       "settings.ai.provider.anthropic_help": "使用 /v1/messages 的 Anthropic Messages API。",
@@ -3084,7 +3073,8 @@
       "settings.ai.git_commit_message_style_rules": "風格規則",
       "settings.ai.git_commit_message_style_rules_placeholder": "例如：使用 Conventional Commits，標題不超過 72 個字元。",
       "settings.app_icon.restart_pending": "應用程式圖標會在重新啟動後完整生效。",
-      "settings.app_icon.restart_message": "重新啟動 Codux 後，所選應用程式圖標會完整生效。"
+      "settings.app_icon.restart_message": "重新啟動 Codux 後，所選應用程式圖標會完整生效。",
+      "settings.ai.memory.extraction_interval": "自動擷取間隔"
     }
   }
 }

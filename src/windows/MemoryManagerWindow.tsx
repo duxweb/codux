@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   archiveMemoryEntry,
   deleteMemoryEntry,
+  deleteProjectMemory,
   deleteMemorySummary,
   indexMemoryNow,
+  migrateProjectMemory,
   readMemoryManagerSnapshot,
   updateMemorySummary,
   type MemoryEntry,
@@ -14,12 +16,13 @@ import {
   type MemoryScope,
   type MemorySummary,
 } from "../ai/memory";
+import { ListBox, Modal, Select as HeroSelect } from "@heroui/react";
 import { Button } from "../components/Button";
 import { PressableButton } from "../components/PressableButton";
 import { useRuntimeStore } from "../runtimeStore";
-import { FileArchive, Folder, PencilSquare, RefreshCw, Trash, Users, Zap, type AppIcon } from "../icons";
+import { FileArchive, Folder, GitBranch, PencilSquare, RefreshCw, Trash, Users, Zap, type AppIcon } from "../icons";
 import { formatI18n, tm } from "../i18n";
-import { readAppSettings } from "../settings";
+import { flushAppSettings, readAppSettings } from "../settings";
 import { systemConfirm, systemMessage } from "../systemDialog";
 import { revealCurrentAppWindow } from "../windowing";
 import { startWindowDrag } from "../windowDrag";
@@ -66,6 +69,7 @@ export function MemoryManagerWindow() {
   const [isLoading, setLoading] = useState(true);
   const [isIndexingNow, setIndexingNow] = useState(false);
   const [editingSummary, setEditingSummary] = useState<MemorySummary | null>(null);
+  const [migrationSource, setMigrationSource] = useState<MemoryManagerTargetRow | null>(null);
   const cachedSnapshot = useRuntimeStore((state) => state.memoryManagerSnapshot);
 
   const load = useCallback(async () => {
@@ -105,6 +109,19 @@ export function MemoryManagerWindow() {
 
   const overview = snapshot?.currentOverview;
   const isIndexing = snapshot?.extraction.status === "queued" || snapshot?.extraction.status === "processing";
+  const selectedProjectId = target.scope === "project" ? (target.projectId ?? null) : null;
+  const canDeleteProjectMemory = Boolean(
+    selectedProjectId &&
+    overview &&
+    overview.activeEntryCount + overview.archivedEntryCount + overview.mergedEntryCount + overview.summaryCount > 0,
+  );
+  const selectedTargetRow =
+    snapshot?.targetRows.find(
+      (row) => row.scope === target.scope && (row.projectId ?? null) === (target.projectId ?? null),
+    ) ?? null;
+  const canMigrateProjectMemory = Boolean(
+    selectedTargetRow?.scope === "project" && selectedTargetRow.projectId && selectedTargetRow.count > 0,
+  );
 
   return (
     <WindowFrame
@@ -113,11 +130,13 @@ export function MemoryManagerWindow() {
       mainScrollable={false}
     >
       <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden bg-surface-main">
-        <aside className="min-h-0 border-r border-border-subtle/60 bg-fill/[0.025]">
-          <div className="flex h-full flex-col">
+        <aside className="min-h-0 min-w-0 overflow-hidden border-r border-border-subtle/60 bg-fill/[0.025]">
+          <div className="flex h-full min-w-0 flex-col">
             <div className="px-4 pb-4 pt-5">
               <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1 truncate text-[17px] font-bold">{tm("memory.manager.title", "Memory")}</div>
+                <div className="min-w-0 flex-1 truncate text-[17px] font-bold">
+                  {tm("memory.manager.title", "Memory")}
+                </div>
                 <Button
                   size="sm"
                   variant="secondary"
@@ -126,7 +145,7 @@ export function MemoryManagerWindow() {
                   aria-label={tm("memory.manager.index_now", "Index Now")}
                   onPress={() => void indexNow(load, setIndexingNow)}
                 >
-                  <Zap size={13} className={isIndexing || isIndexingNow ? "motion-safe:animate-pulse" : ""} />
+                  <Zap size={13} className={isIndexing || isIndexingNow ? "motion-safe:animate-spin" : ""} />
                 </Button>
               </div>
               <div className="mt-1 text-xs leading-relaxed text-ink-mute">
@@ -134,8 +153,8 @@ export function MemoryManagerWindow() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay px-2 pb-3">
-              <div className="grid gap-1.5">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-overlay px-2 pb-3">
+              <div className="grid min-w-0 gap-1.5">
                 {(snapshot?.targetRows ?? fallbackTargets()).map((row) => (
                   <TargetRow
                     key={row.id}
@@ -172,6 +191,30 @@ export function MemoryManagerWindow() {
                 </p>
               </div>
               <div className="no-drag ml-auto flex items-center gap-2">
+                {selectedProjectId ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      isIconOnly
+                      disabled={!canMigrateProjectMemory}
+                      aria-label={tm("memory.manager.migrate_project", "Rebind Project Memory")}
+                      onPress={() => selectedTargetRow && setMigrationSource(selectedTargetRow)}
+                    >
+                      <GitBranch size={14} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      isIconOnly
+                      disabled={!canDeleteProjectMemory}
+                      aria-label={tm("memory.manager.delete_project", "Delete Project Memory")}
+                      onPress={() => void confirmDeleteProjectMemory(selectedProjectId, load)}
+                    >
+                      <Trash size={14} />
+                    </Button>
+                  </>
+                ) : null}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -236,6 +279,17 @@ export function MemoryManagerWindow() {
           }}
         />
       )}
+      {migrationSource && snapshot ? (
+        <ProjectMemoryMigrationDialog
+          source={migrationSource}
+          rows={snapshot.targetRows}
+          onClose={() => setMigrationSource(null)}
+          onMigrated={(projectId) => {
+            setMigrationSource(null);
+            setTarget({ scope: "project", projectId });
+          }}
+        />
+      ) : null}
     </WindowFrame>
   );
 }
@@ -252,20 +306,24 @@ function TargetRow({
   const Icon = row.scope === "user" ? Users : Folder;
   return (
     <PressableButton
-      className={`flex min-h-[54px] w-full items-center gap-2.5 rounded-[8px] px-3 text-left transition-colors ${
+      className={`flex min-h-[54px] min-w-0 w-full items-center gap-2.5 overflow-hidden rounded-[8px] px-3 text-left transition-colors ${
         selected
           ? "border border-brand-blue/20 bg-brand-blue/10 text-ink"
           : "border border-transparent text-ink-soft hover:bg-fill/[0.06]"
       }`}
       onPressUp={onSelect}
     >
-      <Icon size={17} className={selected ? "text-brand-blue" : "text-ink-mute"} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-semibold">{localizedTargetTitle(row)}</div>
-        <div className="truncate text-[11px] text-ink-mute">{localizedTargetSubtitle(row)}</div>
+      <Icon size={17} className={`shrink-0 ${selected ? "text-brand-blue" : "text-ink-mute"}`} />
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-semibold">
+          {localizedTargetTitle(row)}
+        </div>
+        <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-ink-mute">
+          {localizedTargetSubtitle(row)}
+        </div>
       </div>
       <span
-        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${selected ? "bg-brand-blue/12 text-brand-blue" : "bg-fill/[0.06] text-ink-mute"}`}
+        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${selected ? "bg-brand-blue/12 text-brand-blue" : "bg-fill/[0.06] text-ink-mute"}`}
       >
         {row.count}
       </span>
@@ -500,6 +558,161 @@ function SummaryEditor({
   );
 }
 
+function ProjectMemoryMigrationDialog({
+  source,
+  rows,
+  onClose,
+  onMigrated,
+}: {
+  source: MemoryManagerTargetRow;
+  rows: MemoryManagerTargetRow[];
+  onClose: () => void;
+  onMigrated: (projectId: string) => void;
+}) {
+  const targets = rows.filter(
+    (row) => row.scope === "project" && row.isOpenProject && row.projectId && row.projectId !== source.projectId,
+  );
+  const [targetProjectId, setTargetProjectId] = useState(() => targets[0]?.projectId ?? "");
+  const [isSaving, setSaving] = useState(false);
+  const target = targets.find((row) => row.projectId === targetProjectId) ?? null;
+  const canSubmit = Boolean(source.projectId && targetProjectId && target);
+
+  const submit = async () => {
+    if (!source.projectId || !targetProjectId || !target) return;
+    const confirmed = await systemConfirm(
+      formatI18n(
+        tm(
+          "memory.manager.migrate_project.confirm.message",
+          "Rebind memories from %@ to %@? The source project id will be removed from memory records.",
+        ),
+        localizedTargetTitle(source),
+        localizedTargetTitle(target),
+      ),
+      {
+        title: tm("memory.manager.migrate_project.confirm.title", "Rebind Project Memory"),
+        kind: "warning",
+        okLabel: tm("memory.manager.migrate_project", "Rebind Project Memory"),
+        cancelLabel: tm("common.cancel", "Cancel"),
+      },
+    );
+    if (!confirmed) return;
+
+    let overwrite = false;
+    if (target.count > 0) {
+      overwrite = await systemConfirm(
+        formatI18n(
+          tm(
+            "memory.manager.migrate_project.overwrite.message",
+            "%@ already has memory. Overwrite it before rebinding?",
+          ),
+          localizedTargetTitle(target),
+        ),
+        {
+          title: tm("memory.manager.migrate_project.overwrite.title", "Overwrite Target Memory"),
+          kind: "warning",
+          okLabel: tm("common.overwrite", "Overwrite"),
+          cancelLabel: tm("common.cancel", "Cancel"),
+        },
+      );
+      if (!overwrite) return;
+    }
+
+    setSaving(true);
+    try {
+      await migrateProjectMemory({
+        fromProjectId: source.projectId,
+        toProjectId: targetProjectId,
+        overwrite,
+      });
+      onMigrated(targetProjectId);
+    } catch (error) {
+      await systemMessage(error instanceof Error ? error.message : String(error), {
+        title: tm("memory.manager.migrate_project.failed", "Memory migration failed"),
+        kind: "error",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <Modal.Backdrop className="no-drag fixed inset-0 z-[9000] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
+        <Modal.Container size="md" placement="center">
+          <Modal.Dialog className="no-drag w-[min(520px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main p-4 text-ink shadow-floating outline-none">
+            <Modal.Header className="mb-3 p-0">
+              <div className="min-w-0">
+                <Modal.Heading className="text-sm font-semibold text-ink">
+                  {tm("memory.manager.migrate_project.title", "Rebind Project Memory")}
+                </Modal.Heading>
+                <div className="mt-1 truncate text-xs text-ink-faint">{localizedTargetTitle(source)}</div>
+              </div>
+            </Modal.Header>
+            <div className="grid gap-3">
+              <div className="rounded-[8px] bg-fill/[0.04] px-3 py-2">
+                <div className="truncate text-[12px] font-semibold text-ink-soft">{localizedTargetTitle(source)}</div>
+                <div className="mt-0.5 truncate text-[11px] text-ink-faint">{localizedTargetSubtitle(source)}</div>
+              </div>
+              {targets.length > 0 ? (
+                <label className="grid gap-1.5">
+                  <span className="text-sm font-semibold text-ink-soft">
+                    {tm("memory.manager.migrate_project.target", "Target Project")}
+                  </span>
+                  <HeroSelect
+                    aria-label={tm("memory.manager.migrate_project.target", "Target Project")}
+                    selectedKey={targetProjectId}
+                    onSelectionChange={(key) => {
+                      if (typeof key === "string") setTargetProjectId(key);
+                    }}
+                    isDisabled={isSaving}
+                    fullWidth
+                  >
+                    <HeroSelect.Trigger>
+                      <HeroSelect.Value />
+                      <HeroSelect.Indicator />
+                    </HeroSelect.Trigger>
+                    <HeroSelect.Popover>
+                      <ListBox>
+                        {targets.map((row) => (
+                          <ListBox.Item
+                            key={row.projectId ?? row.id}
+                            id={row.projectId ?? row.id}
+                            textValue={localizedTargetTitle(row)}
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate text-sm text-ink">{localizedTargetTitle(row)}</div>
+                              <div className="truncate text-xs text-ink-faint">{localizedTargetSubtitle(row)}</div>
+                            </div>
+                            <ListBox.ItemIndicator />
+                          </ListBox.Item>
+                        ))}
+                      </ListBox>
+                    </HeroSelect.Popover>
+                  </HeroSelect>
+                </label>
+              ) : (
+                <div className="rounded-[8px] border border-border-subtle/70 bg-fill/[0.025] px-3 py-2 text-sm text-ink-mute">
+                  {tm("memory.manager.migrate_project.no_targets", "No other open projects are available.")}
+                </div>
+              )}
+            </div>
+            <Modal.Footer className="mt-4 flex justify-end gap-2 p-0">
+              <Button variant="ghost" size="sm" disabled={isSaving} onPress={onClose}>
+                {tm("common.cancel", "Cancel")}
+              </Button>
+              <Button variant="primary" size="sm" disabled={!canSubmit || isSaving} onPress={() => void submit()}>
+                {isSaving
+                  ? tm("common.processing", "Processing")
+                  : tm("memory.manager.migrate_project", "Rebind Project Memory")}
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+    </Modal>
+  );
+}
+
 function IconButton({
   label,
   icon: Icon,
@@ -552,16 +765,35 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
 async function indexNow(load: () => Promise<void>, setIndexingNow: (value: boolean) => void) {
   setIndexingNow(true);
   try {
+    await flushAppSettings();
     await indexMemoryNow();
     await load();
+    const next = useRuntimeStore.getState().memoryManagerSnapshot;
+    const error = next?.extraction.status === "failed" ? next.extraction.lastError : null;
+    if (error) {
+      await systemMessage(error, {
+        title: tm("memory.manager.index_failed", "Memory indexing failed"),
+        kind: "error",
+      });
+    }
   } catch (reason) {
-    await systemMessage(reason instanceof Error ? reason.message : String(reason), {
+    await systemMessage(localizedMemoryIndexError(reason), {
       title: tm("memory.manager.index_failed", "Memory indexing failed"),
       kind: "error",
     });
   } finally {
     setIndexingNow(false);
   }
+}
+
+function localizedMemoryIndexError(reason: unknown) {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  return message.includes("Use For Memory Extraction") || message.includes("AI provider")
+    ? tm(
+        "memory.status.provider_configuration_needed",
+        "Memory needs an enabled AI channel. In Settings > AI, enable a provider and turn on Use For Memory Extraction.",
+      )
+    : message;
 }
 
 async function archiveEntry(entry: MemoryEntry, load: () => Promise<void>) {
@@ -599,6 +831,24 @@ async function confirmDeleteSummary(summary: MemorySummary, load: () => Promise<
   await load();
 }
 
+async function confirmDeleteProjectMemory(projectId: string, load: () => Promise<void>) {
+  const confirmed = await systemConfirm(
+    tm(
+      "memory.manager.delete_project.confirm.message",
+      "This removes all project memories and summaries for the selected project from the local memory database.",
+    ),
+    {
+      title: tm("memory.manager.delete_project.confirm.title", "Delete Project Memory"),
+      kind: "warning",
+      okLabel: tm("common.delete", "Delete"),
+      cancelLabel: tm("common.cancel", "Cancel"),
+    },
+  );
+  if (!confirmed) return;
+  await deleteProjectMemory(projectId);
+  await load();
+}
+
 function fallbackTargets(): MemoryManagerTargetRow[] {
   return [
     {
@@ -609,6 +859,7 @@ function fallbackTargets(): MemoryManagerTargetRow[] {
       subtitle: tm("memory.manager.user_memory.subtitle", "Cross-project preferences"),
       count: 0,
       updatedAt: null,
+      isOpenProject: false,
     },
   ];
 }

@@ -72,6 +72,7 @@ export type MemoryManagerTargetRow = {
   subtitle: string;
   count: number;
   updatedAt?: number | null;
+  isOpenProject: boolean;
 };
 
 export type MemoryManagerSnapshot = {
@@ -115,6 +116,24 @@ export async function deleteMemoryEntry(entryId: string) {
 
 export async function deleteMemorySummary(summaryId: string) {
   await invoke("memory_delete_summary", { summaryId });
+}
+
+export async function deleteProjectMemory(projectId: string) {
+  await invoke("memory_delete_project", { projectId });
+}
+
+export async function migrateProjectMemory(request: {
+  fromProjectId: string;
+  toProjectId: string;
+  overwrite?: boolean;
+}) {
+  await invoke("memory_migrate_project", {
+    request: {
+      fromProjectId: request.fromProjectId,
+      toProjectId: request.toProjectId,
+      overwrite: Boolean(request.overwrite),
+    },
+  });
 }
 
 export async function updateMemorySummary(request: { summaryId: string; content: string; maxVersions?: number }) {

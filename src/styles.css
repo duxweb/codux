@@ -555,6 +555,10 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
   background: var(--color-sider-card);
 }
 
+:root[data-theme="dark"] .ai-stats-card {
+  background: color-mix(in oklab, var(--color-sider-card) 74%, transparent);
+}
+
 .settings-card-surface {
   background: var(--color-settings-card);
 }

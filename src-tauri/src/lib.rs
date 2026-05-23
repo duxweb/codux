@@ -96,8 +96,8 @@ use llm::{
 };
 use memory::{
     MemoryExtractionStatusSnapshot, MemoryManagementRequest, MemoryManagementSnapshot,
-    MemoryManagerSnapshot, MemoryManagerSnapshotRequest, MemoryQueueStatusEvent, MemoryStore,
-    MemorySummary, MemorySummaryUpdateRequest,
+    MemoryManagerSnapshot, MemoryManagerSnapshotRequest, MemoryProjectMigrationRequest,
+    MemoryQueueStatusEvent, MemoryStore, MemorySummary, MemorySummaryUpdateRequest,
 };
 use notify_channels::{
     dispatch_notification_channels, NotificationDispatchRequest, NotificationDispatchResult,
@@ -978,9 +978,11 @@ fn app_runtime_ready(state: tauri::State<'_, AppState>, app: tauri::AppHandle) {
     let _ = app.emit("remote:status", state.remote.snapshot());
     let _ = app.emit("ai-runtime:state", state.ai_runtime.state_snapshot());
     if let Some(project) = selected_project_summary(&snapshot) {
-        state
-            .project_activity
-            .refresh_git_sidecars_by_path(app, Arc::clone(&state.projects), project.path);
+        state.project_activity.refresh_git_sidecars_by_path(
+            app,
+            Arc::clone(&state.projects),
+            project.path,
+        );
     }
 }
 
@@ -1247,6 +1249,28 @@ fn memory_delete_summary(
 }
 
 #[tauri::command]
+fn memory_delete_project(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+) -> Result<(), String> {
+    state
+        .memory
+        .delete_project_memory(&project_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn memory_migrate_project(
+    state: tauri::State<'_, AppState>,
+    request: MemoryProjectMigrationRequest,
+) -> Result<(), String> {
+    state
+        .memory
+        .migrate_project_memory(request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn memory_update_summary(
     state: tauri::State<'_, AppState>,
     request: MemorySummaryUpdateRequest,
@@ -1262,9 +1286,10 @@ fn memory_index_now(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<MemoryExtractionStatusSnapshot, String> {
+    let settings = state.settings.reload_snapshot().ai;
     Arc::clone(&state.memory)
         .process_sessions_now(
-            state.settings.snapshot().ai,
+            settings,
             state.projects.project_workspaces_snapshot(),
             state.ai_runtime.state_snapshot().sessions,
             move |event| emit_memory_status_event(&app, event),
@@ -6643,6 +6668,8 @@ pub fn run() {
             memory_archive_entry,
             memory_delete_entry,
             memory_delete_summary,
+            memory_delete_project,
+            memory_migrate_project,
             memory_update_summary,
             memory_index_now,
             app_request_restart,

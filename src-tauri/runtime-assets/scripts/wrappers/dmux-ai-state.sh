@@ -11,8 +11,10 @@ if [[ "$#" -ge 3 ]]; then
 else
   tool_name="${2:-${DMUX_ACTIVE_AI_TOOL:-}}"
 fi
+
 hook_payload="$(cat)"
 notification_type=""
+should_emit_claude_memory_context=false
 
 if [[ -n "${hook_owner:-}" && "${DMUX_RUNTIME_OWNER:-}" != "${hook_owner}" ]]; then
   exit 0
@@ -56,7 +58,7 @@ if value:
 PY
 )"
     ;;
-  session-start|prompt-submit|before-agent|permission-request|permission-denied|elicitation|elicitation-result|stop|stop-failure|session-end|idle|after-agent|codex-session-start|codex-prompt-submit|codex-pre-tool-use|codex-post-tool-use|codex-permission-request|codex-stop|codex-session-end)
+  session-start|prompt-submit|before-agent|permission-request|permission-denied|elicitation|elicitation-result|pre-compact|post-compact|stop|stop-failure|session-end|idle|after-agent|codex-session-start|codex-prompt-submit|codex-pre-tool-use|codex-post-tool-use|codex-permission-request|codex-stop|codex-session-end)
     ;;
   *)
     exit 0
@@ -226,6 +228,42 @@ log_codex_hook_diagnostics() {
   local payload_size
   payload_size="$(hook_payload_size)"
   debug_log_line "codex hook diag action=${action} tool=${tool_name} bytes=${payload_size:-0} hash=${payload_hash:-nil}${summary:+ ${summary}}"
+}
+
+claude_memory_additional_context() {
+  [[ -n "${DMUX_AI_MEMORY_INDEX_FILE:-}" && -f "${DMUX_AI_MEMORY_INDEX_FILE}" ]] || return 0
+  MEMORY_INDEX_FILE="${DMUX_AI_MEMORY_INDEX_FILE}" CLAUDE_HOOK_EVENT_NAME="${CLAUDE_HOOK_EVENT_NAME:-UserPromptSubmit}" /usr/bin/python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ.get("MEMORY_INDEX_FILE", ""))
+try:
+    text = path.read_text(encoding="utf-8").strip()
+except Exception:
+    raise SystemExit(0)
+
+if not text:
+    raise SystemExit(0)
+
+prefix = (
+    "Codux memory refresh: the conversation may have been compacted, "
+    "or this is a new user turn. Re-apply relevant durable memory below. "
+    "Prefer current user instructions and repository state over stale memory. "
+    f"Memory index file: {path}\n\n"
+)
+limit = 9500
+payload = prefix + text
+if len(payload) > limit:
+    payload = payload[: limit - len("\n[Codux memory refresh truncated]")] + "\n[Codux memory refresh truncated]"
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": os.environ.get("CLAUDE_HOOK_EVENT_NAME") or "UserPromptSubmit",
+        "additionalContext": payload,
+    },
+    "suppressOutput": True,
+}, ensure_ascii=False, separators=(",", ":")))
+PY
 }
 
 extract_hook_session_id() {
@@ -663,8 +701,10 @@ esac
 if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
   case "${action}" in
     session-start)
+      CLAUDE_HOOK_EVENT_NAME="SessionStart"
       claude_total_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
       [[ -z "${claude_total_tokens}" ]] && claude_total_tokens="null"
+      claude_session_source="$(extract_first_hook_field source)"
       write_ai_hook_event \
         "sessionStarted" \
         "$(resolved_claude_external_session_id)" \
@@ -672,11 +712,17 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
         "${claude_total_tokens}" \
         "" \
         "" \
-        "$(extract_first_hook_field source)"
+        "${claude_session_source}"
       write_claude_session_map
+      if [[ "${claude_session_source}" == "compact" ]]; then
+        should_emit_claude_memory_context=true
+      else
+        CLAUDE_HOOK_EVENT_NAME=""
+      fi
       log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} externalSession=$(resolved_claude_external_session_id || print -r -- nil)"
       ;;
     prompt-submit|permission-request|permission-denied|notification|elicitation|elicitation-result)
+      CLAUDE_HOOK_EVENT_NAME="UserPromptSubmit"
       write_claude_session_map
       if [[ "${action}" == "prompt-submit" ]]; then
         claude_prompt_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
@@ -743,6 +789,23 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
       else
         log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
       fi
+      if [[ "${action}" == "prompt-submit" ]]; then
+        should_emit_claude_memory_context=true
+      fi
+      ;;
+    pre-compact|post-compact)
+      CLAUDE_HOOK_EVENT_NAME="$([[ "${action}" == "pre-compact" ]] && print -r -- "PreCompact" || print -r -- "PostCompact")"
+      write_claude_session_map
+      write_ai_hook_event \
+        "memoryRefreshing" \
+        "$(resolved_claude_external_session_id)" \
+        "$(resolved_hook_model)" \
+        "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
+        "" \
+        "" \
+        "${action}" \
+        "$(extract_first_hook_field trigger reason)"
+      log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
       ;;
     stop|stop-failure|idle)
       write_claude_session_map
@@ -853,4 +916,8 @@ if [[ "${tool_name}" == "gemini" ]]; then
       log_line "gemini hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
       ;;
   esac
+fi
+
+if [[ "${should_emit_claude_memory_context}" == true ]]; then
+  claude_memory_additional_context
 fi

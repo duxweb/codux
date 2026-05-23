@@ -17,6 +17,8 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 const MAX_EXTRACTION_ATTEMPTS: i64 = 3;
+const MEMORY_CONTEXT_CANDIDATE_FANOUT: i64 = 8;
+const MEMORY_RETRIEVAL_MAX_QUERY_TERMS: usize = 120;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -273,6 +275,7 @@ pub struct MemoryManagerTargetRow {
     pub subtitle: String,
     pub count: i64,
     pub updated_at: Option<f64>,
+    pub is_open_project: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -301,6 +304,14 @@ pub struct MemorySummaryUpdateRequest {
     pub summary_id: String,
     pub content: String,
     pub max_versions: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryProjectMigrationRequest {
+    pub from_project_id: String,
+    pub to_project_id: String,
+    pub overwrite: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -627,6 +638,67 @@ impl MemoryStore {
         Ok(())
     }
 
+    pub fn delete_project_memory(&self, project_id: &str) -> Result<()> {
+        let project_id = project_id.trim();
+        if project_id.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.connect()?;
+        let tx = conn.transaction()?;
+        delete_project_memory_in_tx(&tx, project_id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn migrate_project_memory(&self, request: MemoryProjectMigrationRequest) -> Result<()> {
+        let from_project_id = request.from_project_id.trim();
+        let to_project_id = request.to_project_id.trim();
+        if from_project_id.is_empty() || to_project_id.is_empty() {
+            return Err(anyhow!("project id cannot be empty"));
+        }
+        if from_project_id == to_project_id {
+            return Err(anyhow!("source and target project are the same"));
+        }
+
+        let source_overview =
+            self.memory_scope_overview(MemoryScope::Project, Some(from_project_id))?;
+        if source_overview.total_count() == 0 {
+            return Err(anyhow!("source project memory is empty"));
+        }
+        let target_overview =
+            self.memory_scope_overview(MemoryScope::Project, Some(to_project_id))?;
+        if target_overview.total_count() > 0 && !request.overwrite {
+            return Err(anyhow!("target project already has memory"));
+        }
+
+        let now = now_seconds();
+        let mut conn = self.connect()?;
+        let tx = conn.transaction()?;
+
+        if request.overwrite {
+            delete_project_memory_in_tx(&tx, to_project_id)?;
+        }
+
+        tx.execute(
+            r#"
+            UPDATE memory_entries
+            SET project_id = ?1, updated_at = ?2
+            WHERE scope = 'project' AND project_id = ?3;
+            "#,
+            params![to_project_id, now, from_project_id],
+        )?;
+        tx.execute(
+            r#"
+            UPDATE memory_summaries
+            SET project_id = ?1, updated_at = ?2
+            WHERE scope = 'project' AND project_id = ?3;
+            "#,
+            params![to_project_id, now, from_project_id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn update_summary(&self, request: MemorySummaryUpdateRequest) -> Result<MemorySummary> {
         let content = request.content.trim();
         if content.is_empty() {
@@ -653,15 +725,16 @@ impl MemoryStore {
         if !settings.memory.enabled {
             return self.extraction_status_snapshot();
         }
-        let initial_status = self.extraction_status_snapshot()?;
+        ensure_memory_provider_available(&settings)?;
         let on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync> = Arc::new(on_status);
-        tauri::async_runtime::spawn(async move {
-            for session in &sessions {
-                if let Err(error) = self.enqueue_session_for_manual_extraction(&projects, session) {
-                    append_memory_log("manual-enqueue", &format!("failed: {error}"));
-                }
+        for session in &sessions {
+            if let Err(error) = self.enqueue_session_for_manual_extraction(&projects, session) {
+                append_memory_log("manual-enqueue", &format!("failed: {error}"));
             }
-            self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
+        }
+        self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
+        let initial_status = self.extraction_status_snapshot()?;
+        tauri::async_runtime::spawn(async move {
             if let Err(error) = self
                 .process_queue(settings, projects, Arc::clone(&on_status))
                 .await
@@ -725,6 +798,10 @@ impl MemoryStore {
         tauri::async_runtime::spawn(async move {
             let configured = settings.snapshot().ai;
             if !configured.memory.enabled || !configured.memory.automatic_extraction_enabled {
+                return;
+            }
+            if let Err(error) = ensure_memory_provider_available(&configured) {
+                append_memory_log("auto-extraction", &format!("skipped: {error}"));
                 return;
             }
             let result = self.enqueue_session_if_ready(&configured.memory, &projects, &session);
@@ -900,25 +977,28 @@ impl MemoryStore {
         } else {
             None
         };
+        let retrieval_query = memory_retrieval_query(project_name, tool, &settings.global_prompt);
         let user_working = if should_inject && settings.memory.allow_cross_project_user_recall {
-            self.list_entries(
+            self.list_entries_for_context(
                 MemoryScope::User,
                 None,
                 Some(tool),
                 &[MemoryTier::Working],
                 i64::from(settings.memory.max_injected_user_working_memories),
+                &retrieval_query,
             )
             .unwrap_or_default()
         } else {
             Vec::new()
         };
         let project_working = if should_inject {
-            self.list_entries(
+            self.list_entries_for_context(
                 MemoryScope::Project,
                 Some(project_id),
                 Some(tool),
                 &[MemoryTier::Working],
                 i64::from(settings.memory.max_injected_project_working_memories),
+                &retrieval_query,
             )
             .unwrap_or_default()
         } else {
@@ -928,18 +1008,26 @@ impl MemoryStore {
             && user_summary.is_none()
             && settings.memory.allow_cross_project_user_recall
         {
-            self.list_entries(MemoryScope::User, None, Some(tool), &[MemoryTier::Core], 4)
-                .unwrap_or_default()
+            self.list_entries_for_context(
+                MemoryScope::User,
+                None,
+                Some(tool),
+                &[MemoryTier::Core],
+                4,
+                &retrieval_query,
+            )
+            .unwrap_or_default()
         } else {
             Vec::new()
         };
         let project_core_fallback = if should_inject && project_summary.is_none() {
-            self.list_entries(
+            self.list_entries_for_context(
                 MemoryScope::Project,
                 Some(project_id),
                 Some(tool),
                 &[MemoryTier::Core],
                 6,
+                &retrieval_query,
             )
             .unwrap_or_default()
         } else {
@@ -1048,6 +1136,102 @@ impl MemoryStore {
         let conn = self.connect()?;
         let mut statement = conn.prepare(&sql)?;
         let mut values = vec![
+            SqlValue::Text(scope.as_str().to_string()),
+            optional_text_value(project_id),
+            optional_text_value(tool_id),
+        ];
+        values.extend(
+            tier_values
+                .iter()
+                .map(|value| SqlValue::Text((*value).to_string())),
+        );
+        values.push(SqlValue::Integer(limit));
+        let rows = statement.query_map(params_from_iter(values), memory_entry_from_row)?;
+        Ok(rows.flatten().collect())
+    }
+
+    fn list_entries_for_context(
+        &self,
+        scope: MemoryScope,
+        project_id: Option<&str>,
+        tool_id: Option<&str>,
+        tiers: &[MemoryTier],
+        limit: i64,
+        query: &str,
+    ) -> Result<Vec<MemoryEntry>> {
+        if tiers.is_empty() || limit <= 0 {
+            return Ok(Vec::new());
+        }
+        let candidate_limit = (limit * MEMORY_CONTEXT_CANDIDATE_FANOUT).max(limit).max(24);
+        let mut candidates = self.list_entries_matching_query(
+            scope.clone(),
+            project_id,
+            tool_id,
+            tiers,
+            candidate_limit,
+            query,
+        )?;
+        if candidates.len() < limit as usize {
+            candidates.extend(self.list_entries(
+                scope,
+                project_id,
+                tool_id,
+                tiers,
+                candidate_limit,
+            )?);
+            candidates = unique_entries(candidates);
+        }
+        Ok(select_context_entries(
+            candidates,
+            tool_id,
+            query,
+            limit as usize,
+        ))
+    }
+
+    fn list_entries_matching_query(
+        &self,
+        scope: MemoryScope,
+        project_id: Option<&str>,
+        tool_id: Option<&str>,
+        tiers: &[MemoryTier],
+        limit: i64,
+        query: &str,
+    ) -> Result<Vec<MemoryEntry>> {
+        if tiers.is_empty() || limit <= 0 {
+            return Ok(Vec::new());
+        }
+        let Some(match_query) = memory_fts_query(query) else {
+            return Ok(Vec::new());
+        };
+        let tier_values = tiers.iter().map(MemoryTier::as_str).collect::<Vec<_>>();
+        let placeholders = tier_values
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            r#"
+            SELECT {}
+            FROM memory_entries
+            JOIN memory_fts ON memory_fts.rowid = memory_entries.rowid
+            WHERE memory_fts MATCH ?
+              AND scope = ?
+              AND COALESCE(project_id, '') = COALESCE(?, '')
+              AND (tool_id IS NULL OR tool_id = ?)
+              AND tier IN ({})
+              AND superseded_by IS NULL
+              AND status = 'active'
+            ORDER BY bm25(memory_fts), access_count DESC, updated_at DESC
+            LIMIT ?;
+            "#,
+            qualified_entry_select_columns("memory_entries"),
+            placeholders
+        );
+        let conn = self.connect()?;
+        let mut statement = conn.prepare(&sql)?;
+        let mut values = vec![
+            SqlValue::Text(match_query),
             SqlValue::Text(scope.as_str().to_string()),
             optional_text_value(project_id),
             optional_text_value(tool_id),
@@ -1241,6 +1425,7 @@ impl MemoryStore {
             subtitle: "Cross-project preferences".to_string(),
             count: user_overview.total_count(),
             updated_at: user_overview.updated_at,
+            is_open_project: false,
         });
 
         for (project_id, overview) in self.project_overviews_for_management()? {
@@ -1259,6 +1444,7 @@ impl MemoryStore {
                     .unwrap_or_else(|| project_id.clone()),
                 count: overview.total_count(),
                 updated_at: overview.updated_at,
+                is_open_project: project.is_some(),
             });
         }
         for project in projects {
@@ -1275,6 +1461,7 @@ impl MemoryStore {
                 subtitle: project.path.clone(),
                 count: 0,
                 updated_at: None,
+                is_open_project: true,
             });
         }
         Ok(rows)
@@ -1396,6 +1583,7 @@ impl MemoryStore {
                 &session_identifier(session),
                 &source.location,
                 &source.fingerprint,
+                false,
             )? {
                 recent.insert(session_key, now_seconds());
                 return Ok(true);
@@ -1425,6 +1613,7 @@ impl MemoryStore {
             &session_identifier(session),
             &source.location,
             &source.fingerprint,
+            true,
         )
     }
 
@@ -1436,14 +1625,43 @@ impl MemoryStore {
         session_id: &str,
         transcript_path: &str,
         source_fingerprint: &str,
+        allow_retry_failed: bool,
     ) -> Result<bool> {
         let conn = self.connect()?;
-        let existing: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM memory_extraction_queue WHERE source_fingerprint = ?1;",
-            params![source_fingerprint],
-            |row| row.get(0),
-        )?;
-        if existing > 0 {
+        let existing: Option<(String, i64)> = conn
+            .query_row(
+                "SELECT status, attempts FROM memory_extraction_queue WHERE source_fingerprint = ?1 LIMIT 1;",
+                params![source_fingerprint],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        if let Some((status, attempts)) = existing {
+            if allow_retry_failed && status == "failed" && attempts < MAX_EXTRACTION_ATTEMPTS {
+                conn.execute(
+                    r#"
+                    UPDATE memory_extraction_queue
+                    SET project_id = ?1,
+                        tool = ?2,
+                        session_id = ?3,
+                        transcript_path = ?4,
+                        workspace_path = ?5,
+                        status = 'pending',
+                        error = NULL,
+                        enqueued_at = ?6
+                    WHERE source_fingerprint = ?7;
+                    "#,
+                    params![
+                        project_id,
+                        tool,
+                        session_id,
+                        transcript_path,
+                        workspace_path,
+                        now_seconds(),
+                        source_fingerprint
+                    ],
+                )?;
+                return Ok(true);
+            }
             return Ok(false);
         }
         conn.execute(
@@ -1531,6 +1749,13 @@ impl MemoryStore {
         let provider = select_memory_provider(settings, Some(&task.tool))
             .cloned()
             .ok_or_else(|| anyhow!("No available AI provider is configured."))?;
+        append_memory_log(
+            "provider",
+            &format!(
+                "memory extraction provider={} id={} kind={}",
+                provider.display_name, provider.id, provider.kind
+            ),
+        );
         let transcript = self.resolve_transcript_for_task(&task, project)?;
         let user_summary = self
             .current_summary(MemoryScope::User, None, None)
@@ -2386,6 +2611,36 @@ fn entry_select_columns() -> &'static str {
     "id, scope, project_id, tool_id, tier, kind, content, rationale, source_tool, source_session_id, source_fingerprint, normalized_hash, superseded_by, status, merged_summary_id, merged_at, archived_at, access_count, last_accessed_at, created_at, updated_at"
 }
 
+fn qualified_entry_select_columns(table: &str) -> String {
+    entry_select_columns()
+        .split(", ")
+        .map(|column| format!("{table}.{column}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn delete_project_memory_in_tx(tx: &rusqlite::Transaction<'_>, project_id: &str) -> Result<()> {
+    tx.execute(
+        "DELETE FROM memory_entries WHERE scope = 'project' AND project_id = ?1;",
+        params![project_id],
+    )?;
+    tx.execute(
+        r#"
+        DELETE FROM memory_summary_versions
+        WHERE summary_id IN (
+            SELECT id FROM memory_summaries
+            WHERE scope = 'project' AND project_id = ?1
+        );
+        "#,
+        params![project_id],
+    )?;
+    tx.execute(
+        "DELETE FROM memory_summaries WHERE scope = 'project' AND project_id = ?1;",
+        params![project_id],
+    )?;
+    Ok(())
+}
+
 fn memory_entry_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryEntry> {
     Ok(MemoryEntry {
         id: row.get(0)?,
@@ -2489,7 +2744,7 @@ fn render_tool_launch_text(
         return String::new();
     }
     format!(
-        "Launch context for {}.\nStart with MEMORY.md, then open topic files only when relevant to the task.\nPrefer current repository state over stale memory.\n\n{}",
+            "Launch context for {}.\nStart with MEMORY.md. It contains stable summaries plus a small relevant working set; open topic files only when needed.\nAfter context compaction, reload MEMORY.md before continuing so durable memory is not lost.\nPrefer current repository state over stale memory.\n\n{}",
         document_tool_name(tool).replace("{}", project_name),
         prompt
     )
@@ -2510,7 +2765,7 @@ fn render_index_text(context: &MemoryContextPayload, root: &Path) -> String {
         return sections.join("\n\n");
     }
     sections.push(format!(
-        "# MEMORY.md\n\nProject context: {}\nApply relevant memory as guidance, not as source of truth.\nPrefer current repository state and user instructions over stale memory.\n\n## Load order\n1. Use this index first.\n2. Open topic files only when they are relevant to the current task.\n3. Full transcripts are not injected; use memory search only when history is needed.\n\n## Topic files\n- `memory-user.md`: cross-project user preferences and habits.\n- `memory-project.md`: project-specific decisions, conventions, and facts.\n- `memory-recent.md`: fresh working notes from recent sessions.\n- `memory-search.md`: search-only memory guidance and current injection limits.\n\nMemory files directory: {}",
+        "# MEMORY.md\n\nProject context: {}\nApply relevant memory as guidance, not as source of truth.\nPrefer current repository state and user instructions over stale memory.\nAfter automatic or manual context compaction, reload this index and re-apply relevant memory before continuing.\n\n## Load order\n1. Use this index first; summaries are durable memory.\n2. Use the included working notes as a relevant top-k working set, not the complete store.\n3. Open topic files only when they are relevant to the current task.\n4. Full transcripts are not injected; use memory search only when history is needed.\n\n## Topic files\n- `memory-user.md`: cross-project user preferences and habits.\n- `memory-project.md`: project-specific decisions, conventions, and facts.\n- `memory-recent.md`: relevant working notes selected within the current injection budget.\n- `memory-search.md`: search-only memory guidance and current injection limits.\n\nMemory files directory: {}",
         context.project_name,
         root.display()
     ));
@@ -2532,7 +2787,7 @@ fn render_index_text(context: &MemoryContextPayload, root: &Path) -> String {
     }
     if !context.user_working.is_empty() || !context.project_working.is_empty() {
         sections.push(format!(
-            "[Recent notes index]\n- User working notes: {}\n- Project working notes: {}",
+            "[Relevant working notes index]\n- User working notes: {}\n- Project working notes: {}",
             context.user_working.len(),
             context.project_working.len()
         ));
@@ -2542,7 +2797,7 @@ fn render_index_text(context: &MemoryContextPayload, root: &Path) -> String {
 
 fn render_user_memory_text(context: &MemoryContextPayload) -> String {
     let mut sections = vec![
-        "# User Memory\n\nUse this only when cross-project user preferences matter.".to_string(),
+        "# User Memory\n\nUse this only for cross-project user preferences, habits, and workflow choices. Do not treat project names, repository paths, commands, architecture decisions, bugs, or file locations as user memory.".to_string(),
     ];
     if let Some(summary) = &context.user_summary {
         sections.push(render_summary_section("User summary", summary));
@@ -2584,7 +2839,7 @@ fn render_project_memory_text(context: &MemoryContextPayload) -> String {
 
 fn render_recent_memory_text(context: &MemoryContextPayload) -> String {
     let mut sections = vec![
-        "# Recent Working Memory\n\nThese notes are short-lived and should not override current repository evidence."
+        "# Recent Working Memory\n\nThese notes are selected by relevance and budget. They are not the complete memory store and should not override current repository evidence."
             .to_string(),
     ];
     if !context.user_working.is_empty() {
@@ -2601,7 +2856,7 @@ fn render_recent_memory_text(context: &MemoryContextPayload) -> String {
 
 fn render_search_guide_text(context: &MemoryContextPayload) -> String {
     format!(
-        "# Search-Only Memory\n\nFull historical transcripts are not loaded into launch context.\nUse current repository files first. Search memory only when prior decisions,\nprevious debugging chains, or older project context are directly relevant.\n\nCurrent injected limits:\n- User working notes: {}/{}\n- Project working notes: {}/{}",
+        "# Search-Only Memory\n\nFull historical transcripts are not loaded into launch context.\nDurable summaries stay in MEMORY.md; working memory is selected as a small relevant set.\nUse current repository files first. Search memory only when prior decisions,\nprevious debugging chains, or older project context are directly relevant.\n\nCurrent injected working-set budget:\n- User working notes: {}/{}\n- Project working notes: {}/{}",
         context.user_working.len(),
         context.user_working_limit,
         context.project_working.len(),
@@ -2694,6 +2949,137 @@ fn trimmed_memory_text(text: Option<&str>, max_tokens: i32) -> Option<String> {
     ))
 }
 
+fn select_context_entries(
+    entries: Vec<MemoryEntry>,
+    tool_id: Option<&str>,
+    query: &str,
+    limit: usize,
+) -> Vec<MemoryEntry> {
+    if limit == 0 || entries.is_empty() {
+        return Vec::new();
+    }
+    let query_terms = memory_query_terms(query);
+    let now = now_seconds();
+    let mut scored = entries
+        .into_iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let score = memory_context_score(&entry, &query_terms, tool_id, now);
+            (score, index, entry)
+        })
+        .collect::<Vec<_>>();
+    scored.sort_by(|left, right| {
+        right
+            .0
+            .partial_cmp(&left.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    unique_entries(
+        scored
+            .into_iter()
+            .take(limit)
+            .map(|(_, _, entry)| entry)
+            .collect(),
+    )
+}
+
+fn memory_context_score(
+    entry: &MemoryEntry,
+    query_terms: &[String],
+    tool_id: Option<&str>,
+    now: f64,
+) -> f64 {
+    let mut score = match entry.tier {
+        MemoryTier::Core => 120.0,
+        MemoryTier::Working => 40.0,
+        MemoryTier::Archive => 0.0,
+    };
+    if let (Some(entry_tool), Some(current_tool)) = (entry.tool_id.as_deref(), tool_id) {
+        if entry_tool == current_tool {
+            score += 14.0;
+        }
+    }
+    let haystack = format!(
+        "{} {} {} {}",
+        entry.content,
+        entry.rationale.as_deref().unwrap_or(""),
+        entry.kind.as_str(),
+        entry.source_tool.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+    for term in query_terms {
+        if haystack.contains(term) {
+            score += 20.0;
+        }
+    }
+    score += (entry.access_count.min(20) as f64) * 1.5;
+    let recency_source = entry
+        .last_accessed_at
+        .unwrap_or(entry.updated_at)
+        .max(entry.updated_at);
+    let age_days = ((now - recency_source).max(0.0)) / 86_400.0;
+    score + (30.0 / (1.0 + age_days))
+}
+
+fn memory_retrieval_query(project_name: &str, tool: &str, global_prompt: &str) -> String {
+    [project_name, tool, global_prompt]
+        .into_iter()
+        .filter_map(normalized_non_empty)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn memory_query_terms(query: &str) -> Vec<String> {
+    let mut seen = HashSet::new();
+    query
+        .split(|character: char| {
+            character.is_whitespace()
+                || matches!(
+                    character,
+                    ',' | '.'
+                        | ';'
+                        | ':'
+                        | '/'
+                        | '\\'
+                        | '|'
+                        | '('
+                        | ')'
+                        | '['
+                        | ']'
+                        | '{'
+                        | '}'
+                        | '<'
+                        | '>'
+                        | '"'
+                        | '\''
+                        | '`'
+                )
+        })
+        .filter_map(|term| {
+            let normalized = term.trim().to_lowercase();
+            if normalized.chars().count() < 2 || !seen.insert(normalized.clone()) {
+                return None;
+            }
+            Some(normalized)
+        })
+        .take(MEMORY_RETRIEVAL_MAX_QUERY_TERMS)
+        .collect()
+}
+
+fn memory_fts_query(query: &str) -> Option<String> {
+    let terms = memory_query_terms(query)
+        .into_iter()
+        .filter(|term| {
+            term.chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        })
+        .take(12)
+        .map(|term| format!("\"{}\"*", term.replace('"', "\"\"")))
+        .collect::<Vec<_>>();
+    normalized_non_empty(&terms.join(" OR "))
+}
+
 fn document_tool_name(tool: &str) -> &'static str {
     match tool {
         "codex" => "Codex",
@@ -2762,6 +3148,16 @@ fn select_memory_provider<'a>(
         })
 }
 
+fn ensure_memory_provider_available(settings: &AISettings) -> Result<()> {
+    if select_memory_provider(settings, None).is_some() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Memory needs an enabled AI provider with Use For Memory Extraction turned on."
+        ))
+    }
+}
+
 fn supports_completion(kind: &str) -> bool {
     matches!(kind, "openAICompatible" | "anthropic")
 }
@@ -2780,7 +3176,7 @@ fn make_extraction_prompt(
     settings: &AIMemorySettings,
 ) -> String {
     format!(
-        "Memory extraction schema version: dmux-memory-v2\n\nProject: {project_name}\n\nExisting user summary:\n{}\n\nExisting project summary:\n{}\n\nRecent user working entries:\n{}\n\nRecent project working entries:\n{}\n\nTranscript:\n<transcript>\n{}\n</transcript>\n\nReturn JSON with this exact shape and no extra keys:\n{{\n  \"user_summary\": \"merged durable user memory, or empty string to keep unchanged\",\n  \"project_summary\": \"merged durable project memory, or empty string to keep unchanged\",\n  \"working_add\": [{{\"scope\":\"user|project\",\"tier\":\"core|working\",\"kind\":\"preference|convention|decision|fact|bug_lesson\",\"content\":\"...\",\"rationale\":\"...\"}}],\n  \"working_archive\": [\"uuid\"],\n  \"merged_entry_ids\": [\"uuid\"]\n}}\n\nStable extraction keywords and categories:\n- preference: explicit user preferences, communication style, review style, workflow style, tool choices, permission/confirmation preferences.\n- convention: stable coding standards, repository conventions, naming/path rules, testing/build commands, localization or documentation rules.\n- decision: accepted architectural or product decisions that should guide future implementation.\n- fact: durable repository facts discovered from the session, such as source-of-truth paths, runtime data locations, feature boundaries, or known command surfaces.\n- bug_lesson: reproducible bug cause, fix pattern, regression guard, or diagnostic chain that should prevent repeated debugging.\n\nNegative signals:\n- Do not store greetings, progress updates, temporary todo items, one-off command output, timestamps, broad explanations, or generic programming knowledge.\n- Do not store full transcript text or raw logs.\n- Do not invent preferences from assistant wording; user-stated rules and confirmed repo facts have priority.\n\nCompaction rules:\n- Merge old summary + useful transcript facts into a concise total summary; do not append a changelog.\n- user_summary contains only durable cross-project developer habits and preferences.\n- project_summary contains only durable repository-specific memory for this project.\n- working_add is for extracted atomic memories that should remain browseable after extraction.\n- Set working_add.tier to \"core\" only for stable preferences, conventions, accepted decisions, source-of-truth paths, and reusable bug lessons. Use \"working\" for fresh short-lived facts.\n- merged_entry_ids should include only older active memory ids already represented by the returned summary.\n- Keep each summary under about {} tokens.\n- If a summary should stay unchanged, return an empty string for that summary.",
+        "Memory extraction schema version: dmux-memory-v2\n\nProject: {project_name}\n\nExisting user summary:\n{}\n\nExisting project summary:\n{}\n\nRecent user working entries:\n{}\n\nRecent project working entries:\n{}\n\nTranscript:\n<transcript>\n{}\n</transcript>\n\nReturn JSON with this exact shape and no extra keys:\n{{\n  \"user_summary\": \"merged durable user memory, or empty string to keep unchanged\",\n  \"project_summary\": \"merged durable project memory, or empty string to keep unchanged\",\n  \"working_add\": [{{\"scope\":\"user|project\",\"tier\":\"core|working\",\"kind\":\"preference|convention|decision|fact|bug_lesson\",\"content\":\"...\",\"rationale\":\"...\"}}],\n  \"working_archive\": [\"uuid\"],\n  \"merged_entry_ids\": [\"uuid\"]\n}}\n\nRules:\n- Extract only durable software-engineering memory; omit temporary tasks, logs, timestamps, greetings, generic knowledge, and assistant-invented preferences.\n- scope=\"user\" only for explicit cross-project user habits or preferences.\n- scope=\"project\" for repository-specific conventions, decisions, facts, commands, paths, bugs, diagnostics, APIs, release flow, UI decisions, and implementation lessons.\n- Ambiguous scope means project or omit; never put project-specific memory in user memory.\n- kind is one of preference, convention, decision, fact, bug_lesson.\n- tier=\"core\" only for stable long-term memory; otherwise use \"working\".\n- Merge useful existing memory with transcript facts; summaries are concise current state, not a changelog.\n- Keep each summary under about {} tokens. Return an empty string when a summary should stay unchanged.",
         render_existing_summary(user_summary),
         render_existing_summary(project_summary),
         render_existing_memories(user_memories),
@@ -3104,6 +3500,73 @@ fn trim_memory_text(text: &str, max_tokens: i32) -> String {
     )
 }
 
+fn compact_transcript_for_memory(text: &str, token_limit: i32) -> Option<String> {
+    let mut output = Vec::new();
+    let mut omitted_low_signal = 0usize;
+    let mut in_code_block = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            omitted_low_signal += 1;
+            continue;
+        }
+        if in_code_block {
+            omitted_low_signal += 1;
+            continue;
+        }
+        let char_count = trimmed.chars().count();
+        if looks_like_tool_or_log_line(trimmed) {
+            omitted_low_signal += 1;
+            continue;
+        }
+        if char_count > 700 {
+            output.push(format!(
+                "{} … {} [omitted long pasted content, {} chars]",
+                trimmed.chars().take(160).collect::<String>().trim(),
+                tail_chars(trimmed, 80),
+                char_count
+            ));
+            continue;
+        }
+        output.push(trimmed.to_string());
+    }
+    if omitted_low_signal > 0 {
+        output.push(format!(
+            "[omitted {} low-signal code/log/tool-output lines before memory extraction]",
+            omitted_low_signal
+        ));
+    }
+    normalized_non_empty(&trim_memory_text(&output.join("\n"), token_limit))
+}
+
+fn looks_like_tool_or_log_line(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    let prefixes = [
+        "stdout:",
+        "stderr:",
+        "tool:",
+        "assistant.tool",
+        "user.tool",
+        "[tool]",
+        "[stdout]",
+        "[stderr]",
+        "trace:",
+        "debug:",
+    ];
+    prefixes.iter().any(|prefix| lower.starts_with(prefix))
+        || (line.len() > 260 && line.chars().filter(|ch| ch.is_ascii_punctuation()).count() > 60)
+}
+
+fn tail_chars(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars().rev().take(max_chars).collect::<Vec<_>>();
+    chars.reverse();
+    chars.into_iter().collect::<String>()
+}
+
 fn transcript_source_if_readable(
     path: &str,
     tool: &str,
@@ -3140,8 +3603,7 @@ fn read_transcript_file(path: &str, line_limit: i32, token_limit: i32) -> Option
         .take(line_limit as usize)
         .collect::<Vec<_>>();
     lines.reverse();
-    let trimmed = trim_memory_text(lines.join("\n").trim(), token_limit);
-    normalized_non_empty(&trimmed)
+    compact_transcript_for_memory(lines.join("\n").trim(), token_limit)
 }
 
 fn fetch_opencode_transcript(
@@ -3211,7 +3673,7 @@ fn fetch_opencode_transcript(
         .rev()
         .collect::<Vec<_>>()
         .join("\n");
-    normalized_non_empty(&trim_memory_text(&text, 8000))
+    compact_transcript_for_memory(&text, 8000)
 }
 
 fn find_codex_rollout_path(project_path: &str, external_session_id: &str) -> Option<PathBuf> {
@@ -3470,4 +3932,227 @@ fn now_seconds() -> f64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs_f64())
         .unwrap_or(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_store(name: &str) -> MemoryStore {
+        let root =
+            std::env::temp_dir().join(format!("codux-memory-test-{name}-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create memory test dir");
+        let store = MemoryStore {
+            db_path: root.join("memory.sqlite3"),
+            last_enqueued_at_by_session: Mutex::new(HashMap::new()),
+            processing_queue: AtomicBool::new(false),
+        };
+        store.configure().expect("configure memory test store");
+        store
+    }
+
+    fn seed_project_memory(store: &MemoryStore, project_id: &str, content: &str) {
+        store
+            .upsert(MemoryCandidate {
+                scope: MemoryScope::Project,
+                project_id: Some(project_id.to_string()),
+                tool_id: None,
+                tier: MemoryTier::Working,
+                kind: MemoryKind::Fact,
+                content: content.to_string(),
+                rationale: None,
+                source_tool: Some("codex".to_string()),
+                source_session_id: Some(format!("session-{project_id}")),
+                source_fingerprint: Some(format!("fingerprint-{project_id}")),
+            })
+            .expect("seed memory entry");
+        store
+            .upsert_summary(
+                MemoryScope::Project,
+                Some(project_id),
+                None,
+                &format!("{content} summary"),
+                &[],
+                3,
+            )
+            .expect("seed memory summary");
+    }
+
+    #[test]
+    fn migrate_project_memory_requires_overwrite_for_existing_target() {
+        let store = test_store("migration");
+        seed_project_memory(&store, "old-project", "old memory");
+        seed_project_memory(&store, "new-project", "new memory");
+
+        let blocked = store.migrate_project_memory(MemoryProjectMigrationRequest {
+            from_project_id: "old-project".to_string(),
+            to_project_id: "new-project".to_string(),
+            overwrite: false,
+        });
+        assert!(blocked.is_err());
+
+        store
+            .migrate_project_memory(MemoryProjectMigrationRequest {
+                from_project_id: "old-project".to_string(),
+                to_project_id: "new-project".to_string(),
+                overwrite: true,
+            })
+            .expect("migrate with overwrite");
+
+        assert_eq!(
+            store
+                .memory_scope_overview(MemoryScope::Project, Some("old-project"))
+                .expect("old overview")
+                .total_count(),
+            0
+        );
+        assert_eq!(
+            store
+                .memory_scope_overview(MemoryScope::Project, Some("new-project"))
+                .expect("new overview")
+                .total_count(),
+            2
+        );
+    }
+
+    #[test]
+    fn compact_transcript_for_memory_omits_bulk_content_but_keeps_memory_signals() {
+        let raw = format!(
+            "user: 以后这个项目统一用 WebGL 终端渲染。\n```tsx\n{}\n```\nstdout: {}\nuser: 发布前要先跑 pnpm exec tsc --noEmit。\n",
+            "const value = 1;\n".repeat(40),
+            "x".repeat(1000)
+        );
+        let compacted = compact_transcript_for_memory(&raw, 800).expect("compacted transcript");
+        assert!(compacted.contains("WebGL"));
+        assert!(compacted.contains("pnpm exec tsc"));
+        assert!(compacted.contains("omitted"));
+        assert!(!compacted.contains("const value"));
+        assert!(!compacted.contains(&"x".repeat(1000)));
+    }
+
+    #[test]
+    fn context_entries_prefer_relevance_over_plain_recency() {
+        let store = test_store("context-rank");
+        let now = now_seconds();
+        let conn = store.connect().expect("connect");
+        for (content, updated_at) in [
+            ("recent unrelated note", now),
+            (
+                "older note says WebGL renderer is required for terminals",
+                now - 86_400.0 * 8.0,
+            ),
+            ("another unrelated note", now - 10.0),
+        ] {
+            conn.execute(
+                r#"
+                INSERT INTO memory_entries (
+                    id, scope, project_id, tool_id, tier, kind, content, normalized_hash, status, created_at, updated_at
+                ) VALUES (?1, 'project', 'project-1', NULL, 'working', 'fact', ?2, ?3, 'active', ?4, ?5);
+                "#,
+                params![
+                    Uuid::new_v4().to_string(),
+                    content,
+                    normalized_memory_content(content),
+                    updated_at,
+                    updated_at
+                ],
+            )
+            .expect("seed entry");
+        }
+
+        let selected = store
+            .list_entries_for_context(
+                MemoryScope::Project,
+                Some("project-1"),
+                Some("codex"),
+                &[MemoryTier::Working],
+                1,
+                "WebGL terminal rendering",
+            )
+            .expect("select context");
+
+        assert_eq!(selected.len(), 1);
+        assert!(selected[0].content.contains("WebGL"));
+    }
+
+    #[test]
+    fn injected_working_limit_does_not_trim_storage() {
+        let store = test_store("context-limit");
+        for index in 0..8 {
+            store
+                .upsert(MemoryCandidate {
+                    scope: MemoryScope::Project,
+                    project_id: Some("project-1".to_string()),
+                    tool_id: None,
+                    tier: MemoryTier::Working,
+                    kind: MemoryKind::Fact,
+                    content: format!("project decision {index}"),
+                    rationale: None,
+                    source_tool: Some("codex".to_string()),
+                    source_session_id: Some(format!("session-{index}")),
+                    source_fingerprint: Some(format!("fingerprint-{index}")),
+                })
+                .expect("seed memory entry");
+        }
+
+        let selected = store
+            .list_entries_for_context(
+                MemoryScope::Project,
+                Some("project-1"),
+                Some("codex"),
+                &[MemoryTier::Working],
+                2,
+                "project",
+            )
+            .expect("select context");
+        let overview = store
+            .memory_scope_overview(MemoryScope::Project, Some("project-1"))
+            .expect("overview");
+
+        assert_eq!(selected.len(), 2);
+        assert_eq!(overview.active_entry_count, 8);
+    }
+
+    #[test]
+    fn manual_enqueue_retries_failed_extraction_until_limit() {
+        let store = test_store("retry");
+        assert!(store
+            .enqueue_extraction_if_needed(
+                "project-1",
+                "/tmp/project-1",
+                "codex",
+                "session-1",
+                "/tmp/transcript.jsonl",
+                "fingerprint-1",
+                true,
+            )
+            .expect("enqueue first"));
+        let task = store
+            .next_pending_extraction_task()
+            .expect("pending lookup")
+            .expect("pending task");
+        store
+            .mark_extraction_task_running(&task.id)
+            .expect("mark running");
+        store
+            .mark_extraction_task_failed(&task.id, "quota exhausted")
+            .expect("mark failed");
+
+        assert!(store
+            .enqueue_extraction_if_needed(
+                "project-1",
+                "/tmp/project-1",
+                "codex",
+                "session-1",
+                "/tmp/transcript.jsonl",
+                "fingerprint-1",
+                true,
+            )
+            .expect("retry failed"));
+        let retried = store
+            .next_pending_extraction_task()
+            .expect("pending lookup")
+            .expect("retried task");
+        assert_eq!(retried.attempts, 1);
+    }
 }
