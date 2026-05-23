@@ -42,7 +42,8 @@ type Props = {
   aiStateByWorktreeId?: Record<string, WorktreeAIState>;
   onSelectWorktree?: (id: string) => void;
   onCreateWorktree?: (input: { branchName: string; baseBranch?: string | null }) => void;
-  onRemoveWorktree?: (worktree: ProjectWorktreeSnapshot) => void;
+  onRemoveWorktree?: (worktree: ProjectWorktreeSnapshot, options?: { removeBranch?: boolean }) => void;
+  onMergeWorktree?: (worktree: ProjectWorktreeSnapshot, options?: { removeBranch?: boolean }) => void;
   onOpenWorktreeTerminal?: (worktree: ProjectWorktreeSnapshot) => void;
   onReviewWorktree?: (worktree: ProjectWorktreeSnapshot) => void;
   onRefreshWorktrees?: () => void;
@@ -60,6 +61,7 @@ export function TaskSidebar({
   onSelectWorktree,
   onCreateWorktree,
   onRemoveWorktree,
+  onMergeWorktree,
   onOpenWorktreeTerminal,
   onReviewWorktree,
   onRefreshWorktrees,
@@ -253,7 +255,8 @@ export function TaskSidebar({
               aiState={aiStateByWorktreeId[worktree.id] ?? "idle"}
               isSelected={selectedRowId === worktree.id}
               onSelect={() => selectWorktree(worktree.id)}
-              onRemove={worktree.worktree.isDefault ? undefined : () => onRemoveWorktree?.(worktree.worktree)}
+              onRemove={worktree.worktree.isDefault ? undefined : (options) => onRemoveWorktree?.(worktree.worktree, options)}
+              onMerge={worktree.worktree.isDefault ? undefined : (options) => onMergeWorktree?.(worktree.worktree, options)}
               onOpenTerminal={() => {
                 onOpenWorktreeTerminal?.(worktree.worktree);
               }}
@@ -403,6 +406,7 @@ const WorktreeCard = memo(function WorktreeCard({
   isSelected,
   onSelect,
   onRemove,
+  onMerge,
   onOpenTerminal,
   onOpenFolder,
   onReview,
@@ -413,7 +417,8 @@ const WorktreeCard = memo(function WorktreeCard({
   aiState: WorktreeAIState;
   isSelected?: boolean;
   onSelect?: () => void;
-  onRemove?: () => void;
+  onRemove?: (options?: { removeBranch?: boolean }) => void;
+  onMerge?: (options?: { removeBranch?: boolean }) => void;
   onOpenTerminal?: () => void;
   onOpenFolder?: () => void;
   onReview?: () => void;
@@ -465,8 +470,28 @@ const WorktreeCard = memo(function WorktreeCard({
       {onRemove && (
         <>
           <ContextMenuSeparator />
-          <ContextMenuItem label={tm("worktree.menu.remove", "Remove")} onSelect={onRemove}>
+          {onMerge && (
+            <>
+              <ContextMenuItem label={tm("worktree.menu.merge", "Merge to Mainline")} onSelect={() => onMerge()}>
+                {tm("worktree.menu.merge", "Merge to Mainline")}
+              </ContextMenuItem>
+              <ContextMenuItem
+                label={tm("worktree.menu.merge_remove_branch", "Merge, Remove and Delete Branch")}
+                onSelect={() => onMerge({ removeBranch: true })}
+              >
+                {tm("worktree.menu.merge_remove_branch", "Merge, Remove and Delete Branch")}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+          <ContextMenuItem label={tm("worktree.menu.remove", "Remove")} onSelect={() => onRemove()}>
             {tm("worktree.menu.remove", "Remove")}
+          </ContextMenuItem>
+          <ContextMenuItem
+            label={tm("worktree.menu.remove_with_branch", "Remove and Delete Branch")}
+            onSelect={() => onRemove({ removeBranch: true })}
+          >
+            {tm("worktree.menu.remove_with_branch", "Remove and Delete Branch")}
           </ContextMenuItem>
         </>
       )}

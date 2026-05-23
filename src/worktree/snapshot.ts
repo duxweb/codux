@@ -75,6 +75,15 @@ export interface WorktreeRemoveInput {
   projectId: string;
   projectPath: string;
   worktreePath: string;
+  removeBranch?: boolean;
+}
+
+export interface WorktreeMergeInput {
+  projectId: string;
+  projectPath: string;
+  worktreePath: string;
+  baseBranch?: string | null;
+  removeBranch?: boolean;
 }
 
 let worktreeSnapshotListenerPromise: Promise<() => void> | null = null;
@@ -247,6 +256,27 @@ export function useWorktreeSnapshot(project?: WorkspaceProject) {
     [applySnapshot, snapshot],
   );
 
+  const merge = useCallback(
+    async (input: WorktreeMergeInput) => {
+      if (!window.__TAURI_INTERNALS__) return snapshot;
+      const requestKey = `${input.projectId}:${input.projectPath}`;
+      useRuntimeStore.getState().setWorktreeLoading(requestKey, true);
+      useRuntimeStore.getState().setWorktreeError(requestKey, null);
+      try {
+        const next = await invoke<WorktreeSnapshot>("worktree_merge", { request: input });
+        applySnapshot(requestKey, next);
+        return next;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        useRuntimeStore.getState().setWorktreeError(requestKey, message);
+        throw error;
+      } finally {
+        useRuntimeStore.getState().setWorktreeLoading(requestKey, false);
+      }
+    },
+    [applySnapshot, snapshot],
+  );
+
   return {
     snapshot,
     isLoading,
@@ -254,5 +284,6 @@ export function useWorktreeSnapshot(project?: WorkspaceProject) {
     refresh,
     create,
     remove,
+    merge,
   };
 }

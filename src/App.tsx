@@ -478,18 +478,22 @@ function App() {
   );
 
   const removeWorktreeForSelectedProject = useCallback(
-    async (target: ProjectWorktreeSnapshot) => {
+    async (target: ProjectWorktreeSnapshot, options?: { removeBranch?: boolean }) => {
       if (!selectedProjectWithAIState || target.isDefault) return;
+      const removeBranch = options?.removeBranch ?? false;
+      const messageKey = removeBranch ? "worktree.remove_with_branch.message_format" : "worktree.remove.message_format";
+      const fallbackMessage = removeBranch
+        ? "Remove %@ and delete its local branch? This cannot be undone."
+        : "Remove %@ from Codux and the Git worktree list? The branch will not be deleted.";
       if (
         !(await systemConfirm(
-          tm(
-            "worktree.remove.message_format",
-            "Remove %@ from Codux and the Git worktree list? The branch will not be deleted.",
-          ).replace("%@", target.branch || target.name),
+          tm(messageKey, fallbackMessage).replace("%@", target.branch || target.name),
           {
             title: tm("worktree.remove.title", "Remove Worktree"),
             kind: "warning",
-            okLabel: tm("worktree.menu.remove", "Remove"),
+            okLabel: removeBranch
+              ? tm("worktree.menu.remove_with_branch", "Remove and Delete Branch")
+              : tm("worktree.menu.remove", "Remove"),
             cancelLabel: tm("common.cancel", "Cancel"),
           },
         ))
@@ -501,6 +505,7 @@ function App() {
           projectId: selectedProjectWithAIState.id,
           projectPath: selectedProjectWithAIState.path,
           worktreePath: target.path,
+          removeBranch,
         });
         const nextSelected = next.selectedWorktreeId || next.worktrees.find((item) => item.isDefault)?.id || next.worktrees[0]?.id;
         if (nextSelected) {
@@ -513,6 +518,53 @@ function App() {
         console.error("failed to remove worktree", error);
         void systemMessage(error instanceof Error ? error.message : String(error), {
           title: tm("worktree.remove.title", "Remove Worktree"),
+          kind: "error",
+          okLabel: tm("common.ok", "OK"),
+        });
+      }
+    },
+    [selectedProjectWithAIState, worktree],
+  );
+
+  const mergeWorktreeForSelectedProject = useCallback(
+    async (target: ProjectWorktreeSnapshot, options?: { removeBranch?: boolean }) => {
+      if (!selectedProjectWithAIState || target.isDefault) return;
+      const removeBranch = options?.removeBranch ?? false;
+      if (
+        !(await systemConfirm(
+          tm("worktree.merge_to_mainline.message_format", "Merge %@ into %@.").replace(
+            "%@",
+            target.branch || target.name,
+          ).replace("%@", selectedProjectWithAIState.branch || "main"),
+          {
+            title: tm("worktree.merge.title", "Merge Worktree"),
+            kind: "warning",
+            okLabel: tm("worktree.menu.merge", "Merge"),
+            cancelLabel: tm("common.cancel", "Cancel"),
+          },
+        ))
+      ) {
+        return;
+      }
+      try {
+        const next = await worktree.merge({
+          projectId: selectedProjectWithAIState.id,
+          projectPath: selectedProjectWithAIState.path,
+          worktreePath: target.path,
+          baseBranch: selectedProjectWithAIState.branch,
+          removeBranch,
+        });
+        const nextSelected = next.selectedWorktreeId || next.worktrees.find((item) => item.isDefault)?.id || next.worktrees[0]?.id;
+        if (nextSelected) {
+          setSelectedWorktreeByProject((existing) => ({
+            ...existing,
+            [selectedProjectWithAIState.id]: nextSelected,
+          }));
+        }
+      } catch (error) {
+        console.error("failed to merge worktree", error);
+        void systemMessage(error instanceof Error ? error.message : String(error), {
+          title: tm("worktree.merge.title", "Merge Worktree"),
           kind: "error",
           okLabel: tm("common.ok", "OK"),
         });
@@ -789,6 +841,7 @@ function App() {
                     onSelectWorktree={selectWorktree}
                     onCreateWorktree={createWorktreeForSelectedProject}
                     onRemoveWorktree={removeWorktreeForSelectedProject}
+                    onMergeWorktree={mergeWorktreeForSelectedProject}
                     onOpenWorktreeTerminal={openWorktreeTerminal}
                     onReviewWorktree={reviewWorktree}
                     onRefreshWorktrees={refreshWorktrees}

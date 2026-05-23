@@ -15,6 +15,7 @@ import {
   Redo2,
   X,
 } from "../icons";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +31,7 @@ import {
   type GitReviewContentSnapshot,
   type GitReviewFile,
 } from "../git/review";
+import { useGitStatusSnapshot } from "../git/status";
 import type { CodeEditorLineHighlight } from "./CodeEditor";
 import { isConfiguredShortcut, registerShortcutHandler } from "../shortcuts";
 import {
@@ -49,7 +51,7 @@ import { terminalRuntime } from "../terminal/runtime";
 import type { MainView, TerminalSession, WorkspaceProject } from "../types";
 import { openDetachedTerminalWindow } from "../windowing";
 import { broadcastWorkspaceCommand, listenWorkspaceCommand } from "../workspaceCommands";
-import { systemConfirm } from "../systemDialog";
+import { systemConfirm, systemMessage } from "../systemDialog";
 import { formatI18n, tm } from "../i18n";
 import {
   languageForPath,
@@ -1922,6 +1924,7 @@ function minimapTone(line: string) {
 function ReviewMode({ project }: { project?: WorkspaceProject }) {
   const baseBranch = project?.isDefaultWorktree ? null : project?.baseBranch;
   const review = useGitReviewSnapshot(project?.path, baseBranch);
+  const git = useGitStatusSnapshot(project);
   const snapshot = review.snapshot;
   const reviewUpdatedAt = review.updatedAt;
   const [selectedPath, setSelectedPath] = useState("");
@@ -1929,6 +1932,7 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
   const [content, setContent] = useState<GitReviewContentSnapshot | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [reviewScrollTop, setReviewScrollTop] = useState(0);
+  const [reviewAction, setReviewAction] = useState<"" | "commit" | "push">("");
   const reviewScrollSourceRef = useRef("");
   const reviewTree = useMemo(() => buildReviewTree(snapshot.files), [snapshot.files]);
   const reviewDirectoryPaths = useMemo(() => collectReviewDirectoryPaths(reviewTree), [reviewTree]);
@@ -1948,6 +1952,13 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
       : (project?.path ?? tm("worktree.review.audit_working_tree", "Working Tree"));
   const totalAdditions = snapshot.files.reduce((sum, file) => sum + file.additions, 0);
   const totalDeletions = snapshot.files.reduce((sum, file) => sum + file.deletions, 0);
+  const committablePaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const file of git.snapshot.staged) paths.add(file.path);
+    for (const file of git.snapshot.unstaged) paths.add(file.path);
+    for (const file of git.snapshot.untracked) paths.add(file.path);
+    return [...paths];
+  }, [git.snapshot.staged, git.snapshot.unstaged, git.snapshot.untracked]);
   const selectedFilePath = selectedFile?.path ?? "";
   const language = languageForPath(selectedFilePath);
   const addedReviewLineHighlights = useMemo(() => addedLineHighlights(content), [content]);
@@ -2025,6 +2036,57 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
     setReviewScrollTop(info.scrollTop);
   }, []);
 
+  const refreshReview = useCallback(async () => {
+    if (!window.__TAURI_INTERNALS__ || !project?.path) return;
+    try {
+      await invoke("git_review", {
+        projectPath: project.path,
+        baseBranch,
+      });
+    } catch (error) {
+      console.error("failed to refresh git review", error);
+    }
+  }, [baseBranch, project?.path]);
+
+  const commitReviewChanges = useCallback(async () => {
+    if (!project?.path || reviewAction) return;
+    const message = window.prompt(tm("git.commit.message.placeholder", "Commit message"))?.trim();
+    if (!message) return;
+    setReviewAction("commit");
+    try {
+      if (committablePaths.length > 0) {
+        await git.stage(committablePaths);
+      }
+      await git.commit(message);
+      await refreshReview();
+    } catch (error) {
+      await systemMessage(error instanceof Error ? error.message : String(error), {
+        title: tm("git.commit.action", "Commit"),
+        kind: "error",
+        okLabel: tm("common.ok", "OK"),
+      });
+    } finally {
+      setReviewAction("");
+    }
+  }, [committablePaths, git, project?.path, refreshReview, reviewAction]);
+
+  const pushReviewBranch = useCallback(async () => {
+    if (!project?.path || reviewAction) return;
+    setReviewAction("push");
+    try {
+      await git.push();
+      await refreshReview();
+    } catch (error) {
+      await systemMessage(error instanceof Error ? error.message : String(error), {
+        title: tm("git.remote.push", "Push"),
+        kind: "error",
+        okLabel: tm("common.ok", "OK"),
+      });
+    } finally {
+      setReviewAction("");
+    }
+  }, [git, project?.path, refreshReview, reviewAction]);
+
   return (
     <div className="h-full min-h-0 grid grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-editor">
       <section className="flex items-center justify-between gap-4 border-b border-line bg-fill/[0.025] px-5 py-3.5">
@@ -2057,6 +2119,16 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
             label={tm("worktree.review.open_git_panel", "Git Panel")}
             disabled={!snapshot.isRepository}
             onPress={() => broadcastWorkspaceCommand({ type: "open-right-panel", panel: "git" })}
+          />
+          <ReviewActionButton
+            label={reviewAction === "commit" ? tm("git.commit.submitting", "Committing") : tm("git.commit.action", "Commit")}
+            disabled={!snapshot.isRepository || committablePaths.length === 0 || Boolean(reviewAction)}
+            onPress={commitReviewChanges}
+          />
+          <ReviewActionButton
+            label={reviewAction === "push" ? tm("git.remote.status.pushing", "Pushing") : tm("git.remote.push", "Push")}
+            disabled={!snapshot.isRepository || Boolean(reviewAction)}
+            onPress={pushReviewBranch}
           />
         </div>
       </section>

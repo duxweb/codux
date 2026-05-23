@@ -71,6 +71,18 @@ pub struct WorktreeRemoveRequest {
     pub project_id: String,
     pub project_path: String,
     pub worktree_path: String,
+    #[serde(default)]
+    pub remove_branch: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeMergeRequest {
+    pub project_id: String,
+    pub project_path: String,
+    pub worktree_path: String,
+    pub base_branch: Option<String>,
+    pub remove_branch: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -194,12 +206,8 @@ pub fn create_worktree(request: WorktreeCreateRequest) -> Result<WorktreeSnapsho
         .filter(|value| !value.is_empty())
         .map(str::to_string)
         .or_else(|| current_branch(&root));
+    create_worktree_with_git2(&root, branch, &destination, base.as_deref())?;
     let destination_text = destination.display().to_string();
-    let mut args = vec!["worktree", "add", "-b", branch, destination_text.as_str()];
-    if let Some(base) = base.as_deref() {
-        args.push(base);
-    }
-    git_output(Path::new(&root), &args).map(|_| ())?;
     let created_path = normalize_path(&destination_text);
     let mut snapshot = worktree_snapshot(request.project_id, request.project_path);
     if let Some(created) = snapshot
@@ -227,13 +235,45 @@ pub fn create_worktree(request: WorktreeCreateRequest) -> Result<WorktreeSnapsho
 pub fn remove_worktree(request: WorktreeRemoveRequest) -> Result<WorktreeSnapshot, String> {
     let root = repository_root(&request.project_path)
         .ok_or_else(|| "Not a Git repository.".to_string())?;
-    let branch_to_delete = removable_worktree_branch(&root, &request.worktree_path);
+    let branch_to_delete = if request.remove_branch {
+        removable_worktree_branch(&root, &request.worktree_path)
+    } else {
+        None
+    };
     git_output(
         Path::new(&root),
         &["worktree", "remove", request.worktree_path.as_str()],
     )?;
     if let Some(branch) = branch_to_delete.as_deref() {
-        delete_local_branch(Path::new(&root), branch)?;
+        delete_local_branch(&root, branch)?;
+    }
+    Ok(worktree_snapshot(request.project_id, request.project_path))
+}
+
+pub fn merge_worktree(request: WorktreeMergeRequest) -> Result<WorktreeSnapshot, String> {
+    let root = repository_root(&request.project_path)
+        .ok_or_else(|| "Not a Git repository.".to_string())?;
+    let branch = current_branch(&request.worktree_path)
+        .ok_or_else(|| "Worktree branch cannot be resolved.".to_string())?;
+    let base_branch = request
+        .base_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| current_branch(&root))
+        .ok_or_else(|| "Base branch cannot be resolved.".to_string())?;
+    if branch == base_branch {
+        return Err("The default worktree cannot be merged into itself.".to_string());
+    }
+    let cwd = Path::new(&root);
+    if current_branch(&root).as_deref() != Some(base_branch.as_str()) {
+        git_output(cwd, &["checkout", base_branch.as_str()])?;
+    }
+    git_output(cwd, &["merge", "--no-ff", branch.as_str()])?;
+    if request.remove_branch.unwrap_or(false) {
+        git_output(cwd, &["worktree", "remove", request.worktree_path.as_str()])?;
+        delete_local_branch(&root, &branch)?;
     }
     Ok(worktree_snapshot(request.project_id, request.project_path))
 }
@@ -309,6 +349,52 @@ fn list_worktrees(path: &str) -> Result<Vec<GitWorktreeEntry>, String> {
     Ok(entries)
 }
 
+fn create_worktree_with_git2(
+    root: &str,
+    branch: &str,
+    destination: &Path,
+    base: Option<&str>,
+) -> Result<(), String> {
+    let repo = GitRepository::discover(root).map_err(|error| error.message().to_string())?;
+    let base_commit = match base {
+        Some(base) => repo
+            .revparse_single(base)
+            .and_then(|object| object.peel_to_commit())
+            .map_err(|error| error.message().to_string())?,
+        None => repo
+            .head()
+            .and_then(|head| head.peel_to_commit())
+            .map_err(|error| error.message().to_string())?,
+    };
+    let mut created_branch = false;
+    match repo.find_branch(branch, git2::BranchType::Local) {
+        Ok(_) => {}
+        Err(error) if error.code() == git2::ErrorCode::NotFound => {
+            repo.branch(branch, &base_commit, false)
+                .map_err(|error| error.message().to_string())?;
+            created_branch = true;
+        }
+        Err(error) => return Err(error.message().to_string()),
+    }
+    let reference_name = format!("refs/heads/{branch}");
+    let reference = repo
+        .find_reference(&reference_name)
+        .map_err(|error| error.message().to_string())?;
+    let mut options = git2::WorktreeAddOptions::new();
+    options.reference(Some(&reference));
+    match repo.worktree(&worktree_slug(branch), destination, Some(&options)) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            if created_branch {
+                if let Ok(mut local_branch) = repo.find_branch(branch, git2::BranchType::Local) {
+                    let _ = local_branch.delete();
+                }
+            }
+            Err(error.message().to_string())
+        }
+    }
+}
+
 fn repository_root(path: &str) -> Option<String> {
     GitRepository::discover(path)
         .ok()
@@ -331,22 +417,23 @@ fn removable_worktree_branch(root: &str, worktree_path: &str) -> Option<String> 
     Some(branch)
 }
 
-fn delete_local_branch(cwd: &Path, branch: &str) -> Result<(), String> {
-    match git_output(cwd, &["branch", "-d", "--", branch]) {
-        Ok(_) => Ok(()),
-        Err(error) => {
-            if branch_delete_needs_force(&error) {
-                git_output(cwd, &["branch", "-D", "--", branch]).map(|_| ())
-            } else {
-                Err(error)
-            }
-        }
+fn delete_local_branch(root: &str, branch: &str) -> Result<(), String> {
+    let branch = branch.trim();
+    if branch.is_empty() {
+        return Ok(());
     }
-}
-
-fn branch_delete_needs_force(error: &str) -> bool {
-    let error = error.to_lowercase();
-    error.contains("not fully merged") || error.contains("is not an ancestor")
+    let repo = GitRepository::discover(root).map_err(|error| error.message().to_string())?;
+    if current_branch_from_repo(&repo).as_deref() == Some(branch) {
+        return Err(format!("Cannot delete the checked out branch: {branch}"));
+    }
+    let result = match repo.find_branch(branch, git2::BranchType::Local) {
+        Ok(mut local_branch) => local_branch
+            .delete()
+            .map_err(|error| error.message().to_string()),
+        Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(()),
+        Err(error) => Err(error.message().to_string()),
+    };
+    result
 }
 
 fn commit_hash(ref_name: &str, path: &str) -> Option<String> {
@@ -535,11 +622,183 @@ fn normalized_string(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let path =
+                std::env::temp_dir().join(format!("codux-worktree-test-{name}-{}", Uuid::new_v4()));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
 
     #[test]
     fn managed_worktree_path_lives_under_project_directory() {
         let path = managed_worktree_path("/tmp/example-project", "task/fix cli hooks");
         let text = path.display().to_string();
         assert!(text.ends_with("/tmp/example-project/.codux/worktrees/task-fix-cli-hooks"));
+    }
+
+    #[test]
+    fn remove_request_keeps_branch_by_default() {
+        let request: WorktreeRemoveRequest = serde_json::from_value(serde_json::json!({
+            "projectId": "project",
+            "projectPath": "/tmp/project",
+            "worktreePath": "/tmp/project/.codux/worktrees/topic"
+        }))
+        .expect("deserialize request");
+
+        assert!(!request.remove_branch);
+    }
+
+    #[test]
+    fn removable_worktree_branch_skips_current_default_branch() {
+        let temp = TempDir::new("default-branch");
+        let root = create_repo_with_commit(&temp.path);
+
+        assert_eq!(removable_worktree_branch(&root, &root), None);
+    }
+
+    #[test]
+    fn delete_local_branch_uses_git2_and_ignores_missing_branch() {
+        let temp = TempDir::new("delete-branch");
+        let root = create_repo_with_commit(&temp.path);
+        let repo = GitRepository::discover(&root).expect("open repo");
+        let head = repo.head().expect("head").peel_to_commit().expect("commit");
+        repo.branch("topic/delete-me", &head, false)
+            .expect("create branch");
+        drop(head);
+        drop(repo);
+
+        delete_local_branch(&root, "topic/delete-me").expect("delete branch");
+        delete_local_branch(&root, "topic/delete-me").expect("ignore missing branch");
+
+        let repo = GitRepository::discover(&root).expect("open repo");
+        assert!(repo
+            .find_branch("topic/delete-me", git2::BranchType::Local)
+            .is_err());
+    }
+
+    #[test]
+    fn create_worktree_uses_git2_and_selects_created_worktree() {
+        let temp = TempDir::new("create-worktree");
+        let root = create_repo_with_commit(&temp.path);
+
+        let snapshot = create_worktree(WorktreeCreateRequest {
+            project_id: "project".to_string(),
+            project_path: root.clone(),
+            base_branch: current_branch(&root),
+            branch_name: "feature/git2-create".to_string(),
+            task_title: None,
+        })
+        .expect("create worktree");
+
+        let created = snapshot
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.branch == "feature/git2-create")
+            .expect("created worktree");
+        assert_eq!(snapshot.selected_worktree_id, created.id);
+        assert!(Path::new(&created.path).exists());
+        let repo = GitRepository::discover(&root).expect("open repo");
+        assert!(repo
+            .find_branch("feature/git2-create", git2::BranchType::Local)
+            .is_ok());
+    }
+
+    #[test]
+    fn merge_worktree_merges_branch_into_default_worktree() {
+        let temp = TempDir::new("merge-worktree");
+        let root = create_repo_with_commit(&temp.path);
+        let worktree_path = temp.path.join(".codux").join("worktrees").join("feature");
+        git_output(Path::new(&root), &["config", "user.name", "Codux"]).expect("configure name");
+        git_output(
+            Path::new(&root),
+            &["config", "user.email", "codux@example.test"],
+        )
+        .expect("configure email");
+        git_output(
+            Path::new(&root),
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature/test-merge",
+                worktree_path.to_string_lossy().as_ref(),
+            ],
+        )
+        .expect("create worktree");
+        commit_file(&worktree_path, "README.md", "hello\nfeature\n", "feature");
+
+        merge_worktree(WorktreeMergeRequest {
+            project_id: "project".to_string(),
+            project_path: root.clone(),
+            worktree_path: worktree_path.to_string_lossy().to_string(),
+            base_branch: current_branch(&root),
+            remove_branch: Some(false),
+        })
+        .expect("merge worktree");
+
+        let merged = fs::read_to_string(temp.path.join("README.md")).expect("read merged file");
+        assert!(merged.contains("feature"));
+        let repo = GitRepository::discover(&root).expect("open repo");
+        assert!(repo
+            .find_branch("feature/test-merge", git2::BranchType::Local)
+            .is_ok());
+    }
+
+    fn create_repo_with_commit(path: &Path) -> String {
+        let repo = GitRepository::init(path).expect("init repo");
+        write_commit(&repo, path, "README.md", "hello\n", "initial");
+        normalize_path(&path.to_string_lossy())
+    }
+
+    fn commit_file(repo_path: &Path, relative_path: &str, content: &str, message: &str) {
+        let repo = GitRepository::discover(repo_path).expect("open repo");
+        write_commit(&repo, repo_path, relative_path, content, message);
+    }
+
+    fn write_commit(
+        repo: &GitRepository,
+        repo_path: &Path,
+        relative_path: &str,
+        content: &str,
+        message: &str,
+    ) {
+        let file_path = repo_path.join(relative_path);
+        fs::write(&file_path, content).expect("write file");
+        let mut index = repo.index().expect("index");
+        index.add_path(Path::new(relative_path)).expect("add file");
+        index.write().expect("write index");
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let signature = git2::Signature::now("Codux", "codux@example.test").expect("signature");
+        let parents = repo
+            .head()
+            .ok()
+            .and_then(|head| head.peel_to_commit().ok())
+            .into_iter()
+            .collect::<Vec<_>>();
+        let parent_refs = parents.iter().collect::<Vec<_>>();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parent_refs,
+        )
+        .expect("commit");
     }
 }

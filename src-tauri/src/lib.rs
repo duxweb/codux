@@ -145,8 +145,8 @@ use terminal::{TerminalConfig, TerminalEvent, TerminalManager};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WebSocketMessage;
 use worktree::{
-    create_worktree, remove_worktree, WorktreeCreateRequest, WorktreeRemoveRequest,
-    WorktreeSnapshot,
+    create_worktree, merge_worktree, remove_worktree, WorktreeCreateRequest, WorktreeMergeRequest,
+    WorktreeRemoveRequest, WorktreeSnapshot,
 };
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
@@ -1956,6 +1956,40 @@ async fn worktree_remove(
     let projects_for_snapshot = Arc::clone(&state.projects);
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
         let snapshot = remove_worktree(request)?;
+        projects.merge_worktree_snapshot(snapshot)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    let project_id = snapshot.project_id.clone();
+    let project_path = snapshot
+        .worktrees
+        .iter()
+        .find(|worktree| worktree.is_default)
+        .or_else(|| snapshot.worktrees.first())
+        .map(|worktree| worktree.path.clone())
+        .unwrap_or_default();
+    let _ = app.emit(
+        "worktree:snapshot",
+        WorktreeSnapshotEvent {
+            project_id,
+            project_path,
+            snapshot: snapshot.clone(),
+        },
+    );
+    let _ = app.emit("project:updated", projects_for_snapshot.list_snapshot());
+    Ok(snapshot)
+}
+
+#[tauri::command]
+async fn worktree_merge(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    request: WorktreeMergeRequest,
+) -> Result<WorktreeSnapshot, String> {
+    let projects = Arc::clone(&state.projects);
+    let projects_for_snapshot = Arc::clone(&state.projects);
+    let snapshot = tauri::async_runtime::spawn_blocking(move || {
+        let snapshot = merge_worktree(request)?;
         projects.merge_worktree_snapshot(snapshot)
     })
     .await
@@ -6674,6 +6708,7 @@ pub fn run() {
             file_unwatch,
             worktree_create,
             worktree_remove,
+            worktree_merge,
             performance_snapshot,
             pet_catalog,
             pet_custom_install_preview,
