@@ -43,16 +43,21 @@ type TerminalRendererAdapter = {
 const MIN_COLS = 20;
 const MIN_ROWS = 8;
 const INTERACTIVE_WRITE_INTERVAL_MS = 16;
-const STREAM_WRITE_INTERVAL_MS = 72;
+const STREAM_ANIMATION_WRITE_INTERVAL_MS = 16;
+const STREAM_WRITE_INTERVAL_MS = 24;
 const INACTIVE_WRITE_INTERVAL_MS = 200;
 const MAX_QUEUED_WRITE_BYTES = 256 * 1024;
-const MAX_WRITE_BYTES_PER_FLUSH = 96 * 1024;
-const MAX_WRITE_TEXT_PER_FLUSH = 96 * 1024;
-const INTERACTIVE_WRITE_MIN_DELAY_MS = 8;
-const STREAM_WRITE_MIN_DELAY_MS = 40;
+const ACTIVE_WRITE_BYTES_PER_FLUSH = 32 * 1024;
+const ACTIVE_WRITE_TEXT_PER_FLUSH = 32 * 1024;
+const INACTIVE_WRITE_BYTES_PER_FLUSH = 96 * 1024;
+const INACTIVE_WRITE_TEXT_PER_FLUSH = 96 * 1024;
+const INTERACTIVE_WRITE_MIN_DELAY_MS = 4;
+const STREAM_ANIMATION_WRITE_MIN_DELAY_MS = 4;
+const STREAM_WRITE_MIN_DELAY_MS = 10;
 const INACTIVE_WRITE_MIN_DELAY_MS = 96;
 const OVERFLOW_WRITE_MIN_DELAY_MS = 4;
-const LOCAL_INPUT_LOW_LATENCY_MS = 350;
+const LOCAL_INPUT_LOW_LATENCY_MS = 700;
+const STREAM_ANIMATION_QUEUE_BYTES = 64 * 1024;
 const isWindowsTerminal = isWindowsPlatform();
 const TERMINAL_FONT_FAMILY =
   '"Berkeley Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
@@ -363,25 +368,34 @@ function XtermRenderer({
         }
       };
 
+      const byteBudget = writeActiveRef.current ? ACTIVE_WRITE_BYTES_PER_FLUSH : INACTIVE_WRITE_BYTES_PER_FLUSH;
+      const textBudget = writeActiveRef.current ? ACTIVE_WRITE_TEXT_PER_FLUSH : INACTIVE_WRITE_TEXT_PER_FLUSH;
+
       if (queuedBytes.length > 0) {
-        terminal.write(takeQueuedBytes(MAX_WRITE_BYTES_PER_FLUSH), finishWrite);
+        terminal.write(takeQueuedBytes(byteBudget), finishWrite);
         return;
       }
-      terminal.write(takeQueuedText(MAX_WRITE_TEXT_PER_FLUSH), finishWrite);
+      terminal.write(takeQueuedText(textBudget), finishWrite);
     };
 
     const scheduleQueuedWrite = () => {
       if (writeTimer !== null || writeInFlight) return;
       const now = performance.now();
       const lowLatency = now - lastLocalInputAt < LOCAL_INPUT_LOW_LATENCY_MS;
+      const queuedLength = queuedByteLength + queuedText.length;
+      const animationRate = writeActiveRef.current && queuedLength < STREAM_ANIMATION_QUEUE_BYTES;
       const interval = lowLatency
         ? INTERACTIVE_WRITE_INTERVAL_MS
+        : animationRate
+          ? STREAM_ANIMATION_WRITE_INTERVAL_MS
         : writeActiveRef.current
           ? STREAM_WRITE_INTERVAL_MS
           : INACTIVE_WRITE_INTERVAL_MS;
       const elapsed = performance.now() - lastWriteFlushAt;
       const minDelay = lowLatency
         ? INTERACTIVE_WRITE_MIN_DELAY_MS
+        : animationRate
+          ? STREAM_ANIMATION_WRITE_MIN_DELAY_MS
         : writeActiveRef.current
           ? STREAM_WRITE_MIN_DELAY_MS
           : INACTIVE_WRITE_MIN_DELAY_MS;

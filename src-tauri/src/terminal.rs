@@ -24,8 +24,8 @@ use uuid::Uuid;
 
 const MAX_HISTORY_BYTES: usize = 2_000_000;
 const OUTPUT_CHUNK_BYTES: usize = 16 * 1024;
-const OUTPUT_BATCH_BYTES: usize = 192 * 1024;
-const OUTPUT_BATCH_DELAY: Duration = Duration::from_millis(32);
+const OUTPUT_BATCH_BYTES: usize = 96 * 1024;
+const OUTPUT_BATCH_DELAY: Duration = Duration::from_millis(16);
 
 #[cfg(windows)]
 const FALLBACK_PATH: &str = "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0";

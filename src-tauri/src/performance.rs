@@ -23,6 +23,7 @@ struct RawSample {
     captured_at: Instant,
     cpu_seconds: f64,
     memory_bytes: u64,
+    cpu_percent_override: Option<f64>,
 }
 
 impl PerformanceMonitor {
@@ -57,6 +58,16 @@ impl PerformanceMonitor {
     }
 
     fn cpu_percent(&self, raw: &RawSample) -> f64 {
+        if let Some(percent) = raw.cpu_percent_override {
+            if percent.is_finite() {
+                let Ok(mut previous) = self.previous.lock() else {
+                    return percent;
+                };
+                *previous = Some(raw.clone());
+                return ((normalize_cpu_percent(percent)) * 10.0).round() / 10.0;
+            }
+        }
+
         let Ok(mut previous) = self.previous.lock() else {
             return 0.0;
         };
@@ -217,11 +228,19 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
                 return None;
             }
 
+            let usage = process_usage(pid);
             Some(ProcessSample {
                 pid,
-                cpu_seconds: (task_info.total_user + task_info.total_system) as f64
-                    / 1_000_000_000.0,
-                footprint_bytes: process_footprint(pid).unwrap_or(task_info.resident_size),
+                cpu_seconds: usage
+                    .as_ref()
+                    .map(|usage| usage.cpu_seconds)
+                    .unwrap_or_else(|| {
+                        (task_info.total_user + task_info.total_system) as f64 / 1_000_000_000.0
+                    }),
+                footprint_bytes: usage
+                    .as_ref()
+                    .and_then(|usage| (usage.phys_footprint > 0).then_some(usage.phys_footprint))
+                    .unwrap_or(task_info.resident_size),
             })
         }
     }
@@ -272,14 +291,22 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         fn proc_pid_rusage(pid: c_int, flavor: c_int, buffer: *mut c_void) -> c_int;
     }
 
-    fn process_footprint(pid: pid_t) -> Option<u64> {
+    struct ProcessUsage {
+        cpu_seconds: f64,
+        phys_footprint: u64,
+    }
+
+    fn process_usage(pid: pid_t) -> Option<ProcessUsage> {
         const RUSAGE_INFO_V4: c_int = 4;
         unsafe {
             let mut usage = mem::zeroed::<RUsageInfoV4>();
             if proc_pid_rusage(pid, RUSAGE_INFO_V4, &mut usage as *mut _ as *mut c_void) != 0 {
                 return None;
             }
-            (usage.phys_footprint > 0).then_some(usage.phys_footprint)
+            Some(ProcessUsage {
+                cpu_seconds: (usage.user_time + usage.system_time) as f64 / 1_000_000_000.0,
+                phys_footprint: usage.phys_footprint,
+            })
         }
     }
 
@@ -419,6 +446,37 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         cache.refreshed_at = Some(now);
     }
 
+    fn ps_cpu_percent(pids: &[pid_t]) -> Option<f64> {
+        if pids.is_empty() {
+            return None;
+        }
+        let pid_list = pids
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let output = std::process::Command::new("/bin/ps")
+            .args(["-o", "%cpu=", "-p", &pid_list])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut total = 0.0;
+        let mut seen = false;
+        for line in text.lines() {
+            let Ok(value) = line.trim().parse::<f64>() else {
+                continue;
+            };
+            if value.is_finite() {
+                total += value;
+                seen = true;
+            }
+        }
+        seen.then_some(total)
+    }
+
     let captured_at = Instant::now();
     let main = process_sample(unsafe { libc::getpid() })?;
     let mut cpu_seconds = main.cpu_seconds;
@@ -431,6 +489,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         Vec::new()
     };
 
+    let mut sampled_pids = vec![main.pid];
     for pid in helper_pids {
         let Some(sample) = process_sample(pid) else {
             continue;
@@ -438,6 +497,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         if sample.pid == main.pid {
             continue;
         }
+        sampled_pids.push(sample.pid);
         cpu_seconds += sample.cpu_seconds;
         memory_bytes = memory_bytes.saturating_add(sample.footprint_bytes);
     }
@@ -446,6 +506,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         captured_at,
         cpu_seconds,
         memory_bytes,
+        cpu_percent_override: ps_cpu_percent(&sampled_pids),
     })
 }
 
@@ -475,6 +536,7 @@ fn capture_raw_sample() -> Option<RawSample> {
             captured_at,
             cpu_seconds: timeval_seconds(usage.ru_utime) + timeval_seconds(usage.ru_stime),
             memory_bytes,
+            cpu_percent_override: None,
         })
     }
 }
@@ -637,5 +699,6 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         captured_at,
         cpu_seconds: total_cpu_seconds,
         memory_bytes: total_memory_bytes,
+        cpu_percent_override: None,
     })
 }
