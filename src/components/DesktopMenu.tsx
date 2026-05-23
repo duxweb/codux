@@ -37,7 +37,7 @@ export function DesktopMenu({
         <Dropdown.Popover
           placement={toHeroPlacement(placement)}
           offset={6}
-          className="desktop-menu-popover w-[240px] rounded-[10px] border border-line-strong bg-surface-popover p-1 text-ink shadow-pop"
+          className="desktop-menu-popover w-[240px] rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating"
           style={{ width }}
         >
           <Dropdown.Menu aria-label={ariaLabel} className="grid gap-0.5" shouldCloseOnSelect={false}>
@@ -70,7 +70,7 @@ export function DesktopMenuItem({
       id={id}
       textValue={label}
       isDisabled={disabled}
-      className="flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-left text-[12.5px] font-medium text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink disabled:opacity-50"
+      className="min-w-0 overflow-hidden"
       onAction={() => {
         if (disabled) return;
         onSelect?.();
@@ -103,7 +103,7 @@ export function DesktopSubmenu({
           id={id}
           textValue={label}
           isDisabled={disabled}
-          className="flex h-7 w-full min-w-0 items-center justify-between gap-3 overflow-hidden rounded-md px-2 text-left text-[12.5px] font-medium text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink disabled:opacity-50"
+          className="min-w-0 justify-between overflow-hidden"
         >
           <span className="min-w-0 truncate">{label}</span>
           <Dropdown.SubmenuIndicator className="text-ink-faint" />
@@ -111,7 +111,7 @@ export function DesktopSubmenu({
         <Dropdown.Popover
           placement="right top"
           offset={6}
-          className="desktop-menu-popover w-[240px] rounded-[10px] border border-line-strong bg-surface-popover p-1 text-ink shadow-pop"
+          className="desktop-menu-popover w-[240px] rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating"
           style={{ width: "min(240px, calc(100vw - 24px))" }}
         >
           <Dropdown.Menu aria-label={label} className="grid gap-0.5" shouldCloseOnSelect={false}>
@@ -139,7 +139,7 @@ export function DesktopMenuSectionLabel({ children }: { children: ReactNode }) {
 }
 
 export function DesktopMenuSeparator() {
-  return <Separator className="my-1 h-px bg-line/70" />;
+  return <Separator className="my-1 h-px bg-border-subtle/70" />;
 }
 
 type HeroPlacement = NonNullable<ComponentProps<typeof Dropdown.Popover>["placement"]>;

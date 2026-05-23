@@ -126,7 +126,9 @@
       "worktree.task.branch": "Worktree Branch",
       "worktree.task.create.message_format": "Create a worktree for %@.",
       "worktree.task.default_title": "New Worktree",
-      "worktree.task.title": "Worktree Name"
+      "worktree.task.title": "Worktree Name",
+      "worktree.remove.delete_branch_checkbox": "Also delete the local branch",
+      "worktree.remove.delete_branch_warning": "Deleting the branch cannot be undone."
     },
     "en": {
       "worktree.action.open_terminal": "Open Terminal",
@@ -260,7 +262,9 @@
       "worktree.task.title": "Worktree Name",
       "worktree.menu.actions_format": "%@ Actions",
       "worktree.menu.open_terminal": "Open Terminal",
-      "worktree.menu.open_folder": "Open Folder"
+      "worktree.menu.open_folder": "Open Folder",
+      "worktree.remove.delete_branch_checkbox": "Also delete the local branch",
+      "worktree.remove.delete_branch_warning": "Deleting the branch cannot be undone."
     },
     "es": {
       "worktree.action.open_terminal": "Open Terminal",
@@ -388,7 +392,9 @@
       "worktree.task.branch": "Worktree Branch",
       "worktree.task.create.message_format": "Create a worktree for %@.",
       "worktree.task.default_title": "New Worktree",
-      "worktree.task.title": "Worktree Name"
+      "worktree.task.title": "Worktree Name",
+      "worktree.remove.delete_branch_checkbox": "Also delete the local branch",
+      "worktree.remove.delete_branch_warning": "Deleting the branch cannot be undone."
     },
     "fr": {
       "worktree.action.open_terminal": "Open Terminal",
@@ -516,7 +522,9 @@
       "worktree.task.branch": "Worktree Branch",
       "worktree.task.create.message_format": "Create a worktree for %@.",
       "worktree.task.default_title": "New Worktree",
-      "worktree.task.title": "Worktree Name"
+      "worktree.task.title": "Worktree Name",
+      "worktree.remove.delete_branch_checkbox": "Also delete the local branch",
+      "worktree.remove.delete_branch_warning": "Deleting the branch cannot be undone."
     },
     "ja": {
       "worktree.action.open_terminal": "Open Terminal",
@@ -644,7 +652,9 @@
       "worktree.task.branch": "Worktree Branch",
       "worktree.task.create.message_format": "Create a worktree for %@.",
       "worktree.task.default_title": "New Worktree",
-      "worktree.task.title": "Worktree Name"
+      "worktree.task.title": "Worktree Name",
+      "worktree.remove.delete_branch_checkbox": "Also delete the local branch",
+      "worktree.remove.delete_branch_warning": "Deleting the branch cannot be undone."
     },
     "ko": {
       "worktree.action.open_terminal": "Open Terminal",
@@ -772,7 +782,9 @@
       "worktree.task.branch": "Worktree Branch",
       "worktree.task.create.message_format": "Create a worktree for %@.",
       "worktree.task.default_title": "New Worktree",
-      "worktree.task.title": "Worktree Name"
+      "worktree.task.title": "Worktree Name",
+      "worktree.remove.delete_branch_checkbox": "Also delete the local branch",
+      "worktree.remove.delete_branch_warning": "Deleting the branch cannot be undone."
     },
     "pt-BR": {
       "worktree.action.open_terminal": "Open Terminal",
@@ -900,7 +912,9 @@
       "worktree.task.branch": "Worktree Branch",
       "worktree.task.create.message_format": "Create a worktree for %@.",
       "worktree.task.default_title": "New Worktree",
-      "worktree.task.title": "Worktree Name"
+      "worktree.task.title": "Worktree Name",
+      "worktree.remove.delete_branch_checkbox": "Also delete the local branch",
+      "worktree.remove.delete_branch_warning": "Deleting the branch cannot be undone."
     },
     "ru": {
       "worktree.action.open_terminal": "Open Terminal",
@@ -1028,7 +1042,9 @@
       "worktree.task.branch": "Worktree Branch",
       "worktree.task.create.message_format": "Create a worktree for %@.",
       "worktree.task.default_title": "New Worktree",
-      "worktree.task.title": "Worktree Name"
+      "worktree.task.title": "Worktree Name",
+      "worktree.remove.delete_branch_checkbox": "Also delete the local branch",
+      "worktree.remove.delete_branch_warning": "Deleting the branch cannot be undone."
     },
     "zh-Hans": {
       "worktree.action.open_terminal": "打开终端",
@@ -1162,7 +1178,9 @@
       "worktree.task.branch": "Worktree 分支",
       "worktree.task.create.message_format": "为 %@ 创建 Worktree。",
       "worktree.task.default_title": "新建 Worktree",
-      "worktree.task.title": "Worktree 名称"
+      "worktree.task.title": "Worktree 名称",
+      "worktree.remove.delete_branch_checkbox": "同时删除本地分支",
+      "worktree.remove.delete_branch_warning": "删除分支后无法撤销。"
     },
     "zh-Hant": {
       "worktree.action.open_terminal": "開啟終端機",
@@ -1296,7 +1314,9 @@
       "worktree.task.branch": "Worktree 分支",
       "worktree.task.create.message_format": "為 %@ 建立 Worktree。",
       "worktree.task.default_title": "新增 Worktree",
-      "worktree.task.title": "Worktree 名稱"
+      "worktree.task.title": "Worktree 名稱",
+      "worktree.remove.delete_branch_checkbox": "同時刪除本地分支",
+      "worktree.remove.delete_branch_warning": "刪除分支後無法復原。"
     }
   }
 }

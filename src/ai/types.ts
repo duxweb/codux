@@ -82,6 +82,7 @@ export type AIRuntimeToolHookConfigStatus = {
 export type AIRuntimeContextSnapshot = {
   tool: string;
   externalSessionID?: string | null;
+  transcriptPath?: string | null;
   model?: string | null;
   assistantPreview?: string | null;
   inputTokens: number;

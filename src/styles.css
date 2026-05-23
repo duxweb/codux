@@ -10,16 +10,19 @@
   --color-fill: rgb(255 255 255);
   --color-on-brand: rgb(252 255 255);
 
-  --color-surface-glass: rgb(28 32 40);
-  --color-surface-chrome: rgb(34 38 46);
+  --color-surface-app: rgb(20 24 30);
+  --color-surface-main: rgb(21 25 32);
+  --color-surface-secondary: rgb(23 27 34);
+  --color-surface-muted: rgb(27 32 40);
   --color-surface-popover: rgb(18 22 29);
-  --color-surface-panel: rgb(28 32 40);
-  --color-surface-card: rgb(18 21 27);
-  --color-surface-terminal: rgb(28 31 37);
-  --color-surface-editor: rgb(20 23 28);
+  --color-window-surface: var(--color-surface-main);
+  --color-settings-surface: var(--color-surface-main);
+  --color-settings-sidebar: var(--color-surface-app);
+  --color-settings-card: color-mix(in oklab, var(--color-settings-surface) 95%, white 5%);
+  --color-sider-card: color-mix(in oklab, var(--color-window-surface) 86%, white 14%);
 
-  --color-line: rgb(67 76 91);
-  --color-line-strong: rgb(78 88 104);
+  --color-border: rgb(55 64 78);
+  --color-border-subtle: rgb(40 48 60);
 
   --color-brand-blue: rgb(59 130 246);
   --color-brand-blue-deep: rgb(37 99 235);
@@ -45,7 +48,7 @@
   --radius-pill: 9px;
   --radius-glyph: 7px;
 
-  --shadow-pop: 0 10px 30px -12px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.25);
+  --shadow-floating: 0 1px 2px rgb(0 0 0 / 0.18), 0 6px 14px -12px rgb(0 0 0 / 0.38);
   --shadow-badge: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 2px 6px rgb(0 0 0 / 0.2);
 }
 
@@ -54,9 +57,6 @@
 
   --titlebar-height: 42px;
 
-  --surface-window-tint: rgb(20 24 30);
-  --surface-window-glass: rgb(22 27 34);
-  --surface-editor: rgb(20 23 28 / 0.65);
   --scrollbar-thumb: rgb(255 255 255 / 0.16);
   --scrollbar-thumb-hover: rgb(255 255 255 / 0.28);
   --focus-ring: rgb(59 130 246 / 0.22);
@@ -66,30 +66,30 @@
     transparent 2px 6px
   );
 
-  --background: var(--surface-window-tint);
+  --background: var(--color-surface-app);
   --foreground: var(--color-ink);
-  --surface: var(--color-surface-card);
+  --surface: var(--color-window-surface);
   --surface-foreground: var(--color-ink);
-  --surface-secondary: var(--color-surface-panel);
+  --surface-secondary: var(--color-settings-card);
   --surface-secondary-foreground: var(--color-ink);
-  --surface-tertiary: var(--color-surface-glass);
+  --surface-tertiary: var(--color-surface-muted);
   --surface-tertiary-foreground: var(--color-ink);
   --overlay: var(--color-surface-popover);
   --overlay-foreground: var(--color-ink);
   --muted: var(--color-ink-faint);
-  --default: rgb(255 255 255 / 0.07);
-  --default-hover: rgb(255 255 255 / 0.11);
+  --default: var(--field-background);
+  --default-hover: var(--field-hover);
   --default-foreground: var(--color-ink);
-  --border: var(--color-line);
-  --separator: var(--color-line);
-  --field-background: rgb(255 255 255 / 0.05);
+  --border: var(--color-border-subtle);
+  --separator: var(--color-border-subtle);
+  --field-background: color-mix(in oklab, var(--color-surface-main) 94%, white 6%);
   --field-foreground: var(--color-ink);
   --field-placeholder: var(--color-ink-faint);
-  --field-border: var(--color-line);
+  --field-border: var(--color-border-subtle);
   --field-border-width: 1px;
-  --field-hover: rgb(255 255 255 / 0.08);
-  --field-focus: rgb(255 255 255 / 0.06);
-  --field-border-hover: var(--color-line-strong);
+  --field-hover: color-mix(in oklab, var(--color-surface-main) 90%, white 10%);
+  --field-focus: color-mix(in oklab, var(--color-surface-main) 92%, var(--color-brand-blue) 8%);
+  --field-border-hover: var(--color-border);
   --field-border-focus: var(--color-brand-blue);
   --success: var(--color-brand-green);
   --success-foreground: var(--color-on-brand);
@@ -99,8 +99,17 @@
   --danger-foreground: var(--color-on-brand);
   --radius: 0.5rem;
   --field-radius: 8px;
-  --overlay-shadow: var(--shadow-pop);
+  --overlay-shadow: var(--shadow-floating);
   --field-shadow: none;
+  --input-bg: var(--field-background);
+  --input-bg-hover: var(--field-hover);
+  --input-bg-focus: var(--field-focus);
+  --textarea-bg: var(--field-background);
+  --textarea-bg-hover: var(--field-hover);
+  --textarea-bg-focus: var(--field-focus);
+  --select-trigger-bg: var(--field-background);
+  --select-trigger-bg-hover: var(--field-hover);
+  --select-trigger-bg-focus: var(--field-focus);
 
   --terminal-bg: #171b22;
   --terminal-fg: #d7dfeb;
@@ -147,7 +156,7 @@
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
-  background: var(--surface-window-tint);
+  background: var(--color-surface-app);
 }
 
 :root[data-theme="light"] {
@@ -159,25 +168,29 @@
   --color-ink-faint: rgb(151 162 178);
 
   --color-fill: rgb(18 25 36);
-  --color-surface-glass: rgb(248 250 253);
-  --color-surface-chrome: rgb(249 250 252);
+  --color-surface-app: rgb(236 240 245);
+  --color-surface-main: rgb(255 255 255);
+  --color-surface-secondary: rgb(250 251 253);
+  --color-surface-muted: rgb(246 247 250);
   --color-surface-popover: rgb(255 255 255);
-  --color-surface-panel: rgb(244 247 251);
-  --color-surface-card: rgb(255 255 255);
-  --color-surface-terminal: rgb(250 251 253);
-  --color-surface-editor: rgb(247 249 252);
-  --color-line: rgb(225 227 231);
-  --color-line-strong: rgb(219 222 227);
-
-  --surface-window-tint: rgb(236 238 241);
-  --surface-window-glass: rgb(243 244 246);
-  --surface-editor: rgb(247 249 252 / 0.92);
+  --color-window-surface: rgb(255 255 255);
+  --color-settings-surface: rgb(255 255 255);
+  --color-settings-sidebar: var(--color-surface-app);
+  --color-settings-card: rgb(247 249 252);
+  --color-sider-card: rgb(255 255 255 / 0.82);
+  --color-border: rgb(198 207 220);
+  --color-border-subtle: rgb(204 212 224);
+  --field-background: #ffffff;
+  --field-hover: #ffffff;
+  --field-focus: #ffffff;
+  --default: var(--field-background);
+  --default-hover: var(--field-hover);
   --minimap-stripes: repeating-linear-gradient(
     to bottom,
     rgb(18 25 36 / 0.14) 0 2px,
     transparent 2px 6px
   );
-  --shadow-pop: 0 14px 34px -18px rgb(24 35 52 / 0.24), 0 2px 8px rgb(24 35 52 / 0.12);
+  --shadow-floating: 0 1px 2px rgb(24 35 52 / 0.08), 0 6px 14px -12px rgb(24 35 52 / 0.18);
   --shadow-badge: inset 0 1px 0 rgb(255 255 255 / 0.36), 0 2px 7px rgb(24 35 52 / 0.16);
 
   --terminal-bg: #fbfcfe;
@@ -209,15 +222,13 @@
   --color-ink-soft: rgb(199 205 213);
   --color-ink-mute: rgb(145 154 166);
   --color-ink-faint: rgb(96 107 120);
-  --color-surface-glass: rgb(33 35 39);
-  --color-surface-chrome: rgb(38 40 45);
+  --color-surface-app: rgb(24 26 30);
+  --color-surface-main: rgb(25 28 33);
+  --color-surface-secondary: rgb(24 26 30);
+  --color-surface-muted: rgb(31 34 39);
   --color-surface-popover: rgb(24 26 30);
-  --color-surface-panel: rgb(31 34 39);
-  --color-surface-card: rgb(22 24 28);
-  --color-surface-terminal: rgb(24 26 30);
-  --color-surface-editor: rgb(23 25 29);
-  --color-line: rgb(45 49 56);
-  --color-line-strong: rgb(52 57 66);
+  --color-border: rgb(40 44 51);
+  --color-border-subtle: rgb(34 38 45);
   --color-brand-blue: rgb(96 165 250);
   --color-brand-blue-deep: rgb(59 130 246);
 
@@ -233,15 +244,13 @@
   --color-ink-soft: rgb(190 205 226);
   --color-ink-mute: rgb(132 151 177);
   --color-ink-faint: rgb(86 104 132);
-  --color-surface-glass: rgb(20 27 38);
-  --color-surface-chrome: rgb(23 31 43);
+  --color-surface-app: rgb(15 21 31);
+  --color-surface-main: rgb(16 22 32);
+  --color-surface-secondary: rgb(15 21 31);
+  --color-surface-muted: rgb(20 28 40);
   --color-surface-popover: rgb(13 18 27);
-  --color-surface-panel: rgb(18 25 36);
-  --color-surface-card: rgb(13 18 27);
-  --color-surface-terminal: rgb(15 21 31);
-  --color-surface-editor: rgb(14 20 29);
-  --color-line: rgb(31 41 56);
-  --color-line-strong: rgb(37 49 67);
+  --color-border: rgb(28 36 49);
+  --color-border-subtle: rgb(22 30 43);
   --color-brand-blue: rgb(96 165 250);
   --color-brand-blue-deep: rgb(59 130 246);
 
@@ -275,14 +284,7 @@
   }
 
   .pill-control {
-    @apply inline-flex items-center h-[26px] rounded-pill px-2.5 text-[12px] font-medium bg-fill/[0.055] border border-line text-ink-soft;
-  }
-
-  .menu-item {
-    @apply flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-[12.5px] text-ink-soft transition-colors;
-  }
-  .menu-item:hover {
-    @apply bg-fill/10 text-ink;
+    @apply inline-flex items-center h-[26px] rounded-pill px-2.5 text-[12px] font-medium bg-fill/[0.055] border border-border-subtle text-ink-soft;
   }
 
   .scrollbar-hidden {
@@ -328,14 +330,14 @@
   #root {
     width: 100%;
     height: 100%;
-    background: var(--surface-window-tint);
+    background: var(--color-surface-app);
   }
 
   body {
     margin: 0;
     overflow: hidden;
     color: var(--color-ink);
-    background: var(--surface-window-tint);
+    background: var(--color-surface-app);
     font-size: 14px;
     line-height: 1.45;
     user-select: none;
@@ -353,7 +355,7 @@
   }
 
   html.standalone-window:not(.terminal-window) body {
-    background: var(--surface-window-tint);
+    background: var(--color-window-surface);
   }
 
   button {
@@ -441,7 +443,7 @@
 
 .app-shell {
   isolation: isolate;
-  background: linear-gradient(180deg, var(--surface-window-glass), var(--surface-window-tint));
+  background: var(--color-surface-app);
 }
 
 .app-shell::after {
@@ -450,14 +452,14 @@
   inset: 0;
   z-index: 20;
   pointer-events: none;
-  background: linear-gradient(180deg, var(--surface-window-glass), var(--surface-window-tint));
+  background: var(--color-surface-app);
   mix-blend-mode: color;
   opacity: 0;
 }
 
 html.standalone-window:not(.terminal-window) .app-shell {
   isolation: auto;
-  background: var(--surface-window-tint);
+  background: var(--color-window-surface);
 }
 
 html.standalone-window:not(.terminal-window) .app-shell::after {
@@ -505,7 +507,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .select__trigger {
   min-height: 34px;
   border-radius: 8px;
-  border-color: var(--color-line);
+  border-color: var(--color-border-subtle);
   background: var(--field-background);
   color: var(--color-ink);
   box-shadow: none;
@@ -513,7 +515,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 .select__trigger:hover,
 .select__trigger[data-hovered="true"] {
-  border-color: var(--color-line-strong);
+  border-color: var(--color-border);
   background: var(--field-hover);
 }
 
@@ -536,11 +538,11 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .select__popover,
 .popover,
 .dropdown__popover {
-  border: 1px solid var(--color-line-strong);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--color-surface-popover);
-  color: var(--color-ink);
-  box-shadow: var(--shadow-pop);
+  background: var(--overlay);
+  color: var(--overlay-foreground);
+  box-shadow: var(--overlay-shadow);
 }
 
 .select__popover [data-slot="list-box"],
@@ -548,24 +550,44 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
   padding: 4px;
 }
 
+.ai-stats-card {
+  border: 0;
+  background: var(--color-sider-card);
+}
+
+.settings-card-surface {
+  background: var(--color-settings-card);
+}
+
+.ssh-profile-row:hover {
+  background: color-mix(in oklab, var(--color-sider-card) 90%, white 10%);
+}
+
+:root[data-theme="light"] .ssh-profile-row:hover {
+  background: color-mix(in oklab, var(--color-sider-card) 70%, rgb(18 25 36 / 0.08) 30%);
+}
+
+:root[data-theme="light"] .settings-switch {
+  --switch-control-bg: rgb(209 213 219);
+  --switch-control-bg-hover: rgb(191 199 211);
+  --switch-control-bg-pressed: rgb(181 190 203);
+}
+
+.settings-window-content {
+  --settings-window-content-bg: var(--color-settings-surface);
+  background: var(--settings-window-content-bg);
+}
+
 .list-box-item,
 .menu-item {
-  min-height: 28px;
-  border-radius: 7px;
-  color: var(--color-ink-soft);
-  font-size: 13px;
+  @apply min-h-7 rounded-md px-2 py-1.5 text-[12.5px] font-medium text-ink-soft;
 }
 
 .list-box-item:hover,
 .list-box-item[data-hovered="true"],
-.list-box-item[data-focus="true"],
-.list-box-item[data-focused="true"],
 .menu-item:hover,
-.menu-item[data-hovered="true"],
-.menu-item[data-focus="true"],
-.menu-item[data-focused="true"] {
-  background: var(--default-hover);
-  color: var(--color-ink);
+.menu-item[data-hovered="true"] {
+  @apply bg-default-hover text-ink;
 }
 
 .list-box-item[aria-selected="true"],
@@ -573,13 +595,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .menu-item[aria-selected="true"],
 .menu-item[data-selected="true"],
 .menu-item[aria-checked="true"] {
-  background: var(--accent-soft);
-  color: var(--color-ink);
-}
-
-.list-box-item[data-disabled="true"],
-.menu-item[data-disabled="true"] {
-  opacity: 0.5;
+  @apply bg-accent-soft text-ink;
 }
 
 .terminal-view {
@@ -588,7 +604,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 }
 
 .terminal-view.with-chrome {
-  @apply border border-line rounded-workspace bg-surface-panel;
+  @apply border border-border-subtle rounded-workspace bg-surface-muted;
 }
 
 .terminal-workspace,
@@ -638,7 +654,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 .terminal-split-divider::before {
   @apply absolute block content-[''];
-  background: var(--color-line);
+  background: var(--color-border-subtle);
 }
 
 .terminal-split-divider.vertical::before {
@@ -706,7 +722,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 }
 
 .terminal-view-header {
-  @apply h-[34px] flex flex-shrink-0 items-center justify-between gap-3 border-b border-line px-3 text-[12px] text-ink-soft;
+  @apply h-[34px] flex flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-3 text-[12px] text-ink-soft;
 }
 
 .terminal-title,
@@ -763,15 +779,12 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 }
 
 .terminal-context-menu {
-  @apply absolute z-50 w-[174px] rounded-[8px] border border-line-strong bg-surface-popover p-1 shadow-pop;
+  @apply absolute z-50 w-[174px] rounded-[8px] border border-border-subtle bg-surface-popover p-1;
+  box-shadow: var(--shadow-floating);
 }
 
 .terminal-context-menu-item {
-  @apply h-7 w-full grid grid-cols-[20px_minmax(0,1fr)] items-center gap-1.5 rounded-md px-2 text-left text-[12.5px] font-medium text-ink-soft transition-colors;
-}
-
-.terminal-context-menu-item:hover:not(:disabled) {
-  @apply bg-fill/[0.08] text-ink;
+  @apply grid min-h-7 w-full grid-cols-[20px_minmax(0,1fr)] items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium leading-4 text-ink-soft transition-colors hover:bg-default-hover hover:text-ink;
 }
 
 .terminal-context-menu-item:disabled {
@@ -783,7 +796,7 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 }
 
 .terminal-context-menu-separator {
-  @apply my-1 h-px bg-line/80;
+  @apply my-1 h-px bg-border-subtle/80;
 }
 
 .minimap-stripes {

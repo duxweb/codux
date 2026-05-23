@@ -252,7 +252,7 @@ function PetPopoverButton({
     ? formatI18n(tm("titlebar.level.short_format", "Lv.%@"), info.level)
     : tm("pet.title.claim", "Claim");
   const triggerClassName =
-    "no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[7px] border border-line bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-line-strong hover:bg-fill/10 data-[pressed]:border-brand-blue/30 data-[pressed]:bg-brand-blue/16";
+    "no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[7px] border border-border-subtle bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-border hover:bg-fill/10 data-[pressed]:border-brand-blue/30 data-[pressed]:bg-brand-blue/16";
 
   if (!pet.snapshot.claimedAt) {
     return (
@@ -355,7 +355,7 @@ function DailyLevelPopoverButton({
         <button
           type="button"
           aria-label={tm("ai.today_level", "Today's Level")}
-          className="no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[7px] border border-line bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-line-strong hover:bg-fill/10 data-[pressed]:bg-fill/12"
+          className="no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[7px] border border-border-subtle bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-border hover:bg-fill/10 data-[pressed]:bg-fill/12"
         >
           <DailyLevelBadge tier={tier} size="sm" />
           <span className="leading-none">{dailyLevelTitle(tier)}</span>
@@ -532,7 +532,7 @@ function MemoryStatusButton() {
       ? "border-brand-amber/45 bg-brand-amber/12 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-amber)_18%,transparent)]"
       : isFailed
         ? "border-brand-red/45 bg-brand-red/12 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-red)_18%,transparent)]"
-        : "border-line bg-fill/[0.06]";
+        : "border-border-subtle bg-fill/[0.06]";
   return (
     <Tooltip
       label={<MemoryStatusTooltip snapshot={snapshot} />}
@@ -542,19 +542,19 @@ function MemoryStatusButton() {
       <button
         type="button"
         aria-label={tm("memory.manager.window.title", "Memory Manager")}
-        className={`no-drag relative box-border inline-grid h-[28px] w-[28px] place-items-center rounded-[7px] border p-0 leading-none outline-none transition-colors hover:border-line-strong hover:bg-fill/10 ${activeSurface} ${tone}`}
+        className={`no-drag relative box-border inline-grid h-[28px] w-[28px] place-items-center rounded-[7px] border p-0 leading-none outline-none transition-colors hover:border-border hover:bg-fill/10 ${activeSurface} ${tone}`}
         data-active={isActive ? "true" : "false"}
         onClick={() => void openAppWindow("memory-manager")}
       >
         <BrainCog size={TITLEBAR_MEMORY_ICON_SIZE} strokeWidth={2.1} />
         {isProcessing ? (
           <span
-            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-chrome bg-brand-blue"
+            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-main bg-brand-blue"
             aria-hidden="true"
           />
         ) : isActive ? (
           <span
-            className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-chrome ${
+            className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-surface-main ${
               isQueued ? "bg-brand-amber" : "bg-brand-red"
             }`}
             aria-hidden="true"
@@ -641,12 +641,12 @@ function PerformanceHUD() {
 
   return (
     <Tooltip label={tooltip} placement="bottom">
-      <div className="flex items-center h-[26px] px-2 rounded-pill bg-fill/[0.05] border border-line text-xs font-medium text-ink-soft font-mono cursor-default">
+      <div className="flex items-center h-[26px] px-2 rounded-pill bg-fill/[0.05] border border-border-subtle text-xs font-medium text-ink-soft font-mono cursor-default">
         <span className={`flex items-center gap-1.5 px-1.5 ${cpuTone}`}>
           <Cpu size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.2} />
           <span className="tabular-nums">{cpuText}</span>
         </span>
-        <span className="w-px h-3 bg-line" />
+        <span className="w-px h-3 bg-border-subtle" />
         <span className="flex items-center gap-1.5 px-1.5">
           <MemoryStick size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.2} />
           <span className="tabular-nums">{memoryText}</span>
@@ -697,7 +697,7 @@ function RemotePill({
           className={`no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[9px] border px-2.5 py-0 text-[12.5px] font-medium transition-colors ${
             enabled
               ? "bg-brand-green/12 border-brand-green/30 text-brand-green hover:bg-brand-green/16"
-              : "bg-fill/[0.05] border-line text-ink-soft hover:bg-fill/10"
+              : "bg-fill/[0.05] border-border-subtle text-ink-soft hover:bg-fill/10"
           }`}
         >
           <Wifi size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.25} />
@@ -718,12 +718,12 @@ function RemotePanel({ status }: { status?: RemoteStatus | null }) {
       <div className="px-1 pb-2">
         <div className="truncate text-sm font-semibold text-ink">{tm("remote.connection", "远程连接")}</div>
       </div>
-      <div className="max-h-[240px] overflow-y-auto scrollbar-overlay rounded-[8px] border border-line bg-fill/[0.025]">
+      <div className="max-h-[240px] overflow-y-auto scrollbar-overlay rounded-[8px] border border-border-subtle bg-fill/[0.025]">
         {devices.length > 0 ? (
           devices.map((device) => (
             <div
               key={device.id}
-              className="flex items-center justify-between gap-3 border-b border-line px-2.5 py-2 last:border-b-0"
+              className="flex items-center justify-between gap-3 border-b border-border-subtle px-2.5 py-2 last:border-b-0"
             >
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-ink-soft">{device.name || device.id}</div>
@@ -863,7 +863,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
                   setEditingName(false);
                 }
               }}
-              className="h-8 w-[140px] rounded-[7px] border border-line-strong bg-fill/[0.06] px-2 text-center text-[17px] font-bold text-ink outline-none focus:border-brand-blue/65"
+              className="h-8 w-[140px] rounded-[7px] border border-border bg-fill/[0.06] px-2 text-center text-[17px] font-bold text-ink outline-none focus:border-brand-blue/65"
             />
           ) : (
             <button
@@ -890,7 +890,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
         <div className="mt-2.5 text-[26px] font-black leading-8 text-ink">Lv.{info.level}</div>
       </section>
 
-      <div className="mx-3.5 h-px bg-line" />
+      <div className="mx-3.5 h-px bg-border-subtle" />
 
       <section className="px-3.5 py-3">
         <PetMeter
@@ -901,7 +901,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
         />
       </section>
 
-      <div className="mx-3.5 h-px bg-line" />
+      <div className="mx-3.5 h-px bg-border-subtle" />
 
       <section className="px-3.5 py-3">
         <div className="mb-[7px] text-left text-xs font-medium text-ink-faint">{tm("pet.stats.title", "Traits")}</div>
@@ -920,7 +920,7 @@ function PetPanel({ pet }: { pet: PetLedger }) {
         </div>
       </section>
 
-      <div className="mx-3.5 h-px bg-line" />
+      <div className="mx-3.5 h-px bg-border-subtle" />
 
       <div className="py-2.5">
         <div className="grid gap-0.5 text-center">
@@ -1032,12 +1032,12 @@ function ModeSwitcher({ mainView, setMainView }: { mainView: MainView; setMainVi
       aria-label={tm("titlebar.view_switcher", "View Switcher")}
       className="no-drag"
     >
-      <Tabs.List className="flex h-[28px] items-center gap-0.5 rounded-full border border-line bg-fill/[0.055] p-[3px]">
+      <Tabs.List className="flex h-[28px] items-center gap-0.5 rounded-full border border-border-subtle bg-fill/[0.055] p-[3px]">
         {items.map(({ id, icon: Icon, label }) => (
           <Tabs.Tab
             key={id}
             id={id}
-            className="h-[22px] min-w-[76px] rounded-full px-3 text-xs font-semibold text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink data-[selected]:bg-brand-blue data-[selected]:text-white"
+            className="h-[22px] min-w-[76px] rounded-full px-3 text-xs font-normal text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink data-[selected]:bg-brand-blue data-[selected]:text-white"
           >
             <span className="inline-flex items-center justify-center gap-1.5">
               <Icon size={TITLEBAR_NAV_ICON_SIZE} strokeWidth={2.15} />

@@ -309,6 +309,8 @@ pub struct AIRuntimeContextSnapshot {
     pub tool: String,
     #[serde(rename = "externalSessionID", skip_serializing_if = "Option::is_none")]
     pub external_session_id: Option<String>,
+    #[serde(rename = "transcriptPath", skip_serializing_if = "Option::is_none")]
+    pub transcript_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1833,6 +1835,8 @@ fn apply_runtime_snapshot_unlocked(
         tool: canonical_tool_name(&snapshot.tool).unwrap_or(session.tool.clone()),
         ai_session_id: normalized_string(snapshot.external_session_id.as_deref())
             .or(session.ai_session_id.clone()),
+        transcript_path: normalized_string(snapshot.transcript_path.as_deref())
+            .or(session.transcript_path.clone()),
         model: normalized_string(snapshot.model.as_deref()).or(session.model.clone()),
         state: state.clone(),
         status: status_for_state(&state).to_string(),
@@ -2637,6 +2641,7 @@ fn probe_codex_runtime(request: &AIRuntimeProbeRequest) -> Option<AIRuntimeConte
             let external_id = normalized_string(request.external_session_id.as_deref())?;
             find_codex_rollout_path(&project_path, &external_id)
         })?;
+    let transcript_path = file_path.display().to_string();
     let parsed = request
         .started_at
         .and_then(|started_at| {
@@ -2651,6 +2656,7 @@ fn probe_codex_runtime(request: &AIRuntimeProbeRequest) -> Option<AIRuntimeConte
     Some(AIRuntimeContextSnapshot {
         tool: "codex".to_string(),
         external_session_id: normalized_string(request.external_session_id.as_deref()),
+        transcript_path: Some(transcript_path),
         model: parsed.model,
         assistant_preview: parsed.assistant_preview,
         input_tokens: parsed.input_tokens.unwrap_or(0),
@@ -2692,6 +2698,7 @@ fn probe_claude_runtime(request: &AIRuntimeProbeRequest) -> Option<AIRuntimeCont
     Some(AIRuntimeContextSnapshot {
         tool: "claude".to_string(),
         external_session_id: Some(external_id),
+        transcript_path: None,
         model: aggregate.model,
         assistant_preview: aggregate.assistant_preview,
         input_tokens: aggregate.input_tokens,
@@ -2777,6 +2784,7 @@ fn probe_gemini_runtime(request: &AIRuntimeProbeRequest) -> Option<AIRuntimeCont
     Some(AIRuntimeContextSnapshot {
         tool: "gemini".to_string(),
         external_session_id: Some(state.external_session_id),
+        transcript_path: None,
         model: state.model,
         assistant_preview: state.assistant_preview,
         input_tokens: state.input_tokens,
@@ -2805,7 +2813,7 @@ fn probe_opencode_runtime(request: &AIRuntimeProbeRequest) -> Option<AIRuntimeCo
     if !database_path.exists() {
         return None;
     }
-    let conn = rusqlite::Connection::open(database_path).ok()?;
+    let conn = rusqlite::Connection::open(&database_path).ok()?;
     let mut statement = conn
         .prepare(
             r#"
@@ -2924,6 +2932,7 @@ fn probe_opencode_runtime(request: &AIRuntimeProbeRequest) -> Option<AIRuntimeCo
     Some(AIRuntimeContextSnapshot {
         tool: "opencode".to_string(),
         external_session_id: Some(external_session_id),
+        transcript_path: Some(database_path.display().to_string()),
         model: latest_model,
         assistant_preview,
         input_tokens,
@@ -3897,6 +3906,7 @@ struct CodexParsedState {
     was_interrupted: bool,
     has_completed_turn: bool,
     origin: String,
+    last_user_message_at: Option<f64>,
 }
 
 fn parse_codex_runtime_state(
@@ -4021,6 +4031,26 @@ where
         }
 
         let event_type = payload.payload_type.as_deref();
+        let is_user_message = (row_type == Some("event_msg") && event_type == Some("user_message"))
+            || (row_type == Some("response_item")
+                && event_type == Some("message")
+                && payload.role.as_deref() == Some("user"));
+        if is_user_message {
+            let user_message_at = timestamp.or(state.updated_at);
+            if user_message_at > state.last_user_message_at {
+                state.last_user_message_at = user_message_at;
+                if let Some(user_message_at) = user_message_at {
+                    if state.completed_at.is_some_and(|completed_at| user_message_at > completed_at)
+                    {
+                        state.started_at = Some(user_message_at);
+                        usage_at_turn_start = latest_cumulative_usage.clone();
+                        state.completed_at = None;
+                        state.was_interrupted = false;
+                        state.has_completed_turn = false;
+                    }
+                }
+            }
+        }
         let is_final_answer = (row_type == Some("event_msg")
             && event_type == Some("agent_message")
             && payload.phase.as_deref() == Some("final_answer"))
@@ -4156,6 +4186,8 @@ struct CodexPayloadFields<'a> {
     payload_type: Option<Cow<'a, str>>,
     #[serde(borrow)]
     phase: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    role: Option<Cow<'a, str>>,
     #[serde(borrow)]
     cwd: Option<Cow<'a, str>>,
     #[serde(borrow)]
@@ -5187,6 +5219,7 @@ trusted_hash = "sha256:old-basic"
             AIRuntimeContextSnapshot {
                 tool: "codex".to_string(),
                 external_session_id: Some("session-1".to_string()),
+                transcript_path: None,
                 model: Some("gpt-5.5".to_string()),
                 assistant_preview: None,
                 input_tokens: 1_000,
@@ -5266,6 +5299,29 @@ trusted_hash = "sha256:old-basic"
         assert_eq!(parsed.model.as_deref(), Some("gpt-5.4"));
         assert_eq!(parsed.response_state.as_deref(), Some("responding"));
         assert!(!parsed.has_completed_turn);
+    }
+
+    #[test]
+    fn codex_transcript_user_message_after_completion_starts_next_turn() {
+        let transcript = write_temp_transcript(
+            "codex-queued-turn",
+            &[
+                r#"{"timestamp":"2026-04-21T03:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4","cwd":"/tmp/codex-project"}}"#,
+                r#"{"timestamp":"2026-04-21T03:00:01Z","type":"event_msg","payload":{"type":"task_started","started_at":1713668401}}"#,
+                r#"{"timestamp":"2026-04-21T03:00:10Z","type":"event_msg","payload":{"type":"task_complete","completed_at":1713668410}}"#,
+                r#"{"timestamp":"2026-04-21T03:00:12Z","type":"response_item","payload":{"type":"message","role":"user","content":"queued"}}"#,
+                r#"{"timestamp":"2026-04-21T03:00:12Z","type":"event_msg","payload":{"type":"user_message","message":"queued"}}"#,
+                r#"{"timestamp":"2026-04-21T03:00:14Z","type":"response_item","payload":{"type":"reasoning","summary":[{"text":"working"}]}}"#,
+            ],
+        );
+
+        let parsed = parse_codex_runtime_state(&transcript, Some("/tmp/codex-project")).unwrap();
+
+        assert_eq!(parsed.response_state.as_deref(), Some("responding"));
+        assert_eq!(parsed.started_at, Some(1776740412.0));
+        assert_eq!(parsed.completed_at, None);
+        assert!(!parsed.has_completed_turn);
+        assert!(!parsed.was_interrupted);
     }
 
     #[test]
@@ -5365,6 +5421,7 @@ trusted_hash = "sha256:old-basic"
             AIRuntimeContextSnapshot {
                 tool: "codex".to_string(),
                 external_session_id: Some("session-1".to_string()),
+                transcript_path: None,
                 model: Some("gpt-5.5".to_string()),
                 assistant_preview: None,
                 input_tokens: 120,
@@ -5425,6 +5482,7 @@ trusted_hash = "sha256:old-basic"
             AIRuntimeContextSnapshot {
                 tool: "codex".to_string(),
                 external_session_id: Some("session-1".to_string()),
+                transcript_path: None,
                 model: Some("gpt-5.5".to_string()),
                 assistant_preview: None,
                 input_tokens: 120,
@@ -5506,6 +5564,47 @@ trusted_hash = "sha256:old-basic"
         assert_eq!(session.state, "idle");
         assert!(session.has_completed_turn);
         assert!(should_poll_session(session, "transcript-tail", 1020.0));
+    }
+
+    #[test]
+    fn runtime_snapshot_backfills_codex_transcript_path_for_restored_session() {
+        let transcript = write_temp_transcript(
+            "codex-restored-transcript",
+            &[
+                r#"{"timestamp":"2026-04-21T03:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4","cwd":"/tmp/codex-project"}}"#,
+                r#"{"timestamp":"2026-04-21T03:00:01Z","type":"event_msg","payload":{"type":"task_started","started_at":1713668401}}"#,
+            ],
+        );
+        let snapshot = probe_codex_runtime(&AIRuntimeProbeRequest {
+            terminal_id: "terminal-1".to_string(),
+            terminal_instance_id: Some("instance-1".to_string()),
+            project_id: "project-1".to_string(),
+            project_path: Some("/tmp/codex-project".to_string()),
+            tool: "codex".to_string(),
+            external_session_id: Some("session-1".to_string()),
+            transcript_path: Some(transcript.display().to_string()),
+            started_at: Some(1713668400.0),
+            updated_at: 1713668400.0,
+        })
+        .unwrap();
+        let mut core = AIRuntimeStateCore::default();
+        assert!(apply_hook_unlocked(
+            &mut core,
+            AIHookEventPayload {
+                metadata: Some(empty_metadata()),
+                ..test_hook("sessionStarted", 1713668400.0)
+            }
+        ));
+
+        assert!(apply_runtime_snapshot_unlocked(
+            &mut core,
+            "terminal-1",
+            snapshot
+        ));
+
+        let session = core.sessions.get("terminal-1").unwrap();
+        assert_eq!(session.transcript_path.as_deref(), Some(transcript.to_str().unwrap()));
+        assert!(is_codex_transcript_session(session));
     }
 
     #[test]

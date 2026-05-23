@@ -6,7 +6,7 @@ import { AppIconMark } from "../components/AppIconMark";
 import { Button } from "../components/Button";
 import { CODUX_WEBSITE_URL } from "../appLinks";
 import { tm } from "../i18n";
-import { readAppSettings } from "../settings";
+import { readAppSettings, subscribeAppSettings } from "../settings";
 import { WindowFrame } from "./WindowFrame";
 
 const fallbackAbout: AppAboutMetadata = {
@@ -23,7 +23,7 @@ export function AboutWindow() {
   const [about, setAbout] = useState<AppAboutMetadata>(fallbackAbout);
   const [isChecking, setChecking] = useState(false);
   const [isAgreementOpen, setAgreementOpen] = useState(false);
-  const iconStyle = readAppSettings().iconStyle;
+  const [iconStyle, setIconStyle] = useState(() => readAppSettings().iconStyle);
 
   useEffect(() => {
     if (!window.__TAURI_INTERNALS__) return;
@@ -31,6 +31,7 @@ export function AboutWindow() {
       .then(setAbout)
       .catch((error) => console.error("failed to load about metadata", error));
   }, []);
+  useEffect(() => subscribeAppSettings((settings) => setIconStyle(settings.iconStyle)), []);
 
   const runUpdateCheck = async () => {
     setChecking(true);
@@ -104,8 +105,8 @@ function AgreementModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     <Modal isOpen={isOpen} onOpenChange={(open) => (!open ? onClose() : undefined)}>
       <Modal.Backdrop className="no-drag fixed inset-0 z-[9000] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
         <Modal.Container size="md" placement="center">
-          <Modal.Dialog className="no-drag flex max-h-[min(520px,calc(100vh-48px))] w-[min(520px,calc(100vw-32px))] flex-col rounded-[12px] border border-line-strong bg-surface-chrome text-ink shadow-pop outline-none">
-            <Modal.Header className="flex-shrink-0 border-b border-line/70 px-4 py-3">
+          <Modal.Dialog className="no-drag flex max-h-[min(520px,calc(100vh-48px))] w-[min(520px,calc(100vw-32px))] flex-col rounded-[12px] border border-border bg-surface-main text-ink shadow-floating outline-none">
+            <Modal.Header className="flex-shrink-0 border-b border-border-subtle/70 px-4 py-3">
               <Modal.Heading className="text-sm font-semibold text-ink">
                 {tm("about.user_agreement", "User Agreement")}
               </Modal.Heading>
@@ -117,7 +118,7 @@ function AgreementModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                 ))}
               </div>
             </div>
-            <Modal.Footer className="flex flex-shrink-0 justify-end border-t border-line/70 px-4 py-3">
+            <Modal.Footer className="flex flex-shrink-0 justify-end border-t border-border-subtle/70 px-4 py-3">
               <Button size="sm" variant="primary" onPress={onClose}>
                 {tm("common.ok", "OK")}
               </Button>

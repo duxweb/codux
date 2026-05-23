@@ -159,7 +159,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
     <Modal isOpen onOpenChange={(isOpen) => (!isOpen && canClose ? onClose() : undefined)}>
       <Modal.Backdrop className="no-drag fixed inset-0 z-[9800] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
         <Modal.Container size="md" placement="center">
-          <Modal.Dialog className="no-drag w-[min(540px,calc(100vw-32px))] rounded-[12px] border border-line-strong bg-surface-chrome p-4 text-ink shadow-pop outline-none">
+          <Modal.Dialog className="no-drag w-[min(540px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main p-4 text-ink shadow-floating outline-none">
             <Modal.Header className="mb-3 p-0">
               <div className="min-w-0">
                 <Modal.Heading className="text-sm font-semibold text-ink">{titleForPhase(phase)}</Modal.Heading>
@@ -230,7 +230,7 @@ function UpdateProgressDialog({
     <Modal isOpen onOpenChange={(isOpen) => (!isOpen && canClose ? onClose() : undefined)}>
       <Modal.Backdrop className="no-drag fixed inset-0 z-[9800] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
         <Modal.Container size="sm" placement="center">
-          <Modal.Dialog className="no-drag w-[min(440px,calc(100vw-32px))] rounded-[12px] border border-line-strong bg-surface-chrome p-4 text-ink shadow-pop outline-none">
+          <Modal.Dialog className="no-drag w-[min(440px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main p-4 text-ink shadow-floating outline-none">
             <Modal.Header className="mb-3 p-0">
               <div className="min-w-0">
                 <Modal.Heading className="text-sm font-semibold text-ink">
@@ -359,7 +359,7 @@ function UpdateDialogBody({
 
 function ReleaseNotes({ notes }: { notes?: string | null }) {
   return (
-    <div className="max-h-[220px] min-h-[132px] overflow-y-auto whitespace-pre-wrap rounded-md border border-line bg-fill/[0.035] px-3 py-2.5 text-sm leading-relaxed text-ink-soft">
+    <div className="max-h-[220px] min-h-[132px] overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-fill/[0.035] px-3 py-2.5 text-sm leading-relaxed text-ink-soft">
       {notes?.trim() || tm("update.release_notes.empty", "No release notes were provided for this update.")}
     </div>
   );
@@ -385,7 +385,7 @@ function UpdateProgress({
         : tm("update.progress.downloading", "Downloading update...");
 
   return (
-    <div className="grid gap-2.5 rounded-md border border-line bg-fill/[0.035] px-3 py-3">
+    <div className="grid gap-2.5 rounded-md border border-border-subtle bg-fill/[0.035] px-3 py-3">
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="font-medium text-ink-soft">{label}</span>
         <span className="text-xs tabular-nums text-ink-faint">

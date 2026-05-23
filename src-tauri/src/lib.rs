@@ -969,18 +969,19 @@ fn ai_runtime_state_snapshot(state: tauri::State<'_, AppState>) -> AIRuntimeStat
 
 #[tauri::command]
 fn app_runtime_ready(state: tauri::State<'_, AppState>, app: tauri::AppHandle) {
-    let _ = app.emit("project:updated", state.projects.list_snapshot());
+    let snapshot = state.projects.list_snapshot();
+    let _ = app.emit("project:updated", snapshot.clone());
     let _ = app.emit(
         "terminal-layouts:snapshot",
         state.projects.terminal_layouts_snapshot(),
     );
     let _ = app.emit("remote:status", state.remote.snapshot());
     let _ = app.emit("ai-runtime:state", state.ai_runtime.state_snapshot());
-    state.project_activity.prewarm_worktrees(
-        app,
-        Arc::clone(&state.projects),
-        state.projects.list_snapshot().projects,
-    );
+    if let Some(project) = selected_project_summary(&snapshot) {
+        state
+            .project_activity
+            .refresh_git_sidecars_by_path(app, Arc::clone(&state.projects), project.path);
+    }
 }
 
 #[tauri::command]

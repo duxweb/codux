@@ -48,17 +48,17 @@ type Props = {
 };
 
 const badgePalette = [
-  { from: "#5b8df4", to: "#3a6fd9" },
-  { from: "#b495ea", to: "#7e58c4" },
-  { from: "#e25b8b", to: "#b53d6f" },
-  { from: "#39d98a", to: "#1f9d61" },
-  { from: "#f4b85a", to: "#c98933" },
+  { from: "#5b8df4", to: "#517fdf" },
+  { from: "#b495ea", to: "#a586dc" },
+  { from: "#e25b8b", to: "#d45082" },
+  { from: "#39d98a", to: "#32c87e" },
+  { from: "#f4b85a", to: "#e6aa4f" },
 ];
 
 function projectBadgeColors(color: string) {
   return {
     from: color,
-    to: `color-mix(in oklab, ${color} 72%, black)`,
+    to: `color-mix(in oklab, ${color} 90%, black)`,
   };
 }
 
@@ -341,8 +341,8 @@ function ProjectActivityBadge({ state }: { state: WorkspaceProject["aiState"] })
   if (state === "running") {
     return (
       <span className="absolute -right-0.5 -top-0.5 grid h-3 w-3 place-items-center rounded-full" aria-hidden="true">
-        <span className="absolute inset-0 rounded-full border-2 border-white/35 border-t-white motion-safe:animate-spin" />
-        <span className="h-2.5 w-2.5 rounded-full bg-brand-amber" />
+        <span className="absolute h-3 w-3 rounded-full bg-brand-amber/70 motion-safe:animate-ping" />
+        <span className="relative h-2.5 w-2.5 rounded-full bg-brand-amber" />
       </span>
     );
   }

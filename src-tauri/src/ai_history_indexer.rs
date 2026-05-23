@@ -153,19 +153,6 @@ impl AIHistoryIndexer {
             return Ok(state);
         }
         let cached_snapshot = indexed_project_snapshot(project.clone()).await?;
-        if cached_snapshot.is_none() {
-            let (project_state, should_enqueue) = mark_project_queued(&self.state, &project, None)?;
-            emit_history_event(
-                &self.app,
-                AIHistoryEvent::ProjectState {
-                    state: project_state.clone(),
-                },
-            );
-            if should_enqueue {
-                let _ = self.tx.send(AIHistoryJob::RefreshProject { project }).await;
-            }
-            return Ok(project_state);
-        }
         let project_state = seed_project_state(&self.state, &project, cached_snapshot)?;
         Ok(project_state)
     }

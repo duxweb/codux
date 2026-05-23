@@ -305,7 +305,22 @@ export function useAIHistorySnapshot(project?: WorkspaceProject, options: AIHist
       return;
     }
     const cached = useRuntimeStore.getState().aiProjectStateByKey[projectHistoryKey(project)];
-    if (cached) applyProjectState(cached);
+    if (cached) {
+      applyProjectState(cached);
+      return;
+    }
+    try {
+      const next = await invoke<AIHistoryProjectState>("ai_history_project_state", {
+        project: {
+          id: project.id,
+          name: project.name,
+          path: project.path,
+        },
+      });
+      applyProjectState(next);
+    } catch (reason) {
+      console.error("failed to load ai history state", reason);
+    }
   }, [applyProjectState, project]);
 
   useEffect(() => {

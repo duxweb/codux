@@ -17,10 +17,12 @@ import {
 } from "../icons";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Dropdown } from "@heroui/react";
 import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Checkbox, TextInput } from "./Form";
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
 import { PressableButton } from "./PressableButton";
 import { TabStrip } from "./TabStrip";
 import { TerminalView } from "./TerminalView";
@@ -55,6 +57,7 @@ import { systemConfirm, systemMessage } from "../systemDialog";
 import { formatI18n, tm } from "../i18n";
 import {
   languageForPath,
+  deleteFile,
   readFile,
   revealFile,
   unwatchProjectFiles,
@@ -912,7 +915,7 @@ function TerminalPane({
         )}
       </div>
       {detached ? (
-        <div className="h-full min-w-0 min-h-0 grid place-items-center rounded-[8px] border border-dashed border-line text-xs text-ink-mute">
+        <div className="h-full min-w-0 min-h-0 grid place-items-center rounded-[8px] border border-dashed border-border-subtle text-xs text-ink-mute">
           {tm("terminal.detached.message", "This terminal is open in a separate window.")}
         </div>
       ) : (
@@ -1411,7 +1414,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
   return (
     <div className="h-full grid grid-rows-[46px_minmax(0,1fr)] min-w-0">
       <TabStrip
-        className="h-[46px] border-b border-line bg-transparent"
+        className="h-[46px] border-b border-border-subtle bg-transparent"
         items={tabs.map((tab) => ({
           id: tab.path,
           label: `${tab.name}${tab.dirty ? " •" : ""}`,
@@ -1523,7 +1526,7 @@ function FileEditor({
   const readOnlyMessage = !tab.isBinary && blockedMessage ? blockedMessage : "";
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="h-[56px] flex flex-shrink-0 items-center justify-between gap-4 px-[18px] border-b border-line">
+      <div className="h-[56px] flex flex-shrink-0 items-center justify-between gap-4 px-[18px] border-b border-border-subtle">
         <div className="leading-tight min-w-0">
           <div className="text-sm font-semibold truncate">
             {tab.name}
@@ -1585,7 +1588,7 @@ function FileEditor({
       )}
 
       {hasExternalChange && !error && (
-        <div className="absolute z-20 top-[calc(100%-8px)] left-4 right-4 flex items-center justify-between gap-3 rounded-md border border-brand-amber/35 bg-brand-amber/12 px-3 py-2 text-xs text-ink-soft shadow-pop">
+        <div className="absolute z-20 top-[calc(100%-8px)] left-4 right-4 flex items-center justify-between gap-3 rounded-md border border-brand-amber/35 bg-brand-amber/12 px-3 py-2 text-xs text-ink-soft shadow-floating">
           <span className="min-w-0 truncate">
             {tm(
               "files.preview.external_kept",
@@ -1602,7 +1605,7 @@ function FileEditor({
       )}
 
       {readOnlyMessage && !error && !hasExternalChange && (
-        <div className="absolute z-20 top-[calc(100%-8px)] left-4 right-4 rounded-md border border-line bg-surface-panel/95 px-3 py-2 text-xs text-ink-mute shadow-pop">
+        <div className="absolute z-20 top-[calc(100%-8px)] left-4 right-4 rounded-md border border-border-subtle bg-surface-muted/95 px-3 py-2 text-xs text-ink-mute shadow-floating">
           {readOnlyMessage}
         </div>
       )}
@@ -1701,7 +1704,7 @@ function EditorSearchBar({
   const canReplace = canSearch && !readOnly;
 
   return (
-    <div className="flex-shrink-0 border-b border-line bg-surface-chrome/75 px-[18px] py-2">
+    <div className="flex-shrink-0 border-b border-border-subtle bg-surface-main/75 px-[18px] py-2">
       <form
         className="flex flex-col gap-2"
         onSubmit={(event) => {
@@ -1821,9 +1824,9 @@ function EditorSearchIconButton({
 
 function EditorEmptyState({ title, description, compact }: { title: string; description: string; compact?: boolean }) {
   return (
-    <div className={`${compact ? "h-full" : "h-full"} grid place-items-center bg-surface-editor text-center px-6`}>
+    <div className={`${compact ? "h-full" : "h-full"} grid place-items-center bg-surface-secondary text-center px-6`}>
       <div>
-        <div className="w-11 h-11 mx-auto rounded-[10px] border border-line bg-fill/[0.04] grid place-items-center text-ink-mute">
+        <div className="w-11 h-11 mx-auto rounded-[10px] border border-border-subtle bg-fill/[0.04] grid place-items-center text-ink-mute">
           <FileText size={18} />
         </div>
         <div className="mt-3 text-sm font-semibold text-ink">{title}</div>
@@ -1860,7 +1863,7 @@ function EditorMinimap({
   return (
     <div
       ref={hostRef}
-      className={`relative h-full min-h-0 overflow-hidden border-l border-line bg-surface-editor ${
+      className={`relative h-full min-h-0 overflow-hidden border-l border-border-subtle bg-surface-secondary ${
         disabled ? "opacity-40" : canScroll ? "cursor-pointer" : ""
       }`}
       onPointerDown={jump}
@@ -2048,7 +2051,46 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
     }
   }, [baseBranch, project?.path]);
 
-  const commitReviewChanges = useCallback(async () => {
+  const openReviewFile = useCallback(
+    (file: GitReviewFile) => {
+      if (!project?.path) return;
+      broadcastWorkspaceCommand({
+        type: "open-file",
+        rootPath: project.path,
+        path: file.path,
+      });
+    },
+    [project?.path],
+  );
+
+  const deleteReviewFile = useCallback(
+    async (file: GitReviewFile) => {
+      if (!project?.path || file.status === "deleted") return;
+      const confirmed = await systemConfirm(
+        formatI18n(tm("files.panel.delete.confirm_message_format", 'Delete "%@"?'), file.path),
+        {
+          title: tm("files.panel.delete.confirm_title", "Delete"),
+          kind: "warning",
+          okLabel: tm("common.delete", "Delete"),
+          cancelLabel: tm("common.cancel", "Cancel"),
+        },
+      );
+      if (!confirmed) return;
+      try {
+        await deleteFile(project.path, file.path);
+        await refreshReview();
+      } catch (error) {
+        await systemMessage(error instanceof Error ? error.message : String(error), {
+          title: tm("files.panel.delete.failure_format", "Could not delete: %@").replace("%@", file.path),
+          kind: "error",
+          okLabel: tm("common.ok", "OK"),
+        });
+      }
+    },
+    [project?.path, refreshReview],
+  );
+
+  const commitReviewChanges = useCallback(async (pushAfterCommit = false) => {
     if (!project?.path || reviewAction) return;
     const message = window.prompt(tm("git.commit.message.placeholder", "Commit message"))?.trim();
     if (!message) return;
@@ -2058,10 +2100,14 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
         await git.stage(committablePaths);
       }
       await git.commit(message);
+      if (pushAfterCommit) {
+        setReviewAction("push");
+        await git.push();
+      }
       await refreshReview();
     } catch (error) {
       await systemMessage(error instanceof Error ? error.message : String(error), {
-        title: tm("git.commit.action", "Commit"),
+        title: pushAfterCommit ? tm("git.commit.action_push", "Commit and Push") : tm("git.commit.action", "Commit"),
         kind: "error",
         okLabel: tm("common.ok", "OK"),
       });
@@ -2070,26 +2116,9 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
     }
   }, [committablePaths, git, project?.path, refreshReview, reviewAction]);
 
-  const pushReviewBranch = useCallback(async () => {
-    if (!project?.path || reviewAction) return;
-    setReviewAction("push");
-    try {
-      await git.push();
-      await refreshReview();
-    } catch (error) {
-      await systemMessage(error instanceof Error ? error.message : String(error), {
-        title: tm("git.remote.push", "Push"),
-        kind: "error",
-        okLabel: tm("common.ok", "OK"),
-      });
-    } finally {
-      setReviewAction("");
-    }
-  }, [git, project?.path, refreshReview, reviewAction]);
-
   return (
-    <div className="h-full min-h-0 grid grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-editor">
-      <section className="flex items-center justify-between gap-4 border-b border-line bg-fill/[0.025] px-5 py-3.5">
+    <div className="h-full min-h-0 grid grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-secondary">
+      <section className="flex items-center justify-between gap-4 border-b border-border-subtle bg-fill/[0.025] px-5 py-3.5">
         <div className="min-w-0 flex items-center gap-3">
           <span className="grid place-items-center w-8 h-8 rounded-[8px] bg-brand-blue/15 text-brand-blue">
             <GitPullRequest size={15} />
@@ -2101,39 +2130,17 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
             </div>
           </div>
         </div>
-        <div className="hidden md:flex items-center gap-2 text-xs text-ink-faint">
-          <ReviewMetric label={tm("worktree.review.changed_files", "Changed Files")} value={snapshot.files.length} />
-          <ReviewMetric
-            label={tm("worktree.review.added_lines", "Added Lines")}
-            value={totalAdditions}
-            tone="green"
-            prefix="+"
-          />
-          <ReviewMetric
-            label={tm("worktree.review.deleted_lines", "Deleted Lines")}
-            value={totalDeletions}
-            tone="red"
-            prefix="-"
-          />
-          <ReviewActionButton
-            label={tm("worktree.review.open_git_panel", "Git Panel")}
-            disabled={!snapshot.isRepository}
-            onPress={() => broadcastWorkspaceCommand({ type: "open-right-panel", panel: "git" })}
-          />
-          <ReviewActionButton
-            label={reviewAction === "commit" ? tm("git.commit.submitting", "Committing") : tm("git.commit.action", "Commit")}
+        <div className="hidden md:flex items-center text-xs text-ink-faint">
+          <ReviewCommitSplitButton
             disabled={!snapshot.isRepository || committablePaths.length === 0 || Boolean(reviewAction)}
-            onPress={commitReviewChanges}
-          />
-          <ReviewActionButton
-            label={reviewAction === "push" ? tm("git.remote.status.pushing", "Pushing") : tm("git.remote.push", "Push")}
-            disabled={!snapshot.isRepository || Boolean(reviewAction)}
-            onPress={pushReviewBranch}
+            busy={Boolean(reviewAction)}
+            onCommit={() => commitReviewChanges(false)}
+            onCommitAndPush={() => commitReviewChanges(true)}
           />
         </div>
       </section>
       <div className="min-h-0 grid grid-cols-[280px_minmax(0,1fr)]">
-        <div className="min-h-0 overflow-y-auto scrollbar-overlay border-r border-line bg-fill/[0.018] p-2">
+        <div className="min-h-0 overflow-y-auto scrollbar-overlay border-r border-border-subtle bg-fill/[0.018] p-2">
           {snapshot.files.length > 0 ? (
             reviewTree.map((node) => (
               <ReviewTreeRow
@@ -2155,10 +2162,12 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
                   });
                 }}
                 onSelectFile={setSelectedPath}
+                onOpenFile={openReviewFile}
+                onDeleteFile={(file) => void deleteReviewFile(file)}
               />
             ))
           ) : (
-            <div className="rounded-md border border-line bg-fill/[0.025] px-3 py-3 text-sm text-ink-faint">
+            <div className="rounded-md border border-border-subtle bg-fill/[0.025] px-3 py-3 text-sm text-ink-faint">
               {!snapshot.isRepository
                 ? tm("worktree.review.no_repository", "No Git repository.")
                 : snapshot.error ||
@@ -2168,19 +2177,12 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
           )}
         </div>
         <div className="min-h-0 min-w-0 grid grid-rows-[38px_minmax(0,1fr)]">
-          <div className="min-w-0 flex items-center justify-between gap-3 border-b border-line px-3 text-xs text-ink-mute">
+          <div className="min-w-0 flex items-center justify-between gap-3 border-b border-border-subtle px-3 text-xs text-ink-mute">
             <span className="truncate">{selectedFile?.path ?? tm("worktree.review.check.diff", "Diff")}</span>
             {selectedFile && (
               <PressableButton
                 className="h-6 rounded-md px-2 text-ink-soft hover:bg-fill/[0.06] hover:text-ink"
-                onPressUp={() => {
-                  if (!project?.path || !selectedFile) return;
-                  broadcastWorkspaceCommand({
-                    type: "open-file",
-                    rootPath: project.path,
-                    path: selectedFile.path,
-                  });
-                }}
+                onPressUp={() => openReviewFile(selectedFile)}
               >
                 {tm("files.panel.open", "Open")}
               </PressableButton>
@@ -2262,7 +2264,7 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
           )}
         </div>
       </div>
-      <div className="h-[34px] flex items-center justify-between border-t border-line bg-fill/[0.025] px-3 text-xs text-ink-faint">
+      <div className="h-[34px] flex items-center justify-between border-t border-border-subtle bg-fill/[0.025] px-3 text-xs text-ink-faint">
         <span className="truncate">{subtitle}</span>
         <span className="tabular-nums">
           {snapshot.files.length} · <span className="text-brand-green">+{totalAdditions}</span> ·{" "}
@@ -2273,42 +2275,59 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
   );
 }
 
-function ReviewMetric({
-  label,
-  value,
-  prefix = "",
-  tone = "neutral",
+function ReviewCommitSplitButton({
+  disabled,
+  busy,
+  onCommit,
+  onCommitAndPush,
 }: {
-  label: string;
-  value: number;
-  prefix?: string;
-  tone?: "neutral" | "green" | "red";
+  disabled?: boolean;
+  busy?: boolean;
+  onCommit: () => void;
+  onCommitAndPush: () => void;
 }) {
-  const toneClass = tone === "green" ? "text-brand-green" : tone === "red" ? "text-brand-red" : "text-ink-soft";
+  const label = busy ? tm("git.commit.submitting", "Committing") : tm("git.commit.action", "Commit");
   return (
-    <div className="h-12 min-w-[92px] rounded-[8px] border border-line bg-fill/[0.035] px-3 py-2 flex flex-col justify-center">
-      <span className={`text-[20px] font-semibold leading-5 tabular-nums ${toneClass}`}>
-        {prefix}
-        {value}
-      </span>
-      <span className="mt-1 text-[11px] leading-3 text-ink-faint">{label}</span>
+    <div className="flex overflow-hidden rounded-[9px] border border-brand-blue/50 bg-brand-blue text-on-brand shadow-[0_1px_2px_rgb(0_0_0_/_0.08)]">
+      <Button
+        size="sm"
+        variant="primary"
+        disabled={disabled}
+        className="h-8 min-w-[86px] rounded-none border-0 bg-transparent px-4 text-on-brand hover:bg-white/8 active:bg-white/12"
+        onPressUp={onCommit}
+      >
+        {label}
+      </Button>
+      <Dropdown>
+        <Dropdown.Trigger
+          className="flex h-8 w-8 items-center justify-center border-l border-white/20 bg-transparent text-on-brand outline-none transition-colors hover:bg-white/8 disabled:opacity-55"
+          isDisabled={disabled}
+          aria-label={tm("git.commit.options", "Commit Options")}
+        >
+          <ChevronDown size={13} strokeWidth={2.4} />
+        </Dropdown.Trigger>
+        <Dropdown.Popover
+          placement="bottom end"
+          offset={6}
+          className="min-w-[174px] rounded-[10px] border border-border-subtle bg-surface-popover p-1 shadow-floating"
+        >
+          <Dropdown.Menu
+            aria-label={tm("git.commit.options", "Commit Options")}
+            onAction={(key) => {
+              if (key === "commit") onCommit();
+              if (key === "commitAndPush") onCommitAndPush();
+            }}
+          >
+            <Dropdown.Item id="commit">
+              {tm("git.commit.action", "Commit")}
+            </Dropdown.Item>
+            <Dropdown.Item id="commitAndPush">
+              {tm("git.commit.action_push", "Commit and Push")}
+            </Dropdown.Item>
+          </Dropdown.Menu>
+        </Dropdown.Popover>
+      </Dropdown>
     </div>
-  );
-}
-
-function ReviewActionButton({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
-  return (
-    <PressableButton
-      disabled={disabled}
-      className={`ml-2 h-12 min-w-[92px] rounded-[8px] border px-3 py-2 text-left text-sm font-semibold leading-4 transition-colors ${
-        disabled
-          ? "border-line bg-fill/[0.035] text-ink-faint opacity-60"
-          : "border-brand-blue/45 bg-brand-blue text-on-brand hover:bg-brand-blue/90 active:bg-brand-blue/80"
-      }`}
-      onPressUp={onPress}
-    >
-      {label}
-    </PressableButton>
   );
 }
 
@@ -2334,8 +2353,8 @@ function ReviewCodeColumn({
   onScroll: (source: string, info: CodeEditorScrollInfo) => void;
 }) {
   return (
-    <div className="min-h-0 min-w-0 grid grid-rows-[40px_minmax(0,1fr)] border-r border-line last:border-r-0 bg-surface-editor">
-      <div className="min-w-0 border-b border-line bg-fill/[0.02] px-2.5 py-1.5">
+    <div className="min-h-0 min-w-0 grid grid-rows-[40px_minmax(0,1fr)] border-r border-border-subtle last:border-r-0 bg-surface-secondary">
+      <div className="min-w-0 border-b border-border-subtle bg-fill/[0.02] px-2.5 py-1.5">
         <div className="truncate text-xs font-semibold text-ink-soft">{title}</div>
         <div className="truncate text-[10.5px] text-ink-faint">{subtitle}</div>
       </div>
@@ -2395,6 +2414,8 @@ function ReviewTreeRow({
   expandedPaths,
   onToggleDirectory,
   onSelectFile,
+  onOpenFile,
+  onDeleteFile,
 }: {
   node: ReviewTreeNode;
   depth: number;
@@ -2403,6 +2424,8 @@ function ReviewTreeRow({
   expandedPaths: Set<string>;
   onToggleDirectory: (path: string) => void;
   onSelectFile: (path: string) => void;
+  onOpenFile: (file: GitReviewFile) => void;
+  onDeleteFile: (file: GitReviewFile) => void;
 }) {
   if (node.kind === "file") {
     return (
@@ -2413,6 +2436,8 @@ function ReviewTreeRow({
         projectPath={projectPath}
         selected={selectedPath === node.path}
         onSelect={() => onSelectFile(node.path)}
+        onOpen={() => onOpenFile(node.file)}
+        onDelete={() => onDeleteFile(node.file)}
       />
     );
   }
@@ -2431,6 +2456,8 @@ function ReviewTreeRow({
             expandedPaths={expandedPaths}
             onToggleDirectory={onToggleDirectory}
             onSelectFile={onSelectFile}
+            onOpenFile={onOpenFile}
+            onDeleteFile={onDeleteFile}
           />
         ))}
     </>
@@ -2451,7 +2478,7 @@ function ReviewDirectoryRow({
   return (
     <Tooltip label={node.path} placement="right" triggerClassName="block w-full">
       <PressableButton
-        className="w-full h-8 grid grid-cols-[18px_16px_minmax(0,1fr)_auto] items-center gap-1.5 pr-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] hover:text-ink"
+        className="w-full h-8 grid grid-cols-[18px_16px_minmax(0,1fr)_42px_42px_18px] items-center gap-1.5 pr-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] hover:text-ink"
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         onPressUp={onToggle}
       >
@@ -2462,13 +2489,9 @@ function ReviewDirectoryRow({
         )}
         <Folder size={13} className="text-brand-blue/85" />
         <span className="min-w-0 truncate text-left text-xs font-medium">{node.name}</span>
-        {(node.additions > 0 || node.deletions > 0) && (
-          <span className="text-xs tabular-nums">
-            <span className="text-brand-green">+{node.additions}</span>
-            <span className="mx-1 text-ink-faint">/</span>
-            <span className="text-brand-red">-{node.deletions}</span>
-          </span>
-        )}
+        <span className="text-right text-xs tabular-nums text-brand-green">{node.additions > 0 ? `+${node.additions}` : ""}</span>
+        <span className="text-right text-xs tabular-nums text-brand-red">{node.deletions > 0 ? `-${node.deletions}` : ""}</span>
+        <span />
       </PressableButton>
     </Tooltip>
   );
@@ -2481,6 +2504,8 @@ function ReviewFileRow({
   projectPath,
   selected,
   onSelect,
+  onOpen,
+  onDelete,
 }: {
   file: GitReviewFile;
   displayName?: string;
@@ -2488,37 +2513,47 @@ function ReviewFileRow({
   projectPath?: string;
   selected?: boolean;
   onSelect?: () => void;
+  onOpen?: () => void;
+  onDelete?: () => void;
 }) {
   const badge = reviewFileStatusBadge(file.status);
+  const contextMenu = useContextMenu();
+  const canDelete = file.status !== "deleted";
   return (
-    <Tooltip label={file.path} placement="right" triggerClassName="block w-full">
-      <PressableButton
-        className={`w-full h-8 grid grid-cols-[18px_minmax(0,1fr)_auto_auto] items-center gap-2.5 pr-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] ${
-          selected ? "bg-brand-blue/12 text-ink" : ""
-        }`}
-        style={{ paddingLeft: `${8 + depth * 14}px` }}
-        onPressUp={onSelect}
-        onDoubleClick={() => {
-          if (!projectPath) return;
-          broadcastWorkspaceCommand({
-            type: "open-file",
-            rootPath: projectPath,
-            path: file.path,
-          });
-        }}
-      >
-        <FileCode2 size={13} className="text-ink-mute" />
-        <span className="min-w-0 truncate text-left text-xs">{displayName ?? file.path}</span>
-        {(file.additions > 0 || file.deletions > 0) && (
-          <span className="text-xs tabular-nums">
-            <span className="text-brand-green">+{file.additions}</span>
-            <span className="mx-1 text-ink-faint">/</span>
-            <span className="text-brand-red">-{file.deletions}</span>
-          </span>
-        )}
-        <span className={`text-xs font-bold ${badge.tone}`}>{badge.label}</span>
-      </PressableButton>
-    </Tooltip>
+    <>
+      <Tooltip label={file.path} placement="right" triggerClassName="block w-full">
+        <PressableButton
+          className={`w-full h-8 grid grid-cols-[18px_minmax(0,1fr)_42px_42px_18px] items-center gap-1.5 pr-2.5 rounded-md text-ink-soft text-sm hover:bg-fill/[0.045] ${
+            selected ? "bg-brand-blue/12 text-ink" : ""
+          }`}
+          style={{ paddingLeft: `${8 + depth * 14}px` }}
+          onPressUp={onSelect}
+          onDoubleClick={() => {
+            if (!projectPath) return;
+            onOpen?.();
+          }}
+          onContextMenu={(event) => {
+            onSelect?.();
+            contextMenu.openMenu(event);
+          }}
+        >
+          <FileCode2 size={13} className="text-ink-mute" />
+          <span className="min-w-0 truncate text-left text-xs">{displayName ?? file.path}</span>
+          <span className="text-right text-xs tabular-nums text-brand-green">{file.additions > 0 ? `+${file.additions}` : ""}</span>
+          <span className="text-right text-xs tabular-nums text-brand-red">{file.deletions > 0 ? `-${file.deletions}` : ""}</span>
+          <span className={`text-center text-xs font-bold ${badge.tone}`}>{badge.label}</span>
+        </PressableButton>
+      </Tooltip>
+      <ContextMenu ariaLabel={file.path} menu={contextMenu.menu} onClose={contextMenu.closeMenu}>
+        <ContextMenuItem label={tm("files.panel.open", "Open")} onSelect={onOpen}>
+          {tm("files.panel.open", "Open")}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem label={tm("common.delete", "Delete")} disabled={!canDelete} onSelect={onDelete}>
+          {tm("common.delete", "Delete")}
+        </ContextMenuItem>
+      </ContextMenu>
+    </>
   );
 }
 

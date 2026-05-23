@@ -236,8 +236,8 @@ function SymbolCell({
       aria-label={symbol.id === "none" ? tm("common.none", "None") : symbol.id}
       className={`relative aspect-square rounded-[8px] grid place-items-center transition-colors ${
         selected
-          ? "bg-fill/[0.12] border border-line-strong opacity-100"
-          : "bg-fill/[0.05] border border-line opacity-60 hover:opacity-85 hover:bg-fill/[0.08] hover:border-line-strong"
+          ? "bg-fill/[0.12] border border-border opacity-100"
+          : "bg-fill/[0.05] border border-border-subtle opacity-60 hover:opacity-85 hover:bg-fill/[0.08] hover:border-border"
       }`}
     >
       {symbol.icon ? (

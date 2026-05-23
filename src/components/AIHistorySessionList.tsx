@@ -149,8 +149,8 @@ const HistorySessionRow = memo(function HistorySessionRow({
           </div>
         </div>
         <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-[11.5px] font-medium leading-4 text-ink-faint">
-          <div className="min-w-0 truncate text-ink-soft">{tool}</div>
-          <div className="flex-none text-sm font-semibold tabular-nums leading-4 text-ink">{totalLabel}</div>
+          <div className="min-w-0 truncate text-ink-faint">{tool}</div>
+          <div className="flex-none text-xs font-medium tabular-nums leading-4 text-ink-mute">{totalLabel}</div>
         </div>
       </PressableButton>
       <ContextMenu

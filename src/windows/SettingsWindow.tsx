@@ -25,7 +25,7 @@ import { PressableButton } from "../components/PressableButton";
 import { WindowsWindowControls } from "../components/WindowsWindowControls";
 import { Field, SettingsCard, FormRow, Select, SettingsForm, Textarea, TextInput, Toggle } from "../components/Form";
 import { revealCurrentAppWindow } from "../windowing";
-import { isAppleShortcutPlatform, isWindowsPlatform } from "../platform";
+import { isAppleShortcutPlatform, isMacPlatform, isWindowsPlatform } from "../platform";
 import { startWindowDrag } from "../windowDrag";
 import type { AppIcon } from "../icons";
 import {
@@ -44,8 +44,6 @@ import {
 import { appShortcutDefinitions, serializeShortcutSequence, shortcutDisplayValue } from "../shortcuts";
 import { restartNotice, systemMessage } from "../systemDialog";
 import {
-  backgroundColorOptions,
-  resolveBackgroundColorOption,
   resolveThemeColorOption,
   systemThemeOptions,
   terminalThemeOptions,
@@ -256,9 +254,9 @@ export function SettingsWindow() {
   }, []);
 
   return (
-    <div className="app-shell h-screen grid grid-cols-[200px_minmax(0,1fr)] text-ink">
+    <div className="h-screen grid grid-cols-[200px_minmax(0,1fr)] bg-surface-app text-ink">
       {isWindowsPlatform() && <WindowsWindowControls closeOnly className="h-12" />}
-      <aside className="min-h-0 border-r border-line bg-[var(--surface-window-tint)] flex flex-col">
+      <aside className="min-h-0 border-r border-border-subtle bg-[var(--color-settings-sidebar)] flex flex-col">
         <div
           className="h-14 flex-shrink-0 drag-region"
           data-tauri-drag-region
@@ -282,13 +280,13 @@ export function SettingsWindow() {
         </nav>
       </aside>
 
-      <section className="relative min-w-0 min-h-0 overflow-hidden">
+      <section className="settings-window-content relative min-w-0 min-h-0 overflow-hidden">
         <header
           className={`absolute left-0 right-0 top-0 z-20 h-[92px] flex flex-col justify-end pl-6 ${titleRightInset} pb-4 drag-region`}
           data-tauri-drag-region
           onPointerDownCapture={startWindowDrag}
           style={{
-            background: "linear-gradient(to top, transparent 0%, var(--surface-window-tint) 50%)",
+            background: "linear-gradient(to top, transparent 0%, var(--settings-window-content-bg) 50%)",
           }}
         >
           <div className="text-lg font-semibold tracking-tight drag-region" data-tauri-drag-region>
@@ -299,7 +297,7 @@ export function SettingsWindow() {
           </div>
         </header>
 
-        <main className="absolute inset-0 overflow-y-auto px-5 pt-[108px] pb-6 no-drag">
+        <main className="absolute inset-0 overflow-y-auto bg-[var(--settings-window-content-bg)] px-5 pt-[108px] pb-6 no-drag">
           <SettingsPane active={active} />
         </main>
       </section>
@@ -469,7 +467,6 @@ function shellOptionsForPlatform() {
 
 function AppearanceSection() {
   const [settings, setSettings] = useSyncedSettings();
-  const selectedBackgroundColor = resolveBackgroundColorOption(settings.background)?.label ?? settings.background;
   const selectedThemeColor = resolveThemeColorOption(settings.themeColor)?.label ?? settings.themeColor;
   const setSetting = <K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) => {
     const next = updateAppSettings({ [key]: value });
@@ -477,6 +474,11 @@ function AppearanceSection() {
     if (key === "theme") {
       void restartNotice(
         tm("settings.theme.restart_message", "Restart Codux to apply the selected theme to the app and all terminals."),
+        tm("settings.theme.restart_title", "Restart Required"),
+      );
+    } else if (key === "iconStyle") {
+      void restartNotice(
+        tm("settings.app_icon.restart_message", "Restart Codux to apply the selected app icon everywhere."),
         tm("settings.theme.restart_title", "Restart Required"),
       );
     }
@@ -513,26 +515,6 @@ function AppearanceSection() {
       </SettingsCard>
 
       <SettingsCard
-        title={tm("settings.background_color", "Background Color")}
-        description={tm(
-          "settings.background_color.help",
-          "Auto follows the terminal background. Manual choices tint only the main window glass and panels.",
-        )}
-      >
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(48px,1fr))] gap-x-2 gap-y-3 py-1">
-          {backgroundColorOptions.map((item) => (
-            <ColorSwatchButton
-              key={item.label}
-              label={item.label}
-              color={item.preview}
-              selected={selectedBackgroundColor === item.label}
-              onPress={() => setSetting("background", item.label)}
-            />
-          ))}
-        </div>
-      </SettingsCard>
-
-      <SettingsCard
         title={tm("settings.theme_color", "Theme Color")}
         description={tm(
           "settings.theme_color.help",
@@ -564,19 +546,24 @@ function AppearanceSection() {
         </Field>
       </SettingsCard>
 
-      <SettingsCard title={tm("settings.app_icon", "App Icon")}>
-        <div className="flex flex-wrap gap-4 py-1">
-          {appIconStyles.map((style) => (
-            <AppIconPreviewButton
-              key={style.value}
-              label={tm(style.labelKey, style.label)}
-              styleName={style.value}
-              selected={settings.iconStyle === style.value}
-              onPress={() => setSetting("iconStyle", style.value)}
-            />
-          ))}
-        </div>
-      </SettingsCard>
+      {isMacPlatform() && (
+        <SettingsCard
+          title={tm("settings.app_icon", "App Icon")}
+          description={tm("settings.app_icon.restart_pending", "App icon changes apply fully after restart.")}
+        >
+          <div className="flex flex-wrap gap-4 py-1">
+            {appIconStyles.map((style) => (
+              <AppIconPreviewButton
+                key={style.value}
+                label={tm(style.labelKey, style.label)}
+                styleName={style.value}
+                selected={settings.iconStyle === style.value}
+                onPress={() => setSetting("iconStyle", style.value)}
+              />
+            ))}
+          </div>
+        </SettingsCard>
+      )}
     </SettingsForm>
   );
 }
@@ -1492,7 +1479,7 @@ function PairingQRCodeModal({
 
   return (
     <div className="no-drag fixed inset-0 z-[9500] grid place-items-center bg-black/30 p-4 backdrop-blur-sm">
-      <div className="w-[min(420px,calc(100vw-32px))] rounded-[16px] border border-line-strong bg-surface-chrome p-5 text-ink shadow-pop">
+      <div className="w-[min(420px,calc(100vw-32px))] rounded-[16px] border border-border bg-surface-main p-5 text-ink shadow-floating">
         <div className="flex items-center justify-between gap-3">
           <div className="text-lg font-semibold tracking-tight">{tm("settings.remote.pairing", "Pairing")}</div>
           <Button
@@ -1508,7 +1495,7 @@ function PairingQRCodeModal({
         <div className="mt-6 grid justify-items-center">
           {pairing ? (
             <>
-              <div className="grid h-[242px] w-[242px] place-items-center rounded-[14px] border border-line bg-white p-[10px]">
+              <div className="grid h-[242px] w-[242px] place-items-center rounded-[14px] border border-border-subtle bg-white p-[10px]">
                 {qrDataUrl ? (
                   <img src={qrDataUrl} alt={tm("settings.remote.pairing", "Pairing")} className="h-[220px] w-[220px]" />
                 ) : (
@@ -1555,7 +1542,7 @@ function PendingPairingModal({
   const code = pairing.code || "-";
   return (
     <div className="no-drag fixed inset-0 z-[9600] grid place-items-center bg-black/30 p-4 backdrop-blur-sm">
-      <div className="w-[min(380px,calc(100vw-32px))] rounded-[16px] border border-line-strong bg-surface-chrome p-5 text-ink shadow-pop">
+      <div className="w-[min(380px,calc(100vw-32px))] rounded-[16px] border border-border bg-surface-main p-5 text-ink shadow-floating">
         <div className="flex items-start gap-3">
           <div className="grid h-10 w-10 flex-none place-items-center rounded-full bg-brand-blue/14 text-brand-blue">
             <ShieldCheck size={20} strokeWidth={2} />
@@ -1760,7 +1747,7 @@ function ShortcutRow({
           className={`h-7 min-w-[118px] rounded-md border px-2.5 text-sm font-semibold hover:text-ink ${
             recording
               ? "border-brand-blue/55 bg-brand-blue/12 text-brand-blue"
-              : "border-line bg-fill/[0.055] text-ink-soft"
+              : "border-border-subtle bg-fill/[0.055] text-ink-soft"
           }`}
         >
           {value}
@@ -1820,7 +1807,7 @@ function ThemePreviewButton({
     <PressableButton onPressUp={onPress} className="group min-w-0 text-center text-xs text-ink-mute outline-none">
       <span
         className={`block h-[46px] rounded-md border transition-colors ${
-          selected ? "border-brand-blue ring-1 ring-brand-blue/40" : "border-line/70 group-hover:border-line-strong"
+          selected ? "border-brand-blue ring-1 ring-brand-blue/40" : "border-border-subtle/70 group-hover:border-border"
         }`}
         style={{ background: preview.background }}
       >
@@ -1855,7 +1842,7 @@ function ColorSwatchButton({
     >
       <span
         className={`grid h-7 w-7 place-items-center rounded-full border transition-colors ${
-          selected ? "border-brand-blue ring-2 ring-brand-blue/25" : "border-line/80 group-hover:border-line-strong"
+          selected ? "border-brand-blue ring-2 ring-brand-blue/25" : "border-border-subtle/80 group-hover:border-border"
         }`}
         style={{ background: color }}
       >
@@ -1886,7 +1873,7 @@ function AppIconPreviewButton({
     >
       <span
         className={`grid h-12 w-12 place-items-center rounded-[12px] transition-colors ${
-          selected ? "ring-2 ring-brand-blue ring-offset-2 ring-offset-surface-chrome" : ""
+          selected ? "ring-2 ring-brand-blue ring-offset-2 ring-offset-surface-main" : ""
         }`}
       >
         <AppIconMark styleName={styleName} size={48} />

@@ -159,7 +159,7 @@ export function PetCustomPetInstallWindow() {
 
         {preview && (
           <>
-            <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-4 rounded-[12px] border border-line bg-fill/[0.035] p-4">
+            <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-4 rounded-[12px] border border-border-subtle bg-fill/[0.035] p-4">
               <div className="grid h-[104px] w-[104px] place-items-center overflow-hidden rounded-[12px] bg-brand-blue/10">
                 {preview.imageUrl ? (
                   <img src={preview.imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />

@@ -48,9 +48,15 @@ type ManagedThemeVariable =
   | "--editor-inserted"
   | "--editor-deleted"
   | "--editor-invalid"
-  | "--surface-window-tint"
-  | "--surface-window-glass"
-  | "--surface-editor"
+  | "--color-surface-app"
+  | "--color-surface-main"
+  | "--color-surface-secondary"
+  | "--color-surface-muted"
+  | "--color-window-surface"
+  | "--color-settings-surface"
+  | "--color-settings-sidebar"
+  | "--color-settings-card"
+  | "--color-sider-card"
   | "--color-brand-blue"
   | "--color-brand-blue-deep"
   | "--color-on-brand"
@@ -61,13 +67,9 @@ type ManagedThemeVariable =
   | "--accent-soft-foreground"
   | "--focus"
   | "--link"
-  | "--color-surface-glass"
-  | "--color-surface-chrome"
   | "--color-surface-popover"
-  | "--color-surface-panel"
-  | "--color-surface-card"
-  | "--color-surface-terminal"
-  | "--color-surface-editor"
+  | "--color-border"
+  | "--color-border-subtle"
   | "--scrollbar-thumb"
   | "--scrollbar-thumb-hover"
   | "--focus-ring";
@@ -76,13 +78,6 @@ export type TerminalThemeOption = {
   value: string;
   label: string;
   labelKey: string;
-};
-
-export type BackgroundColorOption = {
-  label: string;
-  dark: string;
-  light: string;
-  preview: string;
 };
 
 export type ThemeColorOption = {
@@ -138,14 +133,6 @@ export const terminalThemeOptions: TerminalThemeOption[] = [
   },
   { value: "Nord Light", label: "Nord Light", labelKey: "settings.terminal_theme.preset.nord_light" },
   { value: "Atom One Light", label: "Atom One Light", labelKey: "settings.terminal_theme.preset.atom_one_light" },
-];
-
-export const backgroundColorOptions: BackgroundColorOption[] = [
-  { label: "Auto", dark: "", light: "", preview: "linear-gradient(135deg, #18181b, #f4f4f5)" },
-  { label: "Zinc", dark: "#18181b", light: "#f4f4f5", preview: "linear-gradient(135deg, #18181b, #f4f4f5)" },
-  { label: "Neutral", dark: "#171717", light: "#f5f5f5", preview: "linear-gradient(135deg, #171717, #f5f5f5)" },
-  { label: "Stone", dark: "#1c1917", light: "#f5f5f4", preview: "linear-gradient(135deg, #1c1917, #f5f5f4)" },
-  { label: "Slate", dark: "#0f172a", light: "#f1f5f9", preview: "linear-gradient(135deg, #0f172a, #f1f5f9)" },
 ];
 
 export const themeColorOptions: ThemeColorOption[] = [
@@ -223,9 +210,15 @@ const managedThemeVariables: ManagedThemeVariable[] = [
   "--editor-inserted",
   "--editor-deleted",
   "--editor-invalid",
-  "--surface-window-tint",
-  "--surface-window-glass",
-  "--surface-editor",
+  "--color-surface-app",
+  "--color-surface-main",
+  "--color-surface-secondary",
+  "--color-surface-muted",
+  "--color-window-surface",
+  "--color-settings-surface",
+  "--color-settings-sidebar",
+  "--color-settings-card",
+  "--color-sider-card",
   "--color-brand-blue",
   "--color-brand-blue-deep",
   "--color-on-brand",
@@ -236,13 +229,9 @@ const managedThemeVariables: ManagedThemeVariable[] = [
   "--accent-soft-foreground",
   "--focus",
   "--link",
-  "--color-surface-glass",
-  "--color-surface-chrome",
   "--color-surface-popover",
-  "--color-surface-panel",
-  "--color-surface-card",
-  "--color-surface-terminal",
-  "--color-surface-editor",
+  "--color-border",
+  "--color-border-subtle",
   "--scrollbar-thumb",
   "--scrollbar-thumb-hover",
   "--focus-ring",
@@ -765,7 +754,7 @@ export function applyConfiguredTheme(settings: AppSettings, systemTheme = resolv
     root.style.setProperty(variable, value);
   }
 
-  applyAppearanceOverrides(root, settings.background, settings.themeColor);
+  applyAppearanceOverrides(root, settings.themeColor);
   applyNativeWindowTheme(settings, appTheme);
 }
 
@@ -858,9 +847,7 @@ function terminalProfile(
       "--editor-inserted": palette.green,
       "--editor-deleted": palette.red,
       "--editor-invalid": palette.brightRed,
-      "--color-surface-terminal": palette.background,
-      "--surface-editor": palette.background,
-      "--color-surface-editor": palette.background,
+      "--color-surface-secondary": palette.background,
     },
   };
 }
@@ -895,45 +882,55 @@ function resolveTerminalThemeProfile(theme: string): TerminalThemeProfile {
   return terminalThemeProfiles.auto as TerminalThemeProfile;
 }
 
-function applyAppearanceOverrides(root: HTMLElement, background: string, themeColor: string) {
-  applyBackgroundOverride(root, background);
+function applyAppearanceOverrides(root: HTMLElement, themeColor: string) {
+  applyBackgroundOverride(root);
   applyThemeColorOverride(root, themeColor);
 }
 
-function applyBackgroundOverride(root: HTMLElement, background: string) {
-  const option = resolveBackgroundColorOption(background);
+function applyBackgroundOverride(root: HTMLElement) {
   const appTheme = root.dataset.theme === "light" ? "light" : "dark";
   const terminalBackground = resolvedTerminalBackground(root, appTheme);
-  if (!option || normalizeThemeName(option.label) === "auto") {
-    applyDerivedSurfacePalette(root, appTheme, terminalBackground);
-    root.style.setProperty("--surface-window-tint", mixColor(terminalBackground, "#000000", appTheme === "light" ? 0.06 : 0.12));
-    root.style.setProperty("--surface-window-glass", mixColor(terminalBackground, "#000000", appTheme === "light" ? 0.03 : 0.06));
-    return;
-  }
-  const color = appTheme === "light" ? option.light : option.dark;
-  const anchor = appTheme === "light" ? "#ffffff" : mixColor(terminalBackground, "#000000", 0.12);
-  root.style.setProperty("--surface-window-tint", mixColor(color, anchor, appTheme === "light" ? 0.82 : 0.88));
-  root.style.setProperty("--surface-window-glass", mixColor(color, anchor, appTheme === "light" ? 0.88 : 0.92));
-  root.style.setProperty("--color-surface-glass", mixColor(color, anchor, appTheme === "light" ? 0.64 : 0.42));
-  root.style.setProperty("--color-surface-chrome", mixColor(color, anchor, appTheme === "light" ? 0.7 : 0.54));
-  root.style.setProperty("--color-surface-popover", appTheme === "light" ? "#ffffff" : mixColor(terminalBackground, "#000000", 0.18));
-  root.style.setProperty("--color-surface-panel", mixColor(color, anchor, appTheme === "light" ? 0.78 : 0.68));
-  root.style.setProperty("--color-surface-card", mixColor(color, anchor, appTheme === "light" ? 0.88 : 0.78));
-  root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
-  root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
-  root.style.setProperty("--surface-editor", "var(--terminal-bg)");
-  applyDerivedBorderPalette(root, appTheme, terminalBackground);
+  applyDerivedSurfacePalette(root, appTheme, terminalBackground);
 }
 
 function applyDerivedSurfacePalette(root: HTMLElement, appTheme: "light" | "dark", terminalBackground: string) {
   const anchor = appTheme === "light" ? "#000000" : "#ffffff";
-  root.style.setProperty("--color-surface-glass", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.05 : 0.14));
-  root.style.setProperty("--color-surface-chrome", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.05 : 0.14));
-  root.style.setProperty("--color-surface-popover", appTheme === "light" ? "#ffffff" : mixColor(terminalBackground, "#000000", 0.18));
-  root.style.setProperty("--color-surface-panel", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.03 : 0.1));
-  root.style.setProperty("--color-surface-card", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.02 : 0.06));
-  root.style.setProperty("--color-surface-terminal", "var(--terminal-bg)");
-  root.style.setProperty("--color-surface-editor", "var(--terminal-bg)");
+  root.style.setProperty("--color-surface-app", mixColor(terminalBackground, "#000000", appTheme === "light" ? 0.1 : 0.12));
+  root.style.setProperty(
+    "--color-surface-main",
+    appTheme === "light" ? "#ffffff" : mixColor(terminalBackground, "#ffffff", 0.04),
+  );
+  root.style.setProperty("--color-surface-secondary", "var(--terminal-bg)");
+  root.style.setProperty("--color-surface-muted", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.035 : 0.16));
+  root.style.setProperty(
+    "--color-surface-popover",
+    appTheme === "light" ? lightSurfaceFromTerminal(terminalBackground, 0.82) : mixColor(terminalBackground, "#000000", 0.18),
+  );
+  root.style.setProperty(
+    "--color-window-surface",
+    appTheme === "light" ? lightSurfaceFromTerminal(terminalBackground, 0.84) : mixColor(terminalBackground, "#ffffff", 0.04),
+  );
+  root.style.setProperty(
+    "--color-settings-surface",
+    appTheme === "light" ? lightSurfaceFromTerminal(terminalBackground, 0.88) : mixColor(terminalBackground, "#ffffff", 0.045),
+  );
+  root.style.setProperty(
+    "--color-settings-sidebar",
+    "var(--color-surface-app)",
+  );
+  root.style.setProperty(
+    "--color-settings-card",
+    "color-mix(in oklab, var(--color-settings-sidebar) 30%, transparent)",
+  );
+  root.style.setProperty(
+    "--color-sider-card",
+    appTheme === "light"
+      ? "rgb(255 255 255 / 0.82)"
+      : "color-mix(in oklab, var(--color-window-surface) 86%, white 14%)",
+  );
+  if (appTheme === "light") {
+    root.style.setProperty("--terminal-cursor", "var(--color-brand-blue)");
+  }
   root.style.setProperty("--scrollbar-thumb", appTheme === "light" ? "rgb(18 25 36 / 0.16)" : "rgb(255 255 255 / 0.16)");
   root.style.setProperty(
     "--scrollbar-thumb-hover",
@@ -944,8 +941,12 @@ function applyDerivedSurfacePalette(root: HTMLElement, appTheme: "light" | "dark
 
 function applyDerivedBorderPalette(root: HTMLElement, appTheme: "light" | "dark", terminalBackground: string) {
   const anchor = appTheme === "light" ? "#000000" : "#ffffff";
-  root.style.setProperty("--color-line", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.09 : 0.17));
-  root.style.setProperty("--color-line-strong", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.12 : 0.22));
+  root.style.setProperty("--color-border-subtle", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.095 : 0.12));
+  root.style.setProperty("--color-border", mixColor(terminalBackground, anchor, appTheme === "light" ? 0.12 : 0.16));
+}
+
+function lightSurfaceFromTerminal(terminalBackground: string, whiteRatio: number) {
+  return mixColor(terminalBackground, "#ffffff", whiteRatio);
 }
 
 function applyThemeColorOverride(root: HTMLElement, themeColor: string) {
@@ -976,11 +977,6 @@ function resolveAccentForeground(color: string) {
   return luminance > 0.46 ? "rgb(28 35 46)" : "rgb(252 255 255)";
 }
 
-export function resolveBackgroundColorOption(background: string): BackgroundColorOption | undefined {
-  const normalized = normalizeThemeName(background);
-  return backgroundColorOptions.find((item) => normalizeThemeName(item.label) === normalized);
-}
-
 export function resolveThemeColorOption(themeColor: string): ThemeColorOption | undefined {
   const normalized = normalizeThemeName(themeColor);
   const directOption = themeColorOptions.find((item) => normalizeThemeName(item.label) === normalized);
@@ -1004,7 +1000,7 @@ function applyNativeWindowTheme(settings: AppSettings, appTheme: AppTheme) {
     console.error("failed to apply native window theme", error);
   });
   const background =
-    getComputedStyle(document.documentElement).getPropertyValue("--surface-window-tint").trim() ||
+    getComputedStyle(document.documentElement).getPropertyValue("--color-surface-app").trim() ||
     (appTheme === "light" ? "#fbfcfe" : "#171b22");
   void currentWindow.setBackgroundColor(background).catch((error) => {
     console.error("failed to apply native window background", error);

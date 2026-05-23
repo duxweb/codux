@@ -181,7 +181,7 @@ export function PetClaimWindow() {
       }
     >
       <div className="grid h-full min-h-0 grid-cols-[220px_minmax(0,1fr)] overflow-hidden">
-        <div className="min-h-0 overflow-y-auto scrollbar-overlay border-r border-line/60 p-3.5">
+        <div className="min-h-0 overflow-y-auto scrollbar-overlay border-r border-border-subtle/60 p-3.5">
           <div className="grid gap-2">
             {catalog.species.map((item) => (
               <PetOptionRow

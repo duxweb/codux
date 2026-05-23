@@ -95,7 +95,7 @@ type Props = {
 
 export function Inspector({ panel, selectedProject }: Props) {
   return (
-    <aside className="h-full min-w-0 flex flex-col bg-surface-chrome/35 backdrop-blur-md">
+    <aside className="h-full min-w-0 flex flex-col bg-surface-main/35 backdrop-blur-md">
       {panel === "git" && <GitPanel project={selectedProject} />}
       {panel === "files" && <FilesPanel project={selectedProject} />}
       {panel === "ai" && <MemoAIPanel project={selectedProject} />}
@@ -118,7 +118,7 @@ function SectionHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="sticky top-0 z-20 h-[34px] flex items-center justify-between border-b border-line/80 bg-surface-chrome px-3.5 text-xs text-ink-soft shadow-[0_1px_0_rgb(0_0_0_/_0.12)]">
+    <div className="sticky top-0 z-20 h-[34px] flex items-center justify-between border-b border-border-subtle bg-surface-main/58 px-3.5 text-xs text-ink-soft">
       <button
         onClick={() => setOpen(!open)}
         className="min-w-0 h-full flex flex-1 items-center gap-2 text-left transition-colors hover:text-ink"
@@ -225,10 +225,10 @@ function GitInputPanel({
   const canSubmit =
     input.value.trim().length > 0 && (input.secondaryLabel ? (input.secondaryValue ?? "").trim().length > 0 : true);
   const controlClass =
-    "w-full rounded-md border border-line bg-surface-chrome/65 px-2 text-xs text-ink outline-none focus:border-brand-blue/60";
+    "w-full rounded-md border border-border-subtle bg-surface-main/65 px-2 text-xs text-ink outline-none focus:border-brand-blue/60";
 
   return (
-    <div className="mx-3 mt-3 rounded-[10px] border border-line bg-fill/[0.04] p-3">
+    <div className="mx-3 mt-3 rounded-[10px] border border-border-subtle bg-fill/[0.04] p-3">
       <div className="text-xs font-semibold text-ink">{input.title}</div>
       {input.message ? <div className="mt-1 text-[11px] leading-relaxed text-ink-faint">{input.message}</div> : null}
       <form
@@ -1098,7 +1098,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
         />
       ) : (
         <div ref={gitContentRef} className="min-h-0 flex-1 flex flex-col">
-          <div className="flex-shrink-0 border-b border-line/80 p-3">
+          <div className="flex-shrink-0 border-b border-border-subtle/80 p-3">
             <Textarea
               placeholder={tm("git.commit.message.placeholder", "Commit message")}
               value={commitMessage}
@@ -1128,20 +1128,20 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 </Dropdown.Trigger>
                 <Dropdown.Popover
                   placement="bottom end"
-                  className="min-w-[184px] rounded-[10px] border border-line-strong bg-surface-popover p-1 shadow-pop"
+                  className="min-w-[184px] rounded-[10px] border border-border-subtle bg-surface-popover p-1 shadow-floating"
                 >
                   <Dropdown.Menu
                     aria-label={tm("git.commit.options", "Commit Options")}
                     onAction={(key) => setCommitAction(String(key) as GitCommitAction)}
                     className="grid gap-0.5"
                   >
-                    <Dropdown.Item id="commit" className="menu-item">
+                    <Dropdown.Item id="commit">
                       {tm("git.commit.action", "Commit")}
                     </Dropdown.Item>
-                    <Dropdown.Item id="commitAndPush" className="menu-item" isDisabled={!canUseCurrentBranchRemote}>
+                    <Dropdown.Item id="commitAndPush" isDisabled={!canUseCurrentBranchRemote}>
                       {tm("git.commit.action_push", "Commit and Push")}
                     </Dropdown.Item>
-                    <Dropdown.Item id="commitAndSync" className="menu-item" isDisabled={!canUseCurrentBranchRemote}>
+                    <Dropdown.Item id="commitAndSync" isDisabled={!canUseCurrentBranchRemote}>
                       {tm("git.commit.action_sync", "Commit and Sync")}
                     </Dropdown.Item>
                   </Dropdown.Menu>
@@ -1361,13 +1361,13 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
             )}
           </div>
 
-          <div className="relative flex-shrink-0 bg-surface-chrome/25" style={{ height: gitHistoryHeight }}>
+          <div className="relative flex-shrink-0 bg-surface-main/25" style={{ height: gitHistoryHeight }}>
             <div
               className="peer/git-history-resize absolute inset-x-0 top-[-5px] z-20 h-3 cursor-row-resize"
               onPointerDown={beginGitHistoryResize}
               aria-label={tm("common.resize", "Resize")}
             />
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-line-strong/85 transition-colors peer-hover/git-history-resize:bg-brand-blue/70" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-border/85 transition-colors peer-hover/git-history-resize:bg-brand-blue/70" />
             <PanelSection title={tm("git.history.title", "Git History")} className="h-full flex flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay pb-3">
                 {snapshot.commits.length > 0 ? (
@@ -1594,7 +1594,7 @@ function GitFileSection({
     return <div className="px-3.5 py-2.5 text-xs text-ink-faint">{emptyLabel}</div>;
   }
   return (
-    <div className="pb-1">
+    <div className="-mt-px pb-1 pt-1">
       {tree.map((node) => (
         <GitFileTreeRow
           key={`${node.kind}:${node.path}`}
@@ -3270,7 +3270,7 @@ function FileInlineEditRow({
         <FileText size={12} className="mr-1.5 text-ink-mute" />
       )}
       <input
-        className="h-5 min-w-0 flex-1 rounded border border-brand-blue/55 bg-surface-chrome px-1.5 text-xs outline-none"
+        className="h-5 min-w-0 flex-1 rounded border border-brand-blue/55 bg-surface-main px-1.5 text-xs outline-none"
         value={edit.value}
         autoFocus
         onFocus={(event) => event.currentTarget.select()}
@@ -3468,6 +3468,7 @@ function shellQuote(value: string) {
 }
 
 const MemoAIPanel = memo(AIPanel);
+const AI_STATS_CARD_CLASS = "ai-stats-card";
 
 function AIPanel({ project }: { project?: WorkspaceProject }) {
   const { sessions } = useAIRuntimeSnapshot(project?.id);
@@ -3541,7 +3542,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay p-3 pb-5 flex flex-col gap-3">
-        <PanelCard title={tm("ai.live_sessions", "Current Session Totals")} divider={false}>
+        <PanelCard title={tm("ai.live_sessions", "Current Session Totals")} divider={false} className={AI_STATS_CARD_CLASS}>
           {sessions.length > 0 ? (
             <div className="flex flex-col gap-2">
               {sessions.map((session) => (
@@ -3561,7 +3562,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
             placement="bottom"
             triggerClassName="block w-full"
           >
-            <PanelCard>
+            <PanelCard className={AI_STATS_CARD_CLASS}>
               <div className="text-xs text-ink-mute">{tm("ai.summary.current_project", "Current Project")}</div>
               <div className="text-lg font-semibold mt-1 tabular-nums">{formatTokens(projectTotalTokens)}</div>
             </PanelCard>
@@ -3571,14 +3572,14 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
             placement="bottom"
             triggerClassName="block w-full"
           >
-            <PanelCard>
+            <PanelCard className={AI_STATS_CARD_CLASS}>
               <div className="text-xs text-ink-mute">{tm("ai.summary.today_total", "Today's Total")}</div>
               <div className="text-lg font-semibold mt-1 tabular-nums">{formatTokens(todayTotalTokens)}</div>
             </PanelCard>
           </Tooltip>
         </div>
 
-        <PanelCard title={tm("ai.today_usage", "Today's Usage")}>
+        <PanelCard title={tm("ai.today_usage", "Today's Usage")} className={AI_STATS_CARD_CLASS}>
           <BarsRow
             sessions={sessions}
             buckets={historySnapshot.todayTimeBuckets}
@@ -3594,7 +3595,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
           </div>
         </PanelCard>
 
-        <PanelCard title={tm("ai.recent_usage", "Recent Usage")}>
+        <PanelCard title={tm("ai.recent_usage", "Recent Usage")} className={AI_STATS_CARD_CLASS}>
           <HeatmapGrid
             sessions={sessions}
             days={historySnapshot.heatmap}
@@ -3603,7 +3604,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
           />
         </PanelCard>
 
-        <PanelCard title={tm("ai.breakdown.tool_ranking", "Tool Ranking")}>
+        <PanelCard title={tm("ai.breakdown.tool_ranking", "Tool Ranking")} className={AI_STATS_CARD_CLASS}>
           {toolRankingRows.map((row) => (
             <RankRow
               key={row.name}
@@ -3616,7 +3617,7 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
           {toolRankingRows.length === 0 && <EmptyMetricRow label={tm("ai.empty.no_stats", "No AI Stats Yet")} />}
         </PanelCard>
 
-        <PanelCard title={tm("ai.breakdown.model_ranking", "Model Ranking")}>
+        <PanelCard title={tm("ai.breakdown.model_ranking", "Model Ranking")} className={AI_STATS_CARD_CLASS}>
           {modelRankingRows.map((row) => (
             <RankRow
               key={row.name}
@@ -4535,7 +4536,7 @@ function SSHProfileDialog({
     <Modal isOpen={Boolean(draft)} onOpenChange={(isOpen) => (!isOpen ? onCancel() : undefined)}>
       <Modal.Backdrop className="no-drag fixed inset-0 z-[9000] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
         <Modal.Container size="md" placement="center">
-          <Modal.Dialog className="no-drag w-[min(520px,calc(100vw-32px))] rounded-[12px] border border-line-strong bg-surface-chrome p-4 text-ink shadow-pop outline-none">
+          <Modal.Dialog className="no-drag w-[min(520px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main p-4 text-ink shadow-floating outline-none">
             {draft && (
               <form
                 noValidate
@@ -4756,7 +4757,7 @@ function SSHProfileRow({
   return (
     <>
       <div
-        className="grid grid-cols-[30px_minmax(0,1fr)] items-center gap-2.5 rounded-[8px] border border-line bg-fill/[0.035] p-2.5 transition-colors hover:bg-fill/[0.055]"
+        className="ssh-profile-row grid grid-cols-[30px_minmax(0,1fr)] items-center gap-2.5 rounded-[8px] bg-[var(--color-sider-card)] p-2.5 transition-colors"
         onDoubleClick={() => {
           if (!disabled) onConnect();
         }}

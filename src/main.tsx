@@ -33,7 +33,11 @@ if (route.startsWith("/terminal")) {
   document.documentElement.classList.add("terminal-window");
 }
 
-let runtimeThemeSettings = readAppSettings();
+const RUNTIME_THEME_LOCK_KEY = "codux:runtime-theme-lock:v1";
+const initialAppSettings = readAppSettings();
+let lockedRuntimeTheme = initializeRuntimeThemeLock(initialAppSettings.theme);
+let runtimeThemeSettings = withLockedRuntimeTheme(initialAppSettings);
+let hasSyncedInitialRuntimeTheme = false;
 
 async function loadRoot() {
   if (routePath === "/about") {
@@ -81,7 +85,7 @@ const uninstallSettingsThemeSync = subscribeAppSettings((settings) => {
   const nextRuntimeThemeSettings = {
     ...settings,
     language: runtimeThemeSettings.language,
-    theme: runtimeThemeSettings.theme,
+    theme: lockedRuntimeTheme,
   };
   runtimeThemeSettings = nextRuntimeThemeSettings;
   applyConfiguredTheme(runtimeThemeSettings);
@@ -117,7 +121,12 @@ if (import.meta.hot) {
 }
 
 function syncInitialThemeAndLocale() {
-  runtimeThemeSettings = readAppSettings();
+  const settings = readAppSettings();
+  if (!isStandalone) {
+    lockedRuntimeTheme = settings.theme;
+    writeRuntimeThemeLock(lockedRuntimeTheme);
+  }
+  runtimeThemeSettings = withLockedRuntimeTheme(settings);
   applyConfiguredTheme(runtimeThemeSettings);
   lockRuntimeLocale(runtimeThemeSettings);
   return runtimeThemeSettings;
@@ -140,7 +149,12 @@ function installDevtoolsShortcut() {
 async function syncStartupResources() {
   try {
     const [settings] = await Promise.all([syncAppSettingsFromRust(), syncI18nBundleFromRust()]);
-    runtimeThemeSettings = settings;
+    if (!isStandalone && !hasSyncedInitialRuntimeTheme) {
+      lockedRuntimeTheme = settings.theme;
+      writeRuntimeThemeLock(lockedRuntimeTheme);
+      hasSyncedInitialRuntimeTheme = true;
+    }
+    runtimeThemeSettings = withLockedRuntimeTheme(settings);
     applyConfiguredTheme(runtimeThemeSettings);
     lockRuntimeLocale(runtimeThemeSettings);
   } catch (error) {
@@ -175,4 +189,44 @@ function StartupError() {
       Failed to load Codux.
     </main>
   );
+}
+
+function withLockedRuntimeTheme(settings: ReturnType<typeof readAppSettings>) {
+  return {
+    ...settings,
+    theme: lockedRuntimeTheme,
+  };
+}
+
+function initializeRuntimeThemeLock(theme: string) {
+  if (!isStandalone) {
+    writeRuntimeThemeLock(theme);
+    return theme;
+  }
+  return readRuntimeThemeLock() ?? theme;
+}
+
+function readRuntimeThemeLock() {
+  try {
+    const raw = window.localStorage.getItem(RUNTIME_THEME_LOCK_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { theme?: unknown };
+    return typeof parsed.theme === "string" && parsed.theme.trim() ? parsed.theme : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeRuntimeThemeLock(theme: string) {
+  try {
+    window.localStorage.setItem(
+      RUNTIME_THEME_LOCK_KEY,
+      JSON.stringify({
+        theme,
+        updatedAt: Date.now(),
+      }),
+    );
+  } catch {
+    // Theme locking is a visual consistency guard; storage failures should not block startup.
+  }
 }

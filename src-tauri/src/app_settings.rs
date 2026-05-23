@@ -42,8 +42,6 @@ pub struct AppSettings {
     pub statistics_mode: String,
     #[serde(default = "default_theme")]
     pub theme: String,
-    #[serde(default = "default_background")]
-    pub background: String,
     #[serde(default = "default_theme_color")]
     pub theme_color: String,
     #[serde(default = "default_terminal_font_size")]
@@ -374,7 +372,6 @@ impl Default for AppSettings {
             ai_background_refresh: default_ai_background_refresh(),
             statistics_mode: default_statistics_mode(),
             theme: default_theme(),
-            background: default_background(),
             theme_color: default_theme_color(),
             terminal_font_size: default_terminal_font_size(),
             icon_style: default_icon_style(),
@@ -577,9 +574,6 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
     settings.statistics_mode = sanitize_statistics_mode(&settings.statistics_mode);
     if settings.theme.trim().is_empty() {
         settings.theme = default_theme();
-    }
-    if settings.background.trim().is_empty() {
-        settings.background = default_background();
     }
     if settings.theme_color.trim().is_empty() {
         settings.theme_color = default_theme_color();
@@ -953,10 +947,6 @@ fn sanitize_statistics_mode(value: &str) -> String {
 }
 
 fn default_theme() -> String {
-    "Auto".to_string()
-}
-
-fn default_background() -> String {
     "Auto".to_string()
 }
 

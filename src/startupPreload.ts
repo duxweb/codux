@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AIGlobalHistorySnapshot } from "./ai/history";
+import type { AIGlobalHistorySnapshot, AIHistoryProjectState } from "./ai/history";
 import type { PetSnapshot } from "./ai/petState";
 import type { AIRuntimeStateSnapshot } from "./ai/types";
 import { readCachedProjectListSnapshot, writeCachedProjectListSnapshot } from "./projectSnapshotCache";
@@ -59,6 +59,31 @@ async function preloadRuntimeSnapshotsOnce() {
   if (!projectList?.projects.length) {
     await Promise.allSettled(preloadTasks);
     return;
+  }
+
+  const selectedProject =
+    projectList.projects.find((project) => project.id === projectList.selectedProjectId) ?? projectList.projects[0];
+  if (selectedProject) {
+    preloadTasks.push(
+      invoke<AIHistoryProjectState>("ai_history_project_state", {
+        project: {
+          id: selectedProject.id,
+          name: selectedProject.name,
+          path: selectedProject.path,
+        },
+      })
+        .then((state) => {
+          const runtimeStore = useRuntimeStore.getState();
+          if (state.snapshot?.sessions.length) {
+            runtimeStore.setAIProjectSessions(selectedProject.path, {
+              sessions: state.snapshot.sessions,
+              updatedAt: Date.now(),
+            });
+          }
+          runtimeStore.setAIProjectState(selectedProject.path, state);
+        })
+        .catch((error) => console.error("failed to preload ai project history state", error)),
+    );
   }
 
   const projects = projectList.projects.map((project) => ({

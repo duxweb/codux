@@ -145,7 +145,7 @@ export function PetDexWindow() {
   return (
     <WindowFrame title={tm("pet.dex.title", "Petdex")} mainClassName="px-0 py-0" mainScrollable={false}>
       <div className="relative grid h-full min-h-0 grid-cols-[270px_minmax(0,1fr)] overflow-hidden">
-        <aside className="min-h-0 border-r border-line/60 bg-fill/[0.02]">
+        <aside className="min-h-0 border-r border-border-subtle/60 bg-fill/[0.02]">
           <div className="flex h-full flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay p-4">
               <div className="flex items-center gap-2">
@@ -156,7 +156,7 @@ export function PetDexWindow() {
                 {tm("pet.dex.subtitle", "A record of every coding companion you've raised")}
               </div>
 
-              <div className="my-4 h-px bg-line" />
+              <div className="my-4 h-px bg-border-subtle" />
 
               <div className="grid gap-2">
                 <DexStat
@@ -188,7 +188,7 @@ export function PetDexWindow() {
                 />
               </div>
 
-              <div className="my-4 h-px bg-line" />
+              <div className="my-4 h-px bg-border-subtle" />
 
               {pet.snapshot.claimedAt ? (
                 <CurrentPetDetail
@@ -208,7 +208,7 @@ export function PetDexWindow() {
               )}
             </div>
 
-            <div className="border-t border-line/60 p-4">
+            <div className="border-t border-border-subtle/60 p-4">
               {pet.snapshot.claimedAt ? (
                 <Button
                   block
@@ -268,7 +268,7 @@ export function PetDexWindow() {
                 </div>
               </div>
               {customPets.length === 0 ? (
-                <div className="rounded-[10px] border border-line bg-fill/[0.02] px-4 py-6 text-center text-xs text-ink-faint">
+                <div className="rounded-[10px] border border-border-subtle bg-fill/[0.02] px-4 py-6 text-center text-xs text-ink-faint">
                   {tm(
                     "pet.custom.install.subtitle",
                     "Paste a Petdex page, verify the package, then install it into Codux.",
@@ -290,7 +290,7 @@ export function PetDexWindow() {
             <div>
               <div className="mb-3 text-[15px] font-bold">{tm("pet.archive.history", "Archive History")}</div>
               {pet.snapshot.legacy.length === 0 ? (
-                <div className="rounded-[10px] border border-line bg-fill/[0.02] px-4 py-6 text-center text-xs text-ink-faint">
+                <div className="rounded-[10px] border border-border-subtle bg-fill/[0.02] px-4 py-6 text-center text-xs text-ink-faint">
                   {tm("pet.dex.archived.none", "No archived pets yet")}
                 </div>
               ) : (
@@ -408,7 +408,7 @@ function SpeciesCard({ item, unlocked, onSelect }: { item: PetCatalogItem; unloc
       className={`grid min-h-[136px] justify-items-center rounded-[8px] border px-2.5 py-3 text-center transition-colors ${
         unlocked
           ? "border-brand-blue/25 bg-fill/[0.035] hover:bg-fill/[0.06]"
-          : "border-line bg-fill/[0.025] opacity-80"
+          : "border-border-subtle bg-fill/[0.025] opacity-80"
       }`}
     >
       <div
@@ -516,7 +516,7 @@ function DexSpotlightOverlay({
   return (
     <div className="absolute inset-0 z-30 grid place-items-center bg-black/35 p-6 no-drag" onMouseDown={onClose}>
       <div
-        className="w-[360px] rounded-[14px] border border-line-strong bg-surface-chrome p-5 text-center text-ink shadow-pop"
+        className="w-[360px] rounded-[14px] border border-border bg-surface-main p-5 text-center text-ink shadow-floating"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div

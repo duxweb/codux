@@ -8,7 +8,7 @@ export type PanelTone = "neutral" | "info" | "success" | "warning" | "danger";
 
 export function PanelHeader({ title, trailing }: { title: ReactNode; trailing?: ReactNode }) {
   return (
-    <div className="h-[42px] px-3.5 flex items-center justify-between flex-shrink-0 border-b border-line">
+    <div className="h-[42px] px-3.5 flex items-center justify-between flex-shrink-0 border-b border-border-subtle">
       <div className="text-sm font-semibold text-ink truncate">{title}</div>
       {trailing ? <div className="flex items-center gap-1.5">{trailing}</div> : null}
     </div>
@@ -33,12 +33,12 @@ export function PanelCard({
   const needsClip = divider || bodyPadding === false;
   return (
     <div
-      className={`rounded-[10px] border border-line bg-fill/[0.035] ${needsClip ? "overflow-hidden" : ""} ${className ?? ""}`}
+      className={`rounded-[10px] border border-border-subtle bg-fill/[0.035] ${needsClip ? "overflow-hidden" : ""} ${className ?? ""}`}
     >
       {title !== undefined && (
         <div
           className={`flex items-center justify-between gap-2 px-3 ${
-            divider ? "h-[34px] border-b border-line" : "pt-3 pb-0"
+            divider ? "h-[34px] border-b border-border-subtle" : "pt-3 pb-0"
           }`}
         >
           <div className="text-xs font-semibold text-ink truncate">{title}</div>
@@ -62,7 +62,7 @@ export function PanelSection({
   return (
     <section className={className}>
       {title !== undefined && (
-        <div className="px-3.5 py-2 text-xs font-semibold tracking-wide text-ink-faint border-y border-line bg-fill/[0.02]">
+        <div className="px-3.5 py-2 text-xs font-semibold tracking-wide text-ink-faint border-y border-border-subtle bg-surface-main/58">
           {title}
         </div>
       )}
@@ -72,7 +72,7 @@ export function PanelSection({
 }
 
 const toneClass: Record<PanelTone, string> = {
-  neutral: "bg-fill/[0.025] border-t border-line text-ink-soft",
+  neutral: "bg-fill/[0.025] border-t border-border-subtle text-ink-soft",
   info: "bg-brand-blue text-on-brand",
   success: "bg-brand-green text-on-brand",
   warning: "bg-brand-amber text-on-brand",

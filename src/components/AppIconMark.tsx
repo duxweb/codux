@@ -8,10 +8,10 @@ type AppIconPalette = {
 };
 
 const appIconPalettes: Record<AppIconStyleName, AppIconPalette> = {
-  default: { top: "rgb(61 128 250)", bottom: "rgb(41 92 219)" },
-  cobalt: { top: "rgb(31 36 51)", bottom: "rgb(20 23 33)" },
-  sunset: { top: "rgb(245 107 82)", bottom: "rgb(224 77 66)" },
-  forest: { top: "rgb(46 158 115)", bottom: "rgb(31 128 92)" },
+  default: { top: "rgb(61 128 250)", bottom: "rgb(55 115 238)" },
+  cobalt: { top: "rgb(31 36 51)", bottom: "rgb(28 32 46)" },
+  sunset: { top: "rgb(245 107 82)", bottom: "rgb(238 96 75)" },
+  forest: { top: "rgb(46 158 115)", bottom: "rgb(41 146 106)" },
 };
 
 export const appIconStyles = [
@@ -56,11 +56,11 @@ export function AppIconMark({
           <stop offset="1" stopColor={palette.bottom} />
         </linearGradient>
         <radialGradient id={`${id}-top`} cx="50%" cy="18%" r="50%">
-          <stop offset="0" stopColor="white" stopOpacity="0.1" />
+          <stop offset="0" stopColor="white" stopOpacity="0.04" />
           <stop offset="1" stopColor="white" stopOpacity="0" />
         </radialGradient>
         <radialGradient id={`${id}-bottom`} cx="50%" cy="92%" r="45%">
-          <stop offset="0" stopColor="black" stopOpacity="0.08" />
+          <stop offset="0" stopColor="black" stopOpacity="0.03" />
           <stop offset="1" stopColor="black" stopOpacity="0" />
         </radialGradient>
         <filter id={`${id}-shadow`} x="-20%" y="-20%" width="140%" height="140%">

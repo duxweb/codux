@@ -112,8 +112,8 @@ export function MemoryManagerWindow() {
       mainClassName="px-0 py-0"
       mainScrollable={false}
     >
-      <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden bg-surface-chrome">
-        <aside className="min-h-0 border-r border-line/60 bg-fill/[0.025]">
+      <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden bg-surface-main">
+        <aside className="min-h-0 border-r border-border-subtle/60 bg-fill/[0.025]">
           <div className="flex h-full flex-col">
             <div className="px-4 pb-4 pt-5">
               <div className="flex items-center gap-2">
@@ -151,7 +151,7 @@ export function MemoryManagerWindow() {
 
         <section className="flex min-h-0 min-w-0 flex-col">
           <header
-            className="drag-region border-b border-line/60 px-5 pb-4 pt-5"
+            className="drag-region border-b border-border-subtle/60 px-5 pb-4 pt-5"
             data-tauri-drag-region
             onPointerDownCapture={startWindowDrag}
           >
@@ -184,13 +184,13 @@ export function MemoryManagerWindow() {
               </div>
             </div>
 
-            <div className="no-drag mt-4 inline-flex rounded-[9px] border border-line bg-fill/[0.04] p-0.5">
+            <div className="no-drag mt-4 inline-flex rounded-[9px] border border-border-subtle bg-fill/[0.04] p-0.5">
               {tabs.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   className={`h-7 rounded-[7px] px-3 text-[12px] font-semibold transition-colors ${
-                    tab === item.id ? "bg-surface-chrome text-ink shadow-sm" : "text-ink-mute hover:text-ink"
+                    tab === item.id ? "bg-surface-main text-ink shadow-sm" : "text-ink-mute hover:text-ink"
                   }`}
                   onClick={() => setTab(item.id)}
                 >
@@ -296,7 +296,7 @@ function SummaryList({
   return (
     <div className="grid gap-3 p-4">
       {summaries.map((summary) => (
-        <article key={summary.id} className="rounded-[8px] border border-line/70 bg-surface-chrome p-3.5">
+        <article key={summary.id} className="rounded-[8px] border border-border-subtle/70 bg-surface-main p-3.5">
           <div className="flex items-start gap-2">
             <Badge
               text={formatI18n(tm("memory.manager.summary.version_format", "v%lld"), summary.version)}
@@ -406,7 +406,7 @@ function EntryCard({
   onDelete: (entry: MemoryEntry) => void;
 }) {
   return (
-    <article className="rounded-[8px] border border-line/70 bg-surface-chrome p-3.5">
+    <article className="rounded-[8px] border border-border-subtle/70 bg-surface-main p-3.5">
       <div className="flex items-start gap-2">
         <Badge text={kindTitle(entry.kind)} color={kindColor[entry.kind]} />
         <Badge text={tierTitle(entry.tier)} color={tierColor[entry.tier]} />
@@ -470,8 +470,8 @@ function SummaryEditor({
 
   return (
     <div className="absolute inset-0 z-20 grid place-items-center bg-black/30 p-8">
-      <div className="flex max-h-full w-[560px] flex-col rounded-[10px] border border-line-strong bg-surface-chrome shadow-pop">
-        <div className="border-b border-line/60 px-5 py-4">
+      <div className="flex max-h-full w-[560px] flex-col rounded-[10px] border border-border bg-surface-main shadow-floating">
+        <div className="border-b border-border-subtle/60 px-5 py-4">
           <div className="text-[16px] font-bold">{tm("memory.manager.edit_summary.title", "Edit Summary Memory")}</div>
           <div className="mt-1 text-xs text-ink-mute">
             {tm(
@@ -482,12 +482,12 @@ function SummaryEditor({
         </div>
         <div className="min-h-0 flex-1 p-4">
           <textarea
-            className="h-[260px] w-full resize-none rounded-[8px] border border-line bg-fill/[0.035] p-3 text-[13px] leading-relaxed text-ink outline-none focus:border-brand-blue/50"
+            className="h-[260px] w-full resize-none rounded-[8px] border border-border-subtle bg-fill/[0.035] p-3 text-[13px] leading-relaxed text-ink outline-none focus:border-brand-blue/50"
             value={draft}
             onChange={(event) => setDraft(event.currentTarget.value)}
           />
         </div>
-        <div className="flex justify-end gap-2 border-t border-line/60 px-4 py-3">
+        <div className="flex justify-end gap-2 border-t border-border-subtle/60 px-4 py-3">
           <Button variant="ghost" disabled={isSaving} onPress={onClose}>
             {tm("common.cancel", "Cancel")}
           </Button>
@@ -539,7 +539,7 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="grid h-full place-items-center px-8 text-center">
       <div>
-        <div className="mx-auto grid h-11 w-11 place-items-center rounded-[10px] border border-line bg-fill/[0.04] text-ink-mute">
+        <div className="mx-auto grid h-11 w-11 place-items-center rounded-[10px] border border-border-subtle bg-fill/[0.04] text-ink-mute">
           <Zap size={18} />
         </div>
         <div className="mt-3 text-sm font-semibold text-ink">{title}</div>

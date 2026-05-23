@@ -281,6 +281,7 @@ export class AISessionStore {
       ...session,
       tool: canonicalToolName(snapshot.tool) || session.tool,
       aiSessionId: normalize(snapshot.externalSessionID) ?? session.aiSessionId,
+      transcriptPath: normalize(snapshot.transcriptPath) ?? session.transcriptPath,
       model: normalize(snapshot.model) ?? session.model,
       state,
       status: statusForState(state),

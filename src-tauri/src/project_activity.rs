@@ -132,10 +132,9 @@ impl ProjectActivityCoordinator {
         }
         if let Ok(mut queue) = self.activation_queue.lock() {
             queue.retain(|request| request.project.id != project.id);
-            let refresh_ai_immediately = self.mark_ai_activation(&project.id);
             queue.push_back(ActivationRequest {
                 project,
-                refresh_ai_immediately,
+                refresh_ai_immediately: false,
             });
             self.activation_signal.notify_one();
         }
@@ -236,21 +235,6 @@ impl ProjectActivityCoordinator {
             app,
             project: TrackedProject::from(project),
         });
-    }
-
-    pub fn prewarm_worktrees(
-        &self,
-        app: AppHandle,
-        project_store: Arc<ProjectStore>,
-        projects: Vec<ProjectSummary>,
-    ) {
-        for project in projects {
-            self.git_jobs.submit(GitJob::Worktree {
-                app: app.clone(),
-                project_store: Arc::clone(&project_store),
-                project,
-            });
-        }
     }
 
     pub fn remove_project(&self, project_id: &str) {

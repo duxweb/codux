@@ -35,7 +35,7 @@ import {
 import { openAppWindow, revealMainAppWindow } from "./windowing";
 import { broadcastWorkspaceCommand, listenWorkspaceCommand } from "./workspaceCommands";
 import { ensureWorktreeSnapshotEventCacheSubscription, useWorktreeSnapshot } from "./worktree/snapshot";
-import { subscribeAppSettings } from "./settings";
+import { readAppSettings, subscribeAppSettings } from "./settings";
 import { runAfterFirstPaint, runWhenIdle } from "./startupScheduler";
 import { systemConfirm, systemMessage } from "./systemDialog";
 import { isTerminalInputActive } from "./terminal/focus";
@@ -117,6 +117,7 @@ function App() {
   const [isCreatingWorktree, setCreatingWorktree] = useState(false);
   const [isSecondaryStartupReady, setSecondaryStartupReady] = useState(!window.__TAURI_INTERNALS__);
   const [aiVersion, setAiVersion] = useState(0);
+  const [iconStyle, setIconStyle] = useState(() => readAppSettings().iconStyle);
   const [, startInspectorTransition] = useTransition();
   const focusScopeRef = useRef<ShortcutScope>("workspace");
   const activeWorkspaceKeyRef = useRef("");
@@ -230,6 +231,7 @@ function App() {
     [activeProjectId, projectsWithAIState],
   );
   useEffect(() => subscribeAppSettings(() => void aiRuntime.start()), []);
+  useEffect(() => subscribeAppSettings((settings) => setIconStyle(settings.iconStyle)), []);
   useEffect(() => {
     if (!window.__TAURI_INTERNALS__) return;
     const reportWindowState = () => {
@@ -481,25 +483,6 @@ function App() {
     async (target: ProjectWorktreeSnapshot, options?: { removeBranch?: boolean }) => {
       if (!selectedProjectWithAIState || target.isDefault) return;
       const removeBranch = options?.removeBranch ?? false;
-      const messageKey = removeBranch ? "worktree.remove_with_branch.message_format" : "worktree.remove.message_format";
-      const fallbackMessage = removeBranch
-        ? "Remove %@ and delete its local branch? This cannot be undone."
-        : "Remove %@ from Codux and the Git worktree list? The branch will not be deleted.";
-      if (
-        !(await systemConfirm(
-          tm(messageKey, fallbackMessage).replace("%@", target.branch || target.name),
-          {
-            title: tm("worktree.remove.title", "Remove Worktree"),
-            kind: "warning",
-            okLabel: removeBranch
-              ? tm("worktree.menu.remove_with_branch", "Remove and Delete Branch")
-              : tm("worktree.menu.remove", "Remove"),
-            cancelLabel: tm("common.cancel", "Cancel"),
-          },
-        ))
-      ) {
-        return;
-      }
       try {
         const next = await worktree.remove({
           projectId: selectedProjectWithAIState.id,
@@ -820,10 +803,10 @@ function App() {
         />
 
         <div className="flex-1 min-w-0 flex">
-          <div className="flex-1 min-w-0 flex rounded-tl-workspace overflow-hidden border-t border-l border-line bg-surface-terminal/95">
+          <div className="flex-1 min-w-0 flex rounded-tl-workspace overflow-hidden border-t border-l border-border bg-surface-secondary/95">
             {selectedProjectWithAIState && (
               <aside
-                className={`flex-shrink-0 overflow-hidden border-r border-line bg-fill/[0.025] transition-[width,opacity] duration-150 ${
+                className={`flex-shrink-0 overflow-hidden border-r border-border bg-fill/[0.025] transition-[width,opacity] duration-150 ${
                   isTaskSidebarExpanded ? "w-[216px] opacity-100" : "w-0 opacity-0 pointer-events-none"
                 }`}
                 aria-hidden={!isTaskSidebarExpanded}
@@ -864,14 +847,18 @@ function App() {
                   onSessionChange={setSession}
                 />
               ) : (
-                <WelcomeWorkspace onCreateProject={openProjectCreateWindow} onOpenFolder={openProjectFolder} />
+                <WelcomeWorkspace
+                  iconStyle={iconStyle}
+                  onCreateProject={openProjectCreateWindow}
+                  onOpenFolder={openProjectFolder}
+                />
               )}
             </div>
           </div>
 
           {visibleRightPanel && (
             <div
-              className="w-[320px] flex-shrink-0 border-t border-l border-line"
+              className="w-[320px] flex-shrink-0 border-t border-l border-border"
               onPointerDown={() => setShortcutFocusScope("right-sidebar")}
               onFocusCapture={() => setShortcutFocusScope("right-sidebar")}
             >
@@ -885,9 +872,11 @@ function App() {
 }
 
 function WelcomeWorkspace({
+  iconStyle,
   onCreateProject,
   onOpenFolder,
 }: {
+  iconStyle: string;
   onCreateProject: () => void;
   onOpenFolder: () => void;
 }) {
@@ -896,7 +885,7 @@ function WelcomeWorkspace({
     <section className="flex h-full min-h-0 flex-col px-10 py-5">
       <div className="flex flex-1 items-center justify-center">
         <div className="flex w-full max-w-[360px] flex-col items-center text-center">
-          <AppIconMark size={72} className="mb-5 drop-shadow-[0_3px_6px_rgb(0_0_0_/_0.08)]" />
+          <AppIconMark styleName={iconStyle} size={72} className="mb-5 drop-shadow-[0_3px_6px_rgb(0_0_0_/_0.08)]" />
           <h1 className="text-[22px] font-bold leading-tight tracking-normal text-ink/90">{title}</h1>
           <p className="mt-1.5 max-w-[320px] text-[13px] leading-5 text-ink-soft/80">
             {tm("welcome.subtitle", "Create a project in the sidebar to get started")}
@@ -943,7 +932,7 @@ function WelcomeActionButton({
       className={`mx-auto !h-auto min-w-[136px] rounded-[9px] px-4 py-2.5 text-[15px] font-medium shadow-[0_2px_5px_rgb(0_0_0_/_0.08)] active:scale-[0.985] ${
         isPrimary
           ? "border border-white/15 text-on-brand"
-          : "border border-line bg-fill/[0.09] text-ink hover:bg-fill/[0.13]"
+          : "border border-border-subtle bg-fill/[0.09] text-ink hover:bg-fill/[0.13]"
       }`}
     >
       <span className="inline-flex items-center justify-center gap-[9px]">

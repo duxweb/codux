@@ -3,14 +3,10 @@ import { Input as HeroInput, ListBox, Modal, Select as HeroSelect } from "@herou
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useAIHistorySnapshot } from "../ai/history";
 import { formatI18n, tm } from "../i18n";
-import {
-  listProjectOpenApplications,
-  openProjectInApplication,
-  revealProjectInFileManager,
-  type ProjectOpenApplication,
-} from "../ide";
+import { revealProjectInFileManager } from "../ide";
 import { Button } from "./Button";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
+import { Checkbox } from "./Form";
 import { PressableButton } from "./PressableButton";
 import { normalizeGitEventPath } from "../git/status";
 import { useRuntimeStore } from "../runtimeStore";
@@ -74,9 +70,10 @@ export function TaskSidebar({
   const [worktreeName, setWorktreeName] = useState("");
   const [baseBranch, setBaseBranch] = useState("");
   const [createError, setCreateError] = useState("");
-  const [applications, setApplications] = useState<ProjectOpenApplication[]>([]);
   const [optimisticSelectedId, setOptimisticSelectedId] = useState("");
   const [historyHeight, setHistoryHeight] = useState<number | null>(null);
+  const [pendingRemoveWorktree, setPendingRemoveWorktree] = useState<WorktreeRow | null>(null);
+  const [removeBranchWithWorktree, setRemoveBranchWithWorktree] = useState(false);
   const [statisticsMode, setStatisticsMode] = useState<AIStatisticsMode>(
     () => readAppSettings().statisticsMode as AIStatisticsMode,
   );
@@ -140,18 +137,6 @@ export function TaskSidebar({
     setOptimisticSelectedId(selectedWorktreeId ?? "");
   }, [selectedWorktreeId, selectedProject?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void listProjectOpenApplications()
-      .then((items) => {
-        if (!cancelled) setApplications(items.filter((item) => item.installed));
-      })
-      .catch((error) => console.error("failed to load installed applications", error));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   useEffect(
     () =>
       subscribeAppSettings((settings) => {
@@ -195,6 +180,22 @@ export function TaskSidebar({
 
   const handleCreatePress = () => {
     if (canCreate) submitCreate();
+  };
+
+  const openRemoveConfirm = (worktree: WorktreeRow) => {
+    setPendingRemoveWorktree(worktree);
+    setRemoveBranchWithWorktree(false);
+  };
+
+  const closeRemoveConfirm = () => {
+    setPendingRemoveWorktree(null);
+    setRemoveBranchWithWorktree(false);
+  };
+
+  const confirmRemoveWorktree = () => {
+    if (!pendingRemoveWorktree) return;
+    onRemoveWorktree?.(pendingRemoveWorktree.worktree, { removeBranch: removeBranchWithWorktree });
+    closeRemoveConfirm();
   };
 
   const beginHistoryResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -244,7 +245,7 @@ export function TaskSidebar({
           )}
         </div>
       </div>
-      <div className="h-px bg-line opacity-60" />
+      <div className="h-px bg-border-subtle opacity-60" />
 
       <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay px-2 pt-3 pb-2.5">
         {worktreeRows.length > 0 ? (
@@ -255,7 +256,7 @@ export function TaskSidebar({
               aiState={aiStateByWorktreeId[worktree.id] ?? "idle"}
               isSelected={selectedRowId === worktree.id}
               onSelect={() => selectWorktree(worktree.id)}
-              onRemove={worktree.worktree.isDefault ? undefined : (options) => onRemoveWorktree?.(worktree.worktree, options)}
+              onRemove={worktree.worktree.isDefault ? undefined : () => openRemoveConfirm(worktree)}
               onMerge={worktree.worktree.isDefault ? undefined : (options) => onMergeWorktree?.(worktree.worktree, options)}
               onOpenTerminal={() => {
                 onOpenWorktreeTerminal?.(worktree.worktree);
@@ -267,7 +268,6 @@ export function TaskSidebar({
                 onSelectWorktree?.(worktree.id);
                 onReviewWorktree?.(worktree.worktree);
               }}
-              applications={applications}
               repositoryMessage={repositoryMessage}
             />
           ))
@@ -286,7 +286,7 @@ export function TaskSidebar({
           onPointerDown={beginHistoryResize}
           aria-label={tm("common.resize", "Resize")}
         />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-line transition-colors peer-hover/history-resize:bg-line-strong" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-border-subtle transition-colors peer-hover/history-resize:bg-border" />
         <div className="flex h-[38px] items-center justify-between gap-2 bg-fill/[0.045] px-3.5 py-1.5">
           <span className="truncate text-sm font-semibold text-ink-soft">
             {tm("ai.sessions.history", "Session History")}
@@ -310,7 +310,7 @@ export function TaskSidebar({
       <Modal isOpen={isCreating} onOpenChange={setCreating}>
         <Modal.Backdrop className="no-drag fixed inset-0 z-[9000] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
           <Modal.Container size="sm" placement="center">
-            <Modal.Dialog className="no-drag w-[min(380px,calc(100vw-32px))] rounded-[12px] border border-line-strong bg-surface-chrome p-4 text-ink shadow-pop outline-none">
+            <Modal.Dialog className="no-drag w-[min(380px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main p-4 text-ink shadow-floating outline-none">
               <Modal.Header className="mb-3 p-0">
                 <div className="min-w-0">
                   <Modal.Heading className="text-sm font-semibold text-ink">
@@ -396,6 +396,59 @@ export function TaskSidebar({
           </Modal.Container>
         </Modal.Backdrop>
       </Modal>
+      <Modal isOpen={Boolean(pendingRemoveWorktree)} onOpenChange={(open) => (!open ? closeRemoveConfirm() : undefined)}>
+        <Modal.Backdrop className="no-drag fixed inset-0 z-[9000] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
+          <Modal.Container size="sm" placement="center">
+            <Modal.Dialog className="no-drag w-[min(400px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main p-4 text-ink shadow-floating outline-none">
+              <Modal.Header className="mb-3 p-0">
+                <div className="min-w-0">
+                  <Modal.Heading className="text-sm font-semibold text-ink">
+                    {tm("worktree.remove.title", "Remove Worktree")}
+                  </Modal.Heading>
+                  <div className="mt-1 truncate text-xs text-ink-faint">
+                    {pendingRemoveWorktree?.title ?? ""}
+                  </div>
+                </div>
+              </Modal.Header>
+              <div className="grid gap-3">
+                <p className="text-sm leading-5 text-ink-soft">
+                  {formatI18n(
+                    tm("worktree.remove.message_format", "Remove %@ from Codux and the Git worktree list? The branch will not be deleted."),
+                    pendingRemoveWorktree?.branch || pendingRemoveWorktree?.title || "",
+                  )}
+                </p>
+                <div className="rounded-[8px] bg-fill/[0.04] px-3 py-2">
+                  <Checkbox
+                    checked={removeBranchWithWorktree}
+                    onChange={setRemoveBranchWithWorktree}
+                    label={tm("worktree.remove.delete_branch_checkbox", "Also delete the local branch")}
+                  />
+                </div>
+                {removeBranchWithWorktree && (
+                  <p className="text-xs leading-5 text-brand-red">
+                    {tm("worktree.remove.delete_branch_warning", "Deleting the branch cannot be undone.")}
+                  </p>
+                )}
+                <Modal.Footer className="mt-1 flex justify-end gap-2 p-0">
+                  <Button size="sm" variant="ghost" onPressUp={closeRemoveConfirm}>
+                    {tm("common.cancel", "Cancel")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    className={removeBranchWithWorktree ? "bg-brand-red text-on-brand" : "bg-brand-blue text-on-brand"}
+                    onPressUp={confirmRemoveWorktree}
+                  >
+                    {removeBranchWithWorktree
+                      ? tm("worktree.menu.remove_with_branch", "Remove and Delete Branch")
+                      : tm("worktree.menu.remove", "Remove")}
+                  </Button>
+                </Modal.Footer>
+              </div>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
     </aside>
   );
 }
@@ -410,7 +463,6 @@ const WorktreeCard = memo(function WorktreeCard({
   onOpenTerminal,
   onOpenFolder,
   onReview,
-  applications,
   repositoryMessage,
 }: {
   worktree: WorktreeRow;
@@ -422,18 +474,10 @@ const WorktreeCard = memo(function WorktreeCard({
   onOpenTerminal?: () => void;
   onOpenFolder?: () => void;
   onReview?: () => void;
-  applications: ProjectOpenApplication[];
   repositoryMessage?: string;
 }) {
   const contextMenu = useContextMenu();
-  const ideApplications = useMemo(() => applications.filter((item) => item.id !== "terminal"), [applications]);
   const interactionBg = isSelected ? "bg-brand-blue/14" : "hover:bg-fill/4";
-  const openWithApplication = (application: ProjectOpenApplication) => {
-    if (!worktree.worktree.path) return;
-    void openProjectInApplication(worktree.worktree.path, application.id).catch((error) =>
-      console.error("failed to open worktree in application", error),
-    );
-  };
   const menuItems = (
     <>
       <ContextMenuItem label={tm("worktree.menu.open_terminal", "Open Terminal")} onSelect={onOpenTerminal}>
@@ -452,21 +496,6 @@ const WorktreeCard = memo(function WorktreeCard({
         <ListChecks size={13} />
         {tm("worktree.menu.review", "Review")}
       </ContextMenuItem>
-      {ideApplications.length > 0 && (
-        <>
-          <ContextMenuSeparator />
-          {ideApplications.map((application) => (
-            <ContextMenuItem
-              key={application.id}
-              label={formatOpenTitle(application.label)}
-              onSelect={() => openWithApplication(application)}
-              disabled={!worktree.worktree.path}
-            >
-              {formatOpenTitle(application.label)}
-            </ContextMenuItem>
-          ))}
-        </>
-      )}
       {onRemove && (
         <>
           <ContextMenuSeparator />
@@ -475,23 +504,11 @@ const WorktreeCard = memo(function WorktreeCard({
               <ContextMenuItem label={tm("worktree.menu.merge", "Merge to Mainline")} onSelect={() => onMerge()}>
                 {tm("worktree.menu.merge", "Merge to Mainline")}
               </ContextMenuItem>
-              <ContextMenuItem
-                label={tm("worktree.menu.merge_remove_branch", "Merge, Remove and Delete Branch")}
-                onSelect={() => onMerge({ removeBranch: true })}
-              >
-                {tm("worktree.menu.merge_remove_branch", "Merge, Remove and Delete Branch")}
-              </ContextMenuItem>
               <ContextMenuSeparator />
             </>
           )}
-          <ContextMenuItem label={tm("worktree.menu.remove", "Remove")} onSelect={() => onRemove()}>
+          <ContextMenuItem label={tm("worktree.menu.remove", "Remove")} onSelect={onRemove}>
             {tm("worktree.menu.remove", "Remove")}
-          </ContextMenuItem>
-          <ContextMenuItem
-            label={tm("worktree.menu.remove_with_branch", "Remove and Delete Branch")}
-            onSelect={() => onRemove({ removeBranch: true })}
-          >
-            {tm("worktree.menu.remove_with_branch", "Remove and Delete Branch")}
           </ContextMenuItem>
         </>
       )}
@@ -536,16 +553,12 @@ const WorktreeCard = memo(function WorktreeCard({
   );
 });
 
-function formatOpenTitle(label: string) {
-  return tm("open.application.format", "Open in %@").replace("%@", label);
-}
-
 function WorktreeActivityDot({ state }: { state: WorktreeAIState }) {
   if (state === "running") {
     return (
       <span className="relative grid h-3 w-3 place-items-center rounded-full" aria-hidden="true">
-        <span className="absolute inset-0 rounded-full border-2 border-white/35 border-t-white motion-safe:animate-spin" />
-        <span className="h-2.5 w-2.5 rounded-full bg-brand-amber" />
+        <span className="absolute h-3 w-3 rounded-full bg-brand-amber/70 motion-safe:animate-ping" />
+        <span className="relative h-2.5 w-2.5 rounded-full bg-brand-amber" />
       </span>
     );
   }

@@ -43,20 +43,20 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
         <Dropdown isOpen={open} onOpenChange={setOpen}>
           <Dropdown.Trigger
             isDisabled={!enabled}
-            className="flex h-[26px] items-center rounded-pill border border-line bg-fill/[0.055] text-ink-soft transition-colors hover:border-line-strong hover:bg-fill/10 hover:text-ink disabled:opacity-45"
+            className="flex h-[26px] items-center rounded-pill border border-border-subtle bg-fill/[0.055] text-ink-soft transition-colors hover:border-border hover:bg-fill/10 hover:text-ink disabled:opacity-45"
             aria-label={tm("open.ide", "Open in IDE")}
           >
             <span className="grid h-full w-[30px] place-items-center rounded-l-pill">
               <ArrowTopRight size={OPEN_BUTTON_ICON_SIZE} strokeWidth={2.35} />
             </span>
-            <span className="h-3.5 w-px bg-line-strong/60" />
+            <span className="h-3.5 w-px bg-border/60" />
             <span className="grid h-full w-[22px] place-items-center rounded-r-pill">
               <ChevronDown size={OPEN_BUTTON_ICON_SIZE} className="text-ink-mute" strokeWidth={2.4} />
             </span>
           </Dropdown.Trigger>
           <Dropdown.Popover
             placement="bottom end"
-            className="min-w-[210px] rounded-[10px] border border-line-strong bg-surface-popover p-1 shadow-pop"
+            className="min-w-[210px] rounded-[10px] border border-border-subtle bg-surface-popover p-1 shadow-floating"
           >
             <Dropdown.Menu
               aria-label={tm("open.ide", "Open in IDE")}
@@ -70,11 +70,11 @@ export function OpenInIDEButton({ project }: { project?: WorkspaceProject }) {
                 openWith(id);
               }}
             >
-              <Dropdown.Item id="finder" className="menu-item">
+              <Dropdown.Item id="finder">
                 <span className="truncate">{tm("open.finder", "Open in Finder")}</span>
               </Dropdown.Item>
               {applications.map((item) => (
-                <Dropdown.Item key={item.id} id={item.id} className="menu-item" textValue={formatOpenTitle(item.label)}>
+                <Dropdown.Item key={item.id} id={item.id} textValue={formatOpenTitle(item.label)}>
                   <span className="truncate">{formatOpenTitle(item.label)}</span>
                 </Dropdown.Item>
               ))}

@@ -136,10 +136,13 @@ const windowConfig: Record<AppWindowKind, WindowConfig> = {
   },
 };
 
-const opaqueAppWindowBackground = "#14171d";
+const darkAppWindowBackground = "#14171d";
+const lightAppWindowBackground = "#ffffff";
 const childWindowTrafficLightPosition = () => (isMacPlatform() ? new LogicalPosition(14, 24) : undefined);
 const usesNativeOverlayTitlebar = () => isMacPlatform();
 const childWindowDecorations = (kind?: AppWindowKind) => kind !== "desktop-pet" && !isWindowsPlatform();
+const childWindowBackground = (kind?: AppWindowKind) =>
+  kind === "desktop-pet" ? "#00000000" : currentAppThemeIsLight() ? lightAppWindowBackground : darkAppWindowBackground;
 
 export async function openAppWindow(kind: AppWindowKind, query?: Record<string, string | null | undefined>) {
   if (!window.__TAURI_INTERNALS__) {
@@ -177,7 +180,7 @@ export async function openAppWindow(kind: AppWindowKind, query?: Record<string, 
     hiddenTitle: usesNativeOverlayTitlebar() && kind !== "desktop-pet" ? true : undefined,
     acceptFirstMouse: true,
     trafficLightPosition: kind === "desktop-pet" ? undefined : childWindowTrafficLightPosition(),
-    backgroundColor: kind === "desktop-pet" ? "#00000000" : opaqueAppWindowBackground,
+    backgroundColor: childWindowBackground(kind),
     visible: false,
     focus: false,
     skipTaskbar: kind === "desktop-pet" ? true : undefined,
@@ -299,7 +302,7 @@ export async function openGitDiffWindow(options: GitDiffWindowOptions) {
     hiddenTitle: usesNativeOverlayTitlebar() ? true : undefined,
     trafficLightPosition: childWindowTrafficLightPosition(),
     acceptFirstMouse: true,
-    backgroundColor: opaqueAppWindowBackground,
+    backgroundColor: childWindowBackground(),
     visible: false,
     focus: false,
   });
@@ -323,6 +326,31 @@ function stableWindowSegment(value: string) {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
   return hash.toString(36);
+}
+
+function currentAppThemeIsLight() {
+  try {
+    const raw = window.localStorage.getItem("codux:settings:v1");
+    const settings = raw ? (JSON.parse(raw) as { theme?: string }) : null;
+    const theme = normalizeThemeName(settings?.theme ?? "Auto");
+    if (!theme || theme === "auto" || theme === "system") {
+      return window.matchMedia?.("(prefers-color-scheme: light)")?.matches ?? false;
+    }
+    return (
+      theme.includes("day") ||
+      theme.includes("latte") ||
+      theme.includes("dawn") ||
+      theme.includes("light") ||
+      theme.includes("nord light") ||
+      theme.includes("atom one light")
+    );
+  } catch {
+    return window.matchMedia?.("(prefers-color-scheme: light)")?.matches ?? false;
+  }
+}
+
+function normalizeThemeName(value: string) {
+  return value.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
 }
 
 export async function revealCurrentAppWindow() {

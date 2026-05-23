@@ -48,12 +48,12 @@ fn icon_pixel(x: f32, y: f32, size: f32, palette: IconPalette) -> [f32; 4] {
     let mut rgb = mix_rgb(palette.top, palette.bottom, t);
 
     let top_center = [size * 0.5, rect_min + size * 0.08];
-    let top_glow = (1.0 - distance_to(x, y, top_center) / (size * 0.5)).clamp(0.0, 1.0) * 0.10;
+    let top_glow = (1.0 - distance_to(x, y, top_center) / (size * 0.5)).clamp(0.0, 1.0) * 0.04;
     rgb = mix_rgb(rgb, [1.0, 1.0, 1.0], top_glow);
 
     let bottom_center = [size * 0.5, rect_max];
     let bottom_shade =
-        (1.0 - distance_to(x, y, bottom_center) / (size * 0.45)).clamp(0.0, 1.0) * 0.08;
+        (1.0 - distance_to(x, y, bottom_center) / (size * 0.45)).clamp(0.0, 1.0) * 0.03;
     rgb = mix_rgb(rgb, [0.0, 0.0, 0.0], bottom_shade);
 
     let cx = size * 0.5;
@@ -88,19 +88,19 @@ fn icon_palette(style: &str) -> IconPalette {
     match style {
         "cobalt" => IconPalette {
             top: [0.12, 0.14, 0.20],
-            bottom: [0.08, 0.09, 0.13],
+            bottom: [0.11, 0.13, 0.18],
         },
         "sunset" => IconPalette {
             top: [0.96, 0.42, 0.32],
-            bottom: [0.88, 0.30, 0.26],
+            bottom: [0.93, 0.38, 0.29],
         },
         "forest" => IconPalette {
             top: [0.18, 0.62, 0.45],
-            bottom: [0.12, 0.50, 0.36],
+            bottom: [0.16, 0.57, 0.42],
         },
         _ => IconPalette {
             top: [0.24, 0.50, 0.98],
-            bottom: [0.16, 0.36, 0.86],
+            bottom: [0.22, 0.45, 0.93],
         },
     }
 }

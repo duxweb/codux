@@ -69,7 +69,7 @@ export function ContextMenu({
       <div
         role="menu"
         aria-label={ariaLabel}
-        className="fixed z-[10000] min-w-[184px] rounded-[10px] border border-line-strong bg-surface-popover p-1 text-ink shadow-pop"
+        className="fixed z-[10000] min-w-[184px] rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating"
         style={{
           left: menu.x,
           top: menu.y,
@@ -112,7 +112,7 @@ export function ContextMenuItem({
       type="button"
       disabled={disabled}
       tabIndex={-1}
-      className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] font-medium text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink disabled:opacity-50"
+      className="flex min-h-7 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium leading-4 text-ink-soft outline-none transition-colors hover:bg-default-hover hover:text-ink disabled:opacity-50"
       aria-label={label}
       onClick={() => {
         if (disabled) return;
@@ -126,5 +126,5 @@ export function ContextMenuItem({
 }
 
 export function ContextMenuSeparator() {
-  return <div role="separator" className="my-1 h-px bg-line/70" />;
+  return <div role="separator" className="my-1 h-px bg-border-subtle/70" />;
 }

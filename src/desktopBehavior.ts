@@ -13,6 +13,10 @@ const TEXT_ENTRY_SELECTOR = [
   "[data-codux-terminal-input='true']",
   "[data-allow-tab-navigation]",
 ].join(", ");
+const TEXT_SELECTION_SELECTOR = [
+  TEXT_ENTRY_SELECTOR,
+  "[data-allow-text-selection]",
+].join(", ");
 const FOCUSABLE_CHROME_SELECTOR = ["button", "a[href]", "[role='button']", "[tabindex]"].join(", ");
 
 export function installDesktopBrowserBehavior() {
@@ -31,7 +35,9 @@ export function installDesktopBrowserBehavior() {
   window.addEventListener("dragenter", preventBrowserFileDrop, options);
   window.addEventListener("dragover", preventBrowserFileDrop, options);
   window.addEventListener("drop", preventBrowserFileDrop, options);
+  window.addEventListener("pointerdown", clearBrowserSelectionOutsideTextSelection, options);
   window.addEventListener("pointerup", clearChromeFocusAfterPointer, options);
+  window.addEventListener("selectionstart", preventChromeTextSelection, options);
   window.addEventListener("keydown", preventDesktopKeyboardDefaults, options);
 
   return () => controller.abort();
@@ -59,6 +65,24 @@ function preventBrowserFileDrop(event: DragEvent) {
     return;
   }
   event.preventDefault();
+}
+
+function preventChromeTextSelection(event: Event) {
+  if (closestElement(event.target, TEXT_SELECTION_SELECTOR)) {
+    return;
+  }
+  event.preventDefault();
+}
+
+function clearBrowserSelectionOutsideTextSelection(event: PointerEvent) {
+  if (closestElement(event.target, TEXT_SELECTION_SELECTOR)) {
+    return;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) {
+    return;
+  }
+  selection.removeAllRanges();
 }
 
 function preventDesktopKeyboardDefaults(event: KeyboardEvent) {

@@ -287,7 +287,7 @@ pub fn load_indexed_global_history(
             continue;
         }
         let Some(snapshot) = store.indexed_project_snapshot(&conn, project)? else {
-            return Ok(None);
+            continue;
         };
         total_tokens += snapshot.project_summary.project_total_tokens;
         cached_input_tokens += snapshot.project_summary.project_cached_input_tokens;
@@ -296,7 +296,7 @@ pub fn load_indexed_global_history(
         indexed_count += 1;
     }
 
-    if indexed_count != requested_count {
+    if requested_count > 0 && indexed_count == 0 {
         return Ok(None);
     }
     Ok(Some(AIGlobalHistorySnapshot {

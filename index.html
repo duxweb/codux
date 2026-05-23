@@ -4,12 +4,66 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Codux</title>
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const route = window.location.hash.replace(/^#/, "");
+        const routePath = route.split("?")[0] || route;
+        const isStandalone =
+          routePath === "/about" ||
+          routePath === "/settings" ||
+          routePath === "/project-create" ||
+          routePath === "/pet-claim" ||
+          routePath === "/pet-dex" ||
+          routePath === "/pet-custom-install" ||
+          routePath === "/memory-manager" ||
+          route.startsWith("/terminal") ||
+          route.startsWith("/git-diff");
+        if (isStandalone) {
+          root.classList.add("codux-standalone-route");
+        }
+
+        const settingsKey = "codux:settings:v1";
+        const normalize = (value) => String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+        const resolveTheme = (theme) => {
+          const value = normalize(theme);
+          if (!value || value === "auto" || value === "system") {
+            return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+          }
+          if (
+            value.includes("day") ||
+            value.includes("latte") ||
+            value.includes("dawn") ||
+            value.includes("light") ||
+            value.includes("nord light") ||
+            value.includes("atom one light")
+          ) {
+            return "light";
+          }
+          return "dark";
+        };
+
+        let theme = "Auto";
+        try {
+          const settings = JSON.parse(window.localStorage.getItem(settingsKey) || "{}");
+          theme = settings.theme || theme;
+        } catch {
+          theme = "Auto";
+        }
+
+        const resolved = resolveTheme(theme);
+        root.dataset.theme = resolved;
+        root.classList.toggle("dark", resolved !== "light");
+        root.style.colorScheme = resolved;
+        root.style.setProperty("--codux-prepaint-bg", resolved === "light" ? "rgb(250 251 253)" : "rgb(18 22 30)");
+        root.style.setProperty("--codux-prepaint-fg", resolved === "light" ? "rgb(28 35 46)" : "rgb(231 236 243)");
+      })();
+    </script>
     <style>
       :root {
-        color-scheme: dark;
         font-family:
           -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", ui-sans-serif, sans-serif;
-        background: transparent;
+        background: var(--codux-prepaint-bg, transparent);
       }
 
       html,
@@ -22,8 +76,8 @@
       }
 
       body {
-        background: transparent;
-        color: rgb(231 236 243);
+        background: var(--codux-prepaint-bg, transparent);
+        color: var(--codux-prepaint-fg, rgb(231 236 243));
         -webkit-font-smoothing: antialiased;
       }
 
@@ -38,6 +92,13 @@
         box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
         -webkit-app-region: drag;
         app-region: drag;
+      }
+
+      :root[data-theme="light"] #codux-startup-shell {
+        background:
+          linear-gradient(180deg, rgb(255 255 255 / 0.9), rgb(242 246 252 / 0.94)),
+          rgb(250 251 253);
+        box-shadow: inset 0 0 0 1px rgb(18 25 36 / 0.08);
       }
 
       html.codux-standalone-route #codux-startup-shell {
@@ -94,25 +155,6 @@
     </style>
   </head>
   <body>
-    <script>
-      (() => {
-        const route = window.location.hash.replace(/^#/, "");
-        const routePath = route.split("?")[0] || route;
-        const isStandalone =
-          routePath === "/about" ||
-          routePath === "/settings" ||
-          routePath === "/project-create" ||
-          routePath === "/pet-claim" ||
-          routePath === "/pet-dex" ||
-          routePath === "/pet-custom-install" ||
-          routePath === "/memory-manager" ||
-          route.startsWith("/terminal") ||
-          route.startsWith("/git-diff");
-        if (isStandalone) {
-          document.documentElement.classList.add("codux-standalone-route");
-        }
-      })();
-    </script>
     <div id="root">
       <main id="codux-startup-shell" aria-label="Codux is starting" data-tauri-drag-region>
         <div class="codux-startup-stack" data-tauri-drag-region>

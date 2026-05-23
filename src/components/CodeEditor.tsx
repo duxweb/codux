@@ -5,6 +5,7 @@ import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
+import { php } from "@codemirror/lang-php";
 import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
@@ -324,6 +325,8 @@ function extensionForLanguage(language: string): Extension | null {
       return html();
     case "markdown":
       return markdown();
+    case "php":
+      return php();
     case "python":
       return python();
     case "rust":
@@ -430,7 +433,7 @@ const coduxEditorTheme = EditorView.theme(
     "&": {
       height: "100%",
       minHeight: "0",
-      backgroundColor: "var(--surface-editor)",
+      backgroundColor: "var(--color-surface-secondary)",
       color: "var(--color-ink)",
     },
     ".cm-scroller": {
@@ -459,9 +462,9 @@ const coduxEditorTheme = EditorView.theme(
       boxShadow: "inset 2px 0 0 color-mix(in oklab, var(--color-brand-red) 72%, transparent)",
     },
     ".cm-gutters": {
-      backgroundColor: "var(--surface-editor)",
+      backgroundColor: "var(--color-surface-secondary)",
       color: "var(--color-ink-faint)",
-      borderRight: "1px solid var(--color-line)",
+      borderRight: "1px solid var(--color-border-subtle)",
     },
     ".cm-lineNumbers .cm-gutterElement": {
       padding: "0 12px 0 14px",
@@ -488,8 +491,8 @@ const coduxEditorTheme = EditorView.theme(
       borderRadius: "3px",
     },
     ".cm-tooltip": {
-      backgroundColor: "var(--color-surface-panel)",
-      borderColor: "var(--color-line)",
+      backgroundColor: "var(--color-surface-muted)",
+      borderColor: "var(--color-border-subtle)",
       color: "var(--color-ink)",
     },
   },

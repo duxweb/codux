@@ -13,7 +13,6 @@ export type AppSettings = {
   aiBackgroundRefresh: string;
   statisticsMode: string;
   theme: string;
-  background: string;
   themeColor: string;
   terminalFontSize: string;
   iconStyle: string;
@@ -229,7 +228,6 @@ export const defaultSettings: AppSettings = {
   aiBackgroundRefresh: "600",
   statisticsMode: "normalized",
   theme: "Auto",
-  background: "Auto",
   themeColor: "Blue",
   terminalFontSize: "14",
   iconStyle: "default",
@@ -414,15 +412,10 @@ function normalizeAppSettings(settings: Partial<AppSettings>): AppSettings {
   };
   update.channel = update.channel === "beta" ? "beta" : "stable";
   update.endpoint = normalizeUpdateEndpoint(update.endpoint, update.enabled, update.channel);
-  const legacyThemeColor = inferThemeColorFromLegacyBackground(settings.background);
-  const themeColorSource =
-    settings.themeColor === defaultSettings.themeColor && legacyThemeColor ? legacyThemeColor : settings.themeColor;
-  const background = normalizeBackgroundSetting(settings.background);
-  const themeColor = normalizeThemeColorSetting(themeColorSource);
+  const themeColor = normalizeThemeColorSetting(settings.themeColor);
   return {
     ...defaultSettings,
     ...settings,
-    background,
     themeColor,
     notificationChannels: {
       ...defaultSettings.notificationChannels,
@@ -445,7 +438,6 @@ function normalizeAppSettings(settings: Partial<AppSettings>): AppSettings {
   };
 }
 
-const backgroundSettingLabels = ["Auto", "Zinc", "Neutral", "Stone", "Slate"] as const;
 const themeColorSettingLabels = [
   "Blue",
   "Sky",
@@ -486,21 +478,11 @@ function canonicalAppearanceLabel(value: string | undefined, labels: readonly st
   return labels.find((label) => normalizeAppearanceName(label) === normalized);
 }
 
-function normalizeBackgroundSetting(value?: string) {
-  return canonicalAppearanceLabel(value, backgroundSettingLabels) ?? defaultSettings.background;
-}
-
 function normalizeThemeColorSetting(value?: string) {
   const direct = canonicalAppearanceLabel(value, themeColorSettingLabels);
   if (direct) return direct;
   const alias = legacyThemeColorAliases[normalizeAppearanceName(value)];
   return canonicalAppearanceLabel(alias, themeColorSettingLabels) ?? defaultSettings.themeColor;
-}
-
-function inferThemeColorFromLegacyBackground(value?: string) {
-  const normalized = normalizeAppearanceName(value);
-  if (canonicalAppearanceLabel(value, themeColorSettingLabels)) return value;
-  return legacyThemeColorAliases[normalized];
 }
 
 export function normalizeStatisticsMode(value?: string): AIStatisticsMode {

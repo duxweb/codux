@@ -169,6 +169,7 @@ export function languageForPath(path: string) {
   if (["json", "json5", "jsonl", "map"].includes(ext) || name.endsWith(".jsonc")) return "json";
   if (["css", "scss", "sass", "less"].includes(ext)) return "css";
   if (["html", "htm", "xhtml"].includes(ext)) return "html";
+  if (["php", "phtml", "php3", "php4", "php5", "phps", "inc", "module", "theme"].includes(ext)) return "php";
   if (["md", "markdown", "mdx"].includes(ext)) return "markdown";
   if (["py", "pyw"].includes(ext)) return "python";
   if (ext === "rs") return "rust";
@@ -195,7 +196,6 @@ export function languageForPath(path: string) {
   if (ext === "dart") return "dart";
   if (ext === "lua") return "lua";
   if (ext === "r") return "r";
-  if (ext === "php") return "html";
   return "plain";
 }
 

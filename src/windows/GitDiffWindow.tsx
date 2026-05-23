@@ -112,9 +112,9 @@ export function GitDiffWindow() {
         {diff ? (
           <UnifiedDiffView diff={diff} />
         ) : (
-          <div className="h-full grid place-items-center bg-surface-editor text-center px-6">
+          <div className="h-full grid place-items-center bg-surface-secondary text-center px-6">
             <div>
-              <div className="w-11 h-11 mx-auto rounded-[10px] border border-line bg-fill/[0.04] grid place-items-center text-ink-mute">
+              <div className="w-11 h-11 mx-auto rounded-[10px] border border-border-subtle bg-fill/[0.04] grid place-items-center text-ink-mute">
                 <FileCode2 size={18} />
               </div>
               <div className="mt-3 text-sm font-semibold text-ink">
@@ -134,7 +134,7 @@ export function GitDiffWindow() {
 function UnifiedDiffView({ diff }: { diff: string }) {
   const lines = useMemo(() => parseUnifiedDiff(diff), [diff]);
   return (
-    <div className="h-full min-h-0 overflow-auto scrollbar-overlay bg-surface-editor text-[12px] font-mono leading-[1.55]">
+    <div className="h-full min-h-0 overflow-auto scrollbar-overlay bg-surface-secondary text-[12px] font-mono leading-[1.55]">
       <div className="min-w-max py-2">
         {lines.map((line) => (
           <div
@@ -151,10 +151,10 @@ function UnifiedDiffView({ diff }: { diff: string }) {
                       : "border-transparent text-ink-soft"
             }`}
           >
-            <span className="select-none border-r border-line/50 px-2 text-right text-ink-faint">
+            <span className="select-none border-r border-border-subtle/50 px-2 text-right text-ink-faint">
               {line.oldLine ?? ""}
             </span>
-            <span className="select-none border-r border-line/50 px-2 text-right text-ink-faint">
+            <span className="select-none border-r border-border-subtle/50 px-2 text-right text-ink-faint">
               {line.newLine ?? ""}
             </span>
             <code className="whitespace-pre px-3">{line.text || " "}</code>

@@ -132,7 +132,13 @@ export function Toggle({
   disabled?: boolean;
 }) {
   return (
-    <HSwitch isSelected={checked} onChange={(value) => onChange?.(value)} isDisabled={disabled} size="md">
+    <HSwitch
+      className="settings-switch"
+      isSelected={checked}
+      onChange={(value) => onChange?.(value)}
+      isDisabled={disabled}
+      size="md"
+    >
       <HSwitch.Control>
         <HSwitch.Thumb />
       </HSwitch.Control>
@@ -211,8 +217,8 @@ export function SettingsCard({
           </div>
         </div>
       )}
-      <div className="overflow-hidden rounded-[10px] bg-surface-card/30 px-3.5">
-        <div className="divide-y divide-line/70 [&>*]:py-3.5 [&>*:first-child]:pt-3.5 [&>*:last-child]:pb-3.5">
+      <div className="settings-card-surface overflow-hidden rounded-[10px] px-3.5">
+        <div className="divide-y divide-border-subtle/45 [&>*]:py-3.5 [&>*:first-child]:pt-3.5 [&>*:last-child]:pb-3.5">
           {children}
         </div>
       </div>
