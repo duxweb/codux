@@ -170,6 +170,10 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
   setAIProjectState: (key, projectState) =>
     set((state) => {
       const stripped = stripAIProjectStateSessions(projectState);
+      const existing = state.aiProjectStateByKey[key];
+      if (existing && isSameAIHistoryProjectState(existing, stripped)) {
+        return state;
+      }
       const nextAIProjectStateByKey = {
         ...state.aiProjectStateByKey,
         [key]: stripped,
@@ -246,6 +250,10 @@ function stripAIGlobalHistorySessions(snapshot: AIGlobalHistorySnapshot | null):
     ...snapshot,
     sessions: [],
   };
+}
+
+function isSameAIHistoryProjectState(left: AIHistoryProjectState, right: AIHistoryProjectState) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function shortTraceKey(key: string) {
