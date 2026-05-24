@@ -24,6 +24,7 @@ import { ensureGitReviewEventCacheSubscription } from "./git/review";
 import { ensureGitStatusEventCacheSubscription } from "./git/status";
 import { readCachedProjectListSnapshot, writeCachedProjectListSnapshot } from "./projectSnapshotCache";
 import { useRuntimeStore } from "./runtimeStore";
+import { isShortcutBoundaryEvent } from "./keyboardBoundary";
 import {
   dispatchShortcut,
   isConfiguredShortcut,
@@ -81,50 +82,9 @@ function isTextEntryTarget(target: EventTarget | null) {
 }
 
 function shouldSkipGlobalShortcutDispatch(event: KeyboardEvent) {
-  if (isInteractiveOverlayEvent(event)) return true;
+  if (isShortcutBoundaryEvent(event)) return true;
   if (!isTerminalInputActive(event.target)) return false;
   return !shouldTerminalSkipShell(event);
-}
-
-const INTERACTIVE_OVERLAY_SELECTOR = [
-  "[role='dialog']",
-  "[role='menu']",
-  "[role='menuitem']",
-  "[role='menuitemcheckbox']",
-  "[role='menuitemradio']",
-  "[role='listbox']",
-  "[role='option']",
-  "[role='combobox']",
-  "[aria-haspopup='menu']",
-  "[aria-haspopup='listbox']",
-  "[data-slot='dropdown-menu']",
-  "[data-slot='list-box']",
-  "[data-slot='popover']",
-].join(", ");
-
-function isInteractiveOverlayEvent(event: KeyboardEvent) {
-  if (!isOverlayNavigationKey(event)) return false;
-  return Boolean(closestElement(event.target, INTERACTIVE_OVERLAY_SELECTOR) || closestElement(document.activeElement, INTERACTIVE_OVERLAY_SELECTOR));
-}
-
-function isOverlayNavigationKey(event: KeyboardEvent) {
-  return (
-    event.key === "ArrowDown" ||
-    event.key === "ArrowUp" ||
-    event.key === "ArrowLeft" ||
-    event.key === "ArrowRight" ||
-    event.key === "Home" ||
-    event.key === "End" ||
-    event.key === "PageDown" ||
-    event.key === "PageUp" ||
-    event.key === "Enter" ||
-    event.key === " " ||
-    event.key === "Escape"
-  );
-}
-
-function closestElement(target: EventTarget | null, selector: string) {
-  return target instanceof Element ? target.closest(selector) : null;
 }
 
 function worktreeIdsForProject(

@@ -317,6 +317,7 @@ impl AIUsageStore {
                 session.external_session_id,
                 session.project_id,
                 session.project_name,
+                session.project_path,
                 session.session_title,
                 session.first_seen_at,
                 session.last_seen_at,
@@ -377,9 +378,9 @@ impl AIUsageStore {
                     let source: String = row.get(0)?;
                     let session_key: String = row.get(1)?;
                     let external_session_id: Option<String> = row.get(2)?;
-                    let first_seen_at: f64 = row.get(6)?;
-                    let last_seen_at: f64 = row.get(7)?;
-                    let stored_active_duration: i64 = row.get(9)?;
+                    let first_seen_at: f64 = row.get(7)?;
+                    let last_seen_at: f64 = row.get(8)?;
+                    let stored_active_duration: i64 = row.get(10)?;
                     let active_duration_seconds = cutoff
                         .map(|cutoff| {
                             if last_seen_at <= cutoff {
@@ -401,19 +402,20 @@ impl AIUsageStore {
                         external_session_id,
                         project_id: row.get(3)?,
                         project_name: row.get(4)?,
-                        session_title: row.get(5)?,
+                        project_path: row.get(5)?,
+                        session_title: row.get(6)?,
                         first_seen_at,
                         last_seen_at,
                         last_tool: Some(source),
-                        last_model: row.get(8)?,
+                        last_model: row.get(9)?,
                         active_duration_seconds,
-                        request_count: row.get(10)?,
-                        total_input_tokens: row.get(11)?,
-                        total_output_tokens: row.get(12)?,
-                        total_tokens: row.get(13)?,
-                        cached_input_tokens: row.get(14)?,
-                        today_tokens: row.get(15)?,
-                        today_cached_input_tokens: row.get(16)?,
+                        request_count: row.get(11)?,
+                        total_input_tokens: row.get(12)?,
+                        total_output_tokens: row.get(13)?,
+                        total_tokens: row.get(14)?,
+                        cached_input_tokens: row.get(15)?,
+                        today_tokens: row.get(16)?,
+                        today_cached_input_tokens: row.get(17)?,
                     })
                 },
             )?
@@ -1543,6 +1545,7 @@ fn build_snapshot_from_rows(
             external_session_id: session.external_session_id,
             project_id: project.id.clone(),
             project_name: project.name.clone(),
+            project_path: project.path.clone(),
             session_title: session.title.unwrap_or_else(|| project.name.clone()),
             first_seen_at: session.first_seen_at,
             last_seen_at: session.last_seen_at,

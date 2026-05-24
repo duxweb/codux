@@ -20,6 +20,7 @@ import {
 import { terminalControlSequence } from "../terminal/keymap";
 import { t } from "../i18n";
 import { isWindowsPlatform } from "../platform";
+import { runtimeTrace } from "../runtimeTrace";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 
 type TerminalRendererAdapter = {
@@ -29,6 +30,7 @@ type TerminalRendererAdapter = {
   focus: () => void;
   blur: () => void;
   fit: () => void;
+  restoreVisible: () => void;
   refreshTheme: () => void;
   setRenderer: (renderer: TerminalResolvedRenderer) => void;
   setFontSize: (fontSize: number) => void;
@@ -187,6 +189,30 @@ function XtermRenderer({
     terminal.loadAddon(unicode11Addon);
     terminal.unicode.activeVersion = "11";
     terminal.open(host);
+    runtimeTrace("terminal-view", `mount rows=${terminal.rows} cols=${terminal.cols}`);
+
+    const forceRendererRefresh = (reason: string) => {
+      if (disposed) return;
+      window.requestAnimationFrame(() => {
+        if (disposed) return;
+        try {
+          webglAddon?.clearTextureAtlas();
+          terminal.clearTextureAtlas();
+        } catch {
+          // Renderer may be switching during WebGL initialization.
+        }
+        runtimeTrace(
+          "terminal-view",
+          `clear_texture_atlas reason=${reason} rows=${terminal.rows} cols=${terminal.cols} canvases=${terminal.element?.querySelectorAll("canvas").length ?? 0}`,
+        );
+      });
+    };
+
+    const restoreVisible = () => {
+      flushQueuedWritesNow();
+      scheduleFit(true);
+      forceRendererRefresh("visible");
+    };
 
     const disposeWebgl = () => {
       webglLoadVersion += 1;
@@ -247,6 +273,7 @@ function XtermRenderer({
           webglCanvases = [
             ...(terminal.element?.querySelectorAll<HTMLCanvasElement>("canvas") ?? []),
           ].filter((canvas) => !existingCanvases.has(canvas));
+          forceRendererRefresh("webgl-ready");
         })
         .catch((error) => {
           console.warn("failed to load xterm webgl renderer", error);
@@ -499,6 +526,8 @@ function XtermRenderer({
         terminal.reset();
         if (history) writeQueued(history);
         scheduleFit(true);
+        forceRendererRefresh("reset");
+        window.setTimeout(() => forceRendererRefresh("reset-delayed"), 80);
       },
       clear: () => {
         flushQueuedWritesNow();
@@ -516,6 +545,7 @@ function XtermRenderer({
         host.classList.remove("focused");
       },
       fit: () => fit(),
+      restoreVisible,
       refreshTheme,
       setRenderer,
       setFontSize: (fontSize) => {
@@ -573,11 +603,13 @@ function XtermRenderer({
         window.removeEventListener("blur", releaseSelectionAfterWindowBlur);
         textInputAdapter?.dispose();
         unregisterInput?.();
+        const canvasCount = terminal.element?.querySelectorAll("canvas").length ?? 0;
         disposeWebgl();
         for (const disposable of disposables) {
           disposable.dispose();
         }
         terminal.dispose();
+        runtimeTrace("terminal-view", `dispose canvases=${canvasCount}`);
       },
     };
 
@@ -674,6 +706,7 @@ export function TerminalView({
   const onDisposedRef = useRef(onDisposed);
   const sessionRef = useRef<TerminalRuntimeSession | undefined>(terminalRuntime.getSession(terminalId));
   const shellRef = useRef<HTMLElement | null>(null);
+  const wasActiveRef = useRef(false);
   const [adapterVersion, setAdapterVersion] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [session, setSession] = useState<TerminalRuntimeSession | undefined>(() => sessionRef.current);
@@ -800,11 +833,16 @@ export function TerminalView({
     if (!adapter) return;
 
     if (!active || !canAcceptInput) {
+      wasActiveRef.current = false;
       adapter.setInputEnabled(false);
       adapter.blur();
       return;
     }
     adapter.setInputEnabled(true);
+    if (!wasActiveRef.current) {
+      wasActiveRef.current = true;
+      adapter.restoreVisible();
+    }
 
     const frame = window.requestAnimationFrame(() => {
       adapter.focus();

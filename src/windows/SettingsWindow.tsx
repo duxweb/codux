@@ -145,6 +145,26 @@ const gitRefreshOptions = intervalOptions([30, 60, 120, 300, 600]);
 const aiRefreshOptions = intervalOptions([60, 120, 180, 300, 600]);
 const aiBackgroundRefreshOptions = intervalOptions([300, 600, 900, 1800]);
 const memoryExtractionIntervalOptions = intervalOptions([60, 120, 300, 600, 900]);
+const memoryMaxIndexOptions = [5, 10, 20, 50, 100].map((value) => ({
+  value: String(value),
+  label: tm("settings.ai.memory.max_index_sessions.option", "%@ sessions").replace("%@", String(value)),
+}));
+const gitCommitMessageStyleOptions = [
+  {
+    value: "conventional",
+    label: tm("settings.ai.git_commit_message_style.conventional", "Conventional Commits"),
+  },
+  { value: "concise", label: tm("settings.ai.git_commit_message_style.concise", "Concise") },
+  { value: "sentence", label: tm("settings.ai.git_commit_message_style.sentence", "Plain Sentence") },
+  { value: "changelog", label: tm("settings.ai.git_commit_message_style.changelog", "Changelog") },
+];
+const gitCommitMessageLanguageOptions = [
+  {
+    value: "application",
+    label: tm("settings.ai.git_commit_message_language.application", "Follow App Language"),
+  },
+  ...languageOptions.filter((option) => option.value !== "system"),
+];
 const monitorRefreshOptions = intervalOptions([1, 2, 3, 5, 10]);
 const petSpeechModeOptions = ["mixed", "off", "encourage", "roast", "flirty", "chuunibyou"].map((value) => ({
   value,
@@ -851,14 +871,21 @@ function AISection() {
       </SettingsCard>
 
       <SettingsCard title={tm("settings.ai.git_commit_message", "Git Commit Message")}>
-        <Field label={tm("settings.ai.git_commit_message_tone", "Tone")}>
-          <TextInput
+        <Field label={tm("settings.ai.git_commit_message_tone", "Style")}>
+          <Select
             value={ai.gitCommitMessageTone}
-            onChange={(event) => setAI({ gitCommitMessageTone: event.currentTarget.value })}
-            placeholder={tm("settings.ai.git_commit_message_tone_placeholder", "concise, conventional")}
+            onChange={(gitCommitMessageTone) => setAI({ gitCommitMessageTone })}
+            options={gitCommitMessageStyleOptions}
           />
         </Field>
-        <Field label={tm("settings.ai.git_commit_message_style_rules", "Style Rules")}>
+        <Field label={tm("settings.ai.git_commit_message_language", "Language")}>
+          <Select
+            value={ai.gitCommitMessageLanguage}
+            onChange={(gitCommitMessageLanguage) => setAI({ gitCommitMessageLanguage })}
+            options={gitCommitMessageLanguageOptions}
+          />
+        </Field>
+        <Field label={tm("settings.ai.git_commit_message_style_rules", "Additional Rules")}>
           <Textarea
             value={ai.gitCommitMessageStyleRules}
             rows={3}
@@ -896,6 +923,13 @@ function AISection() {
               value={String(ai.memory.extractionIdleDelaySeconds)}
               onChange={(value) => setMemory({ extractionIdleDelaySeconds: Number(value) })}
               options={memoryExtractionIntervalOptions}
+            />
+          </Field>
+          <Field label={tm("settings.ai.memory.max_index_sessions", "Max Recent Sessions")}>
+            <Select
+              value={String(ai.memory.maxIndexSessions)}
+              onChange={(value) => setMemory({ maxIndexSessions: Number(value) })}
+              options={memoryMaxIndexOptions}
             />
           </Field>
           <FormRow label={tm("settings.ai.memory.cross_project_user", "Cross-Project User Memory")}>

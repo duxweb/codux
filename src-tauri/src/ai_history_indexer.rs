@@ -4,10 +4,12 @@ use crate::ai_history::{
     rename_indexed_history_session, AIGlobalHistorySnapshot, AIHistoryProjectRequest,
     AIHistorySnapshot,
 };
+use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{sync_channel, Receiver as StdReceiver, SyncSender};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tauri::async_runtime::{channel, Receiver, Sender};
 use tauri::{AppHandle, Emitter};
 
@@ -76,6 +78,7 @@ impl AIHistoryIndexer {
     pub fn new(app: AppHandle) -> Self {
         let (tx, rx) = channel(16);
         let state = Arc::new(Mutex::new(AIHistoryIndexerState::default()));
+        runtime_trace("ai-history", "indexer started queue_capacity=16");
         tauri::async_runtime::spawn(history_indexer_loop(rx, app.clone(), Arc::clone(&state)));
         Self { tx, state, app }
     }
@@ -149,11 +152,32 @@ impl AIHistoryIndexer {
         &self,
         project: AIHistoryProjectRequest,
     ) -> Result<AIHistoryProjectState, String> {
+        let started_at = Instant::now();
         if let Some(state) = current_project_state(&self.state, &project)? {
+            runtime_trace_elapsed(
+                "ai-history",
+                "project_state memory_cache",
+                started_at,
+                &format!("project={} sessions={}", project.id, state.snapshot.as_ref().map(|snapshot| snapshot.sessions.len()).unwrap_or(0)),
+            );
             return Ok(state);
         }
         let cached_snapshot = indexed_project_snapshot(project.clone()).await?;
         let project_state = seed_project_state(&self.state, &project, cached_snapshot)?;
+        runtime_trace_elapsed(
+            "ai-history",
+            "project_state sqlite_cache",
+            started_at,
+            &format!(
+                "project={} sessions={}",
+                project.id,
+                project_state
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.sessions.len())
+                    .unwrap_or(0)
+            ),
+        );
         Ok(project_state)
     }
 
@@ -246,6 +270,7 @@ async fn history_indexer_loop(
     while let Some(job) = rx.recv().await {
         match job {
             AIHistoryJob::Global { projects, reply } => {
+                runtime_trace("ai-history", &format!("global index start projects={}", projects.len()));
                 let result = run_global_index(projects).await;
                 if let Ok(snapshot) = &result {
                     emit_history_event(
@@ -258,6 +283,10 @@ async fn history_indexer_loop(
                 let _ = reply.send(result);
             }
             AIHistoryJob::RefreshProject { project } => {
+                runtime_trace(
+                    "ai-history",
+                    &format!("project refresh start project={} path={}", project.id, project.path),
+                );
                 if let Ok(next_state) = mark_project_running(&state, &project) {
                     emit_history_event(&app, AIHistoryEvent::ProjectState { state: next_state });
                 }
@@ -298,6 +327,10 @@ async fn history_indexer_loop(
                 );
             }
             AIHistoryJob::RefreshGlobal { projects } => {
+                runtime_trace(
+                    "ai-history",
+                    &format!("global refresh start projects={}", projects.len()),
+                );
                 emit_history_event(
                     &app,
                     AIHistoryEvent::Status {
@@ -492,19 +525,51 @@ fn mark_project_failed(
 async fn indexed_project_snapshot(
     project: AIHistoryProjectRequest,
 ) -> Result<Option<AIHistorySnapshot>, String> {
+    let started_at = Instant::now();
+    let project_id = project.id.clone();
     tauri::async_runtime::spawn_blocking(move || load_indexed_project_history(project))
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())
+        .map(|snapshot| {
+            runtime_trace_elapsed(
+                "ai-history",
+                "load_project_cache",
+                started_at,
+                &format!(
+                    "project={} hit={} sessions={}",
+                    project_id,
+                    snapshot.is_some(),
+                    snapshot.as_ref().map(|snapshot| snapshot.sessions.len()).unwrap_or(0)
+                ),
+            );
+            snapshot
+        })
 }
 
 async fn indexed_global_snapshot(
     projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<Option<AIGlobalHistorySnapshot>, String> {
+    let started_at = Instant::now();
+    let project_count = projects.len();
     tauri::async_runtime::spawn_blocking(move || load_indexed_global_history(projects))
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())
+        .map(|snapshot| {
+            runtime_trace_elapsed(
+                "ai-history",
+                "load_global_cache",
+                started_at,
+                &format!(
+                    "projects={} hit={} sessions={}",
+                    project_count,
+                    snapshot.is_some(),
+                    snapshot.as_ref().map(|snapshot| snapshot.sessions.len()).unwrap_or(0)
+                ),
+            );
+            snapshot
+        })
 }
 
 fn mark_project_progress(
@@ -547,6 +612,9 @@ async fn run_project_index(
     state: Arc<Mutex<AIHistoryIndexerState>>,
     project: AIHistoryProjectRequest,
 ) -> Result<AIHistorySnapshot, String> {
+    let started_at = Instant::now();
+    let project_id = project.id.clone();
+    let project_path = project.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let progress_project = project.clone();
         index_project_history_fresh_with_progress(project, |progress, detail| {
@@ -559,14 +627,45 @@ async fn run_project_index(
     })
     .await
     .map_err(|error| error.to_string())
+    .map(|snapshot| {
+        runtime_trace_elapsed(
+            "ai-history",
+            "run_project_index",
+            started_at,
+            &format!(
+                "project={} path={} sessions={} total_tokens={}",
+                project_id,
+                project_path,
+                snapshot.sessions.len(),
+                snapshot.project_summary.project_total_tokens
+            ),
+        );
+        snapshot
+    })
 }
 
 async fn run_global_index(
     projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<AIGlobalHistorySnapshot, String> {
+    let started_at = Instant::now();
+    let project_count = projects.len();
     tauri::async_runtime::spawn_blocking(move || index_global_history_fresh(projects))
         .await
         .map_err(|error| error.to_string())
+        .map(|snapshot| {
+            runtime_trace_elapsed(
+                "ai-history",
+                "run_global_index",
+                started_at,
+                &format!(
+                    "projects={} sessions={} total_tokens={}",
+                    project_count,
+                    snapshot.sessions.len(),
+                    snapshot.total_tokens
+                ),
+            );
+            snapshot
+        })
 }
 
 fn emit_history_event(app: &AppHandle, event: AIHistoryEvent) {

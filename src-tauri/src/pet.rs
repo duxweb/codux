@@ -2144,6 +2144,7 @@ mod tests {
                 external_session_id: None,
                 project_id: "project-a".to_string(),
                 project_name: "Project A".to_string(),
+                project_path: "/tmp/project-a".to_string(),
                 session_title: "Terminal".to_string(),
                 first_seen_at: 1_800_000_000.0 + index as f64 * 7200.0,
                 last_seen_at: 1_800_000_000.0 + index as f64 * 7200.0 + 2400.0,

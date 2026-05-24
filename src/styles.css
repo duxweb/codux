@@ -19,7 +19,7 @@
   --color-settings-surface: var(--color-surface-main);
   --color-settings-sidebar: var(--color-surface-app);
   --color-settings-card: color-mix(in oklab, var(--color-settings-surface) 95%, white 5%);
-  --color-sider-card: color-mix(in oklab, var(--color-window-surface) 86%, white 14%);
+  --color-sider-card: rgb(255 255 255 / 0.06);
 
   --color-border: rgb(55 64 78);
   --color-border-subtle: rgb(40 48 60);
@@ -184,7 +184,7 @@
   --field-hover: #ffffff;
   --field-focus: #ffffff;
   --default: var(--field-background);
-  --default-hover: var(--field-hover);
+  --default-hover: rgb(236 241 248);
   --minimap-stripes: repeating-linear-gradient(
     to bottom,
     rgb(18 25 36 / 0.14) 0 2px,
@@ -563,10 +563,6 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 .ai-stats-card {
   border: 0;
   background: var(--color-sider-card);
-}
-
-:root[data-theme="dark"] .ai-stats-card {
-  background: color-mix(in oklab, var(--color-sider-card) 74%, transparent);
 }
 
 .settings-card-surface {

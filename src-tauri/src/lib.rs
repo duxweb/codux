@@ -20,6 +20,7 @@ mod power;
 mod project_activity;
 mod project_store;
 mod remote_p2p;
+mod runtime_trace;
 mod ssh;
 mod terminal;
 mod worktree;
@@ -118,6 +119,7 @@ use project_store::{
 };
 use remote_p2p::{RemoteP2PHostTransport, RemoteP2PLane, RemoteP2PSignal};
 use reqwest::header::CONTENT_TYPE;
+use runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use serde_json::{json, Value};
 use sha2::{Digest as _, Sha256};
 use ssh::{
@@ -130,7 +132,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::{thread, time::Duration};
+use std::time::{Duration, Instant};
+use std::thread;
 use tauri::async_runtime::JoinHandle;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::utils::config::Color;
@@ -943,10 +946,23 @@ fn terminal_snapshot(
     state: tauri::State<'_, AppState>,
     session_id: String,
 ) -> Result<String, String> {
-    state
+    let started_at = Instant::now();
+    let snapshot = state
         .terminals
         .snapshot(&session_id)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    runtime_trace_elapsed(
+        "terminal",
+        "snapshot",
+        started_at,
+        &format!("session={} chars={} bytes={}", session_id, snapshot.chars().count(), snapshot.len()),
+    );
+    Ok(snapshot)
+}
+
+#[tauri::command]
+fn runtime_trace_frontend(category: String, message: String) {
+    runtime_trace(&category, &message);
 }
 
 #[tauri::command]
@@ -969,7 +985,17 @@ fn ai_runtime_state_snapshot(state: tauri::State<'_, AppState>) -> AIRuntimeStat
 
 #[tauri::command]
 fn app_runtime_ready(state: tauri::State<'_, AppState>, app: tauri::AppHandle) {
+    let started_at = Instant::now();
     let snapshot = state.projects.list_snapshot();
+    let project_count = snapshot.projects.len();
+    let selected_project_id = snapshot
+        .selected_project_id
+        .clone()
+        .unwrap_or_else(|| "none".to_string());
+    runtime_trace(
+        "startup",
+        &format!("app_runtime_ready start projects={project_count} selected={selected_project_id}"),
+    );
     let _ = app.emit("project:updated", snapshot.clone());
     let _ = app.emit(
         "terminal-layouts:snapshot",
@@ -984,6 +1010,12 @@ fn app_runtime_ready(state: tauri::State<'_, AppState>, app: tauri::AppHandle) {
             project.path,
         );
     }
+    runtime_trace_elapsed(
+        "startup",
+        "app_runtime_ready finish",
+        started_at,
+        &format!("projects={project_count} selected={selected_project_id}"),
+    );
 }
 
 #[tauri::command]
@@ -1193,6 +1225,16 @@ fn memory_extraction_status(
 }
 
 #[tauri::command]
+fn memory_extraction_cancel(
+    state: tauri::State<'_, AppState>,
+) -> Result<MemoryExtractionStatusSnapshot, String> {
+    state
+        .memory
+        .cancel_extraction_queue()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn memory_management_snapshot(
     state: tauri::State<'_, AppState>,
     request: MemoryManagementRequest,
@@ -1282,16 +1324,35 @@ fn memory_update_summary(
 }
 
 #[tauri::command]
-fn memory_index_now(
+async fn memory_index_now(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<MemoryExtractionStatusSnapshot, String> {
     let settings = state.settings.reload_snapshot().ai;
+    let projects = state.projects.project_workspaces_snapshot();
+    let root_projects = state.projects.projects_snapshot();
+    let history_sessions = tauri::async_runtime::spawn_blocking(move || {
+        ai_history::index_global_history_fresh(
+            root_projects
+                .into_iter()
+                .map(|project| AIHistoryProjectRequest {
+                    id: project.id,
+                    name: project.name,
+                    path: project.path,
+                })
+                .collect(),
+        );
+        ai_history::indexed_sessions_since(None)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .unwrap_or_default();
     Arc::clone(&state.memory)
         .process_sessions_now(
             settings,
-            state.projects.project_workspaces_snapshot(),
+            projects,
             state.ai_runtime.state_snapshot().sessions,
+            history_sessions,
             move |event| emit_memory_status_event(&app, event),
         )
         .map_err(|error| error.to_string())
@@ -1473,8 +1534,23 @@ fn git_status(
     app: tauri::AppHandle,
     project_path: String,
 ) -> GitStatusSnapshot {
+    let started_at = Instant::now();
     let snapshot = load_git_status(project_path.clone());
     emit_git_status_snapshot(&app, &state, &project_path, snapshot.clone());
+    runtime_trace_elapsed(
+        "git",
+        "git_status",
+        started_at,
+        &format!(
+            "path={} repo={} staged={} unstaged={} untracked={} commits={}",
+            project_path,
+            snapshot.is_repository,
+            snapshot.staged.len(),
+            snapshot.unstaged.len(),
+            snapshot.untracked.len(),
+            snapshot.commits.len()
+        ),
+    );
     snapshot
 }
 
@@ -1484,6 +1560,7 @@ fn git_refresh_project(
     app: tauri::AppHandle,
     project_path: String,
 ) {
+    runtime_trace("git", &format!("git_refresh_project enqueue path={project_path}"));
     state.project_activity.refresh_git_sidecars_by_path(
         app.clone(),
         Arc::clone(&state.projects),
@@ -1818,6 +1895,11 @@ fn git_append_gitignore(
 #[tauri::command]
 fn git_diff_file(request: GitDiffRequest) -> GitDiffSnapshot {
     load_git_diff_file(request)
+}
+
+#[tauri::command]
+fn git_commit_message_context(project_path: String) -> git::GitCommitMessageContextSnapshot {
+    git::git_commit_message_context(project_path)
 }
 
 #[tauri::command]
@@ -6498,6 +6580,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
+            let setup_started_at = Instant::now();
+            runtime_trace("startup", "setup start");
             configure_debug_identity(app.handle());
             #[cfg(target_os = "windows")]
             configure_windows_main_window(app.handle());
@@ -6506,6 +6590,7 @@ pub fn run() {
                 Arc::new(MemoryStore::load_or_create().map_err(|error| error.to_string())?);
             let _ = memory.recover_interrupted_extractions();
             let projects = Arc::new(ProjectStore::load_or_default());
+            let project_count = projects.projects_snapshot().len();
             let ai_runtime = Arc::new(AIRuntimeBridge::new(
                 Arc::clone(&settings),
                 Arc::clone(&memory),
@@ -6551,6 +6636,14 @@ pub fn run() {
                 .start_listener_background(app.handle().clone());
             let initial_settings = state.settings.snapshot();
             let initial_pet = state.pet.snapshot().ok();
+            runtime_trace(
+                "startup",
+                &format!(
+                    "setup stores loaded projects={} pet_cached={}",
+                    project_count,
+                    initial_pet.is_some()
+                ),
+            );
             let terminals_for_window_events = Arc::clone(&state.terminals);
             let is_exiting_for_window_events = Arc::clone(&state.is_exiting);
             Arc::clone(&project_activity).start(
@@ -6599,6 +6692,12 @@ pub fn run() {
             } else {
                 project_activity.mark_main_window_visible(true);
             }
+            runtime_trace_elapsed(
+                "startup",
+                "setup finish",
+                setup_started_at,
+                &format!("projects={project_count}"),
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -6636,6 +6735,7 @@ pub fn run() {
             app_open_live_log,
             app_open_url,
             app_toggle_devtools,
+            runtime_trace_frontend,
             app_window_close,
             terminal_create,
             terminal_write,
@@ -6663,6 +6763,7 @@ pub fn run() {
             llm_provider_test,
             pet_idle_speech,
             memory_extraction_status,
+            memory_extraction_cancel,
             memory_management_snapshot,
             memory_manager_snapshot,
             memory_archive_entry,
@@ -6717,6 +6818,7 @@ pub fn run() {
             git_remove_remote,
             git_append_gitignore,
             git_diff_file,
+            git_commit_message_context,
             git_review_diff_file,
             git_review_file_content,
             git_watch,

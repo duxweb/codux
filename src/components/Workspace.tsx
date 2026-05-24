@@ -136,52 +136,23 @@ export function Workspace({ mainView, selectedProject, onSessionChange, terminal
       changes: 0,
     };
   }, [canUsePreviewFallback, cwd, projectId, selectedProject]);
-  const [terminalProjects, setTerminalProjects] = useState<WorkspaceProject[]>(() =>
-    fallbackProject ? [fallbackProject] : [],
-  );
   const activeTerminalProject = fallbackProject;
-  const displayedTerminalProjects = useMemo(() => {
-    if (!activeTerminalProject) return terminalProjects;
-    const index = terminalProjects.findIndex((project) => project.id === activeTerminalProject.id);
-    if (index < 0) return [...terminalProjects, activeTerminalProject];
-    if (terminalProjects[index] === activeTerminalProject) return terminalProjects;
-    const next = [...terminalProjects];
-    next[index] = activeTerminalProject;
-    return next;
-  }, [activeTerminalProject, terminalProjects]);
-
-  useLayoutEffect(() => {
-    if (!activeTerminalProject) return;
-    setTerminalProjects((current) => {
-      const index = current.findIndex((project) => project.id === activeTerminalProject.id);
-      if (index < 0) {
-        return [...current, activeTerminalProject];
-      }
-      if (current[index] === activeTerminalProject) return current;
-      const next = [...current];
-      next[index] = activeTerminalProject;
-      return next;
-    });
-  }, [activeTerminalProject]);
 
   return (
     <section className="h-full overflow-hidden">
-      {displayedTerminalProjects.map((project) => {
-        const visible = mainView === "terminal" && project.id === projectId;
-        return (
-          <div key={project.id} className={visible ? "h-full" : "hidden"}>
-            <TerminalMode
-              cwd={project.path}
-              projectId={project.id}
-              projectName={project.name}
-              visible={visible}
-              acceptsWorkspaceCommands={project.id === projectId}
-              focusRequest={terminalFocusRequest}
-              onSessionChange={onSessionChange}
-            />
-          </div>
-        );
-      })}
+      {mainView === "terminal" && activeTerminalProject && (
+        <div className="h-full">
+          <TerminalMode
+            cwd={activeTerminalProject.path}
+            projectId={activeTerminalProject.id}
+            projectName={activeTerminalProject.name}
+            visible
+            acceptsWorkspaceCommands
+            focusRequest={terminalFocusRequest}
+            onSessionChange={onSessionChange}
+          />
+        </div>
+      )}
       {mainView === "files" && (
         <div className="h-full">
           <FilesMode project={selectedProject} />

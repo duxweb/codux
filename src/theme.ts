@@ -926,7 +926,7 @@ function applyDerivedSurfacePalette(root: HTMLElement, appTheme: "light" | "dark
     "--color-sider-card",
     appTheme === "light"
       ? "rgb(255 255 255 / 0.82)"
-      : "color-mix(in oklab, var(--color-window-surface) 86%, white 14%)",
+      : "rgb(255 255 255 / 0.06)",
   );
   if (appTheme === "light") {
     root.style.setProperty("--terminal-cursor", "var(--color-brand-blue)");

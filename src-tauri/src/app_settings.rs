@@ -97,6 +97,8 @@ pub struct AISettings {
     pub global_prompt: String,
     #[serde(default = "default_git_commit_message_tone")]
     pub git_commit_message_tone: String,
+    #[serde(default = "default_git_commit_message_language")]
+    pub git_commit_message_language: String,
     #[serde(default)]
     pub git_commit_message_style_rules: String,
     #[serde(default)]
@@ -161,6 +163,8 @@ pub struct AIMemorySettings {
     pub extraction_idle_delay_seconds: i32,
     #[serde(default = "default_memory_session_extraction_cooldown_seconds")]
     pub session_extraction_cooldown_seconds: i32,
+    #[serde(default = "default_memory_max_index_sessions")]
+    pub max_index_sessions: i32,
     #[serde(default = "default_memory_max_extraction_transcript_lines")]
     pub max_extraction_transcript_lines: i32,
     #[serde(default = "default_memory_max_extraction_transcript_tokens")]
@@ -293,6 +297,7 @@ impl Default for AISettings {
         Self {
             global_prompt: String::new(),
             git_commit_message_tone: default_git_commit_message_tone(),
+            git_commit_message_language: default_git_commit_message_language(),
             git_commit_message_style_rules: String::new(),
             runtime_tools: AIRuntimeToolSettings::default(),
             memory: AIMemorySettings::default(),
@@ -335,6 +340,7 @@ impl Default for AIMemorySettings {
             extraction_idle_delay_seconds: default_memory_extraction_idle_delay_seconds(),
             session_extraction_cooldown_seconds: default_memory_session_extraction_cooldown_seconds(
             ),
+            max_index_sessions: default_memory_max_index_sessions(),
             max_extraction_transcript_lines: default_memory_max_extraction_transcript_lines(),
             max_extraction_transcript_tokens: default_memory_max_extraction_transcript_tokens(),
         }
@@ -640,15 +646,9 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
 
 fn sanitize_ai_settings(mut ai: AISettings) -> AISettings {
     ai.global_prompt = ai.global_prompt.trim().chars().take(20_000).collect();
-    ai.git_commit_message_tone = ai
-        .git_commit_message_tone
-        .trim()
-        .chars()
-        .take(120)
-        .collect();
-    if ai.git_commit_message_tone.is_empty() {
-        ai.git_commit_message_tone = default_git_commit_message_tone();
-    }
+    ai.git_commit_message_tone = sanitize_git_commit_message_style(&ai.git_commit_message_tone);
+    ai.git_commit_message_language =
+        sanitize_git_commit_message_language(&ai.git_commit_message_language);
     ai.git_commit_message_style_rules = ai
         .git_commit_message_style_rules
         .trim()
@@ -877,7 +877,28 @@ fn default_ai_pet_provider_id() -> String {
 }
 
 fn default_git_commit_message_tone() -> String {
-    "concise".to_string()
+    "conventional".to_string()
+}
+
+fn sanitize_git_commit_message_style(value: &str) -> String {
+    match value.trim() {
+        "conventional" | "concise" | "sentence" | "changelog" => value.trim().to_string(),
+        _ => default_git_commit_message_tone(),
+    }
+}
+
+fn default_git_commit_message_language() -> String {
+    "application".to_string()
+}
+
+fn sanitize_git_commit_message_language(value: &str) -> String {
+    match value.trim() {
+        "application" | "english" | "simplifiedChinese" | "traditionalChinese" | "japanese"
+        | "korean" | "french" | "german" | "spanish" | "portugueseBrazil" | "russian" => {
+            value.trim().to_string()
+        }
+        _ => default_git_commit_message_language(),
+    }
 }
 
 fn default_ai_tool_permission_mode() -> String {
@@ -918,6 +939,10 @@ fn default_memory_extraction_idle_delay_seconds() -> i32 {
 
 fn default_memory_session_extraction_cooldown_seconds() -> i32 {
     900
+}
+
+fn default_memory_max_index_sessions() -> i32 {
+    20
 }
 
 fn default_memory_max_extraction_transcript_lines() -> i32 {

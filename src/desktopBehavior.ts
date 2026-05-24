@@ -1,38 +1,13 @@
+import {
+  TEXT_ENTRY_SELECTOR,
+  closestElement,
+  isKeyboardManagedTarget,
+  isTextEntryTarget,
+} from "./keyboardBoundary";
+
 const ALLOW_NATIVE_CONTEXT_MENU_SELECTOR = "[data-native-context-menu]";
 const ALLOW_BROWSER_DRAG_SELECTOR = "[data-browser-drag], [data-app-draggable]";
 const DROP_ZONE_SELECTOR = "[data-drop-zone], [data-allow-drop]";
-const TEXT_ENTRY_SELECTOR = [
-  "input",
-  "textarea",
-  "select",
-  "[contenteditable='true']",
-  "[contenteditable='plaintext-only']",
-  ".cm-editor",
-  ".xterm",
-  ".xterm-helper-textarea",
-  "[data-codux-terminal-input='true']",
-  "[data-allow-tab-navigation]",
-].join(", ");
-const KEYBOARD_MANAGED_SELECTOR = [
-  TEXT_ENTRY_SELECTOR,
-  "[role='tab']",
-  "[role='tablist']",
-  "[role='menu']",
-  "[role='menuitem']",
-  "[role='menuitemcheckbox']",
-  "[role='menuitemradio']",
-  "[role='listbox']",
-  "[role='option']",
-  "[role='combobox']",
-  "[role='dialog']",
-  "[aria-haspopup='menu']",
-  "[aria-haspopup='listbox']",
-  "[data-slot='tabs']",
-  "[data-slot='tab-list']",
-  "[data-slot='dropdown-menu']",
-  "[data-slot='list-box']",
-  "[data-slot='popover']",
-].join(", ");
 const TEXT_SELECTION_SELECTOR = [
   TEXT_ENTRY_SELECTOR,
   "[data-allow-text-selection]",
@@ -112,8 +87,8 @@ function preventDesktopKeyboardDefaults(event: KeyboardEvent) {
 
   if (
     event.key === "Tab" &&
-    !closestElement(event.target, KEYBOARD_MANAGED_SELECTOR) &&
-    !closestElement(document.activeElement, KEYBOARD_MANAGED_SELECTOR)
+    !isKeyboardManagedTarget(event.target) &&
+    !isKeyboardManagedTarget(document.activeElement)
   ) {
     event.preventDefault();
     return;
@@ -150,14 +125,8 @@ function clearChromeFocusAfterPointer(event: PointerEvent) {
   }
 }
 
-function closestElement(target: EventTarget | null, selector: string) {
-  return target instanceof Element ? target.closest(selector) : null;
-}
-
 function isTextEntryEvent(event: KeyboardEvent) {
-  if (closestElement(event.target, TEXT_ENTRY_SELECTOR)) return true;
-  const active = document.activeElement;
-  return active instanceof Element && Boolean(active.closest(TEXT_ENTRY_SELECTOR));
+  return isTextEntryTarget(event.target) || isTextEntryTarget(document.activeElement);
 }
 
 function isPlainPrintableKey(event: KeyboardEvent) {

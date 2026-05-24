@@ -83,7 +83,7 @@ import type { RightPanelKind, WorkspaceProject } from "../types";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 import { openGitDiffWindow } from "../windowing";
 import { systemConfirm } from "../systemDialog";
-import { formatI18n, tm } from "../i18n";
+import { formatI18n, localeFromSettings, tm } from "../i18n";
 import { openLocalizedDialog } from "../localizedDialog";
 import { readAppSettings, subscribeAppSettings, type AISettings, type AIStatisticsMode } from "../settings";
 import { revealProjectInFileManager } from "../ide";
@@ -1028,7 +1028,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
               disabled={isGeneratingCommitMessage}
               onClick={() => {
                 setGeneratingCommitMessage(true);
-                void generateCommitMessage(snapshot)
+                void generateCommitMessage(snapshot, project?.path)
                   .then((message) => {
                     if (message) setCommitMessage(message);
                   })
@@ -1897,11 +1897,12 @@ function compactGitDecorations(decorations: string[]) {
     .map((decoration) => decoration.replace(/^HEAD -> /, "HEAD→").replace(/^origin\//, "o/"));
 }
 
-async function generateCommitMessage(snapshot: GitStatusSnapshot) {
+async function generateCommitMessage(snapshot: GitStatusSnapshot, projectPath?: string) {
   const fallback = fallbackCommitMessage(snapshot);
   if (!fallback || !window.__TAURI_INTERNALS__) return fallback;
-  const ai = readAppSettings().ai;
-  const prompt = buildCommitMessagePrompt(snapshot, ai);
+  const settings = readAppSettings();
+  const context = await loadCommitMessageContext(snapshot, projectPath);
+  const prompt = buildCommitMessagePrompt(snapshot, settings.ai, gitCommitMessageLanguagePrompt(settings), context);
   const response = await invoke<{ text: string }>("llm_complete", {
     request: {
       providerId: null,
@@ -1934,19 +1935,129 @@ function fallbackCommitMessage(snapshot: GitStatusSnapshot) {
   return formatI18n(tm("git.commit.generate.simple_summary_format", "Update %@%@"), summary, suffix);
 }
 
-function buildCommitMessagePrompt(snapshot: GitStatusSnapshot, ai: AISettings) {
+type CommitMessageContext = {
+  diff: string;
+  truncated: boolean;
+  error?: string | null;
+};
+
+async function loadCommitMessageContext(snapshot: GitStatusSnapshot, projectPath?: string): Promise<CommitMessageContext | null> {
+  if (!snapshot.isRepository || !projectPath || !window.__TAURI_INTERNALS__) return null;
+  return invoke<CommitMessageContext>("git_commit_message_context", {
+    projectPath,
+  }).catch((error) => ({
+    diff: "",
+    truncated: false,
+    error: String(error),
+  }));
+}
+
+function buildCommitMessagePrompt(
+  snapshot: GitStatusSnapshot,
+  ai: AISettings,
+  languagePrompt: string,
+  context: CommitMessageContext | null,
+) {
   const files = [...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked].slice(0, 80);
   const fileLines = files
     .map((file) => `- ${file.path} [index:${file.indexStatus.trim() || "-"} worktree:${file.worktreeStatus.trim() || "-"}]`)
     .join("\n");
+  const diffContext = context?.diff.trim()
+    ? [
+        "Staged diff summary:",
+        context.truncated ? "(Diff was compressed/truncated for token budget.)" : "",
+        context.diff.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
   return [
-    `Tone: ${ai.gitCommitMessageTone || "concise"}`,
+    `Commit message style:\n${gitCommitMessageStylePrompt(ai.gitCommitMessageTone)}`,
+    `Output language: ${languagePrompt}.`,
     ai.gitCommitMessageStyleRules ? `Style rules:\n${ai.gitCommitMessageStyleRules}` : "",
     `Current branch: ${snapshot.branch}`,
+    diffContext,
     `Changed files:\n${fileLines}`,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function gitCommitMessageStylePrompt(style: string) {
+  switch (style) {
+    case "concise":
+      return "Write one short imperative subject line. Do not use a type prefix unless it is clearly needed.";
+    case "sentence":
+      return "Write one plain natural-language sentence. Avoid Conventional Commit prefixes.";
+    case "changelog":
+      return "Write a concise subject line plus a short body only when it adds useful release-note context.";
+    case "conventional":
+    default:
+      return [
+        "Use Conventional Commits.",
+        "Format: <type>(optional-scope): <description>.",
+        "Choose type from feat, fix, docs, refactor, perf, test, build, ci, chore, style.",
+        "Use a short lowercase scope only when the touched area is obvious.",
+        "Keep type and scope in English lowercase; apply the selected output language only to the description and body.",
+        "Use imperative mood and keep the subject under 72 characters.",
+      ].join("\n");
+  }
+}
+
+function gitCommitMessageLanguagePrompt(settings: ReturnType<typeof readAppSettings>) {
+  const language =
+    settings.ai.gitCommitMessageLanguage === "application"
+      ? localeFromSettings(settings)
+      : localeFromGitCommitLanguage(settings.ai.gitCommitMessageLanguage);
+  switch (language) {
+    case "zh-Hans":
+      return "Simplified Chinese";
+    case "zh-Hant":
+      return "Traditional Chinese";
+    case "ja":
+      return "Japanese";
+    case "ko":
+      return "Korean";
+    case "fr":
+      return "French";
+    case "de":
+      return "German";
+    case "es":
+      return "Spanish";
+    case "pt-BR":
+      return "Brazilian Portuguese";
+    case "ru":
+      return "Russian";
+    case "en":
+    default:
+      return "English";
+  }
+}
+
+function localeFromGitCommitLanguage(language: string) {
+  switch (language) {
+    case "simplifiedChinese":
+      return "zh-Hans";
+    case "traditionalChinese":
+      return "zh-Hant";
+    case "japanese":
+      return "ja";
+    case "korean":
+      return "ko";
+    case "french":
+      return "fr";
+    case "german":
+      return "de";
+    case "spanish":
+      return "es";
+    case "portugueseBrazil":
+      return "pt-BR";
+    case "russian":
+      return "ru";
+    case "english":
+    default:
+      return "en";
+  }
 }
 
 function sanitizeGeneratedCommitMessage(value: string) {

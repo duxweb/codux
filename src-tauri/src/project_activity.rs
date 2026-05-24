@@ -3,13 +3,11 @@ use crate::ai_history_indexer::AIHistoryIndexer;
 use crate::app_settings::AppSettingsStore;
 use crate::background_queue::{SerialJob, SerialJobQueue};
 use crate::git::{git_review, git_status, GitReviewSnapshot, GitStatusSnapshot};
-use crate::paths::runtime_temp_dir;
+use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use crate::project_store::{ProjectRecord, ProjectStore, ProjectSummary};
 use crate::worktree::{worktree_snapshot, WorktreeSnapshot};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::fs;
-use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -110,7 +108,12 @@ impl ProjectActivityCoordinator {
             for project in projects {
                 upsert_project(&mut guard, project.id, project.name, project.path);
             }
+            for project in guard.values_mut() {
+                project.last_git_refresh = Some(Instant::now());
+                project.last_ai_refresh = Some(Instant::now());
+            }
         }
+        runtime_trace("startup", "project activity seeded with deferred background refresh");
     }
 
     pub fn mark_project_summary(&self, project: &ProjectSummary) -> bool {
@@ -128,7 +131,21 @@ impl ProjectActivityCoordinator {
     pub fn mark_project_active(&self, project: ProjectSummary) {
         self.mark_project_summary(&project);
         if let Ok(mut active) = self.active_project_id.lock() {
+            let is_same_active = active.as_deref() == Some(project.id.as_str());
             *active = Some(project.id.clone());
+            if is_same_active
+                && self
+                    .activated_git_projects
+                    .lock()
+                    .map(|activated| activated.contains(&project.id))
+                    .unwrap_or(false)
+            {
+                runtime_trace(
+                    "project-activity",
+                    &format!("activate skipped duplicate project={} path={}", project.id, project.path),
+                );
+                return;
+            }
         }
         if let Ok(mut queue) = self.activation_queue.lock() {
             queue.retain(|request| request.project.id != project.id);
@@ -318,6 +335,10 @@ impl ProjectActivityCoordinator {
                 continue;
             };
             let project = request.project;
+            runtime_trace(
+                "project-activity",
+                &format!("activate project={} path={}", project.id, project.path),
+            );
             let is_first_git_activation = self.mark_git_activation(&project.id);
             self.git_jobs.submit(GitJob::Worktree {
                 app: app.clone(),
@@ -428,7 +449,14 @@ fn run_activity_tick(
             .checked_mul(4)
             .unwrap_or_else(|| Duration::from_secs(min_git_refresh_seconds * 4))
             .max(Duration::from_secs(min_git_refresh_seconds * 4));
-        for project in coordinator.projects_due_for_git(interval, background_interval) {
+        let due_projects = coordinator.projects_due_for_git(interval, background_interval);
+        if !due_projects.is_empty() {
+            runtime_trace(
+                "project-activity",
+                &format!("git interval refresh due count={}", due_projects.len()),
+            );
+        }
+        for project in due_projects {
             coordinator.git_jobs.submit(GitJob::Refresh {
                 app: app.clone(),
                 project,
@@ -444,7 +472,14 @@ fn run_activity_tick(
                     .unwrap_or_else(|| Duration::from_secs(min_ai_refresh_seconds * 4))
             })
             .max(foreground_interval);
-        for project in coordinator.projects_due_for_ai(foreground_interval, background_interval) {
+        let due_projects = coordinator.projects_due_for_ai(foreground_interval, background_interval);
+        if !due_projects.is_empty() {
+            runtime_trace(
+                "project-activity",
+                &format!("ai interval refresh due count={}", due_projects.len()),
+            );
+        }
+        for project in due_projects {
             let ai_history = Arc::clone(ai_history);
             async_runtime::spawn(async move {
                 let _ = ai_history.refresh_project(project.into()).await;
@@ -547,10 +582,15 @@ fn run_git_job(job: GitJob) {
 }
 
 fn run_git_refresh_job(app: AppHandle, project: TrackedProject) {
+    let started_at = Instant::now();
     let project_id = project.id.clone();
     let project_name = project.name.clone();
     let project_path = project.path.clone();
     let snapshot = git_status(project_path.clone());
+    let is_repository = snapshot.is_repository;
+    let staged_count = snapshot.staged.len();
+    let unstaged_count = snapshot.unstaged.len();
+    let untracked_count = snapshot.untracked.len();
     if snapshot.is_repository || snapshot.error.is_none() || Path::new(&project_path).exists() {
         let _ = app.emit(
             "git:status",
@@ -562,10 +602,33 @@ fn run_git_refresh_job(app: AppHandle, project: TrackedProject) {
             },
         );
     }
+    runtime_trace_elapsed(
+        "git",
+        "refresh_status",
+        started_at,
+        &format!(
+            "project={} path={} repo={} staged={} unstaged={} untracked={}",
+            project_id,
+            project_path,
+            is_repository,
+            staged_count,
+            unstaged_count,
+            untracked_count
+        ),
+    );
 }
 
 fn run_git_review_job(app: AppHandle, project: TrackedProject) {
+    let started_at = Instant::now();
+    let project_id = project.id.clone();
+    let project_path = project.path.clone();
     emit_git_review(app, project.id, project.name, project.path);
+    runtime_trace_elapsed(
+        "git",
+        "refresh_review",
+        started_at,
+        &format!("project={project_id} path={project_path}"),
+    );
 }
 
 fn git_job_key(kind: &str, path: &str) -> String {
@@ -657,6 +720,7 @@ fn refresh_worktree_project_now(
     project_store: Arc<ProjectStore>,
     project: &ProjectSummary,
 ) {
+    let started_at = Instant::now();
     let root_project = project_store
         .root_project_summary_for_workspace_id(&project.id)
         .unwrap_or_else(|| project.clone());
@@ -678,6 +742,12 @@ fn refresh_worktree_project_now(
             project_path,
             snapshot,
         },
+    );
+    runtime_trace_elapsed(
+        "worktree",
+        "refresh_snapshot",
+        started_at,
+        &format!("project={} path={}", root_project.id, root_project.path),
     );
 }
 
@@ -704,13 +774,7 @@ fn coalesced_refresh_key(path: &str) -> String {
 }
 
 fn append_activity_log(category: &str, message: &str) {
-    let path = runtime_temp_dir().join("live.log");
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "[project-activity] [{category}] {message}");
-    }
+    runtime_trace("project-activity", &format!("{category} {message}"));
 }
 
 #[cfg(test)]

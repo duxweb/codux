@@ -7,6 +7,7 @@ import type { GitReviewSnapshot } from "./git/review";
 import type { GitStatusSnapshot } from "./git/status";
 import type { ProjectListSnapshot, RemoteStatus } from "./types";
 import type { WorktreeSnapshot } from "./worktree/snapshot";
+import { approximateJsonBytes, runtimeTrace } from "./runtimeTrace";
 
 export type GitStatusCacheEntry = {
   snapshot: GitStatusSnapshot;
@@ -98,16 +99,20 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
   worktreeLoadingByKey: {},
   worktreeErrorByKey: {},
   setGitStatus: (pathKey, entry) =>
-    set((state) => ({
-      gitStatusByPath: {
+    set((state) => {
+      const nextGitStatusByPath = {
         ...state.gitStatusByPath,
         [pathKey]: entry,
-      },
-      gitErrorByPath: {
-        ...state.gitErrorByPath,
-        [pathKey]: entry.error,
-      },
-    })),
+      };
+      traceRuntimeStoreWrite("gitStatus", pathKey, entry, Object.keys(nextGitStatusByPath).length);
+      return {
+        gitStatusByPath: nextGitStatusByPath,
+        gitErrorByPath: {
+          ...state.gitErrorByPath,
+          [pathKey]: entry.error,
+        },
+      };
+    }),
   setGitLoading: (pathKey, isLoading) =>
     set((state) => ({
       gitLoadingByPath: {
@@ -116,12 +121,16 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
       },
     })),
   setGitReview: (key, entry) =>
-    set((state) => ({
-      gitReviewByKey: {
+    set((state) => {
+      const nextGitReviewByKey = {
         ...state.gitReviewByKey,
         [key]: entry,
-      },
-    })),
+      };
+      traceRuntimeStoreWrite("gitReview", key, entry, Object.keys(nextGitReviewByKey).length);
+      return {
+        gitReviewByKey: nextGitReviewByKey,
+      };
+    }),
   setGitError: (pathKey, error) =>
     set((state) => ({
       gitErrorByPath: {
@@ -130,16 +139,20 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
       },
     })),
   setWorktreeSnapshot: (key, entry) =>
-    set((state) => ({
-      worktreeSnapshotByKey: {
+    set((state) => {
+      const nextWorktreeSnapshotByKey = {
         ...state.worktreeSnapshotByKey,
         [key]: entry,
-      },
-      worktreeErrorByKey: {
-        ...state.worktreeErrorByKey,
-        [key]: entry.error,
-      },
-    })),
+      };
+      traceRuntimeStoreWrite("worktreeSnapshot", key, entry, Object.keys(nextWorktreeSnapshotByKey).length);
+      return {
+        worktreeSnapshotByKey: nextWorktreeSnapshotByKey,
+        worktreeErrorByKey: {
+          ...state.worktreeErrorByKey,
+          [key]: entry.error,
+        },
+      };
+    }),
   setWorktreeLoading: (key, isLoading) =>
     set((state) => ({
       worktreeLoadingByKey: {
@@ -155,19 +168,28 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
       },
     })),
   setAIProjectState: (key, projectState) =>
-    set((state) => ({
-      aiProjectStateByKey: {
+    set((state) => {
+      const stripped = stripAIProjectStateSessions(projectState);
+      const nextAIProjectStateByKey = {
         ...state.aiProjectStateByKey,
-        [key]: stripAIProjectStateSessions(projectState),
-      },
-    })),
+        [key]: stripped,
+      };
+      traceRuntimeStoreWrite("aiProjectState", key, stripped, Object.keys(nextAIProjectStateByKey).length);
+      return {
+        aiProjectStateByKey: nextAIProjectStateByKey,
+      };
+    }),
   setAIProjectSessions: (key, entry) =>
-    set((state) => ({
-      aiProjectSessionsByKey: {
+    set((state) => {
+      const nextAIProjectSessionsByKey = {
         ...state.aiProjectSessionsByKey,
         [key]: entry,
-      },
-    })),
+      };
+      traceRuntimeStoreWrite("aiProjectSessions", key, entry, Object.keys(nextAIProjectSessionsByKey).length);
+      return {
+        aiProjectSessionsByKey: nextAIProjectSessionsByKey,
+      };
+    }),
   setAIRuntimeSnapshot: (snapshot) => set({ aiRuntimeSnapshot: snapshot }),
   setPetSnapshot: (snapshot) => set({ petSnapshot: snapshot }),
   setMemoryExtractionStatus: (snapshot) => set({ memoryExtractionStatus: snapshot }),
@@ -186,7 +208,11 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
         },
       };
     }),
-  setAIGlobalHistory: (snapshot) => set({ aiGlobalHistory: stripAIGlobalHistorySessions(snapshot) }),
+  setAIGlobalHistory: (snapshot) => {
+    const stripped = stripAIGlobalHistorySessions(snapshot);
+    traceRuntimeStoreWrite("aiGlobalHistory", "global", stripped, stripped ? 1 : 0);
+    set({ aiGlobalHistory: stripped });
+  },
   setAIGlobalStatus: (status) =>
     set((state) => ({
       aiGlobalStatus: {
@@ -195,6 +221,13 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
       },
     })),
 }));
+
+export function traceRuntimeStoreWrite(label: string, key: string, value: unknown, entryCount: number) {
+  runtimeTrace(
+    "frontend-store",
+    `${label} key=${shortTraceKey(key)} bytes=${approximateJsonBytes(value)} entries=${entryCount}`,
+  );
+}
 
 function stripAIProjectStateSessions(state: AIHistoryProjectState): AIHistoryProjectState {
   if (!state.snapshot?.sessions.length) return state;
@@ -213,4 +246,9 @@ function stripAIGlobalHistorySessions(snapshot: AIGlobalHistorySnapshot | null):
     ...snapshot,
     sessions: [],
   };
+}
+
+function shortTraceKey(key: string) {
+  if (key.length <= 96) return key;
+  return `${key.slice(0, 44)}...${key.slice(-44)}`;
 }

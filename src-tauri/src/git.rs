@@ -11,6 +11,9 @@ use tauri::AppHandle;
 
 const REVIEW_UNTRACKED_LINE_COUNT_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
 const GIT_WATCH_DEBOUNCE_MS: u64 = 250;
+const COMMIT_CONTEXT_MAX_CHARS: usize = 24_000;
+const COMMIT_CONTEXT_MAX_FILES: usize = 80;
+const COMMIT_CONTEXT_MAX_LINES_PER_FILE: usize = 80;
 
 type GitRepository = git2::Repository;
 
@@ -114,6 +117,15 @@ pub struct GitBranchSummary {
 pub struct GitDiffSnapshot {
     pub path: String,
     pub diff: String,
+    pub is_repository: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitMessageContextSnapshot {
+    pub diff: String,
+    pub truncated: bool,
     pub is_repository: bool,
     pub error: Option<String>,
 }
@@ -1095,6 +1107,37 @@ pub fn git_diff_file(request: GitDiffRequest) -> GitDiffSnapshot {
         diff,
         is_repository: true,
         error: None,
+    }
+}
+
+pub fn git_commit_message_context(project_path: String) -> GitCommitMessageContextSnapshot {
+    let repo = match open_git_repository(&project_path) {
+        Ok(repo) => repo,
+        Err(error) => {
+            return GitCommitMessageContextSnapshot {
+                diff: String::new(),
+                truncated: false,
+                is_repository: false,
+                error: Some(error),
+            };
+        }
+    };
+    match git2_diff_to_string(&repo, DiffTarget::Index, None, 1) {
+        Ok(diff) => {
+            let (diff, truncated) = compact_commit_message_diff(&diff);
+            GitCommitMessageContextSnapshot {
+                diff,
+                truncated,
+                is_repository: true,
+                error: None,
+            }
+        }
+        Err(error) => GitCommitMessageContextSnapshot {
+            diff: String::new(),
+            truncated: false,
+            is_repository: true,
+            error: Some(error),
+        },
     }
 }
 
@@ -2300,6 +2343,67 @@ fn diff_to_string(diff: &git2::Diff<'_>) -> Result<String, String> {
     })
     .map_err(|error| error.message().to_string())?;
     Ok(String::from_utf8_lossy(&output).to_string())
+}
+
+fn compact_commit_message_diff(diff: &str) -> (String, bool) {
+    let mut output = String::new();
+    let mut truncated = false;
+    let mut file_count = 0usize;
+    let mut file_line_count = 0usize;
+    let mut include_current_file = true;
+
+    for line in diff.lines() {
+        if line.starts_with("diff --git ") {
+            file_count += 1;
+            if file_count > COMMIT_CONTEXT_MAX_FILES {
+                truncated = true;
+                break;
+            }
+            file_line_count = 0;
+            include_current_file = true;
+        }
+
+        let is_header = line.starts_with("diff --git ")
+            || line.starts_with("index ")
+            || line.starts_with("--- ")
+            || line.starts_with("+++ ")
+            || line.starts_with("@@ ")
+            || line.starts_with("new file mode ")
+            || line.starts_with("deleted file mode ")
+            || line.starts_with("rename from ")
+            || line.starts_with("rename to ")
+            || line.starts_with("Binary files ");
+
+        if !is_header {
+            file_line_count += 1;
+            if file_line_count > COMMIT_CONTEXT_MAX_LINES_PER_FILE {
+                if include_current_file {
+                    push_commit_context_line(&mut output, "... file diff truncated ...");
+                    include_current_file = false;
+                    truncated = true;
+                }
+                continue;
+            }
+        }
+
+        if output.len() + line.len() + 1 > COMMIT_CONTEXT_MAX_CHARS {
+            truncated = true;
+            break;
+        }
+        push_commit_context_line(&mut output, line);
+    }
+
+    if truncated {
+        push_commit_context_line(&mut output, "... diff truncated for token budget ...");
+    }
+    (output, truncated)
+}
+
+fn push_commit_context_line(output: &mut String, line: &str) {
+    if !output.is_empty() {
+        output.push('\n');
+    }
+    output.push_str(line);
 }
 
 fn git2_diff_options(path: Option<&str>, context_lines: u32) -> git2::DiffOptions {

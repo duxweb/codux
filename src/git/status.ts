@@ -62,6 +62,13 @@ export interface GitDiffSnapshot {
   error?: string | null;
 }
 
+export interface GitCommitMessageContextSnapshot {
+  diff: string;
+  truncated: boolean;
+  isRepository: boolean;
+  error?: string | null;
+}
+
 export interface GitRepositoryChangeEvent {
   projectPath: string;
   repositoryPath: string;

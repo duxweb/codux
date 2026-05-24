@@ -9,6 +9,8 @@ export type MemoryExtractionStatusSnapshot = {
   status: MemoryExtractionStatus;
   pendingCount: number;
   runningCount: number;
+  checkedCount: number;
+  enqueuedCount: number;
   lastError?: string | null;
   updatedAt: number;
 };
@@ -88,6 +90,8 @@ const idleSnapshot: MemoryExtractionStatusSnapshot = {
   status: "idle",
   pendingCount: 0,
   runningCount: 0,
+  checkedCount: 0,
+  enqueuedCount: 0,
   lastError: null,
   updatedAt: 0,
 };
@@ -95,6 +99,13 @@ const idleSnapshot: MemoryExtractionStatusSnapshot = {
 export async function readMemoryExtractionStatus() {
   if (!window.__TAURI_INTERNALS__) return idleSnapshot;
   return invoke<MemoryExtractionStatusSnapshot>("memory_extraction_status");
+}
+
+export async function cancelMemoryExtraction() {
+  if (!window.__TAURI_INTERNALS__) return idleSnapshot;
+  const snapshot = await invoke<MemoryExtractionStatusSnapshot>("memory_extraction_cancel");
+  useRuntimeStore.getState().setMemoryExtractionStatus(snapshot);
+  return snapshot;
 }
 
 export async function readMemoryManagerSnapshot(request: {
@@ -209,6 +220,8 @@ function memoryStatusEquals(left: MemoryExtractionStatusSnapshot, right: MemoryE
     left.status === right.status &&
     left.pendingCount === right.pendingCount &&
     left.runningCount === right.runningCount &&
+    left.checkedCount === right.checkedCount &&
+    left.enqueuedCount === right.enqueuedCount &&
     left.lastError === right.lastError &&
     left.updatedAt === right.updatedAt
   );

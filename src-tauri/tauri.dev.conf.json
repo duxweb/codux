@@ -3,6 +3,7 @@
   "productName": "Codux Dev",
   "identifier": "com.duxweb.dmux.dev",
   "bundle": {
+    "createUpdaterArtifacts": false,
     "macOS": {
       "bundleName": "Codux Dev"
     }

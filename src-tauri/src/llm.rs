@@ -91,6 +91,23 @@ struct AnthropicMessagesResponse {
     content: Vec<AnthropicContentBlock>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LLMProviderCompletionOptions {
+    pub max_tokens: u32,
+    pub temperature: f32,
+    pub preserve_formatting: bool,
+}
+
+impl Default for LLMProviderCompletionOptions {
+    fn default() -> Self {
+        Self {
+            max_tokens: 512,
+            temperature: 0.4,
+            preserve_formatting: false,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlock {
     text: Option<String>,
@@ -195,13 +212,30 @@ pub async fn complete_with_provider(
     prompt: &str,
     system_prompt: Option<&str>,
 ) -> Result<String, String> {
+    complete_with_provider_options(
+        provider,
+        prompt,
+        system_prompt,
+        LLMProviderCompletionOptions::default(),
+    )
+    .await
+}
+
+pub async fn complete_with_provider_options(
+    provider: &AIProviderSettings,
+    prompt: &str,
+    system_prompt: Option<&str>,
+    options: LLMProviderCompletionOptions,
+) -> Result<String, String> {
     let prompt = prompt.trim();
     if prompt.is_empty() {
         return Err("Prompt cannot be empty.".to_string());
     }
     match provider.kind.as_str() {
-        "anthropic" => complete_anthropic(provider, prompt, system_prompt).await,
-        "openAICompatible" => complete_openai_compatible(provider, prompt, system_prompt).await,
+        "anthropic" => complete_anthropic(provider, prompt, system_prompt, options).await,
+        "openAICompatible" => {
+            complete_openai_compatible(provider, prompt, system_prompt, options).await
+        }
         "localLlama" => Err("Local llama is not available in this Tauri build yet.".to_string()),
         _ => Err("Unsupported AI provider kind.".to_string()),
     }
@@ -289,6 +323,7 @@ async fn complete_openai_compatible(
     provider: &AIProviderSettings,
     prompt: &str,
     system_prompt: Option<&str>,
+    options: LLMProviderCompletionOptions,
 ) -> Result<String, String> {
     let api_key = required_api_key(provider)?;
     let url = openai_endpoint(&provider.base_url)?;
@@ -313,8 +348,8 @@ async fn complete_openai_compatible(
         .json(&OpenAIChatCompletionRequest {
             model: fallback_model(provider, "gpt-4.1-mini"),
             messages,
-            max_tokens: 512,
-            temperature: 0.4,
+            max_tokens: options.max_tokens,
+            temperature: options.temperature,
         })
         .send()
         .await
@@ -330,7 +365,7 @@ async fn complete_openai_compatible(
         .choices
         .first()
         .and_then(|choice| choice.message.content.as_deref())
-        .map(sanitize_response_line)
+        .map(|text| sanitize_provider_response(text, options.preserve_formatting))
         .filter(|text| !text.is_empty())
         .ok_or_else(|| "The AI provider returned an empty response.".to_string())
 }
@@ -339,6 +374,7 @@ async fn complete_anthropic(
     provider: &AIProviderSettings,
     prompt: &str,
     system_prompt: Option<&str>,
+    options: LLMProviderCompletionOptions,
 ) -> Result<String, String> {
     let api_key = required_api_key(provider)?;
     let url = anthropic_endpoint(&provider.base_url)?;
@@ -349,7 +385,7 @@ async fn complete_anthropic(
         .header("anthropic-version", "2023-06-01")
         .json(&AnthropicMessagesRequest {
             model: fallback_model(provider, "claude-3-5-haiku-latest"),
-            max_tokens: 512,
+            max_tokens: options.max_tokens,
             system: system_prompt
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
@@ -377,11 +413,21 @@ async fn complete_anthropic(
         .filter(|value| !value.is_empty())
         .collect::<Vec<_>>()
         .join("\n");
-    let text = sanitize_response_line(&text);
+    let text = sanitize_provider_response(&text, options.preserve_formatting);
     if text.is_empty() {
         Err("The AI provider returned an empty response.".to_string())
     } else {
         Ok(text)
+    }
+}
+
+fn sanitize_provider_response(text: &str, preserve_formatting: bool) -> String {
+    if preserve_formatting {
+        text.trim()
+            .trim_matches(|ch| matches!(ch, '"' | '\'' | '“' | '”' | '‘' | '’'))
+            .to_string()
+    } else {
+        sanitize_response_line(text)
     }
 }
 

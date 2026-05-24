@@ -1,8 +1,10 @@
+use crate::ai_history::AISessionSummary;
 use crate::ai_runtime::AISessionSnapshot;
 use crate::app_settings::{AIMemorySettings, AIProviderSettings, AISettings, AppSettingsStore};
 use crate::llm;
 use crate::paths::{app_support_dir, home_dir, runtime_temp_dir};
 use crate::project_store::{ProjectRecord, ProjectWorkspaceRecord};
+use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use anyhow::{anyhow, Context, Result};
 use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -14,11 +16,12 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use uuid::Uuid;
 
-const MAX_EXTRACTION_ATTEMPTS: i64 = 3;
 const MEMORY_CONTEXT_CANDIDATE_FANOUT: i64 = 8;
 const MEMORY_RETRIEVAL_MAX_QUERY_TERMS: usize = 120;
+const RECENT_MEMORY_FAILURE_TTL_SECONDS: f64 = 120.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -216,6 +219,8 @@ pub struct MemoryExtractionStatusSnapshot {
     pub status: MemoryExtractionStatus,
     pub pending_count: i64,
     pub running_count: i64,
+    pub checked_count: i64,
+    pub enqueued_count: i64,
     pub last_error: Option<String>,
     pub updated_at: f64,
 }
@@ -326,7 +331,15 @@ pub struct MemoryManagementSnapshot {
 pub struct MemoryStore {
     db_path: PathBuf,
     last_enqueued_at_by_session: Mutex<HashMap<String, f64>>,
+    recent_failure: Mutex<Option<RecentMemoryFailure>>,
     processing_queue: AtomicBool,
+    cancel_requested: AtomicBool,
+}
+
+#[derive(Debug, Clone)]
+struct RecentMemoryFailure {
+    message: String,
+    occurred_at: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -364,14 +377,18 @@ impl Drop for MemoryQueueProcessingGuard<'_> {
 
 impl MemoryStore {
     pub fn load_or_create() -> Result<Self> {
+        let started_at = Instant::now();
         let root = app_support_dir();
         fs::create_dir_all(&root)?;
         let store = Self {
             db_path: root.join("memory.sqlite3"),
             last_enqueued_at_by_session: Mutex::new(HashMap::new()),
+            recent_failure: Mutex::new(None),
             processing_queue: AtomicBool::new(false),
+            cancel_requested: AtomicBool::new(false),
         };
         store.configure()?;
+        runtime_trace_elapsed("startup", "memory_store_load", started_at, "");
         Ok(store)
     }
 
@@ -494,6 +511,7 @@ impl MemoryStore {
     }
 
     pub fn recover_interrupted_extractions(&self) -> Result<i64> {
+        let started_at = Instant::now();
         let conn = self.connect()?;
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM memory_extraction_queue WHERE status = 'running';",
@@ -501,6 +519,7 @@ impl MemoryStore {
             |row| row.get(0),
         )?;
         if count == 0 {
+            runtime_trace_elapsed("startup", "memory_recover_interrupted", started_at, "count=0");
             return Ok(0);
         }
         conn.execute(
@@ -508,25 +527,15 @@ impl MemoryStore {
             UPDATE memory_extraction_queue
             SET status = 'pending', error = ?1
             WHERE status = 'running'
-              AND attempts < ?2;
             "#,
-            params![
-                "Recovered after app restart before completion.",
-                MAX_EXTRACTION_ATTEMPTS
-            ],
+            params!["Recovered after app restart before completion."],
         )?;
-        conn.execute(
-            r#"
-            UPDATE memory_extraction_queue
-            SET status = 'failed', error = ?1
-            WHERE status = 'running'
-              AND attempts >= ?2;
-            "#,
-            params![
-                "Recovered after app restart before completion. Retry limit reached.",
-                MAX_EXTRACTION_ATTEMPTS
-            ],
-        )?;
+        runtime_trace_elapsed(
+            "startup",
+            "memory_recover_interrupted",
+            started_at,
+            &format!("count={count}"),
+        );
         Ok(count)
     }
 
@@ -720,20 +729,54 @@ impl MemoryStore {
         settings: AISettings,
         projects: Vec<ProjectWorkspaceRecord>,
         sessions: Vec<AISessionSnapshot>,
+        history_sessions: Vec<AISessionSummary>,
         on_status: impl Fn(MemoryQueueStatusEvent) + Send + Sync + 'static,
     ) -> Result<MemoryExtractionStatusSnapshot> {
+        let started_at = Instant::now();
         if !settings.memory.enabled {
             return self.extraction_status_snapshot();
         }
         ensure_memory_provider_available(&settings)?;
+        self.cancel_requested.store(false, Ordering::Release);
         let on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync> = Arc::new(on_status);
+        self.clear_recent_failure();
+        let mut sessions = self.manual_extraction_candidates(&settings.memory, &projects, &sessions);
+        sessions.extend(self.manual_extraction_candidates_from_history(
+            &settings.memory,
+            &projects,
+            &history_sessions,
+        ));
+        let sessions = self.deduplicate_manual_candidates(sessions);
+        let checked_count = sessions.len() as i64;
+        let mut enqueued_count = 0_i64;
         for session in &sessions {
-            if let Err(error) = self.enqueue_session_for_manual_extraction(&projects, session) {
-                append_memory_log("manual-enqueue", &format!("failed: {error}"));
+            match self.enqueue_session_for_manual_extraction(&projects, session) {
+                Ok(true) => enqueued_count += 1,
+                Ok(false) => {}
+                Err(error) => append_memory_log("manual-enqueue", &format!("failed: {error}")),
             }
         }
+        append_memory_log(
+            "manual-enqueue",
+            &format!("checked={checked_count} enqueued={enqueued_count}"),
+        );
+        runtime_trace_elapsed(
+            "memory",
+            "manual_enqueue",
+            started_at,
+            &format!(
+                "projects={} runtime_sessions={} history_sessions={} checked={} enqueued={}",
+                projects.len(),
+                sessions.len(),
+                history_sessions.len(),
+                checked_count,
+                enqueued_count
+            ),
+        );
         self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
-        let initial_status = self.extraction_status_snapshot()?;
+        let mut initial_status = self.extraction_status_snapshot()?;
+        initial_status.checked_count = checked_count;
+        initial_status.enqueued_count = enqueued_count;
         tauri::async_runtime::spawn(async move {
             if let Err(error) = self
                 .process_queue(settings, projects, Arc::clone(&on_status))
@@ -746,6 +789,16 @@ impl MemoryStore {
         Ok(initial_status)
     }
 
+    pub fn cancel_extraction_queue(&self) -> Result<MemoryExtractionStatusSnapshot> {
+        self.cancel_requested.store(true, Ordering::Release);
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE memory_extraction_queue SET status = 'failed', error = ?1 WHERE status IN ('pending', 'running');",
+            params!["Memory indexing stopped by user."],
+        )?;
+        self.extraction_status_snapshot()
+    }
+
     pub fn extraction_status_snapshot(&self) -> Result<MemoryExtractionStatusSnapshot> {
         let conn = self.connect()?;
         let pending_count = scalar_i64(
@@ -756,24 +809,12 @@ impl MemoryStore {
             &conn,
             "SELECT COUNT(*) FROM memory_extraction_queue WHERE status = 'running';",
         )?;
-        let terminal: Option<(String, Option<String>)> = conn
-            .query_row(
-                r#"
-                SELECT status, error
-                FROM memory_extraction_queue
-                WHERE status IN ('done', 'failed')
-                ORDER BY enqueued_at DESC
-                LIMIT 1;
-                "#,
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()?;
+        let failure = self.current_recent_failure();
         let status = if running_count > 0 {
             MemoryExtractionStatus::Processing
         } else if pending_count > 0 {
             MemoryExtractionStatus::Queued
-        } else if terminal.as_ref().map(|value| value.0.as_str()) == Some("failed") {
+        } else if failure.is_some() {
             MemoryExtractionStatus::Failed
         } else {
             MemoryExtractionStatus::Idle
@@ -782,7 +823,9 @@ impl MemoryStore {
             status,
             pending_count,
             running_count,
-            last_error: terminal.and_then(|value| value.1),
+            checked_count: 0,
+            enqueued_count: 0,
+            last_error: failure.map(|value| value.message),
             updated_at: now_seconds(),
         })
     }
@@ -804,6 +847,8 @@ impl MemoryStore {
                 append_memory_log("auto-extraction", &format!("skipped: {error}"));
                 return;
             }
+            self.cancel_requested.store(false, Ordering::Release);
+            self.clear_recent_failure();
             let result = self.enqueue_session_if_ready(&configured.memory, &projects, &session);
             if matches!(result, Ok(true)) {
                 self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
@@ -1613,8 +1658,128 @@ impl MemoryStore {
             &session_identifier(session),
             &source.location,
             &source.fingerprint,
-            true,
+            false,
         )
+    }
+
+    fn manual_extraction_candidates(
+        &self,
+        memory_settings: &AIMemorySettings,
+        projects: &[ProjectWorkspaceRecord],
+        sessions: &[AISessionSnapshot],
+    ) -> Vec<AISessionSnapshot> {
+        let limit = memory_settings.max_index_sessions.max(1) as usize;
+        let mut by_project: HashMap<String, Vec<AISessionSnapshot>> = HashMap::new();
+        for session in sessions
+            .iter()
+            .filter(|session| session.state == "idle" && session.has_completed_turn)
+        {
+            let Some(project) = memory_project_context(projects, session) else {
+                continue;
+            };
+            if self.resolve_transcript_source(session, &project).is_none() {
+                continue;
+            }
+            by_project
+                .entry(project.project_id)
+                .or_default()
+                .push(session.clone());
+        }
+        let mut candidates = Vec::new();
+        for sessions in by_project.values_mut() {
+            sessions.sort_by(|left, right| {
+                right
+                    .updated_at
+                    .partial_cmp(&left.updated_at)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            sessions.truncate(limit);
+            candidates.extend(sessions.iter().cloned());
+        }
+        candidates.sort_by(|left, right| {
+            left
+                .updated_at
+                .partial_cmp(&right.updated_at)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        candidates
+    }
+
+    fn manual_extraction_candidates_from_history(
+        &self,
+        memory_settings: &AIMemorySettings,
+        projects: &[ProjectWorkspaceRecord],
+        sessions: &[AISessionSummary],
+    ) -> Vec<AISessionSnapshot> {
+        let limit = memory_settings.max_index_sessions.max(1) as usize;
+        let mut by_project: HashMap<String, Vec<AISessionSnapshot>> = HashMap::new();
+        for summary in sessions
+            .iter()
+            .filter(|session| session.total_tokens + session.cached_input_tokens + session.request_count > 0)
+        {
+            let Some(project) = memory_project_context_from_history(projects, summary) else {
+                continue;
+            };
+            let Some(snapshot) = historical_session_snapshot(summary, &project) else {
+                continue;
+            };
+            if self.resolve_transcript_source(&snapshot, &project).is_none() {
+                continue;
+            }
+            by_project
+                .entry(project.project_id)
+                .or_default()
+                .push(snapshot);
+        }
+        let mut candidates = Vec::new();
+        for sessions in by_project.values_mut() {
+            sessions.sort_by(|left, right| {
+                right
+                    .updated_at
+                    .partial_cmp(&left.updated_at)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            sessions.truncate(limit);
+            candidates.extend(sessions.iter().cloned());
+        }
+        candidates.sort_by(|left, right| {
+            left
+                .updated_at
+                .partial_cmp(&right.updated_at)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        candidates
+    }
+
+    #[cfg(test)]
+    fn test_history_snapshot_for_project(
+        &self,
+        projects: &[ProjectWorkspaceRecord],
+        session: &AISessionSummary,
+    ) -> Option<AISessionSnapshot> {
+        let project = memory_project_context_from_history(projects, session)?;
+        historical_session_snapshot(session, &project)
+    }
+
+    fn deduplicate_manual_candidates(
+        &self,
+        sessions: Vec<AISessionSnapshot>,
+    ) -> Vec<AISessionSnapshot> {
+        let mut seen = HashSet::new();
+        let mut deduplicated = Vec::new();
+        for session in sessions {
+            let key = extraction_session_key(&session);
+            if seen.insert(key) {
+                deduplicated.push(session);
+            }
+        }
+        deduplicated.sort_by(|left, right| {
+            left
+                .updated_at
+                .partial_cmp(&right.updated_at)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        deduplicated
     }
 
     fn enqueue_extraction_if_needed(
@@ -1628,15 +1793,15 @@ impl MemoryStore {
         allow_retry_failed: bool,
     ) -> Result<bool> {
         let conn = self.connect()?;
-        let existing: Option<(String, i64)> = conn
+        let existing: Option<String> = conn
             .query_row(
-                "SELECT status, attempts FROM memory_extraction_queue WHERE source_fingerprint = ?1 LIMIT 1;",
+                "SELECT status FROM memory_extraction_queue WHERE source_fingerprint = ?1 LIMIT 1;",
                 params![source_fingerprint],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| row.get(0),
             )
             .optional()?;
-        if let Some((status, attempts)) = existing {
-            if allow_retry_failed && status == "failed" && attempts < MAX_EXTRACTION_ATTEMPTS {
+        if let Some(status) = existing {
+            if allow_retry_failed && status == "failed" {
                 conn.execute(
                     r#"
                     UPDATE memory_extraction_queue
@@ -1690,11 +1855,13 @@ impl MemoryStore {
         projects: Vec<ProjectWorkspaceRecord>,
         on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync>,
     ) -> Result<()> {
+        let started_at = Instant::now();
         if self
             .processing_queue
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
+            runtime_trace("memory", "process_queue skipped already_running=true");
             return Ok(());
         }
         let _guard = MemoryQueueProcessingGuard {
@@ -1702,6 +1869,10 @@ impl MemoryStore {
         };
         self.publish_queue_status(projects.as_slice(), Arc::as_ref(&on_status));
         let root_projects = root_projects_from_workspaces(&projects);
+        runtime_trace(
+            "memory",
+            &format!("process_queue start roots={}", root_projects.len()),
+        );
         let projects_by_id = projects
             .into_iter()
             .filter(|project| project.id == project.root_project_id)
@@ -1713,6 +1884,10 @@ impl MemoryStore {
             })
             .collect::<HashMap<_, _>>();
         while let Some(task) = self.next_pending_extraction_task()? {
+            if self.cancel_requested.load(Ordering::Acquire) {
+                append_memory_log("queue", "memory extraction queue cancelled");
+                break;
+            }
             if let Err(error) = self
                 .process_task(
                     &settings,
@@ -1725,9 +1900,18 @@ impl MemoryStore {
             {
                 let _ = self.mark_extraction_task_failed(&task.id, &error.to_string());
                 self.publish_queue_status_for_roots(&root_projects, Arc::as_ref(&on_status));
+                if should_stop_memory_queue_after_error(&error) {
+                    append_memory_log(
+                        "queue",
+                        &format!("memory extraction queue paused after provider error: {error}"),
+                    );
+                    break;
+                }
             }
         }
+        self.cancel_requested.store(false, Ordering::Release);
         self.publish_queue_status_for_roots(&root_projects, Arc::as_ref(&on_status));
+        runtime_trace_elapsed("memory", "process_queue finish", started_at, "");
         Ok(())
     }
 
@@ -1739,6 +1923,7 @@ impl MemoryStore {
         task: MemoryExtractionTask,
         on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync>,
     ) -> Result<()> {
+        let started_at = Instant::now();
         self.mark_extraction_task_running(&task.id)?;
         self.publish_queue_status_for_roots(root_projects, Arc::as_ref(&on_status));
         let Some(project) = projects_by_id.get(&task.project_id) else {
@@ -1752,11 +1937,18 @@ impl MemoryStore {
         append_memory_log(
             "provider",
             &format!(
-                "memory extraction provider={} id={} kind={}",
-                provider.display_name, provider.id, provider.kind
+                "memory extraction provider={} id={} kind={} model={} base_url={} task={} session={}",
+                provider.display_name,
+                provider.id,
+                provider.kind,
+                provider.model,
+                provider.base_url,
+                task.id,
+                task.session_id
             ),
         );
         let transcript = self.resolve_transcript_for_task(&task, project)?;
+        let transcript_chars = transcript.chars().count();
         let user_summary = self
             .current_summary(MemoryScope::User, None, None)
             .ok()
@@ -1792,14 +1984,54 @@ impl MemoryStore {
             &project.project_name,
             &settings.memory,
         );
-        let response_text =
-            llm::complete_with_provider(&provider, &prompt, Some(extraction_system_prompt()))
-                .await
-                .map_err(|error| anyhow!(error))?;
+        append_memory_log(
+            "request",
+            &format!(
+                "memory extraction request task={} provider={} model={} prompt_chars={} transcript_chars={}",
+                task.id,
+                provider_summary(&provider),
+                provider.model,
+                prompt.chars().count(),
+                transcript_chars
+            ),
+        );
+        let response_text = llm::complete_with_provider_options(
+            &provider,
+            &prompt,
+            Some(extraction_system_prompt()),
+            llm::LLMProviderCompletionOptions {
+                max_tokens: 2048,
+                temperature: 0.1,
+                preserve_formatting: true,
+            },
+        )
+        .await
+        .map_err(|error| {
+            let message = format!("{} failed: {}", provider_summary(&provider), error);
+            append_memory_log("error", &message);
+            anyhow!(message)
+        })?;
+        append_memory_log(
+            "response",
+            &format!(
+                "memory extraction response task={} response_chars={}",
+                task.id,
+                response_text.chars().count()
+            ),
+        );
         let response = decode_extraction_response(&response_text)?;
         self.apply_extraction_response(response, &task, &settings.memory)?;
         self.mark_extraction_task_done(&task.id)?;
         self.publish_queue_status_for_roots(root_projects, Arc::as_ref(&on_status));
+        runtime_trace_elapsed(
+            "memory",
+            "process_task",
+            started_at,
+            &format!(
+                "task={} project={} session={} transcript_chars={}",
+                task.id, task.project_id, task.session_id, transcript_chars
+            ),
+        );
         Ok(())
     }
 
@@ -1855,7 +2087,38 @@ impl MemoryStore {
                 task_id
             ],
         )?;
+        match (status, error) {
+            ("failed", Some(message)) => self.record_recent_failure(message),
+            _ => {}
+        }
         Ok(())
+    }
+
+    fn record_recent_failure(&self, message: &str) {
+        if let Ok(mut failure) = self.recent_failure.lock() {
+            *failure = Some(RecentMemoryFailure {
+                message: message.to_string(),
+                occurred_at: now_seconds(),
+            });
+        }
+    }
+
+    fn clear_recent_failure(&self) {
+        if let Ok(mut failure) = self.recent_failure.lock() {
+            *failure = None;
+        }
+    }
+
+    fn current_recent_failure(&self) -> Option<RecentMemoryFailure> {
+        let now = now_seconds();
+        let mut failure = self.recent_failure.lock().ok()?;
+        if failure
+            .as_ref()
+            .is_some_and(|failure| now - failure.occurred_at > RECENT_MEMORY_FAILURE_TTL_SECONDS)
+        {
+            *failure = None;
+        }
+        failure.clone()
     }
 
     fn apply_extraction_response(
@@ -2487,6 +2750,59 @@ fn memory_project_context(
             })
         })
         .map(MemoryProjectContext::from_workspace)
+}
+
+fn memory_project_context_from_history(
+    projects: &[ProjectWorkspaceRecord],
+    session: &AISessionSummary,
+) -> Option<MemoryProjectContext> {
+    projects
+        .iter()
+        .find(|project| {
+            project.root_project_id == session.project_id
+                || paths_equivalent(Some(project.workspace_path.as_str()), &session.project_path)
+                || paths_equivalent(Some(project.root_project_path.as_str()), &session.project_path)
+        })
+        .map(MemoryProjectContext::from_workspace)
+}
+
+fn historical_session_snapshot(
+    session: &AISessionSummary,
+    project: &MemoryProjectContext,
+) -> Option<AISessionSnapshot> {
+    let tool = normalized_non_empty(session.last_tool.as_deref()?)?.to_lowercase();
+    Some(AISessionSnapshot {
+        terminal_id: session.session_id.clone(),
+        terminal_instance_id: None,
+        project_id: project.project_id.clone(),
+        project_name: project.project_name.clone(),
+        project_path: Some(session.project_path.clone()),
+        session_title: session.session_title.clone(),
+        tool,
+        ai_session_id: session.external_session_id.clone(),
+        model: session.last_model.clone(),
+        state: "idle".to_string(),
+        status: "idle".to_string(),
+        is_running: false,
+        input_tokens: session.total_input_tokens,
+        output_tokens: session.total_output_tokens,
+        cached_input_tokens: session.cached_input_tokens,
+        total_tokens: session.total_tokens,
+        baseline_total_tokens: session.total_tokens,
+        baseline_cached_input_tokens: session.cached_input_tokens,
+        baseline_resolved: true,
+        started_at: Some(session.first_seen_at),
+        updated_at: session.last_seen_at,
+        active_turn_started_at: None,
+        runtime_turn_started_at: None,
+        has_completed_turn: true,
+        was_interrupted: false,
+        transcript_path: None,
+        notification_type: None,
+        target_tool_name: None,
+        message: None,
+        latest_assistant_preview: None,
+    })
 }
 
 fn root_projects_from_workspaces(projects: &[ProjectWorkspaceRecord]) -> Vec<ProjectRecord> {
@@ -3158,6 +3474,13 @@ fn ensure_memory_provider_available(settings: &AISettings) -> Result<()> {
     }
 }
 
+fn provider_summary(provider: &AIProviderSettings) -> String {
+    format!(
+        "provider={} id={} kind={} model={} base_url={}",
+        provider.display_name, provider.id, provider.kind, provider.model, provider.base_url
+    )
+}
+
 fn supports_completion(kind: &str) -> bool {
     matches!(kind, "openAICompatible" | "anthropic")
 }
@@ -3176,7 +3499,7 @@ fn make_extraction_prompt(
     settings: &AIMemorySettings,
 ) -> String {
     format!(
-        "Memory extraction schema version: dmux-memory-v2\n\nProject: {project_name}\n\nExisting user summary:\n{}\n\nExisting project summary:\n{}\n\nRecent user working entries:\n{}\n\nRecent project working entries:\n{}\n\nTranscript:\n<transcript>\n{}\n</transcript>\n\nReturn JSON with this exact shape and no extra keys:\n{{\n  \"user_summary\": \"merged durable user memory, or empty string to keep unchanged\",\n  \"project_summary\": \"merged durable project memory, or empty string to keep unchanged\",\n  \"working_add\": [{{\"scope\":\"user|project\",\"tier\":\"core|working\",\"kind\":\"preference|convention|decision|fact|bug_lesson\",\"content\":\"...\",\"rationale\":\"...\"}}],\n  \"working_archive\": [\"uuid\"],\n  \"merged_entry_ids\": [\"uuid\"]\n}}\n\nRules:\n- Extract only durable software-engineering memory; omit temporary tasks, logs, timestamps, greetings, generic knowledge, and assistant-invented preferences.\n- scope=\"user\" only for explicit cross-project user habits or preferences.\n- scope=\"project\" for repository-specific conventions, decisions, facts, commands, paths, bugs, diagnostics, APIs, release flow, UI decisions, and implementation lessons.\n- Ambiguous scope means project or omit; never put project-specific memory in user memory.\n- kind is one of preference, convention, decision, fact, bug_lesson.\n- tier=\"core\" only for stable long-term memory; otherwise use \"working\".\n- Merge useful existing memory with transcript facts; summaries are concise current state, not a changelog.\n- Keep each summary under about {} tokens. Return an empty string when a summary should stay unchanged.",
+        "Memory extraction schema: codux-memory-v2\nProject: {project_name}\n\nExisting user summary:\n{}\n\nExisting project summary:\n{}\n\nRecent user memories:\n{}\n\nRecent project memories:\n{}\n\nTranscript:\n<transcript>\n{}\n</transcript>\n\nReturn compact JSON only:\n{{\"user_summary\":\"\",\"project_summary\":\"\",\"working_add\":[],\"working_archive\":[],\"merged_entry_ids\":[]}}\n\nRules:\n- Add at most 6 working_add items total.\n- Each working_add.content <= 180 characters; rationale <= 120 characters.\n- user_summary and project_summary <= about {} tokens each; empty string means keep existing summary unchanged.\n- Extract only durable engineering memory. Omit temporary tasks, logs, timestamps, greetings, tool output, generic knowledge, and assistant-invented preferences.\n- scope=user only for explicit cross-project user habits/preferences. Repository facts, commands, release flow, UI decisions, bugs, diagnostics, paths, APIs, and conventions must be scope=project.\n- Ambiguous or low-value information must be omitted.\n- kind must be preference, convention, decision, fact, or bug_lesson. tier must be core or working.",
         render_existing_summary(user_summary),
         render_existing_summary(project_summary),
         render_existing_memories(user_memories),
@@ -3225,7 +3548,7 @@ fn render_existing_memories(entries: &[MemoryEntry]) -> String {
 }
 
 fn decode_extraction_response(raw: &str) -> Result<MemoryExtractionResponse> {
-    for candidate in json_object_candidates(raw) {
+    for candidate in json_object_candidates(&strip_markdown_code_fences(raw)) {
         if let Ok(value) = serde_json::from_str::<Value>(&candidate) {
             if let Some(response) = parse_extraction_value(&value) {
                 return Ok(response);
@@ -3235,6 +3558,41 @@ fn decode_extraction_response(raw: &str) -> Result<MemoryExtractionResponse> {
     Err(anyhow!(
         "Memory extraction provider returned malformed memory JSON."
     ))
+}
+
+fn strip_markdown_code_fences(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with("```") {
+        return trimmed.to_string();
+    }
+    trimmed
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("```"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn should_stop_memory_queue_after_error(error: &anyhow::Error) -> bool {
+    let message = error.to_string().to_lowercase();
+    [
+        "provider returned http",
+        "quota",
+        "rate limit",
+        "rate_limit",
+        "too many requests",
+        "429",
+        "401",
+        "403",
+        "api key",
+        "empty response",
+        "malformed memory json",
+        "context window",
+        "maximum context",
+        "timeout",
+        "timed out",
+    ]
+    .iter()
+    .any(|needle| message.contains(needle))
 }
 
 fn parse_extraction_value(value: &Value) -> Option<MemoryExtractionResponse> {
@@ -3945,10 +4303,35 @@ mod tests {
         let store = MemoryStore {
             db_path: root.join("memory.sqlite3"),
             last_enqueued_at_by_session: Mutex::new(HashMap::new()),
+            recent_failure: Mutex::new(None),
             processing_queue: AtomicBool::new(false),
+            cancel_requested: AtomicBool::new(false),
         };
         store.configure().expect("configure memory test store");
         store
+    }
+
+    fn seed_queue_task(store: &MemoryStore, status: &str, attempts: i64, error: Option<&str>) {
+        store
+            .connect()
+            .expect("connect")
+            .execute(
+                r#"
+                INSERT INTO memory_extraction_queue (
+                    id, project_id, tool, session_id, transcript_path, workspace_path, source_fingerprint, status, attempts, error, enqueued_at
+                ) VALUES (?1, 'project-1', 'codex', ?2, '/tmp/memory.jsonl', '/tmp', ?3, ?4, ?5, ?6, ?7);
+                "#,
+                params![
+                    Uuid::new_v4().to_string(),
+                    Uuid::new_v4().to_string(),
+                    Uuid::new_v4().to_string(),
+                    status,
+                    attempts,
+                    error,
+                    now_seconds()
+                ],
+            )
+            .expect("seed queue task");
     }
 
     fn seed_project_memory(store: &MemoryStore, project_id: &str, content: &str) {
@@ -4028,6 +4411,17 @@ mod tests {
         assert!(compacted.contains("omitted"));
         assert!(!compacted.contains("const value"));
         assert!(!compacted.contains(&"x".repeat(1000)));
+    }
+
+    #[test]
+    fn old_failed_extractions_do_not_pollute_runtime_status() {
+        let store = test_store("failed-status");
+        seed_queue_task(&store, "failed", 3, Some("old quota error"));
+
+        let status = store.extraction_status_snapshot().expect("status snapshot");
+
+        assert_eq!(status.status, MemoryExtractionStatus::Idle);
+        assert_eq!(status.last_error, None);
     }
 
     #[test]
@@ -4114,8 +4508,8 @@ mod tests {
     }
 
     #[test]
-    fn manual_enqueue_retries_failed_extraction_until_limit() {
-        let store = test_store("retry");
+    fn manual_enqueue_returns_failed_extraction_to_pending() {
+        let store = test_store("manual-failed");
         assert!(store
             .enqueue_extraction_if_needed(
                 "project-1",
@@ -4148,11 +4542,54 @@ mod tests {
                 "fingerprint-1",
                 true,
             )
-            .expect("retry failed"));
+            .expect("queue failed"));
         let retried = store
             .next_pending_extraction_task()
             .expect("pending lookup")
-            .expect("retried task");
+            .expect("pending task");
         assert_eq!(retried.attempts, 1);
+    }
+
+    #[test]
+    fn history_snapshot_reuses_open_project_mapping() {
+        let store = test_store("history-mapping");
+        let projects = vec![ProjectWorkspaceRecord {
+            id: "workspace-1".to_string(),
+            root_project_id: "project-1".to_string(),
+            root_project_name: "Project One".to_string(),
+            root_project_path: "/tmp/project-1".to_string(),
+            workspace_path: "/tmp/project-1".to_string(),
+            git_default_push_remote_name: None,
+        }];
+        let summary = AISessionSummary {
+            session_id: "history-session".to_string(),
+            external_session_id: Some("external-session".to_string()),
+            project_id: "project-1".to_string(),
+            project_name: "Project One".to_string(),
+            project_path: "/tmp/project-1".to_string(),
+            session_title: "Terminal".to_string(),
+            first_seen_at: 10.0,
+            last_seen_at: 20.0,
+            last_tool: Some("codex".to_string()),
+            last_model: Some("gpt-4.1".to_string()),
+            request_count: 4,
+            total_input_tokens: 100,
+            total_output_tokens: 200,
+            total_tokens: 300,
+            cached_input_tokens: 40,
+            active_duration_seconds: 10,
+            today_tokens: 300,
+            today_cached_input_tokens: 40,
+        };
+
+        let snapshot = store
+            .test_history_snapshot_for_project(&projects, &summary)
+            .expect("history snapshot");
+
+        assert_eq!(snapshot.project_id, "project-1");
+        assert_eq!(snapshot.project_path.as_deref(), Some("/tmp/project-1"));
+        assert_eq!(snapshot.ai_session_id.as_deref(), Some("external-session"));
+        assert_eq!(snapshot.state, "idle");
+        assert!(snapshot.has_completed_turn);
     }
 }

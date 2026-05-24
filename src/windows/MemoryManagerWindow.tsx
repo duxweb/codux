@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   archiveMemoryEntry,
+  cancelMemoryExtraction,
   deleteMemoryEntry,
   deleteProjectMemory,
   deleteMemorySummary,
@@ -20,7 +21,7 @@ import { ListBox, Modal, Select as HeroSelect } from "@heroui/react";
 import { Button } from "../components/Button";
 import { PressableButton } from "../components/PressableButton";
 import { useRuntimeStore } from "../runtimeStore";
-import { FileArchive, Folder, GitBranch, PencilSquare, RefreshCw, Trash, Users, Zap, type AppIcon } from "../icons";
+import { FileArchive, Folder, GitBranch, PencilSquare, RefreshCw, Square, Trash, Users, Zap, type AppIcon } from "../icons";
 import { formatI18n, tm } from "../i18n";
 import { flushAppSettings, readAppSettings } from "../settings";
 import { systemConfirm, systemMessage } from "../systemDialog";
@@ -145,8 +146,19 @@ export function MemoryManagerWindow() {
                   aria-label={tm("memory.manager.index_now", "Index Now")}
                   onPress={() => void indexNow(load, setIndexingNow)}
                 >
-                  <Zap size={13} className={isIndexing || isIndexingNow ? "motion-safe:animate-spin" : ""} />
+                  <RefreshCw size={13} className={isIndexing || isIndexingNow ? "motion-safe:animate-spin" : ""} />
                 </Button>
+                {(isIndexing || isIndexingNow) && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    isIconOnly
+                    aria-label={tm("memory.manager.stop_indexing", "Stop memory indexing")}
+                    onPress={() => void stopIndexing(load, setIndexingNow)}
+                  >
+                    <Square size={13} />
+                  </Button>
+                )}
               </div>
               <div className="mt-1 text-xs leading-relaxed text-ink-mute">
                 {tm("memory.manager.subtitle", "Browse and clean extracted memories")}
@@ -766,7 +778,7 @@ async function indexNow(load: () => Promise<void>, setIndexingNow: (value: boole
   setIndexingNow(true);
   try {
     await flushAppSettings();
-    await indexMemoryNow();
+    const snapshot = await indexMemoryNow();
     await load();
     const next = useRuntimeStore.getState().memoryManagerSnapshot;
     const error = next?.extraction.status === "failed" ? next.extraction.lastError : null;
@@ -775,10 +787,50 @@ async function indexNow(load: () => Promise<void>, setIndexingNow: (value: boole
         title: tm("memory.manager.index_failed", "Memory indexing failed"),
         kind: "error",
       });
+    } else if ((snapshot.checkedCount ?? 0) === 0) {
+      const detail =
+        (snapshot.checkedCount ?? 0) === 0
+          ? tm(
+              "memory.manager.index_now.empty.detail",
+              "No completed AI sessions with readable transcripts were found for the current project.",
+            )
+          : tm(
+              "memory.manager.index_now.noop.detail",
+              "The matching sessions were already indexed or are waiting in the queue.",
+            );
+      await systemMessage(detail, {
+        title: tm("memory.manager.index_now.empty", "Nothing to index"),
+        kind: "info",
+      });
+    } else if ((snapshot.enqueuedCount ?? 0) === 0) {
+      await systemMessage(
+        tm(
+          "memory.manager.index_now.noop.detail",
+          "The matching sessions were already indexed or are waiting in the queue.",
+        ),
+        {
+          title: tm("memory.manager.index_now.empty", "Nothing to index"),
+          kind: "info",
+        },
+      );
     }
   } catch (reason) {
     await systemMessage(localizedMemoryIndexError(reason), {
       title: tm("memory.manager.index_failed", "Memory indexing failed"),
+      kind: "error",
+    });
+  } finally {
+    setIndexingNow(false);
+  }
+}
+
+async function stopIndexing(load: () => Promise<void>, setIndexingNow: (value: boolean) => void) {
+  try {
+    await cancelMemoryExtraction();
+    await load();
+  } catch (reason) {
+    await systemMessage(reason instanceof Error ? reason.message : String(reason), {
+      title: tm("memory.manager.stop_indexing_failed", "Failed to stop memory indexing"),
       kind: "error",
     });
   } finally {

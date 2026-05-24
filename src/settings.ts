@@ -73,6 +73,7 @@ export type PetSettings = {
 export type AISettings = {
   globalPrompt: string;
   gitCommitMessageTone: string;
+  gitCommitMessageLanguage: string;
   gitCommitMessageStyleRules: string;
   runtimeTools: AIRuntimeToolSettings;
   memory: AIMemorySettings;
@@ -110,6 +111,7 @@ export type AIMemorySettings = {
   maxInjectedSummaryTokens: number;
   extractionIdleDelaySeconds: number;
   sessionExtractionCooldownSeconds: number;
+  maxIndexSessions: number;
   maxExtractionTranscriptLines: number;
   maxExtractionTranscriptTokens: number;
 };
@@ -178,7 +180,8 @@ export const defaultSettings: AppSettings = {
   },
   ai: {
     globalPrompt: "",
-    gitCommitMessageTone: "concise",
+    gitCommitMessageTone: "conventional",
+    gitCommitMessageLanguage: "application",
     gitCommitMessageStyleRules: "",
     runtimeTools: {
       codex: "default",
@@ -205,6 +208,7 @@ export const defaultSettings: AppSettings = {
       maxInjectedSummaryTokens: 900,
       extractionIdleDelaySeconds: 300,
       sessionExtractionCooldownSeconds: 900,
+      maxIndexSessions: 20,
       maxExtractionTranscriptLines: 80,
       maxExtractionTranscriptTokens: 8000,
     },
@@ -539,6 +543,7 @@ function normalizeAISettings(settings?: Partial<AISettings>, legacyPet?: Partial
     ...defaultSettings.ai,
     ...(settings ?? {}),
     gitCommitMessageTone: normalizeGitCommitMessageTone(settings?.gitCommitMessageTone),
+    gitCommitMessageLanguage: normalizeGitCommitMessageLanguage(settings?.gitCommitMessageLanguage),
     gitCommitMessageStyleRules: normalizeBoundedText(settings?.gitCommitMessageStyleRules, 4000),
     runtimeTools: normalizeRuntimeTools(settings?.runtimeTools),
     memory: {
@@ -569,7 +574,28 @@ function normalizeAISettings(settings?: Partial<AISettings>, legacyPet?: Partial
 }
 
 function normalizeGitCommitMessageTone(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim().slice(0, 120) : "concise";
+  return typeof value === "string" && ["conventional", "concise", "sentence", "changelog"].includes(value.trim())
+    ? value.trim()
+    : "conventional";
+}
+
+function normalizeGitCommitMessageLanguage(value: unknown) {
+  return typeof value === "string" &&
+    [
+      "application",
+      "simplifiedChinese",
+      "traditionalChinese",
+      "english",
+      "japanese",
+      "korean",
+      "french",
+      "german",
+      "spanish",
+      "portugueseBrazil",
+      "russian",
+    ].includes(value.trim())
+    ? value.trim()
+    : "application";
 }
 
 function normalizeBoundedText(value: unknown, maxLength: number) {

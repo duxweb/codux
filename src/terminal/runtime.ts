@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { TerminalEvent, TerminalSession } from "../types";
 import { readConfiguredShell } from "../settings";
+import { runtimeTrace } from "../runtimeTrace";
 
 const MAX_REPLAY_CHARS = 80_000;
 
@@ -69,6 +70,23 @@ export class TerminalRuntime {
   private outputTextDecoders = new Map<string, TextDecoder>();
   private sequence = 0;
 
+  debugSnapshot() {
+    let replayChars = 0;
+    let running = 0;
+    for (const session of this.sessions.values()) {
+      replayChars += session.replayBuffer.length;
+      if (session.state === "running") running += 1;
+    }
+    return {
+      sessions: this.sessions.size,
+      backends: this.backendToSessionIds.size,
+      listeners: this.listeners.size,
+      queues: this.outputQueues.size,
+      replayChars,
+      running,
+    };
+  }
+
   ensureTerminal(options: EnsureTerminalOptions) {
     const key = terminalSessionKey(options.projectId, options.slotId);
     const existingId = this.keyToSessionId.get(key);
@@ -93,6 +111,7 @@ export class TerminalRuntime {
     this.sessions.set(session.id, session);
     this.keyToSessionId.set(key, session.id);
     this.startOptions.set(session.id, options);
+    this.traceRuntime("ensureTerminal created", session.id);
     return session;
   }
 
@@ -232,6 +251,7 @@ export class TerminalRuntime {
     }
     this.emit(sessionId, { type: "closed", sessionId });
     this.listeners.delete(sessionId);
+    this.traceRuntime("detachView", sessionId);
   }
 
   async closeDetachedBackend(backendId: string) {
@@ -297,6 +317,7 @@ export class TerminalRuntime {
     this.flushOutputQueue(sessionId);
     this.emit(sessionId, { type: "closed", sessionId });
     this.listeners.delete(sessionId);
+    this.traceRuntime("close", sessionId);
   }
 
   private createRecord(options: EnsureTerminalOptions & { key: string; terminalId?: string }): TerminalRuntimeSession {
@@ -399,6 +420,10 @@ export class TerminalRuntime {
       await this.ensureEventListener();
       const history = await invoke<string>("terminal_snapshot", { sessionId: backendId });
       if (!this.sessions.has(sessionId)) return;
+      runtimeTrace(
+        "terminal-runtime",
+        `attach_snapshot session=${sessionId} backend=${backendId} chars=${history.length} bytes=${new TextEncoder().encode(history).length}`,
+      );
       if (history) {
         this.updateSession(sessionId, {
           replayBuffer: trimReplayBuffer(history),
@@ -543,6 +568,14 @@ export class TerminalRuntime {
     for (const listener of [...listeners]) {
       listener(event);
     }
+  }
+
+  private traceRuntime(action: string, sessionId: string) {
+    const snapshot = this.debugSnapshot();
+    runtimeTrace(
+      "terminal-runtime",
+      `${action} session=${sessionId} sessions=${snapshot.sessions} backends=${snapshot.backends} listeners=${snapshot.listeners} queues=${snapshot.queues} replayChars=${snapshot.replayChars} running=${snapshot.running}`,
+    );
   }
 
   private decodeOutputText(sessionId: string, bytes?: Uint8Array) {
