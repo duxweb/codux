@@ -1,6 +1,8 @@
 import {
   Bot,
+  GitBranch,
   KeyRound,
+  MemoryStick,
   Palette,
   QrCode,
   Radio,
@@ -58,6 +60,8 @@ type SectionId =
   | "appearance"
   | "pet"
   | "ai"
+  | "git"
+  | "memory"
   | "notifications"
   | "remote"
   | "shortcuts"
@@ -89,6 +93,14 @@ const sections: Section[] = [
   },
   { id: "pet", labelKey: "settings.tab.pet", label: "Pet", description: "settings.tab.pet.description", icon: Smile },
   { id: "ai", labelKey: "settings.tab.ai", label: "AI", description: "settings.tab.ai.description", icon: Bot },
+  { id: "git", labelKey: "settings.tab.git", label: "Git", description: "settings.tab.git.description", icon: GitBranch },
+  {
+    id: "memory",
+    labelKey: "settings.tab.memory",
+    label: "Memory",
+    description: "settings.tab.memory.description",
+    icon: MemoryStick,
+  },
   {
     id: "notifications",
     labelKey: "settings.tab.notifications",
@@ -161,7 +173,7 @@ const gitCommitMessageStyleOptions = [
 const gitCommitMessageLanguageOptions = [
   {
     value: "application",
-    label: tm("settings.ai.git_commit_message_language.application", "Follow App Language"),
+    label: tm("settings.ai.git_commit_message_language.follow", "Follow"),
   },
   ...languageOptions.filter((option) => option.value !== "system"),
 ];
@@ -333,6 +345,10 @@ function SettingsPane({ active }: { active: SectionId }) {
       return <PetSection />;
     case "ai":
       return <AISection />;
+    case "git":
+      return <GitSection />;
+    case "memory":
+      return <MemorySection />;
     case "notifications":
       return <NotificationSection />;
     case "remote":
@@ -870,7 +886,58 @@ function AISection() {
         </div>
       </SettingsCard>
 
+      <SettingsCard
+        title={tm("settings.ai.section.providers", "AI Providers")}
+        action={
+          <Button size="sm" variant="secondary" onPress={() => addProvider("openAICompatible")}>
+            {tm("settings.ai.provider.add", "Add API Channel")}
+          </Button>
+        }
+      >
+        {providers.length === 0 && (
+          <div className="text-sm text-ink-faint">
+            {tm("settings.ai.provider.empty", "No API channel has been added yet.")}
+          </div>
+        )}
+        {providers.map((provider) => (
+          <AIProviderCard
+            key={provider.id}
+            provider={provider}
+            testing={testingProviderId === provider.id}
+            onChange={(patch) => upsertProvider(provider.id, patch)}
+            onRemove={() => removeProvider(provider.id)}
+            onTest={() => void testProvider(provider)}
+          />
+        ))}
+      </SettingsCard>
+    </SettingsForm>
+  );
+}
+
+function GitSection() {
+  const [settings, setSettings] = useSyncedSettings();
+  const ai = settings.ai;
+  const providerOptions = gitCommitMessageProviderOptions(ai.providers);
+  const setAI = (patch: Partial<typeof ai>) => {
+    const next = updateAppSettings({
+      ai: {
+        ...ai,
+        ...patch,
+      },
+    });
+    setSettings(next);
+  };
+
+  return (
+    <SettingsForm className="max-w-[680px]">
       <SettingsCard title={tm("settings.ai.git_commit_message", "Git Commit Message")}>
+        <Field label={tm("settings.ai.git_commit_message_provider", "AI Provider")}>
+          <Select
+            value={ai.gitCommitMessageProviderId}
+            onChange={(gitCommitMessageProviderId) => setAI({ gitCommitMessageProviderId })}
+            options={providerOptions}
+          />
+        </Field>
         <Field label={tm("settings.ai.git_commit_message_tone", "Style")}>
           <Select
             value={ai.gitCommitMessageTone}
@@ -897,7 +964,26 @@ function AISection() {
           />
         </Field>
       </SettingsCard>
+    </SettingsForm>
+  );
+}
 
+function MemorySection() {
+  const [settings, setSettings] = useSyncedSettings();
+  const ai = settings.ai;
+  const providerOptions = aiProviderOptions(ai.providers, "memory");
+  const setMemory = (patch: Partial<typeof ai.memory>) => {
+    const next = updateAppSettings({
+      ai: {
+        ...ai,
+        memory: { ...ai.memory, ...patch },
+      },
+    });
+    setSettings(next);
+  };
+
+  return (
+    <SettingsForm className="max-w-[680px]">
       <SettingsCard title={tm("settings.ai.section.memory", "Memory")}>
         <FormRow label={tm("settings.ai.memory.enabled", "Enable Memory")}>
           <Toggle checked={ai.memory.enabled} onChange={(enabled) => setMemory({ enabled })} />
@@ -952,31 +1038,6 @@ function AISection() {
           </Field>
         </SettingsCard>
       )}
-
-      <SettingsCard
-        title={tm("settings.ai.section.providers", "AI Providers")}
-        action={
-          <Button size="sm" variant="secondary" onPress={() => addProvider("openAICompatible")}>
-            {tm("settings.ai.provider.add", "Add API Channel")}
-          </Button>
-        }
-      >
-        {providers.length === 0 && (
-          <div className="text-sm text-ink-faint">
-            {tm("settings.ai.provider.empty", "No API channel has been added yet.")}
-          </div>
-        )}
-        {providers.map((provider) => (
-          <AIProviderCard
-            key={provider.id}
-            provider={provider}
-            testing={testingProviderId === provider.id}
-            onChange={(patch) => upsertProvider(provider.id, patch)}
-            onRemove={() => removeProvider(provider.id)}
-            onTest={() => void testProvider(provider)}
-          />
-        ))}
-      </SettingsCard>
     </SettingsForm>
   );
 }
@@ -1068,6 +1129,17 @@ function aiProviderOptions(providers: AIProviderSettings[], purpose: "memory" | 
           (purpose !== "memory" || provider.useForMemoryExtraction) &&
           provider.kind !== "localLlama",
       )
+      .sort((left, right) => left.priority - right.priority || left.displayName.localeCompare(right.displayName))
+      .map((provider) => ({ value: provider.id, label: provider.displayName })),
+  ];
+}
+
+function gitCommitMessageProviderOptions(providers: AIProviderSettings[]) {
+  return [
+    { value: "automatic", label: tm("settings.ai.git_commit_message_provider.automatic", "Automatic") },
+    { value: "off", label: tm("settings.ai.git_commit_message_provider.off", "Off") },
+    ...providers
+      .filter((provider) => provider.isEnabled && provider.kind !== "localLlama")
       .sort((left, right) => left.priority - right.priority || left.displayName.localeCompare(right.displayName))
       .map((provider) => ({ value: provider.id, label: provider.displayName })),
   ];

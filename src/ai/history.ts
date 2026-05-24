@@ -120,6 +120,9 @@ type AIHistorySnapshotOptions = {
 };
 
 let aiHistoryCacheListenerPromise: Promise<UnlistenFn> | null = null;
+const aiProjectStateLoadInFlight = new Map<string, Promise<void>>();
+const aiProjectStateLoadedKeys = new Set<string>();
+let aiGlobalHistoryLoadInFlight: Promise<void> | null = null;
 
 function projectHistoryKey(project: WorkspaceProject) {
   return project.path;
@@ -304,23 +307,40 @@ export function useAIHistorySnapshot(project?: WorkspaceProject, options: AIHist
       foregroundProjectIdRef.current = null;
       return;
     }
+    const projectKey = projectHistoryKey(project);
     const cached = useRuntimeStore.getState().aiProjectStateByKey[projectHistoryKey(project)];
     if (cached) {
       applyProjectState(cached);
+      aiProjectStateLoadedKeys.add(projectKey);
       return;
     }
-    try {
-      const next = await invoke<AIHistoryProjectState>("ai_history_project_state", {
-        project: {
-          id: project.id,
-          name: project.name,
-          path: project.path,
-        },
-      });
-      applyProjectState(next);
-    } catch (reason) {
-      console.error("failed to load ai history state", reason);
+    if (aiProjectStateLoadedKeys.has(projectKey)) {
+      return;
     }
+    const inFlight = aiProjectStateLoadInFlight.get(projectKey);
+    if (inFlight) {
+      await inFlight;
+      return;
+    }
+    const loadPromise = (async () => {
+      try {
+        const next = await invoke<AIHistoryProjectState>("ai_history_project_state", {
+          project: {
+            id: project.id,
+            name: project.name,
+            path: project.path,
+          },
+        });
+        applyProjectState(next);
+        aiProjectStateLoadedKeys.add(projectKey);
+      } catch (reason) {
+        console.error("failed to load ai history state", reason);
+      } finally {
+        aiProjectStateLoadInFlight.delete(projectKey);
+      }
+    })();
+    aiProjectStateLoadInFlight.set(projectKey, loadPromise);
+    await loadPromise;
   }, [applyProjectState, project]);
 
   useEffect(() => {
@@ -374,19 +394,28 @@ export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options
       useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
       return;
     }
-    try {
-      const next = await invoke<AIGlobalHistorySnapshot | null>("ai_history_global_state", {
-        projects: latestProjectRequests,
-      });
-      useRuntimeStore.getState().setAIGlobalHistory(next);
-      useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
-    } catch (reason) {
-      console.error("failed to load global ai history state", reason);
-      useRuntimeStore.getState().setAIGlobalStatus({
-        isLoading: false,
-        error: reason instanceof Error ? reason.message : String(reason),
-        });
+    if (aiGlobalHistoryLoadInFlight) {
+      await aiGlobalHistoryLoadInFlight;
+      return;
     }
+    aiGlobalHistoryLoadInFlight = (async () => {
+      try {
+        const next = await invoke<AIGlobalHistorySnapshot | null>("ai_history_global_state", {
+          projects: latestProjectRequests,
+        });
+        useRuntimeStore.getState().setAIGlobalHistory(next);
+        useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
+      } catch (reason) {
+        console.error("failed to load global ai history state", reason);
+        useRuntimeStore.getState().setAIGlobalStatus({
+          isLoading: false,
+          error: reason instanceof Error ? reason.message : String(reason),
+        });
+      } finally {
+        aiGlobalHistoryLoadInFlight = null;
+      }
+    })();
+    await aiGlobalHistoryLoadInFlight;
   }, []);
   const refresh = useCallback(async () => {
     const latestEnabled = enabledRef.current;

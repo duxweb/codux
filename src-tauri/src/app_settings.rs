@@ -95,6 +95,8 @@ pub struct PetSettings {
 pub struct AISettings {
     #[serde(default)]
     pub global_prompt: String,
+    #[serde(default = "default_git_commit_message_provider_id")]
+    pub git_commit_message_provider_id: String,
     #[serde(default = "default_git_commit_message_tone")]
     pub git_commit_message_tone: String,
     #[serde(default = "default_git_commit_message_language")]
@@ -296,6 +298,7 @@ impl Default for AISettings {
     fn default() -> Self {
         Self {
             global_prompt: String::new(),
+            git_commit_message_provider_id: default_git_commit_message_provider_id(),
             git_commit_message_tone: default_git_commit_message_tone(),
             git_commit_message_language: default_git_commit_message_language(),
             git_commit_message_style_rules: String::new(),
@@ -646,6 +649,8 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
 
 fn sanitize_ai_settings(mut ai: AISettings) -> AISettings {
     ai.global_prompt = ai.global_prompt.trim().chars().take(20_000).collect();
+    ai.git_commit_message_provider_id =
+        sanitize_provider_selector(&ai.git_commit_message_provider_id, &default_git_commit_message_provider_id());
     ai.git_commit_message_tone = sanitize_git_commit_message_style(&ai.git_commit_message_tone);
     ai.git_commit_message_language =
         sanitize_git_commit_message_language(&ai.git_commit_message_language);
@@ -717,6 +722,16 @@ fn sanitize_ai_settings(mut ai: AISettings) -> AISettings {
         })
     {
         ai.pet.speech_provider_id = default_ai_pet_provider_id();
+    }
+    if ai.git_commit_message_provider_id != default_git_commit_message_provider_id()
+        && ai.git_commit_message_provider_id != "off"
+        && !ai.providers.iter().any(|provider| {
+            provider.id == ai.git_commit_message_provider_id
+                && provider.is_enabled
+                && provider_supports_completion(&provider.kind)
+        })
+    {
+        ai.git_commit_message_provider_id = default_git_commit_message_provider_id();
     }
     ai
 }
@@ -873,6 +888,10 @@ fn default_ai_memory_provider_id() -> String {
 }
 
 fn default_ai_pet_provider_id() -> String {
+    "automatic".to_string()
+}
+
+fn default_git_commit_message_provider_id() -> String {
     "automatic".to_string()
 }
 

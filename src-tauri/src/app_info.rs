@@ -8,7 +8,9 @@ use chrono::Utc;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::VecDeque;
 use std::fs;
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
@@ -554,13 +556,20 @@ pub fn export_diagnostics(
 }
 
 pub fn open_runtime_log() -> Result<(), String> {
-    open_or_create_text_file(
-        &runtime_log_path(),
-        &format!(
-            "{} runtime log\nThe runtime has not written log entries yet.\n",
-            app_display_name()
-        ),
-    )
+    let path = runtime_log_path();
+    if !path.exists() {
+        open_or_create_text_file(
+            &path,
+            &format!(
+                "{} runtime log\nThe runtime has not written log entries yet.\n",
+                app_display_name()
+            ),
+        )?;
+        return Ok(());
+    }
+    let preview_path = runtime_temp_dir().join("runtime-log-preview.txt");
+    write_runtime_log_preview(&path, &preview_path)?;
+    tauri_plugin_opener::open_path(&preview_path, None::<&str>).map_err(|error| error.to_string())
 }
 
 pub fn open_live_log() -> Result<(), String> {
@@ -589,6 +598,49 @@ fn open_or_create_text_file(path: &Path, initial_content: &str) -> Result<(), St
         fs::write(path, initial_content).map_err(|error| error.to_string())?;
     }
     tauri_plugin_opener::open_path(path, None::<&str>).map_err(|error| error.to_string())
+}
+
+fn write_runtime_log_preview(source: &Path, destination: &Path) -> Result<(), String> {
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let lines = tail_runtime_log_lines(source, 1200, 256 * 1024)?;
+    let mut output = String::new();
+    output.push_str(&format!("{} runtime log preview\n\n", app_display_name()));
+    for line in lines {
+        output.push_str(&line);
+        output.push('\n');
+    }
+    fs::write(destination, output).map_err(|error| error.to_string())
+}
+
+fn tail_runtime_log_lines(source: &Path, max_lines: usize, max_bytes: usize) -> Result<VecDeque<String>, String> {
+    let file = fs::File::open(source).map_err(|error| error.to_string())?;
+    let file_len = file.metadata().map_err(|error| error.to_string())?.len() as usize;
+    let read_len = file_len.min(max_bytes);
+    let mut reader = BufReader::new(file);
+    let mut buffer = Vec::with_capacity(read_len);
+    if read_len > 0 {
+        reader
+            .seek(SeekFrom::End(-(read_len as i64)))
+            .map_err(|error| error.to_string())?;
+        reader
+            .read_to_end(&mut buffer)
+            .map_err(|error| error.to_string())?;
+    }
+
+    let tail = String::from_utf8_lossy(&buffer);
+    let mut lines = VecDeque::with_capacity(max_lines);
+    for line in tail.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        lines.push_back(line.to_string());
+        if lines.len() > max_lines {
+            let _ = lines.pop_front();
+        }
+    }
+    Ok(lines)
 }
 
 fn normalize_destination(path: &str) -> Result<PathBuf, String> {

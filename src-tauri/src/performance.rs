@@ -610,7 +610,7 @@ fn capture_raw_sample() -> Option<RawSample> {
             },
             cpu_percent_override: None,
         })
-}
+    }
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]

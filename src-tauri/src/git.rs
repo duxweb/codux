@@ -3,6 +3,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -16,6 +17,7 @@ const COMMIT_CONTEXT_MAX_FILES: usize = 80;
 const COMMIT_CONTEXT_MAX_LINES_PER_FILE: usize = 80;
 
 type GitRepository = git2::Repository;
+pub type GitCancelToken = Arc<AtomicBool>;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -696,11 +698,11 @@ pub fn git_commit_action(request: GitCommitActionRequest) -> Result<GitStatusSna
     match request.action.as_str() {
         "commit" => {}
         "commitAndPush" => {
-            push_current_branch_git2(&repo, None, false)?;
+            push_current_branch_git2(&repo, None, false, None)?;
         }
         "commitAndSync" => {
-            pull_current_branch_git2(&repo)?;
-            push_current_branch_git2(&repo, None, false)?;
+            pull_current_branch_git2(&repo, None)?;
+            push_current_branch_git2(&repo, None, false, None)?;
         }
         _ => return Err(format!("Unknown commit action: {}", request.action)),
     }
@@ -919,7 +921,7 @@ pub fn git_restore_commit(request: GitRestoreCommitRequest) -> Result<GitStatusS
     let root = repo_root(&repo).display().to_string();
     hard_reset_git2(&repo, commit)?;
     if request.force_remote {
-        push_current_branch_git2(&repo, None, true)?;
+        push_current_branch_git2(&repo, None, true, None)?;
     }
     Ok(git_status(root))
 }
@@ -986,22 +988,31 @@ pub fn git_append_gitignore(request: GitPathsRequest) -> Result<GitStatusSnapsho
     Ok(git_status(root))
 }
 
-pub fn git_fetch(project_path: String) -> Result<GitStatusSnapshot, String> {
+pub fn git_fetch_with_cancel(
+    project_path: String,
+    cancel: Option<GitCancelToken>,
+) -> Result<GitStatusSnapshot, String> {
     let repo = open_git_repository(&project_path)?;
     let root = repo_root(&repo).display().to_string();
-    fetch_all_remotes_git2(&repo)?;
+    fetch_all_remotes_git2(&repo, cancel.as_ref())?;
     Ok(git_status(root))
 }
 
-pub fn git_sync(project_path: String) -> Result<GitStatusSnapshot, String> {
+pub fn git_sync_with_cancel(
+    project_path: String,
+    cancel: Option<GitCancelToken>,
+) -> Result<GitStatusSnapshot, String> {
     let repo = open_git_repository(&project_path)?;
     let root = repo_root(&repo).display().to_string();
-    pull_current_branch_git2(&repo)?;
-    push_current_branch_git2(&repo, None, false)?;
+    pull_current_branch_git2(&repo, cancel.as_ref())?;
+    push_current_branch_git2(&repo, None, false, cancel.as_ref())?;
     Ok(git_status(root))
 }
 
-pub fn git_push_remote(request: GitPushRemoteRequest) -> Result<GitStatusSnapshot, String> {
+pub fn git_push_remote_with_cancel(
+    request: GitPushRemoteRequest,
+    cancel: Option<GitCancelToken>,
+) -> Result<GitStatusSnapshot, String> {
     let remote = request.remote.trim();
     if remote.is_empty() {
         return Err("Remote name cannot be empty.".to_string());
@@ -1012,12 +1023,13 @@ pub fn git_push_remote(request: GitPushRemoteRequest) -> Result<GitStatusSnapsho
     if branch.is_empty() {
         return Err("Cannot push detached HEAD to a remote.".to_string());
     }
-    push_current_branch_git2(&repo, Some(remote), false)?;
+    push_current_branch_git2(&repo, Some(remote), false, cancel.as_ref())?;
     Ok(git_status(root))
 }
 
-pub fn git_push_remote_branch(
+pub fn git_push_remote_branch_with_cancel(
     request: GitPushRemoteBranchRequest,
+    cancel: Option<GitCancelToken>,
 ) -> Result<GitStatusSnapshot, String> {
     let remote_branch = request.remote_branch.trim();
     if remote_branch.is_empty() {
@@ -1041,29 +1053,53 @@ pub fn git_push_remote_branch(
         return Err("Cannot push detached HEAD to a remote branch.".to_string());
     }
     let refspec = format!("{local_branch}:{branch_name}");
-    push_refspec_git2(&repo, remote, &refspec, false)?;
+    push_refspec_git2(&repo, remote, &refspec, false, cancel.as_ref())?;
     Ok(git_status(root))
 }
 
-pub fn git_pull(project_path: String) -> Result<GitStatusSnapshot, String> {
+pub fn git_pull_with_cancel(
+    project_path: String,
+    cancel: Option<GitCancelToken>,
+) -> Result<GitStatusSnapshot, String> {
     let repo = open_git_repository(&project_path)?;
     let root = repo_root(&repo).display().to_string();
-    pull_current_branch_git2(&repo)?;
+    pull_current_branch_git2(&repo, cancel.as_ref())?;
     Ok(git_status(root))
 }
 
-pub fn git_push(project_path: String) -> Result<GitStatusSnapshot, String> {
+pub fn git_push_with_cancel(
+    project_path: String,
+    cancel: Option<GitCancelToken>,
+) -> Result<GitStatusSnapshot, String> {
     let repo = open_git_repository(&project_path)?;
     let root = repo_root(&repo).display().to_string();
-    push_current_branch_git2(&repo, None, false)?;
+    push_current_branch_git2(&repo, None, false, cancel.as_ref())?;
     Ok(git_status(root))
 }
 
-pub fn git_force_push(project_path: String) -> Result<GitStatusSnapshot, String> {
+pub fn git_force_push_with_cancel(
+    project_path: String,
+    cancel: Option<GitCancelToken>,
+) -> Result<GitStatusSnapshot, String> {
     let repo = open_git_repository(&project_path)?;
     let root = repo_root(&repo).display().to_string();
-    push_current_branch_git2(&repo, None, true)?;
+    push_current_branch_git2(&repo, None, true, cancel.as_ref())?;
     Ok(git_status(root))
+}
+
+#[cfg(test)]
+fn git_push_remote(request: GitPushRemoteRequest) -> Result<GitStatusSnapshot, String> {
+    git_push_remote_with_cancel(request, None)
+}
+
+#[cfg(test)]
+fn git_pull(project_path: String) -> Result<GitStatusSnapshot, String> {
+    git_pull_with_cancel(project_path, None)
+}
+
+#[cfg(test)]
+fn git_push(project_path: String) -> Result<GitStatusSnapshot, String> {
+    git_push_with_cancel(project_path, None)
 }
 
 pub fn git_diff_file(request: GitDiffRequest) -> GitDiffSnapshot {
@@ -1735,7 +1771,7 @@ fn fast_forward_head(repo: &GitRepository, target: git2::Oid) -> Result<(), Stri
 
 fn clone_repository_git2(remote_url: &str, project_path: &Path) -> Result<(), String> {
     let mut fetch_options = git2::FetchOptions::new();
-    fetch_options.remote_callbacks(git_remote_callbacks());
+    fetch_options.remote_callbacks(git_remote_callbacks(None));
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(fetch_options);
     builder
@@ -1744,28 +1780,40 @@ fn clone_repository_git2(remote_url: &str, project_path: &Path) -> Result<(), St
         .map_err(|error| error.message().to_string())
 }
 
-fn fetch_all_remotes_git2(repo: &GitRepository) -> Result<(), String> {
+fn fetch_all_remotes_git2(
+    repo: &GitRepository,
+    cancel: Option<&GitCancelToken>,
+) -> Result<(), String> {
     let names = repo
         .remotes()
         .map_err(|error| error.message().to_string())?;
     for name in names.iter().flatten().flatten() {
-        fetch_remote_git2(repo, name)?;
+        check_git_cancelled(cancel)?;
+        fetch_remote_git2(repo, name, cancel)?;
     }
     Ok(())
 }
 
-fn fetch_remote_git2(repo: &GitRepository, remote_name: &str) -> Result<(), String> {
+fn fetch_remote_git2(
+    repo: &GitRepository,
+    remote_name: &str,
+    cancel: Option<&GitCancelToken>,
+) -> Result<(), String> {
     let mut remote = repo
         .find_remote(remote_name)
         .map_err(|error| error.message().to_string())?;
     let mut options = git2::FetchOptions::new();
-    options.remote_callbacks(git_remote_callbacks());
+    options.remote_callbacks(git_remote_callbacks(cancel.cloned()));
     remote
         .fetch(&[] as &[&str], Some(&mut options), None)
-        .map_err(|error| error.message().to_string())
+        .map_err(git_error_message)
 }
 
-fn pull_current_branch_git2(repo: &GitRepository) -> Result<(), String> {
+fn pull_current_branch_git2(
+    repo: &GitRepository,
+    cancel: Option<&GitCancelToken>,
+) -> Result<(), String> {
+    check_git_cancelled(cancel)?;
     let branch_name = current_branch_name(repo);
     if branch_name == "HEAD" || branch_name == "uninitialized" {
         return Err("Cannot pull detached HEAD.".to_string());
@@ -1786,7 +1834,8 @@ fn pull_current_branch_git2(repo: &GitRepository) -> Result<(), String> {
         .split_once('/')
         .map(|(remote, _)| remote)
         .ok_or_else(|| "The upstream branch is missing a remote name.".to_string())?;
-    fetch_remote_git2(repo, remote_name)?;
+    fetch_remote_git2(repo, remote_name, cancel)?;
+    check_git_cancelled(cancel)?;
     branch = repo
         .find_branch(&branch_name, git2::BranchType::Local)
         .map_err(|error| error.message().to_string())?;
@@ -1807,12 +1856,16 @@ fn pull_current_branch_git2(repo: &GitRepository) -> Result<(), String> {
         return Ok(());
     }
     if ahead > 0 {
-        return rebase_current_branch_git2(repo, upstream_oid);
+        return rebase_current_branch_git2(repo, upstream_oid, cancel);
     }
     fast_forward_head(repo, upstream_oid)
 }
 
-fn rebase_current_branch_git2(repo: &GitRepository, upstream_oid: git2::Oid) -> Result<(), String> {
+fn rebase_current_branch_git2(
+    repo: &GitRepository,
+    upstream_oid: git2::Oid,
+    cancel: Option<&GitCancelToken>,
+) -> Result<(), String> {
     let upstream = repo
         .find_annotated_commit(upstream_oid)
         .map_err(|error| error.message().to_string())?;
@@ -1822,6 +1875,7 @@ fn rebase_current_branch_git2(repo: &GitRepository, upstream_oid: git2::Oid) -> 
         .map_err(|error| error.message().to_string())?;
     let signature = repo_signature(repo)?;
     while let Some(operation) = rebase.next() {
+        check_git_cancelled(cancel)?;
         operation.map_err(|error| error.message().to_string())?;
         if repo
             .index()
@@ -1843,7 +1897,9 @@ fn push_current_branch_git2(
     repo: &GitRepository,
     remote_override: Option<&str>,
     force: bool,
+    cancel: Option<&GitCancelToken>,
 ) -> Result<(), String> {
+    check_git_cancelled(cancel)?;
     let branch = current_branch_name(repo);
     if branch == "HEAD" || branch == "uninitialized" {
         return Err("Cannot push detached HEAD.".to_string());
@@ -1858,7 +1914,7 @@ fn push_current_branch_git2(
     } else {
         format!("refs/heads/{branch}:refs/heads/{branch}")
     };
-    push_refspec_git2(repo, &remote, &refspec, force)?;
+    push_refspec_git2(repo, &remote, &refspec, force, cancel)?;
     if let Ok(mut branch_ref) = repo.find_branch(&branch, git2::BranchType::Local) {
         let _ = branch_ref.set_upstream(Some(&format!("{remote}/{branch}")));
     }
@@ -1870,15 +1926,18 @@ fn push_refspec_git2(
     remote_name: &str,
     refspec: &str,
     _force: bool,
+    cancel: Option<&GitCancelToken>,
 ) -> Result<(), String> {
+    check_git_cancelled(cancel)?;
     let mut remote = repo
         .find_remote(remote_name)
         .map_err(|error| error.message().to_string())?;
     let mut options = git2::PushOptions::new();
-    options.remote_callbacks(git_remote_callbacks());
+    options.remote_callbacks(git_remote_callbacks(cancel.cloned()));
     remote
         .push(&[refspec], Some(&mut options))
-        .map_err(|error| error.message().to_string())
+        .map_err(git_error_message)?;
+    check_git_cancelled(cancel)
 }
 
 fn upstream_remote_for_branch(repo: &GitRepository, branch: &str) -> Option<String> {
@@ -1898,8 +1957,17 @@ fn first_remote_name(repo: &GitRepository) -> Option<String> {
         .map(str::to_string)
 }
 
-fn git_remote_callbacks<'a>() -> git2::RemoteCallbacks<'a> {
+fn git_remote_callbacks<'a>(cancel: Option<GitCancelToken>) -> git2::RemoteCallbacks<'a> {
     let mut callbacks = git2::RemoteCallbacks::new();
+    let transfer_cancel = cancel.clone();
+    callbacks.transfer_progress(move |_| !is_git_cancelled(transfer_cancel.as_ref()));
+    let sideband_cancel = cancel.clone();
+    callbacks.sideband_progress(move |_| !is_git_cancelled(sideband_cancel.as_ref()));
+    let push_negotiation_cancel = cancel.clone();
+    callbacks.push_negotiation(move |_| {
+        check_git_cancelled(push_negotiation_cancel.as_ref())
+            .map_err(|error| git2::Error::from_str(&error))
+    });
     callbacks.credentials(|url, username_from_url, allowed| {
         if allowed.is_ssh_key() || allowed.is_ssh_memory() {
             let username = username_from_url.unwrap_or("git");
@@ -1936,6 +2004,28 @@ fn git_remote_callbacks<'a>() -> git2::RemoteCallbacks<'a> {
         ))
     });
     callbacks
+}
+
+fn check_git_cancelled(cancel: Option<&GitCancelToken>) -> Result<(), String> {
+    if is_git_cancelled(cancel) {
+        Err("Git operation cancelled.".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn is_git_cancelled(cancel: Option<&GitCancelToken>) -> bool {
+    cancel
+        .map(|token| token.load(Ordering::Relaxed))
+        .unwrap_or(false)
+}
+
+fn git_error_message(error: git2::Error) -> String {
+    if error.code() == git2::ErrorCode::User {
+        "Git operation cancelled.".to_string()
+    } else {
+        error.message().to_string()
+    }
 }
 
 fn default_ssh_key_paths() -> Vec<PathBuf> {

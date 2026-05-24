@@ -105,6 +105,7 @@ type IconBtnProps = {
   disabled?: boolean;
   size?: number;
   onClick?: () => void;
+  onPressStart?: () => void;
 };
 
 export function PanelIconButton({
@@ -116,6 +117,7 @@ export function PanelIconButton({
   disabled,
   size = 13,
   onClick,
+  onPressStart,
 }: IconBtnProps) {
   const stateClass = disabled
     ? "text-ink-mute bg-fill/6 cursor-default opacity-75"
@@ -126,6 +128,7 @@ export function PanelIconButton({
   return (
     <Tooltip label={tooltip} placement={placement}>
       <PressableButton
+        onPressStart={onPressStart}
         onPressUp={onClick}
         disabled={disabled}
         className={`w-[24px] h-[24px] grid place-items-center rounded-md transition-colors ${stateClass}`}
@@ -143,6 +146,7 @@ export function PanelButton({
   disabled,
   children,
   onClick,
+  onPressStart,
 }: {
   tone?: "neutral" | "ghost";
   leading?: IconLike;
@@ -150,6 +154,7 @@ export function PanelButton({
   disabled?: boolean;
   children: ReactNode;
   onClick?: () => void;
+  onPressStart?: () => void;
 }) {
   const base = "h-6 px-2 inline-flex items-center gap-1 rounded-md transition-colors text-xs";
   const variant = disabled
@@ -158,7 +163,12 @@ export function PanelButton({
       ? "text-current/80 hover:text-current hover:bg-fill/10"
       : "text-ink-soft hover:text-ink hover:bg-fill/8";
   return (
-    <PressableButton onPressUp={disabled ? undefined : onClick} disabled={disabled} className={`${base} ${variant}`}>
+    <PressableButton
+      onPressStart={disabled ? undefined : onPressStart}
+      onPressUp={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={`${base} ${variant}`}
+    >
       {Leading ? <Leading size={12} className={busy ? "animate-spin" : undefined} /> : null}
       {children}
     </PressableButton>

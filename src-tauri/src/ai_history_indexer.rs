@@ -158,7 +158,15 @@ impl AIHistoryIndexer {
                 "ai-history",
                 "project_state memory_cache",
                 started_at,
-                &format!("project={} sessions={}", project.id, state.snapshot.as_ref().map(|snapshot| snapshot.sessions.len()).unwrap_or(0)),
+                &format!(
+                    "project={} sessions={}",
+                    project.id,
+                    state
+                        .snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.sessions.len())
+                        .unwrap_or(0)
+                ),
             );
             return Ok(state);
         }
@@ -270,7 +278,10 @@ async fn history_indexer_loop(
     while let Some(job) = rx.recv().await {
         match job {
             AIHistoryJob::Global { projects, reply } => {
-                runtime_trace("ai-history", &format!("global index start projects={}", projects.len()));
+                runtime_trace(
+                    "ai-history",
+                    &format!("global index start projects={}", projects.len()),
+                );
                 let result = run_global_index(projects).await;
                 if let Ok(snapshot) = &result {
                     emit_history_event(
@@ -285,7 +296,10 @@ async fn history_indexer_loop(
             AIHistoryJob::RefreshProject { project } => {
                 runtime_trace(
                     "ai-history",
-                    &format!("project refresh start project={} path={}", project.id, project.path),
+                    &format!(
+                        "project refresh start project={} path={}",
+                        project.id, project.path
+                    ),
                 );
                 if let Ok(next_state) = mark_project_running(&state, &project) {
                     emit_history_event(&app, AIHistoryEvent::ProjectState { state: next_state });
@@ -540,7 +554,10 @@ async fn indexed_project_snapshot(
                     "project={} hit={} sessions={}",
                     project_id,
                     snapshot.is_some(),
-                    snapshot.as_ref().map(|snapshot| snapshot.sessions.len()).unwrap_or(0)
+                    snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.sessions.len())
+                        .unwrap_or(0)
                 ),
             );
             snapshot
@@ -565,7 +582,10 @@ async fn indexed_global_snapshot(
                     "projects={} hit={} sessions={}",
                     project_count,
                     snapshot.is_some(),
-                    snapshot.as_ref().map(|snapshot| snapshot.sessions.len()).unwrap_or(0)
+                    snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.sessions.len())
+                        .unwrap_or(0)
                 ),
             );
             snapshot

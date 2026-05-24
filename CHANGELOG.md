@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-24
+
+### Added
+
+- Added the first stable cross-platform Codux release for macOS and Windows.
+- Added Git commit message provider selection with Automatic, Off, and explicit AI provider modes.
+- Added runtime telemetry and log rotation to make CPU, memory, GPU, AI runtime, Git, and memory extraction issues easier to diagnose.
+
+### Changed
+
+- Improved terminal rendering, restore behavior, WebGL defaults, project switching, and process HUD reporting for smoother long-running AI sessions.
+- Refined app theming, settings surfaces, Git panel controls, SSH profile management, memory management, and desktop pet behavior.
+- Moved long-running Git pull, push, fetch, sync, and remote push operations onto cancellable background work so the UI and cancel action remain responsive.
+
+### Fixed
+
+- Fixed AI runtime queued-task state recovery, memory extraction limits, provider error handling, and project/worktree memory sharing.
+- Fixed Git action status feedback, cancellation behavior, pull/push errors, and updater release metadata handling.
+- Fixed terminal CJK redraw issues, project switching terminal restoration, excessive startup refresh work, and stale frontend state writes.
+
 ## [1.0.0-beta.4] - 2026-05-22
 
 ### Changed

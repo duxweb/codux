@@ -519,7 +519,12 @@ impl MemoryStore {
             |row| row.get(0),
         )?;
         if count == 0 {
-            runtime_trace_elapsed("startup", "memory_recover_interrupted", started_at, "count=0");
+            runtime_trace_elapsed(
+                "startup",
+                "memory_recover_interrupted",
+                started_at,
+                "count=0",
+            );
             return Ok(0);
         }
         conn.execute(
@@ -740,7 +745,8 @@ impl MemoryStore {
         self.cancel_requested.store(false, Ordering::Release);
         let on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync> = Arc::new(on_status);
         self.clear_recent_failure();
-        let mut sessions = self.manual_extraction_candidates(&settings.memory, &projects, &sessions);
+        let mut sessions =
+            self.manual_extraction_candidates(&settings.memory, &projects, &sessions);
         sessions.extend(self.manual_extraction_candidates_from_history(
             &settings.memory,
             &projects,
@@ -1697,8 +1703,7 @@ impl MemoryStore {
             candidates.extend(sessions.iter().cloned());
         }
         candidates.sort_by(|left, right| {
-            left
-                .updated_at
+            left.updated_at
                 .partial_cmp(&right.updated_at)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
@@ -1713,17 +1718,19 @@ impl MemoryStore {
     ) -> Vec<AISessionSnapshot> {
         let limit = memory_settings.max_index_sessions.max(1) as usize;
         let mut by_project: HashMap<String, Vec<AISessionSnapshot>> = HashMap::new();
-        for summary in sessions
-            .iter()
-            .filter(|session| session.total_tokens + session.cached_input_tokens + session.request_count > 0)
-        {
+        for summary in sessions.iter().filter(|session| {
+            session.total_tokens + session.cached_input_tokens + session.request_count > 0
+        }) {
             let Some(project) = memory_project_context_from_history(projects, summary) else {
                 continue;
             };
             let Some(snapshot) = historical_session_snapshot(summary, &project) else {
                 continue;
             };
-            if self.resolve_transcript_source(&snapshot, &project).is_none() {
+            if self
+                .resolve_transcript_source(&snapshot, &project)
+                .is_none()
+            {
                 continue;
             }
             by_project
@@ -1743,8 +1750,7 @@ impl MemoryStore {
             candidates.extend(sessions.iter().cloned());
         }
         candidates.sort_by(|left, right| {
-            left
-                .updated_at
+            left.updated_at
                 .partial_cmp(&right.updated_at)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
@@ -1774,8 +1780,7 @@ impl MemoryStore {
             }
         }
         deduplicated.sort_by(|left, right| {
-            left
-                .updated_at
+            left.updated_at
                 .partial_cmp(&right.updated_at)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
@@ -2761,7 +2766,10 @@ fn memory_project_context_from_history(
         .find(|project| {
             project.root_project_id == session.project_id
                 || paths_equivalent(Some(project.workspace_path.as_str()), &session.project_path)
-                || paths_equivalent(Some(project.root_project_path.as_str()), &session.project_path)
+                || paths_equivalent(
+                    Some(project.root_project_path.as_str()),
+                    &session.project_path,
+                )
         })
         .map(MemoryProjectContext::from_workspace)
 }

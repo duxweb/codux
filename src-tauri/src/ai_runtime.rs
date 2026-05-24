@@ -3010,6 +3010,7 @@ fn reset_runtime_live_log() {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
+    rotate_runtime_log(&path);
     let _ = fs::write(path, "");
 }
 
@@ -3018,6 +3019,7 @@ fn runtime_log_line(category: &str, message: &str) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
+    rotate_runtime_log(&path);
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| format!("{:.3}", duration.as_secs_f64()))
@@ -3025,6 +3027,38 @@ fn runtime_log_line(category: &str, message: &str) {
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "[{timestamp}] [{category}] {message}");
     }
+}
+
+fn rotate_runtime_log(path: &Path) {
+    const MAX_BYTES: u64 = 1_000_000;
+    const ROTATION_COUNT: usize = 5;
+    let Ok(metadata) = fs::metadata(path) else {
+        return;
+    };
+    if metadata.len() <= MAX_BYTES {
+        return;
+    }
+    for index in (1..=ROTATION_COUNT).rev() {
+        let current = rotated_log_path(path, index);
+        if !current.exists() {
+            continue;
+        }
+        if index == ROTATION_COUNT {
+            let _ = fs::remove_file(&current);
+            continue;
+        }
+        let next = rotated_log_path(path, index + 1);
+        let _ = fs::rename(current, next);
+    }
+    let _ = fs::rename(path, rotated_log_path(path, 1));
+}
+
+fn rotated_log_path(path: &Path, index: usize) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "live.log".to_string());
+    path.with_file_name(format!("{file_name}.{index}"))
 }
 
 const RUNTIME_ASSETS: &[(&str, &[u8])] = &[

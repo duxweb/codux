@@ -3,8 +3,8 @@ use crate::ai_history_indexer::AIHistoryIndexer;
 use crate::app_settings::AppSettingsStore;
 use crate::background_queue::{SerialJob, SerialJobQueue};
 use crate::git::{git_review, git_status, GitReviewSnapshot, GitStatusSnapshot};
-use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use crate::project_store::{ProjectRecord, ProjectStore, ProjectSummary};
+use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use crate::worktree::{worktree_snapshot, WorktreeSnapshot};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -113,7 +113,10 @@ impl ProjectActivityCoordinator {
                 project.last_ai_refresh = Some(Instant::now());
             }
         }
-        runtime_trace("startup", "project activity seeded with deferred background refresh");
+        runtime_trace(
+            "startup",
+            "project activity seeded with deferred background refresh",
+        );
     }
 
     pub fn mark_project_summary(&self, project: &ProjectSummary) -> bool {
@@ -142,7 +145,10 @@ impl ProjectActivityCoordinator {
             {
                 runtime_trace(
                     "project-activity",
-                    &format!("activate skipped duplicate project={} path={}", project.id, project.path),
+                    &format!(
+                        "activate skipped duplicate project={} path={}",
+                        project.id, project.path
+                    ),
                 );
                 return;
             }
@@ -472,7 +478,8 @@ fn run_activity_tick(
                     .unwrap_or_else(|| Duration::from_secs(min_ai_refresh_seconds * 4))
             })
             .max(foreground_interval);
-        let due_projects = coordinator.projects_due_for_ai(foreground_interval, background_interval);
+        let due_projects =
+            coordinator.projects_due_for_ai(foreground_interval, background_interval);
         if !due_projects.is_empty() {
             runtime_trace(
                 "project-activity",
@@ -608,12 +615,7 @@ fn run_git_refresh_job(app: AppHandle, project: TrackedProject) {
         started_at,
         &format!(
             "project={} path={} repo={} staged={} unstaged={} untracked={}",
-            project_id,
-            project_path,
-            is_repository,
-            staged_count,
-            unstaged_count,
-            untracked_count
+            project_id, project_path, is_repository, staged_count, unstaged_count, untracked_count
         ),
     );
 }

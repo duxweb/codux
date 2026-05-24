@@ -67,22 +67,24 @@ use git::{
     git_clone as perform_git_clone, git_commit as perform_git_commit,
     git_commit_action as perform_git_commit_action, git_create_branch as perform_git_create_branch,
     git_delete_branch as perform_git_delete_branch, git_diff_file as load_git_diff_file,
-    git_discard as perform_git_discard, git_fetch as perform_git_fetch,
-    git_force_push as perform_git_force_push,
+    git_discard as perform_git_discard, git_fetch_with_cancel as perform_git_fetch_with_cancel,
+    git_force_push_with_cancel as perform_git_force_push_with_cancel,
     git_head_commit_pushed as load_git_head_commit_pushed, git_init as perform_git_init,
     git_last_commit_message as load_git_last_commit_message,
-    git_merge_branch as perform_git_merge_branch, git_pull as perform_git_pull,
-    git_push as perform_git_push, git_push_remote as perform_git_push_remote,
-    git_push_remote_branch as perform_git_push_remote_branch,
+    git_merge_branch as perform_git_merge_branch,
+    git_pull_with_cancel as perform_git_pull_with_cancel,
+    git_push_remote_branch_with_cancel as perform_git_push_remote_branch_with_cancel,
+    git_push_remote_with_cancel as perform_git_push_remote_with_cancel,
+    git_push_with_cancel as perform_git_push_with_cancel,
     git_remove_remote as perform_git_remove_remote,
     git_restore_commit as perform_git_restore_commit,
     git_revert_commit as perform_git_revert_commit, git_review as load_git_review,
     git_review_diff_file as load_git_review_diff_file,
     git_review_file_content as load_git_review_file_content,
     git_squash_merge_branch as perform_git_squash_merge_branch, git_stage as perform_git_stage,
-    git_status as load_git_status, git_sync as perform_git_sync,
+    git_status as load_git_status, git_sync_with_cancel as perform_git_sync_with_cancel,
     git_undo_last_commit as perform_git_undo_last_commit, git_unstage as perform_git_unstage,
-    GitBranchRequest, GitBranchesSnapshot, GitCloneRequest, GitCommitActionRequest,
+    GitBranchRequest, GitBranchesSnapshot, GitCancelToken, GitCloneRequest, GitCommitActionRequest,
     GitCommitRefRequest, GitCommitRequest, GitCreateBranchRequest, GitDeleteBranchRequest,
     GitDiffRequest, GitDiffSnapshot, GitPathsRequest, GitPushRemoteBranchRequest,
     GitPushRemoteRequest, GitRemoteRequest, GitRestoreCommitRequest, GitReviewContentRequest,
@@ -132,8 +134,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 use std::thread;
+use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::utils::config::Color;
@@ -471,6 +473,7 @@ struct AppState {
     pet: Arc<PetStore>,
     ssh: Arc<SSHStore>,
     git_watch: Arc<GitWatchManager>,
+    git_cancels: Arc<Mutex<HashMap<String, GitCancelToken>>>,
     file_watch: Arc<FileWatchManager>,
     desktop_pet_hit_state: Arc<DesktopPetHitState>,
     is_exiting: Arc<AtomicBool>,
@@ -955,7 +958,12 @@ fn terminal_snapshot(
         "terminal",
         "snapshot",
         started_at,
-        &format!("session={} chars={} bytes={}", session_id, snapshot.chars().count(), snapshot.len()),
+        &format!(
+            "session={} chars={} bytes={}",
+            session_id,
+            snapshot.chars().count(),
+            snapshot.len()
+        ),
     );
     Ok(snapshot)
 }
@@ -1528,6 +1536,91 @@ fn run_git_status_command(
     Ok(snapshot)
 }
 
+fn git_cancel_key(project_path: &str) -> String {
+    let normalized = Path::new(project_path.trim())
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(project_path.trim()));
+    let mut key = normalized.to_string_lossy().replace('\\', "/");
+    while key.len() > 1 && key.ends_with('/') {
+        key.pop();
+    }
+    #[cfg(windows)]
+    {
+        key = key.to_ascii_lowercase();
+    }
+    key
+}
+
+fn create_git_cancel_token(state: &AppState, project_path: &str) -> GitCancelToken {
+    let token = Arc::new(AtomicBool::new(false));
+    if let Ok(mut cancels) = state.git_cancels.lock() {
+        cancels.insert(git_cancel_key(project_path), Arc::clone(&token));
+    }
+    token
+}
+
+fn clear_git_cancel_token(state: &AppState, project_path: &str, token: &GitCancelToken) {
+    if let Ok(mut cancels) = state.git_cancels.lock() {
+        let key = git_cancel_key(project_path);
+        if cancels
+            .get(&key)
+            .is_some_and(|current| Arc::ptr_eq(current, token))
+        {
+            cancels.remove(&key);
+        }
+    }
+}
+
+fn run_cancellable_git_status_command(
+    state: &AppState,
+    app: &tauri::AppHandle,
+    project_path: String,
+    action: impl FnOnce(String, GitCancelToken) -> Result<GitStatusSnapshot, String>,
+) -> Result<GitStatusSnapshot, String> {
+    let token = create_git_cancel_token(state, &project_path);
+    let result = action(project_path.clone(), Arc::clone(&token));
+    clear_git_cancel_token(state, &project_path, &token);
+    let snapshot = result?;
+    emit_git_status_snapshot(app, state, &project_path, snapshot.clone());
+    refresh_git_sidecars_for_path(app, state, &project_path);
+    Ok(snapshot)
+}
+
+async fn run_cancellable_git_status_command_blocking(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    project_path: String,
+    action: impl FnOnce(String, GitCancelToken) -> Result<GitStatusSnapshot, String> + Send + 'static,
+) -> Result<GitStatusSnapshot, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_cancellable_git_status_command(&state, &app, project_path, action)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn git_cancel(state: tauri::State<'_, AppState>, project_path: String) -> Result<(), String> {
+    let key = git_cancel_key(&project_path);
+    let Some(token) = state
+        .git_cancels
+        .lock()
+        .map_err(|_| "Git cancel lock is poisoned.".to_string())?
+        .get(&key)
+        .cloned()
+    else {
+        runtime_trace(
+            "git",
+            &format!("cancel ignored path={project_path} reason=no-active-action"),
+        );
+        return Ok(());
+    };
+    token.store(true, Ordering::Relaxed);
+    runtime_trace("git", &format!("cancel requested path={project_path}"));
+    Ok(())
+}
+
 #[tauri::command]
 fn git_status(
     state: tauri::State<'_, AppState>,
@@ -1560,7 +1653,10 @@ fn git_refresh_project(
     app: tauri::AppHandle,
     project_path: String,
 ) {
-    runtime_trace("git", &format!("git_refresh_project enqueue path={project_path}"));
+    runtime_trace(
+        "git",
+        &format!("git_refresh_project enqueue path={project_path}"),
+    );
     state.project_activity.refresh_git_sidecars_by_path(
         app.clone(),
         Arc::clone(&state.projects),
@@ -1646,39 +1742,51 @@ fn git_head_commit_pushed(project_path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn git_pull(
+async fn git_pull(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     project_path: String,
 ) -> Result<GitStatusSnapshot, String> {
-    run_git_status_command(&state, &app, project_path, perform_git_pull)
+    run_cancellable_git_status_command_blocking(state, app, project_path, |path, cancel| {
+        perform_git_pull_with_cancel(path, Some(cancel))
+    })
+    .await
 }
 
 #[tauri::command]
-fn git_push(
+async fn git_push(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     project_path: String,
 ) -> Result<GitStatusSnapshot, String> {
-    run_git_status_command(&state, &app, project_path, perform_git_push)
+    run_cancellable_git_status_command_blocking(state, app, project_path, |path, cancel| {
+        perform_git_push_with_cancel(path, Some(cancel))
+    })
+    .await
 }
 
 #[tauri::command]
-fn git_fetch(
+async fn git_fetch(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     project_path: String,
 ) -> Result<GitStatusSnapshot, String> {
-    run_git_status_command(&state, &app, project_path, perform_git_fetch)
+    run_cancellable_git_status_command_blocking(state, app, project_path, |path, cancel| {
+        perform_git_fetch_with_cancel(path, Some(cancel))
+    })
+    .await
 }
 
 #[tauri::command]
-fn git_sync(
+async fn git_sync(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     project_path: String,
 ) -> Result<GitStatusSnapshot, String> {
-    run_git_status_command(&state, &app, project_path, perform_git_sync)
+    run_cancellable_git_status_command_blocking(state, app, project_path, |path, cancel| {
+        perform_git_sync_with_cancel(path, Some(cancel))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1796,34 +1904,39 @@ fn git_delete_branch(
 }
 
 #[tauri::command]
-fn git_force_push(
+async fn git_force_push(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     project_path: String,
 ) -> Result<GitStatusSnapshot, String> {
-    run_git_status_command(&state, &app, project_path, perform_git_force_push)
+    run_cancellable_git_status_command_blocking(state, app, project_path, |path, cancel| {
+        perform_git_force_push_with_cancel(path, Some(cancel))
+    })
+    .await
 }
 
 #[tauri::command]
-fn git_push_remote(
+async fn git_push_remote(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: GitPushRemoteRequest,
 ) -> Result<GitStatusSnapshot, String> {
-    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
-        perform_git_push_remote(request)
+    run_cancellable_git_status_command_blocking(state, app, request.project_path.clone(), |_, cancel| {
+        perform_git_push_remote_with_cancel(request, Some(cancel))
     })
+    .await
 }
 
 #[tauri::command]
-fn git_push_remote_branch(
+async fn git_push_remote_branch(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     request: GitPushRemoteBranchRequest,
 ) -> Result<GitStatusSnapshot, String> {
-    run_git_status_command(&state, &app, request.project_path.clone(), |_| {
-        perform_git_push_remote_branch(request)
+    run_cancellable_git_status_command_blocking(state, app, request.project_path.clone(), |_, cancel| {
+        perform_git_push_remote_branch_with_cancel(request, Some(cancel))
     })
+    .await
 }
 
 #[tauri::command]
@@ -6627,6 +6740,7 @@ pub fn run() {
                 pet: Arc::new(PetStore::load_or_seed()),
                 ssh: Arc::new(SSHStore::load_or_seed()),
                 git_watch: Arc::new(GitWatchManager::default()),
+                git_cancels: Arc::new(Mutex::new(HashMap::new())),
                 file_watch: Arc::new(FileWatchManager::default()),
                 desktop_pet_hit_state: Arc::new(DesktopPetHitState::default()),
                 is_exiting: Arc::new(AtomicBool::new(false)),
@@ -6784,6 +6898,7 @@ pub fn run() {
             ai_history_session_rename,
             ai_history_session_remove,
             git_status,
+            git_cancel,
             git_refresh_project,
             git_stage,
             git_unstage,

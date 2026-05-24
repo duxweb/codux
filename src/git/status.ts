@@ -274,6 +274,13 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
     [applySnapshot, projectCacheKey, projectPath, snapshot],
   );
 
+  const cancel = useCallback(async () => {
+    if (!projectPath || !window.__TAURI_INTERNALS__) return;
+    await invoke("git_cancel", {
+      projectPath,
+    });
+  }, [projectPath]);
+
   const stage = useCallback(
     (paths: string[]) =>
       runSnapshotAction("git_stage", {
@@ -630,6 +637,7 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
     isLoading,
     error,
     refresh,
+    cancel,
     stage,
     unstage,
     commit,

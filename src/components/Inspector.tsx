@@ -33,6 +33,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   useAIHistorySnapshot,
   type AIHeatmapDay,
@@ -167,6 +168,8 @@ function HeaderActionButton({
 
 const MIN_REFRESH_FEEDBACK_MS = 650;
 const AI_REFRESH_FEEDBACK_MS = 1000;
+const MIN_GIT_ACTION_FEEDBACK_MS = 3000;
+const GIT_POST_ACTION_REFRESH_DELAY_MS = 120;
 const FILE_TREE_WATCH_DEBOUNCE_MS = 220;
 
 function useRefreshFeedback(refresh: () => Promise<unknown>, minVisibleMs = MIN_REFRESH_FEEDBACK_MS) {
@@ -208,6 +211,7 @@ type GitInputState = {
   secondaryLabel?: string;
   secondaryValue?: string;
   multiline?: boolean;
+  actionKey?: string;
   onSubmit: (value: string, secondaryValue: string) => Promise<void>;
 };
 
@@ -312,16 +316,27 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const [isSubmittingCommit, setSubmittingCommit] = useState(false);
   const [isGeneratingCommitMessage, setGeneratingCommitMessage] = useState(false);
   const [gitActionLoading, setGitActionLoading] = useState<string | null>(null);
+  const [gitActionError, setGitActionError] = useState<string | null>(null);
   const [gitHistoryHeight, setGitHistoryHeight] = useState(190);
   const gitContentRef = useRef<HTMLDivElement | null>(null);
   const git = useGitStatusSnapshot(project);
   const [isManualRefreshing, refreshGitFeedback] = useRefreshFeedback(git.refresh);
   const isRefreshingGit = git.isLoading || isManualRefreshing;
+  const isPulling = gitActionLoading === "pull";
+  const isPushing = gitActionLoading === "push";
+  const isGitActionRunning = gitActionLoading !== null;
+  const isGitActionFailed = gitActionError !== null;
+  const canCancelGitAction = isGitActionRunning && isCancellableGitAction(gitActionLoading);
   const snapshot = git.snapshot;
   const hasUpstream = Boolean(snapshot.upstream);
   const hasRemotes = snapshot.remotes.length > 0;
   const canUseCurrentBranchRemote = hasUpstream && snapshot.branch !== "HEAD" && snapshot.branch !== "uninitialized";
   const canCommit = snapshot.staged.length > 0 && commitMessage.trim().length > 0 && !isSubmittingCommit;
+  const gitStatusActionLabel = isGitActionRunning
+    ? gitActionStatusLabel(gitActionLoading)
+    : isGitActionFailed
+      ? tm("git.error.action_failed", "Git Operation Failed")
+      : "";
   const statusLabel = !snapshot.isRepository
     ? tm("git.repository.not_repository", "Current project is not a Git repository.")
     : hasUpstream
@@ -329,6 +344,13 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
         ? tm("git.remote.status.synced", "Remote Is Synced")
         : tm("git.remote.status.has_updates", "Remote Has Updates")
       : tm("git.remote.status.no_remote_branch", "No Remote Branch");
+  const statusBodyLabel = isGitActionRunning
+    ? gitStatusActionLabel
+    : isGitActionFailed
+      ? gitStatusActionLabel
+      : isRefreshingGit
+        ? tm("git.empty.reading_status", "Reading Git Status")
+        : statusLabel;
   const statusTone = snapshot.isRepository && hasUpstream ? "info" : "neutral";
   const statusButtonTone = statusTone === "info" ? "ghost" : "neutral";
   const StatusIcon =
@@ -416,23 +438,67 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
       kind: "error",
     });
   }, []);
+  const cancelGitAction = useCallback(async () => {
+    if (!canCancelGitAction) return;
+    setGitActionLoading(null);
+    setGitActionError(null);
+    try {
+      await git.cancel();
+    } catch (error) {
+      await showGitActionError(error);
+    }
+  }, [canCancelGitAction, git, showGitActionError]);
   const runGitAction = useCallback(
     async (loadingKey: string, action: () => Promise<unknown>) => {
-      setGitActionLoading(loadingKey);
+      setGitActionError(null);
+      flushSync(() => {
+        setGitActionLoading(loadingKey);
+      });
+      await new Promise<void>((resolve) => {
+        if (typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(() => resolve());
+          return;
+        }
+        window.setTimeout(resolve, 0);
+      });
+      const startedAt = performance.now();
+      let wasCancelled = false;
       try {
-        await action();
+        await Promise.resolve(action());
       } catch (error) {
+        if (isGitCancellationError(error)) {
+          wasCancelled = true;
+          flushSync(() => {
+            setGitActionLoading((current) => (current === loadingKey ? null : current));
+          });
+          return;
+        }
+        setGitActionError(error instanceof Error ? error.message : String(error));
         await showGitActionError(error);
       } finally {
-        setGitActionLoading((current) => (current === loadingKey ? null : current));
+        if (wasCancelled) return;
+        const elapsed = performance.now() - startedAt;
+        const remaining = MIN_GIT_ACTION_FEEDBACK_MS - elapsed;
+        if (remaining > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, remaining));
+        }
+        if (loadingKey === "pull" || loadingKey === "push" || loadingKey === "fetch" || loadingKey === "sync") {
+          await new Promise((resolve) => window.setTimeout(resolve, GIT_POST_ACTION_REFRESH_DELAY_MS));
+          await refreshGitFeedback().catch(() => undefined);
+        }
+        flushSync(() => {
+          setGitActionLoading((current) => (current === loadingKey ? null : current));
+        });
       }
     },
-    [showGitActionError],
+    [refreshGitFeedback, showGitActionError],
   );
   const refreshGit = useCallback(async () => {
+    setGitActionError(null);
     try {
       await refreshGitFeedback();
     } catch (error) {
+      setGitActionError(error instanceof Error ? error.message : String(error));
       await showGitActionError(error);
     }
   }, [refreshGitFeedback, showGitActionError]);
@@ -442,7 +508,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
     const secondary = gitInput.secondaryValue?.trim() ?? "";
     if (!primary) return;
     setGitInput(null);
-    await runGitAction("input", () => gitInput.onSubmit(primary, secondary));
+    await runGitAction(gitInput.actionKey ?? "input", () => gitInput.onSubmit(primary, secondary));
   };
   const createBranch = () => {
     const seed = `worktree/${new Date().toISOString().slice(0, 10)}`;
@@ -498,11 +564,13 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
     });
   };
   const pushRemote = () => {
+    setGitActionError(null);
     openGitInput({
       title: tm("git.remote.push_to", "Push To..."),
       message: snapshot.remotes.map((remote) => remote.name).join(", "),
       label: tm("git.remote.name", "Remote Name"),
       value: snapshot.remotes[0]?.name ?? "origin",
+      actionKey: "pushRemote",
       onSubmit: async (remote) => {
         await git.pushRemote(remote);
       },
@@ -1430,53 +1498,54 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
       )}
 
       <PanelStatusBar
-        tone={statusTone}
+        tone={isGitActionRunning ? "warning" : isGitActionFailed ? "danger" : statusTone}
         leading={
           <span className="flex min-w-0 items-center gap-1.5 truncate">
-            {isRefreshingGit ? (
+            {isGitActionRunning ? (
+              <Spinner size="sm" color="current" className="text-current/90" />
+            ) : isGitActionFailed ? (
+              <X size={12} className="opacity-90" />
+            ) : isRefreshingGit ? (
               <Spinner size="sm" color="current" className="text-current/90" />
             ) : snapshot.isRepository && hasUpstream ? (
               <StatusIcon size={12} className="opacity-90" />
             ) : (
               <GitBranch size={12} className="opacity-75" />
             )}
-            <span>{isRefreshingGit ? tm("git.empty.reading_status", "Reading Git Status") : statusLabel}</span>
-            {isRefreshingGit && (
-              <ProgressBar
-                aria-label={tm("git.status.refresh.progress", "Git refresh progress")}
-                isIndeterminate
-                size="sm"
-                className="w-14"
-              >
-                <ProgressBar.Track className="h-1 bg-current/20">
-                  <ProgressBar.Fill className="h-full bg-current/75" />
-                </ProgressBar.Track>
-              </ProgressBar>
-            )}
+            <span>{statusBodyLabel}</span>
           </span>
         }
         trailing={
           <>
-            <PanelButton
-              tone={statusButtonTone}
-              leading={ArrowDownToLine}
-              busy={gitActionLoading === "pull"}
-              disabled={gitActionLoading !== null}
-              onClick={hasUpstream ? () => void runGitAction("pull", () => git.pull()) : undefined}
-            >
-              {tm("git.remote.pull", "Pull")}
-              {snapshot.behind > 0 ? ` ${snapshot.behind}` : ""}
-            </PanelButton>
-            <PanelButton
-              tone={statusButtonTone}
-              leading={ArrowUpFromLine}
-              busy={gitActionLoading === "push"}
-              disabled={gitActionLoading !== null}
-              onClick={hasUpstream ? () => void runGitAction("push", () => git.push()) : () => void pushRemote()}
-            >
-              {tm("git.remote.push", "Push")}
-              {snapshot.ahead > 0 ? ` ${snapshot.ahead}` : ""}
-            </PanelButton>
+            {canCancelGitAction ? (
+              <PanelButton tone="ghost" leading={X} onPressStart={() => void cancelGitAction()}>
+                {tm("common.cancel", "Cancel")}
+              </PanelButton>
+            ) : (
+              <>
+                <PanelButton
+                  tone={statusButtonTone}
+                  leading={ArrowDownToLine}
+                  busy={isPulling}
+                  disabled={isGitActionRunning}
+                  onPressStart={hasUpstream ? () => void runGitAction("pull", () => git.pull()) : undefined}
+                >
+                  {isPulling ? tm("git.remote.pull.loading", "Pulling...") : tm("git.remote.pull", "Pull")}
+                  {snapshot.behind > 0 ? ` ${snapshot.behind}` : ""}
+                </PanelButton>
+                <PanelButton
+                  tone={statusButtonTone}
+                  leading={ArrowUpFromLine}
+                  busy={isPushing}
+                  disabled={isGitActionRunning}
+                  onPressStart={hasUpstream ? () => void runGitAction("push", () => git.push()) : undefined}
+                  onClick={hasUpstream ? undefined : () => void pushRemote()}
+                >
+                  {isPushing ? tm("git.remote.push.loading", "Pushing...") : tm("git.remote.push", "Push")}
+                  {snapshot.ahead > 0 ? ` ${snapshot.ahead}` : ""}
+                </PanelButton>
+              </>
+            )}
           </>
         }
       />
@@ -1940,11 +2009,13 @@ async function generateCommitMessage(snapshot: GitStatusSnapshot, projectPath?: 
   const fallback = fallbackCommitMessage(snapshot);
   if (!fallback || !window.__TAURI_INTERNALS__) return fallback;
   const settings = readAppSettings();
+  const providerId = settings.ai.gitCommitMessageProviderId.trim();
+  if (providerId === "off") return fallback;
   const context = await loadCommitMessageContext(snapshot, projectPath);
   const prompt = buildCommitMessagePrompt(snapshot, settings.ai, gitCommitMessageLanguagePrompt(settings), context);
   const response = await invoke<{ text: string }>("llm_complete", {
     request: {
-      providerId: null,
+      providerId: providerId && providerId !== "automatic" ? providerId : null,
       purpose: "gitCommitMessage",
       systemPrompt: [
         "You generate Git commit messages.",
@@ -2126,6 +2197,68 @@ function gitCommitActionLabel(action: GitCommitAction) {
     default:
       return tm("git.commit.action", "Commit");
   }
+}
+
+function gitActionStatusLabel(action: string | null) {
+  if (!action) return "";
+  if (action.startsWith("pushRemoteBranch:")) return tm("git.remote.push.loading", "Pushing...");
+  if (action.startsWith("pushRemote:")) return tm("git.remote.push.loading", "Pushing...");
+  if (action === "pushRemote") return tm("git.remote.push.loading", "Pushing...");
+  if (action.startsWith("checkoutLocal:")) return tm("git.branch.checkout.loading", "Switching Branch...");
+  if (action.startsWith("checkoutRemote:")) return tm("git.branch.checkout.loading", "Switching Branch...");
+  if (action.startsWith("mergeLocal:")) return tm("git.branch.merge.loading", "Merging Branch...");
+  if (action.startsWith("squashLocal:")) return tm("git.branch.squash.loading", "Squashing Branch...");
+  if (action.startsWith("deleteLocal:")) return tm("git.branch.delete.loading", "Deleting Branch...");
+  if (action.startsWith("removeRemote:")) return tm("git.remote.remove.loading", "Removing Remote...");
+  switch (action) {
+    case "stage":
+      return tm("git.stage.loading", "Staging Changes...");
+    case "unstage":
+      return tm("git.unstage.loading", "Unstaging Changes...");
+    case "discard":
+      return tm("git.discard.loading", "Discarding Changes...");
+    case "ignore":
+      return tm("git.ignore.loading", "Updating .gitignore...");
+    case "commit":
+      return tm("git.commit.loading", "Committing Changes...");
+    case "input":
+      return tm("git.action.running", "Running Git Operation...");
+    case "init":
+      return tm("git.repository.init.loading", "Initializing Repository...");
+    case "fetch":
+      return tm("git.remote.fetch.loading", "Fetching...");
+    case "pull":
+      return tm("git.remote.pull.loading", "Pulling...");
+    case "push":
+    case "forcePush":
+      return action === "forcePush"
+        ? tm("git.remote.force_push.loading", "Force Pushing...")
+        : tm("git.remote.push.loading", "Pushing...");
+    case "undoLastCommit":
+      return tm("git.history.undo_last_commit.loading", "Undoing Last Commit...");
+    case "editLastCommitMessage":
+      return tm("git.commit.amend.loading", "Updating Commit...");
+    default:
+      return tm("git.action.running", "Running Git Operation...");
+  }
+}
+
+function isCancellableGitAction(action: string | null) {
+  if (!action) return false;
+  return (
+    action === "fetch" ||
+    action === "pull" ||
+    action === "push" ||
+    action === "forcePush" ||
+    action === "pushRemote" ||
+    action.startsWith("pushRemote:") ||
+    action.startsWith("pushRemoteBranch:")
+  );
+}
+
+function isGitCancellationError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /git operation cancelled|operation cancelled|cancelled/i.test(message);
 }
 
 function groupRemoteBranches(values: string[], upstream?: string | null) {

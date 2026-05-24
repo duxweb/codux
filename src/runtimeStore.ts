@@ -260,21 +260,25 @@ function stripAIGlobalHistorySessions(snapshot: AIGlobalHistorySnapshot | null):
 }
 
 function isSameAIHistoryProjectState(left: AIHistoryProjectState, right: AIHistoryProjectState) {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return serializeStable(left) === serializeStable(right);
 }
 
 function isSameAIProjectSessions(left: AIProjectSessionsCacheEntry, right: AIProjectSessionsCacheEntry) {
-  return JSON.stringify(left.sessions) === JSON.stringify(right.sessions);
+  return serializeStable(left.sessions) === serializeStable(right.sessions);
 }
 
 function isSameAIGlobalHistory(
   left: AIGlobalHistorySnapshot | null,
   right: AIGlobalHistorySnapshot | null,
 ) {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return serializeStable(left) === serializeStable(right);
 }
 
 function shortTraceKey(key: string) {
   if (key.length <= 96) return key;
   return `${key.slice(0, 44)}...${key.slice(-44)}`;
+}
+
+function serializeStable(value: unknown) {
+  return JSON.stringify(value);
 }

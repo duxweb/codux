@@ -305,7 +305,15 @@
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
-      "settings.ai.memory.extraction_interval": "Extraktionsintervall"
+      "settings.ai.memory.extraction_interval": "Extraktionsintervall",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git commit message generation and formatting.",
+      "settings.tab.memory": "Memory",
+      "settings.tab.memory.description": "Memory injection, extraction, and indexing.",
+      "settings.ai.git_commit_message_language.follow": "Follow",
+      "settings.ai.git_commit_message_provider": "KI-Anbieter",
+      "settings.ai.git_commit_message_provider.automatic": "Automatisch",
+      "settings.ai.git_commit_message_provider.off": "Aus"
     },
     "en": {
       "settings.ai_auto_refresh": "AI Auto Refresh",
@@ -596,7 +604,7 @@
       "settings.update.mode.signed_config": "Signed Config",
       "settings.update.mode.not_configured": "Not Configured",
       "settings.tab.ai": "AI",
-      "settings.tab.ai.description": "Launch defaults for AI CLI tools, memory, and providers.",
+      "settings.tab.ai.description": "Launch defaults for AI CLI tools and providers.",
       "settings.theme_color.help": "Applies to buttons, selected states, tabs, focus rings, links, and other highlights.",
       "settings.ai.provider.empty": "No API channel has been added yet.",
       "settings.update.status.available_format": "Version %@ is available. Current version: %@.",
@@ -614,7 +622,15 @@
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
       "settings.app_icon.restart_pending": "App icon changes apply fully after restart.",
       "settings.app_icon.restart_message": "Restart Codux to apply the selected app icon everywhere.",
-      "settings.ai.memory.extraction_interval": "Extraction Interval"
+      "settings.ai.memory.extraction_interval": "Extraction Interval",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git commit message generation and formatting.",
+      "settings.tab.memory": "Memory",
+      "settings.tab.memory.description": "Memory injection, extraction, and indexing.",
+      "settings.ai.git_commit_message_language.follow": "Follow",
+      "settings.ai.git_commit_message_provider": "AI Provider",
+      "settings.ai.git_commit_message_provider.automatic": "Automatic",
+      "settings.ai.git_commit_message_provider.off": "Off"
     },
     "es": {
       "settings.ai_auto_refresh": "Actualización automática de IA",
@@ -921,7 +937,15 @@
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
-      "settings.ai.memory.extraction_interval": "Intervalo de extracción"
+      "settings.ai.memory.extraction_interval": "Intervalo de extracción",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git commit message generation and formatting.",
+      "settings.tab.memory": "Memory",
+      "settings.tab.memory.description": "Memory injection, extraction, and indexing.",
+      "settings.ai.git_commit_message_language.follow": "Follow",
+      "settings.ai.git_commit_message_provider": "Proveedor de IA",
+      "settings.ai.git_commit_message_provider.automatic": "Automático",
+      "settings.ai.git_commit_message_provider.off": "Desactivado"
     },
     "fr": {
       "settings.ai_auto_refresh": "Actualisation auto IA",
@@ -1228,7 +1252,15 @@
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
-      "settings.ai.memory.extraction_interval": "Intervalle d’extraction"
+      "settings.ai.memory.extraction_interval": "Intervalle d’extraction",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git commit message generation and formatting.",
+      "settings.tab.memory": "Memory",
+      "settings.tab.memory.description": "Memory injection, extraction, and indexing.",
+      "settings.ai.git_commit_message_language.follow": "Follow",
+      "settings.ai.git_commit_message_provider": "Fournisseur IA",
+      "settings.ai.git_commit_message_provider.automatic": "Automatique",
+      "settings.ai.git_commit_message_provider.off": "Désactivé"
     },
     "ja": {
       "settings.ai_auto_refresh": "AI 自動更新",
@@ -1535,7 +1567,15 @@
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
-      "settings.ai.memory.extraction_interval": "抽出間隔"
+      "settings.ai.memory.extraction_interval": "抽出間隔",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git commit message generation and formatting.",
+      "settings.tab.memory": "Memory",
+      "settings.tab.memory.description": "Memory injection, extraction, and indexing.",
+      "settings.ai.git_commit_message_language.follow": "Follow",
+      "settings.ai.git_commit_message_provider": "AI プロバイダー",
+      "settings.ai.git_commit_message_provider.automatic": "自動",
+      "settings.ai.git_commit_message_provider.off": "オフ"
     },
     "ko": {
       "settings.ai_auto_refresh": "AI 자동 새로고침",
@@ -1842,7 +1882,15 @@
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
-      "settings.ai.memory.extraction_interval": "추출 간격"
+      "settings.ai.memory.extraction_interval": "추출 간격",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git commit message generation and formatting.",
+      "settings.tab.memory": "Memory",
+      "settings.tab.memory.description": "Memory injection, extraction, and indexing.",
+      "settings.ai.git_commit_message_language.follow": "Follow",
+      "settings.ai.git_commit_message_provider": "AI 제공자",
+      "settings.ai.git_commit_message_provider.automatic": "자동",
+      "settings.ai.git_commit_message_provider.off": "끄기"
     },
     "pt-BR": {
       "settings.ai_auto_refresh": "Atualização automática de IA",
@@ -2149,7 +2197,15 @@
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
-      "settings.ai.memory.extraction_interval": "Intervalo de extração"
+      "settings.ai.memory.extraction_interval": "Intervalo de extração",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git commit message generation and formatting.",
+      "settings.tab.memory": "Memory",
+      "settings.tab.memory.description": "Memory injection, extraction, and indexing.",
+      "settings.ai.git_commit_message_language.follow": "Follow",
+      "settings.ai.git_commit_message_provider": "Provedor de IA",
+      "settings.ai.git_commit_message_provider.automatic": "Automático",
+      "settings.ai.git_commit_message_provider.off": "Desativado"
     },
     "ru": {
       "settings.ai_auto_refresh": "Автообновление ИИ",
@@ -2456,7 +2512,15 @@
       "settings.ai.git_commit_message_tone_placeholder": "concise, conventional",
       "settings.ai.git_commit_message_style_rules": "Style Rules",
       "settings.ai.git_commit_message_style_rules_placeholder": "Example: use Conventional Commits, keep subject under 72 characters.",
-      "settings.ai.memory.extraction_interval": "Интервал извлечения"
+      "settings.ai.memory.extraction_interval": "Интервал извлечения",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git commit message generation and formatting.",
+      "settings.tab.memory": "Memory",
+      "settings.tab.memory.description": "Memory injection, extraction, and indexing.",
+      "settings.ai.git_commit_message_language.follow": "Follow",
+      "settings.ai.git_commit_message_provider": "Поставщик ИИ",
+      "settings.ai.git_commit_message_provider.automatic": "Автоматически",
+      "settings.ai.git_commit_message_provider.off": "Отключено"
     },
     "zh-Hans": {
       "settings.ai_auto_refresh": "AI 自动刷新",
@@ -2747,7 +2811,7 @@
       "settings.update.mode.signed_config": "已签名配置",
       "settings.update.mode.not_configured": "未配置",
       "settings.tab.ai": "AI",
-      "settings.tab.ai.description": "AI CLI 工具、记忆和供应商的启动默认值。",
+      "settings.tab.ai.description": "AI CLI 工具和供应商的启动默认值。",
       "settings.theme_color.help": "应用到按钮、选中状态、顶部 Tab、焦点环、链接和其他高亮色。",
       "settings.ai.provider.empty": "还没有添加 API 通道。",
       "settings.update.status.available_format": "发现版本 %@，当前版本为 %@。",
@@ -2765,7 +2829,15 @@
       "settings.ai.git_commit_message_style_rules_placeholder": "例如：使用 Conventional Commits，标题不超过 72 个字符。",
       "settings.app_icon.restart_pending": "应用图标会在重启后完整生效。",
       "settings.app_icon.restart_message": "重启 Codux 后，所选应用图标会完整生效。",
-      "settings.ai.memory.extraction_interval": "自动提取间隔"
+      "settings.ai.memory.extraction_interval": "自动提取间隔",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git 提交消息生成和格式。",
+      "settings.tab.memory": "记忆",
+      "settings.tab.memory.description": "记忆注入、提取和索引。",
+      "settings.ai.git_commit_message_language.follow": "跟随",
+      "settings.ai.git_commit_message_provider": "AI 提供方",
+      "settings.ai.git_commit_message_provider.automatic": "自动",
+      "settings.ai.git_commit_message_provider.off": "关闭"
     },
     "zh-Hant": {
       "settings.ai_auto_refresh": "AI 自動重新整理",
@@ -3056,7 +3128,7 @@
       "settings.update.mode.signed_config": "已簽署配置",
       "settings.update.mode.not_configured": "未配置",
       "settings.tab.ai": "AI",
-      "settings.tab.ai.description": "AI CLI 工具、記憶和供應商的啟動預設值。",
+      "settings.tab.ai.description": "AI CLI 工具和供應商的啟動預設值。",
       "settings.theme_color.help": "套用到按鈕、選中狀態、頂部 Tab、焦點環、連結和其他高亮色。",
       "settings.ai.provider.empty": "尚未新增 API 通道。",
       "settings.update.status.available_format": "發現版本 %@，目前版本為 %@。",
@@ -3074,7 +3146,15 @@
       "settings.ai.git_commit_message_style_rules_placeholder": "例如：使用 Conventional Commits，標題不超過 72 個字元。",
       "settings.app_icon.restart_pending": "應用程式圖標會在重新啟動後完整生效。",
       "settings.app_icon.restart_message": "重新啟動 Codux 後，所選應用程式圖標會完整生效。",
-      "settings.ai.memory.extraction_interval": "自動擷取間隔"
+      "settings.ai.memory.extraction_interval": "自動擷取間隔",
+      "settings.tab.git": "Git",
+      "settings.tab.git.description": "Git 提交訊息生成與格式。",
+      "settings.tab.memory": "記憶",
+      "settings.tab.memory.description": "記憶注入、擷取和索引。",
+      "settings.ai.git_commit_message_language.follow": "跟隨",
+      "settings.ai.git_commit_message_provider": "AI 提供方",
+      "settings.ai.git_commit_message_provider.automatic": "自動",
+      "settings.ai.git_commit_message_provider.off": "關閉"
     }
   }
 }

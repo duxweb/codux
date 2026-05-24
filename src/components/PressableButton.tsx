@@ -12,6 +12,7 @@ import { mergeProps, usePress, type PressEvent } from "react-aria";
 type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
   children?: ReactNode;
   excludeFromTabOrder?: boolean;
+  onPressStart?: (event: PressEvent) => void;
   onPress?: (event: PressEvent) => void;
   onPressUp?: (event: PressEvent) => void;
   preventFocusOnPress?: boolean;
@@ -21,6 +22,7 @@ export const PressableButton = forwardRef<HTMLButtonElement, Props>(function Pre
   children,
   disabled,
   excludeFromTabOrder = true,
+  onPressStart,
   onPress,
   onPressUp,
   preventFocusOnPress = true,
@@ -33,6 +35,7 @@ export const PressableButton = forwardRef<HTMLButtonElement, Props>(function Pre
   const { pressProps } = usePress({
     ref,
     isDisabled: disabled,
+    onPressStart,
     onPress,
     onPressUp,
     preventFocusOnPress,

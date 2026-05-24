@@ -72,6 +72,7 @@ export type PetSettings = {
 
 export type AISettings = {
   globalPrompt: string;
+  gitCommitMessageProviderId: string;
   gitCommitMessageTone: string;
   gitCommitMessageLanguage: string;
   gitCommitMessageStyleRules: string;
@@ -180,6 +181,7 @@ export const defaultSettings: AppSettings = {
   },
   ai: {
     globalPrompt: "",
+    gitCommitMessageProviderId: "automatic",
     gitCommitMessageTone: "conventional",
     gitCommitMessageLanguage: "application",
     gitCommitMessageStyleRules: "",
@@ -542,6 +544,7 @@ function normalizeAISettings(settings?: Partial<AISettings>, legacyPet?: Partial
   return {
     ...defaultSettings.ai,
     ...(settings ?? {}),
+    gitCommitMessageProviderId: normalizeProviderSelector(settings?.gitCommitMessageProviderId),
     gitCommitMessageTone: normalizeGitCommitMessageTone(settings?.gitCommitMessageTone),
     gitCommitMessageLanguage: normalizeGitCommitMessageLanguage(settings?.gitCommitMessageLanguage),
     gitCommitMessageStyleRules: normalizeBoundedText(settings?.gitCommitMessageStyleRules, 4000),
@@ -577,6 +580,11 @@ function normalizeGitCommitMessageTone(value: unknown) {
   return typeof value === "string" && ["conventional", "concise", "sentence", "changelog"].includes(value.trim())
     ? value.trim()
     : "conventional";
+}
+
+function normalizeProviderSelector(value: unknown) {
+  const normalized = typeof value === "string" ? value.trim().slice(0, 120) : "";
+  return normalized || "automatic";
 }
 
 function normalizeGitCommitMessageLanguage(value: unknown) {

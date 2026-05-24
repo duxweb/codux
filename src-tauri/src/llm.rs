@@ -1,5 +1,6 @@
 use crate::app_settings::{locale_from_language_setting, AIProviderSettings, AISettings};
 use crate::i18n;
+use crate::runtime_trace::runtime_trace;
 use chrono::{Local, Timelike};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -328,6 +329,23 @@ async fn complete_openai_compatible(
     let api_key = required_api_key(provider)?;
     let url = openai_endpoint(&provider.base_url)?;
     let client = http_client()?;
+    runtime_trace(
+        "ai-llm",
+        &format!(
+            "request start kind=openAICompatible provider_id={} model={} base_url={} prompt_chars={} system_chars={} max_tokens={} temperature={:.2}",
+            provider.id,
+            provider.model,
+            provider.base_url,
+            prompt.chars().count(),
+            system_prompt
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.chars().count())
+                .unwrap_or(0),
+            options.max_tokens,
+            options.temperature
+        ),
+    );
     let mut messages = Vec::new();
     if let Some(system) = system_prompt
         .map(str::trim)
@@ -355,12 +373,48 @@ async fn complete_openai_compatible(
         .await
         .map_err(|error| error.to_string())?;
     let status = response.status();
-    let body = response.text().await.map_err(|error| error.to_string())?;
+    let body = response.bytes().await.map_err(|error| error.to_string())?;
     if !status.is_success() {
-        return Err(provider_error(status.as_u16(), &body));
+        runtime_trace(
+            "ai-llm",
+            &format!(
+                "request failed status={} provider_id={} model={} body_bytes={}",
+                status.as_u16(),
+                provider.id,
+                provider.model,
+                body.len()
+            ),
+        );
+        return Err(provider_error(status.as_u16(), &String::from_utf8_lossy(&body)));
     }
-    let decoded: OpenAIChatCompletionResponse =
-        serde_json::from_str(&body).map_err(|error| error.to_string())?;
+    let decoded: OpenAIChatCompletionResponse = serde_json::from_slice(&body).map_err(|error| {
+        runtime_trace(
+            "ai-llm",
+            &format!(
+                "request decode failed provider_id={} model={} body_bytes={} error={}",
+                provider.id,
+                provider.model,
+                body.len(),
+                error
+            ),
+        );
+        error.to_string()
+    })?;
+    runtime_trace(
+        "ai-llm",
+        &format!(
+            "request ok kind=openAICompatible provider_id={} model={} body_bytes={} text_chars={}",
+            provider.id,
+            provider.model,
+            body.len(),
+            decoded
+                .choices
+                .first()
+                .and_then(|choice| choice.message.content.as_deref())
+                .map(|text| text.chars().count())
+                .unwrap_or(0)
+        ),
+    );
     decoded
         .choices
         .first()
@@ -379,6 +433,23 @@ async fn complete_anthropic(
     let api_key = required_api_key(provider)?;
     let url = anthropic_endpoint(&provider.base_url)?;
     let client = http_client()?;
+    runtime_trace(
+        "ai-llm",
+        &format!(
+            "request start kind=anthropic provider_id={} model={} base_url={} prompt_chars={} system_chars={} max_tokens={} temperature={:.2}",
+            provider.id,
+            provider.model,
+            provider.base_url,
+            prompt.chars().count(),
+            system_prompt
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.chars().count())
+                .unwrap_or(0),
+            options.max_tokens,
+            options.temperature
+        ),
+    );
     let response = client
         .post(url)
         .header("x-api-key", api_key)
@@ -399,12 +470,33 @@ async fn complete_anthropic(
         .await
         .map_err(|error| error.to_string())?;
     let status = response.status();
-    let body = response.text().await.map_err(|error| error.to_string())?;
+    let body = response.bytes().await.map_err(|error| error.to_string())?;
     if !status.is_success() {
-        return Err(provider_error(status.as_u16(), &body));
+        runtime_trace(
+            "ai-llm",
+            &format!(
+                "request failed status={} provider_id={} model={} body_bytes={}",
+                status.as_u16(),
+                provider.id,
+                provider.model,
+                body.len()
+            ),
+        );
+        return Err(provider_error(status.as_u16(), &String::from_utf8_lossy(&body)));
     }
-    let decoded: AnthropicMessagesResponse =
-        serde_json::from_str(&body).map_err(|error| error.to_string())?;
+    let decoded: AnthropicMessagesResponse = serde_json::from_slice(&body).map_err(|error| {
+        runtime_trace(
+            "ai-llm",
+            &format!(
+                "request decode failed provider_id={} model={} body_bytes={} error={}",
+                provider.id,
+                provider.model,
+                body.len(),
+                error
+            ),
+        );
+        error.to_string()
+    })?;
     let text = decoded
         .content
         .iter()
@@ -415,8 +507,27 @@ async fn complete_anthropic(
         .join("\n");
     let text = sanitize_provider_response(&text, options.preserve_formatting);
     if text.is_empty() {
+        runtime_trace(
+            "ai-llm",
+            &format!(
+                "request empty provider_id={} model={} body_bytes={}",
+                provider.id,
+                provider.model,
+                body.len()
+            ),
+        );
         Err("The AI provider returned an empty response.".to_string())
     } else {
+        runtime_trace(
+            "ai-llm",
+            &format!(
+                "request ok kind=anthropic provider_id={} model={} body_bytes={} text_chars={}",
+                provider.id,
+                provider.model,
+                body.len(),
+                text.chars().count()
+            ),
+        );
         Ok(text)
     }
 }
