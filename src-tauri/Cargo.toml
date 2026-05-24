@@ -28,7 +28,7 @@ percent-encoding = "2.3"
 portable-pty = "0.9"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "system-proxy"] }
 futures-util = "0.3"
-git2 = { version = "0.21.0", features = ["cred"] }
+git2 = { version = "0.21.0", features = ["cred", "https", "ssh"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }

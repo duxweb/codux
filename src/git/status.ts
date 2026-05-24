@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef } from "react";
+import { runtimeTrace } from "../runtimeTrace";
 import { useRuntimeStore } from "../runtimeStore";
 import type { WorkspaceProject } from "../types";
 
@@ -231,16 +232,12 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
       } catch (nextError) {
         if (projectPathRef.current !== requestPath) return;
         const message = nextError instanceof Error ? nextError.message : String(nextError);
-        if (projectCacheKey) {
-          useRuntimeStore.getState().setGitStatus(projectCacheKey, {
-            snapshot: {
-              ...emptySnapshot,
-              error: message,
-            },
-            error: message,
-            updatedAt: Date.now(),
-          });
+        if (silent) {
+          runtimeTrace("git-status", `silent refresh failed path=${requestPath} error=${message}`);
+          return;
         }
+        runtimeTrace("git-status", `manual refresh failed path=${requestPath} error=${message}`);
+        throw nextError;
       } finally {
         if (!silent && projectPathRef.current === requestPath && projectCacheKey) {
           useRuntimeStore.getState().setGitLoading(projectCacheKey, false);
@@ -267,10 +264,6 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
         const next = await invoke<GitStatusSnapshot>(command, payload);
         return applySnapshot(next);
       } catch (nextError) {
-        const message = nextError instanceof Error ? nextError.message : String(nextError);
-        if (projectCacheKey) {
-          useRuntimeStore.getState().setGitError(projectCacheKey, message);
-        }
         throw nextError;
       } finally {
         if (projectCacheKey) {

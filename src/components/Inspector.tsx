@@ -82,7 +82,7 @@ import { Tooltip } from "./Tooltip";
 import type { RightPanelKind, WorkspaceProject } from "../types";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 import { openGitDiffWindow } from "../windowing";
-import { systemConfirm } from "../systemDialog";
+import { systemConfirm, systemMessage } from "../systemDialog";
 import { formatI18n, localeFromSettings, tm } from "../i18n";
 import { openLocalizedDialog } from "../localizedDialog";
 import { readAppSettings, subscribeAppSettings, type AISettings, type AIStatisticsMode } from "../settings";
@@ -311,10 +311,11 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [isSubmittingCommit, setSubmittingCommit] = useState(false);
   const [isGeneratingCommitMessage, setGeneratingCommitMessage] = useState(false);
+  const [gitActionLoading, setGitActionLoading] = useState<string | null>(null);
   const [gitHistoryHeight, setGitHistoryHeight] = useState(190);
   const gitContentRef = useRef<HTMLDivElement | null>(null);
   const git = useGitStatusSnapshot(project);
-  const [isManualRefreshing, refreshGit] = useRefreshFeedback(git.refresh);
+  const [isManualRefreshing, refreshGitFeedback] = useRefreshFeedback(git.refresh);
   const isRefreshingGit = git.isLoading || isManualRefreshing;
   const snapshot = git.snapshot;
   const hasUpstream = Boolean(snapshot.upstream);
@@ -409,13 +410,39 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   };
   const openGitInput = (input: GitInputState) => setGitInput(input);
   const closeGitInput = () => setGitInput(null);
+  const showGitActionError = useCallback(async (error: unknown) => {
+    await systemMessage(error instanceof Error ? error.message : String(error), {
+      title: tm("git.error.action_failed", "Git Operation Failed"),
+      kind: "error",
+    });
+  }, []);
+  const runGitAction = useCallback(
+    async (loadingKey: string, action: () => Promise<unknown>) => {
+      setGitActionLoading(loadingKey);
+      try {
+        await action();
+      } catch (error) {
+        await showGitActionError(error);
+      } finally {
+        setGitActionLoading((current) => (current === loadingKey ? null : current));
+      }
+    },
+    [showGitActionError],
+  );
+  const refreshGit = useCallback(async () => {
+    try {
+      await refreshGitFeedback();
+    } catch (error) {
+      await showGitActionError(error);
+    }
+  }, [refreshGitFeedback, showGitActionError]);
   const submitGitInput = async () => {
     if (!gitInput) return;
     const primary = gitInput.value.trim();
     const secondary = gitInput.secondaryValue?.trim() ?? "";
     if (!primary) return;
     setGitInput(null);
-    await gitInput.onSubmit(primary, secondary);
+    await runGitAction("input", () => gitInput.onSubmit(primary, secondary));
   };
   const createBranch = () => {
     const seed = `worktree/${new Date().toISOString().slice(0, 10)}`;
@@ -483,21 +510,6 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   };
   const runBranchAction = async (key: Key) => {
     const rawKey = String(key);
-    if (rawKey.startsWith("checkoutLocal:")) {
-      const branch = rawKey.slice("checkoutLocal:".length);
-      if (branch && branch !== snapshot.branch) await git.checkoutBranch(branch);
-      return;
-    }
-    if (rawKey.startsWith("checkoutRemote:")) {
-      const branch = rawKey.slice("checkoutRemote:".length);
-      if (branch) await git.checkoutRemoteBranch(branch);
-      return;
-    }
-    if (rawKey.startsWith("pushRemote:")) {
-      const remote = rawKey.slice("pushRemote:".length);
-      if (remote) await git.pushRemote(remote);
-      return;
-    }
     if (rawKey.startsWith("setDefaultRemote:")) {
       const remote = rawKey.slice("setDefaultRemote:".length);
       if (project?.rootProjectId || project?.id) {
@@ -510,79 +522,96 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
       }
       return;
     }
-    if (rawKey.startsWith("pushRemoteBranch:")) {
-      const remoteBranch = rawKey.slice("pushRemoteBranch:".length);
-      if (remoteBranch) await git.pushRemoteBranch(remoteBranch, snapshot.branch);
-      return;
-    }
-    if (rawKey.startsWith("mergeLocal:")) {
-      const branch = rawKey.slice("mergeLocal:".length);
-      if (branch) await git.mergeBranch(branch);
-      return;
-    }
-    if (rawKey.startsWith("squashLocal:")) {
-      const branch = rawKey.slice("squashLocal:".length);
-      if (branch) await git.squashMergeBranch(branch);
-      return;
-    }
-    if (rawKey.startsWith("deleteLocal:")) {
-      const branch = rawKey.slice("deleteLocal:".length);
-      if (!branch || branch === snapshot.branch) return;
-      const force = await systemConfirm(
-        formatI18n(tm("git.branch.delete.confirm_format", "Delete local branch %@?"), branch),
-        {
-          title: tm("git.branch.delete_local", "Delete Local Branch"),
-          kind: "warning",
-          okLabel: tm("common.delete", "Delete"),
-          cancelLabel: tm("common.cancel", "Cancel"),
-        },
-      );
-      if (force) await git.deleteBranch(branch, false);
-      return;
-    }
-    switch (String(key)) {
-      case "create":
-        createBranch();
+    await runGitAction(rawKey, async () => {
+      if (rawKey.startsWith("checkoutLocal:")) {
+        const branch = rawKey.slice("checkoutLocal:".length);
+        if (branch && branch !== snapshot.branch) await git.checkoutBranch(branch);
         return;
-      case "fetch":
-        await git.fetch();
+      }
+      if (rawKey.startsWith("checkoutRemote:")) {
+        const branch = rawKey.slice("checkoutRemote:".length);
+        if (branch) await git.checkoutRemoteBranch(branch);
         return;
-      case "pull":
-        await git.pull();
+      }
+      if (rawKey.startsWith("pushRemote:")) {
+        const remote = rawKey.slice("pushRemote:".length);
+        if (remote) await git.pushRemote(remote);
         return;
-      case "push":
-        await git.push();
+      }
+      if (rawKey.startsWith("pushRemoteBranch:")) {
+        const remoteBranch = rawKey.slice("pushRemoteBranch:".length);
+        if (remoteBranch) await git.pushRemoteBranch(remoteBranch, snapshot.branch);
         return;
-      case "forcePush":
-        if (
-          await systemConfirm(tm("git.remote.force_push.message", "Overwrite the current remote branch?"), {
-            title: tm("git.remote.force_push", "Force Push"),
+      }
+      if (rawKey.startsWith("mergeLocal:")) {
+        const branch = rawKey.slice("mergeLocal:".length);
+        if (branch) await git.mergeBranch(branch);
+        return;
+      }
+      if (rawKey.startsWith("squashLocal:")) {
+        const branch = rawKey.slice("squashLocal:".length);
+        if (branch) await git.squashMergeBranch(branch);
+        return;
+      }
+      if (rawKey.startsWith("deleteLocal:")) {
+        const branch = rawKey.slice("deleteLocal:".length);
+        if (!branch || branch === snapshot.branch) return;
+        const force = await systemConfirm(
+          formatI18n(tm("git.branch.delete.confirm_format", "Delete local branch %@?"), branch),
+          {
+            title: tm("git.branch.delete_local", "Delete Local Branch"),
             kind: "warning",
-            okLabel: tm("git.remote.force_push", "Force Push"),
+            okLabel: tm("common.delete", "Delete"),
             cancelLabel: tm("common.cancel", "Cancel"),
-          })
-        )
-          await git.forcePush();
+          },
+        );
+        if (force) await git.deleteBranch(branch, false);
         return;
-      case "undoLastCommit":
-        if (snapshot.commits[0]) await runCommitAction(snapshot.commits[0], "undo");
-        return;
-      case "editLastCommitMessage":
-        if (snapshot.commits[0]) await runCommitAction(snapshot.commits[0], "amend");
-        return;
-      case "showRepository":
-        if (project?.path) void revealProjectInFileManager(project.path);
-        return;
-      case "addRemote":
-        addRemote();
-        return;
-      case "removeRemote":
-        removeRemote();
-        return;
-      case "pushRemote":
-        pushRemote();
-        return;
-    }
+      }
+      switch (String(key)) {
+        case "create":
+          createBranch();
+          return;
+        case "fetch":
+          await git.fetch();
+          return;
+        case "pull":
+          await git.pull();
+          return;
+        case "push":
+          await git.push();
+          return;
+        case "forcePush":
+          if (
+            await systemConfirm(tm("git.remote.force_push.message", "Overwrite the current remote branch?"), {
+              title: tm("git.remote.force_push", "Force Push"),
+              kind: "warning",
+              okLabel: tm("git.remote.force_push", "Force Push"),
+              cancelLabel: tm("common.cancel", "Cancel"),
+            })
+          )
+            await git.forcePush();
+          return;
+        case "undoLastCommit":
+          if (snapshot.commits[0]) await runCommitAction(snapshot.commits[0], "undo");
+          return;
+        case "editLastCommitMessage":
+          if (snapshot.commits[0]) await runCommitAction(snapshot.commits[0], "amend");
+          return;
+        case "showRepository":
+          if (project?.path) void revealProjectInFileManager(project.path);
+          return;
+        case "addRemote":
+          addRemote();
+          return;
+        case "removeRemote":
+          removeRemote();
+          return;
+        case "pushRemote":
+          pushRemote();
+          return;
+      }
+    });
   };
   const gitFileSelectionId = (file: GitFileStatus, staged: boolean) =>
     `${staged ? "staged" : file.indexStatus === "?" ? "untracked" : "unstaged"}:${file.path}`;
@@ -635,122 +664,127 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
       setSubmittingCommit(false);
     }
   };
+  const submitCommitWithFeedback = () => {
+    void runGitAction("commit", submitCommit);
+  };
   const runCommitAction = async (commit: GitCommitSummary, key: Key) => {
-    switch (String(key)) {
-      case "copy":
-        await navigator.clipboard?.writeText(commit.hash);
-        return;
-      case "checkout":
-        if (
-          await systemConfirm(
-            formatI18n(tm("git.history.checkout.message_format", "Check out commit %@?"), commit.hash.slice(0, 7)),
-            {
-              title: tm("git.history.checkout_commit", "Check Out This Commit"),
-              kind: "warning",
-              okLabel: tm("git.history.checkout_commit", "Check Out"),
-              cancelLabel: tm("common.cancel", "Cancel"),
-            },
-          )
-        )
-          await git.checkoutCommit(commit.hash);
-        return;
-      case "branch":
-        createBranchFromCommit(commit);
-        return;
-      case "undo": {
-        const pushed = await git.headCommitPushed();
-        if (
-          pushed &&
-          !(await systemConfirm(
-            tm("git.history.undo_last_commit.remote_notice", "The last commit may already be pushed. Continue?"),
-            {
-              title: tm("git.history.undo_last_commit", "Undo Last Commit"),
-              kind: "warning",
-              okLabel: tm("common.continue", "Continue"),
-              cancelLabel: tm("common.cancel", "Cancel"),
-            },
-          ))
-        )
+    await runGitAction(`commit:${String(key)}`, async () => {
+      switch (String(key)) {
+        case "copy":
+          await navigator.clipboard?.writeText(commit.hash);
           return;
-        await git.undoLastCommit();
-        return;
-      }
-      case "amend": {
-        const current = await git.lastCommitMessage();
-        openGitInput({
-          title: tm("git.history.edit_last_commit_message", "Edit Last Commit Message"),
-          label: tm("git.commit.message.placeholder", "Enter Commit Message"),
-          value: current,
-          multiline: true,
-          onSubmit: async (message) => {
-            const pushed = await git.headCommitPushed();
-            if (
-              pushed &&
-              !(await systemConfirm(
-                tm("git.commit.edit_last_message.remote_notice", "The last commit may already be pushed. Continue?"),
-                {
-                  title: tm("git.history.edit_last_commit_message", "Edit Last Commit Message"),
-                  kind: "warning",
-                  okLabel: tm("common.continue", "Continue"),
-                  cancelLabel: tm("common.cancel", "Cancel"),
-                },
-              ))
+        case "checkout":
+          if (
+            await systemConfirm(
+              formatI18n(tm("git.history.checkout.message_format", "Check out commit %@?"), commit.hash.slice(0, 7)),
+              {
+                title: tm("git.history.checkout_commit", "Check Out This Commit"),
+                kind: "warning",
+                okLabel: tm("git.history.checkout_commit", "Check Out"),
+                cancelLabel: tm("common.cancel", "Cancel"),
+              },
             )
-              return;
-            await git.amendLastCommitMessage(message);
-          },
-        });
-        return;
+          )
+            await git.checkoutCommit(commit.hash);
+          return;
+        case "branch":
+          createBranchFromCommit(commit);
+          return;
+        case "undo": {
+          const pushed = await git.headCommitPushed();
+          if (
+            pushed &&
+            !(await systemConfirm(
+              tm("git.history.undo_last_commit.remote_notice", "The last commit may already be pushed. Continue?"),
+              {
+                title: tm("git.history.undo_last_commit", "Undo Last Commit"),
+                kind: "warning",
+                okLabel: tm("common.continue", "Continue"),
+                cancelLabel: tm("common.cancel", "Cancel"),
+              },
+            ))
+          )
+            return;
+          await git.undoLastCommit();
+          return;
+        }
+        case "amend": {
+          const current = await git.lastCommitMessage();
+          openGitInput({
+            title: tm("git.history.edit_last_commit_message", "Edit Last Commit Message"),
+            label: tm("git.commit.message.placeholder", "Enter Commit Message"),
+            value: current,
+            multiline: true,
+            onSubmit: async (message) => {
+              const pushed = await git.headCommitPushed();
+              if (
+                pushed &&
+                !(await systemConfirm(
+                  tm("git.commit.edit_last_message.remote_notice", "The last commit may already be pushed. Continue?"),
+                  {
+                    title: tm("git.history.edit_last_commit_message", "Edit Last Commit Message"),
+                    kind: "warning",
+                    okLabel: tm("common.continue", "Continue"),
+                    cancelLabel: tm("common.cancel", "Cancel"),
+                  },
+                ))
+              )
+                return;
+              await git.amendLastCommitMessage(message);
+            },
+          });
+          return;
+        }
+        case "revert":
+          if (
+            await systemConfirm(
+              formatI18n(tm("git.history.revert.message_format", "Revert commit %@?"), commit.hash.slice(0, 7)),
+              {
+                title: tm("git.history.revert_commit", "Revert This Commit"),
+                kind: "warning",
+                okLabel: tm("git.history.revert_commit", "Revert"),
+                cancelLabel: tm("common.cancel", "Cancel"),
+              },
+            )
+          )
+            await git.revertCommit(commit.hash);
+          return;
+        case "restoreLocal":
+          if (
+            await systemConfirm(
+              formatI18n(
+                tm("git.history.restore_local.message_format", "Reset the current branch locally to %@?"),
+                commit.hash.slice(0, 7),
+              ),
+              {
+                title: tm("git.history.restore_local", "Restore Locally"),
+                kind: "warning",
+                okLabel: tm("git.history.restore_local.action", "Restore Locally"),
+                cancelLabel: tm("common.cancel", "Cancel"),
+              },
+            )
+          )
+            await git.restoreCommit(commit.hash, false);
+          return;
+        case "restoreRemote":
+          if (
+            await systemConfirm(
+              formatI18n(
+                tm("git.history.restore_remote.message_format", "Reset the current branch and remote to %@?"),
+                commit.hash.slice(0, 7),
+              ),
+              {
+                title: tm("git.history.restore_remote", "Restore Remote"),
+                kind: "warning",
+                okLabel: tm("git.history.restore_remote.action", "Restore Remote"),
+                cancelLabel: tm("common.cancel", "Cancel"),
+              },
+            )
+          )
+            await git.restoreCommit(commit.hash, true);
+          return;
       }
-      case "revert":
-        if (
-          await systemConfirm(
-            formatI18n(tm("git.history.revert.message_format", "Revert commit %@?"), commit.hash.slice(0, 7)),
-            {
-              title: tm("git.history.revert_commit", "Revert This Commit"),
-              kind: "warning",
-              okLabel: tm("git.history.revert_commit", "Revert"),
-              cancelLabel: tm("common.cancel", "Cancel"),
-            },
-          )
-        )
-          await git.revertCommit(commit.hash);
-        return;
-      case "restoreLocal":
-        if (
-          await systemConfirm(
-            formatI18n(
-              tm("git.history.restore_local.message_format", "Reset the current branch locally to %@?"),
-              commit.hash.slice(0, 7),
-            ),
-            {
-              title: tm("git.history.restore_local", "Restore Locally"),
-              kind: "warning",
-              okLabel: tm("git.history.restore_local.action", "Restore Locally"),
-              cancelLabel: tm("common.cancel", "Cancel"),
-            },
-          )
-        )
-          await git.restoreCommit(commit.hash, false);
-        return;
-      case "restoreRemote":
-        if (
-          await systemConfirm(
-            formatI18n(
-              tm("git.history.restore_remote.message_format", "Reset the current branch and remote to %@?"),
-              commit.hash.slice(0, 7),
-            ),
-            {
-              title: tm("git.history.restore_remote", "Restore Remote"),
-              kind: "warning",
-              okLabel: tm("git.history.restore_remote.action", "Restore Remote"),
-              cancelLabel: tm("common.cancel", "Cancel"),
-            },
-          )
-        )
-          await git.restoreCommit(commit.hash, true);
-        return;
-    }
+    });
   };
   const beginGitHistoryResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -899,7 +933,9 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                     </DesktopMenuItem>
                     <DesktopMenuItem
                       label={tm("git.remote.remove", "Remove Remote")}
-                      onSelect={() => void git.removeRemote(remote.name)}
+                      onSelect={() =>
+                        void runGitAction(`removeRemote:${remote.name}`, () => git.removeRemote(remote.name))
+                      }
                     >
                       {tm("git.remote.remove", "Remove Remote")}
                     </DesktopMenuItem>
@@ -1074,7 +1110,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
           tone="warning"
           action={
             <div className="flex items-center gap-2">
-              <HeroButton size="sm" variant="primary" onPress={() => void git.init()}>
+              <HeroButton size="sm" variant="primary" onPress={() => void runGitAction("init", () => git.init())}>
                 {tm("git.empty.initialize_repository", "Initialize Repository")}
               </HeroButton>
               <HeroButton
@@ -1114,7 +1150,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 block
                 disabled={!canCommit}
                 className="h-[34px] rounded-l-lg rounded-r-none border-r border-white/15 text-sm font-semibold"
-                onPress={() => void submitCommit()}
+                onPress={submitCommitWithFeedback}
               >
                 {isSubmittingCommit ? tm("git.commit.submitting", "Committing") : commitActionLabel}
               </Button>
@@ -1135,9 +1171,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                     onAction={(key) => setCommitAction(String(key) as GitCommitAction)}
                     className="grid gap-0.5"
                   >
-                    <Dropdown.Item id="commit">
-                      {tm("git.commit.action", "Commit")}
-                    </Dropdown.Item>
+                    <Dropdown.Item id="commit">{tm("git.commit.action", "Commit")}</Dropdown.Item>
                     <Dropdown.Item id="commitAndPush" isDisabled={!canUseCurrentBranchRemote}>
                       {tm("git.commit.action_push", "Commit and Push")}
                     </Dropdown.Item>
@@ -1167,7 +1201,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                   disabled={snapshot.staged.length === 0}
                   onPress={() => {
                     const targets = selectedByKind.staged.length > 0 ? selectedByKind.staged : snapshot.staged;
-                    void git.unstage(targets.map((file) => file.path));
+                    void runGitAction("unstage", () => git.unstage(targets.map((file) => file.path)));
                   }}
                 />
               }
@@ -1181,7 +1215,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 rootPath={project?.path}
                 selectedIds={selectedFileIds}
                 primaryLabel={tm("git.files.unstage", "Unstage")}
-                onPrimary={(files) => void git.unstage(files.map((file) => file.path))}
+                onPrimary={(files) => void runGitAction("unstage", () => git.unstage(files.map((file) => file.path)))}
                 onSelect={(file, modifiers) => selectGitFile(file, true, modifiers)}
                 onOpenDiff={(file) => void previewDiff(file, true)}
                 onToggleDirectory={(path) => toggleGitDirectory("staged", path)}
@@ -1200,7 +1234,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                       cancelLabel: tm("common.cancel", "Cancel"),
                     },
                   ).then((confirmed) => {
-                    if (confirmed) void git.discard(files.map((file) => file.path));
+                    if (confirmed) void runGitAction("discard", () => git.discard(files.map((file) => file.path)));
                   });
                 }}
               />
@@ -1223,7 +1257,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                     disabled={snapshot.unstaged.length === 0}
                     onPress={() => {
                       const targets = selectedByKind.unstaged.length > 0 ? selectedByKind.unstaged : snapshot.unstaged;
-                      void git.stage(targets.map((file) => file.path));
+                      void runGitAction("stage", () => git.stage(targets.map((file) => file.path)));
                     }}
                   />
                   <HeaderActionButton
@@ -1242,7 +1276,8 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                         okLabel: tm("git.files.discard_all", "Discard All"),
                         cancelLabel: tm("common.cancel", "Cancel"),
                       }).then((confirmed) => {
-                        if (confirmed) void git.discard(targets.map((file) => file.path));
+                        if (confirmed)
+                          void runGitAction("discard", () => git.discard(targets.map((file) => file.path)));
                       });
                     }}
                   />
@@ -1258,7 +1293,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 rootPath={project?.path}
                 selectedIds={selectedFileIds}
                 primaryLabel={tm("git.files.stage", "Stage")}
-                onPrimary={(files) => void git.stage(files.map((file) => file.path))}
+                onPrimary={(files) => void runGitAction("stage", () => git.stage(files.map((file) => file.path)))}
                 onSelect={(file, modifiers) => selectGitFile(file, false, modifiers)}
                 onOpenDiff={(file) => void previewDiff(file, false)}
                 onToggleDirectory={(path) => toggleGitDirectory("unstaged", path)}
@@ -1277,7 +1312,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                       cancelLabel: tm("common.cancel", "Cancel"),
                     },
                   ).then((confirmed) => {
-                    if (confirmed) void git.discard(files.map((file) => file.path));
+                    if (confirmed) void runGitAction("discard", () => git.discard(files.map((file) => file.path)));
                   });
                 }}
               />
@@ -1301,14 +1336,18 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                     onPress={() => {
                       const targets =
                         selectedByKind.untracked.length > 0 ? selectedByKind.untracked : snapshot.untracked;
-                      void git.stage(targets.map((file) => file.path));
+                      void runGitAction("stage", () => git.stage(targets.map((file) => file.path)));
                     }}
                   />
                   <HeaderActionButton
                     icon={X}
                     label={tm("git.ignore.add_all", "Add All to .gitignore")}
                     disabled={snapshot.untracked.length === 0}
-                    onPress={() => void git.appendGitignore(snapshot.untracked.map((file) => file.path))}
+                    onPress={() =>
+                      void runGitAction("ignore", () =>
+                        git.appendGitignore(snapshot.untracked.map((file) => file.path)),
+                      )
+                    }
                   />
                 </>
               }
@@ -1322,11 +1361,13 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 rootPath={project?.path}
                 selectedIds={selectedFileIds}
                 primaryLabel={tm("git.files.stage", "Stage")}
-                onPrimary={(files) => void git.stage(files.map((file) => file.path))}
+                onPrimary={(files) => void runGitAction("stage", () => git.stage(files.map((file) => file.path)))}
                 onSelect={(file, modifiers) => selectGitFile(file, false, modifiers)}
                 onOpenDiff={(file) => void previewDiff(file, false)}
                 onToggleDirectory={(path) => toggleGitDirectory("untracked", path)}
-                onIgnore={(files) => void git.appendGitignore(files.map((file) => file.path))}
+                onIgnore={(files) =>
+                  void runGitAction("ignore", () => git.appendGitignore(files.map((file) => file.path)))
+                }
                 onDiscard={(files) => {
                   void systemConfirm(
                     files.length > 1
@@ -1348,16 +1389,10 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                       cancelLabel: tm("common.cancel", "Cancel"),
                     },
                   ).then((confirmed) => {
-                    if (confirmed) void git.discard(files.map((file) => file.path));
+                    if (confirmed) void runGitAction("discard", () => git.discard(files.map((file) => file.path)));
                   });
                 }}
               />
-            )}
-
-            {git.error && (
-              <div className="mx-3 mt-2 rounded-md border border-brand-red/30 bg-brand-red/10 px-2.5 py-2 text-xs text-brand-red">
-                {git.error}
-              </div>
             )}
           </div>
 
@@ -1425,7 +1460,9 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
             <PanelButton
               tone={statusButtonTone}
               leading={ArrowDownToLine}
-              onClick={hasUpstream ? () => void git.pull() : undefined}
+              busy={gitActionLoading === "pull"}
+              disabled={gitActionLoading !== null}
+              onClick={hasUpstream ? () => void runGitAction("pull", () => git.pull()) : undefined}
             >
               {tm("git.remote.pull", "Pull")}
               {snapshot.behind > 0 ? ` ${snapshot.behind}` : ""}
@@ -1433,7 +1470,9 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
             <PanelButton
               tone={statusButtonTone}
               leading={ArrowUpFromLine}
-              onClick={hasUpstream ? () => void git.push() : () => void pushRemote()}
+              busy={gitActionLoading === "push"}
+              disabled={gitActionLoading !== null}
+              onClick={hasUpstream ? () => void runGitAction("push", () => git.push()) : () => void pushRemote()}
             >
               {tm("git.remote.push", "Push")}
               {snapshot.ahead > 0 ? ` ${snapshot.ahead}` : ""}
@@ -1941,7 +1980,10 @@ type CommitMessageContext = {
   error?: string | null;
 };
 
-async function loadCommitMessageContext(snapshot: GitStatusSnapshot, projectPath?: string): Promise<CommitMessageContext | null> {
+async function loadCommitMessageContext(
+  snapshot: GitStatusSnapshot,
+  projectPath?: string,
+): Promise<CommitMessageContext | null> {
   if (!snapshot.isRepository || !projectPath || !window.__TAURI_INTERNALS__) return null;
   return invoke<CommitMessageContext>("git_commit_message_context", {
     projectPath,
@@ -1960,7 +2002,10 @@ function buildCommitMessagePrompt(
 ) {
   const files = [...snapshot.staged, ...snapshot.unstaged, ...snapshot.untracked].slice(0, 80);
   const fileLines = files
-    .map((file) => `- ${file.path} [index:${file.indexStatus.trim() || "-"} worktree:${file.worktreeStatus.trim() || "-"}]`)
+    .map(
+      (file) =>
+        `- ${file.path} [index:${file.indexStatus.trim() || "-"} worktree:${file.worktreeStatus.trim() || "-"}]`,
+    )
     .join("\n");
   const diffContext = context?.diff.trim()
     ? [
@@ -3653,7 +3698,11 @@ function AIPanel({ project }: { project?: WorkspaceProject }) {
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto scrollbar-overlay p-3 pb-5 flex flex-col gap-3">
-        <PanelCard title={tm("ai.live_sessions", "Current Session Totals")} divider={false} className={AI_STATS_CARD_CLASS}>
+        <PanelCard
+          title={tm("ai.live_sessions", "Current Session Totals")}
+          divider={false}
+          className={AI_STATS_CARD_CLASS}
+        >
           {sessions.length > 0 ? (
             <div className="flex flex-col gap-2">
               {sessions.map((session) => (

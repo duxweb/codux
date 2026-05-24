@@ -139,22 +139,27 @@ export function PanelIconButton({
 export function PanelButton({
   tone = "neutral",
   leading: Leading,
+  busy,
+  disabled,
   children,
   onClick,
 }: {
   tone?: "neutral" | "ghost";
   leading?: IconLike;
+  busy?: boolean;
+  disabled?: boolean;
   children: ReactNode;
   onClick?: () => void;
 }) {
   const base = "h-6 px-2 inline-flex items-center gap-1 rounded-md transition-colors text-xs";
-  const variant =
-    tone === "ghost"
+  const variant = disabled
+    ? "text-current/45 cursor-default"
+    : tone === "ghost"
       ? "text-current/80 hover:text-current hover:bg-fill/10"
       : "text-ink-soft hover:text-ink hover:bg-fill/8";
   return (
-    <PressableButton onPressUp={onClick} className={`${base} ${variant}`}>
-      {Leading ? <Leading size={12} /> : null}
+    <PressableButton onPressUp={disabled ? undefined : onClick} disabled={disabled} className={`${base} ${variant}`}>
+      {Leading ? <Leading size={12} className={busy ? "animate-spin" : undefined} /> : null}
       {children}
     </PressableButton>
   );
