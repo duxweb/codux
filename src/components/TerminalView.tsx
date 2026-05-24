@@ -23,16 +23,17 @@ import { isWindowsPlatform } from "../platform";
 import { runtimeTrace } from "../runtimeTrace";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 
-  type TerminalRendererAdapter = {
-    write: (data: string | Uint8Array) => void;
-    reset: (history?: string) => void;
-    clear: () => void;
-    focus: () => void;
-    blur: () => void;
-    fit: () => void;
-    refreshTheme: () => void;
-    setRenderer: (renderer: TerminalResolvedRenderer) => void;
-    setFontSize: (fontSize: number) => void;
+type TerminalRendererAdapter = {
+  write: (data: string | Uint8Array) => void;
+  reset: (history?: string) => void;
+  clear: () => void;
+  focus: () => void;
+  blur: () => void;
+  fit: () => void;
+  refresh: (reason: string) => void;
+  refreshTheme: () => void;
+  setRenderer: (renderer: TerminalResolvedRenderer) => void;
+  setFontSize: (fontSize: number) => void;
     setInputEnabled: (enabled: boolean) => void;
   copySelection: () => Promise<void>;
   pasteClipboard: () => Promise<void>;
@@ -197,12 +198,13 @@ function XtermRenderer({
         try {
           webglAddon?.clearTextureAtlas();
           terminal.clearTextureAtlas();
+          terminal.refresh(0, Math.max(0, terminal.rows - 1));
         } catch {
           // Renderer may be switching during WebGL initialization.
         }
         runtimeTrace(
           "terminal-view",
-          `clear_texture_atlas reason=${reason} rows=${terminal.rows} cols=${terminal.cols} canvases=${terminal.element?.querySelectorAll("canvas").length ?? 0}`,
+          `refresh_renderer reason=${reason} rows=${terminal.rows} cols=${terminal.cols} canvases=${terminal.element?.querySelectorAll("canvas").length ?? 0}`,
         );
       });
     };
@@ -529,6 +531,7 @@ function XtermRenderer({
           terminal.write(history, () => {
             if (disposed) return;
             scrollToBottomAfterPaint();
+            forceRendererRefresh("reset-history");
           });
         } else {
           scrollToBottomAfterPaint();
@@ -554,6 +557,7 @@ function XtermRenderer({
         host.classList.remove("focused");
       },
       fit: () => fit(),
+      refresh: forceRendererRefresh,
       refreshTheme,
       setRenderer,
       setFontSize: (fontSize) => {
@@ -849,6 +853,7 @@ export function TerminalView({
     const frame = window.requestAnimationFrame(() => {
       adapter.focus();
       fitAndResize();
+      adapter.refresh("active");
     });
 
     return () => window.cancelAnimationFrame(frame);
