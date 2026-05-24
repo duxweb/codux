@@ -725,15 +725,18 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
                     continue;
                 }
                 if known_parents.contains(&entry.th32ParentProcessID) {
-                    helper_pids.push(pid);
+                    helper_pids.push(MonitoredProcess {
+                        pid,
+                        kind: MonitoredProcessKind::Other,
+                    });
                     known_parents.insert(pid);
                     changed = true;
                 }
             }
         }
 
-        helper_pids.sort_unstable();
-        helper_pids.dedup();
+        helper_pids.sort_unstable_by_key(|process| process.pid);
+        helper_pids.dedup_by_key(|process| process.pid);
         cache.helper_pids = helper_pids;
         cache.refreshed_at = Some(now);
     }
@@ -754,8 +757,8 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
 
     let mut total_cpu_seconds = cpu_seconds;
     let mut total_memory_bytes = memory_bytes;
-    for pid in helper_pids {
-        let Some(handle) = process_handle(pid) else {
+    for helper in helper_pids {
+        let Some(handle) = process_handle(helper.pid) else {
             continue;
         };
         if let Some((cpu_seconds, memory_bytes)) = process_sample(handle) {
