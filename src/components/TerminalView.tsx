@@ -23,18 +23,17 @@ import { isWindowsPlatform } from "../platform";
 import { runtimeTrace } from "../runtimeTrace";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 
-type TerminalRendererAdapter = {
-  write: (data: string | Uint8Array) => void;
-  reset: (history?: string) => void;
-  clear: () => void;
-  focus: () => void;
-  blur: () => void;
-  fit: () => void;
-  restoreVisible: () => void;
-  refreshTheme: () => void;
-  setRenderer: (renderer: TerminalResolvedRenderer) => void;
-  setFontSize: (fontSize: number) => void;
-  setInputEnabled: (enabled: boolean) => void;
+  type TerminalRendererAdapter = {
+    write: (data: string | Uint8Array) => void;
+    reset: (history?: string) => void;
+    clear: () => void;
+    focus: () => void;
+    blur: () => void;
+    fit: () => void;
+    refreshTheme: () => void;
+    setRenderer: (renderer: TerminalResolvedRenderer) => void;
+    setFontSize: (fontSize: number) => void;
+    setInputEnabled: (enabled: boolean) => void;
   copySelection: () => Promise<void>;
   pasteClipboard: () => Promise<void>;
   selectAll: () => void;
@@ -208,12 +207,6 @@ function XtermRenderer({
       });
     };
 
-    const restoreVisible = () => {
-      flushQueuedWritesNow();
-      scheduleFit(true);
-      forceRendererRefresh("visible");
-    };
-
     const disposeWebgl = () => {
       webglLoadVersion += 1;
       webglContextLossDisposable?.dispose();
@@ -380,6 +373,13 @@ function XtermRenderer({
       queuedByteLength = 0;
     };
 
+    const scrollToBottomAfterPaint = () => {
+      window.requestAnimationFrame(() => {
+        if (disposed) return;
+        terminal.scrollToBottom();
+      });
+    };
+
     const flushQueuedWrites = () => {
       writeTimer = null;
       if (disposed) return;
@@ -524,10 +524,19 @@ function XtermRenderer({
         flushQueuedWritesNow();
         clearQueuedWrites();
         terminal.reset();
-        if (history) writeQueued(history);
-        scheduleFit(true);
+        fit(true);
+        if (history) {
+          terminal.write(history, () => {
+            if (disposed) return;
+            scrollToBottomAfterPaint();
+          });
+        } else {
+          scrollToBottomAfterPaint();
+        }
         forceRendererRefresh("reset");
-        window.setTimeout(() => forceRendererRefresh("reset-delayed"), 80);
+        window.setTimeout(() => {
+          forceRendererRefresh("reset-delayed");
+        }, 80);
       },
       clear: () => {
         flushQueuedWritesNow();
@@ -545,7 +554,6 @@ function XtermRenderer({
         host.classList.remove("focused");
       },
       fit: () => fit(),
-      restoreVisible,
       refreshTheme,
       setRenderer,
       setFontSize: (fontSize) => {
@@ -706,7 +714,6 @@ export function TerminalView({
   const onDisposedRef = useRef(onDisposed);
   const sessionRef = useRef<TerminalRuntimeSession | undefined>(terminalRuntime.getSession(terminalId));
   const shellRef = useRef<HTMLElement | null>(null);
-  const wasActiveRef = useRef(false);
   const [adapterVersion, setAdapterVersion] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [session, setSession] = useState<TerminalRuntimeSession | undefined>(() => sessionRef.current);
@@ -833,16 +840,11 @@ export function TerminalView({
     if (!adapter) return;
 
     if (!active || !canAcceptInput) {
-      wasActiveRef.current = false;
       adapter.setInputEnabled(false);
       adapter.blur();
       return;
     }
     adapter.setInputEnabled(true);
-    if (!wasActiveRef.current) {
-      wasActiveRef.current = true;
-      adapter.restoreVisible();
-    }
 
     const frame = window.requestAnimationFrame(() => {
       adapter.focus();

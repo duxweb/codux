@@ -9,6 +9,16 @@ use std::time::Instant;
 pub struct PerformanceSnapshot {
     pub cpu_percent: f64,
     pub memory_bytes: u64,
+    pub memory: PerformanceMemorySnapshot,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceMemorySnapshot {
+    pub main_bytes: u64,
+    pub web_bytes: u64,
+    pub gpu_bytes: u64,
+    pub other_bytes: u64,
 }
 
 #[derive(Default)]
@@ -23,6 +33,7 @@ struct RawSample {
     captured_at: Instant,
     cpu_seconds: f64,
     memory_bytes: u64,
+    memory: PerformanceMemorySnapshot,
     cpu_percent_override: Option<f64>,
 }
 
@@ -32,6 +43,7 @@ impl PerformanceMonitor {
             return PerformanceSnapshot {
                 cpu_percent: 0.0,
                 memory_bytes: 0,
+                memory: PerformanceMemorySnapshot::default(),
             };
         };
 
@@ -39,6 +51,7 @@ impl PerformanceMonitor {
         PerformanceSnapshot {
             cpu_percent,
             memory_bytes: raw.memory_bytes,
+            memory: raw.memory.clone(),
         }
     }
 
@@ -91,7 +104,7 @@ impl PerformanceMonitor {
 #[cfg(any(target_os = "macos", windows))]
 #[derive(Default)]
 struct ProcessCache {
-    helper_pids: Vec<MonitoredPid>,
+    helper_pids: Vec<MonitoredProcess>,
     refreshed_at: Option<Instant>,
 }
 
@@ -100,6 +113,32 @@ type MonitoredPid = libc::pid_t;
 
 #[cfg(windows)]
 type MonitoredPid = u32;
+
+#[cfg(any(target_os = "macos", windows))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MonitoredProcessKind {
+    Web,
+    Gpu,
+    Other,
+}
+
+#[cfg(any(target_os = "macos", windows))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MonitoredProcess {
+    pid: MonitoredPid,
+    kind: MonitoredProcessKind,
+}
+
+#[cfg(any(target_os = "macos", windows))]
+fn add_memory(memory: &mut PerformanceMemorySnapshot, kind: MonitoredProcessKind, bytes: u64) {
+    match kind {
+        MonitoredProcessKind::Web => memory.web_bytes = memory.web_bytes.saturating_add(bytes),
+        MonitoredProcessKind::Gpu => memory.gpu_bytes = memory.gpu_bytes.saturating_add(bytes),
+        MonitoredProcessKind::Other => {
+            memory.other_bytes = memory.other_bytes.saturating_add(bytes)
+        }
+    }
+}
 
 fn percent_delta(current: f64, previous: f64, wall_delta: f64) -> f64 {
     let cpu_delta = (current - previous).max(0.0);
@@ -377,6 +416,16 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         name.starts_with("com.apple.WebKit")
     }
 
+    fn classify_webkit_helper(name: &str) -> MonitoredProcessKind {
+        if name.contains("GPU") {
+            MonitoredProcessKind::Gpu
+        } else if name.contains("WebContent") {
+            MonitoredProcessKind::Web
+        } else {
+            MonitoredProcessKind::Other
+        }
+    }
+
     fn responsible_pid(pid: pid_t) -> Option<pid_t> {
         type ResponsibilityFn = unsafe extern "C" fn(pid_t) -> pid_t;
         static RESPONSIBILITY_FN: OnceLock<Option<ResponsibilityFn>> = OnceLock::new();
@@ -425,7 +474,15 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
             };
 
             if identity.ppid == main_pid {
-                helper_pids.push(identity.pid);
+                let kind = if is_webkit_helper(&identity.name) {
+                    classify_webkit_helper(&identity.name)
+                } else {
+                    MonitoredProcessKind::Other
+                };
+                helper_pids.push(MonitoredProcess {
+                    pid: identity.pid,
+                    kind,
+                });
                 continue;
             }
 
@@ -435,13 +492,16 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
                         && identity.started_at_micros <= latest_webkit_start
                         && responsible_pid(identity.pid).is_none())
                 {
-                    helper_pids.push(identity.pid);
+                    helper_pids.push(MonitoredProcess {
+                        pid: identity.pid,
+                        kind: classify_webkit_helper(&identity.name),
+                    });
                 }
             }
         }
 
-        helper_pids.sort_unstable();
-        helper_pids.dedup();
+        helper_pids.sort_unstable_by_key(|process| process.pid);
+        helper_pids.dedup_by_key(|process| process.pid);
         cache.helper_pids = helper_pids;
         cache.refreshed_at = Some(now);
     }
@@ -481,6 +541,10 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
     let main = process_sample(unsafe { libc::getpid() })?;
     let mut cpu_seconds = main.cpu_seconds;
     let mut memory_bytes = main.footprint_bytes;
+    let mut memory = PerformanceMemorySnapshot {
+        main_bytes: main.footprint_bytes,
+        ..PerformanceMemorySnapshot::default()
+    };
 
     let helper_pids = if let Ok(mut cache) = cache.lock() {
         refresh_helper_pids(&mut cache, main.pid, captured_at);
@@ -490,8 +554,8 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
     };
 
     let mut sampled_pids = vec![main.pid];
-    for pid in helper_pids {
-        let Some(sample) = process_sample(pid) else {
+    for helper in helper_pids {
+        let Some(sample) = process_sample(helper.pid) else {
             continue;
         };
         if sample.pid == main.pid {
@@ -499,13 +563,17 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         }
         sampled_pids.push(sample.pid);
         cpu_seconds += sample.cpu_seconds;
-        memory_bytes = memory_bytes.saturating_add(sample.footprint_bytes);
+        add_memory(&mut memory, helper.kind, sample.footprint_bytes);
+        if helper.kind != MonitoredProcessKind::Gpu {
+            memory_bytes = memory_bytes.saturating_add(sample.footprint_bytes);
+        }
     }
 
     Some(RawSample {
         captured_at,
         cpu_seconds,
         memory_bytes,
+        memory,
         cpu_percent_override: ps_cpu_percent(&sampled_pids),
     })
 }
@@ -536,9 +604,13 @@ fn capture_raw_sample() -> Option<RawSample> {
             captured_at,
             cpu_seconds: timeval_seconds(usage.ru_utime) + timeval_seconds(usage.ru_stime),
             memory_bytes,
+            memory: PerformanceMemorySnapshot {
+                main_bytes: memory_bytes,
+                ..PerformanceMemorySnapshot::default()
+            },
             cpu_percent_override: None,
         })
-    }
+}
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -699,6 +771,12 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         captured_at,
         cpu_seconds: total_cpu_seconds,
         memory_bytes: total_memory_bytes,
+        memory: PerformanceMemorySnapshot {
+            main_bytes: memory_bytes,
+            web_bytes: 0,
+            gpu_bytes: 0,
+            other_bytes: total_memory_bytes.saturating_sub(memory_bytes),
+        },
         cpu_percent_override: None,
     })
 }

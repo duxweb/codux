@@ -358,15 +358,25 @@ export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options
       })),
     [projects],
   );
+  const projectRequestsRef = useRef(projectRequests);
+  const enabledRef = useRef(enabled);
+  useEffect(() => {
+    projectRequestsRef.current = projectRequests;
+  }, [projectRequests]);
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
   const loadState = useCallback(async () => {
-    if (!window.__TAURI_INTERNALS__ || !shouldLoadGlobalHistory(enabled, projectRequests.length)) {
+    const latestEnabled = enabledRef.current;
+    const latestProjectRequests = projectRequestsRef.current;
+    if (!window.__TAURI_INTERNALS__ || !shouldLoadGlobalHistory(latestEnabled, latestProjectRequests.length)) {
       useRuntimeStore.getState().setAIGlobalHistory(null);
       useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
       return;
     }
     try {
       const next = await invoke<AIGlobalHistorySnapshot | null>("ai_history_global_state", {
-        projects: projectRequests,
+        projects: latestProjectRequests,
       });
       useRuntimeStore.getState().setAIGlobalHistory(next);
       useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
@@ -375,11 +385,13 @@ export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options
       useRuntimeStore.getState().setAIGlobalStatus({
         isLoading: false,
         error: reason instanceof Error ? reason.message : String(reason),
-      });
+        });
     }
-  }, [enabled, projectRequests]);
+  }, []);
   const refresh = useCallback(async () => {
-    if (!window.__TAURI_INTERNALS__ || !shouldLoadGlobalHistory(enabled, projects.length)) {
+    const latestEnabled = enabledRef.current;
+    const latestProjectRequests = projectRequestsRef.current;
+    if (!window.__TAURI_INTERNALS__ || !shouldLoadGlobalHistory(latestEnabled, latestProjectRequests.length)) {
       useRuntimeStore.getState().setAIGlobalHistory(null);
       useRuntimeStore.getState().setAIGlobalStatus({ isLoading: false, error: null });
       return;
@@ -387,7 +399,7 @@ export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options
     useRuntimeStore.getState().setAIGlobalStatus({ isLoading: true, error: null });
     try {
       await invoke("ai_history_refresh_global", {
-        projects: projectRequests,
+        projects: latestProjectRequests,
       });
     } catch (reason) {
       console.error("failed to load global ai history", reason);
@@ -396,7 +408,7 @@ export function useAIGlobalHistorySnapshot(projects: WorkspaceProject[], options
         error: reason instanceof Error ? reason.message : String(reason),
       });
     }
-  }, [enabled, projectRequests, projects.length]);
+  }, []);
 
   return useMemo(
     () => ({

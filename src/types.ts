@@ -103,6 +103,14 @@ export interface RemotePendingPairing {
 export interface PerformanceSnapshot {
   cpuPercent: number;
   memoryBytes: number;
+  memory: PerformanceMemorySnapshot;
+}
+
+export interface PerformanceMemorySnapshot {
+  mainBytes: number;
+  webBytes: number;
+  gpuBytes: number;
+  otherBytes: number;
 }
 
 export type MainView = "terminal" | "files" | "review";

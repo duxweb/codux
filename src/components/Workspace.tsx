@@ -143,6 +143,7 @@ export function Workspace({ mainView, selectedProject, onSessionChange, terminal
       {mainView === "terminal" && activeTerminalProject && (
         <div className="h-full">
           <TerminalMode
+            key={activeTerminalProject.id}
             cwd={activeTerminalProject.path}
             projectId={activeTerminalProject.id}
             projectName={activeTerminalProject.name}

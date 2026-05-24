@@ -205,9 +205,20 @@ export class TerminalRuntime {
     const session = this.sessions.get(sessionId);
     if (!session) return undefined;
     if (!session.backendId || !window.__TAURI_INTERNALS__) {
+      if (session.replayBuffer) {
+        runtimeTrace(
+          "terminal-runtime",
+          `snapshot local session=${sessionId} chars=${session.replayBuffer.length}`,
+        );
+      }
       return session.replayBuffer;
     }
-    return invoke<string>("terminal_snapshot", { sessionId: session.backendId });
+    const history = await invoke<string>("terminal_snapshot", { sessionId: session.backendId });
+    runtimeTrace(
+      "terminal-runtime",
+      `snapshot backend session=${sessionId} backend=${session.backendId} chars=${history.length}`,
+    );
+    return history;
   }
 
   ensureAttachedSession(options: AttachedSessionOptions) {

@@ -596,6 +596,12 @@ function PerformanceHUD() {
   const [snapshot, setSnapshot] = useState<PerformanceSnapshot>({
     cpuPercent: 0,
     memoryBytes: 0,
+    memory: {
+      mainBytes: 0,
+      webBytes: 0,
+      gpuBytes: 0,
+      otherBytes: 0,
+    },
   });
 
   useEffect(() => {
@@ -631,12 +637,14 @@ function PerformanceHUD() {
 
   const cpuText = formatCpu(snapshot.cpuPercent);
   const memoryText = formatBytes(snapshot.memoryBytes);
+  const gpuText = formatBytes(snapshot.memory.gpuBytes);
   const cpuTone =
     snapshot.cpuPercent >= 85 ? "text-brand-red" : snapshot.cpuPercent >= 60 ? "text-brand-amber" : "text-ink-soft";
 
   const tooltip = [
     formatI18n(tm("performance.monitor.cpu_format", "CPU %@"), cpuText),
     formatI18n(tm("performance.monitor.memory_format", "MEM %@"), memoryText),
+    formatI18n(tm("performance.monitor.memory_gpu_format", "GPU %@"), gpuText),
   ].join(" · ");
 
   return (
@@ -650,6 +658,11 @@ function PerformanceHUD() {
         <span className="flex items-center gap-1.5 px-1.5">
           <MemoryStick size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.2} />
           <span className="tabular-nums">{memoryText}</span>
+        </span>
+        <span className="w-px h-3 bg-border-subtle" />
+        <span className="flex items-center gap-1.5 px-1.5">
+          <Zap size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.2} />
+          <span className="tabular-nums">{gpuText}</span>
         </span>
       </div>
     </Tooltip>

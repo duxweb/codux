@@ -185,6 +185,10 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
     }),
   setAIProjectSessions: (key, entry) =>
     set((state) => {
+      const existing = state.aiProjectSessionsByKey[key];
+      if (existing && isSameAIProjectSessions(existing, entry)) {
+        return state;
+      }
       const nextAIProjectSessionsByKey = {
         ...state.aiProjectSessionsByKey,
         [key]: entry,
@@ -214,6 +218,9 @@ export const useRuntimeStore = create<RuntimeState>((set) => ({
     }),
   setAIGlobalHistory: (snapshot) => {
     const stripped = stripAIGlobalHistorySessions(snapshot);
+    if (useRuntimeStore.getState().aiGlobalHistory && isSameAIGlobalHistory(useRuntimeStore.getState().aiGlobalHistory, stripped)) {
+      return;
+    }
     traceRuntimeStoreWrite("aiGlobalHistory", "global", stripped, stripped ? 1 : 0);
     set({ aiGlobalHistory: stripped });
   },
@@ -253,6 +260,17 @@ function stripAIGlobalHistorySessions(snapshot: AIGlobalHistorySnapshot | null):
 }
 
 function isSameAIHistoryProjectState(left: AIHistoryProjectState, right: AIHistoryProjectState) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isSameAIProjectSessions(left: AIProjectSessionsCacheEntry, right: AIProjectSessionsCacheEntry) {
+  return JSON.stringify(left.sessions) === JSON.stringify(right.sessions);
+}
+
+function isSameAIGlobalHistory(
+  left: AIGlobalHistorySnapshot | null,
+  right: AIGlobalHistorySnapshot | null,
+) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
