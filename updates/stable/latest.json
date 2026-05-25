@@ -1,23 +1,23 @@
 {
   "version": "1.0.1",
   "notes": "## 中文\n\n## [1.0.1] - 2026-05-25\n\n### 修复\n\n- 修复 Windows 开发启动和桌面宠物显示处理，设置变更时不再依赖旧窗口状态。\n- 修复会话记录双击恢复时的重复创建问题，新增 pending 状态避免启动过程中重复触发。\n\n---\n\n## English\n\n## [1.0.1] - 2026-05-25\n\n### Fixed\n\n- Fixed Windows dev startup and desktop pet visibility handling so the app no longer depends on stale window state when settings change.\n- Fixed session restore double-click behavior by adding a pending state that blocks duplicate launches while a restore is starting.",
-  "pub_date": "2026-05-25T04:36:19.190Z",
+  "pub_date": "2026-05-25T04:44:05.000Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWsxa0cxYUo1Qk5mQXdQL3NYZHQwMHFDL0xNZUpja3FJOFJQMmw2UUtlS3BsQTA5YmZwM2ppMURKZW04TDA2NzYxK3RJbkJUaDJXOGFBTDRNcXFZNmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NjgzNzEwCWZpbGU6Q29kdXguYXBwLnRhci5negpsWjRYTTZxZVZmWmZLL3B1WDhuck5tbzRLQnhrSWxlS2xXTUh5VENFbnhVQjVZdnJUdnNha284Mmtqdnc2UkhVUENiZnpZVmhPTzZlZGZQa1IrZGxEdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.1/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWlDVmtmRWpYMXZCaDdlV25ldkFxbXNvdERhN3dpR3JYVkZDQW82d2FaQ3hBY0IzZlNGSlBBYlgyMmlFSnRKdlFUVVpFbXNYWWwyclZwbXpNRURuVHdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Njg0MTk1CWZpbGU6Q29kdXguYXBwLnRhci5nego5bCtGK1NuNi9xQ2N1UG5ZZE9Kdk9BaCsrZWQvbm51dzBnbEpXZG1ZRk9RempsblBBcUUyVHdDOVNsVTZwWXRxSFFmSmNyaG9FWUQ4L1d4WU1XL1NEUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.1/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWsxa0cxYUo1Qk5mQXdQL3NYZHQwMHFDL0xNZUpja3FJOFJQMmw2UUtlS3BsQTA5YmZwM2ppMURKZW04TDA2NzYxK3RJbkJUaDJXOGFBTDRNcXFZNmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NjgzNzEwCWZpbGU6Q29kdXguYXBwLnRhci5negpsWjRYTTZxZVZmWmZLL3B1WDhuck5tbzRLQnhrSWxlS2xXTUh5VENFbnhVQjVZdnJUdnNha284Mmtqdnc2UkhVUENiZnpZVmhPTzZlZGZQa1IrZGxEdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.1/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWlDVmtmRWpYMXZCaDdlV25ldkFxbXNvdERhN3dpR3JYVkZDQW82d2FaQ3hBY0IzZlNGSlBBYlgyMmlFSnRKdlFUVVpFbXNYWWwyclZwbXpNRURuVHdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Njg0MTk1CWZpbGU6Q29kdXguYXBwLnRhci5nego5bCtGK1NuNi9xQ2N1UG5ZZE9Kdk9BaCsrZWQvbm51dzBnbEpXZG1ZRk9RempsblBBcUUyVHdDOVNsVTZwWXRxSFFmSmNyaG9FWUQ4L1d4WU1XL1NEUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.1/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWsxa0cxYUo1Qk5mQXdQL3NYZHQwMHFDL0xNZUpja3FJOFJQMmw2UUtlS3BsQTA5YmZwM2ppMURKZW04TDA2NzYxK3RJbkJUaDJXOGFBTDRNcXFZNmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NjgzNzEwCWZpbGU6Q29kdXguYXBwLnRhci5negpsWjRYTTZxZVZmWmZLL3B1WDhuck5tbzRLQnhrSWxlS2xXTUh5VENFbnhVQjVZdnJUdnNha284Mmtqdnc2UkhVUENiZnpZVmhPTzZlZGZQa1IrZGxEdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.1/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWlDVmtmRWpYMXZCaDdlV25ldkFxbXNvdERhN3dpR3JYVkZDQW82d2FaQ3hBY0IzZlNGSlBBYlgyMmlFSnRKdlFUVVpFbXNYWWwyclZwbXpNRURuVHdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Njg0MTk1CWZpbGU6Q29kdXguYXBwLnRhci5nego5bCtGK1NuNi9xQ2N1UG5ZZE9Kdk9BaCsrZWQvbm51dzBnbEpXZG1ZRk9RempsblBBcUUyVHdDOVNsVTZwWXRxSFFmSmNyaG9FWUQ4L1d4WU1XL1NEUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.1/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWsxa0cxYUo1Qk5mQXdQL3NYZHQwMHFDL0xNZUpja3FJOFJQMmw2UUtlS3BsQTA5YmZwM2ppMURKZW04TDA2NzYxK3RJbkJUaDJXOGFBTDRNcXFZNmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NjgzNzEwCWZpbGU6Q29kdXguYXBwLnRhci5negpsWjRYTTZxZVZmWmZLL3B1WDhuck5tbzRLQnhrSWxlS2xXTUh5VENFbnhVQjVZdnJUdnNha284Mmtqdnc2UkhVUENiZnpZVmhPTzZlZGZQa1IrZGxEdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.1/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWlDVmtmRWpYMXZCaDdlV25ldkFxbXNvdERhN3dpR3JYVkZDQW82d2FaQ3hBY0IzZlNGSlBBYlgyMmlFSnRKdlFUVVpFbXNYWWwyclZwbXpNRURuVHdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Njg0MTk1CWZpbGU6Q29kdXguYXBwLnRhci5nego5bCtGK1NuNi9xQ2N1UG5ZZE9Kdk9BaCsrZWQvbm51dzBnbEpXZG1ZRk9RempsblBBcUUyVHdDOVNsVTZwWXRxSFFmSmNyaG9FWUQ4L1d4WU1XL1NEUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.1/macos-universal-formal-updater.app.tar.gz"
     },
     "windows-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQW51bmZvUE1LRVoxeGZjQkM3cUE2WnJoZS94MGMvcDlNZHVDcUROMys4dWsrUmZ3OXkyWVZWOFdnRkhyMmJOb3M4dGRyMDNCcWpzMVBEaDFoY0RxTndzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NjgzNTE4CWZpbGU6Q29kdXhfMS4wLjEtMF94NjQtc2V0dXAuZXhlCkhCRGRjOWNMR0N1ejZiU0d3QUhuVlV4b3dnSXJMUkJiZVFmbitxZFZUZzhFbzN0bjJHOWJzU1VJU3pPL2hGY3pocXdRSEo3THlqbkc1V1ZEU01sS0RnPT0K",
