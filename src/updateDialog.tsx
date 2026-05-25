@@ -163,7 +163,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
             <Modal.Header className="mb-3 p-0">
               <div className="min-w-0">
                 <Modal.Heading className="text-sm font-semibold text-ink">{titleForPhase(phase)}</Modal.Heading>
-                {status ? (
+                {status && phase === "available" ? (
                   <div className="mt-1 text-sm text-ink-faint">
                     {formatI18n(
                       tm("update.version.summary_format", "Current v%@ · Latest v%@"),
@@ -327,15 +327,7 @@ function UpdateDialogBody({
   }
 
   if (phase === "latest") {
-    return (
-      <p className="text-sm leading-relaxed text-ink-soft">
-        {formatI18n(
-          tm("update.latest.message_format", "Current version: v%@\nLatest release: v%@"),
-          status.currentVersion,
-          status.latestVersion ?? status.currentVersion,
-        )}
-      </p>
-    );
+    return <p className="text-sm leading-relaxed text-ink-soft">{tm("update.latest.message", "No new version found.")}</p>;
   }
 
   return (
@@ -415,7 +407,7 @@ function titleForPhase(phase: DialogPhase) {
     case "available":
       return tm("update.available.title", "Update Available");
     case "latest":
-      return tm("update.latest.title", "You're up to date.");
+      return tm("update.check.title", "Check for Updates");
     case "notConfigured":
       return tm("update.not_configured.title", "Updates Not Configured");
     case "downloading":
