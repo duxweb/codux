@@ -4,6 +4,7 @@ const CLEANUP_INTERVAL_MS = 5000;
 const MAX_MEASURES_BEFORE_CLEANUP = 500;
 const TELEMETRY_INTERVAL_MS = 10_000;
 const UA_MEMORY_INTERVAL_MS = 30_000;
+const RESOURCE_TIMING_BUFFER_SIZE = 128;
 
 let installed = false;
 let measureCount = 0;
@@ -13,6 +14,8 @@ let longTaskObserver: PerformanceObserver | undefined;
 let longTaskCount = 0;
 let longTaskDurationMs = 0;
 let lastUaMemorySampleAt = 0;
+let previousHeapUsedBytes = 0;
+let previousHeapTotalBytes = 0;
 
 export const uninstallPerformanceTimelineCleanup = installPerformanceTimelineCleanup();
 export const uninstallPerformanceTelemetry = installPerformanceTelemetry();
@@ -34,6 +37,11 @@ function installPerformanceTimelineCleanup() {
       }
       return entry;
     }) as Performance["measure"];
+  }
+  try {
+    performance.setResourceTimingBufferSize?.(RESOURCE_TIMING_BUFFER_SIZE);
+  } catch {
+    // Best effort only. Some WebView builds expose the method but reject calls.
   }
 
   cleanupTimer = window.setInterval(() => {
@@ -88,6 +96,8 @@ function installPerformanceTelemetry() {
 function cleanupPerformanceTimeline(clearMeasures: (() => void) | undefined) {
   try {
     clearMeasures?.();
+    performance.clearMarks?.();
+    performance.clearResourceTimings?.();
   } catch (error) {
     console.warn("failed to clean performance timeline", error);
   }
@@ -98,16 +108,24 @@ async function emitFrontendPerformanceSample() {
   const uaMemoryBytes = await readUserAgentSpecificMemory();
   const resourceCount = performance.getEntriesByType("resource").length;
   const measureCount = performance.getEntriesByType("measure").length;
+  const usedDelta = memory.usedBytes - previousHeapUsedBytes;
+  const totalDelta = memory.totalBytes - previousHeapTotalBytes;
+  previousHeapUsedBytes = memory.usedBytes;
+  previousHeapTotalBytes = memory.totalBytes;
 
   runtimeTrace(
     "performance-frontend",
     [
+      `route=${shortRouteLabel()}`,
+      `visible=${document.visibilityState}`,
       `jsHeap=${formatBytes(memory.usedBytes)}/${formatBytes(memory.totalBytes)}`,
+      `heapDelta=${formatSignedBytes(usedDelta)}/${formatSignedBytes(totalDelta)}`,
       `uaMemory=${formatBytes(uaMemoryBytes ?? 0)}`,
       `resources=${resourceCount}`,
       `measures=${measureCount}`,
       `longTasks=${longTaskCount}`,
       `longTaskMs=${Math.round(longTaskDurationMs)}`,
+      `canvases=${document.querySelectorAll("canvas").length}`,
     ].join(" "),
   );
 
@@ -154,4 +172,18 @@ function formatBytes(bytes: number) {
   if (bytes >= gb) return `${(bytes / gb).toFixed(2)}G`;
   if (bytes >= mb) return `${Math.round(bytes / mb)}M`;
   return `${Math.round(bytes / 1024)}K`;
+}
+
+function formatSignedBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes === 0) return "0B";
+  const sign = bytes > 0 ? "+" : "-";
+  return `${sign}${formatBytes(Math.abs(bytes))}`;
+}
+
+function shortRouteLabel() {
+  if (document.documentElement.classList.contains("desktop-pet-page")) return "desktop-pet";
+  const route = window.location.hash.replace(/^#/, "") || "/";
+  const routePath = route.split("?")[0] || route;
+  if (routePath === "/") return "main";
+  return routePath.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "main";
 }
