@@ -70,7 +70,6 @@ Codux detects supported AI CLIs from the terminal, installs app-managed hook fil
 | Gemini CLI | `gemini` | Full | Full | Full | `GEMINI.md` | Uses Gemini hooks and local history. |
 | OpenCode | `opencode` | Full | Full | Full | `AGENTS.md` | Uses OpenCode config / local history integration. |
 | Kiro CLI | `kiro`, `kiro-cli` | Full | Full | Partial | `AGENTS.md` | Uses Kiro agent hooks via `~/.kiro/agents/codux-managed.json` and reads `~/.kiro/sessions/cli`. |
-| Cursor CLI | `cursor-agent` | Not yet | Not yet | Not yet | Not yet | Waiting for a stable official hook path. Headless `stream-json` is intentionally not treated as a general runtime hook. |
 
 `Full` means Codux can drive the feature from the normal integrated terminal workflow. `Partial` means the tool has enough local data for status / history, but the restore behavior still depends on the tool's own CLI support.
 
