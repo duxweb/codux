@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { AIHistorySessionSummary } from "../ai/history";
 import type { AIStatisticsMode } from "../settings";
 import type { WorkspaceProject } from "../types";
@@ -20,11 +20,14 @@ type Props = {
 };
 
 const relativeTimeFormatters = new Map<string, Intl.RelativeTimeFormat>();
+const restorePendingTimeoutMs = 6_000;
 
 export function AIHistorySessionList({ project, sessions, mode, isLoading, error, className, maxItems = 20 }: Props) {
   const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [restoringSessionId, setRestoringSessionId] = useState("");
   const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({});
   const [hiddenSessionIds, setHiddenSessionIds] = useState<Set<string>>(() => new Set());
+  const restoreTimeoutRef = useRef<number | null>(null);
   const rows = useMemo(
     () =>
       sessions
@@ -35,6 +38,15 @@ export function AIHistorySessionList({ project, sessions, mode, isLoading, error
           sessionTitle: titleOverrides[session.sessionId] ?? session.sessionTitle,
         })),
     [hiddenSessionIds, maxItems, sessions, titleOverrides],
+  );
+
+  useEffect(
+    () => () => {
+      if (restoreTimeoutRef.current != null) {
+        window.clearTimeout(restoreTimeoutRef.current);
+      }
+    },
+    [],
   );
 
   const renameSession = (session: AIHistorySessionSummary) => {
@@ -82,6 +94,19 @@ export function AIHistorySessionList({ project, sessions, mode, isLoading, error
     });
   };
 
+  const restoreSession = (session: AIHistorySessionSummary) => {
+    if (restoringSessionId || !project) return;
+    setRestoringSessionId(session.sessionId);
+    if (restoreTimeoutRef.current != null) {
+      window.clearTimeout(restoreTimeoutRef.current);
+    }
+    restoreTimeoutRef.current = window.setTimeout(() => {
+      restoreTimeoutRef.current = null;
+      setRestoringSessionId((current) => (current === session.sessionId ? "" : current));
+    }, restorePendingTimeoutMs);
+    restoreHistorySession(project, session);
+  };
+
   return (
     <div className={`min-h-0 overflow-y-auto scrollbar-overlay ${className ?? ""}`}>
       {rows.map((session) => (
@@ -90,8 +115,10 @@ export function AIHistorySessionList({ project, sessions, mode, isLoading, error
           session={session}
           mode={mode}
           selected={selectedSessionId === session.sessionId}
+          restoring={restoringSessionId === session.sessionId}
+          disabled={Boolean(restoringSessionId)}
           onSelect={() => setSelectedSessionId(session.sessionId)}
-          onRestore={() => restoreHistorySession(project, session)}
+          onRestore={() => restoreSession(session)}
           onRename={() => renameSession(session)}
           onDelete={() => deleteSession(session)}
         />
@@ -113,6 +140,8 @@ const HistorySessionRow = memo(function HistorySessionRow({
   session,
   mode,
   selected,
+  restoring,
+  disabled,
   onSelect,
   onRestore,
   onRename,
@@ -121,6 +150,8 @@ const HistorySessionRow = memo(function HistorySessionRow({
   session: AIHistorySessionSummary;
   mode: AIStatisticsMode;
   selected?: boolean;
+  restoring?: boolean;
+  disabled?: boolean;
   onSelect: () => void;
   onRestore: () => void;
   onRename: () => void;
@@ -135,8 +166,10 @@ const HistorySessionRow = memo(function HistorySessionRow({
     <div className="relative mb-1 last:mb-0">
       <PressableButton
         className={`w-full rounded-[8px] px-2.5 py-2 text-left outline-none transition-colors ${
-          selected ? "bg-brand-blue/13" : "hover:bg-fill/[0.055]"
+          selected ? "bg-brand-blue/13" : disabled ? "opacity-65" : "hover:bg-fill/[0.055]"
         }`}
+        disabled={disabled}
+        aria-busy={restoring}
         onPressUp={onSelect}
         onDoubleClick={onRestore}
         onContextMenu={(event) => {
@@ -151,7 +184,9 @@ const HistorySessionRow = memo(function HistorySessionRow({
           </div>
         </div>
         <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-[11.5px] font-medium leading-4 text-ink-faint">
-          <div className="min-w-0 truncate text-ink-faint">{tool}</div>
+          <div className="min-w-0 truncate text-ink-faint">
+            {restoring ? tm("common.creating", "Creating") : tool}
+          </div>
           <div className="flex-none text-xs font-medium tabular-nums leading-4 text-ink-mute">{totalLabel}</div>
         </div>
       </PressableButton>

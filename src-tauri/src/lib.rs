@@ -518,18 +518,47 @@ fn sync_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings, pet: 
     let should_show =
         settings.pet.enabled && settings.pet.desktop_widget && pet.claimed_at.is_some();
     if !should_show {
-        if let Some(window) = app.get_webview_window(DESKTOP_PET_LABEL) {
-            let _ = window.set_ignore_cursor_events(true);
-            let _ = window.hide();
+        let app = app.clone();
+        let enabled = settings.pet.enabled;
+        let desktop_widget = settings.pet.desktop_widget;
+        let claimed = pet.claimed_at.is_some();
+        let result = app.clone().run_on_main_thread(move || {
+            runtime_trace(
+                "desktop-pet",
+                &format!(
+                    "sync hide enabled={enabled} desktop_widget={desktop_widget} claimed={claimed}"
+                ),
+            );
+            if let Some(window) = app.get_webview_window(DESKTOP_PET_LABEL) {
+                let _ = window.set_ignore_cursor_events(true);
+                if let Err(error) = window.hide() {
+                    runtime_trace("desktop-pet", &format!("hide_failed error={error}"));
+                }
+            }
+        });
+        if let Err(error) = result {
+            runtime_trace(
+                "desktop-pet",
+                &format!("hide_schedule_failed error={error}"),
+            );
         }
         return;
     }
 
     let app = app.clone();
     let settings = settings.clone();
-    let _ = app.clone().run_on_main_thread(move || {
-        let _ = show_desktop_pet_window(&app, &settings);
-    });
+    let result =
+        app.clone()
+            .run_on_main_thread(move || match show_desktop_pet_window(&app, &settings) {
+                Ok(()) => runtime_trace("desktop-pet", "sync show ok"),
+                Err(error) => runtime_trace("desktop-pet", &format!("show_failed error={error}")),
+            });
+    if let Err(error) = result {
+        runtime_trace(
+            "desktop-pet",
+            &format!("show_schedule_failed error={error}"),
+        );
+    }
 }
 
 fn show_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings) -> tauri::Result<()> {
@@ -1177,6 +1206,28 @@ fn desktop_pet_show_context_menu(
     )
     .map_err(|error| error.to_string())?;
     window.popup_menu(&menu).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_pet_sync_visibility(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    let settings = state.settings.snapshot();
+    let pet = state.pet.snapshot()?;
+    let should_show =
+        settings.pet.enabled && settings.pet.desktop_widget && pet.claimed_at.is_some();
+    runtime_trace(
+        "desktop-pet",
+        &format!(
+            "manual_sync should_show={should_show} enabled={} desktop_widget={} claimed={}",
+            settings.pet.enabled,
+            settings.pet.desktop_widget,
+            pet.claimed_at.is_some()
+        ),
+    );
+    sync_desktop_pet_window(&app, &settings, &pet);
+    Ok(should_show)
 }
 
 fn update_desktop_pet_settings(
@@ -6872,6 +6923,7 @@ pub fn run() {
             desktop_pet_set_bubble_visible,
             desktop_pet_start_drag,
             desktop_pet_show_context_menu,
+            desktop_pet_sync_visibility,
             i18n_bundle_get,
             llm_complete,
             llm_provider_test,

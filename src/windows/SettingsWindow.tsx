@@ -613,7 +613,9 @@ function PetSection() {
     const next = updateAppSettings({ pet: nextPet });
     setSettings(next);
     if ("enabled" in patch || "desktopWidget" in patch) {
-      void flushAppSettings().catch((error) => console.error("failed to apply pet settings", error));
+      void flushAppSettings()
+        .then(() => invoke("desktop_pet_sync_visibility"))
+        .catch((error) => console.error("failed to apply pet settings", error));
     }
   };
   const setAIPet = (patch: Partial<typeof settings.ai.pet>) => {
