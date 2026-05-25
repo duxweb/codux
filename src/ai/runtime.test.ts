@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AIRuntimeStore, type AIHookEventPayload } from "./runtime";
 import { AIRuntimeIngressService } from "./ingressService";
 import { AISessionStore } from "./sessionStore";
-import { AIToolDriverFactory, CodexToolDriver, OpenCodeToolDriver } from "./toolDrivers";
+import { AIToolDriverFactory, CodexToolDriver, GeminiToolDriver, OpenCodeToolDriver } from "./toolDrivers";
 
 function hook(patch: Partial<AIHookEventPayload>): AIHookEventPayload {
   return {
@@ -292,6 +292,13 @@ describe("ai runtime store", () => {
 
     expect(factory.canonicalToolName("opencode")).toBe("opencode");
     expect(factory.isRealtimeTool("opencode")).toBe(true);
+  });
+
+  it("treats agy as the Gemini-compatible Antigravity CLI", () => {
+    const factory = new AIToolDriverFactory([new GeminiToolDriver()]);
+
+    expect(factory.canonicalToolName("agy")).toBe("gemini");
+    expect(factory.isRealtimeTool("agy")).toBe(true);
   });
 
   it("lets opencode runtime snapshots use the Rust probe fallback", async () => {

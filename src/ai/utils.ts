@@ -14,6 +14,7 @@ export function canonicalToolName(tool?: string | null) {
   const normalized = normalize(tool)?.toLowerCase();
   if (!normalized) return "";
   if (normalized === "claude-code") return "claude";
+  if (normalized === "agy") return "gemini";
   return normalized;
 }
 

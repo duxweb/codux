@@ -1734,32 +1734,34 @@ fn claude_project_log_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
 }
 
 fn gemini_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
-    let temp_dir = home.join(".gemini").join("tmp");
     let mut dirs = Vec::new();
-    let projects_path = home.join(".gemini").join("projects.json");
-    if let Ok(data) = fs::read(projects_path) {
-        if let Ok(root) = serde_json::from_slice::<Value>(&data) {
-            if let Some(projects) = root.get("projects").and_then(|value| value.as_object()) {
-                for (stored_path, value) in projects {
-                    if paths_equivalent(Some(stored_path), project_path) {
-                        if let Some(directory) = value.as_str().and_then(normalized_string) {
-                            dirs.push(temp_dir.join(directory));
+    for root_dir in gemini_data_roots(home) {
+        let temp_dir = root_dir.join("tmp");
+        let projects_path = root_dir.join("projects.json");
+        if let Ok(data) = fs::read(projects_path) {
+            if let Ok(root) = serde_json::from_slice::<Value>(&data) {
+                if let Some(projects) = root.get("projects").and_then(|value| value.as_object()) {
+                    for (stored_path, value) in projects {
+                        if paths_equivalent(Some(stored_path), project_path) {
+                            if let Some(directory) = value.as_str().and_then(normalized_string) {
+                                dirs.push(temp_dir.join(directory));
+                            }
                         }
                     }
                 }
             }
         }
-    }
-    if let Ok(entries) = fs::read_dir(&temp_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let marker = path.join(".project_root");
-            if let Ok(value) = fs::read_to_string(marker) {
-                if paths_equivalent(Some(value.trim()), project_path) {
-                    dirs.push(path);
+        if let Ok(entries) = fs::read_dir(&temp_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let marker = path.join(".project_root");
+                if let Ok(value) = fs::read_to_string(marker) {
+                    if paths_equivalent(Some(value.trim()), project_path) {
+                        dirs.push(path);
+                    }
                 }
             }
         }
@@ -1776,6 +1778,11 @@ fn gemini_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
     });
     files.sort_by_key(|path| std::cmp::Reverse(file_modified_millis(path).unwrap_or(0)));
     files
+}
+
+fn gemini_data_roots(home: &Path) -> Vec<PathBuf> {
+    let gemini_root = home.join(".gemini");
+    vec![gemini_root.clone(), gemini_root.join("antigravity-cli")]
 }
 
 fn codex_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {

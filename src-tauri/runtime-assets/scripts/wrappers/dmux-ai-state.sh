@@ -846,7 +846,7 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
   esac
 fi
 
-if [[ "${tool_name}" == "gemini" ]]; then
+if [[ "${tool_name}" == "gemini" || "${tool_name}" == "agy" ]]; then
   case "${action}" in
     session-start|before-agent|after-agent)
       gemini_total_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"

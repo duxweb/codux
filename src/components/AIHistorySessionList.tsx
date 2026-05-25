@@ -239,6 +239,7 @@ function historySessionRestoreCommand(session: AIHistorySessionSummary) {
   const quotedId = shellQuote(id);
   if (tool.includes("codex")) return `codex resume ${quotedId}`;
   if (tool.includes("claude")) return `claude --resume ${quotedId}`;
+  if (tool.includes("agy") || tool.includes("antigravity")) return `agy resume ${quotedId}`;
   if (tool.includes("gemini")) return `gemini resume ${quotedId}`;
   if (tool.includes("opencode")) return `opencode run --session ${quotedId}`;
   return `codex resume ${quotedId}`;

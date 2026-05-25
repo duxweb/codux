@@ -128,7 +128,7 @@ export class ClaudeToolDriver extends BaseToolDriver {
 
 export class GeminiToolDriver extends BaseToolDriver {
   id = "gemini";
-  aliases = new Set(["gemini"]);
+  aliases = new Set(["gemini", "agy"]);
 
   async resolveHookEvent(event: AIHookEventPayload, currentSession?: AISessionSnapshot) {
     if (!this.matches(event.tool)) return event;

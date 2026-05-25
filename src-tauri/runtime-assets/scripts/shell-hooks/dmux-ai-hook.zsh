@@ -98,7 +98,7 @@ _dmux_resolve_tool_from_command() {
     esac
     candidate="${candidate:t}"
     case "${candidate}" in
-      codex|claude|claude-code|opencode|gemini|kiro|kiro-cli)
+      codex|claude|claude-code|opencode|gemini|agy|kiro|kiro-cli)
         print -r -- "${candidate}"
         return 0
         ;;

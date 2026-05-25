@@ -172,7 +172,7 @@ configured_permission_mode() {
     claude|claude-code)
       config_key="claudeCode"
       ;;
-    gemini)
+    gemini|agy)
       config_key="gemini"
       ;;
     opencode)
@@ -218,7 +218,7 @@ configured_tool_model() {
     claude|claude-code)
       config_key="claudeCodeModel"
       ;;
-    gemini)
+    gemini|agy)
       config_key="geminiModel"
       ;;
     opencode)
@@ -293,7 +293,7 @@ apply_configured_model_arg() {
     codex)
       launch_args=("--model=${configured_model}" "${launch_args[@]}")
       ;;
-    claude|claude-code|gemini|opencode)
+    claude|claude-code|gemini|agy|opencode)
       launch_args=(--model "${configured_model}" "${launch_args[@]}")
       ;;
   esac
@@ -589,7 +589,7 @@ if [[ "$tool_name" == "codex" ]]; then
   fi
 fi
 
-if [[ "$tool_name" == "gemini" ]]; then
+if [[ "$tool_name" == "gemini" || "$tool_name" == "agy" ]]; then
   local_permission_mode="$(configured_permission_mode || true)"
   launch_args=("$@")
   apply_configured_model_arg

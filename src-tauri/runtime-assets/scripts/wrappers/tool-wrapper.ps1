@@ -99,6 +99,7 @@ function Tool-Config-Key([string]$Name) {
     "claude" { "claudeCode" }
     "claude-code" { "claudeCode" }
     "gemini" { "gemini" }
+    "agy" { "gemini" }
     "opencode" { "opencode" }
     default { "" }
   }
@@ -110,6 +111,7 @@ function Tool-Model-Key([string]$Name) {
     "claude" { "claudeCodeModel" }
     "claude-code" { "claudeCodeModel" }
     "gemini" { "geminiModel" }
+    "agy" { "geminiModel" }
     "opencode" { "opencodeModel" }
     default { "" }
   }
@@ -297,7 +299,7 @@ if ($permissionMode -eq "fullAccess") {
         -not (Has-Option-Value $launchArgs @("--permission-mode"))) {
       $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
     }
-  } elseif ($Tool -eq "gemini") {
+  } elseif ($Tool -eq "gemini" -or $Tool -eq "agy") {
     if (-not (Has-Option-Value $launchArgs @("--approval-mode")) -and
         -not (Has-Arg $launchArgs "--yolo") -and
         -not (Has-Arg $launchArgs "-y")) {
