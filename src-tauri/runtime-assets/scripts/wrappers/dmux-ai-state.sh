@@ -722,7 +722,6 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
       log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} externalSession=$(resolved_claude_external_session_id || print -r -- nil)"
       ;;
     prompt-submit|permission-request|permission-denied|notification|elicitation|elicitation-result)
-      CLAUDE_HOOK_EVENT_NAME="UserPromptSubmit"
       write_claude_session_map
       if [[ "${action}" == "prompt-submit" ]]; then
         claude_prompt_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
@@ -788,9 +787,6 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
         log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} notificationType=${notification_type:-unknown}"
       else
         log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
-      fi
-      if [[ "${action}" == "prompt-submit" ]]; then
-        should_emit_claude_memory_context=true
       fi
       ;;
     pre-compact|post-compact)

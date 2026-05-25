@@ -5,6 +5,7 @@ import type { AIStatisticsMode } from "../settings";
 import type { WorkspaceProject } from "../types";
 import { formatI18n, localeFromSettings, tm } from "../i18n";
 import { dispatchWorkspaceCommand } from "../workspaceCommands";
+import { RefreshCw } from "../icons";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
 import { PressableButton } from "./PressableButton";
 import { systemConfirm } from "../systemDialog";
@@ -28,6 +29,7 @@ export function AIHistorySessionList({ project, sessions, mode, isLoading, error
   const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({});
   const [hiddenSessionIds, setHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const restoreTimeoutRef = useRef<number | null>(null);
+  const restoreLockRef = useRef<string | null>(null);
   const rows = useMemo(
     () =>
       sessions
@@ -95,13 +97,15 @@ export function AIHistorySessionList({ project, sessions, mode, isLoading, error
   };
 
   const restoreSession = (session: AIHistorySessionSummary) => {
-    if (restoringSessionId || !project) return;
+    if (!project || restoreLockRef.current) return;
+    restoreLockRef.current = session.sessionId;
     setRestoringSessionId(session.sessionId);
     if (restoreTimeoutRef.current != null) {
       window.clearTimeout(restoreTimeoutRef.current);
     }
     restoreTimeoutRef.current = window.setTimeout(() => {
       restoreTimeoutRef.current = null;
+      restoreLockRef.current = null;
       setRestoringSessionId((current) => (current === session.sessionId ? "" : current));
     }, restorePendingTimeoutMs);
     restoreHistorySession(project, session);
@@ -185,7 +189,14 @@ const HistorySessionRow = memo(function HistorySessionRow({
         </div>
         <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-[11.5px] font-medium leading-4 text-ink-faint">
           <div className="min-w-0 truncate text-ink-faint">
-            {restoring ? tm("common.creating", "Creating") : tool}
+            {restoring ? (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <RefreshCw className="h-3 w-3 shrink-0 animate-spin" />
+                <span className="truncate">{tm("common.creating", "Creating")}</span>
+              </span>
+            ) : (
+              tool
+            )}
           </div>
           <div className="flex-none text-xs font-medium tabular-nums leading-4 text-ink-mute">{totalLabel}</div>
         </div>

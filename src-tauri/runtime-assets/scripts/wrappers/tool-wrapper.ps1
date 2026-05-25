@@ -224,6 +224,59 @@ if ($Tool -eq "codex" -and -not [string]::IsNullOrWhiteSpace($codexEffort) -and 
   $launchArgs = @("-c", "model_reasoning_effort=`"$codexEffort`"") + $launchArgs
 }
 
+if ($Tool -eq "codex" -and
+    -not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
+    (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
+    -not [string]::IsNullOrWhiteSpace($env:DMUX_PROJECT_PATH) -and
+    (Test-Path -LiteralPath $env:DMUX_PROJECT_PATH) -and
+    -not (Has-Option-Value $launchArgs @("-C", "--cd"))) {
+  $launchArgs = @("-C", $env:DMUX_PROJECT_PATH, "--add-dir", $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) + $launchArgs
+}
+
+if ($Tool -eq "codex" -and
+    -not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
+    (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
+    -not [string]::IsNullOrWhiteSpace($env:DMUX_PROJECT_PATH) -and
+    (Test-Path -LiteralPath $env:DMUX_PROJECT_PATH)) {
+  $memoryAgents = Join-Path $env:DMUX_AI_MEMORY_WORKSPACE_ROOT "AGENTS.md"
+  $projectAgents = Join-Path $env:DMUX_PROJECT_PATH "AGENTS.md"
+  $managedMarker = "<!-- CODUX_MANAGED_MEMORY_ENTRYPOINT -->"
+  if (Test-Path -LiteralPath $memoryAgents) {
+    $managed = $false
+    if (Test-Path -LiteralPath $projectAgents) {
+      try {
+        $item = Get-Item -LiteralPath $projectAgents -Force
+        $target = [string]$item.Target
+        if ($item.LinkType -and ($target -eq $memoryAgents -or $target -match "\\runtime-root\\memory-workspaces\\.*\\AGENTS\\.md$")) {
+          $managed = $true
+        } elseif (-not $item.LinkType) {
+          $head = Get-Content -LiteralPath $projectAgents -TotalCount 1 -ErrorAction SilentlyContinue
+          if ($head -eq $managedMarker) {
+            $managed = $true
+          }
+        }
+      } catch {
+      }
+    } else {
+      $managed = $true
+    }
+    if ($managed) {
+      try {
+        if (Test-Path -LiteralPath $projectAgents) {
+          Remove-Item -LiteralPath $projectAgents -Force
+        }
+        New-Item -ItemType SymbolicLink -Path $projectAgents -Target $memoryAgents -Force | Out-Null
+      } catch {
+        try {
+          $content = Get-Content -LiteralPath $memoryAgents -Raw
+          Set-Content -LiteralPath $projectAgents -Value "$managedMarker`r`n$content" -NoNewline
+        } catch {
+        }
+      }
+    }
+  }
+}
+
 if ($Tool -eq "codex" -and -not (Is-Metadata-Invocation $launchArgs) -and -not (Has-Arg $launchArgs "--enable")) {
   $hooksFeature = Codex-Hooks-Feature-Flag $realBin $searchPath
   $launchArgs = @("--enable", $hooksFeature) + $launchArgs

@@ -15,6 +15,7 @@ const GIT_WATCH_DEBOUNCE_MS: u64 = 250;
 const COMMIT_CONTEXT_MAX_CHARS: usize = 24_000;
 const COMMIT_CONTEXT_MAX_FILES: usize = 80;
 const COMMIT_CONTEXT_MAX_LINES_PER_FILE: usize = 80;
+const CODUX_MANAGED_MEMORY_ENTRYPOINT_MARKER: &str = "<!-- CODUX_MANAGED_MEMORY_ENTRYPOINT -->";
 
 type GitRepository = git2::Repository;
 pub type GitCancelToken = Arc<AtomicBool>;
@@ -1412,10 +1413,25 @@ fn stage_paths_git2(repo: &GitRepository, paths: &[String]) -> Result<(), String
     let mut index = repo.index().map_err(|error| error.message().to_string())?;
     if paths.is_empty() {
         index
-            .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .add_all(
+                ["*"].iter(),
+                git2::IndexAddOption::DEFAULT,
+                Some(&mut |path, _| {
+                    if is_codux_managed_memory_entrypoint_path(repo, path) {
+                        1
+                    } else {
+                        0
+                    }
+                }),
+            )
             .map_err(|error| error.message().to_string())?;
+        remove_codux_managed_memory_entrypoint_from_index(repo, &mut index);
     } else {
         for path in normalized_pathspecs(paths) {
+            if is_codux_managed_memory_entrypoint(repo, &path) {
+                let _ = index.remove_path(Path::new(&path));
+                continue;
+            }
             if repo_root(repo).join(&path).exists() {
                 index
                     .add_path(Path::new(&path))
@@ -2024,8 +2040,18 @@ fn git_error_message(error: git2::Error) -> String {
     if error.code() == git2::ErrorCode::User {
         "Git operation cancelled.".to_string()
     } else {
-        error.message().to_string()
+        normalize_git_error_message(error.message())
     }
+}
+
+fn normalize_git_error_message(message: &str) -> String {
+    if message
+        .to_lowercase()
+        .contains("cannot push because a reference that you are trying to update on the remote contains commits that are not present locally")
+    {
+        return "Push rejected because the remote branch has commits that are not present locally. Pull or sync first, then push again.".to_string();
+    }
+    message.to_string()
 }
 
 fn default_ssh_key_paths() -> Vec<PathBuf> {
@@ -2114,6 +2140,9 @@ fn git2_status_files(
         let Some(path) = entry.path().ok().map(normalize_git_path) else {
             continue;
         };
+        if is_codux_managed_memory_entrypoint(repo, &path) {
+            continue;
+        }
         let index_status = git2_index_status_code(status);
         let worktree_status = git2_worktree_status_code(status);
         let file = GitFileStatus {
@@ -2133,6 +2162,58 @@ fn git2_status_files(
         }
     }
     (staged, unstaged, untracked)
+}
+
+fn remove_codux_managed_memory_entrypoint_from_index(
+    repo: &GitRepository,
+    index: &mut git2::Index,
+) {
+    let path = "AGENTS.md";
+    if is_codux_managed_memory_entrypoint(repo, path) {
+        let _ = index.remove_path(Path::new(path));
+    }
+}
+
+fn is_codux_managed_memory_entrypoint_path(repo: &GitRepository, path: &Path) -> bool {
+    path.to_str()
+        .map(normalize_git_path)
+        .is_some_and(|path| is_codux_managed_memory_entrypoint(repo, &path))
+}
+
+fn is_codux_managed_memory_entrypoint(repo: &GitRepository, path: &str) -> bool {
+    if path != "AGENTS.md" {
+        return false;
+    }
+    if head_contains_path(repo, path) {
+        return false;
+    }
+    let full_path = repo_root(repo).join(path);
+    is_codux_managed_memory_entrypoint_file(&full_path)
+}
+
+fn head_contains_path(repo: &GitRepository, path: &str) -> bool {
+    head_tree(repo)
+        .ok()
+        .and_then(|tree| tree.get_path(Path::new(path)).ok())
+        .is_some()
+}
+
+fn is_codux_managed_memory_entrypoint_file(path: &Path) -> bool {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => std::fs::read_link(path)
+            .ok()
+            .and_then(|target| target.to_str().map(str::to_string))
+            .is_some_and(|target| {
+                let normalized = target.replace('\\', "/");
+                normalized.ends_with("/AGENTS.md")
+                    && normalized.contains("/runtime-root/memory-workspaces/")
+            }),
+        Ok(metadata) if metadata.is_file() => std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| text.lines().next().map(str::to_string))
+            .is_some_and(|line| line.trim() == CODUX_MANAGED_MEMORY_ENTRYPOINT_MARKER),
+        _ => false,
+    }
 }
 
 fn git2_index_status_code(status: git2::Status) -> String {
@@ -3012,6 +3093,54 @@ mod tests {
 
         let status = git_status(local);
         assert!(status.remotes.iter().any(|remote| remote.name == "origin"));
+    }
+
+    #[test]
+    fn normalizes_non_fast_forward_push_rejection_message() {
+        let message = normalize_git_error_message(
+            "cannot push because a reference that you are trying to update on the remote contains commits that are not present locally.",
+        );
+        assert_eq!(
+            message,
+            "Push rejected because the remote branch has commits that are not present locally. Pull or sync first, then push again."
+        );
+    }
+
+    #[test]
+    fn hides_and_skips_untracked_codux_managed_agents_entrypoint() {
+        let temp = TempDir::new("codux-agents-entrypoint");
+        let root = create_repo(&temp.path);
+        write_and_commit(&temp.path, "README.md", "hello\n", "initial");
+
+        let memory_root = temp
+            .path
+            .join("runtime-root")
+            .join("memory-workspaces")
+            .join("p");
+        fs::create_dir_all(&memory_root).expect("memory root");
+        let memory_agents = memory_root.join("AGENTS.md");
+        fs::write(&memory_agents, "memory\n").expect("memory agents");
+        let project_agents = temp.path.join("AGENTS.md");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&memory_agents, &project_agents).expect("agents symlink");
+        #[cfg(not(unix))]
+        fs::write(
+            &project_agents,
+            format!("{CODUX_MANAGED_MEMORY_ENTRYPOINT_MARKER}\r\nmemory\n"),
+        )
+        .expect("agents marker copy");
+
+        let status = git_status(root.clone());
+        assert!(status.untracked.iter().all(|file| file.path != "AGENTS.md"));
+
+        git_stage(GitPathsRequest {
+            project_path: root.clone(),
+            paths: vec![],
+        })
+        .expect("stage all");
+        let repo = GitRepository::discover(root).expect("open repo");
+        let index = repo.index().expect("index");
+        assert!(index.get_path(Path::new("AGENTS.md"), 0).is_none());
     }
 
     #[test]

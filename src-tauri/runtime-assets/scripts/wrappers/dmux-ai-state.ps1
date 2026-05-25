@@ -274,9 +274,7 @@ if ($null -eq $payload) {
 }
 
 Write-AIHookEvent $kind $payload
-if (($Tool -eq "claude" -or $Tool -eq "claude-code") -and $Action -eq "prompt-submit") {
-  Write-ClaudeMemoryAdditionalContext "UserPromptSubmit"
-} elseif (($Tool -eq "claude" -or $Tool -eq "claude-code") -and
+if (($Tool -eq "claude" -or $Tool -eq "claude-code") -and
     $Action -eq "session-start" -and (Find-FirstString $payload @("source")) -eq "compact") {
   Write-ClaudeMemoryAdditionalContext "SessionStart"
 }

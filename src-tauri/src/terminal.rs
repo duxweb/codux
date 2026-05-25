@@ -849,6 +849,16 @@ impl TerminalEnvironment {
         let mut path =
             merged_executable_path(request.shell, &home, &user, inherited_path.as_deref());
         let wrapper_bin = request.ai_runtime.wrapper_bin_dir().display().to_string();
+        let codux_ssh_command = request
+            .ai_runtime
+            .wrapper_bin_dir()
+            .join(if cfg!(windows) {
+                "codux-ssh.cmd"
+            } else {
+                "codux-ssh"
+            })
+            .display()
+            .to_string();
         path = prepend_path_component(&wrapper_bin, &path);
         values.insert("PATH".to_string(), path);
 
@@ -956,7 +966,7 @@ impl TerminalEnvironment {
                 project_id: project_id.to_string(),
                 project_name: project_name.clone(),
                 settings: ai_settings,
-                extra_context: render_ssh_launch_context(),
+                extra_context: render_ssh_launch_context(Some(codux_ssh_command)),
             })
         {
             values.insert(

@@ -329,6 +329,41 @@ apply_configured_codex_effort_arg() {
   launch_args=(-c "model_reasoning_effort=\"${configured_effort}\"" "${launch_args[@]}")
 }
 
+apply_codex_memory_workspace_args() {
+  [[ "${tool_name}" == "codex" ]] || return 0
+  [[ -n "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" && -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ]] || return 0
+  [[ -n "${DMUX_PROJECT_PATH:-}" && -d "${DMUX_PROJECT_PATH}" ]] || return 0
+  if has_exact_arg "-C" "${launch_args[@]}" \
+    || has_exact_arg "--cd" "${launch_args[@]}" \
+    || has_prefix_arg "--cd=" "${launch_args[@]}"; then
+    return 0
+  fi
+  launch_args=(-C "${DMUX_PROJECT_PATH}" --add-dir "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" "${launch_args[@]}")
+}
+
+prepare_codex_project_memory_entrypoint() {
+  [[ "${tool_name}" == "codex" ]] || return 0
+  [[ -n "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" && -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ]] || return 0
+  [[ -n "${DMUX_PROJECT_PATH:-}" && -d "${DMUX_PROJECT_PATH}" ]] || return 0
+
+  local memory_agents="${DMUX_AI_MEMORY_WORKSPACE_ROOT}/AGENTS.md"
+  local project_agents="${DMUX_PROJECT_PATH}/AGENTS.md"
+  [[ -f "${memory_agents}" ]] || return 0
+
+  if [[ -L "${project_agents}" ]]; then
+    local target
+    target="$(readlink "${project_agents}" 2>/dev/null || true)"
+    if [[ "${target}" == "${memory_agents}" || "${target}" == *"/runtime-root/memory-workspaces/"*"/AGENTS.md" ]]; then
+      ln -sfn "${memory_agents}" "${project_agents}" 2>/dev/null || true
+    fi
+    return 0
+  fi
+
+  if [[ ! -e "${project_agents}" ]]; then
+    ln -s "${memory_agents}" "${project_agents}" 2>/dev/null || true
+  fi
+}
+
 has_exact_arg() {
   local target="$1"
   shift
@@ -533,6 +568,8 @@ if [[ "$tool_name" == "codex" ]]; then
     launch_args=("$@")
     apply_configured_model_arg
     apply_configured_codex_effort_arg
+    apply_codex_memory_workspace_args
+    prepare_codex_project_memory_entrypoint
     if [[ "${local_permission_mode}" == "fullAccess" ]] \
       && ! has_exact_arg "--dangerously-bypass-approvals-and-sandbox" "${launch_args[@]}" \
       && ! has_exact_arg "--full-auto" "${launch_args[@]}" \

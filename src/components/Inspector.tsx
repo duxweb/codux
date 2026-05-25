@@ -86,6 +86,7 @@ import { openGitDiffWindow } from "../windowing";
 import { systemConfirm, systemMessage } from "../systemDialog";
 import { formatI18n, localeFromSettings, tm } from "../i18n";
 import { openLocalizedDialog } from "../localizedDialog";
+import { displayPathBasename } from "../pathDisplay";
 import { readAppSettings, subscribeAppSettings, type AISettings, type AIStatisticsMode } from "../settings";
 import { revealProjectInFileManager } from "../ide";
 
@@ -325,7 +326,6 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const isPulling = gitActionLoading === "pull";
   const isPushing = gitActionLoading === "push";
   const isGitActionRunning = gitActionLoading !== null;
-  const isGitActionFailed = gitActionError !== null;
   const canCancelGitAction = isGitActionRunning && isCancellableGitAction(gitActionLoading);
   const snapshot = git.snapshot;
   const hasUpstream = Boolean(snapshot.upstream);
@@ -334,9 +334,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const canCommit = snapshot.staged.length > 0 && commitMessage.trim().length > 0 && !isSubmittingCommit;
   const gitStatusActionLabel = isGitActionRunning
     ? gitActionStatusLabel(gitActionLoading)
-    : isGitActionFailed
-      ? tm("git.error.action_failed", "Git Operation Failed")
-      : "";
+    : "";
   const statusLabel = !snapshot.isRepository
     ? tm("git.repository.not_repository", "Current project is not a Git repository.")
     : hasUpstream
@@ -346,9 +344,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
       : tm("git.remote.status.no_remote_branch", "No Remote Branch");
   const statusBodyLabel = isGitActionRunning
     ? gitStatusActionLabel
-    : isGitActionFailed
-      ? gitStatusActionLabel
-      : isRefreshingGit
+    : isRefreshingGit
         ? tm("git.empty.reading_status", "Reading Git Status")
         : statusLabel;
   const statusTone = snapshot.isRepository && hasUpstream ? "info" : "neutral";
@@ -1498,13 +1494,11 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
       )}
 
       <PanelStatusBar
-        tone={isGitActionRunning ? "warning" : isGitActionFailed ? "danger" : statusTone}
+        tone={isGitActionRunning ? "warning" : statusTone}
         leading={
           <span className="flex min-w-0 items-center gap-1.5 truncate">
             {isGitActionRunning ? (
               <Spinner size="sm" color="current" className="text-current/90" />
-            ) : isGitActionFailed ? (
-              <X size={12} className="opacity-90" />
             ) : isRefreshingGit ? (
               <Spinner size="sm" color="current" className="text-current/90" />
             ) : snapshot.isRepository && hasUpstream ? (
@@ -3203,7 +3197,7 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
         }
       />
       <div className="px-3 pt-2 pb-1 text-xs text-ink-mute font-medium truncate">
-        {project?.path?.split("/").pop() ?? tm("titlebar.projects", "Projects")}
+        {displayPathBasename(project?.path) || tm("titlebar.projects", "Projects")}
       </div>
       <div
         ref={fileTreeRef}

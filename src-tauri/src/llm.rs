@@ -385,7 +385,10 @@ async fn complete_openai_compatible(
                 body.len()
             ),
         );
-        return Err(provider_error(status.as_u16(), &String::from_utf8_lossy(&body)));
+        return Err(provider_error(
+            status.as_u16(),
+            &String::from_utf8_lossy(&body),
+        ));
     }
     let decoded: OpenAIChatCompletionResponse = serde_json::from_slice(&body).map_err(|error| {
         runtime_trace(
@@ -482,7 +485,10 @@ async fn complete_anthropic(
                 body.len()
             ),
         );
-        return Err(provider_error(status.as_u16(), &String::from_utf8_lossy(&body)));
+        return Err(provider_error(
+            status.as_u16(),
+            &String::from_utf8_lossy(&body),
+        ));
     }
     let decoded: AnthropicMessagesResponse = serde_json::from_slice(&body).map_err(|error| {
         runtime_trace(

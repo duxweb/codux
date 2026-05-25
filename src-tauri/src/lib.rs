@@ -1953,9 +1953,12 @@ async fn git_push_remote(
     app: tauri::AppHandle,
     request: GitPushRemoteRequest,
 ) -> Result<GitStatusSnapshot, String> {
-    run_cancellable_git_status_command_blocking(state, app, request.project_path.clone(), |_, cancel| {
-        perform_git_push_remote_with_cancel(request, Some(cancel))
-    })
+    run_cancellable_git_status_command_blocking(
+        state,
+        app,
+        request.project_path.clone(),
+        |_, cancel| perform_git_push_remote_with_cancel(request, Some(cancel)),
+    )
     .await
 }
 
@@ -1965,9 +1968,12 @@ async fn git_push_remote_branch(
     app: tauri::AppHandle,
     request: GitPushRemoteBranchRequest,
 ) -> Result<GitStatusSnapshot, String> {
-    run_cancellable_git_status_command_blocking(state, app, request.project_path.clone(), |_, cancel| {
-        perform_git_push_remote_branch_with_cancel(request, Some(cancel))
-    })
+    run_cancellable_git_status_command_blocking(
+        state,
+        app,
+        request.project_path.clone(),
+        |_, cancel| perform_git_push_remote_branch_with_cancel(request, Some(cancel)),
+    )
     .await
 }
 

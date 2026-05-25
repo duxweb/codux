@@ -28,6 +28,7 @@ import { openAppWindow } from "../windowing";
 import { useCallback, useEffect, useState } from "react";
 import { revealProjectInFileManager } from "../ide";
 import { formatI18n, t, tm } from "../i18n";
+import { displayPath } from "../pathDisplay";
 import { Button } from "./Button";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
 import { DesktopMenu, DesktopMenuItem, DesktopMenuSeparator } from "./DesktopMenu";
@@ -296,7 +297,7 @@ function ProjectRow({
                     ? tm("project.activity.input_required", "Action required")
                     : project.aiState === "done"
                       ? tm("agent.status.completed", "Completed")
-                      : project.path}
+                      : displayPath(project.path)}
               </div>
             </div>
           )}

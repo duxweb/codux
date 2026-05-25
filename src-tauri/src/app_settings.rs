@@ -655,8 +655,10 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
 
 fn sanitize_ai_settings(mut ai: AISettings) -> AISettings {
     ai.global_prompt = ai.global_prompt.trim().chars().take(20_000).collect();
-    ai.git_commit_message_provider_id =
-        sanitize_provider_selector(&ai.git_commit_message_provider_id, &default_git_commit_message_provider_id());
+    ai.git_commit_message_provider_id = sanitize_provider_selector(
+        &ai.git_commit_message_provider_id,
+        &default_git_commit_message_provider_id(),
+    );
     ai.git_commit_message_tone = sanitize_git_commit_message_style(&ai.git_commit_message_tone);
     ai.git_commit_message_language =
         sanitize_git_commit_message_language(&ai.git_commit_message_language);

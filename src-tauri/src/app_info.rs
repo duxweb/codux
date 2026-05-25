@@ -614,7 +614,11 @@ fn write_runtime_log_preview(source: &Path, destination: &Path) -> Result<(), St
     fs::write(destination, output).map_err(|error| error.to_string())
 }
 
-fn tail_runtime_log_lines(source: &Path, max_lines: usize, max_bytes: usize) -> Result<VecDeque<String>, String> {
+fn tail_runtime_log_lines(
+    source: &Path,
+    max_lines: usize,
+    max_bytes: usize,
+) -> Result<VecDeque<String>, String> {
     let file = fs::File::open(source).map_err(|error| error.to_string())?;
     let file_len = file.metadata().map_err(|error| error.to_string())?.len() as usize;
     let read_len = file_len.min(max_bytes);

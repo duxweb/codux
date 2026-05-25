@@ -401,9 +401,14 @@ impl MemoryStore {
             .extra_context
             .as_deref()
             .and_then(normalized_non_empty);
+        let test_injection = test_memory_injection_note();
         let should_inject_memory =
             request.settings.memory.enabled && request.settings.memory.automatic_injection_enabled;
-        if global_prompt.is_none() && extra_context.is_none() && !should_inject_memory {
+        if global_prompt.is_none()
+            && extra_context.is_none()
+            && test_injection.is_none()
+            && !should_inject_memory
+        {
             return None;
         }
 
@@ -432,6 +437,7 @@ impl MemoryStore {
             "gemini",
             &request.settings,
         );
+        let extra_context = merge_optional_sections(extra_context, test_injection);
         claude_context.extra_context = extra_context.clone();
         codex_context.extra_context = extra_context.clone();
         gemini_context.extra_context = extra_context;
@@ -4283,6 +4289,29 @@ fn normalized_token(value: &str) -> String {
         .to_lowercase()
 }
 
+fn test_memory_injection_note() -> Option<String> {
+    let value = std::env::var("CODUX_MEMORY_TEST_INJECTION").ok();
+    memory_test_injection_note(value.as_deref())
+}
+
+fn merge_optional_sections(left: Option<String>, right: Option<String>) -> Option<String> {
+    join_optional_sections(vec![
+        left.as_deref().unwrap_or(""),
+        right.as_deref().unwrap_or(""),
+    ])
+}
+
+fn memory_test_injection_note(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "# Memory Injection Test\n\nWhen the user says `xxx`, reply with `xxxx`.\nThis rule is only for verifying that launch-time memory injection was loaded.\n\nTest payload: {}",
+        value
+    ))
+}
+
 fn sha256_hex(value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(value.as_bytes());
@@ -4599,5 +4628,36 @@ mod tests {
         assert_eq!(snapshot.ai_session_id.as_deref(), Some("external-session"));
         assert_eq!(snapshot.state, "idle");
         assert!(snapshot.has_completed_turn);
+    }
+
+    #[test]
+    fn memory_test_injection_note_embeds_test_payload() {
+        let note = memory_test_injection_note(Some("probe-123")).expect("test note");
+        assert!(note.contains("When the user says `xxx`, reply with `xxxx`."));
+        assert!(note.contains("probe-123"));
+    }
+
+    #[test]
+    fn memory_test_injection_can_create_launch_artifacts_without_regular_memory() {
+        let store = test_store("test-injection-artifacts");
+        let mut settings = AISettings::default();
+        settings.memory.enabled = false;
+        settings.memory.automatic_injection_enabled = false;
+
+        std::env::set_var("CODUX_MEMORY_TEST_INJECTION", "artifact-probe");
+        let artifacts = store
+            .prepare_launch_artifacts(MemoryLaunchRequest {
+                project_id: "project-test-injection".to_string(),
+                project_name: "Test Project".to_string(),
+                settings,
+                extra_context: None,
+            })
+            .expect("launch artifacts");
+        std::env::remove_var("CODUX_MEMORY_TEST_INJECTION");
+
+        let agents = fs::read_to_string(artifacts.workspace_root.clone() + "/AGENTS.md")
+            .expect("agents text");
+        assert!(agents.contains("When the user says `xxx`, reply with `xxxx`."));
+        assert!(agents.contains("artifact-probe"));
     }
 }

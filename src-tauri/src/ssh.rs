@@ -256,17 +256,21 @@ pub fn ssh_profiles_file_path() -> PathBuf {
     app_support_dir().join("ssh_profiles.json")
 }
 
-pub fn render_ssh_launch_context() -> Option<String> {
+pub fn render_ssh_launch_context(codux_ssh_command: Option<String>) -> Option<String> {
     let mut profiles = sanitize_profiles(load_profiles(&ssh_profiles_file_path())?);
-    render_ssh_launch_context_for_profiles(&mut profiles)
+    render_ssh_launch_context_for_profiles(&mut profiles, codux_ssh_command)
 }
 
 fn render_ssh_launch_context_for_profiles(
     profiles: &mut Vec<SSHConnectionProfile>,
+    codux_ssh_command: Option<String>,
 ) -> Option<String> {
     if profiles.is_empty() {
         return None;
     }
+    let codux_ssh_command = codux_ssh_command
+        .and_then(|value| normalized(&value))
+        .unwrap_or_else(|| "codux-ssh".to_string());
     profiles.sort_by(|left, right| {
         display_name(left)
             .to_lowercase()
@@ -274,9 +278,19 @@ fn render_ssh_launch_context_for_profiles(
     });
     let mut lines = vec![
         "Codux exposes saved SSH connections through terminal commands.".to_string(),
-        "For one-off remote command execution, use `codux-ssh <profile-id> -- '<remote-command>'`.".to_string(),
-        "For an interactive SSH session only when the user explicitly asks to connect/open SSH, use `codux-ssh <profile-id>`.".to_string(),
-        "When the user asks to run a command on a saved SSH profile by name, host, or user, prefer the one-off remote command form.".to_string(),
+        format!(
+            "Use `{codux_ssh_command} list` to read available saved SSH profiles as JSON; the shell wrapper path is only a command entry point, not a working directory."
+        ),
+        format!(
+            "When a matching saved profile exists, use `{codux_ssh_command}` for that profile; do not look for or use `codux` or `dmux`, and do not use raw `ssh` unless no saved profile matches."
+        ),
+        format!(
+            "For one-off remote command execution, use `{codux_ssh_command} <profile-id> -- '<remote-command>'`."
+        ),
+        format!(
+            "For an interactive SSH session only when the user explicitly asks to connect/open SSH, use `{codux_ssh_command} <profile-id>`."
+        ),
+        "When the user asks to run a command on a saved SSH profile by name, host, or user, prefer the one-off remote command form. If no saved profile matches, ask the user to add a saved SSH profile or use the system ssh command with explicit host details.".to_string(),
         "Do not ask for, print, infer, or expose saved passwords, passphrases, or private key paths.".to_string(),
         "Available SSH profiles:".to_string(),
     ];
@@ -452,15 +466,28 @@ mod tests {
     #[test]
     fn launch_context_lists_profiles_without_secrets() {
         let mut profiles = vec![profile_with_secret()];
-        let context = render_ssh_launch_context_for_profiles(&mut profiles).unwrap();
+        let context = render_ssh_launch_context_for_profiles(&mut profiles, None).unwrap();
+        assert!(context.contains("codux-ssh list"));
         assert!(context.contains("codux-ssh <profile-id>"));
         assert!(context.contains("codux-ssh <profile-id> -- '<remote-command>'"));
+        assert!(context.contains("do not look for or use `codux` or `dmux`"));
         assert!(context.contains("Production"));
         assert!(context.contains("root@example.com:2222"));
         assert!(context.contains("profile-1"));
         assert!(!context.contains("secret-password"));
         assert!(!context.contains("secret-passphrase"));
         assert!(!context.contains("/Users/me/.ssh/id_ed25519"));
+    }
+
+    #[test]
+    fn launch_context_can_include_absolute_wrapper_command() {
+        let mut profiles = vec![profile_with_secret()];
+        let context = render_ssh_launch_context_for_profiles(
+            &mut profiles,
+            Some("/tmp/codux/scripts/wrappers/bin/codux-ssh".to_string()),
+        )
+        .unwrap();
+        assert!(context.contains("/tmp/codux/scripts/wrappers/bin/codux-ssh <profile-id>"));
     }
 
     #[test]

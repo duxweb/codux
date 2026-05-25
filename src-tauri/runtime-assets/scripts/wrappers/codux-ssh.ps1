@@ -1,15 +1,25 @@
 $ErrorActionPreference = "Stop"
 
-if ($args.Count -lt 1 -or [string]::IsNullOrWhiteSpace([string]$args[0])) {
+$listProfiles = $false
+if ($args.Count -ge 1 -and (
+    [string]::Equals([string]$args[0], "list", [StringComparison]::OrdinalIgnoreCase) -or
+    [string]::Equals([string]$args[0], "--list", [StringComparison]::OrdinalIgnoreCase) -or
+    [string]::Equals([string]$args[0], "profiles", [StringComparison]::OrdinalIgnoreCase))) {
+  $listProfiles = $true
+  if ($args.Count -gt 1) {
+    [Console]::Error.WriteLine("usage: codux-ssh list")
+    exit 64
+  }
+} elseif ($args.Count -lt 1 -or [string]::IsNullOrWhiteSpace([string]$args[0])) {
   [Console]::Error.WriteLine("codux-ssh: missing profile id")
   exit 64
 }
 
-$profileId = ([string]$args[0]).ToLowerInvariant()
+$profileId = if ($listProfiles) { "" } else { ([string]$args[0]).ToLowerInvariant() }
 $remoteArgs = @()
-if ($args.Count -gt 1) {
+if (-not $listProfiles -and $args.Count -gt 1) {
   if ([string]$args[1] -ne "--") {
-    [Console]::Error.WriteLine("usage: codux-ssh <profile-id> [-- <remote-command>]")
+    [Console]::Error.WriteLine("usage: codux-ssh <profile-id> [-- <remote-command>] | codux-ssh list")
     exit 64
   }
   if ($args.Count -lt 3) {
@@ -39,6 +49,40 @@ try {
 $profiles = @($root)
 if ($root.PSObject.Properties.Name -contains "sshProfiles") {
   $profiles = @($root.sshProfiles)
+}
+
+if ($listProfiles) {
+  $publicProfiles = @()
+  foreach ($profile in $profiles) {
+    $id = ([string]$profile.id).Trim()
+    $hostName = ([string]$profile.host).Trim()
+    $user = ([string]$profile.username).Trim()
+    if ([string]::IsNullOrWhiteSpace($id) -or [string]::IsNullOrWhiteSpace($hostName) -or [string]::IsNullOrWhiteSpace($user)) {
+      continue
+    }
+    $port = 22
+    if ($profile.port -ne $null) {
+      $port = [int]$profile.port
+    }
+    if ($port -lt 1 -or $port -gt 65535) {
+      $port = 22
+    }
+    $name = ([string]$profile.name).Trim()
+    if ([string]::IsNullOrWhiteSpace($name)) {
+      $name = "$user@$hostName"
+    }
+    $publicProfiles += [pscustomobject]@{
+      id = $id
+      name = $name
+      host = $hostName
+      port = $port
+      username = $user
+      endpoint = "$user@$hostName`:$port"
+      credential = [string]$profile.credentialKind
+    }
+  }
+  [pscustomobject]@{ profiles = $publicProfiles } | ConvertTo-Json -Depth 4
+  exit 0
 }
 
 $sshProfile = $profiles |

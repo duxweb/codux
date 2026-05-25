@@ -465,7 +465,8 @@ impl AIRuntimeBridge {
         fs::create_dir_all(&self.runtime_event_dir).map_err(|error| error.to_string())?;
         fs::create_dir_all(self.claude_session_map_dir()).map_err(|error| error.to_string())?;
         fs::create_dir_all(self.opencode_session_map_dir()).map_err(|error| error.to_string())?;
-        fs::create_dir_all(home_dir().join(".kiro").join("agents")).map_err(|error| error.to_string())?;
+        fs::create_dir_all(home_dir().join(".kiro").join("agents"))
+            .map_err(|error| error.to_string())?;
 
         stage_runtime_asset(
             "scripts/shell-hooks/dmux-ai-hook.zsh",
@@ -811,7 +812,10 @@ impl AIRuntimeBridge {
             self,
         )?;
         install_tool_hooks(
-            &home_dir().join(".kiro").join("agents").join("codux-managed.json"),
+            &home_dir()
+                .join(".kiro")
+                .join("agents")
+                .join("codux-managed.json"),
             "kiro",
             &[
                 ("agentSpawn", "session-start", 5000, false),
@@ -870,7 +874,10 @@ impl AIRuntimeBridge {
                     .join("opencode-config"),
             ),
             kiro: tool_hook_config_status(
-                &home_dir().join(".kiro").join("agents").join("codux-managed.json"),
+                &home_dir()
+                    .join(".kiro")
+                    .join("agents")
+                    .join("codux-managed.json"),
                 "kiro",
                 &[("agentSpawn", "session-start"), ("stop", "session-end")],
             ),
@@ -3325,7 +3332,25 @@ fn install_tool_hooks(
     }
 
     root.insert("hooks".to_string(), serde_json::Value::Object(hooks));
+    if tool == "gemini" {
+        disable_gemini_hook_notifications(&mut root);
+    }
     write_json_object(path, root)
+}
+
+fn disable_gemini_hook_notifications(root: &mut serde_json::Map<String, serde_json::Value>) {
+    let mut hooks_config = root
+        .remove("hooksConfig")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    hooks_config.insert(
+        "notifications".to_string(),
+        serde_json::Value::Bool(false),
+    );
+    root.insert(
+        "hooksConfig".to_string(),
+        serde_json::Value::Object(hooks_config),
+    );
 }
 
 fn tool_hook_config_status(
@@ -4860,7 +4885,10 @@ struct KiroParsedState {
     origin: String,
 }
 
-fn parse_kiro_runtime_state(file_path: &Path, project_path: Option<&str>) -> Option<KiroParsedState> {
+fn parse_kiro_runtime_state(
+    file_path: &Path,
+    project_path: Option<&str>,
+) -> Option<KiroParsedState> {
     let data = fs::read_to_string(file_path).ok()?;
     let value = serde_json::from_str::<Value>(&data).ok()?;
     let mut model = normalized_string(
@@ -4875,14 +4903,26 @@ fn parse_kiro_runtime_state(file_path: &Path, project_path: Option<&str>) -> Opt
             .and_then(|v| v.as_str())
             .or_else(|| value.get("preview").and_then(|v| v.as_str())),
     );
-    let input_tokens = json_i64(value.get("inputTokens").or_else(|| value.get("input_tokens")));
-    let output_tokens = json_i64(value.get("outputTokens").or_else(|| value.get("output_tokens")));
+    let input_tokens = json_i64(
+        value
+            .get("inputTokens")
+            .or_else(|| value.get("input_tokens")),
+    );
+    let output_tokens = json_i64(
+        value
+            .get("outputTokens")
+            .or_else(|| value.get("output_tokens")),
+    );
     let cached_input_tokens = json_i64(
         value
             .get("cachedInputTokens")
             .or_else(|| value.get("cached_input_tokens")),
     );
-    let total_tokens = json_i64(value.get("totalTokens").or_else(|| value.get("total_tokens")));
+    let total_tokens = json_i64(
+        value
+            .get("totalTokens")
+            .or_else(|| value.get("total_tokens")),
+    );
     let updated_at = value
         .get("updatedAt")
         .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|value| value as f64)));
@@ -5372,6 +5412,30 @@ trusted_hash = "sha256:old-basic"
         assert!(status.configured);
         assert!(status.missing.is_empty());
         let _ = fs::remove_file(root);
+    }
+
+    #[test]
+    fn install_gemini_hooks_disables_hook_notifications() {
+        let mut config = serde_json::Map::new();
+        config.insert(
+            "hooksConfig".to_string(),
+            serde_json::json!({ "notifications": true, "other": "kept" }),
+        );
+        disable_gemini_hook_notifications(&mut config);
+        assert_eq!(
+            config
+                .get("hooksConfig")
+                .and_then(|value| value.get("notifications"))
+                .and_then(|value| value.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            config
+                .get("hooksConfig")
+                .and_then(|value| value.get("other"))
+                .and_then(|value| value.as_str()),
+            Some("kept")
+        );
     }
 
     #[test]

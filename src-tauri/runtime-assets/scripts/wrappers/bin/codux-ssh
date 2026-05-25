@@ -2,22 +2,31 @@
 set -uo pipefail
 
 profile_id="${1:-}"
-if [[ -z "${profile_id}" ]]; then
+list_profiles=false
+if [[ "${profile_id}" == "list" || "${profile_id}" == "--list" || "${profile_id}" == "profiles" ]]; then
+  list_profiles=true
+  shift
+  if [[ $# -gt 0 ]]; then
+    print -u2 -- "usage: codux-ssh list"
+    exit 64
+  fi
+elif [[ -z "${profile_id}" ]]; then
   print -u2 -- "codux-ssh: missing profile id"
   exit 64
+else
+  shift
 fi
-shift
 
 remote_command=()
-if [[ "${1:-}" == "--" ]]; then
+if [[ "${list_profiles}" == false && "${1:-}" == "--" ]]; then
   shift
   if [[ $# -eq 0 ]]; then
     print -u2 -- "codux-ssh: missing remote command after --"
     exit 64
   fi
   remote_command=("$@")
-elif [[ $# -gt 0 ]]; then
-  print -u2 -- "usage: codux-ssh <profile-id> [-- <remote-command>]"
+elif [[ "${list_profiles}" == false && $# -gt 0 ]]; then
+  print -u2 -- "usage: codux-ssh <profile-id> [-- <remote-command>] | codux-ssh list"
   exit 64
 fi
 
@@ -32,6 +41,57 @@ fi
 if [[ ! -r "${profiles_file}" ]]; then
   print -u2 -- "codux-ssh: unable to read SSH profile file"
   exit 66
+fi
+
+if [[ "${list_profiles}" == true ]]; then
+  CODUX_SSH_PROFILES_FILE="${profiles_file}" /usr/bin/python3 <<'PY'
+import json
+import os
+import sys
+
+profiles_file = os.environ.get("CODUX_SSH_PROFILES_FILE", "")
+
+try:
+    with open(profiles_file, "r", encoding="utf-8") as handle:
+        root = json.load(handle)
+except Exception as exc:
+    print(f"codux-ssh: failed to read SSH profiles: {exc}", file=sys.stderr)
+    raise SystemExit(66)
+
+profiles = root.get("sshProfiles") if isinstance(root, dict) else root
+if not isinstance(profiles, list):
+    print("codux-ssh: invalid SSH profile file", file=sys.stderr)
+    raise SystemExit(65)
+
+public_profiles = []
+for profile in profiles:
+    if not isinstance(profile, dict):
+        continue
+    profile_id = str(profile.get("id") or "").strip()
+    host = str(profile.get("host") or "").strip()
+    username = str(profile.get("username") or "").strip()
+    if not profile_id or not host or not username:
+        continue
+    name = str(profile.get("name") or "").strip() or f"{username}@{host}"
+    try:
+        port = int(profile.get("port") or 22)
+    except Exception:
+        port = 22
+    port = min(max(port, 1), 65535)
+    credential = str(profile.get("credentialKind") or "none")
+    public_profiles.append({
+        "id": profile_id,
+        "name": name,
+        "host": host,
+        "port": port,
+        "username": username,
+        "endpoint": f"{username}@{host}:{port}",
+        "credential": credential,
+    })
+
+print(json.dumps({"profiles": public_profiles}, ensure_ascii=False, indent=2))
+PY
+  exit $?
 fi
 
 profile_shell="$(

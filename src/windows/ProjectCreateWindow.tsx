@@ -23,6 +23,7 @@ import { SettingsForm, TextInput } from "../components/Form";
 import { PressableButton } from "../components/PressableButton";
 import { tm } from "../i18n";
 import { openLocalizedDialog } from "../localizedDialog";
+import { displayPath } from "../pathDisplay";
 import { closeCurrentAppWindow, revealCurrentAppWindow } from "../windowing";
 import { WindowFooterActions, WindowFrame } from "./WindowFrame";
 
@@ -75,6 +76,7 @@ export function ProjectCreateWindow() {
   const initialColor = query.get("badgeColorHex") || COLORS[0];
   const [name, setName] = useState(initialName);
   const [path, setPath] = useState(initialPath);
+  const [isPathFocused, setPathFocused] = useState(false);
   const [symbolId, setSymbolId] = useState<string>(initialSymbol);
   const [color, setColor] = useState<string>(initialColor);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +161,9 @@ export function ProjectCreateWindow() {
           <div className="flex gap-2">
             <TextInput
               placeholder="/path/to/project"
-              value={path}
+              value={isPathFocused ? path : displayPath(path)}
+              onFocus={() => setPathFocused(true)}
+              onBlur={() => setPathFocused(false)}
               onChange={(event) => setPath(event.currentTarget.value)}
               className="min-w-0 flex-1 font-mono"
             />
