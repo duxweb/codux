@@ -124,6 +124,8 @@ pub struct AIRuntimeToolSettings {
     pub gemini: String,
     #[serde(default = "default_ai_tool_permission_mode")]
     pub opencode: String,
+    #[serde(default = "default_ai_tool_permission_mode")]
+    pub kiro: String,
     #[serde(default)]
     pub codex_model: String,
     #[serde(default)]
@@ -132,6 +134,8 @@ pub struct AIRuntimeToolSettings {
     pub gemini_model: String,
     #[serde(default)]
     pub opencode_model: String,
+    #[serde(default)]
+    pub kiro_model: String,
     #[serde(default = "default_codex_effort")]
     pub codex_effort: String,
 }
@@ -317,10 +321,12 @@ impl Default for AIRuntimeToolSettings {
             claude_code: default_ai_tool_permission_mode(),
             gemini: default_ai_tool_permission_mode(),
             opencode: default_ai_tool_permission_mode(),
+            kiro: default_ai_tool_permission_mode(),
             codex_model: String::new(),
             claude_code_model: String::new(),
             gemini_model: String::new(),
             opencode_model: String::new(),
+            kiro_model: String::new(),
             codex_effort: default_codex_effort(),
         }
     }
@@ -741,6 +747,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
     settings.claude_code = sanitize_tool_permission_mode(&settings.claude_code);
     settings.gemini = sanitize_tool_permission_mode(&settings.gemini);
     settings.opencode = sanitize_tool_permission_mode(&settings.opencode);
+    settings.kiro = sanitize_tool_permission_mode(&settings.kiro);
     settings.codex_model = settings.codex_model.trim().chars().take(160).collect();
     settings.claude_code_model = settings
         .claude_code_model
@@ -750,6 +757,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
         .collect();
     settings.gemini_model = settings.gemini_model.trim().chars().take(160).collect();
     settings.opencode_model = settings.opencode_model.trim().chars().take(160).collect();
+    settings.kiro_model = settings.kiro_model.trim().chars().take(160).collect();
     settings.codex_effort = match settings.codex_effort.trim() {
         "none" => "none".to_string(),
         "minimal" => "minimal".to_string(),

@@ -214,6 +214,7 @@ const runtimeTools = [
   },
   { id: "gemini", permissionKey: "gemini", modelKey: "geminiModel", label: "Gemini", model: "gemini-2.5-pro" },
   { id: "opencode", permissionKey: "opencode", modelKey: "opencodeModel", label: "OpenCode", model: "gpt-5.5" },
+  { id: "kiro", permissionKey: "kiro", modelKey: "kiroModel", label: "Kiro", model: "auto" },
 ] as const;
 
 const toolPermissionOptions = [

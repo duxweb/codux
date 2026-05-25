@@ -29,6 +29,9 @@ describe("terminal runtime", () => {
       if (command === "terminal_create") {
         return Promise.resolve("backend-1");
       }
+      if (command === "terminal_snapshot") {
+        return Promise.resolve("");
+      }
       return Promise.resolve(undefined);
     });
     Object.defineProperty(globalThis, "window", {
@@ -156,6 +159,72 @@ describe("terminal runtime", () => {
     expect(runtime.getSession(session.id)?.backendId).toBe("backend-early");
     expect(runtime.getSession(session.id)?.replayBuffer).toBe("early prompt");
     expect(runtime.getSession(session.id)?.state).toBe("running");
+  });
+
+  it("uses the full backend snapshot for terminal resets while keeping local replay trimmed", async () => {
+    const fullHistory = "x".repeat(100_000);
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "terminal_create") {
+        return Promise.resolve("backend-1");
+      }
+      if (command === "terminal_snapshot") {
+        return Promise.resolve(fullHistory);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const runtime = new TerminalRuntime();
+    const session = runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "分屏 1",
+      cwd: "/project",
+    });
+    const resets: string[] = [];
+    runtime.subscribe(session.id, (event) => {
+      if (event.type === "reset") resets.push(event.history ?? "");
+    });
+
+    runtime.ensureStarted(session.id);
+    runtime.resize(session.id, 100, 30);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(resets[resets.length - 1]).toHaveLength(fullHistory.length);
+    expect(runtime.getSession(session.id)?.replayBuffer).toHaveLength(80_000);
+    await expect(runtime.snapshot(session.id)).resolves.toBe(fullHistory);
+  });
+
+  it("keeps serialized view snapshots and appends detached output deltas", async () => {
+    const runtime = new TerminalRuntime();
+    const session = runtime.ensureTerminal({
+      projectId: "project-a",
+      slotId: "top-1",
+      title: "分屏 1",
+      cwd: "/project",
+    });
+
+    runtime.ensureStarted(session.id);
+    runtime.resize(session.id, 100, 30);
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    runtime.saveViewSnapshot(session.id, "serialized-screen");
+    eventHandler?.({
+      payload: {
+        kind: "output",
+        sessionId: "backend-1",
+        text: "new output",
+      },
+    });
+
+    const snapshot = runtime.takeViewSnapshot(session.id);
+    expect(snapshot?.history).toBe("serialized-screen");
+    expect(snapshot?.pendingOutputs).toEqual(["new output"]);
+    expect(runtime.takeViewSnapshot(session.id)).toBeUndefined();
   });
 
   it("does not include terminal history in output events", async () => {

@@ -151,6 +151,31 @@ export class GeminiToolDriver extends BaseToolDriver {
   }
 }
 
+export class KiroToolDriver extends BaseToolDriver {
+  id = "kiro";
+  aliases = new Set(["kiro", "kiro-cli"]);
+
+  async resolveHookEvent(event: AIHookEventPayload, currentSession?: AISessionSnapshot) {
+    if (!this.matches(event.tool)) return event;
+    const fallbackSession = this.matchingFallbackSession(event, currentSession);
+    const resolved = withFallback(event, fallbackSession);
+    if (!normalize(event.projectPath)) return resolved;
+
+    const snapshot = await this.probe({
+      terminalId: event.terminalID,
+      terminalInstanceId: event.terminalInstanceID,
+      projectId: event.projectID,
+      projectPath: event.projectPath,
+      tool: this.id,
+      externalSessionId: normalize(event.aiSessionID) ?? fallbackSession?.aiSessionId,
+      startedAt: fallbackSession?.startedAt ?? event.updatedAt,
+      updatedAt: event.updatedAt,
+    }).catch(() => undefined);
+    if (!snapshot) return resolved;
+    return mergeSnapshotIntoHook(resolved, snapshot, fallbackSession);
+  }
+}
+
 export class OpenCodeToolDriver extends BaseToolDriver {
   id = "opencode";
   aliases = new Set(["opencode"]);
@@ -165,6 +190,7 @@ export class AIToolDriverFactory {
       new CodexToolDriver(),
       new OpenCodeToolDriver(),
       new GeminiToolDriver(),
+      new KiroToolDriver(),
     ];
   }
 

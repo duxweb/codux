@@ -371,6 +371,8 @@ fn load_project_history_without_store(
     on_progress(0.58, "readingSources");
     parsed.merge(parse_gemini_history(&project, home));
     on_progress(0.74, "readingSources");
+    parsed.merge(parse_kiro_history(&project, home));
+    on_progress(0.82, "readingSources");
     parsed.merge(parse_opencode_history(&project, home));
     on_progress(0.88, "readingSources");
     on_progress(0.96, "aggregating");
@@ -436,6 +438,12 @@ fn load_project_history_with_store(
         })?;
     }
     on_progress(0.74, "readingSources");
+    for file_path in kiro_session_paths(&project.path, home) {
+        let _ = store.load_or_index_file(&conn, "kiro", &file_path, &project, || {
+            parse_kiro_history_file(&project, &file_path)
+        })?;
+    }
+    on_progress(0.82, "readingSources");
     for file_path in opencode_history_source_paths(home) {
         let source = if file_path.extension().and_then(|value| value.to_str()) == Some("db") {
             "opencode"
@@ -1012,6 +1020,70 @@ fn parse_gemini_history(project: &AIHistoryProjectRequest, home: &Path) -> Parse
     let mut result = ParsedHistory::default();
     for file_path in gemini_session_paths(&project.path, home) {
         result.merge(parse_gemini_history_file(project, &file_path));
+    }
+    result
+}
+
+fn parse_kiro_history(project: &AIHistoryProjectRequest, home: &Path) -> ParsedHistory {
+    let mut result = ParsedHistory::default();
+    for file_path in kiro_session_paths(&project.path, home) {
+        result.merge(parse_kiro_history_file(project, &file_path));
+    }
+    result
+}
+
+fn parse_kiro_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -> ParsedHistory {
+    let Ok(data) = fs::read_to_string(file_path) else {
+        return ParsedHistory::default();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+        return ParsedHistory::default();
+    };
+    let Some(session_id) = kiro_session_id(&value, file_path) else {
+        return ParsedHistory::default();
+    };
+    let Some(project_path) = kiro_project_path(&value) else {
+        return ParsedHistory::default();
+    };
+    if !paths_equivalent(Some(&project_path), &project.path) {
+        return ParsedHistory::default();
+    }
+
+    let model = kiro_model(&value);
+    let session_title = kiro_session_title(&value).or_else(|| Some(project.name.clone()));
+    let timestamps = kiro_history_timestamps(&value);
+    let last_timestamp = timestamps.last().copied().unwrap_or_else(now_seconds);
+    let mut result = ParsedHistory::default();
+    let mut last_role = None;
+    for timestamp in &timestamps {
+        let role = if last_role == Some(HistoryRole::User) {
+            HistoryRole::Assistant
+        } else {
+            HistoryRole::User
+        };
+        last_role = Some(role);
+        result.events.push(HistoryEvent {
+            source: "kiro".to_string(),
+            session_id: session_id.clone(),
+            timestamp: *timestamp,
+            role,
+        });
+    }
+
+    let usage = kiro_usage(&value);
+    if usage.total_tokens() > 0 || usage.cached_input_tokens > 0 {
+        result.entries.push(HistoryEntry {
+            source: "kiro".to_string(),
+            session_id: session_id.clone(),
+            external_session_id: Some(session_id.clone()),
+            session_title,
+            timestamp: last_timestamp,
+            model,
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cached_input_tokens: usage.cached_input_tokens,
+            reasoning_output_tokens: usage.reasoning_output_tokens,
+        });
     }
     result
 }
@@ -1792,6 +1864,162 @@ fn opencode_history_source_paths(home: &Path) -> Vec<PathBuf> {
     opencode_legacy_message_paths(home)
 }
 
+fn kiro_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
+    let sessions_dir = home.join(".kiro").join("sessions").join("cli");
+    let files = directory_files(&sessions_dir, "json");
+    let mut matched = files
+        .into_iter()
+        .filter(|path| kiro_file_belongs_to_project(path, project_path))
+        .collect::<Vec<_>>();
+    matched.sort_by_key(|path| std::cmp::Reverse(file_modified_millis(path).unwrap_or(0)));
+    matched
+}
+
+fn kiro_file_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
+    let Ok(data) = fs::read_to_string(file_path) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+        return false;
+    };
+    kiro_project_path(&value)
+        .map(|path| paths_equivalent(Some(&path), project_path))
+        .unwrap_or(false)
+}
+
+fn kiro_session_id(value: &Value, file_path: &Path) -> Option<String> {
+    value
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .and_then(normalized_string)
+        .or_else(|| {
+            value
+                .get("session")
+                .and_then(|v| v.get("id"))
+                .and_then(|v| v.as_str())
+                .and_then(normalized_string)
+        })
+        .or_else(|| {
+            file_path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .and_then(normalized_string)
+        })
+}
+
+fn kiro_project_path(value: &Value) -> Option<String> {
+    value
+        .get("projectPath")
+        .and_then(|v| v.as_str())
+        .and_then(normalized_string)
+        .or_else(|| {
+            value
+                .get("project")
+                .and_then(|v| v.get("path"))
+                .and_then(|v| v.as_str())
+                .and_then(normalized_string)
+        })
+        .or_else(|| {
+            value
+                .get("cwd")
+                .and_then(|v| v.as_str())
+                .and_then(normalized_string)
+        })
+        .or_else(|| {
+            value
+                .get("workingDirectory")
+                .and_then(|v| v.as_str())
+                .and_then(normalized_string)
+        })
+}
+
+fn kiro_model(value: &Value) -> Option<String> {
+    value
+        .get("model")
+        .and_then(|v| v.as_str())
+        .and_then(normalized_string)
+        .or_else(|| {
+            value
+                .get("session")
+                .and_then(|v| v.get("model"))
+                .and_then(|v| v.as_str())
+                .and_then(normalized_string)
+        })
+}
+
+fn kiro_session_title(value: &Value) -> Option<String> {
+    value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .and_then(normalized_string)
+        .or_else(|| {
+            value
+                .get("session")
+                .and_then(|v| v.get("title"))
+                .and_then(|v| v.as_str())
+                .and_then(normalized_string)
+        })
+}
+
+fn kiro_history_timestamps(value: &Value) -> Vec<f64> {
+    let mut timestamps = value
+        .get("messages")
+        .and_then(|v| v.as_array())
+        .map(|messages| {
+            messages
+                .iter()
+                .filter_map(|message| {
+                    message
+                        .get("timestamp")
+                        .or_else(|| message.get("createdAt"))
+                        .and_then(value_to_string)
+                        .and_then(|value| parse_iso8601_seconds(&value))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if timestamps.is_empty() {
+        if let Some(value) = value
+            .get("updatedAt")
+            .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|value| value as f64)))
+        {
+            timestamps.push(value);
+        }
+    }
+    timestamps.sort_by(|left, right| left.total_cmp(right));
+    timestamps
+}
+
+fn kiro_usage(value: &Value) -> HistoryUsage {
+    let usage = value.get("usage").unwrap_or(&Value::Null);
+    HistoryUsage {
+        input_tokens: json_i64(
+            usage
+                .get("input")
+                .or_else(|| usage.get("input_tokens"))
+                .or_else(|| value.get("inputTokens")),
+        ),
+        output_tokens: json_i64(
+            usage
+                .get("output")
+                .or_else(|| usage.get("output_tokens"))
+                .or_else(|| value.get("outputTokens")),
+        ),
+        cached_input_tokens: json_i64(
+            usage
+                .get("cache")
+                .and_then(|cache| cache.get("read"))
+                .or_else(|| usage.get("cached_input_tokens"))
+                .or_else(|| value.get("cachedInputTokens")),
+        ),
+        reasoning_output_tokens: json_i64(
+            usage
+                .get("reasoning")
+                .or_else(|| value.get("reasoningTokens")),
+        ),
+    }
+}
+
 fn opencode_legacy_message_paths(home: &Path) -> Vec<PathBuf> {
     let messages_dir = home
         .join(".local")
@@ -2109,6 +2337,48 @@ mod tests {
         assert_eq!(snapshot.sessions[0].last_tool.as_deref(), Some("opencode"));
         assert_eq!(snapshot.sessions[0].request_count, 1);
         assert_eq!(snapshot.tool_breakdown[0].key, "opencode");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn parses_kiro_history_json() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let session_dir = root.join(".kiro/sessions/cli");
+        fs::create_dir_all(&session_dir).unwrap();
+        let file_path = session_dir.join("session-abc.json");
+        fs::write(
+            &file_path,
+            serde_json::json!({
+                "sessionId": "session-abc",
+                "projectPath": project_path,
+                "model": "kiro-1",
+                "title": "Kiro Session",
+                "updatedAt": 1000,
+                "messages": [
+                    { "role": "user", "timestamp": "2026-05-17T00:00:00Z" },
+                    { "role": "assistant", "timestamp": "2026-05-17T00:01:00Z", "content": "hello from kiro" }
+                ],
+                "usage": { "input_tokens": 12, "output_tokens": 8, "cache": { "read": 4 } }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.sessions.len(), 1);
+        assert_eq!(snapshot.sessions[0].last_tool.as_deref(), Some("kiro"));
+        assert_eq!(snapshot.sessions[0].request_count, 1);
+        assert_eq!(snapshot.tool_breakdown.iter().any(|item| item.key == "kiro"), true);
         let _ = fs::remove_dir_all(root);
     }
 }

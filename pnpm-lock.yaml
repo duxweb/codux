@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@xterm/addon-webgl@0.20.0-beta.218':
+    hash: 7c3ffb2835fae9f569927dfacddd55d06f83fe7c3dd8900767736c348bd0c074
+    path: patches/@xterm__addon-webgl@0.20.0-beta.218.patch
+
 importers:
 
   .:
@@ -89,12 +94,15 @@ importers:
       '@xterm/addon-fit':
         specifier: 0.12.0-beta.219
         version: 0.12.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/addon-serialize':
+        specifier: 0.15.0-beta.220
+        version: 0.15.0-beta.220(@xterm/xterm@6.1.0-beta.219)
       '@xterm/addon-unicode11':
         specifier: 0.10.0-beta.219
         version: 0.10.0-beta.219(@xterm/xterm@6.1.0-beta.219)
       '@xterm/addon-webgl':
         specifier: 0.20.0-beta.218
-        version: 0.20.0-beta.218(@xterm/xterm@6.1.0-beta.219)
+        version: 0.20.0-beta.218(patch_hash=7c3ffb2835fae9f569927dfacddd55d06f83fe7c3dd8900767736c348bd0c074)(@xterm/xterm@6.1.0-beta.219)
       '@xterm/xterm':
         specifier: 6.1.0-beta.219
         version: 6.1.0-beta.219
@@ -1547,6 +1555,11 @@ packages:
     resolution: {integrity: sha512-ve9MP+xSfkcFG+l4GoWHurO+r97vh2U52J392Is246Cd2/EWkE9Q/KwpLqEdILTBQl7XVwTuuJzNv9IfndfnfQ==}
     peerDependencies:
       '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/addon-serialize@0.15.0-beta.220':
+    resolution: {integrity: sha512-ssZ8rnSU0EOdDsFS5cI5LHKy/T0rQfZBE9iPph7rUxSAwZXbMGz0Vrsob79IKRvfE6oMZlFn+NE0Gg/mKq62Iw==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.220
 
   '@xterm/addon-unicode11@0.10.0-beta.219':
     resolution: {integrity: sha512-2EJjnULMg1Fk8XMS8TLb1jLNhfT7dKf/pf3AXqUdehs33mKhHxpx4nPR/Oz8NcxHtlsnVNeRXxOOIsFpela18g==}
@@ -3779,11 +3792,15 @@ snapshots:
     dependencies:
       '@xterm/xterm': 6.1.0-beta.219
 
+  '@xterm/addon-serialize@0.15.0-beta.220(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+
   '@xterm/addon-unicode11@0.10.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
     dependencies:
       '@xterm/xterm': 6.1.0-beta.219
 
-  '@xterm/addon-webgl@0.20.0-beta.218(@xterm/xterm@6.1.0-beta.219)':
+  '@xterm/addon-webgl@0.20.0-beta.218(patch_hash=7c3ffb2835fae9f569927dfacddd55d06f83fe7c3dd8900767736c348bd0c074)(@xterm/xterm@6.1.0-beta.219)':
     dependencies:
       '@xterm/xterm': 6.1.0-beta.219
 

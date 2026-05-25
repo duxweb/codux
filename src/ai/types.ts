@@ -71,6 +71,7 @@ export type AIRuntimeHookConfigStatus = {
   claude: AIRuntimeToolHookConfigStatus;
   gemini: AIRuntimeToolHookConfigStatus;
   opencode: AIRuntimeToolHookConfigStatus;
+  kiro: AIRuntimeToolHookConfigStatus;
 };
 
 export type AIRuntimeToolHookConfigStatus = {

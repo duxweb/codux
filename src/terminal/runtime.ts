@@ -5,6 +5,14 @@ import { readConfiguredShell } from "../settings";
 import { runtimeTrace } from "../runtimeTrace";
 
 const MAX_REPLAY_CHARS = 80_000;
+const MAX_VIEW_SNAPSHOT_DELTA_BYTES = 2 * 1024 * 1024;
+
+type TerminalViewSnapshot = {
+  history: string;
+  pendingOutputs: Array<string | Uint8Array>;
+  pendingBytes: number;
+  createdAt: number;
+};
 
 export type TerminalRuntimeSession = TerminalSession & {
   key: string;
@@ -68,6 +76,7 @@ export class TerminalRuntime {
     }
   >();
   private outputTextDecoders = new Map<string, TextDecoder>();
+  private viewSnapshots = new Map<string, TerminalViewSnapshot>();
   private sequence = 0;
 
   debugSnapshot() {
@@ -84,6 +93,7 @@ export class TerminalRuntime {
       queues: this.outputQueues.size,
       replayChars,
       running,
+      viewSnapshots: this.viewSnapshots.size,
     };
   }
 
@@ -201,6 +211,35 @@ export class TerminalRuntime {
     void invoke("terminal_interrupt", { sessionId: session.backendId });
   }
 
+  saveViewSnapshot(sessionId: string, history: string, pendingOutputs: Array<string | Uint8Array> = []) {
+    if (!this.sessions.has(sessionId)) return;
+    const pendingBytes = terminalOutputBytes(pendingOutputs);
+    this.viewSnapshots.set(sessionId, {
+      history,
+      pendingOutputs: pendingOutputs.map(cloneTerminalOutput),
+      pendingBytes,
+      createdAt: Date.now(),
+    });
+    runtimeTrace(
+      "terminal-runtime",
+      `view_snapshot save session=${sessionId} historyChars=${history.length} pendingOutputs=${pendingOutputs.length} pendingBytes=${pendingBytes}`,
+    );
+  }
+
+  takeViewSnapshot(sessionId: string) {
+    const snapshot = this.viewSnapshots.get(sessionId);
+    if (!snapshot) return undefined;
+    this.viewSnapshots.delete(sessionId);
+    runtimeTrace(
+      "terminal-runtime",
+      `view_snapshot take session=${sessionId} ageMs=${Date.now() - snapshot.createdAt} historyChars=${snapshot.history.length} pendingOutputs=${snapshot.pendingOutputs.length} pendingBytes=${snapshot.pendingBytes}`,
+    );
+    return {
+      history: snapshot.history,
+      pendingOutputs: snapshot.pendingOutputs.map(cloneTerminalOutput),
+    };
+  }
+
   async snapshot(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) return undefined;
@@ -213,12 +252,20 @@ export class TerminalRuntime {
       }
       return session.replayBuffer;
     }
-    const history = await invoke<string>("terminal_snapshot", { sessionId: session.backendId });
-    runtimeTrace(
-      "terminal-runtime",
-      `snapshot backend session=${sessionId} backend=${session.backendId} chars=${history.length}`,
-    );
-    return history;
+    try {
+      const history = await invoke<string>("terminal_snapshot", { sessionId: session.backendId });
+      runtimeTrace(
+        "terminal-runtime",
+        `snapshot backend session=${sessionId} backend=${session.backendId} chars=${history.length}`,
+      );
+      return history;
+    } catch (error) {
+      runtimeTrace(
+        "terminal-runtime",
+        `snapshot backend failed session=${sessionId} backend=${session.backendId} fallbackChars=${session.replayBuffer.length} error=${error instanceof Error ? error.message : String(error)}`,
+      );
+      return session.replayBuffer;
+    }
   }
 
   ensureAttachedSession(options: AttachedSessionOptions) {
@@ -256,6 +303,7 @@ export class TerminalRuntime {
     this.startOptions.delete(sessionId);
     this.startingSessions.delete(sessionId);
     this.outputTextDecoders.delete(sessionId);
+    this.viewSnapshots.delete(sessionId);
     this.flushOutputQueue(sessionId);
     if (session.backendId) {
       this.unregisterBackendSession(session.backendId, sessionId);
@@ -291,6 +339,7 @@ export class TerminalRuntime {
       state: "starting",
     });
     this.outputTextDecoders.delete(sessionId);
+    this.viewSnapshots.delete(sessionId);
     this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)!, history: "" });
     this.enqueueBackendStart(sessionId, {
       projectId: session.projectId,
@@ -325,6 +374,7 @@ export class TerminalRuntime {
     this.startOptions.delete(sessionId);
     this.startingSessions.delete(sessionId);
     this.outputTextDecoders.delete(sessionId);
+    this.viewSnapshots.delete(sessionId);
     this.flushOutputQueue(sessionId);
     this.emit(sessionId, { type: "closed", sessionId });
     this.listeners.delete(sessionId);
@@ -436,15 +486,16 @@ export class TerminalRuntime {
         `attach_snapshot session=${sessionId} backend=${backendId} chars=${history.length} bytes=${new TextEncoder().encode(history).length}`,
       );
       if (history) {
+        const replayBuffer = trimReplayBuffer(history);
         this.updateSession(sessionId, {
-          replayBuffer: trimReplayBuffer(history),
+          replayBuffer,
           hasSnapshot: true,
           state: "running",
         });
         this.emit(sessionId, {
           type: "reset",
           session: this.sessions.get(sessionId)!,
-          history: trimReplayBuffer(history),
+          history,
         });
       }
     } catch (error) {
@@ -532,6 +583,7 @@ export class TerminalRuntime {
     if (outputText) {
       session.replayBuffer = trimReplayBuffer(session.replayBuffer + outputText);
     }
+    this.appendViewSnapshotDelta(sessionId, bytes?.length ? bytes : outputText);
     if (session.backendId && session.state === "starting") {
       session.state = "running";
       this.emit(sessionId, { type: "state", session: { ...session } });
@@ -585,7 +637,7 @@ export class TerminalRuntime {
     const snapshot = this.debugSnapshot();
     runtimeTrace(
       "terminal-runtime",
-      `${action} session=${sessionId} sessions=${snapshot.sessions} backends=${snapshot.backends} listeners=${snapshot.listeners} queues=${snapshot.queues} replayChars=${snapshot.replayChars} running=${snapshot.running}`,
+      `${action} session=${sessionId} sessions=${snapshot.sessions} backends=${snapshot.backends} listeners=${snapshot.listeners} queues=${snapshot.queues} replayChars=${snapshot.replayChars} running=${snapshot.running} viewSnapshots=${snapshot.viewSnapshots}`,
     );
   }
 
@@ -607,6 +659,25 @@ export class TerminalRuntime {
     if (remaining) {
       this.appendOutput(sessionId, remaining);
     }
+  }
+
+  private appendViewSnapshotDelta(sessionId: string, output?: string | Uint8Array) {
+    if (!output || output.length === 0) return;
+    const snapshot = this.viewSnapshots.get(sessionId);
+    if (!snapshot) return;
+    const cloned = cloneTerminalOutput(output);
+    const bytes = terminalOutputBytes([cloned]);
+    const nextBytes = snapshot.pendingBytes + bytes;
+    if (nextBytes > MAX_VIEW_SNAPSHOT_DELTA_BYTES) {
+      this.viewSnapshots.delete(sessionId);
+      runtimeTrace(
+        "terminal-runtime",
+        `view_snapshot drop session=${sessionId} reason=delta_limit pendingBytes=${nextBytes}`,
+      );
+      return;
+    }
+    snapshot.pendingOutputs.push(cloned);
+    snapshot.pendingBytes = nextBytes;
   }
 }
 
@@ -636,6 +707,19 @@ export function terminalReplayBuffer(session?: TerminalRuntimeSession) {
 function trimReplayBuffer(value: string) {
   if (value.length <= MAX_REPLAY_CHARS) return value;
   return value.slice(value.length - MAX_REPLAY_CHARS);
+}
+
+function cloneTerminalOutput(output: string | Uint8Array) {
+  if (typeof output === "string") return output;
+  return output.slice();
+}
+
+function terminalOutputBytes(outputs: Array<string | Uint8Array>) {
+  let total = 0;
+  for (const output of outputs) {
+    total += typeof output === "string" ? encodeTerminalText(output).byteLength : output.byteLength;
+  }
+  return total;
 }
 
 function decodeBase64Bytes(value?: string) {

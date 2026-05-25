@@ -19,7 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Dropdown } from "@heroui/react";
 import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Checkbox, TextInput } from "./Form";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
@@ -627,82 +627,92 @@ function TerminalMode({
       className="terminal-workspace h-full grid"
       style={workspaceGridStyle(bottomRatio, tabs.length > 0)}
     >
-      <div ref={topGridRef} className="terminal-split-grid" style={topGridStyle(visibleTopPanes.length, topRatios)}>
-        {visibleTopPanes.map((pane, index) => (
-          <TerminalPaneGroup key={pane.id}>
-            {index > 0 && (
-              <TerminalSplitDivider
-                orientation="vertical"
-                onDrag={(event) => adjustTopRatio(index - 1, event.clientX)}
-              />
-            )}
-            <TerminalPane
-              terminalId={pane.terminalId}
-              detached={Boolean(pane.detached)}
-              active={visible && pane.terminalId === activeTerminalId}
-              canClose={visibleTopPanes.length > 1}
-              focusRequest={focusRequest}
-              onActivate={() => activateTerminal(pane.terminalId, { focus: true })}
-              onFocusActivate={() => activateTerminal(pane.terminalId)}
-              onClose={() => closeTopPane(pane.id)}
-              onDetach={() => detachTopPane(pane.id)}
-            />
-          </TerminalPaneGroup>
-        ))}
-      </div>
-      <TerminalSplitDivider
-        orientation="horizontal"
-        onDrag={(event) => adjustBottomRatio(event.clientY)}
-        disabled={tabs.length === 0}
-      />
-      <div
-        className={`terminal-bottom-area grid min-w-0 ${tabs.length > 0 ? "grid-rows-[44px_minmax(0,1fr)]" : "grid-rows-[44px]"}`}
-      >
-        <TabStrip
-          items={tabs.map((tab) => ({
-            id: tab.id,
-            label: tab.label,
-            closable: true,
-          }))}
-          activeId={activeTabId}
-          emptyLabel={tm("terminal.title", "Terminal")}
-          onSelect={(id) => {
-            const tab = tabs.find((item) => item.id === id);
-            if (!tab) return;
-            setActiveTabId(tab.id);
-            activateTerminal(tab.terminalId, { focus: true });
-          }}
-          onClose={closeBottomTab}
-          onAdd={addBottomTab}
-          onRename={renameBottomTab}
-          onReorder={reorderBottomTab}
-        />
-        {tabs.length > 0 &&
-          tabs.map((tab) => (
-            <div
-              key={tab.id}
-              className={
-                tab.id === activeTabId
-                  ? `terminal-tab-pane ${tab.terminalId === activeTerminalId ? "is-active" : "is-inactive"}`
-                  : "hidden"
-              }
-              onPointerDown={() => activateTerminal(tab.terminalId, { focus: true })}
-              onFocusCapture={() => activateTerminal(tab.terminalId)}
-            >
-              {tab.id === activeTabId && (
-                <TerminalView
-                  terminalId={tab.terminalId}
-                  chrome={false}
-                  active={visible && tab.terminalId === activeTerminalId}
-                  focusRequest={focusRequest}
+      {!isLayoutHydrated ? (
+        <div className="min-h-0" />
+      ) : (
+        <div ref={topGridRef} className="terminal-split-grid" style={topGridStyle(visibleTopPanes.length, topRatios)}>
+          {visibleTopPanes.map((pane, index) => (
+            <TerminalPaneGroup key={pane.id}>
+              {index > 0 && (
+                <TerminalSplitDivider
+                  orientation="vertical"
+                  onDrag={(event) => adjustTopRatio(index - 1, event.clientX)}
                 />
               )}
-              {tab.id === activeTabId && tab.terminalId !== activeTerminalId && (
-                <div className="terminal-pane-dim" aria-hidden="true" />
-              )}
-            </div>
+              <TerminalPane
+                terminalId={pane.terminalId}
+                detached={Boolean(pane.detached)}
+                active={visible && pane.terminalId === activeTerminalId}
+                canClose={visibleTopPanes.length > 1}
+                focusRequest={focusRequest}
+                onActivate={() => activateTerminal(pane.terminalId, { focus: true })}
+                onFocusActivate={() => activateTerminal(pane.terminalId)}
+                onClose={() => closeTopPane(pane.id)}
+                onDetach={() => detachTopPane(pane.id)}
+              />
+            </TerminalPaneGroup>
           ))}
-      </div>
+        </div>
+      )}
+      {isLayoutHydrated ? (
+        <>
+          <TerminalSplitDivider
+            orientation="horizontal"
+            onDrag={(event) => adjustBottomRatio(event.clientY)}
+            disabled={tabs.length === 0}
+          />
+          <div
+            className={`terminal-bottom-area grid min-w-0 ${tabs.length > 0 ? "grid-rows-[44px_minmax(0,1fr)]" : "grid-rows-[44px]"}`}
+          >
+            <TabStrip
+              items={tabs.map((tab) => ({
+                id: tab.id,
+                label: tab.label,
+                closable: true,
+              }))}
+              activeId={activeTabId}
+              emptyLabel={tm("terminal.title", "Terminal")}
+              onSelect={(id) => {
+                const tab = tabs.find((item) => item.id === id);
+                if (!tab) return;
+                setActiveTabId(tab.id);
+                activateTerminal(tab.terminalId, { focus: true });
+              }}
+              onClose={closeBottomTab}
+              onAdd={addBottomTab}
+              onRename={renameBottomTab}
+              onReorder={reorderBottomTab}
+            />
+            {tabs.length > 0 &&
+              tabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className={
+                    tab.id === activeTabId
+                      ? `terminal-tab-pane ${tab.terminalId === activeTerminalId ? "is-active" : "is-inactive"}`
+                      : "hidden"
+                  }
+                  onPointerDown={() => activateTerminal(tab.terminalId, { focus: true })}
+                  onFocusCapture={() => activateTerminal(tab.terminalId)}
+                >
+                  {tab.id === activeTabId && (
+                    <TerminalView
+                      terminalId={tab.terminalId}
+                      chrome={false}
+                      active={visible && tab.terminalId === activeTerminalId}
+                      focusRequest={focusRequest}
+                    />
+                  )}
+                </div>
+              ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div />
+          <div />
+        </>
+      )}
     </div>
   );
 }
@@ -898,7 +908,6 @@ function TerminalPane({
           focusRequest={focusRequest}
         />
       )}
-      {!active && <div className="terminal-pane-dim" aria-hidden="true" />}
     </section>
   );
 }
@@ -2062,31 +2071,34 @@ function ReviewMode({ project }: { project?: WorkspaceProject }) {
     [project?.path, refreshReview],
   );
 
-  const commitReviewChanges = useCallback(async (pushAfterCommit = false) => {
-    if (!project?.path || reviewAction) return;
-    const message = window.prompt(tm("git.commit.message.placeholder", "Commit message"))?.trim();
-    if (!message) return;
-    setReviewAction("commit");
-    try {
-      if (committablePaths.length > 0) {
-        await git.stage(committablePaths);
+  const commitReviewChanges = useCallback(
+    async (pushAfterCommit = false) => {
+      if (!project?.path || reviewAction) return;
+      const message = window.prompt(tm("git.commit.message.placeholder", "Commit message"))?.trim();
+      if (!message) return;
+      setReviewAction("commit");
+      try {
+        if (committablePaths.length > 0) {
+          await git.stage(committablePaths);
+        }
+        await git.commit(message);
+        if (pushAfterCommit) {
+          setReviewAction("push");
+          await git.push();
+        }
+        await refreshReview();
+      } catch (error) {
+        await systemMessage(error instanceof Error ? error.message : String(error), {
+          title: pushAfterCommit ? tm("git.commit.action_push", "Commit and Push") : tm("git.commit.action", "Commit"),
+          kind: "error",
+          okLabel: tm("common.ok", "OK"),
+        });
+      } finally {
+        setReviewAction("");
       }
-      await git.commit(message);
-      if (pushAfterCommit) {
-        setReviewAction("push");
-        await git.push();
-      }
-      await refreshReview();
-    } catch (error) {
-      await systemMessage(error instanceof Error ? error.message : String(error), {
-        title: pushAfterCommit ? tm("git.commit.action_push", "Commit and Push") : tm("git.commit.action", "Commit"),
-        kind: "error",
-        okLabel: tm("common.ok", "OK"),
-      });
-    } finally {
-      setReviewAction("");
-    }
-  }, [committablePaths, git, project?.path, refreshReview, reviewAction]);
+    },
+    [committablePaths, git, project?.path, refreshReview, reviewAction],
+  );
 
   return (
     <div className="h-full min-h-0 grid grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-secondary">
@@ -2290,12 +2302,8 @@ function ReviewCommitSplitButton({
               if (key === "commitAndPush") onCommitAndPush();
             }}
           >
-            <Dropdown.Item id="commit">
-              {tm("git.commit.action", "Commit")}
-            </Dropdown.Item>
-            <Dropdown.Item id="commitAndPush">
-              {tm("git.commit.action_push", "Commit and Push")}
-            </Dropdown.Item>
+            <Dropdown.Item id="commit">{tm("git.commit.action", "Commit")}</Dropdown.Item>
+            <Dropdown.Item id="commitAndPush">{tm("git.commit.action_push", "Commit and Push")}</Dropdown.Item>
           </Dropdown.Menu>
         </Dropdown.Popover>
       </Dropdown>
@@ -2461,8 +2469,12 @@ function ReviewDirectoryRow({
         )}
         <Folder size={13} className="text-brand-blue/85" />
         <span className="min-w-0 truncate text-left text-xs font-medium">{node.name}</span>
-        <span className="text-right text-xs tabular-nums text-brand-green">{node.additions > 0 ? `+${node.additions}` : ""}</span>
-        <span className="text-right text-xs tabular-nums text-brand-red">{node.deletions > 0 ? `-${node.deletions}` : ""}</span>
+        <span className="text-right text-xs tabular-nums text-brand-green">
+          {node.additions > 0 ? `+${node.additions}` : ""}
+        </span>
+        <span className="text-right text-xs tabular-nums text-brand-red">
+          {node.deletions > 0 ? `-${node.deletions}` : ""}
+        </span>
         <span />
       </PressableButton>
     </Tooltip>
@@ -2511,8 +2523,12 @@ function ReviewFileRow({
         >
           <FileCode2 size={13} className="text-ink-mute" />
           <span className="min-w-0 truncate text-left text-xs">{displayName ?? file.path}</span>
-          <span className="text-right text-xs tabular-nums text-brand-green">{file.additions > 0 ? `+${file.additions}` : ""}</span>
-          <span className="text-right text-xs tabular-nums text-brand-red">{file.deletions > 0 ? `-${file.deletions}` : ""}</span>
+          <span className="text-right text-xs tabular-nums text-brand-green">
+            {file.additions > 0 ? `+${file.additions}` : ""}
+          </span>
+          <span className="text-right text-xs tabular-nums text-brand-red">
+            {file.deletions > 0 ? `-${file.deletions}` : ""}
+          </span>
           <span className={`text-center text-xs font-bold ${badge.tone}`}>{badge.label}</span>
         </PressableButton>
       </Tooltip>

@@ -19,6 +19,8 @@ type Props = {
   maxItems?: number;
 };
 
+const relativeTimeFormatters = new Map<string, Intl.RelativeTimeFormat>();
+
 export function AIHistorySessionList({ project, sessions, mode, isLoading, error, className, maxItems = 20 }: Props) {
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({});
@@ -212,10 +214,7 @@ function sessionTimeLabel(timestamp: number) {
 }
 
 function relativeSessionTime(date: Date) {
-  const formatter = new Intl.RelativeTimeFormat(localeFromSettings(), {
-    numeric: "always",
-    style: "short",
-  });
+  const formatter = cachedRelativeTimeFormatter(localeFromSettings());
   const diffMs = Math.min(0, date.getTime() - Date.now());
   const minute = 60_000;
   const hour = 60 * minute;
@@ -224,6 +223,18 @@ function relativeSessionTime(date: Date) {
   if (Math.abs(diffMs) < hour) return formatter.format(Math.round(diffMs / minute), "minute");
   if (Math.abs(diffMs) < day) return formatter.format(Math.round(diffMs / hour), "hour");
   return formatter.format(Math.round(diffMs / day), "day");
+}
+
+function cachedRelativeTimeFormatter(locale: string) {
+  let formatter = relativeTimeFormatters.get(locale);
+  if (!formatter) {
+    formatter = new Intl.RelativeTimeFormat(locale, {
+      numeric: "always",
+      style: "short",
+    });
+    relativeTimeFormatters.set(locale, formatter);
+  }
+  return formatter;
 }
 
 function shellQuote(value: string) {

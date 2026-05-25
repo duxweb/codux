@@ -42,6 +42,7 @@
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@xterm/addon-fit": "0.12.0-beta.219",
+    "@xterm/addon-serialize": "0.15.0-beta.220",
     "@xterm/addon-unicode11": "0.10.0-beta.219",
     "@xterm/addon-webgl": "0.20.0-beta.218",
     "@xterm/xterm": "6.1.0-beta.219",

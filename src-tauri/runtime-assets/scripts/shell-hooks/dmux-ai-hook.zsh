@@ -98,7 +98,7 @@ _dmux_resolve_tool_from_command() {
     esac
     candidate="${candidate:t}"
     case "${candidate}" in
-      codex|claude|claude-code|opencode|gemini)
+      codex|claude|claude-code|opencode|gemini|kiro|kiro-cli)
         print -r -- "${candidate}"
         return 0
         ;;
@@ -163,4 +163,4 @@ add-zsh-hook zshexit _dmux_ai_zshexit
 
 _dmux_prepend_wrapper_bin
 _dmux_reset_terminal_input_modes
-_dmux_log_line "loaded session=${DMUX_SESSION_ID:-nil} wrapper=${DMUX_WRAPPER_BIN:-nil} claude=$(whence -p claude 2>/dev/null || print -r -- nil) codex=$(whence -p codex 2>/dev/null || print -r -- nil)"
+_dmux_log_line "loaded session=${DMUX_SESSION_ID:-nil} wrapper=${DMUX_WRAPPER_BIN:-nil} claude=$(whence -p claude 2>/dev/null || print -r -- nil) codex=$(whence -p codex 2>/dev/null || print -r -- nil) kiro=$(whence -p kiro 2>/dev/null || print -r -- nil) kiroCli=$(whence -p kiro-cli 2>/dev/null || print -r -- nil)"

@@ -91,10 +91,12 @@ export type AIRuntimeToolSettings = {
   claudeCode: AIToolPermissionMode;
   gemini: AIToolPermissionMode;
   opencode: AIToolPermissionMode;
+  kiro: AIToolPermissionMode;
   codexModel: string;
   claudeCodeModel: string;
   geminiModel: string;
   opencodeModel: string;
+  kiroModel: string;
   codexEffort: AICodexReasoningEffort;
 };
 
@@ -190,10 +192,12 @@ export const defaultSettings: AppSettings = {
       claudeCode: "default",
       gemini: "default",
       opencode: "default",
+      kiro: "default",
       codexModel: "",
       claudeCodeModel: "",
       geminiModel: "",
       opencodeModel: "",
+      kiroModel: "",
       codexEffort: "medium",
     },
     memory: {
@@ -618,6 +622,7 @@ function normalizeRuntimeTools(settings?: Partial<AIRuntimeToolSettings>): AIRun
     claudeCode: normalizePermissionMode(settings?.claudeCode),
     gemini: normalizePermissionMode(settings?.gemini),
     opencode: normalizePermissionMode(settings?.opencode),
+    kiro: normalizePermissionMode(settings?.kiro),
     codexEffort: normalizeCodexEffort(settings?.codexEffort),
   };
 }

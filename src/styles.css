@@ -60,11 +60,7 @@
   --scrollbar-thumb: rgb(255 255 255 / 0.16);
   --scrollbar-thumb-hover: rgb(255 255 255 / 0.28);
   --focus-ring: rgb(59 130 246 / 0.22);
-  --minimap-stripes: repeating-linear-gradient(
-    to bottom,
-    rgb(255 255 255 / 0.18) 0 2px,
-    transparent 2px 6px
-  );
+  --minimap-stripes: repeating-linear-gradient(to bottom, rgb(255 255 255 / 0.18) 0 2px, transparent 2px 6px);
 
   --background: var(--color-surface-app);
   --foreground: var(--color-ink);
@@ -185,11 +181,7 @@
   --field-focus: #ffffff;
   --default: var(--field-background);
   --default-hover: rgb(236 241 248);
-  --minimap-stripes: repeating-linear-gradient(
-    to bottom,
-    rgb(18 25 36 / 0.14) 0 2px,
-    transparent 2px 6px
-  );
+  --minimap-stripes: repeating-linear-gradient(to bottom, rgb(18 25 36 / 0.14) 0 2px, transparent 2px 6px);
   --shadow-floating: 0 1px 2px rgb(24 35 52 / 0.08), 0 6px 14px -12px rgb(24 35 52 / 0.18);
   --shadow-badge: inset 0 1px 0 rgb(255 255 255 / 0.36), 0 2px 7px rgb(24 35 52 / 0.16);
 
@@ -639,11 +631,6 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
   @apply z-[1];
 }
 
-.terminal-pane-dim {
-  @apply pointer-events-none absolute inset-0 z-[5] transition-opacity duration-150;
-  background: rgb(0 0 0 / 0.42);
-}
-
 .terminal-split-divider {
   @apply relative z-10 flex-shrink-0;
   background: var(--terminal-bg);
@@ -765,7 +752,6 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
   height: 100%;
   padding: 0;
   overflow: hidden;
-  contain: layout paint style;
 }
 
 .terminal-host .xterm-viewport {
@@ -777,11 +763,6 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 .terminal-host .xterm-screen {
   max-width: 100%;
-  contain: layout paint style;
-}
-
-.terminal-host .xterm-rows {
-  contain: layout paint style;
 }
 
 .terminal-host {

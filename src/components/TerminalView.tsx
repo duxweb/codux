@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import type { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type IDisposable, type ITerminalAddon, type ITheme } from "@xterm/xterm";
@@ -28,13 +29,11 @@ type TerminalRendererAdapter = {
   reset: (history?: string) => void;
   clear: () => void;
   focus: () => void;
-  blur: () => void;
   fit: () => void;
-  refresh: (reason: string) => void;
   refreshTheme: () => void;
   setRenderer: (renderer: TerminalResolvedRenderer) => void;
   setFontSize: (fontSize: number) => void;
-    setInputEnabled: (enabled: boolean) => void;
+  setInputEnabled: (enabled: boolean) => void;
   copySelection: () => Promise<void>;
   pasteClipboard: () => Promise<void>;
   selectAll: () => void;
@@ -48,6 +47,8 @@ const INTERACTIVE_WRITE_INTERVAL_MS = 16;
 const STREAM_ANIMATION_WRITE_INTERVAL_MS = 16;
 const STREAM_WRITE_INTERVAL_MS = 24;
 const INACTIVE_WRITE_INTERVAL_MS = 200;
+const FIT_DEBOUNCE_MS = 16;
+const FIT_DIMENSION_EPSILON_PX = 2;
 const MAX_QUEUED_WRITE_BYTES = 256 * 1024;
 const ACTIVE_WRITE_BYTES_PER_FLUSH = 32 * 1024;
 const ACTIVE_WRITE_TEXT_PER_FLUSH = 32 * 1024;
@@ -113,12 +114,14 @@ type XtermWithSelectionInternals = XtermTerminal & {
 
 function XtermRenderer({
   className,
+  terminalId,
   writeActive,
   onAdapter,
   onData,
   onResize,
 }: {
   className: string;
+  terminalId: string;
   writeActive: boolean;
   onAdapter: (adapter: TerminalRendererAdapter | null) => void;
   onData: (data: string) => void;
@@ -135,6 +138,7 @@ function XtermRenderer({
     let disposed = false;
     let inputEnabled = false;
     let resizeFrame: number | null = null;
+    let fitTimer: number | null = null;
     let pendingFitForce = false;
     let lastFitWidth = -1;
     let lastFitHeight = -1;
@@ -142,12 +146,7 @@ function XtermRenderer({
     let unregisterInput: (() => void) | undefined;
     let textInputAdapter: TerminalTextInputAdapter | null = null;
     let webglAddon: WebglAddon | null = null;
-    let webglCanvases: HTMLCanvasElement[] = [];
-    const webglTextureCanvases = new Set<HTMLCanvasElement>();
     let webglContextLossDisposable: IDisposable | null = null;
-    let webglTextureAtlasDisposable: IDisposable | null = null;
-    let webglAddTextureAtlasDisposable: IDisposable | null = null;
-    let webglRemoveTextureAtlasDisposable: IDisposable | null = null;
     let webglLoadVersion = 0;
     let writeTimer: number | null = null;
     let writeInFlight = false;
@@ -183,65 +182,40 @@ function XtermRenderer({
         : undefined,
     });
     const fitAddon = new FitAddon();
+    const serializeAddon = new SerializeAddon();
     const unicode11Addon = new Unicode11Addon();
     const disposables: IDisposable[] = [];
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(serializeAddon);
     terminal.loadAddon(unicode11Addon);
     terminal.unicode.activeVersion = "11";
     terminal.open(host);
     runtimeTrace("terminal-view", `mount rows=${terminal.rows} cols=${terminal.cols}`);
 
-    const forceRendererRefresh = (reason: string) => {
-      if (disposed) return;
-      window.requestAnimationFrame(() => {
-        if (disposed) return;
-        try {
-          webglAddon?.clearTextureAtlas();
-          terminal.clearTextureAtlas();
-          terminal.refresh(0, Math.max(0, terminal.rows - 1));
-        } catch {
-          // Renderer may be switching during WebGL initialization.
-        }
-        runtimeTrace(
-          "terminal-view",
-          `refresh_renderer reason=${reason} rows=${terminal.rows} cols=${terminal.cols} canvases=${terminal.element?.querySelectorAll("canvas").length ?? 0}`,
-        );
-      });
+    const traceRendererState = (reason: string) => {
+      runtimeTrace(
+        "terminal-view",
+        `renderer_state reason=${reason} rows=${terminal.rows} cols=${terminal.cols} canvases=${terminal.element?.querySelectorAll("canvas").length ?? 0}`,
+      );
     };
 
     const disposeWebgl = () => {
       webglLoadVersion += 1;
       webglContextLossDisposable?.dispose();
       webglContextLossDisposable = null;
-      webglTextureAtlasDisposable?.dispose();
-      webglTextureAtlasDisposable = null;
-      webglAddTextureAtlasDisposable?.dispose();
-      webglAddTextureAtlasDisposable = null;
-      webglRemoveTextureAtlasDisposable?.dispose();
-      webglRemoveTextureAtlasDisposable = null;
-      for (const canvas of webglCanvases) {
-        releaseWebglCanvas(canvas);
-      }
-      webglCanvases = [];
-      for (const canvas of webglTextureCanvases) {
-        releaseCanvasBackingStore(canvas);
-      }
-      webglTextureCanvases.clear();
-      if (!webglAddon) return;
-      const addon = webglAddon;
-      try {
-        addon.dispose();
-      } finally {
-        clearWebglAddonReferences(addon);
-        webglAddon = null;
+      if (webglAddon) {
+        const addon = webglAddon;
+        try {
+          addon.dispose();
+        } finally {
+          webglAddon = null;
+        }
       }
     };
 
     const enableWebgl = () => {
       if (disposed || webglAddon) return;
       const version = ++webglLoadVersion;
-      const element = terminal.element;
-      const existingCanvases = new Set(element?.querySelectorAll<HTMLCanvasElement>("canvas") ?? []);
       void import("@xterm/addon-webgl")
         .then(({ WebglAddon }) => {
           if (disposed || version !== webglLoadVersion || webglAddon) return;
@@ -251,24 +225,8 @@ function XtermRenderer({
             console.warn("xterm webgl context lost; falling back to DOM renderer");
             disposeWebgl();
           });
-          webglTextureAtlasDisposable = nextWebglAddon.onChangeTextureAtlas((canvas) => {
-            webglTextureCanvases.add(canvas);
-          });
-          webglAddTextureAtlasDisposable = nextWebglAddon.onAddTextureAtlasCanvas((canvas) => {
-            webglTextureCanvases.add(canvas);
-          });
-          webglRemoveTextureAtlasDisposable = nextWebglAddon.onRemoveTextureAtlasCanvas((canvas) => {
-            webglTextureCanvases.delete(canvas);
-            releaseCanvasBackingStore(canvas);
-          });
-          if (nextWebglAddon.textureAtlas) {
-            webglTextureCanvases.add(nextWebglAddon.textureAtlas);
-          }
           webglAddon = nextWebglAddon;
-          webglCanvases = [
-            ...(terminal.element?.querySelectorAll<HTMLCanvasElement>("canvas") ?? []),
-          ].filter((canvas) => !existingCanvases.has(canvas));
-          forceRendererRefresh("webgl-ready");
+          traceRendererState("webgl-ready");
         })
         .catch((error) => {
           console.warn("failed to load xterm webgl renderer", error);
@@ -322,10 +280,6 @@ function XtermRenderer({
       unregisterInput = registerTerminalInput({
         host,
         textarea,
-        blur: () => {
-          terminal.blur();
-          host.classList.remove("focused");
-        },
       });
       textInputAdapter = installTerminalTextInputAdapter({
         textarea,
@@ -373,6 +327,15 @@ function XtermRenderer({
       queuedText = "";
       queuedBytes.length = 0;
       queuedByteLength = 0;
+    };
+
+    const pendingQueuedWrites = () => {
+      const outputs: Array<string | Uint8Array> = [];
+      for (const chunk of queuedBytes) {
+        if (chunk.length > 0) outputs.push(chunk.slice());
+      }
+      if (queuedText) outputs.push(queuedText);
+      return outputs;
     };
 
     const scrollToBottomAfterPaint = () => {
@@ -465,7 +428,11 @@ function XtermRenderer({
       if (disposed || !host.isConnected) return;
       const width = host.clientWidth;
       const height = host.clientHeight;
-      if (!force && width === lastFitWidth && height === lastFitHeight) {
+      if (
+        !force &&
+        Math.abs(width - lastFitWidth) <= FIT_DIMENSION_EPSILON_PX &&
+        Math.abs(height - lastFitHeight) <= FIT_DIMENSION_EPSILON_PX
+      ) {
         return;
       }
       lastFitWidth = width;
@@ -478,19 +445,26 @@ function XtermRenderer({
       const cols = Math.max(MIN_COLS, proposedCols);
       const rows = Math.max(MIN_ROWS, proposedRows);
       if (terminal.cols !== cols || terminal.rows !== rows) {
+        runtimeTrace(
+          "terminal-view",
+          `fit_resize terminal=${terminalId} force=${force} host=${width}x${height} from=${terminal.cols}x${terminal.rows} to=${cols}x${rows}`,
+        );
         terminal.resize(cols, rows);
       }
     };
 
     const scheduleFit = (force = false) => {
       pendingFitForce = pendingFitForce || force;
-      if (resizeFrame !== null) return;
-      resizeFrame = window.requestAnimationFrame(() => {
-        const forceFit = pendingFitForce;
-        pendingFitForce = false;
-        resizeFrame = null;
-        fit(forceFit);
-      });
+      if (fitTimer !== null || resizeFrame !== null) return;
+      fitTimer = window.setTimeout(() => {
+        fitTimer = null;
+        resizeFrame = window.requestAnimationFrame(() => {
+          const forceFit = pendingFitForce;
+          pendingFitForce = false;
+          resizeFrame = null;
+          fit(forceFit);
+        });
+      }, force ? 0 : FIT_DEBOUNCE_MS);
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
@@ -523,6 +497,10 @@ function XtermRenderer({
         writeQueued(data);
       },
       reset: (history) => {
+        runtimeTrace(
+          "terminal-view",
+          `reset terminal=${terminalId} historyChars=${history?.length ?? 0} rows=${terminal.rows} cols=${terminal.cols}`,
+        );
         flushQueuedWritesNow();
         clearQueuedWrites();
         terminal.reset();
@@ -531,15 +509,12 @@ function XtermRenderer({
           terminal.write(history, () => {
             if (disposed) return;
             scrollToBottomAfterPaint();
-            forceRendererRefresh("reset-history");
+            traceRendererState("reset-history");
           });
         } else {
           scrollToBottomAfterPaint();
         }
-        forceRendererRefresh("reset");
-        window.setTimeout(() => {
-          forceRendererRefresh("reset-delayed");
-        }, 80);
+        traceRendererState("reset");
       },
       clear: () => {
         flushQueuedWritesNow();
@@ -551,13 +526,7 @@ function XtermRenderer({
         terminal.options.cursorBlink = false;
         terminal.focus();
       },
-      blur: () => {
-        terminal.blur();
-        terminal.options.cursorBlink = false;
-        host.classList.remove("focused");
-      },
       fit: () => fit(),
-      refresh: forceRendererRefresh,
       refreshTheme,
       setRenderer,
       setFontSize: (fontSize) => {
@@ -571,7 +540,6 @@ function XtermRenderer({
         terminal.options.cursorBlink = false;
         host.toggleAttribute("data-input-disabled", !enabled);
         if (!enabled) {
-          terminal.blur();
           terminal.options.cursorBlink = false;
           host.classList.remove("focused");
         }
@@ -594,11 +562,24 @@ function XtermRenderer({
       hasSelection: () => Boolean(terminal.getSelection()),
       dispose: () => {
         if (disposed) return;
+        const pendingOutputs = pendingQueuedWrites();
+        try {
+          terminalRuntime.saveViewSnapshot(terminalId, serializeAddon.serialize(), pendingOutputs);
+        } catch (error) {
+          runtimeTrace(
+            "terminal-view",
+            `serialize_failed terminal=${terminalId} error=${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
         disposed = true;
         resizeObserver.disconnect();
         if (resizeFrame !== null) {
           window.cancelAnimationFrame(resizeFrame);
           resizeFrame = null;
+        }
+        if (fitTimer !== null) {
+          window.clearTimeout(fitTimer);
+          fitTimer = null;
         }
         if (writeTimer !== null) {
           window.clearTimeout(writeTimer);
@@ -630,62 +611,9 @@ function XtermRenderer({
     return () => {
       onAdapter(null);
     };
-  }, [onAdapter, onData, onResize]);
+  }, [onAdapter, onData, onResize, terminalId]);
 
   return <div ref={hostRef} className={className} />;
-}
-
-function releaseWebglCanvas(canvas: HTMLCanvasElement) {
-  let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
-  try {
-    gl = canvas.getContext("webgl2") as WebGL2RenderingContext | null;
-  } catch {
-    // Some WebKit builds throw after context loss; fall back to webgl below.
-  }
-  if (!gl) {
-    try {
-      gl = canvas.getContext("webgl") as WebGLRenderingContext | null;
-    } catch {
-      gl = null;
-    }
-  }
-  if (gl) {
-    try {
-      const extension = gl.getExtension("WEBGL_lose_context");
-      if (extension && !gl.isContextLost()) extension.loseContext();
-    } catch {
-      // Best-effort cleanup for WebKit GPU resources.
-    }
-  }
-  try {
-    releaseCanvasBackingStore(canvas);
-  } catch {
-    // Best-effort cleanup for WebKit GPU resources.
-  }
-}
-
-function releaseCanvasBackingStore(canvas: HTMLCanvasElement) {
-  canvas.width = 0;
-  canvas.height = 0;
-}
-
-function clearWebglAddonReferences(addon: WebglAddon) {
-  try {
-    const internals = addon as unknown as {
-      _renderer?: Record<string, unknown> | null;
-      _renderService?: unknown;
-    };
-    if (internals._renderer) {
-      internals._renderer._canvas = null;
-      internals._renderer._gl = null;
-      internals._renderer._charAtlas = null;
-      internals._renderer._atlas = null;
-    }
-    internals._renderer = null;
-    internals._renderService = null;
-  } catch {
-    // xterm internals vary by version; disposal above is the source of truth.
-  }
 }
 
 type Props = {
@@ -772,12 +700,77 @@ export function TerminalView({
     const adapter = adapterRef.current;
     if (!adapter) return;
 
+    let snapshotPending = true;
+    let pendingReset:
+      | {
+          history?: string;
+          session: TerminalRuntimeSession;
+        }
+      | undefined;
+    const pendingOutput: Array<string | Uint8Array> = [];
+    const writeOrQueueOutput = (data: string | Uint8Array) => {
+      if (snapshotPending) {
+        pendingOutput.push(data);
+        return;
+      }
+      adapter.write(data);
+    };
+    const flushPendingOutput = () => {
+      snapshotPending = false;
+      for (const data of pendingOutput) {
+        adapter.write(data);
+      }
+      pendingOutput.length = 0;
+    };
+    const resolveSnapshotHistory = (history?: string | null) => {
+      const fallback = terminalReplayBuffer(terminalRuntime.getSession(terminalId)) ?? "";
+      const pendingHistory = pendingReset?.history;
+      let resolved = history ?? fallback;
+      if (pendingHistory && pendingHistory.length > resolved.length) {
+        resolved = pendingHistory;
+      }
+      return resolved;
+    };
+    const completeInitialSnapshot = (source: string, history: string, restoredOutputs: Array<string | Uint8Array> = []) => {
+      if (cancelled) return;
+      runtimeTrace(
+        "terminal-view",
+        `snapshot_apply source=${source} terminal=${terminalId} historyChars=${history.length} restoredOutputs=${restoredOutputs.length} queuedOutputs=${pendingOutput.length}`,
+      );
+      adapter.reset(history);
+      const livePending = pendingOutput.splice(0);
+      pendingOutput.push(...restoredOutputs, ...livePending);
+      if (pendingReset) {
+        adapter.setInputEnabled(pendingReset.session.state === "running");
+        sessionRef.current = pendingReset.session;
+        setSession(pendingReset.session);
+      }
+      if (pendingOutput.length > 0) {
+        const queuedBytes = pendingOutput.reduce((total, item) => total + (typeof item === "string" ? item.length : item.length), 0);
+        runtimeTrace(
+          "terminal-view",
+          `snapshot_flush_pending terminal=${terminalId} queuedOutputs=${pendingOutput.length} queuedBytes=${queuedBytes}`,
+        );
+      }
+      flushPendingOutput();
+    };
+
     const applyEvent = (event: TerminalRuntimeEvent) => {
       if (event.type === "output") {
-        adapter.write(event.bytes);
+        writeOrQueueOutput(event.bytes);
         return;
       }
       if (event.type === "reset") {
+        if (snapshotPending) {
+          pendingReset = {
+            history: event.history ?? terminalReplayBuffer(event.session),
+            session: event.session,
+          };
+          adapter.setInputEnabled(event.session.state === "running");
+          sessionRef.current = event.session;
+          setSession(event.session);
+          return;
+        }
         adapter.reset(event.history ?? terminalReplayBuffer(event.session));
         adapter.setInputEnabled(event.session.state === "running");
         sessionRef.current = event.session;
@@ -802,20 +795,35 @@ export function TerminalView({
     sessionRef.current = current;
     setSession(current);
     let cancelled = false;
-    void terminalRuntime
-      .snapshot(terminalId)
-      .then((history) => {
-        if (cancelled) return;
-        if (terminalRuntime.getSession(terminalId)?.id !== terminalId) return;
-        adapter.reset(history ?? terminalReplayBuffer(terminalRuntime.getSession(terminalId)));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        adapter.reset(terminalReplayBuffer(current));
-      });
     adapter.setInputEnabled(current?.state === "running");
     terminalRuntime.ensureStarted(terminalId);
     const unsubscribe = terminalRuntime.subscribe(terminalId, applyEvent);
+    const viewSnapshot = terminalRuntime.takeViewSnapshot(terminalId);
+    if (viewSnapshot) {
+      completeInitialSnapshot("view", viewSnapshot.history, viewSnapshot.pendingOutputs);
+    } else {
+      void terminalRuntime
+        .snapshot(terminalId)
+        .then((history) => {
+          if (cancelled) return;
+          if (terminalRuntime.getSession(terminalId)?.id !== terminalId) return;
+          completeInitialSnapshot("backend", resolveSnapshotHistory(history));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          const latest = terminalRuntime.getSession(terminalId);
+          runtimeTrace(
+            "terminal-view",
+            `snapshot_fallback terminal=${terminalId} replayChars=${terminalReplayBuffer(latest ?? current)?.length ?? 0} queuedOutputs=${pendingOutput.length}`,
+          );
+          const fallback = terminalReplayBuffer(latest ?? current) ?? "";
+          const pendingHistory = pendingReset?.history;
+          completeInitialSnapshot(
+            "fallback",
+            pendingHistory && pendingHistory.length > fallback.length ? pendingHistory : fallback,
+          );
+        });
+    }
     const fitFrame = window.requestAnimationFrame(() => {
       fitAndResize();
     });
@@ -845,7 +853,6 @@ export function TerminalView({
 
     if (!active || !canAcceptInput) {
       adapter.setInputEnabled(false);
-      adapter.blur();
       return;
     }
     adapter.setInputEnabled(true);
@@ -853,7 +860,6 @@ export function TerminalView({
     const frame = window.requestAnimationFrame(() => {
       adapter.focus();
       fitAndResize();
-      adapter.refresh("active");
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -992,6 +998,7 @@ export function TerminalView({
       <XtermRenderer
         key="xterm"
         className="terminal-host no-drag"
+        terminalId={terminalId}
         writeActive={active && canAcceptInput}
         onAdapter={setAdapter}
         onData={writeTerminalInput}
