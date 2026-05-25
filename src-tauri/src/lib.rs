@@ -515,7 +515,8 @@ const DESKTOP_PET_SPEAK_LESS: &str = "desktop-pet:speak-less";
 const DESKTOP_PET_HIDE: &str = "desktop-pet:hide";
 
 fn sync_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings, pet: &PetSnapshot) {
-    let should_show = settings.pet.enabled && settings.pet.desktop_widget;
+    let should_show =
+        settings.pet.enabled && settings.pet.desktop_widget && pet.claimed_at.is_some();
     if !should_show {
         runtime_trace(
             "desktop-pet",
@@ -1196,7 +1197,7 @@ fn desktop_pet_sync_visibility(
     let settings = state.settings.snapshot();
     let pet = state.pet.snapshot()?;
     let should_show =
-        settings.pet.enabled && settings.pet.desktop_widget;
+        settings.pet.enabled && settings.pet.desktop_widget && pet.claimed_at.is_some();
     runtime_trace(
         "desktop-pet",
         &format!(

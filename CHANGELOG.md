@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-05-25
+
+### Fixed
+
+- Fixed Windows dev startup and desktop pet visibility handling so the app no longer depends on stale window state when settings change.
+- Fixed session restore double-click behavior by adding a pending state that blocks duplicate launches while a restore is starting.
+
 ## [1.0.0] - 2026-05-24
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "codux-tauri"
-version = "1.0.0-beta.3"
+version = "1.0.1"
 description = "Codux desktop workspace"
 authors = ["Codux"]
 edition = "2021"

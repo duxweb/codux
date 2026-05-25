@@ -211,7 +211,7 @@ function renderAll() {
 }
 
 function shouldDisplayPet() {
-  return Boolean(settings?.pet.enabled && settings.pet.desktopWidget);
+  return Boolean(settings?.pet.enabled && settings.pet.desktopWidget && pet?.claimedAt);
 }
 
 function applySide() {
