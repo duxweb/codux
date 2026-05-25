@@ -50,6 +50,23 @@ export type WorkspaceCommand =
 const WORKSPACE_COMMAND_EVENT = "codux:workspace-command";
 let pendingOpenFileCommand: Extract<WorkspaceCommand, { type: "open-file" }> | null = null;
 
+function workspacePathKey(value: string) {
+  let normalized = value.trim().replace(/\\/g, "/");
+  normalized = normalized.replace(/^\/\/\?\//, "");
+  while (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  if (/^[a-z]:/i.test(normalized)) {
+    normalized = normalized.toLowerCase();
+  }
+  return normalized;
+}
+
+export function workspacePathsMatch(left?: string, right?: string) {
+  if (!left || !right) return false;
+  return workspacePathKey(left) === workspacePathKey(right);
+}
+
 export function dispatchWorkspaceCommand(command: WorkspaceCommand) {
   window.dispatchEvent(
     new CustomEvent<WorkspaceCommand>(WORKSPACE_COMMAND_EVENT, {
@@ -72,7 +89,7 @@ export function broadcastWorkspaceCommand(command: WorkspaceCommand) {
 export function consumePendingOpenFileCommand(rootPath?: string) {
   const command = pendingOpenFileCommand;
   if (!command) return null;
-  if (rootPath && command.rootPath !== rootPath) return null;
+  if (rootPath && !workspacePathsMatch(command.rootPath, rootPath)) return null;
   pendingOpenFileCommand = null;
   return command;
 }

@@ -19,6 +19,7 @@ use tauri::{AppHandle, Emitter};
 const TICK_SECONDS: u64 = 30;
 const MIN_GIT_REFRESH_SECONDS: u64 = 15;
 const MIN_AI_REFRESH_SECONDS: u64 = 120;
+const MAX_BACKGROUND_GIT_REFRESH_PER_TICK: usize = 2;
 
 #[derive(Debug, Clone)]
 struct TrackedProject {
@@ -399,13 +400,14 @@ impl ProjectActivityCoordinator {
             .and_then(|value| value.clone());
         let is_foreground = self.main_window_visible.load(Ordering::Relaxed)
             || self.main_window_focused.load(Ordering::Relaxed);
-        projects_due_by_interval(&self.projects, |project| {
-            if is_foreground && active_project_id.as_deref() == Some(project.id.as_str()) {
-                foreground_interval
-            } else {
-                background_interval
-            }
-        })
+        projects_due_for_git_interval(
+            &self.projects,
+            active_project_id.as_deref(),
+            is_foreground,
+            foreground_interval,
+            background_interval,
+            MAX_BACKGROUND_GIT_REFRESH_PER_TICK,
+        )
     }
 
     fn projects_due_for_ai(
@@ -666,15 +668,6 @@ fn upsert_project(
     inserted
 }
 
-fn projects_due_by_interval(
-    projects: &Mutex<HashMap<String, TrackedProject>>,
-    interval_for_project: impl Fn(&TrackedProject) -> Duration,
-) -> Vec<TrackedProject> {
-    projects_due_by_interval_mut(projects, interval_for_project, |project| {
-        &mut project.last_git_refresh
-    })
-}
-
 fn projects_due_by_interval_mut(
     projects: &Mutex<HashMap<String, TrackedProject>>,
     interval_for_project: impl Fn(&TrackedProject) -> Duration,
@@ -699,6 +692,48 @@ fn projects_due_by_interval_mut(
             Some(project.clone())
         })
         .collect()
+}
+
+fn projects_due_for_git_interval(
+    projects: &Mutex<HashMap<String, TrackedProject>>,
+    active_project_id: Option<&str>,
+    is_foreground: bool,
+    foreground_interval: Duration,
+    background_interval: Duration,
+    max_background: usize,
+) -> Vec<TrackedProject> {
+    let now = Instant::now();
+    let Ok(mut guard) = projects.lock() else {
+        return Vec::new();
+    };
+    let mut foreground_due = Vec::new();
+    let mut background_due = Vec::new();
+
+    for project in guard.values_mut() {
+        let is_active_foreground = is_foreground && active_project_id == Some(project.id.as_str());
+        let interval = if is_active_foreground {
+            foreground_interval
+        } else {
+            background_interval
+        };
+        let is_due = project
+            .last_git_refresh
+            .map(|value| now.duration_since(value) >= interval)
+            .unwrap_or(true);
+        if !is_due {
+            continue;
+        }
+        if is_active_foreground {
+            project.last_git_refresh = Some(now);
+            foreground_due.push(project.clone());
+        } else if background_due.len() < max_background {
+            project.last_git_refresh = Some(now);
+            background_due.push(project.clone());
+        }
+    }
+
+    foreground_due.extend(background_due);
+    foreground_due
 }
 
 fn emit_git_review(app: AppHandle, project_id: String, project_name: String, project_path: String) {
@@ -861,5 +896,51 @@ mod tests {
             ids,
             HashSet::from(["active".to_string(), "background".to_string()])
         );
+    }
+
+    #[test]
+    fn git_background_refresh_is_limited_per_tick() {
+        let projects = Mutex::new(HashMap::new());
+        let now = Instant::now();
+        {
+            let mut guard = projects.lock().unwrap();
+            for index in 0..5 {
+                guard.insert(
+                    format!("background-{index}"),
+                    TrackedProject {
+                        id: format!("background-{index}"),
+                        name: format!("Background {index}"),
+                        path: format!("/tmp/background-{index}"),
+                        last_git_refresh: Some(now - Duration::from_secs(700)),
+                        last_ai_refresh: None,
+                    },
+                );
+            }
+            guard.insert(
+                "active".to_string(),
+                TrackedProject {
+                    id: "active".to_string(),
+                    name: "Active".to_string(),
+                    path: "/tmp/active".to_string(),
+                    last_git_refresh: Some(now - Duration::from_secs(30)),
+                    last_ai_refresh: None,
+                },
+            );
+        }
+
+        let due = projects_due_for_git_interval(
+            &projects,
+            Some("active"),
+            true,
+            Duration::from_secs(15),
+            Duration::from_secs(600),
+            2,
+        );
+        let active_count = due.iter().filter(|project| project.id == "active").count();
+        let background_count = due.iter().filter(|project| project.id != "active").count();
+
+        assert_eq!(active_count, 1);
+        assert_eq!(background_count, 2);
+        assert_eq!(due.len(), 3);
     }
 }

@@ -47,7 +47,7 @@ const INTERACTIVE_WRITE_INTERVAL_MS = 16;
 const STREAM_ANIMATION_WRITE_INTERVAL_MS = 16;
 const STREAM_WRITE_INTERVAL_MS = 24;
 const INACTIVE_WRITE_INTERVAL_MS = 200;
-const FIT_DEBOUNCE_MS = 16;
+const FIT_DEBOUNCE_MS = 80;
 const FIT_DIMENSION_EPSILON_PX = 2;
 const MAX_QUEUED_WRITE_BYTES = 256 * 1024;
 const ACTIVE_WRITE_BYTES_PER_FLUSH = 32 * 1024;
@@ -455,7 +455,11 @@ function XtermRenderer({
 
     const scheduleFit = (force = false) => {
       pendingFitForce = pendingFitForce || force;
-      if (fitTimer !== null || resizeFrame !== null) return;
+      if (resizeFrame !== null) return;
+      if (fitTimer !== null) {
+        window.clearTimeout(fitTimer);
+        fitTimer = null;
+      }
       fitTimer = window.setTimeout(() => {
         fitTimer = null;
         resizeFrame = window.requestAnimationFrame(() => {

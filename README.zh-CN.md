@@ -122,6 +122,8 @@ Codux 使用内置更新器。稳定版和测试版都从 GitHub Releases 发布
 | Windows | `windows-x86_64-nsis-*.exe` | Windows 备用安装包。 |
 | 全平台 | `latest.json` | 自动更新元数据，不需要手动下载。 |
 
+Windows 构建目前仅在 Windows 11 上验证和支持。Windows 10 兼容性尚未测试，当前不作为正式支持目标。
+
 如果 macOS 阻止启动 unsigned 测试包，可以前往 **系统设置 > 隐私与安全性**，找到 Codux 提示后点击 **仍要打开**，或执行：
 
 ```bash
@@ -169,7 +171,7 @@ git push origin v1.0.0-beta.1
 ## 系统要求
 
 - macOS 14.0 (Sonoma) 或更高版本
-- Windows 10 / 11，并安装 Microsoft WebView2 Runtime
+- Windows 11，并安装 Microsoft WebView2 Runtime
 
 ## 反馈
 

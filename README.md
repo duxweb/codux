@@ -122,6 +122,8 @@ Codux uses the built-in updater. Stable releases and beta releases are published
 | Windows | `windows-x86_64-nsis-*.exe` | Alternative Windows installer. |
 | All | `latest.json` | Updater metadata. Do not download manually. |
 
+Windows builds are currently validated and supported on Windows 11 only. Windows 10 compatibility has not been tested and is not a current support target.
+
 If macOS blocks an unsigned build, go to **System Settings > Privacy & Security** and click **Open Anyway** next to the Codux warning, or run:
 
 ```bash
@@ -169,7 +171,7 @@ All shortcuts can be customized in **Settings > Shortcuts**.
 ## System Requirements
 
 - macOS 14.0 (Sonoma) or later
-- Windows 10 / 11 with Microsoft WebView2 Runtime
+- Windows 11 with Microsoft WebView2 Runtime
 
 ## Feedback
 

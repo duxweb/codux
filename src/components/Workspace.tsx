@@ -57,6 +57,7 @@ import {
   clearPendingOpenFileCommand,
   consumePendingOpenFileCommand,
   listenWorkspaceCommand,
+  workspacePathsMatch,
 } from "../workspaceCommands";
 import { systemConfirm, systemMessage } from "../systemDialog";
 import { formatI18n, tm } from "../i18n";
@@ -935,6 +936,14 @@ type FilesModeState = {
 
 const filesModeStateByProject = new Map<string, FilesModeState>();
 
+function fileTabId(rootPath: string, path: string) {
+  return `${normalizeFileEventPath(rootPath)}\u0000${normalizeFileEventPath(path)}`;
+}
+
+function fileTabMatchesId(tab: OpenFileTab, id: string) {
+  return fileTabId(tab.rootPath, tab.path) === id || tab.path === id;
+}
+
 function normalizeFileEventPath(value: string) {
   return value.replace(/\\/g, "/").replace(/\/+$/, "");
 }
@@ -980,7 +989,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
   const [isBusy, setBusy] = useState(false);
   const editorRef = useRef<CodeEditorHandle | null>(null);
   const tabsRef = useRef<OpenFileTab[]>([]);
-  const active = tabs.find((tab) => tab.path === activePath) ?? tabs[0];
+  const active = tabs.find((tab) => fileTabMatchesId(tab, activePath)) ?? tabs[0];
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -1014,8 +1023,9 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
 
   const openFileInEditor = useCallback(async (rootPath: string, path: string) => {
     setError(null);
-    if (tabsRef.current.some((tab) => tab.path === path && tab.rootPath === rootPath)) {
-      setActivePath(path);
+    const existing = tabsRef.current.find((tab) => tab.path === path && workspacePathsMatch(tab.rootPath, rootPath));
+    if (existing) {
+      setActivePath(fileTabId(existing.rootPath, existing.path));
       return;
     }
     setBusy(true);
@@ -1030,7 +1040,9 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         version: 0,
       };
       setTabs((current) => {
-        const existing = current.findIndex((tab) => tab.path === result.path && tab.rootPath === rootPath);
+        const existing = current.findIndex(
+          (tab) => tab.path === result.path && workspacePathsMatch(tab.rootPath, rootPath),
+        );
         if (existing >= 0) {
           const next = [...current];
           next[existing] = nextTab;
@@ -1038,7 +1050,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         }
         return [...current, nextTab];
       });
-      setActivePath(result.path);
+      setActivePath(fileTabId(rootPath, result.path));
     } catch (nextError) {
       setError(displayableFileError(nextError));
     } finally {
@@ -1048,7 +1060,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
 
   const closeTab = useCallback(
     async (path: string) => {
-      const tab = tabsRef.current.find((item) => item.path === path);
+      const tab = tabsRef.current.find((item) => fileTabMatchesId(item, path));
       if (
         tab?.dirty &&
         !(await systemConfirm(
@@ -1067,9 +1079,11 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         return;
       }
       setTabs((current) => {
-        const next = current.filter((item) => item.path !== path);
-        if (activePath === path) {
-          setActivePath(next[next.length - 1]?.path ?? "");
+        const next = current.filter((item) => !fileTabMatchesId(item, path));
+        const wasActive = tabsRef.current.some((item) => fileTabMatchesId(item, activePath) && fileTabMatchesId(item, path));
+        if (wasActive) {
+          const nextActive = next[next.length - 1];
+          setActivePath(nextActive ? fileTabId(nextActive.rootPath, nextActive.path) : "");
         }
         return next;
       });
@@ -1081,7 +1095,9 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
     (content: string) => {
       setTabs((current) =>
         current.map((tab) =>
-          tab.path === activePath ? { ...tab, content, dirty: content !== tab.savedContent } : tab,
+          fileTabMatchesId(tab, activePath)
+            ? { ...tab, content, dirty: content !== tab.savedContent }
+            : tab,
         ),
       );
     },
@@ -1089,7 +1105,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
   );
 
   const saveActive = useCallback(async () => {
-    const tab = tabsRef.current.find((item) => item.path === activePath);
+    const tab = tabsRef.current.find((item) => fileTabMatchesId(item, activePath));
     if (!tab || tab.readOnly || !tab.dirty) return;
     setBusy(true);
     setError(null);
@@ -1116,7 +1132,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
           if (!overwrite) {
             setTabs((current) =>
               current.map((item) =>
-                item.path === tab.path
+                fileTabId(item.rootPath, item.path) === fileTabId(tab.rootPath, tab.path)
                   ? {
                       ...item,
                       externalModifiedAt: currentDisk.modifiedAt,
@@ -1131,7 +1147,11 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
       }
       const saved = await writeFile(tab.rootPath, tab.path, tab.content);
       setTabs((current) =>
-        current.map((item) => (item.path === tab.path ? replaceTabWithReadResult(item, saved) : item)),
+        current.map((item) =>
+          fileTabId(item.rootPath, item.path) === fileTabId(tab.rootPath, tab.path)
+            ? replaceTabWithReadResult(item, saved)
+            : item,
+        ),
       );
     } catch (nextError) {
       setError(displayableFileError(nextError));
@@ -1141,7 +1161,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
   }, [activePath, replaceTabWithReadResult]);
 
   const reloadActive = useCallback(async () => {
-    const tab = tabsRef.current.find((item) => item.path === activePath);
+    const tab = tabsRef.current.find((item) => fileTabMatchesId(item, activePath));
     if (!tab) return;
     if (
       tab.dirty &&
@@ -1165,7 +1185,11 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
     try {
       const result = await readFile(tab.rootPath, tab.path);
       setTabs((current) =>
-        current.map((item) => (item.path === tab.path ? replaceTabWithReadResult(item, result) : item)),
+        current.map((item) =>
+          fileTabId(item.rootPath, item.path) === fileTabId(tab.rootPath, tab.path)
+            ? replaceTabWithReadResult(item, result)
+            : item,
+        ),
       );
     } catch (nextError) {
       setError(displayableFileError(nextError));
@@ -1176,7 +1200,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
 
   const checkFileForExternalChanges = useCallback(
     async (path: string) => {
-      const tab = tabsRef.current.find((item) => item.path === path);
+      const tab = tabsRef.current.find((item) => fileTabMatchesId(item, path));
       if (!tab || tab.readOnly || !window.__TAURI_INTERNALS__) return;
       try {
         const result = await readFile(tab.rootPath, tab.path);
@@ -1185,7 +1209,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         if (result.content === tab.content && result.isBinary === tab.isBinary) {
           setTabs((current) =>
             current.map((item) =>
-              item.path === tab.path
+              fileTabId(item.rootPath, item.path) === fileTabId(tab.rootPath, tab.path)
                 ? {
                     ...item,
                     ...result,
@@ -1202,7 +1226,11 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         }
         if (!tab.dirty) {
           setTabs((current) =>
-            current.map((item) => (item.path === tab.path ? replaceTabWithReadResult(item, result) : item)),
+            current.map((item) =>
+              fileTabId(item.rootPath, item.path) === fileTabId(tab.rootPath, tab.path)
+                ? replaceTabWithReadResult(item, result)
+                : item,
+            ),
           );
           return;
         }
@@ -1213,7 +1241,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         if (tab.dirty) {
           setTabs((current) =>
             current.map((item) =>
-              item.path === tab.path
+              fileTabId(item.rootPath, item.path) === fileTabId(tab.rootPath, tab.path)
                 ? {
                     ...item,
                     externalModifiedAt: result.modifiedAt,
@@ -1241,7 +1269,11 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
         }
 
         setTabs((current) =>
-          current.map((item) => (item.path === tab.path ? replaceTabWithReadResult(item, result) : item)),
+          current.map((item) =>
+            fileTabId(item.rootPath, item.path) === fileTabId(tab.rootPath, tab.path)
+              ? replaceTabWithReadResult(item, result)
+              : item,
+          ),
         );
       } catch (nextError) {
         setError(displayableFileError(nextError));
@@ -1257,6 +1289,9 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
           return;
         }
         if (command.type === "open-file") {
+          if (!project?.path || !workspacePathsMatch(command.rootPath, project.path)) {
+            return;
+          }
           clearPendingOpenFileCommand(command);
           void openFileInEditor(command.rootPath, command.path);
           return;
@@ -1411,18 +1446,18 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
       <TabStrip
         className="h-[46px] border-b border-border-subtle bg-transparent"
         items={tabs.map((tab) => ({
-          id: tab.path,
+          id: fileTabId(tab.rootPath, tab.path),
           label: `${tab.name}${tab.dirty ? " •" : ""}`,
           icon: FileText,
           closable: true,
         }))}
-        activeId={active?.path ?? ""}
+        activeId={active ? fileTabId(active.rootPath, active.path) : ""}
         emptyLabel={isBusy ? tm("common.processing", "Processing") : tm("files.panel.title", "Files")}
-        onSelect={(path) => {
-          setActivePath(path);
-          void checkFileForExternalChanges(path);
+        onSelect={(id) => {
+          setActivePath(id);
+          void checkFileForExternalChanges(id);
         }}
-        onClose={(path) => void closeTab(path)}
+        onClose={(id) => void closeTab(id)}
       />
       {active ? (
         <FileEditor
