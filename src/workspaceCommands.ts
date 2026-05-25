@@ -48,6 +48,7 @@ export type WorkspaceCommand =
     };
 
 const WORKSPACE_COMMAND_EVENT = "codux:workspace-command";
+let pendingOpenFileCommand: Extract<WorkspaceCommand, { type: "open-file" }> | null = null;
 
 export function dispatchWorkspaceCommand(command: WorkspaceCommand) {
   window.dispatchEvent(
@@ -58,11 +59,28 @@ export function dispatchWorkspaceCommand(command: WorkspaceCommand) {
 }
 
 export function broadcastWorkspaceCommand(command: WorkspaceCommand) {
+  if (command.type === "open-file") {
+    pendingOpenFileCommand = command;
+  }
   if (window.__TAURI_INTERNALS__) {
     void emit(WORKSPACE_COMMAND_EVENT, command);
     return;
   }
   dispatchWorkspaceCommand(command);
+}
+
+export function consumePendingOpenFileCommand(rootPath?: string) {
+  const command = pendingOpenFileCommand;
+  if (!command) return null;
+  if (rootPath && command.rootPath !== rootPath) return null;
+  pendingOpenFileCommand = null;
+  return command;
+}
+
+export function clearPendingOpenFileCommand(command: Extract<WorkspaceCommand, { type: "open-file" }>) {
+  if (pendingOpenFileCommand?.rootPath === command.rootPath && pendingOpenFileCommand.path === command.path) {
+    pendingOpenFileCommand = null;
+  }
 }
 
 export function listenWorkspaceCommand(listener: (command: WorkspaceCommand) => void) {

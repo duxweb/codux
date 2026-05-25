@@ -332,13 +332,6 @@ function UpdateDialogBody({
 
   return (
     <div className="grid gap-3">
-      <p className="text-sm leading-relaxed text-ink-soft">
-        {formatI18n(
-          tm("update.available.message_format", "A new version v%@ is available. You are currently using v%@."),
-          status.latestVersion ?? status.currentVersion,
-          status.currentVersion,
-        )}
-      </p>
       <div>
         <div className="mb-1.5 text-sm font-semibold text-ink-soft">
           {tm("update.available.notes_title", "Release Notes")}

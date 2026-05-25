@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-05-25
+
+### Added
+
+- Added Antigravity `agy` CLI support across the managed runtime wrappers, hook installer, session restore command generation, AI history parsing, and memory scanning.
+
+### Fixed
+
+- Removed duplicate available-update copy from the update dialog so release notes appear directly under the version summary.
+- Fixed file sidebar double-click from another main view so the file opens immediately after switching into the file editor.
+- Fixed Worktree sidebar diff statistics so changed file count, additions, and deletions stay aligned on one row.
+
+## [1.0.2] - 2026-05-25
+
+### Changed
+
+- Refined the update check dialog so the latest-version state uses clearer copy and avoids repeating the same message in both the title and body.
+
+### Fixed
+
+- Fixed updater metadata for the stable channel so v1.0.2 is published with the correct signed platform download entries.
+
 ## [1.0.1] - 2026-05-25
 
 ### Fixed

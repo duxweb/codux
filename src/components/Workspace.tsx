@@ -52,7 +52,12 @@ import {
 import { terminalRuntime } from "../terminal/runtime";
 import type { MainView, TerminalSession, WorkspaceProject } from "../types";
 import { openDetachedTerminalWindow } from "../windowing";
-import { broadcastWorkspaceCommand, listenWorkspaceCommand } from "../workspaceCommands";
+import {
+  broadcastWorkspaceCommand,
+  clearPendingOpenFileCommand,
+  consumePendingOpenFileCommand,
+  listenWorkspaceCommand,
+} from "../workspaceCommands";
 import { systemConfirm, systemMessage } from "../systemDialog";
 import { formatI18n, tm } from "../i18n";
 import {
@@ -1252,6 +1257,7 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
           return;
         }
         if (command.type === "open-file") {
+          clearPendingOpenFileCommand(command);
           void openFileInEditor(command.rootPath, command.path);
           return;
         }
@@ -1274,6 +1280,14 @@ function FilesMode({ project }: { project?: WorkspaceProject }) {
       }),
     [activePath, closeTab, openFileInEditor, project, saveActive],
   );
+
+  useEffect(() => {
+    if (!project?.path) return;
+    const command = consumePendingOpenFileCommand(project.path);
+    if (command) {
+      void openFileInEditor(command.rootPath, command.path);
+    }
+  }, [openFileInEditor, project?.path]);
 
   useEffect(() => {
     return registerShortcutHandler("workspace", (event, context) => {
