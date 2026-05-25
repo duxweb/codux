@@ -63,15 +63,15 @@ GitHub README 不会渲染第三方 iframe 播放器，可以前往 [Bilibili](h
 
 Codux 会从终端中识别已支持的 AI CLI，在工具提供 hook 机制时安装应用托管的 hook 文件，并通过读取各工具本地会话历史补充实时事件。
 
-| 工具 | 命令别名 | 实时活动 | 历史 / Token 统计 | 会话恢复 | 记忆注入 | 集成说明 |
-| :--- | :------- | :------- | :---------------- | :------- | :------- | :------- |
-| Claude Code | `claude`, `claude-code` | 完整 | 完整 | 完整 | `CLAUDE.md` | 使用 Claude hooks，并读取本地 transcript。 |
-| Codex | `codex` | 完整 | 完整 | 完整 | `AGENTS.md` | 使用 Codex hooks 和 session rollout 文件。 |
-| Gemini CLI | `gemini` | 完整 | 完整 | 完整 | `GEMINI.md` | 使用 Gemini hooks 和本地历史。 |
-| OpenCode | `opencode` | 完整 | 完整 | 完整 | `AGENTS.md` | 使用 OpenCode 配置和本地历史集成。 |
-| Kiro CLI | `kiro`, `kiro-cli` | 完整 | 完整 | 部分 | `AGENTS.md` | 通过 `~/.kiro/agents/codux-managed.json` 接入 Kiro agent hooks，并读取 `~/.kiro/sessions/cli`。 |
+| 工具 | 命令别名 | 实时活动 | 历史 / Token 统计 | 会话恢复 | 记忆注入 |
+| :--- | :------- | :------- | :---------------- | :------- | :------- |
+| Claude Code | `claude`, `claude-code` | 完整 | 完整 | 完整 | 支持 |
+| Codex | `codex` | 完整 | 完整 | 完整 | 支持 |
+| Gemini CLI | `gemini` | 完整 | 完整 | 完整 | 支持 |
+| OpenCode | `opencode` | 完整 | 完整 | 完整 | 支持 |
+| Kiro CLI | `kiro`, `kiro-cli` | 完整 | 完整 | 部分 | 支持 |
 
-`完整` 表示 Codux 可以在正常集成终端流程中驱动该能力。`部分` 表示工具本地数据足够支撑状态 / 历史识别，但恢复行为仍依赖该工具自身 CLI 支持。
+`完整` 表示 Codux 可以在正常集成终端流程中驱动该能力。`部分` 表示工具本地数据足够支撑状态 / 历史识别，但恢复行为仍依赖该工具自身 CLI 支持。`支持` 表示 Codux 可以为该工具注入应用托管的记忆。
 
 ## 自定义宠物
 

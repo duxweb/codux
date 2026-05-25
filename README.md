@@ -63,15 +63,15 @@ GitHub README does not render third-party iframe players. Watch the demo on [Bil
 
 Codux detects supported AI CLIs from the terminal, installs app-managed hook files where the tool exposes a hook system, and supplements live events by reading each tool's local session history.
 
-| Tool | Command aliases | Live activity | History / token stats | Resume / restore | Memory injection | Integration notes |
-| :--- | :-------------- | :------------ | :-------------------- | :--------------- | :--------------- | :---------------- |
-| Claude Code | `claude`, `claude-code` | Full | Full | Full | `CLAUDE.md` | Uses Claude hooks plus local transcript parsing. |
-| Codex | `codex` | Full | Full | Full | `AGENTS.md` | Uses Codex hooks and session rollout files. |
-| Gemini CLI | `gemini` | Full | Full | Full | `GEMINI.md` | Uses Gemini hooks and local history. |
-| OpenCode | `opencode` | Full | Full | Full | `AGENTS.md` | Uses OpenCode config / local history integration. |
-| Kiro CLI | `kiro`, `kiro-cli` | Full | Full | Partial | `AGENTS.md` | Uses Kiro agent hooks via `~/.kiro/agents/codux-managed.json` and reads `~/.kiro/sessions/cli`. |
+| Tool | Command aliases | Live activity | History / token stats | Resume / restore | Memory injection |
+| :--- | :-------------- | :------------ | :-------------------- | :--------------- | :--------------- |
+| Claude Code | `claude`, `claude-code` | Full | Full | Full | Supported |
+| Codex | `codex` | Full | Full | Full | Supported |
+| Gemini CLI | `gemini` | Full | Full | Full | Supported |
+| OpenCode | `opencode` | Full | Full | Full | Supported |
+| Kiro CLI | `kiro`, `kiro-cli` | Full | Full | Partial | Supported |
 
-`Full` means Codux can drive the feature from the normal integrated terminal workflow. `Partial` means the tool has enough local data for status / history, but the restore behavior still depends on the tool's own CLI support.
+`Full` means Codux can drive the feature from the normal integrated terminal workflow. `Partial` means the tool has enough local data for status / history, but the restore behavior still depends on the tool's own CLI support. `Supported` means Codux can inject app-managed memory for that tool.
 
 ## Custom Pets
 
