@@ -1,6 +1,6 @@
 [package]
 name = "codux-tauri"
-version = "1.0.3"
+version = "1.0.4"
 description = "Codux desktop workspace"
 authors = ["Codux"]
 edition = "2021"
@@ -28,7 +28,9 @@ percent-encoding = "2.3"
 portable-pty = "0.9"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "system-proxy"] }
 futures-util = "0.3"
+genai = "0.6.1"
 git2 = { version = "0.21.0", features = ["cred", "https", "ssh", "vendored-openssl"] }
+llm-json-repair = "0.1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }

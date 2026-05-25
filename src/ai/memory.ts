@@ -20,12 +20,22 @@ export type MemoryManagerTab = "summary" | "active" | "history";
 export type MemoryTier = "core" | "working" | "archive";
 export type MemoryKind = "preference" | "convention" | "decision" | "fact" | "bug_lesson";
 export type MemoryEntryStatus = "active" | "merged" | "archived";
+export type MemoryWriteDecisionKind = "create" | "merge" | "replace" | "archive" | "skip";
+
+export type MemoryDecisionLog = {
+  kind: MemoryWriteDecisionKind;
+  entryId?: string | null;
+  targetEntryId?: string | null;
+  reason: string;
+  createdAt: number;
+};
 
 export type MemoryEntry = {
   id: string;
   scope: "user" | "project";
   projectId?: string | null;
   toolId?: string | null;
+  moduleKey?: string | null;
   tier: MemoryTier;
   kind: MemoryKind;
   content: string;
@@ -43,6 +53,7 @@ export type MemoryEntry = {
   lastAccessedAt?: number | null;
   createdAt: number;
   updatedAt: number;
+  lastDecision?: MemoryDecisionLog | null;
 };
 
 export type MemorySummary = {
@@ -58,11 +69,27 @@ export type MemorySummary = {
   updatedAt: number;
 };
 
+export type MemoryProjectProfile = {
+  projectId: string;
+  content: string;
+  sourceFingerprint: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type MemoryProjectProfileRefreshResult = {
+  profile: MemoryProjectProfile;
+  usedLlm: boolean;
+  fallbackReason?: string | null;
+};
+
 export type MemoryScopeOverview = {
   activeEntryCount: number;
   archivedEntryCount: number;
   mergedEntryCount: number;
+  profileCount: number;
   summaryCount: number;
+  totalTokenEstimate: number;
   updatedAt?: number | null;
 };
 
@@ -81,6 +108,7 @@ export type MemoryManagerSnapshot = {
   targetRows: MemoryManagerTargetRow[];
   selectedTargetTitle: string;
   currentOverview: MemoryScopeOverview;
+  projectProfile?: MemoryProjectProfile | null;
   entries: MemoryEntry[];
   summaries: MemorySummary[];
   extraction: MemoryExtractionStatusSnapshot;
@@ -129,6 +157,10 @@ export async function deleteMemorySummary(summaryId: string) {
   await invoke("memory_delete_summary", { summaryId });
 }
 
+export async function deleteProjectProfile(projectId: string) {
+  await invoke("memory_delete_project_profile", { projectId });
+}
+
 export async function deleteProjectMemory(projectId: string) {
   await invoke("memory_delete_project", { projectId });
 }
@@ -149,6 +181,10 @@ export async function migrateProjectMemory(request: {
 
 export async function updateMemorySummary(request: { summaryId: string; content: string; maxVersions?: number }) {
   return invoke<MemorySummary>("memory_update_summary", { request });
+}
+
+export async function refreshProjectProfile(projectId: string) {
+  return invoke<MemoryProjectProfileRefreshResult>("memory_refresh_project_profile", { projectId });
 }
 
 export async function indexMemoryNow() {

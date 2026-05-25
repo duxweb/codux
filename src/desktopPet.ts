@@ -4,10 +4,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   desktopPetActivityLine,
   desktopPetAnimationState,
+  desktopPetLlmContext,
   nextDesktopPetActivityRefreshMs,
   type AISessionSnapshot,
   type DesktopPetAnimationState,
   type DesktopPetActivityTone,
+  type DesktopPetLlmContext,
 } from "./desktopPetActivity";
 import { lockRuntimeLocale, syncI18nBundleFromRust, tm } from "./i18n";
 import {
@@ -26,6 +28,16 @@ type AppSettings = {
     staticMode: boolean;
     enabled: boolean;
     desktopWidget: boolean;
+    reminders: boolean;
+  };
+  ai?: {
+    pet?: {
+      speechMode?: string;
+      speechFrequency?: string;
+      speechLlmEnabled?: boolean;
+      speechProviderId?: string;
+      speechTemporaryMuteUntil?: number | null;
+    };
   };
 };
 
@@ -55,9 +67,15 @@ type PlacementSnapshot = {
   side: DesktopPetSide;
 };
 
+type PetIdleSpeechResponse = {
+  text: string;
+};
+
 const spriteSize = 112;
 const desktopPetFrameDelayMs = 1000;
 const desktopPetLoopPauseMs = 3000;
+const hydrationReminderIntervalMs = 60 * 60 * 1000;
+const hydrationReminderVisibleMs = 20 * 1000;
 const visibleWidth = (petAtlas.cellWidth * spriteSize) / petAtlas.cellHeight;
 const spriteLoaders = import.meta.glob("./assets/pets/*/spritesheet.png", {
   query: "?url",
@@ -79,6 +97,8 @@ let runtime: AIRuntimeStateSnapshot = { sessions: [] };
 let side: DesktopPetSide = "left";
 let frameTimer: number | null = null;
 let activityTimer: number | null = null;
+let nextHydrationReminderAt = Date.now() + hydrationReminderIntervalMs;
+let hydrationReminderVisibleUntil = 0;
 let currentFrame = 0;
 let currentState: DesktopPetAnimationState = "idle";
 let currentSpriteKey = "";
@@ -90,6 +110,9 @@ let dragStarted = false;
 let lastBubbleText = "";
 let lastBubbleVisible = false;
 let lastBubbleTone: DesktopPetActivityTone = "normal";
+let activePetLlmKey = "";
+let requestedPetLlmKey = "";
+let lastPetLlmRequestedAt = 0;
 
 void boot();
 
@@ -330,12 +353,111 @@ function currentFrameCount() {
 }
 
 function updateActivityLine() {
-  const now = Date.now() / 1000;
-  const line = desktopPetActivityLine(runtime.sessions, now, tm);
+  const nowMs = Date.now();
+  const now = nowMs / 1000;
+  refreshHydrationReminder(nowMs);
+  const activityLine = desktopPetActivityLine(runtime.sessions, now, tm);
+  const llmContext = desktopPetLlmContext(runtime.sessions, now, tm);
+  const line = activityLine.text ? activityLine : hydrationReminderLine(nowMs);
   setBubbleLine(line.text, line.tone);
+  requestPetLlmLine(llmContext, nowMs);
   if (activityTimer != null) window.clearTimeout(activityTimer);
-  const refreshMs = nextDesktopPetActivityRefreshMs(runtime.sessions, now);
+  const refreshMs = nextBubbleRefreshMs(runtime.sessions, now, nowMs);
   activityTimer = refreshMs == null ? null : window.setTimeout(updateActivityLine, refreshMs);
+}
+
+function requestPetLlmLine(context: DesktopPetLlmContext | null, nowMs: number) {
+  if (!context || !petLlmEnabled()) {
+    activePetLlmKey = "";
+    return;
+  }
+  const key = `${context.event}:${context.tool}:${context.updatedAt}:${context.fallbackText}`;
+  activePetLlmKey = key;
+  if (requestedPetLlmKey === key) return;
+  const cooldownMs = petLlmCooldownMs(settings?.ai?.pet?.speechFrequency);
+  if (nowMs - lastPetLlmRequestedAt < cooldownMs) return;
+  requestedPetLlmKey = key;
+  lastPetLlmRequestedAt = nowMs;
+  void invoke<PetIdleSpeechResponse>("pet_idle_speech", {
+    request: {
+      event: context.event,
+      fallbackText: context.fallbackText,
+    },
+  })
+    .then((response) => {
+      const text = sanitizePetLlmLine(response.text);
+      if (!text || activePetLlmKey !== key) return;
+      setBubbleLine(text, context.tone);
+    })
+    .catch(() => undefined);
+}
+
+function petLlmEnabled() {
+  const speech = settings?.ai?.pet;
+  if (!speech?.speechLlmEnabled || speech.speechMode === "off") return false;
+  const mutedUntil = speech.speechTemporaryMuteUntil;
+  return !(typeof mutedUntil === "number" && mutedUntil > Math.floor(Date.now() / 1000));
+}
+
+function petLlmCooldownMs(value?: string) {
+  switch (value) {
+    case "chatterbox":
+      return 30_000;
+    case "lively":
+      return 90_000;
+    case "quiet":
+      return 15 * 60_000;
+    default:
+      return 5 * 60_000;
+  }
+}
+
+function sanitizePetLlmLine(value: string) {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("\n")
+    .trim();
+}
+
+function refreshHydrationReminder(nowMs: number) {
+  if (!settings?.pet.reminders) {
+    nextHydrationReminderAt = nowMs + hydrationReminderIntervalMs;
+    hydrationReminderVisibleUntil = 0;
+    return;
+  }
+  if (hydrationReminderVisibleUntil > nowMs) return;
+  if (nowMs >= nextHydrationReminderAt) {
+    hydrationReminderVisibleUntil = nowMs + hydrationReminderVisibleMs;
+    nextHydrationReminderAt = nowMs + hydrationReminderIntervalMs;
+  }
+}
+
+function hydrationReminderLine(nowMs: number) {
+  if (!settings?.pet.reminders || hydrationReminderVisibleUntil <= nowMs) {
+    return { text: "", tone: "normal" as DesktopPetActivityTone };
+  }
+  const species = pet?.species || "voidcat";
+  const key = `pet.bubble.${species}.hydration`;
+  const fallback = tm("pet.bubble.voidcat.hydration", "A sip of water might help the thoughts flow");
+  return { text: tm(key, fallback), tone: "attention" as DesktopPetActivityTone };
+}
+
+function nextBubbleRefreshMs(sessions: AISessionSnapshot[], now: number, nowMs: number) {
+  const candidates = [nextDesktopPetActivityRefreshMs(sessions, now)];
+  if (settings?.pet.reminders) {
+    if (hydrationReminderVisibleUntil > nowMs) {
+      candidates.push(Math.max(250, hydrationReminderVisibleUntil - nowMs));
+    } else {
+      candidates.push(Math.max(1000, nextHydrationReminderAt - nowMs));
+    }
+  }
+  return candidates
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    .sort((left, right) => left - right)[0] ?? null;
 }
 
 function setBubbleLine(text: string, tone: DesktopPetActivityTone = "normal") {

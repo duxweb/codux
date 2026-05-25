@@ -134,7 +134,16 @@ export type AIPetSettings = {
 
 export type AIProviderSettings = {
   id: string;
-  kind: "openAICompatible" | "anthropic" | "localLlama";
+  kind:
+    | "openai"
+    | "openAICompatible"
+    | "anthropic"
+    | "deepseek"
+    | "gemini"
+    | "groq"
+    | "openrouter"
+    | "ollama"
+    | "localLlama";
   displayName: string;
   isEnabled: boolean;
   model: string;

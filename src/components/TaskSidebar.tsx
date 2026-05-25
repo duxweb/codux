@@ -586,12 +586,14 @@ function WorktreeGitSummary({
     return <div className="mt-1 truncate text-xs font-semibold text-ink-faint">{repositoryMessage}</div>;
   }
   return (
-    <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-1.5 text-xs font-semibold leading-4 tabular-nums">
+    <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 text-xs font-semibold leading-4 tabular-nums">
       <span className="min-w-0 truncate pr-1 text-ink-faint">
         {formatI18n(tm("worktree.sidebar.changed_format", "%@ changed"), changes)}
       </span>
-      <span className="min-w-[3ch] whitespace-nowrap text-right text-brand-green">+{Math.max(0, additions)}</span>
-      <span className="min-w-[3ch] whitespace-nowrap text-right text-brand-red">-{Math.max(0, deletions)}</span>
+      <span className="flex min-w-0 items-baseline justify-end gap-2 justify-self-end text-right">
+        <span className="whitespace-nowrap text-right text-brand-green">+{Math.max(0, additions)}</span>
+        <span className="whitespace-nowrap text-right text-brand-red">-{Math.max(0, deletions)}</span>
+      </span>
     </div>
   );
 }

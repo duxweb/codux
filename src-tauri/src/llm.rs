@@ -1,8 +1,12 @@
 use crate::app_settings::{locale_from_language_setting, AIProviderSettings, AISettings};
-use crate::i18n;
 use crate::runtime_trace::runtime_trace;
 use chrono::{Local, Timelike};
+use genai::adapter::AdapterKind;
+use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ChatResponseFormat};
+use genai::resolver::{AuthData, Endpoint};
+use genai::{Client, ModelIden, ModelSpec, ServiceTarget, WebConfig};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -34,7 +38,10 @@ pub struct LLMProviderTestResult {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PetIdleSpeechRequest {
-    pub pet_name: String,
+    #[serde(default)]
+    pub event: String,
+    #[serde(default)]
+    pub fallback_text: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -43,60 +50,12 @@ pub struct PetIdleSpeechResponse {
     pub text: String,
 }
 
-#[derive(Debug, Serialize)]
-struct OpenAIChatCompletionRequest {
-    model: String,
-    messages: Vec<OpenAIMessage>,
-    max_tokens: u32,
-    temperature: f32,
-}
-
-#[derive(Debug, Serialize)]
-struct OpenAIMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAIChatCompletionResponse {
-    choices: Vec<OpenAIChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAIChoice {
-    message: OpenAIChoiceMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAIChoiceMessage {
-    content: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct AnthropicMessagesRequest {
-    model: String,
-    max_tokens: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<String>,
-    messages: Vec<AnthropicMessage>,
-}
-
-#[derive(Debug, Serialize)]
-struct AnthropicMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AnthropicMessagesResponse {
-    content: Vec<AnthropicContentBlock>,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct LLMProviderCompletionOptions {
     pub max_tokens: u32,
     pub temperature: f32,
     pub preserve_formatting: bool,
+    pub json_response: bool,
 }
 
 impl Default for LLMProviderCompletionOptions {
@@ -105,13 +64,9 @@ impl Default for LLMProviderCompletionOptions {
             max_tokens: 512,
             temperature: 0.4,
             preserve_formatting: false,
+            json_response: false,
         }
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct AnthropicContentBlock {
-    text: Option<String>,
 }
 
 pub async fn complete_with_settings(
@@ -165,47 +120,50 @@ pub async fn pet_idle_speech_with_settings(
             text: String::new(),
         });
     }
-    let mode = resolved_pet_speech_mode(&settings.pet.speech_mode);
     let locale = locale_from_language_setting(language);
-    let pet_name = normalized_non_empty(&request.pet_name)
-        .unwrap_or_else(|| i18n::translate(&locale, "pet.speech.payload.pet_name", "Little One"));
-    let personality = i18n::translate(
-        &locale,
-        &format!("pet.speech.llm.mode.{mode}"),
-        "warm, specific, coach-like",
-    );
-    let system_prompt = fill_placeholders(
-        &i18n::translate(
-            &locale,
-            "pet.speech.llm.idle_system_prompt_format",
-            "You are a desktop pixel pet named %@. Personality: %@. Write a casual idle monologue in Simplified Chinese. Use at most 2 short lines and 36 characters total. Do not mention code, files, secrets, commands, or exact task results. Do not explain. Output only the line.",
-        ),
-        &[&pet_name, &personality],
-    );
-    let hour_label = Local::now().format("%H:%M").to_string();
-    let tool = i18n::translate(&locale, "pet.speech.payload.tool", "you");
-    let project = i18n::translate(&locale, "pet.speech.payload.project", "this task");
-    let prompt = fill_placeholders(
-        &i18n::translate(
-            &locale,
-            "pet.speech.llm.idle_user_prompt_format",
-            "Idle event: %@\nCurrent hour: %@\nRecent tool: %@ / model: %@\nProject nickname: %@",
-        ),
-        &["idle.monologue", &hour_label, &tool, "AI", &project],
-    );
-    let completion = complete_with_settings(
+    let fallback_text = normalized_non_empty(&request.fallback_text);
+    let system_prompt = pet_speech_system_prompt(&locale);
+    let prompt = if let Some(fallback_text) = fallback_text {
+        pet_speech_event_prompt(&request, &fallback_text)
+    } else {
+        pet_speech_idle_prompt(&locale)
+    };
+    let provider = select_provider(
         settings,
-        LLMCompletionRequest {
-            provider_id: Some(settings.pet.speech_provider_id.clone()),
-            prompt,
-            system_prompt: Some(system_prompt),
-            purpose: "petSpeech".to_string(),
+        Some(settings.pet.speech_provider_id.as_str()),
+        "petSpeech",
+    )
+    .ok_or_else(|| "No available AI provider is configured for pet speech.".to_string())?;
+    runtime_trace(
+        "ai-pet",
+        &format!(
+            "speech request provider_id={} kind={} model={} event={} prompt_chars={}",
+            provider.id,
+            provider.kind,
+            fallback_model(provider, default_model_for_provider_kind(&provider.kind)),
+            normalized_non_empty(&request.event).unwrap_or_else(|| "idle".to_string()),
+            prompt.chars().count()
+        ),
+    );
+    let response_text = complete_with_provider_options(
+        provider,
+        &prompt,
+        Some(&system_prompt),
+        LLMProviderCompletionOptions {
+            max_tokens: 80,
+            temperature: 0.2,
+            preserve_formatting: true,
+            json_response: true,
         },
     )
     .await?;
-    Ok(PetIdleSpeechResponse {
-        text: completion.text,
-    })
+    let text = decode_pet_speech_response(&response_text);
+    let text = sanitize_pet_speech_line(&text);
+    runtime_trace(
+        "ai-pet",
+        &format!("speech response text_chars={}", text.chars().count()),
+    );
+    Ok(PetIdleSpeechResponse { text })
 }
 
 pub async fn complete_with_provider(
@@ -232,14 +190,7 @@ pub async fn complete_with_provider_options(
     if prompt.is_empty() {
         return Err("Prompt cannot be empty.".to_string());
     }
-    match provider.kind.as_str() {
-        "anthropic" => complete_anthropic(provider, prompt, system_prompt, options).await,
-        "openAICompatible" => {
-            complete_openai_compatible(provider, prompt, system_prompt, options).await
-        }
-        "localLlama" => Err("Local llama is not available in this Tauri build yet.".to_string()),
-        _ => Err("Unsupported AI provider kind.".to_string()),
-    }
+    complete_genai(provider, prompt, system_prompt, options).await
 }
 
 fn select_provider<'a>(
@@ -286,20 +237,7 @@ fn select_provider<'a>(
 }
 
 fn supports_completion(kind: &str) -> bool {
-    matches!(kind, "openAICompatible" | "anthropic")
-}
-
-fn resolved_pet_speech_mode(mode: &str) -> &str {
-    match mode {
-        "roast" | "encourage" | "flirty" | "chuunibyou" => mode,
-        "mixed" => match Local::now().hour() % 4 {
-            0 => "roast",
-            1 => "encourage",
-            2 => "flirty",
-            _ => "chuunibyou",
-        },
-        _ => "encourage",
-    }
+    provider_adapter_kind(kind).is_some()
 }
 
 fn quiet_hours_active(settings: &AISettings) -> bool {
@@ -320,21 +258,88 @@ fn quiet_hours_active(settings: &AISettings) -> bool {
     }
 }
 
-async fn complete_openai_compatible(
+fn pet_speech_system_prompt(locale: &str) -> String {
+    let language = pet_speech_language_label(locale);
+    format!("Return minified JSON only: {{\"text\":\"...\"}}. One short safe {language} pet line.")
+}
+
+fn pet_speech_language_label(locale: &str) -> &'static str {
+    let normalized = locale.replace('_', "-").to_lowercase();
+    if normalized.starts_with("zh-hant") {
+        "Traditional Chinese"
+    } else if normalized.starts_with("zh") {
+        "Simplified Chinese"
+    } else if normalized.starts_with("ja") {
+        "Japanese"
+    } else if normalized.starts_with("ko") {
+        "Korean"
+    } else if normalized.starts_with("fr") {
+        "French"
+    } else if normalized.starts_with("de") {
+        "German"
+    } else if normalized.starts_with("es") {
+        "Spanish"
+    } else if normalized.starts_with("pt") {
+        "Portuguese"
+    } else if normalized.starts_with("ru") {
+        "Russian"
+    } else {
+        "English"
+    }
+}
+
+fn pet_speech_event_prompt(request: &PetIdleSpeechRequest, fallback_text: &str) -> String {
+    format!(
+        "Event: {}\nFallback line: {}\nReturn {{\"text\":\"...\"}}.",
+        normalized_non_empty(&request.event).unwrap_or_else(|| "activity".to_string()),
+        fallback_text
+    )
+}
+
+fn pet_speech_idle_prompt(locale: &str) -> String {
+    let _ = locale;
+    "Event: idle\nReturn {\"text\":\"...\"}.".to_string()
+}
+
+fn decode_pet_speech_response(raw: &str) -> String {
+    let value = serde_json::from_str::<Value>(raw)
+        .ok()
+        .or_else(|| llm_json_repair::parse::<Value>(raw).ok());
+    if let Some(text) = value
+        .as_ref()
+        .and_then(|value| value.as_object())
+        .and_then(|object| {
+            ["text", "line", "message", "content", "response"]
+                .iter()
+                .find_map(|key| object.get(*key)?.as_str())
+        })
+    {
+        return text.to_string();
+    }
+    raw.to_string()
+}
+
+fn sanitize_pet_speech_line(text: &str) -> String {
+    sanitize_response_line(text).chars().take(80).collect()
+}
+
+async fn complete_genai(
     provider: &AIProviderSettings,
     prompt: &str,
     system_prompt: Option<&str>,
     options: LLMProviderCompletionOptions,
 ) -> Result<String, String> {
-    let api_key = required_api_key(provider)?;
-    let url = openai_endpoint(&provider.base_url)?;
-    let client = http_client()?;
+    let adapter_kind = provider_adapter_kind(&provider.kind)
+        .ok_or_else(|| "Unsupported AI provider kind.".to_string())?;
+    let model = fallback_model(provider, default_model_for_provider_kind(&provider.kind));
+    let service_target = genai_service_target(provider, adapter_kind, &model)?;
     runtime_trace(
         "ai-llm",
         &format!(
-            "request start kind=openAICompatible provider_id={} model={} base_url={} prompt_chars={} system_chars={} max_tokens={} temperature={:.2}",
+            "request start kind={} provider_id={} model={} base_url={} prompt_chars={} system_chars={} max_tokens={} temperature={:.2} json_response={}",
+            provider.kind,
             provider.id,
-            provider.model,
+            model,
             provider.base_url,
             prompt.chars().count(),
             system_prompt
@@ -343,194 +348,54 @@ async fn complete_openai_compatible(
                 .map(|value| value.chars().count())
                 .unwrap_or(0),
             options.max_tokens,
-            options.temperature
+            options.temperature,
+            options.json_response
         ),
     );
-    let mut messages = Vec::new();
+    let mut request = ChatRequest::default();
     if let Some(system) = system_prompt
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        messages.push(OpenAIMessage {
-            role: "system".to_string(),
-            content: system.to_string(),
-        });
+        request = request.with_system(system);
     }
-    messages.push(OpenAIMessage {
-        role: "user".to_string(),
-        content: prompt.to_string(),
-    });
+    request = request.append_message(ChatMessage::user(prompt));
+    let client = Client::builder()
+        .with_web_config(WebConfig::default().with_timeout(Duration::from_secs(15)))
+        .build();
+    let chat_options = ChatOptions::default()
+        .with_max_tokens(options.max_tokens)
+        .with_temperature(f64::from(options.temperature))
+        .with_capture_raw_body(true);
+    let chat_options = if options.json_response {
+        chat_options.with_response_format(ChatResponseFormat::JsonMode)
+    } else {
+        chat_options
+    };
     let response = client
-        .post(url)
-        .bearer_auth(api_key)
-        .json(&OpenAIChatCompletionRequest {
-            model: fallback_model(provider, "gpt-4.1-mini"),
-            messages,
-            max_tokens: options.max_tokens,
-            temperature: options.temperature,
-        })
-        .send()
+        .exec_chat(
+            ModelSpec::from_target(service_target),
+            request,
+            Some(&chat_options),
+        )
         .await
-        .map_err(|error| error.to_string())?;
-    let status = response.status();
-    let body = response.bytes().await.map_err(|error| error.to_string())?;
-    if !status.is_success() {
-        runtime_trace(
-            "ai-llm",
-            &format!(
-                "request failed status={} provider_id={} model={} body_bytes={}",
-                status.as_u16(),
-                provider.id,
-                provider.model,
-                body.len()
-            ),
-        );
-        return Err(provider_error(
-            status.as_u16(),
-            &String::from_utf8_lossy(&body),
-        ));
-    }
-    let decoded: OpenAIChatCompletionResponse = serde_json::from_slice(&body).map_err(|error| {
-        runtime_trace(
-            "ai-llm",
-            &format!(
-                "request decode failed provider_id={} model={} body_bytes={} error={}",
-                provider.id,
-                provider.model,
-                body.len(),
-                error
-            ),
-        );
-        error.to_string()
-    })?;
-    runtime_trace(
-        "ai-llm",
-        &format!(
-            "request ok kind=openAICompatible provider_id={} model={} body_bytes={} text_chars={}",
-            provider.id,
-            provider.model,
-            body.len(),
-            decoded
-                .choices
-                .first()
-                .and_then(|choice| choice.message.content.as_deref())
-                .map(|text| text.chars().count())
-                .unwrap_or(0)
-        ),
-    );
-    decoded
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.as_deref())
-        .map(|text| sanitize_provider_response(text, options.preserve_formatting))
-        .filter(|text| !text.is_empty())
-        .ok_or_else(|| "The AI provider returned an empty response.".to_string())
-}
-
-async fn complete_anthropic(
-    provider: &AIProviderSettings,
-    prompt: &str,
-    system_prompt: Option<&str>,
-    options: LLMProviderCompletionOptions,
-) -> Result<String, String> {
-    let api_key = required_api_key(provider)?;
-    let url = anthropic_endpoint(&provider.base_url)?;
-    let client = http_client()?;
-    runtime_trace(
-        "ai-llm",
-        &format!(
-            "request start kind=anthropic provider_id={} model={} base_url={} prompt_chars={} system_chars={} max_tokens={} temperature={:.2}",
-            provider.id,
-            provider.model,
-            provider.base_url,
-            prompt.chars().count(),
-            system_prompt
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(|value| value.chars().count())
-                .unwrap_or(0),
-            options.max_tokens,
-            options.temperature
-        ),
-    );
-    let response = client
-        .post(url)
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&AnthropicMessagesRequest {
-            model: fallback_model(provider, "claude-3-5-haiku-latest"),
-            max_tokens: options.max_tokens,
-            system: system_prompt
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_string),
-            messages: vec![AnthropicMessage {
-                role: "user".to_string(),
-                content: prompt.to_string(),
-            }],
-        })
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
-    let status = response.status();
-    let body = response.bytes().await.map_err(|error| error.to_string())?;
-    if !status.is_success() {
-        runtime_trace(
-            "ai-llm",
-            &format!(
-                "request failed status={} provider_id={} model={} body_bytes={}",
-                status.as_u16(),
-                provider.id,
-                provider.model,
-                body.len()
-            ),
-        );
-        return Err(provider_error(
-            status.as_u16(),
-            &String::from_utf8_lossy(&body),
-        ));
-    }
-    let decoded: AnthropicMessagesResponse = serde_json::from_slice(&body).map_err(|error| {
-        runtime_trace(
-            "ai-llm",
-            &format!(
-                "request decode failed provider_id={} model={} body_bytes={} error={}",
-                provider.id,
-                provider.model,
-                body.len(),
-                error
-            ),
-        );
-        error.to_string()
-    })?;
-    let text = decoded
-        .content
-        .iter()
-        .filter_map(|block| block.text.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
+        .map_err(|error| provider_call_error(provider, &model, error))?;
+    let text = response.content.into_joined_texts().unwrap_or_default();
     let text = sanitize_provider_response(&text, options.preserve_formatting);
     if text.is_empty() {
         runtime_trace(
             "ai-llm",
-            &format!(
-                "request empty provider_id={} model={} body_bytes={}",
-                provider.id,
-                provider.model,
-                body.len()
-            ),
+            &format!("request empty provider_id={} model={}", provider.id, model),
         );
         Err("The AI provider returned an empty response.".to_string())
     } else {
         runtime_trace(
             "ai-llm",
             &format!(
-                "request ok kind=anthropic provider_id={} model={} body_bytes={} text_chars={}",
+                "request ok kind={} provider_id={} model={} text_chars={}",
+                provider.kind,
                 provider.id,
-                provider.model,
-                body.len(),
+                model,
                 text.chars().count()
             ),
         );
@@ -557,7 +422,11 @@ fn sanitize_test_provider(mut provider: AIProviderSettings) -> Result<AIProvider
     if provider.display_name.is_empty() {
         provider.display_name = match provider.kind.as_str() {
             "anthropic" => "Claude API".to_string(),
-            "localLlama" => "Llama Model".to_string(),
+            "deepseek" => "DeepSeek API".to_string(),
+            "gemini" => "Gemini API".to_string(),
+            "groq" => "Groq API".to_string(),
+            "openrouter" => "OpenRouter API".to_string(),
+            "ollama" | "localLlama" => "Ollama".to_string(),
             _ => "OpenAI API".to_string(),
         };
     }
@@ -569,7 +438,7 @@ fn sanitize_test_provider(mut provider: AIProviderSettings) -> Result<AIProvider
 
 fn required_api_key(provider: &AIProviderSettings) -> Result<&str, String> {
     let api_key = provider.api_key.trim();
-    if api_key.is_empty() {
+    if api_key.is_empty() && !provider_kind_allows_empty_api_key(&provider.kind) {
         Err("The selected AI provider is missing an API key.".to_string())
     } else {
         Ok(api_key)
@@ -585,53 +454,102 @@ fn fallback_model(provider: &AIProviderSettings, fallback: &str) -> String {
     }
 }
 
-fn openai_endpoint(base_url: &str) -> Result<String, String> {
-    normalized_endpoint(
-        base_url,
-        "https://api.openai.com/v1/chat/completions",
-        "chat/completions",
-    )
+fn provider_adapter_kind(kind: &str) -> Option<AdapterKind> {
+    match kind {
+        "openai" | "openAICompatible" => Some(AdapterKind::OpenAI),
+        "anthropic" => Some(AdapterKind::Anthropic),
+        "deepseek" => Some(AdapterKind::DeepSeek),
+        "gemini" => Some(AdapterKind::Gemini),
+        "groq" => Some(AdapterKind::Groq),
+        "openrouter" => Some(AdapterKind::OpenRouter),
+        "ollama" | "localLlama" => Some(AdapterKind::Ollama),
+        _ => None,
+    }
 }
 
-fn anthropic_endpoint(base_url: &str) -> Result<String, String> {
-    normalized_endpoint(
-        base_url,
-        "https://api.anthropic.com/v1/messages",
-        "messages",
-    )
+fn provider_kind_allows_empty_api_key(kind: &str) -> bool {
+    matches!(kind, "ollama" | "localLlama")
 }
 
-fn normalized_endpoint(base_url: &str, fallback: &str, suffix: &str) -> Result<String, String> {
-    let trimmed = base_url.trim().trim_end_matches('/');
-    let endpoint = if trimmed.is_empty() {
-        fallback.to_string()
-    } else if trimmed.ends_with(suffix) {
-        trimmed.to_string()
-    } else if trimmed.ends_with("/v1") {
-        format!("{trimmed}/{suffix}")
+fn default_model_for_provider_kind(kind: &str) -> &'static str {
+    match kind {
+        "anthropic" => "claude-3-5-haiku-latest",
+        "deepseek" => "deepseek-chat",
+        "gemini" => "gemini-2.5-flash",
+        "groq" => "llama-3.3-70b-versatile",
+        "openrouter" => "openai/gpt-4.1-mini",
+        "ollama" | "localLlama" => "llama3.2",
+        _ => "gpt-4.1-mini",
+    }
+}
+
+fn default_endpoint_for_provider_kind(kind: &str) -> &'static str {
+    match kind {
+        "anthropic" => "https://api.anthropic.com/v1/",
+        "deepseek" => "https://api.deepseek.com/",
+        "gemini" => "https://generativelanguage.googleapis.com/v1beta/",
+        "groq" => "https://api.groq.com/openai/v1/",
+        "openrouter" => "https://openrouter.ai/api/v1/",
+        "ollama" | "localLlama" => "http://localhost:11434",
+        _ => "https://api.openai.com/v1/",
+    }
+}
+
+fn genai_service_target(
+    provider: &AIProviderSettings,
+    adapter_kind: AdapterKind,
+    model: &str,
+) -> Result<ServiceTarget, String> {
+    let endpoint = provider_endpoint(provider)?;
+    let auth = if provider_kind_allows_empty_api_key(&provider.kind) {
+        AuthData::None
     } else {
-        format!("{trimmed}/v1/{suffix}")
+        AuthData::from_single(required_api_key(provider)?.to_string())
     };
+    Ok(ServiceTarget {
+        endpoint: Endpoint::from_owned(endpoint),
+        auth,
+        model: ModelIden::new(adapter_kind, model),
+    })
+}
+
+fn provider_endpoint(provider: &AIProviderSettings) -> Result<String, String> {
+    let endpoint = normalized_provider_base_url(
+        &provider.base_url,
+        default_endpoint_for_provider_kind(&provider.kind),
+    );
     if !endpoint.starts_with("https://") && !endpoint.starts_with("http://") {
         return Err("The selected AI provider has an invalid base URL.".to_string());
     }
     Ok(endpoint)
 }
 
-fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|error| error.to_string())
+fn normalized_provider_base_url(base_url: &str, fallback: &str) -> String {
+    let trimmed = base_url.trim();
+    let value = if trimmed.is_empty() {
+        fallback
+    } else {
+        trimmed
+    };
+    if value.ends_with('/') {
+        value.to_string()
+    } else {
+        format!("{value}/")
+    }
 }
 
-fn provider_error(status: u16, body: &str) -> String {
-    let body = body.trim();
-    if body.is_empty() {
-        format!("Provider returned HTTP {status}.")
-    } else {
-        body.chars().take(800).collect()
-    }
+fn provider_call_error(provider: &AIProviderSettings, model: &str, error: genai::Error) -> String {
+    runtime_trace(
+        "ai-llm",
+        &format!(
+            "request failed kind={} provider_id={} model={} error={}",
+            provider.kind, provider.id, model, error
+        ),
+    );
+    format!(
+        "Provider request failed. provider={} id={} kind={} model={} detail={}",
+        provider.display_name, provider.id, provider.kind, model, error
+    )
 }
 
 fn sanitize_response_line(text: &str) -> String {
@@ -655,27 +573,19 @@ fn normalized_non_empty(value: &str) -> Option<String> {
     }
 }
 
-fn fill_placeholders(template: &str, values: &[&str]) -> String {
-    let mut output = template.to_string();
-    for value in values {
-        output = output.replacen("%@", value, 1);
-    }
-    output
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn normalizes_openai_base_urls() {
+    fn normalizes_provider_base_urls_for_genai() {
         assert_eq!(
-            openai_endpoint("https://api.openai.com/v1").unwrap(),
-            "https://api.openai.com/v1/chat/completions"
+            normalized_provider_base_url("https://api.openai.com/v1", "https://fallback.test/v1/"),
+            "https://api.openai.com/v1/"
         );
         assert_eq!(
-            openai_endpoint("https://example.com/api").unwrap(),
-            "https://example.com/api/v1/chat/completions"
+            normalized_provider_base_url("", "https://fallback.test/v1/"),
+            "https://fallback.test/v1/"
         );
     }
 
@@ -693,6 +603,15 @@ mod tests {
         let selected = select_provider(&settings, None, "memory").unwrap();
 
         assert_eq!(selected.id, "b");
+    }
+
+    #[test]
+    fn pet_speech_language_follows_resolved_ui_locale() {
+        assert_eq!(pet_speech_language_label("zh-Hans"), "Simplified Chinese");
+        assert_eq!(pet_speech_language_label("zh-Hant"), "Traditional Chinese");
+        assert_eq!(pet_speech_language_label("ja"), "Japanese");
+        assert_eq!(pet_speech_language_label("pt-BR"), "Portuguese");
+        assert_eq!(pet_speech_language_label("en"), "English");
     }
 
     fn provider(id: &str, priority: i32, use_for_memory_extraction: bool) -> AIProviderSettings {

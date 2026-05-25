@@ -7,7 +7,6 @@ import { formatI18n, localeFromSettings, tm } from "../i18n";
 import { dispatchWorkspaceCommand } from "../workspaceCommands";
 import { RefreshCw } from "../icons";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
-import { PressableButton } from "./PressableButton";
 import { systemConfirm } from "../systemDialog";
 
 type Props = {
@@ -168,13 +167,15 @@ const HistorySessionRow = memo(function HistorySessionRow({
 
   return (
     <div className="relative mb-1 last:mb-0">
-      <PressableButton
+      <button
+        type="button"
         className={`w-full rounded-[8px] px-2.5 py-2 text-left outline-none transition-colors ${
           selected ? "bg-brand-blue/13" : disabled ? "opacity-65" : "hover:bg-fill/[0.055]"
         }`}
         disabled={disabled}
         aria-busy={restoring}
-        onPressUp={onSelect}
+        tabIndex={-1}
+        onClick={onSelect}
         onDoubleClick={onRestore}
         onContextMenu={(event) => {
           onSelect();
@@ -200,7 +201,7 @@ const HistorySessionRow = memo(function HistorySessionRow({
           </div>
           <div className="flex-none text-xs font-medium tabular-nums leading-4 text-ink-mute">{totalLabel}</div>
         </div>
-      </PressableButton>
+      </button>
       <ContextMenu
         ariaLabel={formatI18n(tm("ai.sessions.actions_format", "%@ Actions"), session.sessionTitle)}
         menu={contextMenu.menu}

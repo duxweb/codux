@@ -25,8 +25,7 @@ import {
   type AppIcon,
 } from "../icons";
 import { invoke } from "@tauri-apps/api/core";
-import { Tabs } from "@heroui/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { useAIGlobalHistorySnapshot } from "../ai/history";
 import { useMemoryExtractionStatus, type MemoryExtractionStatusSnapshot } from "../ai/memory";
 import { useAIRuntimeSnapshot } from "../ai/runtime";
@@ -35,7 +34,6 @@ import { Button } from "./Button";
 import { DesktopPopover } from "./DesktopPopover";
 import { OpenInIDEButton } from "./OpenInIDEButton";
 import { PetSprite } from "./PetSprite";
-import { PressableButton } from "./PressableButton";
 import { Tooltip } from "./Tooltip";
 import { WindowsWindowControls } from "./WindowsWindowControls";
 import type { ButtonSize } from "./Button";
@@ -64,11 +62,33 @@ type Props = {
 
 type TitlebarPopoverKey = "pet" | "daily-level" | "remote";
 
-const TITLEBAR_ICON_BUTTON_CLASS = "no-drag !h-[28px] !w-[28px] !min-w-[28px] !px-0 rounded-[7px]";
 const TITLEBAR_TOOL_ICON_SIZE = 14;
 const TITLEBAR_BUTTON_ICON_SIZE = 11;
 const TITLEBAR_MEMORY_ICON_SIZE = 10;
 const TITLEBAR_NAV_ICON_SIZE = 12;
+const TITLEBAR_POINTER_CLICK_SUPPRESS_MS = 700;
+
+function useImmediateTitlebarAction(action?: () => void) {
+  const lastPointerActionAtRef = useRef(0);
+  return {
+    onPointerDown: (event: PointerEvent<HTMLElement>) => {
+      if (!action || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      lastPointerActionAtRef.current = Date.now();
+      action();
+    },
+    onClick: (event: MouseEvent<HTMLElement>) => {
+      if (!action) return;
+      if (Date.now() - lastPointerActionAtRef.current < TITLEBAR_POINTER_CLICK_SUPPRESS_MS) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      action();
+    },
+  };
+}
 
 export function Titlebar({
   projects,
@@ -253,18 +273,20 @@ function PetPopoverButton({
     : tm("pet.title.claim", "Claim");
   const triggerClassName =
     "no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[7px] border border-border-subtle bg-fill/[0.06] py-0 pl-2 pr-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-border hover:bg-fill/10 data-[pressed]:border-brand-blue/30 data-[pressed]:bg-brand-blue/16";
+  const claimAction = useImmediateTitlebarAction(() => void openAppWindow("pet-claim"));
 
   if (!pet.snapshot.claimedAt) {
     return (
       <Tooltip label={tooltip} placement="bottom">
-        <PressableButton
+        <button
+          type="button"
           aria-label={t("pet")}
           className={triggerClassName}
-          onPressUp={() => void openAppWindow("pet-claim")}
+          {...claimAction}
         >
           <PetTitlebarIcon isMaxLevel={false} />
           <span className="leading-none">{label}</span>
-        </PressableButton>
+        </button>
       </Tooltip>
     );
   }
@@ -497,18 +519,19 @@ function GlyphButton({
   active?: boolean;
   onPress?: () => void;
 }) {
+  const action = useImmediateTitlebarAction(onPress);
   return (
     <Tooltip label={tooltip} placement="bottom">
-      <Button
-        isIconOnly
-        size="sm"
-        variant="ghost"
-        onPress={onPress}
+      <button
+        type="button"
         aria-label={tooltip}
-        className={`${TITLEBAR_ICON_BUTTON_CLASS} ${active ? "bg-fill/10 text-ink" : "text-ink-soft"}`}
+        className={`no-drag grid h-[28px] w-[28px] place-items-center rounded-[7px] outline-none transition-colors hover:bg-fill/10 hover:text-ink ${
+          active ? "bg-fill/10 text-ink" : "text-ink-soft"
+        }`}
+        {...action}
       >
         <Icon size={TITLEBAR_TOOL_ICON_SIZE} strokeWidth={1.9} />
-      </Button>
+      </button>
     </Tooltip>
   );
 }
@@ -533,6 +556,8 @@ function MemoryStatusButton() {
       : isFailed
         ? "border-brand-red/45 bg-brand-red/12 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-red)_18%,transparent)]"
         : "border-border-subtle bg-fill/[0.06]";
+  const openMemoryManager = () => void openAppWindow("memory-manager");
+  const action = useImmediateTitlebarAction(openMemoryManager);
   return (
     <Tooltip
       label={<MemoryStatusTooltip snapshot={snapshot} />}
@@ -544,7 +569,7 @@ function MemoryStatusButton() {
         aria-label={tm("memory.manager.window.title", "Memory Manager")}
         className={`no-drag relative box-border inline-grid h-[28px] w-[28px] place-items-center rounded-[7px] border p-0 leading-none outline-none transition-colors hover:border-border hover:bg-fill/10 ${activeSurface} ${tone}`}
         data-active={isActive ? "true" : "false"}
-        onClick={() => void openAppWindow("memory-manager")}
+        {...action}
       >
         <BrainCog size={TITLEBAR_MEMORY_ICON_SIZE} strokeWidth={2.1} />
         {isProcessing ? (
@@ -1039,26 +1064,49 @@ function ModeSwitcher({ mainView, setMainView }: { mainView: MainView; setMainVi
     { id: "review", icon: ListChecks, label: t("review") },
   ];
   return (
-    <Tabs
-      selectedKey={mainView}
-      onSelectionChange={(key) => setMainView(key as MainView)}
+    <div
+      role="tablist"
       aria-label={tm("titlebar.view_switcher", "View Switcher")}
-      className="no-drag"
+      className="no-drag flex h-[28px] items-center gap-0.5 rounded-full border border-border-subtle bg-fill/[0.055] p-[3px]"
     >
-      <Tabs.List className="flex h-[28px] items-center gap-0.5 rounded-full border border-border-subtle bg-fill/[0.055] p-[3px]">
-        {items.map(({ id, icon: Icon, label }) => (
-          <Tabs.Tab
-            key={id}
-            id={id}
-            className="h-[22px] min-w-[76px] rounded-full px-3 text-xs font-normal text-ink-soft outline-none transition-colors hover:bg-fill/8 hover:text-ink data-[selected]:bg-brand-blue data-[selected]:text-white"
-          >
-            <span className="inline-flex items-center justify-center gap-1.5">
-              <Icon size={TITLEBAR_NAV_ICON_SIZE} strokeWidth={2.15} />
-              <span>{label}</span>
-            </span>
-          </Tabs.Tab>
-        ))}
-      </Tabs.List>
-    </Tabs>
+      {items.map((item) => (
+        <ModeSwitchButton
+          key={item.id}
+          item={item}
+          selected={mainView === item.id}
+          onSelect={() => setMainView(item.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ModeSwitchButton({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: { id: MainView; icon: typeof TerminalSquare; label: string };
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const Icon = item.icon;
+  const action = useImmediateTitlebarAction(onSelect);
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      aria-label={item.label}
+      className={`h-[22px] min-w-[76px] rounded-full px-3 text-xs font-normal outline-none transition-colors hover:bg-fill/8 hover:text-ink ${
+        selected ? "bg-brand-blue text-white" : "text-ink-soft"
+      }`}
+      {...action}
+    >
+      <span className="inline-flex items-center justify-center gap-1.5">
+        <Icon size={TITLEBAR_NAV_ICON_SIZE} strokeWidth={2.15} />
+        <span>{item.label}</span>
+      </span>
+    </button>
   );
 }

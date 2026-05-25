@@ -4,16 +4,19 @@ import {
   cancelMemoryExtraction,
   deleteMemoryEntry,
   deleteProjectMemory,
+  deleteProjectProfile,
   deleteMemorySummary,
   indexMemoryNow,
   migrateProjectMemory,
   readMemoryManagerSnapshot,
+  refreshProjectProfile,
   updateMemorySummary,
   type MemoryEntry,
   type MemoryKind,
   type MemoryManagerSnapshot,
   type MemoryManagerTab,
   type MemoryManagerTargetRow,
+  type MemoryProjectProfile,
   type MemoryScope,
   type MemorySummary,
 } from "../ai/memory";
@@ -40,8 +43,6 @@ const tabs: Array<{ id: MemoryManagerTab; label: string }> = [
   { id: "history", label: tm("memory.manager.tab.history", "History") },
 ];
 
-const kindOrder: MemoryKind[] = ["preference", "convention", "decision", "fact", "bug_lesson"];
-
 const kindColor: Record<MemoryKind, string> = {
   preference: "#8C6FF7",
   convention: "#2F7FBD",
@@ -62,6 +63,14 @@ const statusColor: Record<string, string> = {
   archived: "#7B8190",
 };
 
+const decisionColor: Record<string, string> = {
+  create: "#2E9B5F",
+  merge: "#3D80FA",
+  replace: "#B8781D",
+  archive: "#7B8190",
+  skip: "#C25555",
+};
+
 export function MemoryManagerWindow() {
   const [target, setTarget] = useState<Target>({ scope: "user", projectId: null });
   const [tab, setTab] = useState<MemoryManagerTab>("summary");
@@ -69,6 +78,7 @@ export function MemoryManagerWindow() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [isIndexingNow, setIndexingNow] = useState(false);
+  const [isRefreshingProjectProfile, setRefreshingProjectProfile] = useState(false);
   const [editingSummary, setEditingSummary] = useState<MemorySummary | null>(null);
   const [migrationSource, setMigrationSource] = useState<MemoryManagerTargetRow | null>(null);
   const cachedSnapshot = useRuntimeStore((state) => state.memoryManagerSnapshot);
@@ -113,8 +123,13 @@ export function MemoryManagerWindow() {
   const selectedProjectId = target.scope === "project" ? (target.projectId ?? null) : null;
   const canDeleteProjectMemory = Boolean(
     selectedProjectId &&
-    overview &&
-    overview.activeEntryCount + overview.archivedEntryCount + overview.mergedEntryCount + overview.summaryCount > 0,
+  overview &&
+    overview.activeEntryCount +
+      overview.archivedEntryCount +
+      overview.mergedEntryCount +
+      overview.profileCount +
+      overview.summaryCount >
+      0,
   );
   const selectedTargetRow =
     snapshot?.targetRows.find(
@@ -194,10 +209,15 @@ export function MemoryManagerWindow() {
                 <p className="mt-1 text-xs text-ink-mute drag-region" data-tauri-drag-region>
                   {overview
                     ? formatI18n(
-                        tm("memory.manager.overview_format", "%lld active, %lld archived, %lld summaries"),
+                        tm(
+                          "memory.manager.overview_format",
+                          "%lld active, %lld archived, %lld profiles, %lld summaries, %lld tokens",
+                        ),
                         overview.activeEntryCount,
                         overview.archivedEntryCount + overview.mergedEntryCount,
+                        overview.profileCount,
                         overview.summaryCount,
+                        overview.totalTokenEstimate,
                       )
                     : tm("memory.manager.empty.entries", "No memories in this view")}
                 </p>
@@ -266,6 +286,13 @@ export function MemoryManagerWindow() {
             ) : tab === "summary" ? (
               <SummaryList
                 summaries={snapshot?.summaries ?? []}
+                projectProfile={snapshot?.projectProfile ?? null}
+                projectId={selectedProjectId}
+                isRefreshingProjectProfile={isRefreshingProjectProfile}
+                onRefreshProjectProfile={(projectId) =>
+                  void refreshProjectProfileNow(projectId, load, setRefreshingProjectProfile)
+                }
+                onDeleteProjectProfile={(projectId) => void confirmDeleteProjectProfile(projectId, load)}
                 onEdit={setEditingSummary}
                 onDelete={(summary) => void confirmDeleteSummary(summary, load)}
               />
@@ -345,14 +372,24 @@ function TargetRow({
 
 function SummaryList({
   summaries,
+  projectProfile,
+  projectId,
+  isRefreshingProjectProfile,
+  onRefreshProjectProfile,
+  onDeleteProjectProfile,
   onEdit,
   onDelete,
 }: {
   summaries: MemorySummary[];
+  projectProfile: MemoryProjectProfile | null;
+  projectId: string | null;
+  isRefreshingProjectProfile: boolean;
+  onRefreshProjectProfile: (projectId: string) => void;
+  onDeleteProjectProfile: (projectId: string) => void;
   onEdit: (summary: MemorySummary) => void;
   onDelete: (summary: MemorySummary) => void;
 }) {
-  if (summaries.length === 0) {
+  if (!projectProfile && summaries.length === 0 && !projectId) {
     return (
       <EmptyState
         title={tm("memory.manager.empty.summary", "No summary memory")}
@@ -365,6 +402,74 @@ function SummaryList({
   }
   return (
     <div className="grid gap-3 p-4">
+      {!projectProfile && projectId && (
+        <article className="rounded-[8px] border border-brand-blue/20 bg-brand-blue/5 p-3.5">
+          <div className="flex items-start gap-2">
+            <Badge text={tm("memory.manager.project_profile", "Project Profile")} color="#3D80FA" />
+            <div className="ml-auto">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={isRefreshingProjectProfile}
+                onPress={() => onRefreshProjectProfile(projectId)}
+              >
+                {isRefreshingProjectProfile
+                  ? tm("common.processing", "Processing")
+                  : tm("memory.manager.project_profile.generate", "Generate")}
+              </Button>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-mute">
+            {tm(
+              "memory.manager.project_profile.empty",
+              "No project profile exists. Generate one from repository files and improve it with the configured memory LLM provider.",
+            )}
+          </p>
+        </article>
+      )}
+      {projectProfile && (
+        <article className="rounded-[8px] border border-brand-blue/20 bg-brand-blue/5 p-3.5">
+          <div className="flex items-start gap-2">
+            <Badge text={tm("memory.manager.project_profile", "Project Profile")} color="#3D80FA" />
+            <Badge
+              text={
+                projectProfile.sourceFingerprint.startsWith("llm-v1:")
+                  ? tm("memory.manager.project_profile.source.llm", "LLM")
+                  : tm("memory.manager.project_profile.source.local", "Local scan")
+              }
+              color={projectProfile.sourceFingerprint.startsWith("llm-v1:") ? "#2E9B5F" : "#7B8190"}
+            />
+            <div className="ml-auto flex items-center gap-1">
+              <span className="mr-1 text-[11px] text-ink-faint">{formatDate(projectProfile.updatedAt)}</span>
+              {projectId && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  isIconOnly
+                  disabled={isRefreshingProjectProfile}
+                  aria-label={tm("memory.manager.project_profile.refresh", "Regenerate Project Profile")}
+                  onPress={() => onRefreshProjectProfile(projectId)}
+                >
+                  <RefreshCw
+                    size={13}
+                    className={isRefreshingProjectProfile ? "motion-safe:animate-spin" : undefined}
+                  />
+                </Button>
+              )}
+              {projectId && (
+                <IconButton
+                  label={tm("memory.manager.project_profile.delete", "Delete Project Profile")}
+                  icon={Trash}
+                  danger
+                  disabled={isRefreshingProjectProfile}
+                  onPress={() => onDeleteProjectProfile(projectId)}
+                />
+              )}
+            </div>
+          </div>
+          <p className="mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{projectProfile.content}</p>
+        </article>
+      )}
       {summaries.map((summary) => (
         <article key={summary.id} className="rounded-[8px] border border-border-subtle/70 bg-surface-main p-3.5">
           <div className="flex items-start gap-2">
@@ -413,10 +518,17 @@ function EntryList({
   onDelete: (entry: MemoryEntry) => void;
 }) {
   const groups = useMemo(
-    () =>
-      kindOrder
-        .map((kind) => ({ kind, entries: entries.filter((entry) => entry.kind === kind) }))
-        .filter((group) => group.entries.length > 0),
+    () => {
+      const modules = Array.from(new Set(entries.map((entry) => entry.moduleKey || "general"))).sort((left, right) =>
+        left.localeCompare(right),
+      );
+      return modules
+        .map((moduleKey) => ({
+          moduleKey,
+          entries: entries.filter((entry) => (entry.moduleKey || "general") === moduleKey),
+        }))
+        .filter((group) => group.entries.length > 0);
+    },
     [entries],
   );
   if (entries.length === 0) {
@@ -444,13 +556,13 @@ function EntryList({
   return (
     <div className="grid gap-5 p-4">
       {groups.map((group) => (
-        <section key={group.kind} className="grid gap-2.5">
+        <section key={group.moduleKey} className="grid gap-2.5">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: kindColor[group.kind] }} />
-            <span className="text-[12px] font-semibold text-ink-soft">{kindTitle(group.kind)}</span>
+            <span className="h-2 w-2 rounded-full bg-brand-blue" />
+            <span className="text-[12px] font-semibold text-ink-soft">{moduleTitle(group.moduleKey)}</span>
             <span
               className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold"
-              style={{ color: kindColor[group.kind], backgroundColor: `${kindColor[group.kind]}1c` }}
+              style={{ color: "#3D80FA", backgroundColor: "#3D80FA1c" }}
             >
               {group.entries.length}
             </span>
@@ -479,6 +591,7 @@ function EntryCard({
     <article className="rounded-[8px] border border-border-subtle/70 bg-surface-main p-3.5">
       <div className="flex items-start gap-2">
         <Badge text={kindTitle(entry.kind)} color={kindColor[entry.kind]} />
+        {entry.moduleKey && <Badge text={moduleTitle(entry.moduleKey)} color="#3D80FA" />}
         <Badge text={tierTitle(entry.tier)} color={tierColor[entry.tier]} />
         <Badge text={statusTitle(entry.status)} color={statusColor[entry.status]} />
         {entry.sourceTool && <Badge text={entry.sourceTool} color="#7B8190" />}
@@ -497,6 +610,15 @@ function EntryCard({
       <p className="mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{entry.content}</p>
       {entry.rationale && (
         <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-ink-mute">{entry.rationale}</p>
+      )}
+      {entry.lastDecision && (
+        <div className="mt-3 flex items-start gap-2 rounded-[8px] bg-fill/[0.04] px-2.5 py-2">
+          <Badge
+            text={decisionTitle(entry.lastDecision.kind)}
+            color={decisionColor[entry.lastDecision.kind] ?? "#7B8190"}
+          />
+          <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-ink-mute">{entry.lastDecision.reason}</p>
+        </div>
       )}
     </article>
   );
@@ -729,11 +851,13 @@ function IconButton({
   label,
   icon: Icon,
   danger,
+  disabled,
   onPress,
 }: {
   label: string;
   icon: AppIcon;
   danger?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -741,8 +865,11 @@ function IconButton({
       type="button"
       title={label}
       aria-label={label}
-      className={`grid h-6 w-6 place-items-center rounded-md transition-colors ${danger ? "text-brand-red hover:bg-brand-red/10" : "text-ink-mute hover:bg-fill/[0.08] hover:text-ink"}`}
-      onClick={onPress}
+      disabled={disabled}
+      className={`grid h-6 w-6 place-items-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-45 ${danger ? "text-brand-red hover:bg-brand-red/10" : "text-ink-mute hover:bg-fill/[0.08] hover:text-ink"}`}
+      onClick={() => {
+        if (!disabled) onPress();
+      }}
     >
       <Icon size={13} strokeWidth={2} />
     </button>
@@ -883,6 +1010,54 @@ async function confirmDeleteSummary(summary: MemorySummary, load: () => Promise<
   await load();
 }
 
+async function refreshProjectProfileNow(
+  projectId: string,
+  load: () => Promise<void>,
+  setRefreshingProjectProfile: (value: boolean) => void,
+) {
+  setRefreshingProjectProfile(true);
+  try {
+    await flushAppSettings();
+    const result = await refreshProjectProfile(projectId);
+    await load();
+    if (!result.usedLlm) {
+      await systemMessage(
+        result.fallbackReason ??
+          tm("memory.manager.project_profile.local_fallback", "Project profile was generated from local repository scan."),
+        {
+          title: tm("memory.manager.project_profile.local_fallback.title", "Project profile used local scan"),
+          kind: "warning",
+        },
+      );
+    }
+  } catch (error) {
+    await systemMessage(error instanceof Error ? error.message : String(error), {
+      title: tm("memory.manager.project_profile.refresh_failed", "Project profile refresh failed"),
+      kind: "error",
+    });
+  } finally {
+    setRefreshingProjectProfile(false);
+  }
+}
+
+async function confirmDeleteProjectProfile(projectId: string, load: () => Promise<void>) {
+  const confirmed = await systemConfirm(
+    tm(
+      "memory.manager.project_profile.delete_confirm",
+      "This removes the project overview from local memory. You can regenerate it later from repository files.",
+    ),
+    {
+      title: tm("memory.manager.project_profile.delete", "Delete Project Profile"),
+      kind: "warning",
+      okLabel: tm("common.delete", "Delete"),
+      cancelLabel: tm("common.cancel", "Cancel"),
+    },
+  );
+  if (!confirmed) return;
+  await deleteProjectProfile(projectId);
+  await load();
+}
+
 async function confirmDeleteProjectMemory(projectId: string, load: () => Promise<void>) {
   const confirmed = await systemConfirm(
     tm(
@@ -928,12 +1103,20 @@ function kindTitle(kind: MemoryKind) {
   return tm(`memory.kind.${kind}`, kind);
 }
 
+function moduleTitle(moduleKey: string) {
+  return tm(`memory.module.${moduleKey}`, moduleKey);
+}
+
 function tierTitle(tier: string) {
   return tm(`memory.tier.${tier}`, tier);
 }
 
 function statusTitle(status: string) {
   return tm(`memory.status.${status}`, status);
+}
+
+function decisionTitle(decision: string) {
+  return tm(`memory.decision.${decision}`, decision);
 }
 
 function formatDate(seconds: number) {

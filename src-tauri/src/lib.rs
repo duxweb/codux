@@ -100,7 +100,8 @@ use llm::{
 use memory::{
     MemoryExtractionStatusSnapshot, MemoryManagementRequest, MemoryManagementSnapshot,
     MemoryManagerSnapshot, MemoryManagerSnapshotRequest, MemoryProjectMigrationRequest,
-    MemoryQueueStatusEvent, MemoryStore, MemorySummary, MemorySummaryUpdateRequest,
+    MemoryProjectProfileRefreshResult, MemoryQueueStatusEvent, MemoryStore, MemorySummary,
+    MemorySummaryUpdateRequest,
 };
 use notify_channels::{
     dispatch_notification_channels, NotificationDispatchRequest, NotificationDispatchResult,
@@ -1286,13 +1287,14 @@ fn memory_management_snapshot(
 }
 
 #[tauri::command]
-fn memory_manager_snapshot(
+async fn memory_manager_snapshot(
     state: tauri::State<'_, AppState>,
     request: MemoryManagerSnapshotRequest,
 ) -> Result<MemoryManagerSnapshot, String> {
+    let projects = state.projects.projects_snapshot();
     state
         .memory
-        .manager_snapshot(request, &state.projects.projects_snapshot())
+        .manager_snapshot(request, &projects)
         .map_err(|error| error.to_string())
 }
 
@@ -1331,6 +1333,17 @@ fn memory_delete_summary(
 }
 
 #[tauri::command]
+fn memory_delete_project_profile(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+) -> Result<(), String> {
+    state
+        .memory
+        .delete_project_profile(&project_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn memory_delete_project(
     state: tauri::State<'_, AppState>,
     project_id: String,
@@ -1361,6 +1374,24 @@ fn memory_update_summary(
         .memory
         .update_summary(request)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn memory_refresh_project_profile(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+) -> Result<MemoryProjectProfileRefreshResult, String> {
+    let projects = state.projects.projects_snapshot();
+    let project = projects
+        .into_iter()
+        .find(|project| project.id == project_id)
+        .ok_or_else(|| "project not found".to_string())?;
+    let settings = state.settings.reload_snapshot().ai;
+    state
+        .memory
+        .force_refresh_project_profile_with_llm_detailed(&settings, &project)
+        .await
+        .ok_or_else(|| "failed to refresh project profile".to_string())
 }
 
 #[tauri::command]
@@ -6922,9 +6953,11 @@ pub fn run() {
             memory_archive_entry,
             memory_delete_entry,
             memory_delete_summary,
+            memory_delete_project_profile,
             memory_delete_project,
             memory_migrate_project,
             memory_update_summary,
+            memory_refresh_project_profile,
             memory_index_now,
             app_request_restart,
             ai_history_project_summary,

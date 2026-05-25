@@ -965,6 +965,7 @@ impl TerminalEnvironment {
             .prepare_launch_artifacts(MemoryLaunchRequest {
                 project_id: project_id.to_string(),
                 project_name: project_name.clone(),
+                workspace_path: Some(project_path.to_string()),
                 settings: ai_settings,
                 extra_context: render_ssh_launch_context(Some(codux_ssh_command)),
             })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   desktopPetActivityLine,
+  desktopPetLlmContext,
   desktopPetAnimationState,
   nextDesktopPetActivityRefreshMs,
   type AISessionSnapshot,
@@ -138,6 +139,24 @@ describe("desktop pet activity", () => {
     expect(desktopPetActivityLine([running, completed], 151)).toEqual({
       text: "正在处理",
       tone: "normal",
+    });
+  });
+
+  it("exposes LLM context only for safe template activity lines", () => {
+    expect(desktopPetLlmContext([session({ state: "responding", latestAssistantPreview: "正在处理具体代码" })], 101)).toBeNull();
+    expect(desktopPetLlmContext([session({ state: "responding", latestAssistantPreview: "" })], 101)).toEqual({
+      event: "running",
+      fallbackText: "codex is running",
+      tone: "normal",
+      tool: "codex",
+      updatedAt: 100,
+    });
+    expect(desktopPetLlmContext([session({ hasCompletedTurn: true, updatedAt: 100 })], 101)).toEqual({
+      event: "completed",
+      fallbackText: "codex completed",
+      tone: "success",
+      tool: "codex",
+      updatedAt: 100,
     });
   });
 

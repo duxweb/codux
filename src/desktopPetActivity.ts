@@ -18,6 +18,14 @@ export type DesktopPetActivityLine = {
   tone: DesktopPetActivityTone;
 };
 
+export type DesktopPetLlmContext = {
+  event: "permission" | "needsInput" | "completed" | "failed" | "running";
+  fallbackText: string;
+  tone: DesktopPetActivityTone;
+  tool: string;
+  updatedAt: number;
+};
+
 type Translate = (key: string, fallback: string) => string;
 
 const DESKTOP_PET_COMPLETED_STATUS_SECONDS = 30;
@@ -77,6 +85,72 @@ export function desktopPetActivityLine(
     };
   }
   return emptyLine();
+}
+
+export function desktopPetLlmContext(
+  sessions: AISessionSnapshot[],
+  now: number,
+  translate: Translate = (_key, fallback) => fallback,
+): DesktopPetLlmContext | null {
+  const permission = sessions
+    .filter(
+      (session) =>
+        session.state === "needsInput" &&
+        isPermissionRequestNotificationType(session.notificationType),
+    )
+    .sort(compareUpdatedDesc)[0];
+  if (permission) {
+    return {
+      event: "permission",
+      fallbackText: permission.targetToolName
+        ? formatActivity(
+            translate("pet.activity.permission_waiting_target_format", "%@ needs permission for %@"),
+            permission.tool,
+            permission.targetToolName,
+          )
+        : formatActivity(translate("pet.activity.permission_waiting_format", "%@ needs permission"), permission.tool),
+      tone: "attention",
+      tool: permission.tool,
+      updatedAt: permission.updatedAt,
+    };
+  }
+
+  const needsInput = sessions.filter((session) => session.state === "needsInput").sort(compareUpdatedDesc)[0];
+  if (needsInput && !normalizedPreview(needsInput.message)) {
+    return {
+      event: "needsInput",
+      fallbackText: formatActivity(translate("pet.activity.waiting_input_format", "%@ needs input"), needsInput.tool),
+      tone: "attention",
+      tool: needsInput.tool,
+      updatedAt: needsInput.updatedAt,
+    };
+  }
+
+  const completed = sessions.filter((session) => isVisibleCompleted(session, now)).sort(compareUpdatedDesc)[0];
+  if (completed) {
+    const failed = completed.wasInterrupted;
+    return {
+      event: failed ? "failed" : "completed",
+      fallbackText: failed
+        ? formatActivity(translate("pet.activity.failed_format", "%@ failed"), completed.tool)
+        : formatActivity(translate("pet.activity.completed_format", "%@ completed"), completed.tool),
+      tone: failed ? "warning" : "success",
+      tool: completed.tool,
+      updatedAt: completed.updatedAt,
+    };
+  }
+
+  const running = sessions.filter((session) => session.state === "responding").sort(compareUpdatedDesc)[0];
+  if (running && !normalizedPreview(running.latestAssistantPreview)) {
+    return {
+      event: "running",
+      fallbackText: formatActivity(translate("pet.activity.running_format", "%@ is running"), running.tool),
+      tone: "normal",
+      tool: running.tool,
+      updatedAt: running.updatedAt,
+    };
+  }
+  return null;
 }
 
 export function nextDesktopPetActivityRefreshMs(sessions: AISessionSnapshot[], now: number) {

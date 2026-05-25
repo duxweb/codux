@@ -232,11 +232,22 @@ const codexEffortOptions = [
 ];
 
 const aiProviderKindOptions = [
+  { value: "openai", label: "OpenAI" },
   { value: "openAICompatible", label: "OpenAI-Compatible API" },
   { value: "anthropic", label: "Claude API" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "gemini", label: "Gemini" },
+  { value: "groq", label: "Groq" },
+  { value: "openrouter", label: "OpenRouter" },
+  { value: "ollama", label: "Ollama" },
 ];
 
 const aiProviderDefaults = {
+  openai: {
+    displayName: "OpenAI API",
+    model: "gpt-4.1-mini",
+    baseUrl: "https://api.openai.com/v1",
+  },
   openAICompatible: {
     displayName: "OpenAI API",
     model: "gpt-4.1-mini",
@@ -247,10 +258,35 @@ const aiProviderDefaults = {
     model: "claude-3-5-haiku-latest",
     baseUrl: "https://api.anthropic.com/v1",
   },
+  deepseek: {
+    displayName: "DeepSeek API",
+    model: "deepseek-chat",
+    baseUrl: "https://api.deepseek.com",
+  },
+  gemini: {
+    displayName: "Gemini API",
+    model: "gemini-2.5-flash",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+  },
+  groq: {
+    displayName: "Groq API",
+    model: "llama-3.3-70b-versatile",
+    baseUrl: "https://api.groq.com/openai/v1",
+  },
+  openrouter: {
+    displayName: "OpenRouter API",
+    model: "openai/gpt-4.1-mini",
+    baseUrl: "https://openrouter.ai/api/v1",
+  },
+  ollama: {
+    displayName: "Ollama",
+    model: "llama3.2",
+    baseUrl: "http://localhost:11434",
+  },
   localLlama: {
     displayName: "Llama Model",
-    model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
-    baseUrl: "",
+    model: "llama3.2",
+    baseUrl: "http://localhost:11434",
   },
 } satisfies Record<AIProviderSettings["kind"], { displayName: string; model: string; baseUrl: string }>;
 
@@ -1059,13 +1095,13 @@ function AIProviderCard({
   onTest: () => void;
 }) {
   const changeKind = (kind: string) => {
-    const nextKind = kind === "anthropic" ? "anthropic" : "openAICompatible";
+    const nextKind = kind in aiProviderDefaults ? (kind as AIProviderSettings["kind"]) : "openAICompatible";
     const defaults = aiProviderDefaults[nextKind];
     onChange({
       kind: nextKind,
-      displayName: provider.displayName || defaults.displayName,
-      model: provider.model || defaults.model,
-      baseUrl: provider.baseUrl || defaults.baseUrl,
+      displayName: defaults.displayName,
+      model: defaults.model,
+      baseUrl: defaults.baseUrl,
     });
   };
 
@@ -1112,7 +1148,7 @@ function AIProviderCard({
         <Button
           size="sm"
           variant="secondary"
-          disabled={testing || !provider.apiKey.trim() || provider.kind === "localLlama"}
+          disabled={testing || (!provider.apiKey.trim() && !providerAllowsEmptyApiKey(provider.kind))}
           onPress={onTest}
         >
           {testing ? tm("settings.ai.provider.test.running", "Testing...") : tm("settings.ai.provider.test", "Test")}
@@ -1146,6 +1182,10 @@ function gitCommitMessageProviderOptions(providers: AIProviderSettings[]) {
       .sort((left, right) => left.priority - right.priority || left.displayName.localeCompare(right.displayName))
       .map((provider) => ({ value: provider.id, label: provider.displayName })),
   ];
+}
+
+function providerAllowsEmptyApiKey(kind: AIProviderSettings["kind"]) {
+  return kind === "ollama" || kind === "localLlama";
 }
 
 function numberOptions(min: number, max: number) {

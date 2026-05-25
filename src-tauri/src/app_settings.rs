@@ -784,8 +784,14 @@ fn sanitize_ai_provider(mut provider: AIProviderSettings) -> Option<AIProviderSe
         return None;
     }
     provider.kind = match provider.kind.trim() {
+        "openai" => "openai".to_string(),
+        "openAICompatible" => "openAICompatible".to_string(),
         "anthropic" => "anthropic".to_string(),
-        "localLlama" => "localLlama".to_string(),
+        "deepseek" => "deepseek".to_string(),
+        "gemini" => "gemini".to_string(),
+        "groq" => "groq".to_string(),
+        "openrouter" => "openrouter".to_string(),
+        "ollama" | "localLlama" => "ollama".to_string(),
         _ => "openAICompatible".to_string(),
     };
     provider.display_name = provider
@@ -796,16 +802,26 @@ fn sanitize_ai_provider(mut provider: AIProviderSettings) -> Option<AIProviderSe
         .collect::<String>();
     if provider.display_name.is_empty() {
         provider.display_name = match provider.kind.as_str() {
+            "openai" => "OpenAI API".to_string(),
             "anthropic" => "Claude API".to_string(),
-            "localLlama" => "Llama Model".to_string(),
+            "deepseek" => "DeepSeek API".to_string(),
+            "gemini" => "Gemini API".to_string(),
+            "groq" => "Groq API".to_string(),
+            "openrouter" => "OpenRouter API".to_string(),
+            "ollama" => "Ollama".to_string(),
             _ => "OpenAI API".to_string(),
         };
     }
     provider.model = provider.model.trim().chars().take(160).collect();
     if provider.model.is_empty() {
         provider.model = match provider.kind.as_str() {
+            "openai" => "gpt-4.1-mini".to_string(),
             "anthropic" => "claude-3-5-haiku-latest".to_string(),
-            "localLlama" => "qwen2.5-coder-1.5b-instruct-q4_k_m".to_string(),
+            "deepseek" => "deepseek-chat".to_string(),
+            "gemini" => "gemini-2.5-flash".to_string(),
+            "groq" => "llama-3.3-70b-versatile".to_string(),
+            "openrouter" => "openai/gpt-4.1-mini".to_string(),
+            "ollama" => "llama3.2".to_string(),
             _ => "gpt-4.1-mini".to_string(),
         };
     }
@@ -816,7 +832,18 @@ fn sanitize_ai_provider(mut provider: AIProviderSettings) -> Option<AIProviderSe
 }
 
 fn provider_supports_completion(kind: &str) -> bool {
-    matches!(kind, "openAICompatible" | "anthropic")
+    matches!(
+        kind,
+        "openai"
+            | "openAICompatible"
+            | "anthropic"
+            | "deepseek"
+            | "gemini"
+            | "groq"
+            | "openrouter"
+            | "ollama"
+            | "localLlama"
+    )
 }
 
 fn sanitize_pet_speech_mode(value: &str, fallback: &str) -> String {

@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-05-26
+
+### Added
+
+- Added source-signal sampling to project profile generation so the LLM can refine project summaries from representative entry points, routes, Tauri commands, and module declarations without reading the full repository.
+- Added real desktop pet LLM speech calls through the configured AI provider, with JSON-mode responses and UI-locale-aware language selection.
+
+### Changed
+
+- Improved memory LLM parsing by using JSON mode and `llm-json-repair` for both project profiles and regular memory extraction.
+- Refined project memory management with three-layer memory, SQLite-backed profiles, module-scoped project memories, token estimates, manual project profile refresh, and clearer local-scan fallback diagnostics.
+
+### Fixed
+
+- Fixed project profile refresh failures caused by providers returning fenced, repaired, or structured JSON instead of the exact original `content` shape.
+- Fixed desktop pet speech not reaching the configured AI provider from the desktop pet window.
+- Fixed titlebar and session-list click handling so focused terminal panes no longer require extra clicks for memory, view switching, or session restore actions.
+
 ## [1.0.3] - 2026-05-25
 
 ### Added
