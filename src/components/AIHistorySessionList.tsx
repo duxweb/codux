@@ -4,7 +4,6 @@ import type { AIHistorySessionSummary } from "../ai/history";
 import type { AIStatisticsMode } from "../settings";
 import type { WorkspaceProject } from "../types";
 import { formatI18n, localeFromSettings, tm } from "../i18n";
-import { isWindowsPlatform } from "../platform";
 import { dispatchWorkspaceCommand } from "../workspaceCommands";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
 import { PressableButton } from "./PressableButton";
@@ -227,7 +226,7 @@ function historySessionRestoreCommand(session: AIHistorySessionSummary) {
   const tool = (session.lastTool || "").toLowerCase();
   const id = session.externalSessionId || session.sessionId;
   const quotedId = shellQuote(id);
-  if (tool.includes("codex")) return isWindowsPlatform() ? "codex resume" : `codex resume ${quotedId}`;
+  if (tool.includes("codex")) return `codex resume ${quotedId}`;
   if (tool.includes("claude")) return `claude --resume ${quotedId}`;
   if (tool.includes("gemini")) return `gemini resume ${quotedId}`;
   if (tool.includes("opencode")) return `opencode run --session ${quotedId}`;

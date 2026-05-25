@@ -518,46 +518,27 @@ fn sync_desktop_pet_window(app: &tauri::AppHandle, settings: &AppSettings, pet: 
     let should_show =
         settings.pet.enabled && settings.pet.desktop_widget && pet.claimed_at.is_some();
     if !should_show {
-        let app = app.clone();
-        let enabled = settings.pet.enabled;
-        let desktop_widget = settings.pet.desktop_widget;
-        let claimed = pet.claimed_at.is_some();
-        let result = app.clone().run_on_main_thread(move || {
-            runtime_trace(
-                "desktop-pet",
-                &format!(
-                    "sync hide enabled={enabled} desktop_widget={desktop_widget} claimed={claimed}"
-                ),
-            );
-            if let Some(window) = app.get_webview_window(DESKTOP_PET_LABEL) {
-                let _ = window.set_ignore_cursor_events(true);
-                if let Err(error) = window.hide() {
-                    runtime_trace("desktop-pet", &format!("hide_failed error={error}"));
-                }
+        runtime_trace(
+            "desktop-pet",
+            &format!(
+                "sync hide enabled={} desktop_widget={} claimed={}",
+                settings.pet.enabled,
+                settings.pet.desktop_widget,
+                pet.claimed_at.is_some()
+            ),
+        );
+        if let Some(window) = app.get_webview_window(DESKTOP_PET_LABEL) {
+            let _ = window.set_ignore_cursor_events(true);
+            if let Err(error) = window.hide() {
+                runtime_trace("desktop-pet", &format!("hide_failed error={error}"));
             }
-        });
-        if let Err(error) = result {
-            runtime_trace(
-                "desktop-pet",
-                &format!("hide_schedule_failed error={error}"),
-            );
         }
         return;
     }
 
-    let app = app.clone();
-    let settings = settings.clone();
-    let result =
-        app.clone()
-            .run_on_main_thread(move || match show_desktop_pet_window(&app, &settings) {
-                Ok(()) => runtime_trace("desktop-pet", "sync show ok"),
-                Err(error) => runtime_trace("desktop-pet", &format!("show_failed error={error}")),
-            });
-    if let Err(error) = result {
-        runtime_trace(
-            "desktop-pet",
-            &format!("show_schedule_failed error={error}"),
-        );
+    match show_desktop_pet_window(app, settings) {
+        Ok(()) => runtime_trace("desktop-pet", "sync show ok"),
+        Err(error) => runtime_trace("desktop-pet", &format!("show_failed error={error}")),
     }
 }
 
