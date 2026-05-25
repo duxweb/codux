@@ -6,7 +6,7 @@
 
 <p align="center">
   A cross-platform AI development workstation with projects, terminals, Git, AI stats, memory, mobile control, and desktop companions.<br/>
-  Built for <b>Claude Code</b>, <b>Codex</b>, <b>Gemini CLI</b>, and <b>OpenCode</b>.
+  Built for <b>Claude Code</b>, <b>Codex</b>, <b>Gemini CLI</b>, <b>OpenCode</b>, and <b>Kiro CLI</b>.
 </p>
 
 <p align="center">
@@ -48,16 +48,31 @@ GitHub README does not render third-party iframe players. Watch the demo on [Bil
 
 | #   | Feature                        | What it does                                                                                                                                                                                                                                                                                                             |
 | :-- | :----------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Live AI Activity**           | Real-time status + system notifications for every running AI terminal (Claude Code, Codex, Gemini CLI, OpenCode). The tab indicator, project tile, and desktop notification all light up the moment a turn finishes — no more watching the cursor blink.                                                                 |
+| 1   | **Live AI Activity**           | Real-time status + system notifications for every running AI terminal (Claude Code, Codex, Gemini CLI, OpenCode, Kiro CLI). The tab indicator, project tile, and desktop notification all light up the moment a turn finishes — no more watching the cursor blink.                                                          |
 | 2   | **AI Stats & Session Restore** | Token totals split by tool / model / project, daily and trend views, and **one-click resume** of any past session back into the original tool. Scattered AI runs turn into a usable history.                                                                                                                             |
 | 3   | **Daily Level**                | A daily ladder powered by real token usage. One snapshot tells you what you ran, how much, and how today compares to a normal day — easy to glance at, hard to fudge.                                                                                                                                                    |
 | 4   | **Pet Companion**              | An optional pet in the title bar that grows with your AI coding habits. It supports Codex-format custom pet imports, so compatible `pet.json` + `spritesheet.png` packages can be installed from Petdex, renamed, validated, adopted, archived, and restored alongside the bundled pets. Fully optional, one-click mute. |
 | 5   | **Built-in Git**               | A first-class Git panel — not an embedded webview. Branch checkout / create / rename / delete, staging with line-level diffs, full commit history, and push / pull / sync with sane defaults and clear conflict resolution.                                                                                              |
 | 6   | **Project File Browser**       | Per-project native file manager. Edit code inline, preview images and other assets, and drag any file straight into the terminal so your AI tool gets the right path on the first try.                                                                                                                                   |
 | 7   | **Multi-Project Workspaces**   | Every project is its own room — up to **6 split terminals** for parallel work plus **unlimited tabs** when 6 is not enough. Each project keeps its own layout, sessions, AI tool selection, and state across restarts.                                                                                                   |
-| 8   | **Three-Layer AI Memory**      | Local `memory.sqlite3` extracts long-term memory from completed sessions, layered as **user / project / tool**. App-private `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` are generated so Codex / Claude / Gemini / OpenCode no longer forget what you did last session — and nothing is written into your repo.                |
+| 8   | **Three-Layer AI Memory**      | Local `memory.sqlite3` extracts long-term memory from completed sessions, layered as **user / project / tool**. App-private `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` are generated so supported AI CLIs no longer forget what you did last session — and nothing is written into your repo.                                |
 | 9   | **Mobile Handoff**             | Step away from the desktop and keep going on your phone. Codux Mobile pairs with the desktop host to drive AI CLI sessions remotely with end-to-end encrypted relay traffic. See the [Mobile Handoff](#mobile-handoff) section below.                                                                                    |
 | 10  | **Terminal Engine & Themes**   | A WebView terminal with GPU-accelerated rendering, split panes, tabs, and curated light / dark themes that follow the selected app appearance.                                                                                                                                                                           |
+
+## AI Tool Support
+
+Codux detects supported AI CLIs from the terminal, installs app-managed hook files where the tool exposes a hook system, and supplements live events by reading each tool's local session history.
+
+| Tool | Command aliases | Live activity | History / token stats | Resume / restore | Memory injection | Integration notes |
+| :--- | :-------------- | :------------ | :-------------------- | :--------------- | :--------------- | :---------------- |
+| Claude Code | `claude`, `claude-code` | Full | Full | Full | `CLAUDE.md` | Uses Claude hooks plus local transcript parsing. |
+| Codex | `codex` | Full | Full | Full | `AGENTS.md` | Uses Codex hooks and session rollout files. |
+| Gemini CLI | `gemini` | Full | Full | Full | `GEMINI.md` | Uses Gemini hooks and local history. |
+| OpenCode | `opencode` | Full | Full | Full | `AGENTS.md` | Uses OpenCode config / local history integration. |
+| Kiro CLI | `kiro`, `kiro-cli` | Full | Full | Partial | `AGENTS.md` | Uses Kiro agent hooks via `~/.kiro/agents/codux-managed.json` and reads `~/.kiro/sessions/cli`. |
+| Cursor CLI | `cursor-agent` | Not yet | Not yet | Not yet | Not yet | Waiting for a stable official hook path. Headless `stream-json` is intentionally not treated as a general runtime hook. |
+
+`Full` means Codux can drive the feature from the normal integrated terminal workflow. `Partial` means the tool has enough local data for status / history, but the restore behavior still depends on the tool's own CLI support.
 
 ## Custom Pets
 
