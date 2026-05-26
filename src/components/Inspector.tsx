@@ -3375,15 +3375,15 @@ function FilesPanel({ project }: { project?: WorkspaceProject }) {
             <div className="flex items-center gap-1">
               <PressableButton
                 className="h-6 rounded-md px-2 text-current/80 hover:bg-fill/10 hover:text-current"
-                onPressUp={() => setPendingDeletePaths([])}
+                onPress={() => setPendingDeletePaths([])}
               >
-                {tm("files.panel.delete.cancel", "Cancel Delete")}
+                {tm("common.cancel", "Cancel")}
               </PressableButton>
               <PressableButton
                 className="h-6 rounded-md bg-brand-red px-2 font-semibold text-on-brand hover:bg-brand-red/90"
-                onPressUp={() => void confirmDeleteEntries()}
+                onPress={() => void confirmDeleteEntries()}
               >
-                {tm("files.panel.delete.confirm", "Confirm Delete")}
+                {tm("common.confirm", "Confirm")}
               </PressableButton>
             </div>
           }

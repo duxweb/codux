@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 type ContextMenuState = {
   x: number;
@@ -106,6 +106,15 @@ export function ContextMenuItem({
   onSelect?: () => void;
 }) {
   const context = useContext(ContextMenuContext);
+  const didSelectRef = useRef(false);
+  const select = () => {
+    if (disabled) return;
+    if (didSelectRef.current) return;
+    didSelectRef.current = true;
+    onSelect?.();
+    context?.close();
+  };
+
   return (
     <button
       role="menuitem"
@@ -114,11 +123,12 @@ export function ContextMenuItem({
       tabIndex={-1}
       className="flex min-h-7 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium leading-4 text-ink-soft outline-none transition-colors hover:bg-default-hover hover:text-ink disabled:opacity-50"
       aria-label={label}
-      onClick={() => {
-        if (disabled) return;
-        onSelect?.();
-        context?.close();
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        select();
       }}
+      onClick={select}
     >
       {children}
     </button>

@@ -17,11 +17,14 @@ import {
   cloneElement,
   createContext,
   useContext,
+  useId,
   useRef,
   useState,
+  type Dispatch,
   type ReactElement,
   type ReactNode,
   type Ref,
+  type SetStateAction,
 } from "react";
 
 type DesktopMenuContextValue = {
@@ -29,6 +32,13 @@ type DesktopMenuContextValue = {
 };
 
 const DesktopMenuContext = createContext<DesktopMenuContextValue | null>(null);
+
+type DesktopMenuLevelContextValue = {
+  activeSubmenuId: string | null;
+  setActiveSubmenuId: Dispatch<SetStateAction<string | null>>;
+};
+
+const DesktopMenuLevelContext = createContext<DesktopMenuLevelContextValue | null>(null);
 
 type DesktopMenuProps = {
   ariaLabel: string;
@@ -47,6 +57,7 @@ export function DesktopMenu({
   placement = "bottom-end",
   trigger,
 }: DesktopMenuProps) {
+  const [activeSubmenuId, setActiveSubmenuId] = useState<string | null>(null);
   const { context, floatingStyles, refs } = useFloating({
     open: isOpen,
     onOpenChange,
@@ -67,7 +78,10 @@ export function DesktopMenu({
   const { getFloatingProps, getReferenceProps } = useInteractions([click, dismiss, role]);
   const triggerRef = (trigger as ReactElement & { ref?: Ref<Element> }).ref;
   const referenceRef = useMergeRefs([refs.setReference, triggerRef]);
-  const close = () => onOpenChange(false);
+  const close = () => {
+    setActiveSubmenuId(null);
+    onOpenChange(false);
+  };
   const floatingProps = getFloatingProps({
     role: "menu",
     "aria-label": ariaLabel,
@@ -77,24 +91,26 @@ export function DesktopMenu({
 
   return (
     <DesktopMenuContext.Provider value={{ close }}>
-      {renderMenuTrigger(
-        trigger,
-        ariaLabel,
-        referenceRef,
-        getReferenceProps({ className: "no-drag" }),
-        isOpen,
-      )}
-      {isOpen && (
-        <FloatingPortal preserveTabOrder={false}>
-          <div
-            ref={refs.setFloating}
-            style={floatingStyles}
-            {...(floatingProps as Record<string, unknown>)}
-          >
-            {children}
-          </div>
-        </FloatingPortal>
-      )}
+      <DesktopMenuLevelContext.Provider value={{ activeSubmenuId, setActiveSubmenuId }}>
+        {renderMenuTrigger(
+          trigger,
+          ariaLabel,
+          referenceRef,
+          getReferenceProps({ className: "no-drag" }),
+          isOpen,
+        )}
+        {isOpen && (
+          <FloatingPortal preserveTabOrder={false}>
+            <div
+              ref={refs.setFloating}
+              style={floatingStyles}
+              {...(floatingProps as Record<string, unknown>)}
+            >
+              {children}
+            </div>
+          </FloatingPortal>
+        )}
+      </DesktopMenuLevelContext.Provider>
     </DesktopMenuContext.Provider>
   );
 }
@@ -111,6 +127,7 @@ export function DesktopMenuItem({
   onSelect?: () => void;
 }) {
   const context = useContext(DesktopMenuContext);
+  const level = useContext(DesktopMenuLevelContext);
   if (!context) {
     throw new Error("DesktopMenuItem must be used inside DesktopMenu");
   }
@@ -136,6 +153,7 @@ export function DesktopMenuItem({
       onClick={(event) => {
         if (event.detail === 0) select();
       }}
+      onMouseEnter={() => level?.setActiveSubmenuId(null)}
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
     </button>
@@ -151,13 +169,28 @@ export function DesktopSubmenu({
   disabled?: boolean;
   label: string;
 }) {
-  const [isOpen, setOpen] = useState(false);
+  const id = useId();
+  const level = useContext(DesktopMenuLevelContext);
+  const [fallbackOpen, setFallbackOpen] = useState(false);
+  const [childActiveSubmenuId, setChildActiveSubmenuId] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const isOpen = level ? level.activeSubmenuId === id : fallbackOpen;
+  const setOpen = (nextOpen: boolean) => {
+    setChildActiveSubmenuId(null);
+    if (level) {
+      level.setActiveSubmenuId((current) => {
+        if (nextOpen) return id;
+        return current === id ? null : current;
+      });
+      return;
+    }
+    setFallbackOpen(nextOpen);
+  };
   const { pressProps, isPressed } = usePress({
     ref: triggerRef,
     isDisabled: disabled,
-    onPress: () => setOpen((value) => !value),
+    onPress: () => setOpen(!isOpen),
   });
   const { overlayProps } = useOverlay(
     {
@@ -218,7 +251,11 @@ export function DesktopSubmenu({
             onMouseLeave={() => setOpen(false)}
           >
             <DismissButton onDismiss={() => setOpen(false)} />
-            {children}
+            <DesktopMenuLevelContext.Provider
+              value={{ activeSubmenuId: childActiveSubmenuId, setActiveSubmenuId: setChildActiveSubmenuId }}
+            >
+              {children}
+            </DesktopMenuLevelContext.Provider>
             <DismissButton onDismiss={() => setOpen(false)} />
           </div>
         </Overlay>

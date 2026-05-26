@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-05-27
+
+### Fixed
+
+- Fixed desktop submenu switching so sibling and nested branch menus no longer leave stale flyouts behind while hovering.
+- Fixed AI session history context menus after terminal focus by removing the broken rename action and making menu item activation work on pointer down.
+- Fixed file-sidebar delete confirmation actions and shortened the confirmation bar buttons to Confirm and Cancel.
+- Added missing 10-locale translations for terminal history settings and the shared Confirm action.
+
 ## [1.0.7] - 2026-05-27
 
 ### Changed

@@ -6,7 +6,7 @@ import type { WorkspaceProject } from "../types";
 import { formatI18n, localeFromSettings, tm } from "../i18n";
 import { dispatchWorkspaceCommand } from "../workspaceCommands";
 import { RefreshCw } from "../icons";
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
+import { ContextMenu, ContextMenuItem, useContextMenu } from "./ContextMenu";
 import { systemConfirm } from "../systemDialog";
 
 type Props = {
@@ -25,7 +25,6 @@ const restorePendingTimeoutMs = 6_000;
 export function AIHistorySessionList({ project, sessions, mode, isLoading, error, className, maxItems = 20 }: Props) {
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [restoringSessionId, setRestoringSessionId] = useState("");
-  const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({});
   const [hiddenSessionIds, setHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const restoreTimeoutRef = useRef<number | null>(null);
   const restoreLockRef = useRef<string | null>(null);
@@ -33,12 +32,8 @@ export function AIHistorySessionList({ project, sessions, mode, isLoading, error
     () =>
       sessions
         .filter((session) => !hiddenSessionIds.has(session.sessionId))
-        .slice(0, maxItems)
-        .map((session) => ({
-          ...session,
-          sessionTitle: titleOverrides[session.sessionId] ?? session.sessionTitle,
-        })),
-    [hiddenSessionIds, maxItems, sessions, titleOverrides],
+        .slice(0, maxItems),
+    [hiddenSessionIds, maxItems, sessions],
   );
 
   useEffect(
@@ -49,27 +44,6 @@ export function AIHistorySessionList({ project, sessions, mode, isLoading, error
     },
     [],
   );
-
-  const renameSession = (session: AIHistorySessionSummary) => {
-    const nextTitle = window.prompt(tm("common.rename", "Rename"), session.sessionTitle)?.trim();
-    if (!nextTitle) return;
-    if (!project || !window.__TAURI_INTERNALS__) {
-      setTitleOverrides((current) => ({
-        ...current,
-        [session.sessionId]: nextTitle,
-      }));
-      return;
-    }
-    void invoke("ai_history_session_rename", {
-      project: {
-        id: project.id,
-        name: project.name,
-        path: project.path,
-      },
-      sessionId: session.sessionId,
-      title: nextTitle,
-    }).catch((reason) => console.error("failed to rename ai history session", reason));
-  };
 
   const deleteSession = (session: AIHistorySessionSummary) => {
     void systemConfirm(formatI18n(tm("ai.sessions.delete_confirm_format", "Delete %@?"), session.sessionTitle), {
@@ -122,7 +96,6 @@ export function AIHistorySessionList({ project, sessions, mode, isLoading, error
           disabled={Boolean(restoringSessionId)}
           onSelect={() => setSelectedSessionId(session.sessionId)}
           onRestore={() => restoreSession(session)}
-          onRename={() => renameSession(session)}
           onDelete={() => deleteSession(session)}
         />
       ))}
@@ -147,7 +120,6 @@ const HistorySessionRow = memo(function HistorySessionRow({
   disabled,
   onSelect,
   onRestore,
-  onRename,
   onDelete,
 }: {
   session: AIHistorySessionSummary;
@@ -157,7 +129,6 @@ const HistorySessionRow = memo(function HistorySessionRow({
   disabled?: boolean;
   onSelect: () => void;
   onRestore: () => void;
-  onRename: () => void;
   onDelete: () => void;
 }) {
   const contextMenu = useContextMenu();
@@ -213,10 +184,6 @@ const HistorySessionRow = memo(function HistorySessionRow({
         <ContextMenuItem label={tm("common.open", "Open")} onSelect={onRestore}>
           {tm("common.open", "Open")}
         </ContextMenuItem>
-        <ContextMenuItem label={tm("common.rename", "Rename")} onSelect={onRename}>
-          {tm("common.rename", "Rename")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
         <ContextMenuItem label={tm("common.delete", "Delete")} onSelect={onDelete}>
           {tm("common.delete", "Delete")}
         </ContextMenuItem>

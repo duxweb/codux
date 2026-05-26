@@ -159,7 +159,7 @@ export const UPDATE_CHANNEL_ENDPOINTS: Record<"stable" | "beta", string> = {
   stable: "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json",
   beta: "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json",
 };
-const APP_VERSION = "1.0.7";
+const APP_VERSION = "1.0.8";
 const DEFAULT_UPDATE_CHANNEL: "stable" | "beta" = APP_VERSION.includes("-") ? "beta" : "stable";
 const DEFAULT_UPDATE_ENDPOINT = UPDATE_CHANNEL_ENDPOINTS[DEFAULT_UPDATE_CHANNEL];
 const LEGACY_UPDATE_ENDPOINTS = new Set([
