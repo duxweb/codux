@@ -755,8 +755,6 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 }
 
 .terminal-host .xterm-viewport {
-  overflow-y: scroll !important;
-  scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
   background: var(--terminal-bg) !important;
 }

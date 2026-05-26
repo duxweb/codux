@@ -43,13 +43,10 @@ type TerminalRendererAdapter = {
   dispose: () => void;
 };
 
-const MIN_COLS = 20;
-const MIN_ROWS = 8;
 const INTERACTIVE_WRITE_INTERVAL_MS = 16;
 const STREAM_ANIMATION_WRITE_INTERVAL_MS = 16;
 const STREAM_WRITE_INTERVAL_MS = 24;
 const INACTIVE_WRITE_INTERVAL_MS = 200;
-const FIT_DEBOUNCE_MS = 80;
 const FIT_DIMENSION_EPSILON_PX = 2;
 const MAX_QUEUED_WRITE_BYTES = 256 * 1024;
 const ACTIVE_WRITE_BYTES_PER_FLUSH = 32 * 1024;
@@ -140,7 +137,6 @@ function XtermRenderer({
     let disposed = false;
     let inputEnabled = false;
     let resizeFrame: number | null = null;
-    let fitTimer: number | null = null;
     let pendingFitForce = false;
     let lastFitWidth = -1;
     let lastFitHeight = -1;
@@ -438,38 +434,26 @@ function XtermRenderer({
       }
       lastFitWidth = width;
       lastFitHeight = height;
-      const proposed = fitAddon.proposeDimensions();
-      if (!proposed) return;
-      const proposedCols = Math.floor(proposed.cols);
-      const proposedRows = Math.floor(proposed.rows);
-      if (!Number.isFinite(proposedCols) || !Number.isFinite(proposedRows)) return;
-      const cols = Math.max(MIN_COLS, proposedCols);
-      const rows = Math.max(MIN_ROWS, proposedRows);
-      if (terminal.cols !== cols || terminal.rows !== rows) {
+      const previousCols = terminal.cols;
+      const previousRows = terminal.rows;
+      fitAddon.fit();
+      if (terminal.cols !== previousCols || terminal.rows !== previousRows) {
         runtimeTrace(
           "terminal-view",
-          `fit_resize terminal=${terminalId} force=${force} host=${width}x${height} from=${terminal.cols}x${terminal.rows} to=${cols}x${rows}`,
+          `fit_resize terminal=${terminalId} force=${force} host=${width}x${height} from=${previousCols}x${previousRows} to=${terminal.cols}x${terminal.rows}`,
         );
-        terminal.resize(cols, rows);
       }
     };
 
     const scheduleFit = (force = false) => {
       pendingFitForce = pendingFitForce || force;
       if (resizeFrame !== null) return;
-      if (fitTimer !== null) {
-        window.clearTimeout(fitTimer);
-        fitTimer = null;
-      }
-      fitTimer = window.setTimeout(() => {
-        fitTimer = null;
-        resizeFrame = window.requestAnimationFrame(() => {
-          const forceFit = pendingFitForce;
-          pendingFitForce = false;
-          resizeFrame = null;
-          fit(forceFit);
-        });
-      }, force ? 0 : FIT_DEBOUNCE_MS);
+      resizeFrame = window.requestAnimationFrame(() => {
+        const forceFit = pendingFitForce;
+        pendingFitForce = false;
+        resizeFrame = null;
+        fit(forceFit);
+      });
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
@@ -585,10 +569,6 @@ function XtermRenderer({
         if (resizeFrame !== null) {
           window.cancelAnimationFrame(resizeFrame);
           resizeFrame = null;
-        }
-        if (fitTimer !== null) {
-          window.clearTimeout(fitTimer);
-          fitTimer = null;
         }
         if (writeTimer !== null) {
           window.clearTimeout(writeTimer);
