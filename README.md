@@ -14,6 +14,7 @@
   <a href="https://github.com/duxweb/codux/releases">Download</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases">Mobile</a> &middot;
   <a href="https://github.com/duxweb/codux-service/releases">Relay Service</a> &middot;
+  <a href="#wechat">WeChat</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">Feedback</a>
 </p>
 
@@ -57,6 +58,14 @@ Codux detects supported CLIs from the integrated terminal, reads local session h
 ## Demo Video
 
 GitHub README does not render third-party iframe players. Watch the demo on [Bilibili](https://www.bilibili.com/video/BV1mK9vBCEYD/).
+
+## WeChat
+
+Scan the QR code to add the author on WeChat and ask to join the DUXAI community group.
+
+<p align="center">
+  <img src="docs/images/wechat-author.png" width="320" alt="Author WeChat QR code">
+</p>
 
 ## Mobile Handoff
 
