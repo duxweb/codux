@@ -1,6 +1,28 @@
-import { Dropdown, Separator } from "@heroui/react";
-import { createContext, useContext, useId, type ComponentProps, type ReactElement, type ReactNode } from "react";
-import type { Placement as FloatingPlacement } from "@floating-ui/react";
+import {
+  autoUpdate,
+  flip,
+  FloatingPortal,
+  offset,
+  shift,
+  useClick,
+  useDismiss,
+  useFloating,
+  useInteractions,
+  useMergeRefs,
+  useRole,
+  type Placement as FloatingPlacement,
+} from "@floating-ui/react";
+import { DismissButton, Overlay, mergeProps, useOverlay, useOverlayPosition, usePress } from "react-aria";
+import {
+  cloneElement,
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
+} from "react";
 
 type DesktopMenuContextValue = {
   close: () => void;
@@ -25,26 +47,47 @@ export function DesktopMenu({
   placement = "bottom-end",
   trigger,
 }: DesktopMenuProps) {
-  const width = "min(240px, calc(100vw - 24px))";
+  const { context, floatingStyles, refs } = useFloating({
+    open: isOpen,
+    onOpenChange,
+    placement,
+    transform: false,
+    middleware: [offset(6), flip({ padding: 12 }), shift({ padding: 12 })],
+    whileElementsMounted: autoUpdate,
+  });
+  const click = useClick(context, {
+    event: "mousedown",
+  });
+  const dismiss = useDismiss(context, {
+    outsidePress: true,
+    outsidePressEvent: "pointerdown",
+    escapeKey: true,
+  });
+  const role = useRole(context, { role: "menu" });
+  const { getFloatingProps, getReferenceProps } = useInteractions([click, dismiss, role]);
+  const triggerRef = (trigger as ReactElement & { ref?: Ref<Element> }).ref;
+  const referenceRef = useMergeRefs([refs.setReference, triggerRef]);
+  const close = () => onOpenChange(false);
+
   return (
-    <DesktopMenuContext.Provider
-      value={{
-        close: () => onOpenChange(false),
-      }}
-    >
-      <Dropdown isOpen={isOpen} onOpenChange={onOpenChange}>
-        {renderMenuTrigger(trigger, ariaLabel)}
-        <Dropdown.Popover
-          placement={toHeroPlacement(placement)}
-          offset={6}
-          className="desktop-menu-popover w-[240px] rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating"
-          style={{ width }}
-        >
-          <Dropdown.Menu aria-label={ariaLabel} className="grid gap-0.5" shouldCloseOnSelect={false}>
+    <DesktopMenuContext.Provider value={{ close }}>
+      {renderMenuTrigger(trigger, ariaLabel, referenceRef, getReferenceProps({ className: "no-drag" }), isOpen)}
+      {isOpen && (
+        <FloatingPortal preserveTabOrder={false}>
+          <div
+            ref={refs.setFloating}
+            style={floatingStyles}
+            {...(getFloatingProps({
+              role: "menu",
+              "aria-label": ariaLabel,
+              className:
+                "desktop-menu-popover no-drag z-[10000] grid w-[min(240px,calc(100vw_-_24px))] gap-0.5 rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating outline-none",
+            }) as Record<string, unknown>)}
+          >
             {children}
-          </Dropdown.Menu>
-        </Dropdown.Popover>
-      </Dropdown>
+          </div>
+        </FloatingPortal>
+      )}
     </DesktopMenuContext.Provider>
   );
 }
@@ -64,21 +107,29 @@ export function DesktopMenuItem({
   if (!context) {
     throw new Error("DesktopMenuItem must be used inside DesktopMenu");
   }
-  const id = useId();
+  const ref = useRef<HTMLButtonElement | null>(null);
+  const { pressProps, isPressed } = usePress({
+    ref,
+    isDisabled: disabled,
+    onPress: () => {
+      onSelect?.();
+      context.close();
+    },
+  });
+
   return (
-    <Dropdown.Item
-      id={id}
-      textValue={label}
-      isDisabled={disabled}
-      className="min-w-0 overflow-hidden"
-      onAction={() => {
-        if (disabled) return;
-        onSelect?.();
-        context.close();
-      }}
+    <button
+      {...pressProps}
+      ref={ref}
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      aria-label={label}
+      data-active-item={isPressed ? "" : undefined}
+      className="flex min-h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium leading-4 text-ink-soft outline-none transition-colors hover:bg-default-hover hover:text-ink aria-disabled:opacity-50 data-[active-item]:bg-default-hover data-[active-item]:text-ink"
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
-    </Dropdown.Item>
+    </button>
   );
 }
 
@@ -91,79 +142,111 @@ export function DesktopSubmenu({
   disabled?: boolean;
   label: string;
 }) {
-  const context = useContext(DesktopMenuContext);
-  if (!context) {
-    throw new Error("DesktopSubmenu must be used inside DesktopMenu");
-  }
-  const id = useId();
+  const [isOpen, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const { pressProps, isPressed } = usePress({
+    ref: triggerRef,
+    isDisabled: disabled,
+    onPress: () => setOpen((value) => !value),
+  });
+  const { overlayProps } = useOverlay(
+    {
+      isOpen,
+      isDismissable: true,
+      onClose: () => setOpen(false),
+      shouldCloseOnInteractOutside: (element) => element !== triggerRef.current && !triggerRef.current?.contains(element),
+    },
+    overlayRef,
+  );
+  const { overlayProps: positionProps } = useOverlayPosition({
+    targetRef: triggerRef,
+    overlayRef,
+    isOpen,
+    offset: 6,
+    containerPadding: 12,
+    shouldFlip: true,
+    placement: "right top",
+    onClose: () => setOpen(false),
+  });
+
   return (
-    <DesktopMenuContext.Provider value={context}>
-      <Dropdown.SubmenuTrigger delay={80}>
-        <Dropdown.Item
-          id={id}
-          textValue={label}
-          isDisabled={disabled}
-          className="min-w-0 justify-between overflow-hidden"
-        >
-          <span className="min-w-0 truncate">{label}</span>
-          <Dropdown.SubmenuIndicator className="text-ink-faint" />
-        </Dropdown.Item>
-        <Dropdown.Popover
-          placement="right top"
-          offset={6}
-          className="desktop-menu-popover w-[240px] rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating"
-          style={{ width: "min(240px, calc(100vw - 24px))" }}
-        >
-          <Dropdown.Menu aria-label={label} className="grid gap-0.5" shouldCloseOnSelect={false}>
+    <>
+      <button
+        {...pressProps}
+        ref={triggerRef}
+        type="button"
+        role="menuitem"
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        data-active-item={isPressed || isOpen ? "" : undefined}
+        className="flex min-h-7 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium leading-4 text-ink-soft outline-none transition-colors hover:bg-default-hover hover:text-ink aria-disabled:opacity-50 data-[active-item]:bg-default-hover data-[active-item]:text-ink"
+        onMouseEnter={() => {
+          if (!disabled) setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            setOpen(true);
+          }
+          if (event.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+      >
+        <span className="min-w-0 truncate">{label}</span>
+        <span className="text-ink-faint">›</span>
+      </button>
+      {isOpen && (
+        <Overlay disableFocusManagement>
+          <div
+            {...(mergeProps(overlayProps, positionProps) as Record<string, unknown>)}
+            ref={overlayRef}
+            role="menu"
+            aria-label={label}
+            className="desktop-menu-popover no-drag z-[10001] grid w-[min(240px,calc(100vw_-_24px))] gap-0.5 rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating outline-none"
+            onMouseLeave={() => setOpen(false)}
+          >
+            <DismissButton onDismiss={() => setOpen(false)} />
             {children}
-          </Dropdown.Menu>
-        </Dropdown.Popover>
-      </Dropdown.SubmenuTrigger>
-    </DesktopMenuContext.Provider>
+            <DismissButton onDismiss={() => setOpen(false)} />
+          </div>
+        </Overlay>
+      )}
+    </>
   );
 }
 
 export function DesktopMenuSectionLabel({ children }: { children: ReactNode }) {
-  const id = useId();
-  const label = typeof children === "string" ? children : undefined;
   return (
-    <Dropdown.Item
-      id={id}
-      textValue={label}
-      isDisabled
-      className="min-w-0 truncate px-2 py-1 text-[11px] font-semibold text-ink-faint"
-    >
+    <div role="presentation" className="min-w-0 truncate px-2 py-1 text-[11px] font-semibold text-ink-faint">
       {children}
-    </Dropdown.Item>
+    </div>
   );
 }
 
 export function DesktopMenuSeparator() {
-  return <Separator className="my-1 h-px bg-border-subtle/70" />;
+  return <div role="separator" className="my-1 h-px bg-border-subtle/70" />;
 }
 
-type HeroPlacement = NonNullable<ComponentProps<typeof Dropdown.Popover>["placement"]>;
-
-function toHeroPlacement(placement: FloatingPlacement): HeroPlacement {
-  if (placement === "right-start") return "right top";
-  if (placement === "right-end") return "right bottom";
-  if (placement === "left-start") return "left top";
-  if (placement === "left-end") return "left bottom";
-  return placement.replace("-", " ") as HeroPlacement;
-}
-
-function renderMenuTrigger(trigger: ReactElement<Record<string, unknown>>, ariaLabel: string) {
+function renderMenuTrigger(
+  trigger: ReactElement<Record<string, unknown>>,
+  ariaLabel: string,
+  triggerRef: Ref<Element>,
+  referenceProps: Parameters<typeof mergeProps>[number],
+  isOpen: boolean,
+) {
   const props = trigger.props;
   const label = typeof props["aria-label"] === "string" ? props["aria-label"] : ariaLabel;
   const className = typeof props.className === "string" ? props.className : undefined;
-  return (
-    <Dropdown.Trigger
-      type="button"
-      aria-label={label}
-      isDisabled={props.disabled === true || props.isDisabled === true}
-      className={`${className ?? ""} no-drag`}
-    >
-      {props.children as ReactNode}
-    </Dropdown.Trigger>
-  );
+  return cloneElement(trigger, {
+    ...mergeProps(props, referenceProps),
+    ref: triggerRef,
+    type: typeof props.type === "string" ? props.type : "button",
+    "aria-label": label,
+    "aria-haspopup": "menu",
+    "aria-expanded": isOpen,
+    className: `${className ?? ""} no-drag`,
+  } as Record<string, unknown>);
 }

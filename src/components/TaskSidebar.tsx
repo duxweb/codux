@@ -1,12 +1,12 @@
 import { Folder, ListChecks, Plus, RefreshCw, SquareTerminal } from "../icons";
-import { Input as HeroInput, ListBox, Modal, Select as HeroSelect } from "@heroui/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useAIHistorySnapshot } from "../ai/history";
 import { formatI18n, tm } from "../i18n";
 import { revealProjectInFileManager } from "../ide";
 import { Button } from "./Button";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
-import { Checkbox } from "./Form";
+import { Checkbox, Select, TextInput } from "./Form";
+import { Modal } from "./Modal";
 import { PressableButton } from "./PressableButton";
 import { normalizeGitEventPath } from "../git/status";
 import { useRuntimeStore } from "../runtimeStore";
@@ -332,40 +332,22 @@ export function TaskSidebar({
                   <span className="text-sm font-semibold text-ink-soft">
                     {tm("worktree.task.base_branch", "Base Branch")}
                   </span>
-                  <HeroSelect
-                    aria-label={tm("worktree.task.base_branch", "Base Branch")}
-                    selectedKey={baseBranch}
-                    onSelectionChange={(key) => {
-                      if (typeof key === "string") setBaseBranch(key);
-                    }}
+                  <Select
+                    ariaLabel={tm("worktree.task.base_branch", "Base Branch")}
+                    value={baseBranch}
+                    onChange={setBaseBranch}
                     isDisabled={isBusy || branchOptions.length === 0}
-                    fullWidth
-                  >
-                    <HeroSelect.Trigger>
-                      <HeroSelect.Value />
-                      <HeroSelect.Indicator />
-                    </HeroSelect.Trigger>
-                    <HeroSelect.Popover>
-                      <ListBox>
-                        {branchOptions.map((branch) => (
-                          <ListBox.Item key={branch} id={branch} textValue={branch}>
-                            {branch}
-                            <ListBox.ItemIndicator />
-                          </ListBox.Item>
-                        ))}
-                      </ListBox>
-                    </HeroSelect.Popover>
-                  </HeroSelect>
+                    options={branchOptions.map((branch) => ({ value: branch, label: branch }))}
+                  />
                 </label>
                 <label className="grid gap-1.5">
                   <span className="text-sm font-semibold text-ink-soft">
                     {tm("worktree.task.title", "Worktree Name")}
                   </span>
-                  <HeroInput
+                  <TextInput
                     value={worktreeName}
                     onChange={(event) => setWorktreeName(event.currentTarget.value)}
                     disabled={isBusy}
-                    fullWidth
                     autoFocus
                   />
                 </label>

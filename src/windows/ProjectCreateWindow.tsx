@@ -18,7 +18,7 @@ import {
 } from "../icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState, type ReactNode } from "react";
-import { Button as HeroButton } from "@heroui/react";
+import { Button } from "../components/Button";
 import { SettingsForm, TextInput } from "../components/Form";
 import { PressableButton } from "../components/PressableButton";
 import { tm } from "../i18n";
@@ -167,14 +167,14 @@ export function ProjectCreateWindow() {
               onChange={(event) => setPath(event.currentTarget.value)}
               className="min-w-0 flex-1 font-mono"
             />
-            <HeroButton
+            <Button
               size="md"
               variant="secondary"
               className="h-10 min-w-0 px-4"
               onPress={() => void chooseDirectory()}
             >
               {tm("common.choose", "Choose")}
-            </HeroButton>
+            </Button>
           </div>
         </FieldGroup>
 

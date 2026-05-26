@@ -175,7 +175,10 @@ const HistorySessionRow = memo(function HistorySessionRow({
         disabled={disabled}
         aria-busy={restoring}
         tabIndex={-1}
-        onClick={onSelect}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          if (!disabled) onSelect();
+        }}
         onDoubleClick={onRestore}
         onContextMenu={(event) => {
           onSelect();

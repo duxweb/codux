@@ -39,7 +39,6 @@ import { ensureWorktreeSnapshotEventCacheSubscription, useWorktreeSnapshot } fro
 import { readAppSettings, subscribeAppSettings } from "./settings";
 import { runAfterFirstPaint, runWhenIdle } from "./startupScheduler";
 import { systemConfirm, systemMessage } from "./systemDialog";
-import { isTerminalInputActive } from "./terminal/focus";
 import { tm } from "./i18n";
 import { ensureTerminalLayoutsSnapshotSubscription } from "./terminalLayout";
 import { Columns2, FolderOpen, FolderPlus, GitBranch, Sparkles, Square2Stack } from "./icons";
@@ -83,8 +82,13 @@ function isTextEntryTarget(target: EventTarget | null) {
 
 function shouldSkipGlobalShortcutDispatch(event: KeyboardEvent) {
   if (isShortcutBoundaryEvent(event)) return true;
-  if (!isTerminalInputActive(event.target)) return false;
+  if (!isTerminalEventTarget(event.target) && !isTerminalEventTarget(document.activeElement)) return false;
   return !shouldTerminalSkipShell(event);
+}
+
+function isTerminalEventTarget(target: EventTarget | null) {
+  const element = target instanceof Element ? target : null;
+  return Boolean(element?.closest(".xterm, .xterm-helper-textarea"));
 }
 
 function worktreeIdsForProject(

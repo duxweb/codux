@@ -1,6 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { TerminalEvent, TerminalSession } from "../types";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import type { TerminalSession } from "../types";
 import { readConfiguredShell } from "../settings";
 import { runtimeTrace } from "../runtimeTrace";
 
@@ -25,13 +24,12 @@ export type TerminalRuntimeSession = TerminalSession & {
 };
 
 export type TerminalRuntimeEvent =
-  | { type: "output"; text: string; bytes: Uint8Array; session: TerminalRuntimeSessionSnapshot }
+  | { type: "output"; bytes: Uint8Array; session: TerminalRuntimeSessionSnapshot }
   | { type: "reset"; session: TerminalRuntimeSession; history?: string }
   | { type: "state"; session: TerminalRuntimeSession }
   | { type: "closed"; sessionId: string };
 
 export type TerminalListener = (event: TerminalRuntimeEvent) => void;
-
 export type TerminalRuntimeSessionSnapshot = Omit<TerminalRuntimeSession, "replayBuffer">;
 
 type EnsureTerminalOptions = {
@@ -65,16 +63,7 @@ export class TerminalRuntime {
   private startOptions = new Map<string, EnsureTerminalOptions>();
   private startingSessions = new Set<string>();
   private listeners = new Map<string, Set<TerminalListener>>();
-  private eventUnlisten?: UnlistenFn;
-  private eventListenPromise?: Promise<void>;
   private backendStartQueue = Promise.resolve();
-  private outputQueues = new Map<
-    string,
-    {
-      chunks: Array<{ text: string; bytes?: Uint8Array }>;
-      scheduled: boolean;
-    }
-  >();
   private outputTextDecoders = new Map<string, TextDecoder>();
   private viewSnapshots = new Map<string, TerminalViewSnapshot>();
   private sequence = 0;
@@ -90,7 +79,7 @@ export class TerminalRuntime {
       sessions: this.sessions.size,
       backends: this.backendToSessionIds.size,
       listeners: this.listeners.size,
-      queues: this.outputQueues.size,
+      queues: 0,
       replayChars,
       running,
       viewSnapshots: this.viewSnapshots.size,
@@ -171,7 +160,7 @@ export class TerminalRuntime {
     if (!session) return;
 
     if (!window.__TAURI_INTERNALS__) {
-      this.appendOutput(sessionId, data === "\r" ? "\r\n" : data);
+      this.appendOutput(sessionId, encodeTerminalText(data === "\r" ? "\r\n" : data));
       return;
     }
 
@@ -219,7 +208,6 @@ export class TerminalRuntime {
     session.hasSnapshot = false;
     this.viewSnapshots.delete(sessionId);
     this.outputTextDecoders.delete(sessionId);
-    this.flushOutputQueue(sessionId);
     if (session.backendId && window.__TAURI_INTERNALS__) {
       void invoke("terminal_clear_history", { sessionId: session.backendId }).catch(() => undefined);
     }
@@ -259,12 +247,6 @@ export class TerminalRuntime {
     const session = this.sessions.get(sessionId);
     if (!session) return undefined;
     if (!session.backendId || !window.__TAURI_INTERNALS__) {
-      if (session.replayBuffer) {
-        runtimeTrace(
-          "terminal-runtime",
-          `snapshot local session=${sessionId} chars=${session.replayBuffer.length}`,
-        );
-      }
       return session.replayBuffer;
     }
     try {
@@ -304,6 +286,7 @@ export class TerminalRuntime {
     this.sessions.set(session.id, session);
     this.keyToSessionId.set(session.key, session.id);
     this.registerBackendSession(options.backendId, session.id);
+    void this.attachBackendChannels(session.id, options.backendId);
     void this.attachBackendSnapshot(session.id, options.backendId);
     return session;
   }
@@ -319,7 +302,6 @@ export class TerminalRuntime {
     this.startingSessions.delete(sessionId);
     this.outputTextDecoders.delete(sessionId);
     this.viewSnapshots.delete(sessionId);
-    this.flushOutputQueue(sessionId);
     if (session.backendId) {
       this.unregisterBackendSession(session.backendId, sessionId);
     }
@@ -335,36 +317,6 @@ export class TerminalRuntime {
     for (const sessionId of sessionIds) {
       this.detachView(sessionId);
     }
-  }
-
-  async restart(sessionId: string) {
-    const session = this.sessions.get(sessionId);
-    if (!session) return;
-
-    if (session.backendId && window.__TAURI_INTERNALS__) {
-      await invoke("terminal_kill", { sessionId: session.backendId }).catch(() => undefined);
-      this.unregisterBackendSession(session.backendId, sessionId);
-    }
-
-    this.updateSession(sessionId, {
-      backendId: undefined,
-      exitCode: undefined,
-      replayBuffer: "",
-      hasSnapshot: false,
-      state: "starting",
-    });
-    this.outputTextDecoders.delete(sessionId);
-    this.viewSnapshots.delete(sessionId);
-    this.emit(sessionId, { type: "reset", session: this.sessions.get(sessionId)!, history: "" });
-    this.enqueueBackendStart(sessionId, {
-      projectId: session.projectId,
-      slotId: session.slotId,
-      title: session.title,
-      cwd: session.cwd,
-      projectName: session.projectName,
-      command: session.command,
-      tool: session.tool,
-    });
   }
 
   async close(sessionId: string) {
@@ -390,7 +342,6 @@ export class TerminalRuntime {
     this.startingSessions.delete(sessionId);
     this.outputTextDecoders.delete(sessionId);
     this.viewSnapshots.delete(sessionId);
-    this.flushOutputQueue(sessionId);
     this.emit(sessionId, { type: "closed", sessionId });
     this.listeners.delete(sessionId);
     this.traceRuntime("close", sessionId);
@@ -449,7 +400,7 @@ export class TerminalRuntime {
     }
 
     try {
-      await this.ensureEventListener();
+      const channels = this.createBackendChannels(sessionId);
       const config: Record<string, unknown> = {
         cwd: options.cwd,
         shell: readConfiguredShell(),
@@ -471,7 +422,11 @@ export class TerminalRuntime {
         },
       };
 
-      const backendId = await invoke<string>("terminal_create", { config });
+      const backendId = await invoke<string>("terminal_create", {
+        config,
+        onData: channels.onData,
+        onExit: channels.onExit,
+      });
       if (!this.sessions.has(sessionId)) {
         await invoke("terminal_kill", { sessionId: backendId }).catch(() => undefined);
         return;
@@ -485,15 +440,45 @@ export class TerminalRuntime {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.updateSession(sessionId, { state: "error" });
-      this.appendOutput(sessionId, `\r\n[terminal error] ${message}`);
+      this.appendOutput(sessionId, encodeTerminalText(`\r\n[terminal error] ${message}`));
     }
+  }
+
+  private async attachBackendChannels(sessionId: string, backendId: string) {
+    if (!window.__TAURI_INTERNALS__) return;
+    const channels = this.createBackendChannels(sessionId);
+    await invoke("terminal_attach", {
+      sessionId: backendId,
+      onData: channels.onData,
+      onExit: channels.onExit,
+    }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.updateSession(sessionId, { state: "error" });
+      this.appendOutput(sessionId, encodeTerminalText(`\r\n[terminal error] ${message}`));
+    });
+  }
+
+  private createBackendChannels(sessionId: string) {
+    const onData = new Channel<ArrayBuffer>();
+    const onExit = new Channel<number>();
+    onData.onmessage = (buffer) => {
+      this.appendOutput(sessionId, new Uint8Array(buffer));
+    };
+    onExit.onmessage = (code) => {
+      this.updateSession(sessionId, {
+        state: "exited",
+        exitCode: code,
+      });
+      this.flushTextDecoder(sessionId);
+      this.appendOutput(sessionId, encodeTerminalText(`\r\n[process exited${code < 0 ? "" : `: ${code}`}]`));
+    };
+    return { onData, onExit };
   }
 
   private async attachBackendSnapshot(sessionId: string, backendId: string) {
     if (!window.__TAURI_INTERNALS__) return;
 
     try {
-      await this.ensureEventListener();
       const history = await invoke<string>("terminal_snapshot", { sessionId: backendId });
       if (!this.sessions.has(sessionId)) return;
       runtimeTrace(
@@ -516,20 +501,8 @@ export class TerminalRuntime {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.updateSession(sessionId, { state: "error" });
-      this.appendOutput(sessionId, `\r\n[terminal error] ${message}`);
+      this.appendOutput(sessionId, encodeTerminalText(`\r\n[terminal error] ${message}`));
     }
-  }
-
-  private async ensureEventListener() {
-    if (this.eventUnlisten) return;
-    if (this.eventListenPromise) return this.eventListenPromise;
-    this.eventListenPromise = listen<TerminalEvent>("terminal:event", (event) => {
-      this.handleBackendEvent(event.payload);
-    }).then((unlisten) => {
-      this.eventUnlisten = unlisten;
-      this.eventListenPromise = undefined;
-    });
-    return this.eventListenPromise;
   }
 
   private async waitForInitialSize(sessionId: string) {
@@ -541,33 +514,6 @@ export class TerminalRuntime {
       delay(120),
     ]);
     this.initialSizeResolvers.delete(sessionId);
-  }
-
-  private handleBackendEvent(event: TerminalEvent) {
-    const sessionIds = this.backendToSessionIds.get(event.sessionId);
-    if (!sessionIds?.size) return;
-
-    for (const sessionId of sessionIds) {
-      if (event.kind === "output" && (event.text || event.bytesBase64)) {
-        this.appendOutput(sessionId, event.text ?? "", decodeBase64Bytes(event.bytesBase64));
-        continue;
-      }
-
-      if (event.kind === "exit") {
-        this.updateSession(sessionId, {
-          state: "exited",
-          exitCode: event.exitCode,
-        });
-        this.flushTextDecoder(sessionId);
-        this.appendOutput(sessionId, `\r\n[process exited${event.exitCode == null ? "" : `: ${event.exitCode}`}]`);
-        continue;
-      }
-
-      if (event.kind === "error") {
-        this.updateSession(sessionId, { state: "error" });
-        this.appendOutput(sessionId, `\r\n[terminal error] ${event.message ?? "unknown error"}`);
-      }
-    }
   }
 
   private registerBackendSession(backendId: string, sessionId: string) {
@@ -588,46 +534,22 @@ export class TerminalRuntime {
     }
   }
 
-  private appendOutput(sessionId: string, text: string, bytes?: Uint8Array) {
+  private appendOutput(sessionId: string, bytes: Uint8Array) {
     const session = this.sessions.get(sessionId);
-    if (!session) return;
+    if (!session || bytes.length === 0) return;
 
-    const shouldDecodeForReplay = !session.backendId || !window.__TAURI_INTERNALS__;
-    const decodedText = shouldDecodeForReplay ? this.decodeOutputText(sessionId, bytes) : "";
-    const outputText = text || decodedText;
+    const outputText = this.decodeOutputText(sessionId, bytes);
     if (outputText) {
       session.replayBuffer = trimReplayBuffer(session.replayBuffer + outputText);
+      session.hasSnapshot = true;
     }
-    this.appendViewSnapshotDelta(sessionId, bytes?.length ? bytes : outputText);
-    if (session.backendId && session.state === "starting") {
+    this.appendViewSnapshotDelta(sessionId, bytes);
+    if (session.state === "starting") {
       session.state = "running";
       this.emit(sessionId, { type: "state", session: { ...session } });
     }
-    this.enqueueOutput(sessionId, outputText, bytes);
-  }
-
-  private enqueueOutput(sessionId: string, text: string, bytes?: Uint8Array) {
-    let queue = this.outputQueues.get(sessionId);
-    if (!queue) {
-      queue = { chunks: [], scheduled: false };
-      this.outputQueues.set(sessionId, queue);
-    }
-    queue.chunks.push({ text, bytes });
-    if (queue.scheduled) return;
-    queue.scheduled = true;
-    queueMicrotask(() => this.flushOutputQueue(sessionId));
-  }
-
-  private flushOutputQueue(sessionId: string) {
-    const queue = this.outputQueues.get(sessionId);
-    if (!queue) return;
-    this.outputQueues.delete(sessionId);
-    const session = this.sessions.get(sessionId);
-    if (!session || queue.chunks.length === 0) return;
-    const { text, bytes } = combineTerminalChunks(queue.chunks);
     this.emit(sessionId, {
       type: "output",
-      text,
       bytes,
       session: sessionSnapshot(session),
     });
@@ -656,8 +578,7 @@ export class TerminalRuntime {
     );
   }
 
-  private decodeOutputText(sessionId: string, bytes?: Uint8Array) {
-    if (!bytes?.length) return "";
+  private decodeOutputText(sessionId: string, bytes: Uint8Array) {
     let decoder = this.outputTextDecoders.get(sessionId);
     if (!decoder) {
       decoder = new TextDecoder();
@@ -672,7 +593,7 @@ export class TerminalRuntime {
     const remaining = decoder.decode();
     this.outputTextDecoders.delete(sessionId);
     if (remaining) {
-      this.appendOutput(sessionId, remaining);
+      this.appendOutput(sessionId, encodeTerminalText(remaining));
     }
   }
 
@@ -737,56 +658,8 @@ function terminalOutputBytes(outputs: Array<string | Uint8Array>) {
   return total;
 }
 
-function decodeBase64Bytes(value?: string) {
-  if (!value) return undefined;
-  const fromBase64 = (Uint8Array as typeof Uint8Array & { fromBase64?: (value: string) => Uint8Array }).fromBase64;
-  if (fromBase64) {
-    try {
-      return fromBase64(value);
-    } catch {
-      // Fall back to atob for older WebKit/WebView2 builds.
-    }
-  }
-  try {
-    const binary = atob(value);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
-    return bytes;
-  } catch {
-    return undefined;
-  }
-}
-
 function encodeTerminalText(value: string) {
   return new TextEncoder().encode(value);
-}
-
-function combineTerminalChunks(chunks: Array<{ text: string; bytes?: Uint8Array }>) {
-  if (chunks.length === 1) {
-    const chunk = chunks[0];
-    return {
-      text: "",
-      bytes: chunk.bytes ?? encodeTerminalText(chunk.text),
-    };
-  }
-
-  let totalLength = 0;
-  const encodedChunks: Uint8Array[] = [];
-  for (const chunk of chunks) {
-    const bytes = chunk.bytes ?? encodeTerminalText(chunk.text);
-    encodedChunks.push(bytes);
-    totalLength += bytes.length;
-  }
-
-  const combined = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of encodedChunks) {
-    combined.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return { text: "", bytes: combined };
 }
 
 function nextAnimationFrame() {

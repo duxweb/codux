@@ -1,8 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import type { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal as XtermTerminal, type IDisposable, type ITerminalAddon, type ITheme } from "@xterm/xterm";
+import { Terminal as XtermTerminal, type IDisposable, type ITheme } from "@xterm/xterm";
 import { Copy, Maximize2, PanelBottomClose, Plus, RefreshCw, Square, TerminalSquare } from "../icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -11,17 +10,20 @@ import {
   readTerminalScrollbackLines,
   subscribeAppSettings,
 } from "../settings";
-import { registerTerminalInput } from "../terminal/focus";
-import { installTerminalTextInputAdapter, type TerminalTextInputAdapter } from "../terminal/inputAdapter";
 import {
   terminalReplayBuffer,
   terminalRuntime,
   type TerminalRuntimeEvent,
   type TerminalRuntimeSession,
 } from "../terminal/runtime";
-import { terminalControlSequence } from "../terminal/keymap";
+import {
+  terminalDeleteSequence,
+  terminalLineNavigationSequence,
+  terminalModifiedEnterSequence,
+  terminalWordNavigationSequence,
+} from "../terminal/keymap";
 import { t } from "../i18n";
-import { isWindowsPlatform } from "../platform";
+import { isMacPlatform, isWindowsPlatform } from "../platform";
 import { runtimeTrace } from "../runtimeTrace";
 import { broadcastWorkspaceCommand } from "../workspaceCommands";
 
@@ -32,7 +34,6 @@ type TerminalRendererAdapter = {
   focus: () => void;
   fit: () => void;
   refreshTheme: () => void;
-  setRenderer: (renderer: TerminalResolvedRenderer) => void;
   setFontSize: (fontSize: number) => void;
   setScrollback: (lines: number) => void;
   setInputEnabled: (enabled: boolean) => void;
@@ -61,10 +62,9 @@ const OVERFLOW_WRITE_MIN_DELAY_MS = 4;
 const LOCAL_INPUT_LOW_LATENCY_MS = 700;
 const STREAM_ANIMATION_QUEUE_BYTES = 64 * 1024;
 const isWindowsTerminal = isWindowsPlatform();
+const isMacTerminal = isMacPlatform();
 const TERMINAL_FONT_FAMILY =
   '"Berkeley Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
-
-type TerminalResolvedRenderer = "webgl";
 
 function cssVar(style: CSSStyleDeclaration, name: string, fallback: string) {
   return style.getPropertyValue(name).trim() || fallback;
@@ -95,10 +95,6 @@ function xtermTheme(host: HTMLElement): ITheme {
     brightCyan: cssVar(style, "--terminal-bright-cyan", "#a6eaff"),
     brightWhite: cssVar(style, "--terminal-bright-white", "#ffffff"),
   };
-}
-
-function terminalTextarea(host: HTMLElement) {
-  return host.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
 }
 
 type XtermInternalSelection = {
@@ -140,12 +136,7 @@ function XtermRenderer({
     let pendingFitForce = false;
     let lastFitWidth = -1;
     let lastFitHeight = -1;
-    let isSelecting = false;
-    let unregisterInput: (() => void) | undefined;
-    let textInputAdapter: TerminalTextInputAdapter | null = null;
-    let webglAddon: WebglAddon | null = null;
-    let webglContextLossDisposable: IDisposable | null = null;
-    let webglLoadVersion = 0;
+    let isSelectingFromPointer = false;
     let writeTimer: number | null = null;
     let writeInFlight = false;
     let lastWriteFlushAt = 0;
@@ -196,94 +187,31 @@ function XtermRenderer({
       );
     };
 
-    const disposeWebgl = () => {
-      webglLoadVersion += 1;
-      webglContextLossDisposable?.dispose();
-      webglContextLossDisposable = null;
-      if (webglAddon) {
-        const addon = webglAddon;
-        try {
-          addon.dispose();
-        } finally {
-          webglAddon = null;
-        }
-      }
-    };
+    traceRendererState("ready");
 
-    const enableWebgl = () => {
-      if (disposed || webglAddon) return;
-      const version = ++webglLoadVersion;
-      void import("@xterm/addon-webgl")
-        .then(({ WebglAddon }) => {
-          if (disposed || version !== webglLoadVersion || webglAddon) return;
-          const nextWebglAddon = new WebglAddon();
-          terminal.loadAddon(nextWebglAddon as ITerminalAddon);
-          webglContextLossDisposable = nextWebglAddon.onContextLoss(() => {
-            console.warn("xterm webgl context lost; falling back to DOM renderer");
-            disposeWebgl();
-          });
-          webglAddon = nextWebglAddon;
-          traceRendererState("webgl-ready");
-        })
-        .catch((error) => {
-          console.warn("failed to load xterm webgl renderer", error);
-        });
-    };
-
-    const setRenderer = (_renderer: TerminalResolvedRenderer) => {
-      enableWebgl();
-    };
-
-    setRenderer("webgl");
-
-    const releaseSelectionDrag = (reason: string) => {
-      if (!isSelecting) return;
-      isSelecting = false;
+    const releaseSelectionDrag = () => {
+      if (!isSelectingFromPointer) return;
+      isSelectingFromPointer = false;
       const selection = (terminal as XtermWithSelectionInternals)._core?._selectionService;
       selection?._removeMouseDownListeners?.();
-      void reason;
     };
-
     const markSelectionStart = (event: MouseEvent) => {
       if (event.button === 0 && host.contains(event.target as Node | null)) {
-        isSelecting = true;
+        isSelectingFromPointer = true;
       }
     };
-    const releaseSelectionAfterMouseEnd = () => releaseSelectionDrag("pointer-end");
-    const releaseSelectionAfterWindowBlur = () => releaseSelectionDrag("window-blur");
-    const releaseSelectionWhenMouseIsUp = (event: MouseEvent | PointerEvent) => {
-      if (event.buttons !== 0) return;
-      releaseSelectionDrag("move-without-button");
-    };
-    const focusTerminalFromPointer = (event: PointerEvent) => {
-      if (event.button !== 0 || !inputEnabled) return;
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest("[data-terminal-control]")) return;
-      terminal.focus();
+    const releaseSelectionWhenMouseEnds = () => releaseSelectionDrag();
+    const releaseSelectionWhenButtonIsUp = (event: MouseEvent | PointerEvent) => {
+      if (event.buttons === 0) releaseSelectionDrag();
     };
 
     host.addEventListener("mousedown", markSelectionStart, true);
-    host.addEventListener("pointerdown", focusTerminalFromPointer, true);
-    window.addEventListener("pointerup", releaseSelectionAfterMouseEnd, true);
-    window.addEventListener("pointercancel", releaseSelectionAfterMouseEnd, true);
-    window.addEventListener("mouseup", releaseSelectionAfterMouseEnd, true);
-    window.addEventListener("pointermove", releaseSelectionWhenMouseIsUp, true);
-    window.addEventListener("mousemove", releaseSelectionWhenMouseIsUp, true);
-    window.addEventListener("blur", releaseSelectionAfterWindowBlur);
-
-    const textarea = terminal.textarea ?? terminalTextarea(host);
-    if (textarea) {
-      textarea.dataset.coduxTerminalInput = "true";
-      unregisterInput = registerTerminalInput({
-        host,
-        textarea,
-      });
-      textInputAdapter = installTerminalTextInputAdapter({
-        textarea,
-        isEnabled: () => inputEnabled,
-        write: onData,
-      });
-    }
+    window.addEventListener("pointerup", releaseSelectionWhenMouseEnds, true);
+    window.addEventListener("pointercancel", releaseSelectionWhenMouseEnds, true);
+    window.addEventListener("mouseup", releaseSelectionWhenMouseEnds, true);
+    window.addEventListener("pointermove", releaseSelectionWhenButtonIsUp, true);
+    window.addEventListener("mousemove", releaseSelectionWhenButtonIsUp, true);
+    window.addEventListener("blur", releaseSelectionWhenMouseEnds);
 
     const refreshTheme = () => {
       if (disposed || !host.isConnected) return;
@@ -458,20 +386,22 @@ function XtermRenderer({
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (!inputEnabled) return false;
-      const sequence = terminalControlSequence(event);
-      if (sequence) {
-        event.preventDefault();
-        event.stopPropagation();
+      const sequence =
+        terminalLineNavigationSequence(event, { isMac: isMacTerminal }) ??
+        terminalWordNavigationSequence(event) ??
+        terminalDeleteSequence(event, { isMac: isMacTerminal }) ??
+        terminalModifiedEnterSequence(event, { isMac: isMacTerminal });
+      if (!sequence) return true;
+      event.preventDefault();
+      if (event.type === "keydown") {
         sendTerminalInput(sequence);
-        return false;
       }
-      return true;
+      return false;
     });
 
     disposables.push(
       terminal.onData((data) => {
         if (!inputEnabled) return;
-        textInputAdapter?.noteNativeData(data);
         sendTerminalInput(data);
       }),
       terminal.onResize(({ cols, rows }) => onResize(cols, rows)),
@@ -517,7 +447,6 @@ function XtermRenderer({
       },
       fit: () => fit(),
       refreshTheme,
-      setRenderer,
       setFontSize: (fontSize) => {
         if (terminal.options.fontSize === fontSize) return;
         terminal.options.fontSize = fontSize;
@@ -532,10 +461,7 @@ function XtermRenderer({
         terminal.options.disableStdin = !enabled;
         terminal.options.cursorBlink = false;
         host.toggleAttribute("data-input-disabled", !enabled);
-        if (!enabled) {
-          terminal.options.cursorBlink = false;
-          host.classList.remove("focused");
-        }
+        if (!enabled) terminal.blur();
       },
       copySelection: async () => {
         const selection = terminal.getSelection();
@@ -576,22 +502,17 @@ function XtermRenderer({
         }
         clearQueuedWrites();
         host.removeEventListener("mousedown", markSelectionStart, true);
-        host.removeEventListener("pointerdown", focusTerminalFromPointer, true);
-        window.removeEventListener("pointerup", releaseSelectionAfterMouseEnd, true);
-        window.removeEventListener("pointercancel", releaseSelectionAfterMouseEnd, true);
-        window.removeEventListener("mouseup", releaseSelectionAfterMouseEnd, true);
-        window.removeEventListener("pointermove", releaseSelectionWhenMouseIsUp, true);
-        window.removeEventListener("mousemove", releaseSelectionWhenMouseIsUp, true);
-        window.removeEventListener("blur", releaseSelectionAfterWindowBlur);
-        textInputAdapter?.dispose();
-        unregisterInput?.();
-        const canvasCount = terminal.element?.querySelectorAll("canvas").length ?? 0;
-        disposeWebgl();
+        window.removeEventListener("pointerup", releaseSelectionWhenMouseEnds, true);
+        window.removeEventListener("pointercancel", releaseSelectionWhenMouseEnds, true);
+        window.removeEventListener("mouseup", releaseSelectionWhenMouseEnds, true);
+        window.removeEventListener("pointermove", releaseSelectionWhenButtonIsUp, true);
+        window.removeEventListener("mousemove", releaseSelectionWhenButtonIsUp, true);
+        window.removeEventListener("blur", releaseSelectionWhenMouseEnds);
         for (const disposable of disposables) {
           disposable.dispose();
         }
         terminal.dispose();
-        runtimeTrace("terminal-view", `dispose canvases=${canvasCount}`);
+        runtimeTrace("terminal-view", "dispose");
       },
     };
 
@@ -854,21 +775,9 @@ export function TerminalView({
       adapter.setFontSize(readTerminalFontSize(settings));
       adapter.setScrollback(readTerminalScrollbackLines(settings));
       adapter.refreshTheme();
-      adapter.setRenderer("webgl");
     };
     applySettings();
     return subscribeAppSettings(applySettings);
-  }, [adapterVersion]);
-
-  useEffect(() => {
-    const adapter = adapterRef.current;
-    if (!adapter) return;
-    const updateRendererActivity = () => {
-      adapter.setRenderer("webgl");
-    };
-    updateRendererActivity();
-    document.addEventListener("visibilitychange", updateRendererActivity);
-    return () => document.removeEventListener("visibilitychange", updateRendererActivity);
   }, [adapterVersion]);
 
   const close = () => {

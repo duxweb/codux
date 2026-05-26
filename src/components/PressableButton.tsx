@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { mergeProps, usePress, type PressEvent } from "react-aria";
+import { mergeProps, useHover, usePress, type PressEvent } from "react-aria";
 
 type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
   children?: ReactNode;
@@ -25,29 +25,44 @@ export const PressableButton = forwardRef<HTMLButtonElement, Props>(function Pre
   onPressStart,
   onPress,
   onPressUp,
-  preventFocusOnPress = true,
+  preventFocusOnPress = false,
   tabIndex,
   type = "button",
   ...props
 }: Props, forwardedRef) {
   const ref = useRef<HTMLButtonElement | null>(null);
+  const pressStartedRef = useRef(false);
   const setRef = useMergedRef(ref, forwardedRef);
+  const { hoverProps, isHovered } = useHover({ isDisabled: disabled });
   const { pressProps } = usePress({
     ref,
     isDisabled: disabled,
-    onPressStart,
-    onPress,
-    onPressUp,
+    onPressStart: (event) => {
+      pressStartedRef.current = true;
+      onPressStart?.(event);
+    },
+    onPress: (event) => {
+      pressStartedRef.current = false;
+      onPress?.(event);
+    },
+    onPressUp: (event) => {
+      const hadPressStart = pressStartedRef.current;
+      onPressUp?.(event);
+      if (!hadPressStart) {
+        onPress?.(event);
+      }
+    },
     preventFocusOnPress,
   });
 
   return (
     <button
-      {...mergeProps(props, pressProps)}
+      {...mergeProps(props, hoverProps, pressProps)}
       ref={setRef}
       type={type}
       disabled={disabled}
       data-codux-button="true"
+      data-hovered={isHovered ? "true" : undefined}
       tabIndex={tabIndex ?? (excludeFromTabOrder ? -1 : undefined)}
     >
       {children}

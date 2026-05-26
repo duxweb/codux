@@ -4,9 +4,8 @@ use crate::memory::{MemoryLaunchRequest, MemoryStore};
 use crate::paths::{app_display_name, app_slug, runtime_temp_dir};
 use crate::ssh::{render_ssh_launch_context, ssh_profiles_file_path};
 use anyhow::{anyhow, Context, Result};
-use base64::{engine::general_purpose, Engine as _};
 use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, MasterPty, PtySize};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::fs;
@@ -19,6 +18,7 @@ use std::sync::OnceLock;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use tauri::ipc::{Channel, Response};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -126,7 +126,7 @@ pub enum TerminalEvent {
         session_id: String,
         #[serde(skip_serializing_if = "String::is_empty")]
         text: String,
-        #[serde(rename = "bytesBase64", serialize_with = "serialize_terminal_bytes")]
+        #[serde(skip)]
         bytes: Vec<u8>,
     },
     Exit {
@@ -140,21 +140,6 @@ pub enum TerminalEvent {
         session_id: String,
         message: String,
     },
-}
-
-impl TerminalEvent {
-    pub fn for_webview(&self) -> Self {
-        match self {
-            TerminalEvent::Output {
-                session_id, bytes, ..
-            } => TerminalEvent::Output {
-                session_id: session_id.clone(),
-                text: String::new(),
-                bytes: bytes.clone(),
-            },
-            _ => self.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Error)]
@@ -205,7 +190,13 @@ impl TerminalManager {
             .collect()
     }
 
-    pub fn create<F>(&self, config: TerminalConfig, emit: F) -> Result<String, TerminalError>
+    pub fn create_with_channels<F>(
+        &self,
+        config: TerminalConfig,
+        emit: F,
+        output: Option<Channel<Response>>,
+        exit: Option<Channel<i32>>,
+    ) -> Result<String, TerminalError>
     where
         F: Fn(TerminalEvent) + Send + Sync + 'static,
     {
@@ -222,6 +213,8 @@ impl TerminalManager {
             id.clone(),
             config,
             sink,
+            output,
+            exit,
             Arc::clone(&self.ai_runtime),
             Arc::clone(&self.settings),
             Arc::clone(&self.memory),
@@ -288,6 +281,17 @@ impl TerminalManager {
         session.clear_history()
     }
 
+    pub fn attach_channels(
+        &self,
+        session_id: &str,
+        output: Option<Channel<Response>>,
+        exit: Option<Channel<i32>>,
+    ) -> Result<(), TerminalError> {
+        let session = self.session(session_id)?;
+        session.attach_channels(output, exit);
+        Ok(())
+    }
+
     fn session(&self, session_id: &str) -> Result<Arc<TerminalSession>, TerminalError> {
         self.sessions
             .lock()
@@ -323,6 +327,8 @@ struct TerminalSession {
     child: Mutex<Box<dyn Child + Send + Sync>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     writer: Mutex<Box<dyn Write + Send>>,
+    output_channels: Mutex<Vec<Channel<Response>>>,
+    exit_channels: Mutex<Vec<Channel<i32>>>,
     history: Mutex<RingHistory>,
     binding: Mutex<AIRuntimeTerminalBinding>,
     info: Mutex<TerminalSessionSnapshot>,
@@ -333,6 +339,8 @@ impl TerminalSession {
         id: String,
         config: TerminalConfig,
         emit: EventSink,
+        output: Option<Channel<Response>>,
+        exit: Option<Channel<i32>>,
         ai_runtime: Arc<AIRuntimeBridge>,
         settings: Arc<AppSettingsStore>,
         memory: Arc<MemoryStore>,
@@ -449,6 +457,8 @@ impl TerminalSession {
             child: Mutex::new(child),
             killer: Mutex::new(killer),
             writer: Mutex::new(writer),
+            output_channels: Mutex::new(output.into_iter().collect()),
+            exit_channels: Mutex::new(exit.into_iter().collect()),
             history: Mutex::new(RingHistory::new(history_bytes)),
             binding: Mutex::new(binding),
             info: Mutex::new(info),
@@ -539,6 +549,39 @@ impl TerminalSession {
         Some(info)
     }
 
+    fn attach_channels(
+        &self,
+        output: Option<Channel<Response>>,
+        exit: Option<Channel<i32>>,
+    ) {
+        if let Some(output) = output {
+            if let Ok(mut channels) = self.output_channels.lock() {
+                channels.push(output);
+            }
+        }
+        if let Some(exit) = exit {
+            if let Ok(mut channels) = self.exit_channels.lock() {
+                channels.push(exit);
+            }
+        }
+    }
+
+    fn send_output(&self, bytes: &[u8]) {
+        if bytes.is_empty() {
+            return;
+        }
+        if let Ok(mut channels) = self.output_channels.lock() {
+            channels.retain(|channel| channel.send(Response::new(bytes.to_vec())).is_ok());
+        }
+    }
+
+    fn send_exit(&self, exit_code: Option<i32>) {
+        let code = exit_code.unwrap_or(-1);
+        if let Ok(mut channels) = self.exit_channels.lock() {
+            channels.retain(|channel| channel.send(code).is_ok());
+        }
+    }
+
     fn spawn_reader(
         id: String,
         mut reader: Box<dyn Read + Send>,
@@ -610,7 +653,12 @@ impl TerminalSession {
                                     &mut pending_utf8,
                                     &mut pending_bytes,
                                 );
-                                Self::emit_pending_utf8(&id, &session, &emit, &mut pending_utf8);
+                                Self::emit_pending_utf8(
+                                    &id,
+                                    &session,
+                                    &emit,
+                                    &mut pending_utf8,
+                                );
                                 return;
                             }
                             Ok(TerminalReaderMessage::Error(message)) => {
@@ -647,7 +695,12 @@ impl TerminalSession {
                         &mut pending_utf8,
                         &mut pending_bytes,
                     );
-                    Self::emit_pending_utf8(&id, &session, &emit, &mut pending_utf8);
+                    Self::emit_pending_utf8(
+                        &id,
+                        &session,
+                        &emit,
+                        &mut pending_utf8,
+                    );
                     return;
                 }
                 Ok(TerminalReaderMessage::Error(message)) => {
@@ -698,9 +751,11 @@ impl TerminalSession {
                 info.has_buffer = true;
             }
         }
+        let bytes = std::mem::take(pending_bytes);
+        session.send_output(&bytes);
         emit(TerminalEvent::Output {
             session_id: id.to_string(),
-            bytes: std::mem::take(pending_bytes),
+            bytes,
             text,
         });
     }
@@ -731,9 +786,11 @@ impl TerminalSession {
                 info.has_buffer = true;
             }
         }
+        let bytes = text.as_bytes().to_vec();
+        session.send_output(&bytes);
         emit(TerminalEvent::Output {
             session_id: id.to_string(),
-            bytes: text.as_bytes().to_vec(),
+            bytes,
             text,
         });
     }
@@ -746,6 +803,7 @@ impl TerminalSession {
                     Ok(mut child) => child.wait().ok().map(|status| status.exit_code() as i32),
                     Err(_) => None,
                 };
+                session.send_exit(exit_code);
                 emit(TerminalEvent::Exit {
                     session_id: id,
                     exit_code,
@@ -789,17 +847,6 @@ fn flush_utf8_decoder(pending: &mut Vec<u8>) -> String {
         return String::new();
     }
     String::from_utf8_lossy(&std::mem::take(pending)).to_string()
-}
-
-fn encode_terminal_bytes(bytes: &[u8]) -> String {
-    general_purpose::STANDARD.encode(bytes)
-}
-
-fn serialize_terminal_bytes<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(&encode_terminal_bytes(bytes))
 }
 
 struct TerminalEnvironmentRequest<'a> {
@@ -1656,12 +1703,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_output_bytes_are_base64_encoded() {
-        assert_eq!(encode_terminal_bytes("推".as_bytes()), "5o6o");
-    }
-
-    #[test]
-    fn terminal_output_event_serializes_bytes_at_boundary() {
+    fn terminal_output_event_omits_raw_bytes_from_json() {
         let event = TerminalEvent::Output {
             session_id: "term-1".to_string(),
             text: "推".to_string(),
@@ -1672,25 +1714,9 @@ mod tests {
         assert_eq!(value["kind"], "output");
         assert_eq!(value["sessionId"], "term-1");
         assert_eq!(value["text"], "推");
-        assert_eq!(value["bytesBase64"], "5o6o");
+        assert!(value.get("bytesBase64").is_none());
         assert!(value.get("bytes").is_none());
         assert!(value.get("data").is_none());
-    }
-
-    #[test]
-    fn terminal_output_webview_event_omits_text_payload() {
-        let event = TerminalEvent::Output {
-            session_id: "term-1".to_string(),
-            text: "推".to_string(),
-            bytes: "推".as_bytes().to_vec(),
-        };
-        let value =
-            serde_json::to_value(event.for_webview()).expect("terminal event should serialize");
-
-        assert_eq!(value["kind"], "output");
-        assert_eq!(value["sessionId"], "term-1");
-        assert!(value.get("text").is_none());
-        assert_eq!(value["bytesBase64"], "5o6o");
     }
 
     #[test]

@@ -12,15 +12,32 @@ const INTERACTIVE_SELECTOR = [
   "[contenteditable='plaintext-only']",
 ].join(",");
 
+export function isWindowDragTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (!target.closest("[data-tauri-drag-region]")) {
+    return false;
+  }
+  if (target.closest(INTERACTIVE_SELECTOR)) {
+    return false;
+  }
+  const noDragRegion = target.closest(".no-drag");
+  const dragRegion = target.closest("[data-tauri-drag-region]");
+  return !(noDragRegion && (!dragRegion || !noDragRegion.contains(dragRegion)));
+}
+
 export function startWindowDrag(event: PointerEvent<HTMLElement>) {
-  if (!window.__TAURI_INTERNALS__) return;
-  if (event.button !== 0) return;
-  const target = event.target instanceof Element ? event.target : null;
-  if (!target?.closest("[data-tauri-drag-region]")) return;
-  if (target?.closest(INTERACTIVE_SELECTOR)) return;
-  const noDragRegion = target?.closest(".no-drag");
-  const dragRegion = target?.closest("[data-tauri-drag-region]");
-  if (noDragRegion && (!dragRegion || !noDragRegion.contains(dragRegion))) return;
+  if (!window.__TAURI_INTERNALS__) {
+    return;
+  }
+  if (event.button !== 0) {
+    return;
+  }
+  if (!isWindowDragTarget(event.target)) {
+    return;
+  }
+
   event.stopPropagation();
   event.preventDefault();
 
@@ -32,9 +49,7 @@ export function startWindowDrag(event: PointerEvent<HTMLElement>) {
     return;
   }
 
-  void currentWindow
-    .startDragging()
-    .catch((error) => {
-      console.error("failed to start window drag", error);
-    });
+  void currentWindow.startDragging().catch((error) => {
+    console.error("failed to start window drag", error);
+  });
 }

@@ -7,7 +7,6 @@ const TEXT_ENTRY_SELECTOR_ITEMS = [
   ".cm-editor",
   ".xterm",
   ".xterm-helper-textarea",
-  "[data-codux-terminal-input='true']",
   "[data-allow-tab-navigation]",
 ];
 

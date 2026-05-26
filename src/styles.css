@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "@heroui/styles";
 
 @theme {
   --color-ink: rgb(231 236 243);
@@ -15,6 +14,15 @@
   --color-surface-secondary: rgb(23 27 34);
   --color-surface-muted: rgb(27 32 40);
   --color-surface-popover: rgb(18 22 29);
+  --color-default-hover: var(--field-hover);
+  --color-field-background: var(--field-background);
+  --color-field-foreground: var(--field-foreground);
+  --color-field-placeholder: var(--field-placeholder);
+  --color-field-border: var(--field-border);
+  --color-field-border-hover: var(--field-border-hover);
+  --color-field-border-focus: var(--field-border-focus);
+  --color-field-hover: var(--field-hover);
+  --color-field-focus: var(--field-focus);
   --color-window-surface: var(--color-surface-main);
   --color-settings-surface: var(--color-surface-main);
   --color-settings-sidebar: var(--color-surface-app);
@@ -35,6 +43,11 @@
   --color-brand-purple-deep: rgb(147 51 234);
   --color-brand-pink: rgb(236 72 153);
   --color-brand-pink-deep: rgb(219 39 119);
+  --color-accent: var(--color-brand-blue);
+  --color-accent-hover: rgb(82 145 247);
+  --color-accent-foreground: var(--color-on-brand);
+  --color-accent-soft: rgb(59 130 246 / 0.16);
+  --color-accent-soft-foreground: var(--color-brand-blue);
 
   --accent: var(--color-brand-blue);
   --accent-hover: rgb(82 145 247);
@@ -441,6 +454,7 @@
     app-region: no-drag;
     -webkit-app-region: no-drag;
   }
+
 }
 
 .app-shell {
@@ -782,6 +796,125 @@ html.standalone-window:not(.terminal-window) .app-shell::after {
 
 .terminal-context-menu-icon {
   @apply grid place-items-center text-ink-mute;
+}
+
+.codux-button {
+  @apply inline-flex select-none items-center justify-center gap-1.5 rounded-[9px] font-medium outline-none transition-colors disabled:cursor-default disabled:opacity-50 focus:outline-none focus-visible:outline-none;
+}
+
+.codux-button-sm {
+  @apply min-h-8 px-3 text-xs;
+}
+
+.codux-button-md {
+  @apply min-h-9 px-3.5 text-sm;
+}
+
+.codux-button-lg {
+  @apply min-h-10 px-4 text-sm;
+}
+
+.codux-button-icon-sm {
+  @apply h-8 min-h-8 w-8 min-w-8 p-0;
+}
+
+.codux-button-icon-md {
+  @apply h-9 min-h-9 w-9 min-w-9 p-0;
+}
+
+.codux-button-icon-lg {
+  @apply h-10 min-h-10 w-10 min-w-10 p-0;
+}
+
+.codux-button-icon-sm > svg {
+  @apply h-4 w-4 shrink-0;
+}
+
+.codux-button-icon-md > svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.codux-button-icon-lg > svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.codux-button-inline-icon-sm {
+  @apply h-3.5 w-3.5 shrink-0;
+}
+
+.codux-button-inline-icon-md {
+  @apply h-4 w-4 shrink-0;
+}
+
+.codux-button-inline-icon-lg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.codux-button-primary {
+  @apply bg-brand-blue text-on-brand hover:bg-brand-blue/90 active:bg-brand-blue/80;
+}
+
+.codux-button-primary[data-hovered="true"] {
+  @apply bg-brand-blue/90;
+}
+
+.codux-button-secondary {
+  @apply border border-border-subtle bg-fill/[0.055] text-ink-soft hover:border-border hover:bg-fill/10 hover:text-ink active:bg-fill/[0.13];
+}
+
+.codux-button-secondary[data-hovered="true"] {
+  @apply border-border bg-fill/10 text-ink;
+}
+
+.codux-button-ghost {
+  @apply text-ink-soft hover:bg-fill/8 hover:text-ink active:bg-fill/12;
+}
+
+.codux-button-ghost[data-hovered="true"] {
+  @apply bg-fill/8 text-ink;
+}
+
+.codux-button-danger {
+  @apply bg-brand-red text-on-brand hover:bg-brand-red/90 active:bg-brand-red/80;
+}
+
+.codux-button-danger[data-hovered="true"] {
+  @apply bg-brand-red/90;
+}
+
+.codux-button-success {
+  @apply bg-brand-green text-on-brand hover:bg-brand-green/90 active:bg-brand-green/80;
+}
+
+.codux-button-success[data-hovered="true"] {
+  @apply bg-brand-green/90;
+}
+
+.codux-split-button-main {
+  @apply rounded-l-lg rounded-r-none border-0 border-r border-white/15;
+}
+
+.codux-split-button-trigger {
+  @apply grid w-8 min-w-8 place-items-center rounded-l-none rounded-r-lg bg-brand-blue px-0 text-on-brand outline-none transition-colors hover:bg-brand-blue/90 disabled:cursor-default disabled:opacity-50;
+}
+
+.sidebar-footer-button {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+
+.sidebar-footer-icon {
+  width: 17px;
+  height: 17px;
 }
 
 .terminal-context-menu-separator {

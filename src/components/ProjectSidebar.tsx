@@ -382,9 +382,9 @@ function FooterButton({
           variant="ghost"
           onPress={onPress}
           aria-label={label}
-          className="h-7 w-7 min-w-7 focus:outline-none focus-visible:outline-none"
+          className="sidebar-footer-button focus:outline-none focus-visible:outline-none"
         >
-          <Icon size={16} strokeWidth={1.7} />
+          <Icon className="sidebar-footer-icon" strokeWidth={1.9} />
         </Button>
       </Tooltip>
     );
@@ -416,7 +416,7 @@ function HelpMenuButton({
   const trigger = isExpanded ? (
     <button
       type="button"
-      className="h-8 w-full justify-start rounded-md px-2.5 text-sm font-medium text-ink-soft outline-none transition-colors hover:bg-fill/[0.06] hover:text-ink data-[pressed]:bg-fill/[0.08]"
+      className="flex h-8 w-full items-center justify-start rounded-md px-2.5 text-left text-sm font-medium text-ink-soft outline-none transition-colors hover:bg-fill/[0.06] hover:text-ink data-[pressed]:bg-fill/[0.08]"
       aria-label={label}
     >
       <span className="inline-flex min-w-0 items-center gap-2">
@@ -427,11 +427,11 @@ function HelpMenuButton({
   ) : (
     <button
       type="button"
-      className="grid h-7 w-7 place-items-center rounded-md text-ink-soft outline-none transition-colors hover:bg-fill/[0.06] hover:text-ink data-[pressed]:bg-fill/[0.08]"
+      className="sidebar-footer-button grid place-items-center rounded-md text-ink-soft outline-none transition-colors hover:bg-fill/[0.06] hover:text-ink data-[pressed]:bg-fill/[0.08]"
       aria-label={label}
       title={label}
     >
-      <Icon size={16} strokeWidth={1.7} />
+      <Icon className="sidebar-footer-icon" strokeWidth={1.9} />
     </button>
   );
 

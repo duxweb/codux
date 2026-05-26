@@ -1,17 +1,16 @@
-import {
-  Checkbox as HCheckbox,
-  Form as HForm,
-  Input as HInput,
-  Label as HLabel,
-  ListBox as HListBox,
-  Select as HSelect,
-  Switch as HSwitch,
-  TextArea as HTextArea,
-} from "@heroui/react";
-import type { ComponentProps, ReactNode } from "react";
+import { forwardRef } from "react";
+import type { ChangeEvent, FormHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
-export function SettingsForm({ children, className }: { children: ReactNode; className?: string }) {
-  return <HForm className={`grid gap-4 ${className ?? ""}`}>{children}</HForm>;
+export function SettingsForm({
+  children,
+  className,
+  ...props
+}: FormHTMLAttributes<HTMLFormElement> & { children: ReactNode; className?: string }) {
+  return (
+    <form className={`grid gap-4 ${className ?? ""}`} {...props}>
+      {children}
+    </form>
+  );
 }
 
 export function Field({
@@ -64,13 +63,41 @@ export function Field({
   );
 }
 
-export function TextInput(props: ComponentProps<typeof HInput>) {
-  return <HInput fullWidth {...props} />;
-}
+type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & {
+  fullWidth?: boolean;
+  variant?: string;
+};
 
-export function Textarea(props: ComponentProps<typeof HTextArea>) {
-  return <HTextArea fullWidth className="block w-full" {...props} />;
-}
+export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function TextInput(
+  { className, fullWidth = true, variant: _variant, ...props },
+  ref,
+) {
+  return (
+    <input
+      ref={ref}
+      className={`${fullWidth ? "w-full" : ""} min-h-9 rounded-[8px] border border-field-border bg-field-background px-3 text-sm text-field-foreground outline-none transition-colors placeholder:text-field-placeholder hover:border-field-border-hover hover:bg-field-hover focus:border-field-border-focus focus:bg-field-focus disabled:cursor-default disabled:opacity-55 ${className ?? ""}`}
+      {...props}
+    />
+  );
+});
+
+type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  fullWidth?: boolean;
+  variant?: string;
+};
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
+  { className, fullWidth = true, variant: _variant, ...props },
+  ref,
+) {
+  return (
+    <textarea
+      ref={ref}
+      className={`${fullWidth ? "w-full" : ""} min-h-20 rounded-[8px] border border-field-border bg-field-background px-3 py-2 text-sm text-field-foreground outline-none transition-colors placeholder:text-field-placeholder hover:border-field-border-hover hover:bg-field-hover focus:border-field-border-focus focus:bg-field-focus disabled:cursor-default disabled:opacity-55 ${className ?? ""}`}
+      {...props}
+    />
+  );
+});
 
 export function Select({
   options,
@@ -81,6 +108,7 @@ export function Select({
   ariaLabel,
   className,
   isDisabled,
+  disabled,
 }: {
   options: { value: string; label: string }[];
   value?: string;
@@ -90,35 +118,24 @@ export function Select({
   ariaLabel?: string;
   className?: string;
   isDisabled?: boolean;
+  disabled?: boolean;
 }) {
   return (
-    <HSelect
+    <select
       aria-label={ariaLabel}
-      selectedKey={value}
-      defaultSelectedKey={defaultValue}
-      onSelectionChange={(key) => {
-        if (typeof key === "string" && onChange) onChange(key);
-      }}
-      placeholder={placeholder}
-      className={`w-full ${className ?? ""}`}
-      isDisabled={isDisabled}
-      fullWidth
+      value={value}
+      defaultValue={defaultValue}
+      onChange={(event) => onChange?.(event.currentTarget.value)}
+      disabled={isDisabled || disabled}
+      className={`w-full min-h-9 appearance-none rounded-[8px] border border-field-border bg-field-background px-3 pr-8 text-sm text-field-foreground outline-none transition-colors hover:border-field-border-hover hover:bg-field-hover focus:border-field-border-focus focus:bg-field-focus disabled:cursor-default disabled:opacity-55 ${className ?? ""}`}
     >
-      <HSelect.Trigger>
-        <HSelect.Value />
-        <HSelect.Indicator />
-      </HSelect.Trigger>
-      <HSelect.Popover>
-        <HListBox>
-          {options.map((option) => (
-            <HListBox.Item key={option.value} id={option.value} textValue={option.label}>
-              {option.label}
-              <HListBox.ItemIndicator />
-            </HListBox.Item>
-          ))}
-        </HListBox>
-      </HSelect.Popover>
-    </HSelect>
+      {placeholder ? <option value="">{placeholder}</option> : null}
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -132,17 +149,18 @@ export function Toggle({
   disabled?: boolean;
 }) {
   return (
-    <HSwitch
-      className="settings-switch"
-      isSelected={checked}
-      onChange={(value) => onChange?.(value)}
-      isDisabled={disabled}
-      size="md"
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      className={`relative h-6 w-10 shrink-0 rounded-full border border-border-subtle transition-colors disabled:opacity-50 ${checked ? "bg-brand-blue" : "bg-fill/12"}`}
+      onClick={() => onChange?.(!checked)}
     >
-      <HSwitch.Control>
-        <HSwitch.Thumb />
-      </HSwitch.Control>
-    </HSwitch>
+      <span
+        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`}
+      />
+    </button>
   );
 }
 
@@ -158,16 +176,18 @@ export function Checkbox({
   disabled?: boolean;
 }) {
   return (
-    <HCheckbox isSelected={checked} onChange={(value) => onChange?.(value)} isDisabled={disabled}>
-      <HCheckbox.Control>
-        <HCheckbox.Indicator />
-      </HCheckbox.Control>
+    <label className={`inline-flex min-w-0 items-center gap-2 text-sm text-ink-soft ${disabled ? "opacity-50" : ""}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => onChange?.(event.currentTarget.checked)}
+        className="h-4 w-4 accent-brand-blue"
+      />
       {label !== undefined && (
-        <HCheckbox.Content>
-          <HLabel>{label}</HLabel>
-        </HCheckbox.Content>
+        <span className="min-w-0">{label}</span>
       )}
-    </HCheckbox>
+    </label>
   );
 }
 

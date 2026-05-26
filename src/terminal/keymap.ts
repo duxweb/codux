@@ -1,46 +1,43 @@
 export type TerminalKeyEvent = Pick<
   KeyboardEvent,
-  "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "key" | "code" | "type" | "isComposing" | "keyCode"
+  "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "key" | "code" | "type"
 >;
 
-function isComposing(event: TerminalKeyEvent) {
-  return event.isComposing || event.keyCode === 229;
-}
+export type TerminalKeymapOptions = {
+  isMac: boolean;
+};
 
-export function terminalControlSequence(event: TerminalKeyEvent): string | null {
-  if (event.type !== "keydown" || isComposing(event)) return null;
-
-  if (isShiftEnter(event)) return "\x1b[13;2u";
-  if (isLineNavigation(event, "left")) return "\x01";
-  if (isLineNavigation(event, "right")) return "\x05";
-  if (isWordNavigation(event, "left")) return "\x1bb";
-  if (isWordNavigation(event, "right")) return "\x1bf";
-
+export function terminalWordNavigationSequence(event: TerminalKeyEvent) {
+  if (!event.altKey || event.ctrlKey || event.metaKey) return null;
+  if (isKey(event, "ArrowLeft")) return "\x1bb";
+  if (isKey(event, "ArrowRight")) return "\x1bf";
   return null;
 }
 
-function isShiftEnter(event: TerminalKeyEvent) {
-  return isKey(event, "Enter") && event.shiftKey && !event.metaKey && !event.altKey && !event.ctrlKey;
+export function terminalLineNavigationSequence(event: TerminalKeyEvent, options: TerminalKeymapOptions) {
+  if (!options.isMac) return null;
+  if (!event.metaKey || event.altKey || event.ctrlKey) return null;
+  if (isKey(event, "ArrowLeft")) return "\x01";
+  if (isKey(event, "ArrowRight")) return "\x05";
+  return null;
 }
 
-function isLineNavigation(event: TerminalKeyEvent, direction: "left" | "right") {
-  return (
-    event.metaKey &&
-    !event.altKey &&
-    !event.ctrlKey &&
-    !event.shiftKey &&
-    isKey(event, direction === "left" ? "ArrowLeft" : "ArrowRight")
-  );
+export function terminalDeleteSequence(event: TerminalKeyEvent, options: TerminalKeymapOptions) {
+  if (!isKey(event, "Backspace")) return null;
+  if (options.isMac) {
+    if (event.metaKey && !event.altKey && !event.ctrlKey) return "\x15";
+    if (event.altKey && !event.metaKey && !event.ctrlKey) return "\x17";
+    return null;
+  }
+  if (event.ctrlKey && !event.altKey && !event.metaKey) return "\x17";
+  return null;
 }
 
-function isWordNavigation(event: TerminalKeyEvent, direction: "left" | "right") {
-  return (
-    event.altKey &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.shiftKey &&
-    isKey(event, direction === "left" ? "ArrowLeft" : "ArrowRight")
-  );
+export function terminalModifiedEnterSequence(event: TerminalKeyEvent, options: TerminalKeymapOptions) {
+  if (!isKey(event, "Enter")) return null;
+  if (event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) return "\x1b\r";
+  if (options.isMac && event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey) return "\x1b\r";
+  return null;
 }
 
 function isKey(event: TerminalKeyEvent, key: string) {

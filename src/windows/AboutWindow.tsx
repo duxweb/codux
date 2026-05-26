@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Modal } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { checkForUpdates, openExternalUrl, type AppAboutMetadata } from "../appActions";
 import { AppIconMark } from "../components/AppIconMark";
 import { Button } from "../components/Button";
+import { Modal } from "../components/Modal";
 import { CODUX_WEBSITE_URL } from "../appLinks";
 import { tm } from "../i18n";
 import { readAppSettings, subscribeAppSettings } from "../settings";

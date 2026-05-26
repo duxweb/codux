@@ -20,8 +20,9 @@ import {
   type MemoryScope,
   type MemorySummary,
 } from "../ai/memory";
-import { ListBox, Modal, Select as HeroSelect } from "@heroui/react";
 import { Button } from "../components/Button";
+import { Select } from "../components/Form";
+import { Modal } from "../components/Modal";
 import { PressableButton } from "../components/PressableButton";
 import { useRuntimeStore } from "../runtimeStore";
 import { FileArchive, Folder, GitBranch, PencilSquare, RefreshCw, Square, Trash, Users, Zap, type AppIcon } from "../icons";
@@ -792,37 +793,16 @@ function ProjectMemoryMigrationDialog({
                   <span className="text-sm font-semibold text-ink-soft">
                     {tm("memory.manager.migrate_project.target", "Target Project")}
                   </span>
-                  <HeroSelect
-                    aria-label={tm("memory.manager.migrate_project.target", "Target Project")}
-                    selectedKey={targetProjectId}
-                    onSelectionChange={(key) => {
-                      if (typeof key === "string") setTargetProjectId(key);
-                    }}
+                  <Select
+                    ariaLabel={tm("memory.manager.migrate_project.target", "Target Project")}
+                    value={targetProjectId}
+                    onChange={setTargetProjectId}
                     isDisabled={isSaving}
-                    fullWidth
-                  >
-                    <HeroSelect.Trigger>
-                      <HeroSelect.Value />
-                      <HeroSelect.Indicator />
-                    </HeroSelect.Trigger>
-                    <HeroSelect.Popover>
-                      <ListBox>
-                        {targets.map((row) => (
-                          <ListBox.Item
-                            key={row.projectId ?? row.id}
-                            id={row.projectId ?? row.id}
-                            textValue={localizedTargetTitle(row)}
-                          >
-                            <div className="min-w-0">
-                              <div className="truncate text-sm text-ink">{localizedTargetTitle(row)}</div>
-                              <div className="truncate text-xs text-ink-faint">{localizedTargetSubtitle(row)}</div>
-                            </div>
-                            <ListBox.ItemIndicator />
-                          </ListBox.Item>
-                        ))}
-                      </ListBox>
-                    </HeroSelect.Popover>
-                  </HeroSelect>
+                    options={targets.map((row) => ({
+                      value: row.projectId ?? row.id,
+                      label: `${localizedTargetTitle(row)} - ${localizedTargetSubtitle(row)}`,
+                    }))}
+                  />
                 </label>
               ) : (
                 <div className="rounded-[8px] border border-border-subtle/70 bg-fill/[0.025] px-3 py-2 text-sm text-ink-mute">

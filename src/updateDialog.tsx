@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Modal, ProgressBar, Spinner } from "@heroui/react";
 import { createRoot, type Root } from "react-dom/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "./components/Button";
+import { ProgressBar, Spinner } from "./components/Feedback";
+import { Modal } from "./components/Modal";
 import { formatI18n, tm } from "./i18n";
+import { CheckCircle2, RefreshCw } from "./icons";
 import type { UpdateInstallProgressEvent, UpdateInstallResult, UpdateStatus } from "./appActions";
 
 type DialogPhase =
@@ -140,38 +142,25 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
   }, []);
 
   const canClose = phase !== "downloading" && phase !== "installing";
-  const progressPhase = phase === "downloading" || phase === "installing" || phase === "installed";
-
-  if (progressPhase) {
-    return (
-      <UpdateProgressDialog
-        phase={phase}
-        progress={progress}
-        result={result}
-        error={error}
-        onClose={onClose}
-        onRestart={restart}
-      />
-    );
-  }
 
   return (
     <Modal isOpen onOpenChange={(isOpen) => (!isOpen && canClose ? onClose() : undefined)}>
       <Modal.Backdrop className="no-drag fixed inset-0 z-[9800] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
         <Modal.Container size="md" placement="center">
-          <Modal.Dialog className="no-drag w-[min(540px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main p-4 text-ink shadow-floating outline-none">
-            <Modal.Header className="mb-3 p-0">
-              <div className="min-w-0">
-                <Modal.Heading className="text-sm font-semibold text-ink">{titleForPhase(phase)}</Modal.Heading>
-                {status && phase === "available" ? (
-                  <div className="mt-1 text-sm text-ink-faint">
-                    {formatI18n(
-                      tm("update.version.summary_format", "Current v%@ · Latest v%@"),
-                      status.currentVersion,
-                      status.latestVersion ?? status.currentVersion,
-                    )}
-                  </div>
-                ) : null}
+          <Modal.Dialog className="no-drag w-[min(420px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main px-5 py-4 text-ink shadow-floating outline-none">
+            <Modal.Header className="mb-4 p-0">
+              <div className="flex min-w-0 items-center gap-3">
+                <UpdateStatusIcon phase={phase} />
+                <div className="min-w-0 flex-1">
+                  <Modal.Heading className="text-[15px] font-semibold leading-5 text-ink">
+                    {titleForPhase(phase)}
+                  </Modal.Heading>
+                  {subtitleForPhase(phase, status, progress) ? (
+                    <div className="mt-1 text-sm leading-5 text-ink-faint">
+                      {subtitleForPhase(phase, status, progress)}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </Modal.Header>
 
@@ -183,10 +172,10 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
               error={error}
             />
 
-            <Modal.Footer className="mt-4 flex justify-end gap-2 p-0">
-              {phase === "checking" ? null : (
-                <Button size="sm" variant="ghost" onPress={onClose}>
-                  {tm("common.close", "Close")}
+            <Modal.Footer className="mt-5 flex justify-end gap-2 p-0">
+              {phase === "checking" || phase === "downloading" || phase === "installing" ? null : (
+                <Button size="sm" variant="secondary" onPress={onClose}>
+                  {phase === "installed" ? tm("common.later", "Later") : tm("common.close", "Close")}
                 </Button>
               )}
               {phase === "available" && status ? (
@@ -196,74 +185,8 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
                     : tm("update.available.open", "Download")}
                 </Button>
               ) : null}
-              {phase === "latest" || phase === "notConfigured" || phase === "error" ? (
-                <Button size="sm" variant="secondary" onPress={() => void loadStatus()}>
-                  {tm("common.refresh", "Refresh")}
-                </Button>
-              ) : null}
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
-  );
-}
-
-function UpdateProgressDialog({
-  phase,
-  progress,
-  result,
-  error,
-  onClose,
-  onRestart,
-}: {
-  phase: "downloading" | "installing" | "installed";
-  progress: UpdateInstallProgressEvent | null;
-  result: UpdateInstallResult | null;
-  error: string | null;
-  onClose: () => void;
-  onRestart: () => void;
-}) {
-  const canClose = phase === "installed";
-
-  return (
-    <Modal isOpen onOpenChange={(isOpen) => (!isOpen && canClose ? onClose() : undefined)}>
-      <Modal.Backdrop className="no-drag fixed inset-0 z-[9800] grid place-items-center bg-black/24 p-4 backdrop-blur-sm">
-        <Modal.Container size="sm" placement="center">
-          <Modal.Dialog className="no-drag w-[min(440px,calc(100vw-32px))] rounded-[12px] border border-border bg-surface-main p-4 text-ink shadow-floating outline-none">
-            <Modal.Header className="mb-3 p-0">
-              <div className="min-w-0">
-                <Modal.Heading className="text-sm font-semibold text-ink">
-                  {titleForPhase(error ? "error" : phase)}
-                </Modal.Heading>
-                <div className="mt-1 text-sm text-ink-faint">
-                  {progress?.version
-                    ? formatI18n(tm("update.progress.version_format", "Version v%@"), progress.version)
-                    : tm("update.progress.title", "Installing Update")}
-                </div>
-              </div>
-            </Modal.Header>
-            {error ? (
-              <div className="rounded-md border border-brand-red/25 bg-brand-red/10 px-3 py-2.5 text-sm leading-relaxed text-brand-red">
-                {error}
-              </div>
-            ) : (
-              <UpdateDialogBody
-                phase={phase}
-                status={null}
-                progress={progress}
-                result={result}
-                error={null}
-              />
-            )}
-            <Modal.Footer className="mt-4 flex justify-end gap-2 p-0">
-              {phase === "installed" || error ? (
-                <Button size="sm" variant="ghost" onPress={onClose}>
-                  {tm("common.later", "Later")}
-                </Button>
-              ) : null}
               {phase === "installed" ? (
-                <Button size="sm" variant="primary" onPress={onRestart}>
+                <Button size="sm" variant="primary" onPress={restart}>
                   {tm("common.restart_now", "Restart Now")}
                 </Button>
               ) : null}
@@ -290,10 +213,9 @@ function UpdateDialogBody({
 }) {
   if (phase === "checking") {
     return (
-      <div className="flex min-h-[120px] items-center justify-center gap-3 text-sm text-ink-soft">
-        <Spinner size="sm" />
-        <span>{tm("update.checking", "Checking for updates...")}</span>
-      </div>
+      <p className="text-sm leading-6 text-ink-soft">
+        {tm("update.checking", "Checking for updates...")}
+      </p>
     );
   }
 
@@ -314,37 +236,30 @@ function UpdateDialogBody({
 
   if (phase === "error") {
     return (
-      <div className="rounded-md border border-brand-red/25 bg-brand-red/10 px-3 py-2.5 text-sm leading-relaxed text-brand-red">
+      <p className="text-sm leading-6 text-brand-red">
         {error ?? tm("update.error.message", "Please check your network connection and try again.")}
-      </div>
+      </p>
     );
   }
 
   if (!status) return null;
 
   if (phase === "notConfigured") {
-    return <p className="text-sm leading-relaxed text-ink-soft">{status.message}</p>;
+    return <p className="text-sm leading-6 text-ink-soft">{status.message}</p>;
   }
 
   if (phase === "latest") {
-    return <p className="text-sm leading-relaxed text-ink-soft">{tm("update.latest.message", "No new version found.")}</p>;
+    return <p className="text-sm leading-6 text-ink-soft">{tm("update.latest.message", "No new version found.")}</p>;
   }
 
   return (
-    <div className="grid gap-3">
-      <div>
-        <div className="mb-1.5 text-sm font-semibold text-ink-soft">
-          {tm("update.available.notes_title", "Release Notes")}
-        </div>
-        <ReleaseNotes notes={status.notes} />
-      </div>
-    </div>
+    <ReleaseNotes notes={status.notes} />
   );
 }
 
 function ReleaseNotes({ notes }: { notes?: string | null }) {
   return (
-    <div className="max-h-[220px] min-h-[132px] overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-fill/[0.035] px-3 py-2.5 text-sm leading-relaxed text-ink-soft">
+    <div className="max-h-[220px] overflow-y-auto whitespace-pre-wrap pr-1 text-sm leading-6 text-ink-soft scrollbar-overlay">
       {notes?.trim() || tm("update.release_notes.empty", "No release notes were provided for this update.")}
     </div>
   );
@@ -370,19 +285,14 @@ function UpdateProgress({
         : tm("update.progress.downloading", "Downloading update...");
 
   return (
-    <div className="grid gap-2.5 rounded-md border border-border-subtle bg-fill/[0.035] px-3 py-3">
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="font-medium text-ink-soft">{label}</span>
-        <span className="text-xs tabular-nums text-ink-faint">
-          {percentage === null ? formatBytes(progress?.downloadedBytes ?? 0) : `${Math.round(percentage)}%`}
-        </span>
-      </div>
+    <div className="grid gap-2.5">
+      <p className="text-sm leading-6 text-ink-soft">{label}</p>
       <ProgressBar value={percentage ?? undefined} isIndeterminate={percentage === null && phase !== "installed"}>
-        <ProgressBar.Track className="h-1.5 overflow-hidden rounded-full bg-fill/12">
+        <ProgressBar.Track className="h-1.5 overflow-hidden rounded-full bg-fill/14">
           <ProgressBar.Fill className="h-full rounded-full bg-brand-blue" />
         </ProgressBar.Track>
       </ProgressBar>
-      <div className="text-xs tabular-nums text-ink-faint">
+      <div className="text-xs tabular-nums leading-4 text-ink-faint">
         {progress?.totalBytes
           ? formatI18n(
               tm("update.progress.bytes_format", "%@ of %@"),
@@ -400,7 +310,7 @@ function titleForPhase(phase: DialogPhase) {
     case "available":
       return tm("update.available.title", "Update Available");
     case "latest":
-      return tm("update.check.title", "Check for Updates");
+      return tm("update.latest.title", "Up to Date");
     case "notConfigured":
       return tm("update.not_configured.title", "Updates Not Configured");
     case "downloading":
@@ -414,6 +324,48 @@ function titleForPhase(phase: DialogPhase) {
     default:
       return tm("about.updates", "Check for Updates");
   }
+}
+
+function UpdateStatusIcon({ phase }: { phase: DialogPhase }) {
+  const isBusy = phase === "checking" || phase === "downloading" || phase === "installing";
+  const isSuccess = phase === "latest" || phase === "installed";
+  const className = isSuccess
+    ? "bg-brand-green/12 text-brand-green"
+    : phase === "error"
+      ? "bg-brand-red/12 text-brand-red"
+      : "bg-brand-blue/12 text-brand-blue";
+
+  return (
+    <span className={`grid h-8 w-8 flex-none place-items-center rounded-[9px] ${className}`}>
+      {isBusy ? (
+        <Spinner size="sm" />
+      ) : isSuccess ? (
+        <CheckCircle2 size={17} strokeWidth={2.2} />
+      ) : (
+        <RefreshCw size={16} strokeWidth={2.2} />
+      )}
+    </span>
+  );
+}
+
+function subtitleForPhase(
+  phase: DialogPhase,
+  status: UpdateStatus | null,
+  progress: UpdateInstallProgressEvent | null,
+) {
+  if (status && phase === "available") {
+    return formatI18n(
+      tm("update.version.summary_format", "Current v%@ · Latest v%@"),
+      status.currentVersion,
+      status.latestVersion ?? status.currentVersion,
+    );
+  }
+  if (phase === "downloading" || phase === "installing" || phase === "installed") {
+    return progress?.version
+      ? formatI18n(tm("update.progress.version_format", "Version v%@"), progress.version)
+      : tm("update.progress.title", "Installing Update");
+  }
+  return null;
 }
 
 function formatBytes(bytes: number) {

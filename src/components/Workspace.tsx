@@ -17,12 +17,12 @@ import {
 } from "../icons";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Dropdown } from "@heroui/react";
 import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Checkbox, TextInput } from "./Form";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
+import { Dropdown } from "./Dropdown";
 import { PressableButton } from "./PressableButton";
 import { TabStrip } from "./TabStrip";
 import { TerminalView } from "./TerminalView";
@@ -2326,14 +2326,14 @@ function ReviewCommitSplitButton({
         size="sm"
         variant="primary"
         disabled={disabled}
-        className="h-8 min-w-[86px] rounded-none border-0 bg-transparent px-4 text-on-brand hover:bg-white/8 active:bg-white/12"
+        className="codux-split-button-main h-8 min-w-[86px] bg-transparent px-4 text-on-brand hover:bg-white/8 active:bg-white/12"
         onPressUp={onCommit}
       >
         {label}
       </Button>
       <Dropdown>
         <Dropdown.Trigger
-          className="flex h-8 w-8 items-center justify-center border-l border-white/20 bg-transparent text-on-brand outline-none transition-colors hover:bg-white/8 disabled:opacity-55"
+          className="codux-split-button-trigger h-8 bg-transparent hover:bg-white/8"
           isDisabled={disabled}
           aria-label={tm("git.commit.options", "Commit Options")}
         >

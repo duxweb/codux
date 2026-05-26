@@ -54,7 +54,6 @@ export default defineConfig({
           if (packageName.startsWith("@codemirror/lang-")) return "vendor-editor-langs";
           if (packageName === "@codemirror/legacy-modes") return "vendor-editor-legacy";
           if (
-            packageName.startsWith("@heroui/") ||
             packageName.startsWith("@floating-ui/") ||
             packageName.startsWith("react-aria") ||
             packageName.startsWith("@react-aria/") ||

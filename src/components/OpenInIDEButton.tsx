@@ -1,4 +1,3 @@
-import { Dropdown } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { ArrowTopRight, ChevronDown } from "../icons";
 import {
@@ -9,6 +8,7 @@ import {
 } from "../ide";
 import { tm } from "../i18n";
 import type { WorkspaceProject } from "../types";
+import { Dropdown } from "./Dropdown";
 import { Tooltip } from "./Tooltip";
 
 const OPEN_BUTTON_ICON_SIZE = 11;

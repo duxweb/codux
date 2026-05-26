@@ -20,7 +20,6 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Button as HeroButton, Dropdown, Modal, ProgressBar, Spinner } from "@heroui/react";
 import {
   memo,
   useCallback,
@@ -68,7 +67,10 @@ import {
 import { Button } from "./Button";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
 import { DesktopMenu, DesktopMenuItem, DesktopMenuSeparator, DesktopSubmenu } from "./DesktopMenu";
+import { Dropdown } from "./Dropdown";
+import { ProgressBar, Spinner } from "./Feedback";
 import { Select, Textarea, TextInput } from "./Form";
+import { Modal } from "./Modal";
 import { PressableButton } from "./PressableButton";
 import {
   PanelButton,
@@ -153,16 +155,16 @@ function HeaderActionButton({
 }) {
   return (
     <Tooltip label={label} placement="bottom">
-      <HeroButton
+      <Button
         size="sm"
         variant="ghost"
         isIconOnly
-        isDisabled={disabled}
+        disabled={disabled}
         className="h-5 w-5 min-w-5 rounded px-0 text-ink-faint hover:text-ink"
         onPress={onPress}
       >
         <Icon size={11} strokeWidth={2.2} />
-      </HeroButton>
+      </Button>
     </Tooltip>
   );
 }
@@ -317,7 +319,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
   const [isSubmittingCommit, setSubmittingCommit] = useState(false);
   const [isGeneratingCommitMessage, setGeneratingCommitMessage] = useState(false);
   const [gitActionLoading, setGitActionLoading] = useState<string | null>(null);
-  const [gitActionError, setGitActionError] = useState<string | null>(null);
+  const [, setGitActionError] = useState<string | null>(null);
   const [gitHistoryHeight, setGitHistoryHeight] = useState(190);
   const gitContentRef = useRef<HTMLDivElement | null>(null);
   const git = useGitStatusSnapshot(project);
@@ -472,19 +474,20 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
         setGitActionError(error instanceof Error ? error.message : String(error));
         await showGitActionError(error);
       } finally {
-        if (wasCancelled) return;
-        const elapsed = performance.now() - startedAt;
-        const remaining = MIN_GIT_ACTION_FEEDBACK_MS - elapsed;
-        if (remaining > 0) {
-          await new Promise((resolve) => window.setTimeout(resolve, remaining));
+        if (!wasCancelled) {
+          const elapsed = performance.now() - startedAt;
+          const remaining = MIN_GIT_ACTION_FEEDBACK_MS - elapsed;
+          if (remaining > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, remaining));
+          }
+          if (loadingKey === "pull" || loadingKey === "push" || loadingKey === "fetch" || loadingKey === "sync") {
+            await new Promise((resolve) => window.setTimeout(resolve, GIT_POST_ACTION_REFRESH_DELAY_MS));
+            await refreshGitFeedback().catch(() => undefined);
+          }
+          flushSync(() => {
+            setGitActionLoading((current) => (current === loadingKey ? null : current));
+          });
         }
-        if (loadingKey === "pull" || loadingKey === "push" || loadingKey === "fetch" || loadingKey === "sync") {
-          await new Promise((resolve) => window.setTimeout(resolve, GIT_POST_ACTION_REFRESH_DELAY_MS));
-          await refreshGitFeedback().catch(() => undefined);
-        }
-        flushSync(() => {
-          setGitActionLoading((current) => (current === loadingKey ? null : current));
-        });
       }
     },
     [refreshGitFeedback, showGitActionError],
@@ -1174,10 +1177,10 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
           tone="warning"
           action={
             <div className="flex items-center gap-2">
-              <HeroButton size="sm" variant="primary" onPress={() => void runGitAction("init", () => git.init())}>
+              <Button size="sm" variant="primary" onPress={() => void runGitAction("init", () => git.init())}>
                 {tm("git.empty.initialize_repository", "Initialize Repository")}
-              </HeroButton>
-              <HeroButton
+              </Button>
+              <Button
                 size="sm"
                 variant="secondary"
                 onPress={() =>
@@ -1192,7 +1195,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 }
               >
                 {tm("git.empty.clone_remote_repository", "Clone Remote Repository")}
-              </HeroButton>
+              </Button>
             </div>
           }
         />
@@ -1213,7 +1216,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
                 size="sm"
                 block
                 disabled={!canCommit}
-                className="h-[34px] rounded-l-lg rounded-r-none border-r border-white/15 text-sm font-semibold"
+                className="codux-split-button-main h-[34px] text-sm font-semibold"
                 onPress={submitCommitWithFeedback}
               >
                 {isSubmittingCommit ? tm("git.commit.submitting", "Committing") : commitActionLabel}
@@ -1221,7 +1224,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
               <Dropdown isOpen={commitMenuOpen} onOpenChange={setCommitMenuOpen}>
                 <Dropdown.Trigger
                   isDisabled={!canCommit}
-                  className="grid h-[34px] w-8 min-w-8 place-items-center rounded-l-none rounded-r-lg bg-brand-blue px-0 text-on-brand transition-colors hover:bg-brand-blue/90 disabled:cursor-default disabled:opacity-50"
+                  className="codux-split-button-trigger h-[34px]"
                   aria-label={tm("git.commit.options", "Commit Options")}
                 >
                   <ChevronDown size={13} strokeWidth={2.4} />
@@ -3993,7 +3996,7 @@ function AIIndexingStatusBar({
       trailing={
         status.showRefreshAction ? (
           <Tooltip label={actionTooltip} placement="top">
-            <HeroButton
+            <Button
               size="sm"
               variant="ghost"
               className="h-7 min-w-0 px-2 text-xs text-current/90 hover:text-current hover:bg-white/14"
@@ -4001,7 +4004,7 @@ function AIIndexingStatusBar({
             >
               <RefreshCw size={12} strokeWidth={2} />
               <span className="text-xs font-semibold">{actionLabel}</span>
-            </HeroButton>
+            </Button>
           </Tooltip>
         ) : null
       }
@@ -4705,9 +4708,9 @@ function SSHPanel({ project }: { project?: WorkspaceProject }) {
             "Add a global SSH profile and double-click it to connect in a terminal.",
           )}
           action={
-            <HeroButton size="sm" variant="primary" onPress={() => startProfileEdit()}>
+            <Button size="sm" variant="primary" onPress={() => startProfileEdit()}>
               {tm("ssh.profile.add", "Add SSH Connection")}
-            </HeroButton>
+            </Button>
           }
         />
       ) : (
@@ -4918,14 +4921,14 @@ function SSHProfileDialog({
                             onChange={(event) => set("privateKeyPath", event.currentTarget.value)}
                             className="h-9 text-sm"
                           />
-                          <HeroButton
+                          <Button
                             size="sm"
                             variant="secondary"
                             className="h-9 min-w-0 px-3 text-sm"
                             onPress={onPickPrivateKey}
                           >
                             {tm("common.choose", "Choose")}
-                          </HeroButton>
+                          </Button>
                         </div>
                       </SSHFormField>
                       <SSHFormField label={tm("ssh.profile.key_passphrase", "Key Passphrase")}>
@@ -4959,27 +4962,27 @@ function SSHProfileDialog({
                   </div>
                 ) : null}
                 <Modal.Footer className="flex justify-end gap-2 p-0 pt-1">
-                  <HeroButton
+                  <Button
                     size="sm"
                     variant="secondary"
                     className="mr-auto h-8 min-w-0 px-3 text-sm"
                     onPress={() => void testConnection()}
-                    isDisabled={!draft || isTesting || isSaving}
+                    disabled={!draft || isTesting || isSaving}
                   >
                     {isTesting ? tm("ssh.profile.test.testing", "Testing...") : tm("ssh.profile.test", "Test")}
-                  </HeroButton>
-                  <HeroButton size="sm" variant="ghost" className="h-8 min-w-0 px-3 text-sm" onPress={onCancel}>
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 min-w-0 px-3 text-sm" onPress={onCancel}>
                     {tm("common.cancel", "Cancel")}
-                  </HeroButton>
-                  <HeroButton
+                  </Button>
+                  <Button
                     size="sm"
                     variant="primary"
                     className="h-8 min-w-0 px-3 text-sm"
                     type="submit"
-                    isDisabled={!draft || isSaving}
+                    disabled={!draft || isSaving}
                   >
                     {isSaving ? tm("common.processing", "Processing") : tm("common.save", "Save")}
-                  </HeroButton>
+                  </Button>
                 </Modal.Footer>
               </form>
             )}

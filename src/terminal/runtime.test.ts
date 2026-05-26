@@ -1,30 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalRuntime } from "./runtime";
-import type { TerminalEvent } from "../types";
 
-const invokeMock = vi.hoisted(() => vi.fn());
-const listenMock = vi.hoisted(() => vi.fn());
+const { invokeMock, channels, nextChannelId, MockChannel } = vi.hoisted(() => {
+  const invokeMock = vi.fn();
+  const channels = new Map<number, unknown>();
+  const nextChannelId = { value: 1 };
+  class MockChannel<T = unknown> {
+    id = nextChannelId.value++;
+    onmessage: (value: T) => void = () => {};
+
+    constructor() {
+      channels.set(this.id, this);
+    }
+
+    toJSON() {
+      return this.id;
+    }
+  }
+  return { invokeMock, channels, nextChannelId, MockChannel };
+});
 
 vi.mock("@tauri-apps/api/core", () => ({
+  Channel: MockChannel,
   invoke: invokeMock,
 }));
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: listenMock,
-}));
+function channelFromArg<T>(value: unknown) {
+  return value as { onmessage: (value: T) => void };
+}
 
 describe("terminal runtime", () => {
-  let eventHandler: ((event: { payload: TerminalEvent }) => void) | undefined;
-
   beforeEach(() => {
     vi.useFakeTimers();
-    eventHandler = undefined;
     invokeMock.mockReset();
-    listenMock.mockReset();
-    listenMock.mockImplementation((_eventName: string, handler: typeof eventHandler) => {
-      eventHandler = handler;
-      return Promise.resolve(() => undefined);
-    });
+    channels.clear();
+    nextChannelId.value = 1;
     invokeMock.mockImplementation((command: string) => {
       if (command === "terminal_create") {
         return Promise.resolve("backend-1");
@@ -42,10 +52,6 @@ describe("terminal runtime", () => {
         setTimeout,
         __TAURI_INTERNALS__: {},
       },
-    });
-    Object.defineProperty(globalThis.window, "__TAURI_INTERNALS__", {
-      configurable: true,
-      value: {},
     });
   });
 
@@ -74,7 +80,7 @@ describe("terminal runtime", () => {
     expect(events).toEqual(["state:新标题"]);
   });
 
-  it("does not write input until the backend has produced initial output", async () => {
+  it("starts the backend with raw output and exit channels", async () => {
     const runtime = new TerminalRuntime();
     const session = runtime.ensureTerminal({
       projectId: "project-a",
@@ -82,10 +88,6 @@ describe("terminal runtime", () => {
       title: "分屏 1",
       cwd: "/project",
     });
-
-    expect(session.projectId).toBe("project-a");
-    expect(session.slotId).toBe("top-1");
-    expect(session.id).toMatch(/^term-/);
 
     runtime.ensureStarted(session.id);
     runtime.resize(session.id, 100, 30);
@@ -100,47 +102,13 @@ describe("terminal runtime", () => {
         terminalId: session.id,
         sessionKey: "project-a:top-1",
       }),
+      onData: expect.any(MockChannel),
+      onExit: expect.any(MockChannel),
     });
     expect(runtime.getSession(session.id)?.backendId).toBe("backend-1");
-    expect(runtime.getSession(session.id)?.state).toBe("starting");
-
-    runtime.write(session.id, "11133333");
-    expect(invokeMock).not.toHaveBeenCalledWith("terminal_write", expect.anything());
-
-    eventHandler?.({
-      payload: {
-        kind: "output",
-        sessionId: "backend-1",
-        text: "➜  project git:(main) ",
-      },
-    });
-    expect(runtime.getSession(session.id)?.state).toBe("running");
-
-    runtime.write(session.id, "11133333");
-    expect(invokeMock).toHaveBeenCalledWith("terminal_write", {
-      sessionId: "backend-1",
-      data: "11133333",
-    });
   });
 
-  it("hydrates output that arrived before the backend id was registered", async () => {
-    invokeMock.mockImplementation((command: string) => {
-      if (command === "terminal_create") {
-        eventHandler?.({
-          payload: {
-            kind: "output",
-            sessionId: "backend-early",
-            text: "early prompt",
-          },
-        });
-        return Promise.resolve("backend-early");
-      }
-      if (command === "terminal_snapshot") {
-        return Promise.resolve("early prompt");
-      }
-      return Promise.resolve(undefined);
-    });
-
+  it("writes input after the backend is attached and output marks the session running", async () => {
     const runtime = new TerminalRuntime();
     const session = runtime.ensureTerminal({
       projectId: "project-a",
@@ -154,11 +122,21 @@ describe("terminal runtime", () => {
     await vi.runAllTimersAsync();
     await Promise.resolve();
     await Promise.resolve();
-    await Promise.resolve();
 
-    expect(runtime.getSession(session.id)?.backendId).toBe("backend-early");
-    expect(runtime.getSession(session.id)?.replayBuffer).toBe("early prompt");
+    runtime.write(session.id, "11133333");
+    expect(invokeMock).not.toHaveBeenCalledWith("terminal_write", expect.anything());
+
+    const createArgs = invokeMock.mock.calls.find(([command]) => command === "terminal_create")?.[1] as {
+      onData: unknown;
+    };
+    channelFromArg<ArrayBuffer>(createArgs.onData).onmessage(new TextEncoder().encode("➜  project ").buffer);
     expect(runtime.getSession(session.id)?.state).toBe("running");
+
+    runtime.write(session.id, "11133333");
+    expect(invokeMock).toHaveBeenCalledWith("terminal_write", {
+      sessionId: "backend-1",
+      data: "11133333",
+    });
   });
 
   it("uses the full backend snapshot for terminal resets while keeping local replay trimmed", async () => {
@@ -213,21 +191,19 @@ describe("terminal runtime", () => {
     await Promise.resolve();
 
     runtime.saveViewSnapshot(session.id, "serialized-screen");
-    eventHandler?.({
-      payload: {
-        kind: "output",
-        sessionId: "backend-1",
-        text: "new output",
-      },
-    });
+    const createArgs = invokeMock.mock.calls.find(([command]) => command === "terminal_create")?.[1] as {
+      onData: unknown;
+    };
+    const bytes = new TextEncoder().encode("new output");
+    channelFromArg<ArrayBuffer>(createArgs.onData).onmessage(bytes.buffer);
 
     const snapshot = runtime.takeViewSnapshot(session.id);
     expect(snapshot?.history).toBe("serialized-screen");
-    expect(snapshot?.pendingOutputs).toEqual(["new output"]);
+    expect(snapshot?.pendingOutputs).toEqual([bytes]);
     expect(runtime.takeViewSnapshot(session.id)).toBeUndefined();
   });
 
-  it("does not include terminal history in output events", async () => {
+  it("delivers raw bytes and decodes split UTF-8 for replay only", async () => {
     const runtime = new TerminalRuntime();
     const session = runtime.ensureTerminal({
       projectId: "project-a",
@@ -246,137 +222,15 @@ describe("terminal runtime", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    eventHandler?.({
-      payload: {
-        kind: "output",
-        sessionId: "backend-1",
-        text: "line 1",
-      },
-    });
-    await vi.runOnlyPendingTimersAsync();
-    await Promise.resolve();
+    const createArgs = invokeMock.mock.calls.find(([command]) => command === "terminal_create")?.[1] as {
+      onData: unknown;
+    };
+    channelFromArg<ArrayBuffer>(createArgs.onData).onmessage(new Uint8Array([0xe6, 0x8e]).buffer);
+    channelFromArg<ArrayBuffer>(createArgs.onData).onmessage(new Uint8Array([0xa8]).buffer);
 
-    expect(events).toHaveLength(1);
-    expect((events[0] as { session: { history?: string } }).session.history).toBeUndefined();
-    expect(runtime.getSession(session.id)?.replayBuffer).toBe("line 1");
-  });
-
-  it("keeps raw terminal bytes on output events when the backend provides them", async () => {
-    const runtime = new TerminalRuntime();
-    const session = runtime.ensureTerminal({
-      projectId: "project-a",
-      slotId: "top-1",
-      title: "分屏 1",
-      cwd: "/project",
-    });
-    const events: unknown[] = [];
-    runtime.subscribe(session.id, (event) => {
-      if (event.type === "output") events.push(event);
-    });
-
-    runtime.ensureStarted(session.id);
-    runtime.resize(session.id, 100, 30);
-    await vi.runAllTimersAsync();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    eventHandler?.({
-      payload: {
-        kind: "output",
-        sessionId: "backend-1",
-        text: "推",
-        bytesBase64: "5o6o",
-      },
-    });
-    await vi.runOnlyPendingTimersAsync();
-    await Promise.resolve();
-
-    expect(events).toHaveLength(1);
-    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e, 0xa8]);
+    expect(events).toHaveLength(2);
+    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e]);
+    expect(Array.from((events[1] as { bytes: Uint8Array }).bytes)).toEqual([0xa8]);
     expect(runtime.getSession(session.id)?.replayBuffer).toBe("推");
-  });
-
-  it("delivers raw bytes even when a UTF-8 character is split across backend chunks", async () => {
-    const runtime = new TerminalRuntime();
-    const session = runtime.ensureTerminal({
-      projectId: "project-a",
-      slotId: "top-1",
-      title: "分屏 1",
-      cwd: "/project",
-    });
-    const events: unknown[] = [];
-    runtime.subscribe(session.id, (event) => {
-      if (event.type === "output") events.push(event);
-    });
-
-    runtime.ensureStarted(session.id);
-    runtime.resize(session.id, 100, 30);
-    await vi.runAllTimersAsync();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    eventHandler?.({
-      payload: {
-        kind: "output",
-        sessionId: "backend-1",
-        text: "",
-        bytesBase64: "5o4=",
-      },
-    });
-    eventHandler?.({
-      payload: {
-        kind: "output",
-        sessionId: "backend-1",
-        text: "推",
-        bytesBase64: "qA==",
-      },
-    });
-    await vi.runOnlyPendingTimersAsync();
-    await Promise.resolve();
-
-    expect(events).toHaveLength(1);
-    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e, 0xa8]);
-    expect(runtime.getSession(session.id)?.replayBuffer).toBe("推");
-  });
-
-  it("keeps byte-only backend output out of the frontend replay buffer", async () => {
-    const runtime = new TerminalRuntime();
-    const session = runtime.ensureTerminal({
-      projectId: "project-a",
-      slotId: "top-1",
-      title: "分屏 1",
-      cwd: "/project",
-    });
-    const events: unknown[] = [];
-    runtime.subscribe(session.id, (event) => {
-      if (event.type === "output") events.push(event);
-    });
-
-    runtime.ensureStarted(session.id);
-    runtime.resize(session.id, 100, 30);
-    await vi.runAllTimersAsync();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    eventHandler?.({
-      payload: {
-        kind: "output",
-        sessionId: "backend-1",
-        bytesBase64: "5o4=",
-      },
-    });
-    eventHandler?.({
-      payload: {
-        kind: "output",
-        sessionId: "backend-1",
-        bytesBase64: "qA==",
-      },
-    });
-    await vi.runOnlyPendingTimersAsync();
-    await Promise.resolve();
-
-    expect(events).toHaveLength(1);
-    expect(Array.from((events[0] as { bytes: Uint8Array }).bytes)).toEqual([0xe6, 0x8e, 0xa8]);
-    expect(runtime.getSession(session.id)?.replayBuffer).toBe("");
   });
 });

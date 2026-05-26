@@ -16,7 +16,13 @@ import {
   type Delay,
   type Placement,
 } from "@floating-ui/react";
-import { cloneElement, type CSSProperties, type ReactElement, type ReactNode, type Ref } from "react";
+import {
+  cloneElement,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
+} from "react";
 
 type TriggerProps = Record<string, unknown> & {
   className?: string;

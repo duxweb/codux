@@ -263,8 +263,6 @@ export function useGitStatusSnapshot(project?: WorkspaceProject) {
       try {
         const next = await invoke<GitStatusSnapshot>(command, payload);
         return applySnapshot(next);
-      } catch (nextError) {
-        throw nextError;
       } finally {
         if (projectCacheKey) {
           useRuntimeStore.getState().setGitLoading(projectCacheKey, false);

@@ -1,13 +1,10 @@
-import { Button as HButton } from "@heroui/react";
-import { forwardRef } from "react";
-import type { ComponentProps, ReactNode } from "react";
+import { forwardRef, useCallback, useRef, type ButtonHTMLAttributes, type MutableRefObject, type ReactNode, type Ref } from "react";
+import { mergeProps, useHover, usePress } from "react-aria";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "success";
 export type ButtonSize = "sm" | "md" | "lg";
 
 type IconLike = (props: { size?: number; strokeWidth?: number; className?: string }) => ReactNode;
-
-type HButtonProps = ComponentProps<typeof HButton>;
 
 type Props = {
   variant?: ButtonVariant;
@@ -17,36 +14,50 @@ type Props = {
   block?: boolean;
   isIconOnly?: boolean;
   disabled?: boolean;
-  excludeFromTabOrder?: HButtonProps["excludeFromTabOrder"];
+  isDisabled?: boolean;
+  excludeFromTabOrder?: boolean;
+  tabIndex?: ButtonHTMLAttributes<HTMLButtonElement>["tabIndex"];
   className?: string;
   children?: ReactNode;
-  onPress?: HButtonProps["onPress"];
-  onPressUp?: HButtonProps["onPressUp"];
-  onPointerDown?: HButtonProps["onPointerDown"];
-  onPointerDownCapture?: HButtonProps["onPointerDownCapture"];
-  preventFocusOnPress?: HButtonProps["preventFocusOnPress"];
-  type?: HButtonProps["type"];
-  form?: HButtonProps["form"];
-  autoFocus?: HButtonProps["autoFocus"];
+  onPress?: () => void;
+  onPressUp?: () => void;
+  preventFocusOnPress?: boolean;
+  type?: ButtonHTMLAttributes<HTMLButtonElement>["type"];
+  form?: ButtonHTMLAttributes<HTMLButtonElement>["form"];
+  autoFocus?: ButtonHTMLAttributes<HTMLButtonElement>["autoFocus"];
   "aria-label"?: string;
 };
 
-const heroVariantMap: Record<ButtonVariant, NonNullable<HButtonProps["variant"]>> = {
-  primary: "primary",
-  secondary: "secondary",
-  ghost: "ghost",
-  danger: "danger",
-  success: "primary",
+const variantClassNameMap: Record<ButtonVariant, string> = {
+  primary: "codux-button-primary",
+  secondary: "codux-button-secondary",
+  ghost: "codux-button-ghost",
+  danger: "codux-button-danger",
+  success: "codux-button-success",
 };
 
-const variantClassNameMap: Partial<Record<ButtonVariant, string>> = {
-  success: "bg-brand-green text-on-brand hover:bg-brand-green/90 active:bg-brand-green/80",
+const sizeClassNameMap: Record<ButtonSize, string> = {
+  sm: "codux-button-sm",
+  md: "codux-button-md",
+  lg: "codux-button-lg",
+};
+
+const iconOnlyClassNameMap: Record<ButtonSize, string> = {
+  sm: "codux-button-icon-sm",
+  md: "codux-button-icon-md",
+  lg: "codux-button-icon-lg",
 };
 
 const iconSizeMap: Record<ButtonSize, number> = {
   sm: 12,
   md: 14,
   lg: 15,
+};
+
+const inlineIconClassNameMap: Record<ButtonSize, string> = {
+  sm: "codux-button-inline-icon-sm",
+  md: "codux-button-inline-icon-md",
+  lg: "codux-button-inline-icon-lg",
 };
 
 export const Button = forwardRef<HTMLButtonElement, Props>(function Button({
@@ -57,42 +68,71 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button({
   block,
   isIconOnly,
   disabled,
+  isDisabled,
   excludeFromTabOrder = true,
   className,
   children,
   onPress,
   onPressUp,
-  onPointerDownCapture,
-  preventFocusOnPress = true,
+  preventFocusOnPress = false,
+  type = "button",
+  tabIndex,
   ...rest
 }, ref) {
   const iconSize = iconSizeMap[size];
+  const isDisabledState = disabled || isDisabled;
+  const localRef = useRef<HTMLButtonElement | null>(null);
+  const pressStartedRef = useRef(false);
+  const mergedRef = useMergedRef(localRef, ref);
+  const { hoverProps, isHovered } = useHover({ isDisabled: isDisabledState });
+  const { pressProps } = usePress({
+    ref: localRef,
+    isDisabled: isDisabledState,
+    onPressStart: () => {
+      pressStartedRef.current = true;
+    },
+    onPress: (event) => {
+      pressStartedRef.current = false;
+      onPress?.();
+    },
+    onPressUp: (event) => {
+      const hadPressStart = pressStartedRef.current;
+      onPressUp?.();
+      if (!hadPressStart) {
+        onPress?.();
+      }
+    },
+    preventFocusOnPress,
+  });
 
   return (
-    <HButton
-      ref={ref}
-      variant={heroVariantMap[variant]}
-      size={size}
-      isIconOnly={isIconOnly}
-      isDisabled={disabled}
-      excludeFromTabOrder={excludeFromTabOrder}
-      preventFocusOnPress={preventFocusOnPress}
+    <button
+      {...mergeProps(rest, hoverProps, pressProps)}
+      ref={mergedRef}
+      type={type}
+      disabled={isDisabledState}
       data-codux-button="true"
-      className={`${block ? "w-full" : ""} focus:outline-none focus-visible:outline-none ${variantClassNameMap[variant] ?? ""} ${className ?? ""}`}
-      onPointerDownCapture={(event) => {
-        onPointerDownCapture?.(event);
-      }}
-      onPressUp={(event) => {
-        onPressUp?.(event);
-        if (!disabled && onPress) {
-          onPress(event as Parameters<NonNullable<HButtonProps["onPress"]>>[0]);
-        }
-      }}
-      {...rest}
+      data-hovered={isHovered ? "true" : undefined}
+      tabIndex={tabIndex ?? (excludeFromTabOrder ? -1 : undefined)}
+      className={`codux-button ${isIconOnly ? iconOnlyClassNameMap[size] : sizeClassNameMap[size]} ${block ? "w-full" : ""} ${variantClassNameMap[variant]} ${className ?? ""}`}
     >
-      {Leading ? <Leading size={iconSize} strokeWidth={2} /> : null}
+      {Leading ? <Leading size={iconSize} strokeWidth={2} className={inlineIconClassNameMap[size]} /> : null}
       {children}
-      {Trailing ? <Trailing size={iconSize} strokeWidth={2} /> : null}
-    </HButton>
+      {Trailing ? <Trailing size={iconSize} strokeWidth={2} className={inlineIconClassNameMap[size]} /> : null}
+    </button>
   );
 });
+
+function useMergedRef<T>(localRef: MutableRefObject<T | null>, forwardedRef: Ref<T> | undefined) {
+  return useCallback(
+    (node: T | null) => {
+      localRef.current = node;
+      if (typeof forwardedRef === "function") {
+        forwardedRef(node);
+      } else if (forwardedRef) {
+        forwardedRef.current = node;
+      }
+    },
+    [forwardedRef, localRef],
+  );
+}

@@ -138,6 +138,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
+use tauri::ipc::{Channel, Response};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::utils::config::Color;
 use tauri::WindowEvent;
@@ -888,21 +889,44 @@ fn terminal_create(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     config: TerminalConfig,
+    on_data: Channel<Response>,
+    on_exit: Channel<i32>,
 ) -> Result<String, String> {
-    create_terminal_session(Arc::clone(&state.remote), &state.terminals, app, config)
+    create_terminal_session(
+        Arc::clone(&state.remote),
+        &state.terminals,
+        app,
+        config,
+        Some(on_data),
+        Some(on_exit),
+    )
+}
+
+#[tauri::command]
+fn terminal_attach(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    on_data: Channel<Response>,
+    on_exit: Channel<i32>,
+) -> Result<(), String> {
+    state
+        .terminals
+        .attach_channels(&session_id, Some(on_data), Some(on_exit))
+        .map_err(|error| error.to_string())
 }
 
 fn create_terminal_session(
     remote: Arc<RemoteHostService>,
     terminals: &TerminalManager,
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     config: TerminalConfig,
+    on_data: Option<Channel<Response>>,
+    on_exit: Option<Channel<i32>>,
 ) -> Result<String, String> {
     terminals
-        .create(config, move |event| {
-            let _ = app.emit("terminal:event", event.for_webview());
+        .create_with_channels(config, move |event| {
             remote.handle_terminal_event(event);
-        })
+        }, on_data, on_exit)
         .map_err(|error| error.to_string())
 }
 
@@ -4384,6 +4408,8 @@ impl RemoteHostService {
                 title: Some(title),
                 tool: None,
             },
+            None,
+            None,
         ) {
             Ok(session_id) => {
                 self.register_terminal_viewer(&session_id, device_id.as_deref());
@@ -4979,6 +5005,8 @@ impl RemoteHostService {
                 title: Some(layout.title),
                 tool: Some("auto".to_string()),
             },
+            None,
+            None,
         )?;
         self.send_terminal_list(envelope.device_id.as_deref());
         Ok(())
@@ -6932,6 +6960,7 @@ pub fn run() {
             runtime_trace_frontend,
             app_window_close,
             terminal_create,
+            terminal_attach,
             terminal_write,
             terminal_resize,
             terminal_interrupt,

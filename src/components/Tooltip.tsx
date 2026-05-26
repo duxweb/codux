@@ -1,5 +1,5 @@
-import { Tooltip as HTooltip } from "@heroui/react";
-import { type ReactElement, type ReactNode } from "react";
+import { useFloating, offset, flip, shift, useHover, useInteractions, FloatingPortal } from "@floating-ui/react";
+import { cloneElement, useState, type ReactElement, type ReactNode } from "react";
 
 export type TooltipPlacement = "top" | "bottom" | "left" | "right";
 
@@ -22,6 +22,16 @@ export function Tooltip({
   contentClassName,
   children,
 }: Props) {
+  const [open, setOpen] = useState(false);
+  const { context, floatingStyles, refs } = useFloating({
+    open,
+    onOpenChange: setOpen,
+    placement,
+    middleware: [offset(6), flip(), shift({ padding: 8 })],
+  });
+  const hover = useHover(context, { delay: { open: delay, close: 80 } });
+  const { getReferenceProps, getFloatingProps } = useInteractions([hover]);
+
   if (disabled) {
     return children;
   }
@@ -31,15 +41,22 @@ export function Tooltip({
   }
 
   return (
-    <HTooltip delay={delay} closeDelay={80}>
-      <HTooltip.Trigger className={triggerClassName}>{children}</HTooltip.Trigger>
-      <HTooltip.Content
-        placement={placement}
-        showArrow={false}
-        className={`max-w-[260px] rounded-md border border-border bg-surface-popover px-2 py-1 text-[11.5px] font-medium text-ink-soft shadow-floating ${contentClassName ?? ""}`}
-      >
-        {label}
-      </HTooltip.Content>
-    </HTooltip>
+    <>
+      <span ref={refs.setReference} className={triggerClassName} {...getReferenceProps()}>
+        {cloneElement(children)}
+      </span>
+      {open ? (
+        <FloatingPortal preserveTabOrder={false}>
+          <div
+            ref={refs.setFloating}
+            style={floatingStyles}
+            className={`z-[10000] max-w-[260px] rounded-md border border-border bg-surface-popover px-2 py-1 text-[11.5px] font-medium text-ink-soft shadow-floating ${contentClassName ?? ""}`}
+            {...getFloatingProps()}
+          >
+            {label}
+          </div>
+        </FloatingPortal>
+      ) : null}
+    </>
   );
 }
