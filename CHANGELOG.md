@@ -6,36 +6,29 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.8] - 2026-05-27
 
-### Changed
+### Includes 1.0.7
+
+#### Changed
 
 - Removed HeroUI from the desktop interaction layer and replaced the affected buttons, menus, dialogs, popovers, forms, and tooltips with local components built on React Aria and Floating UI.
 - Reduced the default terminal history from 2000 lines to 500 lines to lower long-session memory and restore overhead.
 - Disabled the xterm WebGL renderer on macOS to avoid intermittent WKWebView idle CPU spikes after terminal split, resize, and close operations.
 
-### Fixed
+#### Fixed
 
 - Fixed terminal menu and text-input handling so shifted punctuation and menu selections work consistently after terminal focus.
 - Fixed terminal scroll position preservation when creating tabs, creating splits, resizing panes, and restoring long sessions.
 - Aligned the titlebar performance HUD, memory status button, and remote connection pill to the same visual height.
+
+### 1.0.8 Updates
+
+#### Fixed
+
 - Fixed desktop submenu switching so sibling and nested branch menus no longer leave stale flyouts behind while hovering.
 - Fixed Git branch submenus to consistently open from the left side of the Git panel menu.
 - Fixed AI session history context menus after terminal focus by removing the broken rename action and making menu item activation work on pointer down.
 - Fixed file-sidebar delete confirmation actions and shortened the confirmation bar buttons to Confirm and Cancel.
 - Added missing 10-locale translations for terminal history settings and the shared Confirm action.
-
-## [1.0.7] - 2026-05-27
-
-### Changed
-
-- Removed HeroUI from the desktop interaction layer and replaced the affected buttons, menus, dialogs, popovers, forms, and tooltips with local components built on React Aria and Floating UI.
-- Reduced the default terminal history from 2000 lines to 500 lines to lower long-session memory and restore overhead.
-- Disabled the xterm WebGL renderer on macOS to avoid intermittent WKWebView idle CPU spikes after terminal split, resize, and close operations.
-
-### Fixed
-
-- Fixed terminal menu and text-input handling so shifted punctuation and menu selections work consistently after terminal focus.
-- Fixed terminal scroll position preservation when creating tabs, creating splits, resizing panes, and restoring long sessions.
-- Aligned the titlebar performance HUD, memory status button, and remote connection pill to the same visual height.
 
 ## [1.0.6] - 2026-05-26
 
