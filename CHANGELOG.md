@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-05-26
+
+### Changed
+
+- Restored terminal resizing to the standard xterm fit addon path, removing manual `proposeDimensions()` sizing and extra resize debouncing.
+
+### Fixed
+
+- Fixed terminal scrollbar drift and layout jitter after repeated window resizing.
+- Fixed Claude interactive hook blocking risk and Kiro managed agent config validation errors.
+- Fixed terminal launches not automatically inheriting Codex `OPENAI_API_KEY` and `OPENAI_BASE_URL`, and improved long-session terminal history cleanup and memory use.
+- Fixed intermittent Windows settings-window close button clicks.
+
 ## [1.0.5] - 2026-05-26
 
 ### Changed
