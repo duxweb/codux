@@ -3290,6 +3290,10 @@ fn install_tool_hooks(
     definitions: &[(&str, &str, i64, bool)],
     runtime: &AIRuntimeBridge,
 ) -> Result<(), String> {
+    if tool == "kiro" {
+        return install_kiro_tool_hooks(path, definitions, runtime);
+    }
+
     let mut root = load_json_object(path)?;
     let mut hooks = root
         .remove("hooks")
@@ -3305,48 +3309,6 @@ fn install_tool_hooks(
 
     for (event_key, action, timeout, is_async) in definitions {
         let command = hook_command(runtime.managed_hook_script(), action, app_slug(), tool);
-        
-        // Kiro expects flat hook objects with timeout_ms, no nested structure
-        if tool == "kiro" {
-            let existing = hooks
-                .remove(*event_key)
-                .and_then(|value| value.as_array().cloned())
-                .unwrap_or_default();
-            let mut cleaned: Vec<serde_json::Value> = existing
-                .into_iter()
-                .filter(|item| {
-                    let Some(obj) = item.as_object() else {
-                        return true;
-                    };
-                    // Flat format (current): direct command field
-                    if let Some(cmd) = obj.get("command").and_then(|v| v.as_str()) {
-                        return !cmd.contains("dmux-ai-state.sh");
-                    }
-                    // Old nested format: hooks array containing the command
-                    if let Some(nested) = obj.get("hooks").and_then(|v| v.as_array()) {
-                        return !nested.iter().any(|h| {
-                            h.as_object()
-                                .and_then(|o| o.get("command"))
-                                .and_then(|c| c.as_str())
-                                .map(|c| c.contains("dmux-ai-state.sh"))
-                                .unwrap_or(false)
-                        });
-                    }
-                    true
-                })
-                .collect();
-            
-            let hook_entry = serde_json::json!({
-                "command": command,
-                "timeout_ms": timeout,
-                "matcher": "",
-            });
-            cleaned.push(hook_entry);
-            hooks.insert((*event_key).to_string(), serde_json::Value::Array(cleaned));
-            continue;
-        }
-
-        // Other tools use nested structure with statusMessage
         let mut hook = serde_json::Map::new();
         hook.insert(
             "type".to_string(),
@@ -3402,14 +3364,98 @@ fn install_tool_hooks(
     if tool == "gemini" || tool == "agy" {
         disable_gemini_hook_notifications(&mut root);
     }
-    if tool == "kiro" {
-        // Kiro validates all files in ~/.kiro/agents/ as full agent configs
-        root.entry("name").or_insert_with(|| serde_json::Value::String("codux".to_string()));
-        root.entry("description")
-            .or_insert_with(|| serde_json::Value::String("Codux AI runtime integration".to_string()));
-        root.entry("prompt").or_insert_with(|| serde_json::Value::String(String::new()));
-    }
     write_json_object(path, root)
+}
+
+fn install_kiro_tool_hooks(
+    path: &Path,
+    definitions: &[(&str, &str, i64, bool)],
+    runtime: &AIRuntimeBridge,
+) -> Result<(), String> {
+    let mut root = load_json_object(path)?;
+    ensure_kiro_agent_config_fields(&mut root);
+    let mut hooks = root
+        .remove("hooks")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+
+    for (event_key, action, timeout, is_async) in definitions {
+        let command = hook_command(runtime.managed_hook_script(), action, app_slug(), "kiro");
+        let mut hook = serde_json::Map::new();
+        hook.insert("command".to_string(), serde_json::Value::String(command));
+        hook.insert(
+            "timeout_ms".to_string(),
+            serde_json::Value::Number((*timeout).into()),
+        );
+        hook.insert(
+            "matcher".to_string(),
+            serde_json::Value::String(String::new()),
+        );
+        if *is_async {
+            hook.insert("async".to_string(), serde_json::Value::Bool(true));
+        }
+
+        let entries = hooks
+            .remove(*event_key)
+            .and_then(|value| value.as_array().cloned())
+            .unwrap_or_default();
+        let mut cleaned = Vec::new();
+        for entry in entries {
+            if is_managed_hook(&entry, action, "kiro") {
+                continue;
+            }
+            let Some(entry_object) = entry.as_object() else {
+                continue;
+            };
+            if let Some(existing_hooks) =
+                entry_object.get("hooks").and_then(|value| value.as_array())
+            {
+                let next_hooks = existing_hooks
+                    .iter()
+                    .filter(|item| !is_managed_hook(item, action, "kiro"))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if next_hooks.is_empty() {
+                    continue;
+                }
+                let mut next_entry = entry_object.clone();
+                next_entry.insert("hooks".to_string(), serde_json::Value::Array(next_hooks));
+                cleaned.push(serde_json::Value::Object(next_entry));
+                continue;
+            }
+            cleaned.push(entry);
+        }
+
+        cleaned.push(serde_json::Value::Object(hook));
+        hooks.insert((*event_key).to_string(), serde_json::Value::Array(cleaned));
+    }
+
+    root.insert("hooks".to_string(), serde_json::Value::Object(hooks));
+    write_json_object(path, root)
+}
+
+fn ensure_kiro_agent_config_fields(root: &mut serde_json::Map<String, serde_json::Value>) {
+    ensure_json_string_field(root, "name", "Codux Managed");
+    ensure_json_string_field(root, "description", "Codux runtime lifecycle hook bridge.");
+    ensure_json_string_field(root, "prompt", "Codux managed runtime hook agent.");
+}
+
+fn ensure_json_string_field(
+    root: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    default_value: &str,
+) {
+    let is_valid = root
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    if !is_valid {
+        root.insert(
+            key.to_string(),
+            serde_json::Value::String(default_value.to_string()),
+        );
+    }
 }
 
 fn disable_gemini_hook_notifications(root: &mut serde_json::Map<String, serde_json::Value>) {
@@ -3457,20 +3503,20 @@ fn has_managed_hook_for_event(
     action: &str,
     tool: &str,
 ) -> bool {
-    let Some(items) = hooks.get(event_key).and_then(|value| value.as_array()) else {
-        return false;
-    };
-    if tool == "kiro" {
-        // Kiro uses flat hook objects directly in the array
-        return items.iter().any(|item| is_managed_hook(item, action, tool));
-    }
-    items.iter().any(|group| {
-        group
-            .get("hooks")
-            .and_then(|value| value.as_array())
-            .map(|nested| nested.iter().any(|item| is_managed_hook(item, action, tool)))
-            .unwrap_or(false)
-    })
+    hooks
+        .get(event_key)
+        .and_then(|value| value.as_array())
+        .map(|groups| {
+            groups.iter().any(|group| {
+                is_managed_hook(group, action, tool)
+                    || group
+                        .get("hooks")
+                        .and_then(|value| value.as_array())
+                        .map(|items| items.iter().any(|item| is_managed_hook(item, action, tool)))
+                        .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
 }
 
 fn opencode_hook_config_status(config_dir: &Path) -> AIRuntimeToolHookConfigStatus {
@@ -5499,7 +5545,7 @@ trusted_hash = "sha256:old-basic"
     }
 
     #[test]
-    fn tool_hook_config_status_requires_kiro_flat_hooks() {
+    fn managed_hook_status_accepts_kiro_flat_hooks() {
         let root = std::env::temp_dir().join(format!(
             "codux-kiro-hooks-{}-{}.json",
             std::process::id(),
@@ -5508,19 +5554,22 @@ trusted_hash = "sha256:old-basic"
         fs::write(
             &root,
             r#"{
+              "name": "Codux Managed",
+              "description": "Codux runtime lifecycle hook bridge.",
+              "prompt": "Codux managed runtime hook agent.",
               "hooks": {
                 "agentSpawn": [
                   {
-                    "type": "command",
+                    "matcher": "",
                     "command": "'/tmp/dmux-ai-state.sh' 'session-start' 'codux-tauri' 'kiro'",
-                    "timeout": 10
+                    "timeout_ms": 5000
                   }
                 ],
                 "stop": [
                   {
-                    "type": "command",
+                    "matcher": "",
                     "command": "'/tmp/dmux-ai-state.sh' 'session-end' 'codux-tauri' 'kiro'",
-                    "timeout": 10
+                    "timeout_ms": 5000
                   }
                 ]
               }
@@ -5537,6 +5586,30 @@ trusted_hash = "sha256:old-basic"
         assert!(status.configured);
         assert!(status.missing.is_empty());
         let _ = fs::remove_file(root);
+    }
+
+    #[test]
+    fn kiro_agent_fields_are_completed_without_overwriting_user_values() {
+        let mut root = serde_json::Map::new();
+        root.insert(
+            "name".to_string(),
+            serde_json::Value::String("Custom Agent".to_string()),
+        );
+
+        ensure_kiro_agent_config_fields(&mut root);
+
+        assert_eq!(
+            root.get("name").and_then(|value| value.as_str()),
+            Some("Custom Agent")
+        );
+        assert_eq!(
+            root.get("description").and_then(|value| value.as_str()),
+            Some("Codux runtime lifecycle hook bridge.")
+        );
+        assert_eq!(
+            root.get("prompt").and_then(|value| value.as_str()),
+            Some("Codux managed runtime hook agent.")
+        );
     }
 
     #[test]
