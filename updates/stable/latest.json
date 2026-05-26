@@ -1,23 +1,23 @@
 {
   "version": "1.0.6",
   "notes": "## 中文\n\n## [1.0.6] - 2026-05-26\n\n### 调整\n\n- 将终端窗口尺寸适配恢复为 xterm fit addon 标准路径，移除手动 `proposeDimensions()` 和额外 resize 防抖。\n\n### 修复\n\n- 修复终端拖动调整窗口大小后滚动条位置可能错乱、布局抖动的问题。\n- 修复 Claude 交互确认 hook 同步阻塞风险，并修复 Kiro 托管 agent 配置格式校验错误。\n- 修复终端启动时未自动继承 Codex 的 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`，并优化长会话终端历史清理和内存占用。\n- 修复 Windows 设置窗口关闭按钮偶发点击无效的问题。\n- 修复切换项目后旧的后端终端快照可能覆盖已恢复终端视图的问题。\n- 移除 macOS 性能监控中的 shell 进程 CPU 采样，降低启动和性能监控 CPU 占用。\n- 优化自动记忆提取，后台队列按间隔限速处理，并将长记忆 LLM 请求超时延长到 120 秒。\n\n---\n\n## English\n\n## [1.0.6] - 2026-05-26\n\n### Changed\n\n- Restored terminal resizing to the standard xterm fit addon path, removing manual `proposeDimensions()` sizing and extra resize debouncing.\n\n### Fixed\n\n- Fixed terminal scrollbar drift and layout jitter after repeated window resizing.\n- Fixed Claude interactive hook blocking risk and Kiro managed agent config validation errors.\n- Fixed terminal launches not automatically inheriting Codex `OPENAI_API_KEY` and `OPENAI_BASE_URL`, and improved long-session terminal history cleanup and memory use.\n- Fixed intermittent Windows settings-window close button clicks.\n- Fixed terminal project switching so stale backend snapshots no longer overwrite the restored terminal view.\n- Reduced startup and performance-monitor CPU usage by removing shell-based macOS process CPU sampling.\n- Improved automatic memory extraction by pacing queued background tasks and extending long memory LLM requests to 120 seconds.",
-  "pub_date": "2026-05-26T10:21:37.179Z",
+  "pub_date": "2026-05-26T10:31:42.357Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxnSXZHT0VrTHVqMjUrcldLOWRBbElVcVZCL2RBa3Z6Q254akx6UUxrZ0ZxM1duUm12NEMyOHZDZURFSDZCRDhpT3R1YnVVbVFCRHlTTCtad1JNTGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwODQyCWZpbGU6Q29kdXguYXBwLnRhci5nego4K3g1ZFhvUW9seEJ5VzEvNHAzc2k1YVhNeVhpSXNacjVjV2dUbkhnN1RhWldrSWk4akNxbG1qMjc0b1gyTnJkV29haGRpMXo5bm5adzVSNEtKbjFEdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWl5eDVWWWFZMjE5VWdhc0ppOG00TlNuaFdERkhWemJ1S0Y5M2lCWFJWTzdUd0xxYkpoL2krY2dlSkNQT0xhWE1NZXhaZTZlWlBucFVQSlBMRjBlOFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkxNDQzCWZpbGU6Q29kdXguYXBwLnRhci5negpGb2hYVVRoemx6SFhpOURta0o0ZGJxdDNmMlkxYzhPL08ybTVFTUdpTzJFSTJzNDNLYkNBQmRvR2lBVjY2ZU5FUVlOMlppeFhCWDlUQWo5cStLSVBDUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxnSXZHT0VrTHVqMjUrcldLOWRBbElVcVZCL2RBa3Z6Q254akx6UUxrZ0ZxM1duUm12NEMyOHZDZURFSDZCRDhpT3R1YnVVbVFCRHlTTCtad1JNTGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwODQyCWZpbGU6Q29kdXguYXBwLnRhci5nego4K3g1ZFhvUW9seEJ5VzEvNHAzc2k1YVhNeVhpSXNacjVjV2dUbkhnN1RhWldrSWk4akNxbG1qMjc0b1gyTnJkV29haGRpMXo5bm5adzVSNEtKbjFEdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWl5eDVWWWFZMjE5VWdhc0ppOG00TlNuaFdERkhWemJ1S0Y5M2lCWFJWTzdUd0xxYkpoL2krY2dlSkNQT0xhWE1NZXhaZTZlWlBucFVQSlBMRjBlOFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkxNDQzCWZpbGU6Q29kdXguYXBwLnRhci5negpGb2hYVVRoemx6SFhpOURta0o0ZGJxdDNmMlkxYzhPL08ybTVFTUdpTzJFSTJzNDNLYkNBQmRvR2lBVjY2ZU5FUVlOMlppeFhCWDlUQWo5cStLSVBDUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxnSXZHT0VrTHVqMjUrcldLOWRBbElVcVZCL2RBa3Z6Q254akx6UUxrZ0ZxM1duUm12NEMyOHZDZURFSDZCRDhpT3R1YnVVbVFCRHlTTCtad1JNTGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwODQyCWZpbGU6Q29kdXguYXBwLnRhci5nego4K3g1ZFhvUW9seEJ5VzEvNHAzc2k1YVhNeVhpSXNacjVjV2dUbkhnN1RhWldrSWk4akNxbG1qMjc0b1gyTnJkV29haGRpMXo5bm5adzVSNEtKbjFEdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWl5eDVWWWFZMjE5VWdhc0ppOG00TlNuaFdERkhWemJ1S0Y5M2lCWFJWTzdUd0xxYkpoL2krY2dlSkNQT0xhWE1NZXhaZTZlWlBucFVQSlBMRjBlOFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkxNDQzCWZpbGU6Q29kdXguYXBwLnRhci5negpGb2hYVVRoemx6SFhpOURta0o0ZGJxdDNmMlkxYzhPL08ybTVFTUdpTzJFSTJzNDNLYkNBQmRvR2lBVjY2ZU5FUVlOMlppeFhCWDlUQWo5cStLSVBDUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-formal-updater.app.tar.gz"
     },
     "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxnSXZHT0VrTHVqMjUrcldLOWRBbElVcVZCL2RBa3Z6Q254akx6UUxrZ0ZxM1duUm12NEMyOHZDZURFSDZCRDhpT3R1YnVVbVFCRHlTTCtad1JNTGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwODQyCWZpbGU6Q29kdXguYXBwLnRhci5nego4K3g1ZFhvUW9seEJ5VzEvNHAzc2k1YVhNeVhpSXNacjVjV2dUbkhnN1RhWldrSWk4akNxbG1qMjc0b1gyTnJkV29haGRpMXo5bm5adzVSNEtKbjFEdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-unsigned-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWl5eDVWWWFZMjE5VWdhc0ppOG00TlNuaFdERkhWemJ1S0Y5M2lCWFJWTzdUd0xxYkpoL2krY2dlSkNQT0xhWE1NZXhaZTZlWlBucFVQSlBMRjBlOFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkxNDQzCWZpbGU6Q29kdXguYXBwLnRhci5negpGb2hYVVRoemx6SFhpOURta0o0ZGJxdDNmMlkxYzhPL08ybTVFTUdpTzJFSTJzNDNLYkNBQmRvR2lBVjY2ZU5FUVlOMlppeFhCWDlUQWo5cStLSVBDUT09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-formal-updater.app.tar.gz"
     },
     "windows-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWs1bjVybS83TUMrTWY4ZnlkNkxtZVA4UUhaZm03YnVIMkRqeVl6SVJxL2ZvMTBwNmxIM25vME9NcjQwck5VbVFWajRKU3VWZGFEUG1RZnlneHViQ1FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwNjI3CWZpbGU6Q29kdXhfMS4wLjYtMF94NjQtc2V0dXAuZXhlCk41cDB2SnhHazlwWW1YeVVHSExUWmJyZTNhdG1jUVBxK252UmM0dkFDai9WaWpZcjRoNWFDNHd6emEzWGM3RzlZK1U4aGNXYmZLbEROV3E0cjluMUFBPT0K",
