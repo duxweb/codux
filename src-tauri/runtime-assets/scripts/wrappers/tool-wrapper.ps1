@@ -138,6 +138,56 @@ function Has-Option-Value([string[]]$Args, [string[]]$Names) {
   return $false
 }
 
+function Codex-Allows-Additional-Writable-Roots([string[]]$Args) {
+  for ($index = 0; $index -lt $Args.Count; $index++) {
+    $arg = $Args[$index]
+    if ($arg -eq "--dangerously-bypass-approvals-and-sandbox" -or $arg -eq "--full-auto") {
+      return $true
+    }
+    if ($arg -eq "--sandbox" -or $arg -eq "-s") {
+      if ($index + 1 -lt $Args.Count) {
+        $value = $Args[$index + 1]
+        if ($value -eq "workspace-write" -or $value -eq "danger-full-access") { return $true }
+      }
+    }
+    if ($arg -eq "--sandbox=workspace-write" -or
+        $arg -eq "--sandbox=danger-full-access" -or
+        $arg -eq "-sworkspace-write" -or
+        $arg -eq "-sdanger-full-access") {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Codex-Has-Sandbox-Mode-Arg([string[]]$Args) {
+  foreach ($arg in $Args) {
+    if ($arg -eq "--dangerously-bypass-approvals-and-sandbox" -or
+        $arg -eq "--full-auto" -or
+        $arg -eq "--sandbox" -or
+        $arg -eq "-s" -or
+        $arg.StartsWith("--sandbox=", [StringComparison]::Ordinal) -or
+        $arg.StartsWith("-s", [StringComparison]::Ordinal)) {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Has-Config-Key([string[]]$Args, [string]$Key) {
+  for ($index = 0; $index -lt $Args.Count; $index++) {
+    $arg = $Args[$index]
+    if (($arg -eq "-c" -or $arg -eq "--config") -and $index + 1 -lt $Args.Count) {
+      if ($Args[$index + 1].StartsWith("$Key=", [StringComparison]::Ordinal)) { return $true }
+    }
+    if ($arg.StartsWith("-c$Key=", [StringComparison]::Ordinal) -or
+        $arg.StartsWith("--config=$Key=", [StringComparison]::Ordinal)) {
+      return $true
+    }
+  }
+  return $false
+}
+
 function Extract-Model([string[]]$Args) {
   for ($index = 0; $index -lt $Args.Count; $index++) {
     $arg = $Args[$index]
@@ -227,10 +277,21 @@ if ($Tool -eq "codex" -and -not [string]::IsNullOrWhiteSpace($codexEffort) -and 
 }
 
 if ($Tool -eq "codex" -and
+    $permissionMode -ne "fullAccess" -and
     -not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
     (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
     -not [string]::IsNullOrWhiteSpace($env:DMUX_PROJECT_PATH) -and
     (Test-Path -LiteralPath $env:DMUX_PROJECT_PATH) -and
+    -not (Codex-Has-Sandbox-Mode-Arg $launchArgs)) {
+  $launchArgs = @("--sandbox", "workspace-write") + $launchArgs
+}
+
+if ($Tool -eq "codex" -and
+    -not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
+    (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
+    -not [string]::IsNullOrWhiteSpace($env:DMUX_PROJECT_PATH) -and
+    (Test-Path -LiteralPath $env:DMUX_PROJECT_PATH) -and
+    ($permissionMode -eq "fullAccess" -or (Codex-Allows-Additional-Writable-Roots $launchArgs)) -and
     -not (Has-Option-Value $launchArgs @("-C", "--cd"))) {
   $launchArgs = @("-C", $env:DMUX_PROJECT_PATH, "--add-dir", $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) + $launchArgs
 }
@@ -238,43 +299,16 @@ if ($Tool -eq "codex" -and
 if ($Tool -eq "codex" -and
     -not [string]::IsNullOrWhiteSpace($env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
     (Test-Path -LiteralPath $env:DMUX_AI_MEMORY_WORKSPACE_ROOT) -and
-    -not [string]::IsNullOrWhiteSpace($env:DMUX_PROJECT_PATH) -and
-    (Test-Path -LiteralPath $env:DMUX_PROJECT_PATH)) {
+    -not (Has-Config-Key $launchArgs "developer_instructions")) {
   $memoryAgents = Join-Path $env:DMUX_AI_MEMORY_WORKSPACE_ROOT "AGENTS.md"
-  $projectAgents = Join-Path $env:DMUX_PROJECT_PATH "AGENTS.md"
-  $managedMarker = "<!-- CODUX_MANAGED_MEMORY_ENTRYPOINT -->"
   if (Test-Path -LiteralPath $memoryAgents) {
-    $managed = $false
-    if (Test-Path -LiteralPath $projectAgents) {
-      try {
-        $item = Get-Item -LiteralPath $projectAgents -Force
-        $target = [string]$item.Target
-        if ($item.LinkType -and ($target -eq $memoryAgents -or $target -match "\\runtime-root\\memory-workspaces\\.*\\AGENTS\\.md$")) {
-          $managed = $true
-        } elseif (-not $item.LinkType) {
-          $head = Get-Content -LiteralPath $projectAgents -TotalCount 1 -ErrorAction SilentlyContinue
-          if ($head -eq $managedMarker) {
-            $managed = $true
-          }
-        }
-      } catch {
+    try {
+      $content = Get-Content -LiteralPath $memoryAgents -Raw
+      if (-not [string]::IsNullOrWhiteSpace($content)) {
+        $tomlString = $content | ConvertTo-Json -Compress
+        $launchArgs = @("-c", "developer_instructions=$tomlString") + $launchArgs
       }
-    } else {
-      $managed = $true
-    }
-    if ($managed) {
-      try {
-        if (Test-Path -LiteralPath $projectAgents) {
-          Remove-Item -LiteralPath $projectAgents -Force
-        }
-        New-Item -ItemType SymbolicLink -Path $projectAgents -Target $memoryAgents -Force | Out-Null
-      } catch {
-        try {
-          $content = Get-Content -LiteralPath $memoryAgents -Raw
-          Set-Content -LiteralPath $projectAgents -Value "$managedMarker`r`n$content" -NoNewline
-        } catch {
-        }
-      }
+    } catch {
     }
   }
 }

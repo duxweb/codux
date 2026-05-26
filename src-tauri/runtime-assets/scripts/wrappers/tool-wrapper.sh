@@ -329,10 +329,55 @@ apply_configured_codex_effort_arg() {
   launch_args=(-c "model_reasoning_effort=\"${configured_effort}\"" "${launch_args[@]}")
 }
 
+codex_allows_additional_writable_roots() {
+  local previous=""
+  local arg
+  for arg in "$@"; do
+    if [[ "${previous}" == "--sandbox" || "${previous}" == "-s" ]]; then
+      case "${arg}" in
+        workspace-write|danger-full-access)
+          return 0
+          ;;
+      esac
+    fi
+    case "${arg}" in
+      --dangerously-bypass-approvals-and-sandbox|--full-auto)
+        return 0
+        ;;
+      --sandbox=workspace-write|--sandbox=danger-full-access|-sworkspace-write|-sdanger-full-access)
+        return 0
+        ;;
+    esac
+    previous="${arg}"
+  done
+  return 1
+}
+
+codex_has_sandbox_mode_arg() {
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --dangerously-bypass-approvals-and-sandbox|--full-auto|--sandbox|-s|--sandbox=*|-s*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+apply_default_codex_memory_sandbox_arg() {
+  [[ "${tool_name}" == "codex" ]] || return 0
+  [[ -n "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" && -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ]] || return 0
+  [[ -n "${DMUX_PROJECT_PATH:-}" && -d "${DMUX_PROJECT_PATH}" ]] || return 0
+  codex_has_sandbox_mode_arg "${launch_args[@]}" && return 0
+  launch_args=(--sandbox workspace-write "${launch_args[@]}")
+}
+
 apply_codex_memory_workspace_args() {
   [[ "${tool_name}" == "codex" ]] || return 0
   [[ -n "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" && -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ]] || return 0
   [[ -n "${DMUX_PROJECT_PATH:-}" && -d "${DMUX_PROJECT_PATH}" ]] || return 0
+  codex_allows_additional_writable_roots "${launch_args[@]}" || return 0
   if has_exact_arg "-C" "${launch_args[@]}" \
     || has_exact_arg "--cd" "${launch_args[@]}" \
     || has_prefix_arg "--cd=" "${launch_args[@]}"; then
@@ -341,27 +386,26 @@ apply_codex_memory_workspace_args() {
   launch_args=(-C "${DMUX_PROJECT_PATH}" --add-dir "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" "${launch_args[@]}")
 }
 
-prepare_codex_project_memory_entrypoint() {
+codex_toml_string() {
+  local value="$1"
+  VALUE="${value}" /usr/bin/python3 - <<'PY'
+import json
+import os
+
+print(json.dumps(os.environ.get("VALUE", ""), ensure_ascii=True))
+PY
+}
+
+apply_codex_memory_developer_instructions() {
   [[ "${tool_name}" == "codex" ]] || return 0
   [[ -n "${DMUX_AI_MEMORY_WORKSPACE_ROOT:-}" && -d "${DMUX_AI_MEMORY_WORKSPACE_ROOT}" ]] || return 0
-  [[ -n "${DMUX_PROJECT_PATH:-}" && -d "${DMUX_PROJECT_PATH}" ]] || return 0
-
   local memory_agents="${DMUX_AI_MEMORY_WORKSPACE_ROOT}/AGENTS.md"
-  local project_agents="${DMUX_PROJECT_PATH}/AGENTS.md"
   [[ -f "${memory_agents}" ]] || return 0
-
-  if [[ -L "${project_agents}" ]]; then
-    local target
-    target="$(readlink "${project_agents}" 2>/dev/null || true)"
-    if [[ "${target}" == "${memory_agents}" || "${target}" == *"/runtime-root/memory-workspaces/"*"/AGENTS.md" ]]; then
-      ln -sfn "${memory_agents}" "${project_agents}" 2>/dev/null || true
-    fi
-    return 0
-  fi
-
-  if [[ ! -e "${project_agents}" ]]; then
-    ln -s "${memory_agents}" "${project_agents}" 2>/dev/null || true
-  fi
+  has_config_key_arg "developer_instructions" "${launch_args[@]}" && return 0
+  local memory_instructions
+  memory_instructions="$(<"${memory_agents}")"
+  [[ -n "${memory_instructions}" ]] || return 0
+  launch_args=(-c "developer_instructions=$(codex_toml_string "${memory_instructions}")" "${launch_args[@]}")
 }
 
 has_exact_arg() {
@@ -568,8 +612,6 @@ if [[ "$tool_name" == "codex" ]]; then
     launch_args=("$@")
     apply_configured_model_arg
     apply_configured_codex_effort_arg
-    apply_codex_memory_workspace_args
-    prepare_codex_project_memory_entrypoint
     if [[ "${local_permission_mode}" == "fullAccess" ]] \
       && ! has_exact_arg "--dangerously-bypass-approvals-and-sandbox" "${launch_args[@]}" \
       && ! has_exact_arg "--full-auto" "${launch_args[@]}" \
@@ -581,6 +623,9 @@ if [[ "$tool_name" == "codex" ]]; then
       && ! has_exact_arg "-a" "${launch_args[@]}"; then
       launch_args=(--dangerously-bypass-approvals-and-sandbox "${launch_args[@]}")
     fi
+    apply_default_codex_memory_sandbox_arg
+    apply_codex_memory_workspace_args
+    apply_codex_memory_developer_instructions
     launch_model="$(extract_model_target "${launch_args[@]}" || true)"
     hooks_feature="$(codex_hooks_feature_flag)"
     log_line "launch codex managed session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} binary=${real_bin} hooks=${hooks_feature}"
