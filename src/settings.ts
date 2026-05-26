@@ -15,6 +15,7 @@ export type AppSettings = {
   theme: string;
   themeColor: string;
   terminalFontSize: string;
+  terminalFontFamily: string;
   terminalScrollbackLines: string;
   iconStyle: string;
   notificationChannels: Record<string, NotificationChannelSettings>;
@@ -250,6 +251,7 @@ export const defaultSettings: AppSettings = {
   theme: "Auto",
   themeColor: "Blue",
   terminalFontSize: "14",
+  terminalFontFamily: "",
   terminalScrollbackLines: "500",
   iconStyle: "default",
   notificationChannels: {},
@@ -667,6 +669,16 @@ export function readTerminalFontSize(settings = readAppSettings()) {
   const parsed = Number(settings.terminalFontSize);
   if (!Number.isFinite(parsed)) return 14;
   return Math.max(10, Math.min(28, Math.round(parsed)));
+}
+
+const TERMINAL_FONT_FAMILY_FALLBACK =
+  '"Berkeley Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
+
+export function readTerminalFontFamily(settings = readAppSettings()) {
+  const custom = settings.terminalFontFamily.trim();
+  if (!custom) return TERMINAL_FONT_FAMILY_FALLBACK;
+  // Append fallback so CJK and monospace still resolve if custom font lacks those glyphs
+  return `${custom}, ${TERMINAL_FONT_FAMILY_FALLBACK}`;
 }
 
 export function readTerminalScrollbackLines(settings = readAppSettings()) {

@@ -542,6 +542,10 @@ function shellOptionsForPlatform() {
 
 function AppearanceSection() {
   const [settings, setSettings] = useSyncedSettings();
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+  useEffect(() => {
+    void invoke<string[]>("list_system_fonts").then(setSystemFonts).catch((err) => console.error("list_system_fonts failed:", err));
+  }, []);
   const selectedThemeColor = resolveThemeColorOption(settings.themeColor)?.label ?? settings.themeColor;
   const setSetting = <K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) => {
     const next = updateAppSettings({ [key]: value });
@@ -610,6 +614,19 @@ function AppearanceSection() {
       </SettingsCard>
 
       <SettingsCard title={tm("settings.terminal_text", "Terminal Text")}>
+        <Field label={tm("settings.terminal_font_family", "Terminal Font Family")}>
+          <TextInput
+            placeholder="e.g. MesloLGS NF, Hack Nerd Font"
+            list="system-fonts-list"
+            value={settings.terminalFontFamily}
+            onChange={(event) => setSetting("terminalFontFamily", event.currentTarget.value)}
+          />
+          <datalist id="system-fonts-list">
+            {systemFonts.map((font) => (
+              <option key={font} value={font} />
+            ))}
+          </datalist>
+        </Field>
         <Field label={tm("settings.terminal_font_size", "Terminal Font Size")}>
           <TextInput
             type="number"
