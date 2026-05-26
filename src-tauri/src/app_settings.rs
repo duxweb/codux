@@ -46,6 +46,8 @@ pub struct AppSettings {
     pub theme_color: String,
     #[serde(default = "default_terminal_font_size")]
     pub terminal_font_size: String,
+    #[serde(default)]
+    pub terminal_font_family: String,
     #[serde(default = "default_terminal_scrollback_lines")]
     pub terminal_scrollback_lines: String,
     #[serde(default = "default_icon_style")]
@@ -391,6 +393,7 @@ impl Default for AppSettings {
             theme: default_theme(),
             theme_color: default_theme_color(),
             terminal_font_size: default_terminal_font_size(),
+            terminal_font_family: String::new(),
             terminal_scrollback_lines: default_terminal_scrollback_lines(),
             icon_style: default_icon_style(),
             notification_channels: HashMap::new(),
@@ -608,6 +611,13 @@ fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
     if settings.terminal_font_size.trim().is_empty() {
         settings.terminal_font_size = default_terminal_font_size();
     }
+    settings.terminal_font_family = settings
+        .terminal_font_family
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .to_string();
     settings.terminal_scrollback_lines =
         sanitize_terminal_scrollback_lines(&settings.terminal_scrollback_lines);
     if settings.icon_style.trim().is_empty() {

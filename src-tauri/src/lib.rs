@@ -1089,6 +1089,20 @@ fn app_settings_get(state: tauri::State<'_, AppState>) -> AppSettings {
 }
 
 #[tauri::command]
+fn list_system_fonts() -> Vec<String> {
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    let mut families: Vec<String> = db
+        .faces()
+        .flat_map(|f| f.families.first().map(|(name, _)| name.clone()))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    families.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    families
+}
+
+#[tauri::command]
 fn app_settings_set(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -6976,6 +6990,7 @@ pub fn run() {
             ai_runtime_dismiss_completion,
             app_settings_get,
             app_settings_set,
+            list_system_fonts,
             localized_open_dialog,
             localized_save_dialog,
             desktop_pet_placement,

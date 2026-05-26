@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   readAppSettings,
   readTerminalFontSize,
+  readTerminalFontFamily,
   readTerminalScrollbackLines,
   subscribeAppSettings,
 } from "../settings";
@@ -38,6 +39,7 @@ type TerminalRendererAdapter = {
   fit: () => void;
   refreshTheme: () => void;
   setFontSize: (fontSize: number) => void;
+  setFontFamily: (fontFamily: string) => void;
   setScrollback: (lines: number) => void;
   setInputEnabled: (enabled: boolean) => void;
   copySelection: () => Promise<void>;
@@ -66,8 +68,6 @@ const LOCAL_INPUT_LOW_LATENCY_MS = 700;
 const STREAM_ANIMATION_QUEUE_BYTES = 64 * 1024;
 const isWindowsTerminal = isWindowsPlatform();
 const isMacTerminal = isMacPlatform();
-const TERMINAL_FONT_FAMILY =
-  '"Berkeley Mono", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
 
 function cssVar(style: CSSStyleDeclaration, name: string, fallback: string) {
   return style.getPropertyValue(name).trim() || fallback;
@@ -162,7 +162,7 @@ function XtermRenderer({
       cursorInactiveStyle: "outline",
       disableStdin: true,
       drawBoldTextInBrightColors: true,
-      fontFamily: TERMINAL_FONT_FAMILY,
+      fontFamily: readTerminalFontFamily(),
       fontSize: readTerminalFontSize(),
       lineHeight: 1.25,
       macOptionIsMeta: true,
@@ -569,6 +569,11 @@ function XtermRenderer({
         terminal.options.fontSize = fontSize;
         scheduleFit(true);
       },
+      setFontFamily: (fontFamily) => {
+        if (terminal.options.fontFamily === fontFamily) return;
+        terminal.options.fontFamily = fontFamily;
+        scheduleFit(true);
+      },
       setScrollback: (lines) => {
         if (terminal.options.scrollback === lines) return;
         terminal.options.scrollback = lines;
@@ -897,6 +902,7 @@ export function TerminalView({
       if (!adapter) return;
       const settings = readAppSettings();
       adapter.setFontSize(readTerminalFontSize(settings));
+      adapter.setFontFamily(readTerminalFontFamily(settings));
       adapter.setScrollback(readTerminalScrollbackLines(settings));
       adapter.refreshTheme();
     };

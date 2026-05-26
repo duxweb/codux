@@ -27,6 +27,7 @@ notify = "8.2.0"
 percent-encoding = "2.3"
 portable-pty = "0.9"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "system-proxy"] }
+fontdb = "0.23"
 futures-util = "0.3"
 genai = "0.6.1"
 git2 = { version = "0.21.0", features = ["cred", "https", "ssh", "vendored-openssl"] }
