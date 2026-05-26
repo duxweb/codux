@@ -6,12 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.8] - 2026-05-27
 
+### Changed
+
+- Includes the 1.0.7 desktop interaction refresh in the 1.0.8 release notes: HeroUI removal, local React Aria and Floating UI replacements, terminal history default reduced from 2000 to 500 lines, and macOS xterm WebGL disabled to avoid idle CPU spikes.
+
 ### Fixed
 
 - Fixed desktop submenu switching so sibling and nested branch menus no longer leave stale flyouts behind while hovering.
+- Fixed Git branch submenus to consistently open from the left side of the Git panel menu.
 - Fixed AI session history context menus after terminal focus by removing the broken rename action and making menu item activation work on pointer down.
 - Fixed file-sidebar delete confirmation actions and shortened the confirmation bar buttons to Confirm and Cancel.
 - Added missing 10-locale translations for terminal history settings and the shared Confirm action.
+- Includes the 1.0.7 terminal and titlebar fixes in the 1.0.8 release notes: shifted punctuation and menu selections after terminal focus, terminal scroll position preservation across tabs, splits, resize and restore, and aligned titlebar HUD and status button heights.
 
 ## [1.0.7] - 2026-05-27
 
