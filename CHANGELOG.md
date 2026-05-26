@@ -16,6 +16,9 @@ All notable changes to this project will be documented in this file.
 - Fixed Claude interactive hook blocking risk and Kiro managed agent config validation errors.
 - Fixed terminal launches not automatically inheriting Codex `OPENAI_API_KEY` and `OPENAI_BASE_URL`, and improved long-session terminal history cleanup and memory use.
 - Fixed intermittent Windows settings-window close button clicks.
+- Fixed terminal project switching so stale backend snapshots no longer overwrite the restored terminal view.
+- Reduced startup and performance-monitor CPU usage by removing shell-based macOS process CPU sampling.
+- Improved automatic memory extraction by pacing queued background tasks and extending long memory LLM requests to 120 seconds.
 
 ## [1.0.5] - 2026-05-26
 

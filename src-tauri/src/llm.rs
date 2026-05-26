@@ -56,6 +56,7 @@ pub struct LLMProviderCompletionOptions {
     pub temperature: f32,
     pub preserve_formatting: bool,
     pub json_response: bool,
+    pub timeout_seconds: u64,
 }
 
 impl Default for LLMProviderCompletionOptions {
@@ -65,6 +66,7 @@ impl Default for LLMProviderCompletionOptions {
             temperature: 0.4,
             preserve_formatting: false,
             json_response: false,
+            timeout_seconds: 15,
         }
     }
 }
@@ -154,6 +156,7 @@ pub async fn pet_idle_speech_with_settings(
             temperature: 0.2,
             preserve_formatting: true,
             json_response: true,
+            ..LLMProviderCompletionOptions::default()
         },
     )
     .await?;
@@ -361,7 +364,9 @@ async fn complete_genai(
     }
     request = request.append_message(ChatMessage::user(prompt));
     let client = Client::builder()
-        .with_web_config(WebConfig::default().with_timeout(Duration::from_secs(15)))
+        .with_web_config(
+            WebConfig::default().with_timeout(Duration::from_secs(options.timeout_seconds.max(1))),
+        )
         .build();
     let chat_options = ChatOptions::default()
         .with_max_tokens(options.max_tokens)
@@ -547,8 +552,10 @@ fn provider_call_error(provider: &AIProviderSettings, model: &str, error: genai:
         ),
     );
     format!(
-        "Provider request failed. provider={} id={} kind={} model={} detail={}",
-        provider.display_name, provider.id, provider.kind, model, error
+        "{} request failed for model {}: {}",
+        provider.display_name,
+        model,
+        sanitize_response_line(&error.to_string())
     )
 }
 

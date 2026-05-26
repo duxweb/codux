@@ -506,37 +506,6 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         cache.refreshed_at = Some(now);
     }
 
-    fn ps_cpu_percent(pids: &[pid_t]) -> Option<f64> {
-        if pids.is_empty() {
-            return None;
-        }
-        let pid_list = pids
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(",");
-        let output = std::process::Command::new("/bin/ps")
-            .args(["-o", "%cpu=", "-p", &pid_list])
-            .output()
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-        let text = String::from_utf8_lossy(&output.stdout);
-        let mut total = 0.0;
-        let mut seen = false;
-        for line in text.lines() {
-            let Ok(value) = line.trim().parse::<f64>() else {
-                continue;
-            };
-            if value.is_finite() {
-                total += value;
-                seen = true;
-            }
-        }
-        seen.then_some(total)
-    }
-
     let captured_at = Instant::now();
     let main = process_sample(unsafe { libc::getpid() })?;
     let mut cpu_seconds = main.cpu_seconds;
@@ -553,7 +522,6 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         Vec::new()
     };
 
-    let mut sampled_pids = vec![main.pid];
     for helper in helper_pids {
         let Some(sample) = process_sample(helper.pid) else {
             continue;
@@ -561,7 +529,6 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         if sample.pid == main.pid {
             continue;
         }
-        sampled_pids.push(sample.pid);
         cpu_seconds += sample.cpu_seconds;
         add_memory(&mut memory, helper.kind, sample.footprint_bytes);
         if helper.kind != MonitoredProcessKind::Gpu {
@@ -574,7 +541,7 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
         cpu_seconds,
         memory_bytes,
         memory,
-        cpu_percent_override: ps_cpu_percent(&sampled_pids),
+        cpu_percent_override: None,
     })
 }
 

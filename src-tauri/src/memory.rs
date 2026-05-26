@@ -16,7 +16,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 const MEMORY_CONTEXT_CANDIDATE_FANOUT: i64 = 8;
@@ -976,6 +976,7 @@ impl MemoryStore {
                 temperature: 0.1,
                 preserve_formatting: true,
                 json_response: true,
+                timeout_seconds: 120,
             },
         )
         .await;
@@ -1216,7 +1217,7 @@ impl MemoryStore {
         initial_status.enqueued_count = enqueued_count;
         tauri::async_runtime::spawn(async move {
             if let Err(error) = self
-                .process_queue(settings, projects, Arc::clone(&on_status))
+                .process_queue(settings, projects, Arc::clone(&on_status), None)
                 .await
             {
                 append_memory_log("manual-extraction", &format!("failed: {error}"));
@@ -1294,8 +1295,11 @@ impl MemoryStore {
                 append_memory_log("auto-enqueue", &format!("failed: {error}"));
                 return;
             }
+            let queue_delay = (configured.memory.extraction_idle_delay_seconds > 0).then(|| {
+                Duration::from_secs(configured.memory.extraction_idle_delay_seconds as u64)
+            });
             if let Err(error) = self
-                .process_queue(configured, projects, Arc::clone(&on_status))
+                .process_queue(configured, projects, Arc::clone(&on_status), queue_delay)
                 .await
             {
                 append_memory_log("auto-extraction", &format!("failed: {error}"));
@@ -2416,6 +2420,7 @@ impl MemoryStore {
         settings: AISettings,
         projects: Vec<ProjectWorkspaceRecord>,
         on_status: Arc<dyn Fn(MemoryQueueStatusEvent) + Send + Sync>,
+        delay_between_tasks: Option<Duration>,
     ) -> Result<()> {
         let started_at = Instant::now();
         if self
@@ -2468,6 +2473,19 @@ impl MemoryStore {
                         &format!("memory extraction queue paused after provider error: {error}"),
                     );
                     break;
+                }
+            }
+            if let Some(delay) = delay_between_tasks {
+                if self.has_pending_extraction_task()? {
+                    runtime_trace(
+                        "memory",
+                        &format!(
+                            "process_queue delay_between_tasks seconds={}",
+                            delay.as_secs()
+                        ),
+                    );
+                    self.publish_queue_status_for_roots(&root_projects, Arc::as_ref(&on_status));
+                    tokio::time::sleep(delay).await;
                 }
             }
         }
@@ -2563,6 +2581,7 @@ impl MemoryStore {
                 temperature: 0.1,
                 preserve_formatting: true,
                 json_response: true,
+                timeout_seconds: 120,
             },
         )
         .await
@@ -2632,6 +2651,15 @@ impl MemoryStore {
         )
         .optional()
         .map_err(Into::into)
+    }
+
+    fn has_pending_extraction_task(&self) -> Result<bool> {
+        let conn = self.connect()?;
+        let count = scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM memory_extraction_queue WHERE status = 'pending';",
+        )?;
+        Ok(count > 0)
     }
 
     fn mark_extraction_task_running(&self, task_id: &str) -> Result<()> {

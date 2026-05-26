@@ -633,6 +633,7 @@ export function TerminalView({
   const adapterRef = useRef<TerminalRendererAdapter | null>(null);
   const onDisposedRef = useRef(onDisposed);
   const sessionRef = useRef<TerminalRuntimeSession | undefined>(terminalRuntime.getSession(terminalId));
+  const snapshotRunRef = useRef(0);
   const shellRef = useRef<HTMLElement | null>(null);
   const [adapterVersion, setAdapterVersion] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -773,6 +774,9 @@ export function TerminalView({
     sessionRef.current = current;
     setSession(current);
     let cancelled = false;
+    const snapshotRun = snapshotRunRef.current + 1;
+    snapshotRunRef.current = snapshotRun;
+    const isCurrentSnapshotRun = () => !cancelled && snapshotRunRef.current === snapshotRun;
     adapter.setInputEnabled(current?.state === "running");
     terminalRuntime.ensureStarted(terminalId);
     const unsubscribe = terminalRuntime.subscribe(terminalId, applyEvent);
@@ -783,12 +787,12 @@ export function TerminalView({
       void terminalRuntime
         .snapshot(terminalId)
         .then((history) => {
-          if (cancelled) return;
+          if (!isCurrentSnapshotRun()) return;
           if (terminalRuntime.getSession(terminalId)?.id !== terminalId) return;
           completeInitialSnapshot("backend", resolveSnapshotHistory(history));
         })
         .catch(() => {
-          if (cancelled) return;
+          if (!isCurrentSnapshotRun()) return;
           const latest = terminalRuntime.getSession(terminalId);
           runtimeTrace(
             "terminal-view",
@@ -808,6 +812,9 @@ export function TerminalView({
 
     return () => {
       cancelled = true;
+      if (snapshotRunRef.current === snapshotRun) {
+        snapshotRunRef.current += 1;
+      }
       window.cancelAnimationFrame(fitFrame);
       unsubscribe();
     };
