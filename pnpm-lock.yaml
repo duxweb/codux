@@ -4,11 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@xterm/addon-webgl@0.20.0-beta.218':
-    hash: 7c3ffb2835fae9f569927dfacddd55d06f83fe7c3dd8900767736c348bd0c074
-    path: patches/@xterm__addon-webgl@0.20.0-beta.218.patch
-
 importers:
 
   .:
@@ -92,20 +87,20 @@ importers:
         specifier: ^2.3.3
         version: 2.3.3
       '@xterm/addon-fit':
-        specifier: 0.12.0-beta.219
-        version: 0.12.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+        specifier: 0.10.0
+        version: 0.10.0(@xterm/xterm@5.5.0)
       '@xterm/addon-serialize':
-        specifier: 0.15.0-beta.220
-        version: 0.15.0-beta.220(@xterm/xterm@6.1.0-beta.219)
+        specifier: 0.13.0
+        version: 0.13.0(@xterm/xterm@5.5.0)
       '@xterm/addon-unicode11':
-        specifier: 0.10.0-beta.219
-        version: 0.10.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+        specifier: 0.8.0
+        version: 0.8.0(@xterm/xterm@5.5.0)
       '@xterm/addon-webgl':
-        specifier: 0.20.0-beta.218
-        version: 0.20.0-beta.218(patch_hash=7c3ffb2835fae9f569927dfacddd55d06f83fe7c3dd8900767736c348bd0c074)(@xterm/xterm@6.1.0-beta.219)
+        specifier: 0.18.0
+        version: 0.18.0(@xterm/xterm@5.5.0)
       '@xterm/xterm':
-        specifier: 6.1.0-beta.219
-        version: 6.1.0-beta.219
+        specifier: 5.5.0
+        version: 5.5.0
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
@@ -1551,28 +1546,28 @@ packages:
   '@vitest/utils@4.1.6':
     resolution: {integrity: sha512-FxIY+U81R3LGKCxaHHFRQ5+g6/iRgGLmeHWdp2Amj4ljQRrEIWHmZyDfDYBRZlpyqA7qKxtS9DD1dhk8RnRIVQ==}
 
-  '@xterm/addon-fit@0.12.0-beta.219':
-    resolution: {integrity: sha512-ve9MP+xSfkcFG+l4GoWHurO+r97vh2U52J392Is246Cd2/EWkE9Q/KwpLqEdILTBQl7XVwTuuJzNv9IfndfnfQ==}
+  '@xterm/addon-fit@0.10.0':
+    resolution: {integrity: sha512-UFYkDm4HUahf2lnEyHvio51TNGiLK66mqP2JoATy7hRZeXaGMRDr00JiSF7m63vR5WKATF605yEggJKsw0JpMQ==}
     peerDependencies:
-      '@xterm/xterm': ^6.1.0-beta.219
+      '@xterm/xterm': ^5.0.0
 
-  '@xterm/addon-serialize@0.15.0-beta.220':
-    resolution: {integrity: sha512-ssZ8rnSU0EOdDsFS5cI5LHKy/T0rQfZBE9iPph7rUxSAwZXbMGz0Vrsob79IKRvfE6oMZlFn+NE0Gg/mKq62Iw==}
+  '@xterm/addon-serialize@0.13.0':
+    resolution: {integrity: sha512-kGs8o6LWAmN1l2NpMp01/YkpxbmO4UrfWybeGu79Khw5K9+Krp7XhXbBTOTc3GJRRhd6EmILjpR8k5+odY39YQ==}
     peerDependencies:
-      '@xterm/xterm': ^6.1.0-beta.220
+      '@xterm/xterm': ^5.0.0
 
-  '@xterm/addon-unicode11@0.10.0-beta.219':
-    resolution: {integrity: sha512-2EJjnULMg1Fk8XMS8TLb1jLNhfT7dKf/pf3AXqUdehs33mKhHxpx4nPR/Oz8NcxHtlsnVNeRXxOOIsFpela18g==}
+  '@xterm/addon-unicode11@0.8.0':
+    resolution: {integrity: sha512-LxinXu8SC4OmVa6FhgwsVCBZbr8WoSGzBl2+vqe8WcQ6hb1r6Gj9P99qTNdPiFPh4Ceiu2pC8xukZ6+2nnh49Q==}
     peerDependencies:
-      '@xterm/xterm': ^6.1.0-beta.219
+      '@xterm/xterm': ^5.0.0
 
-  '@xterm/addon-webgl@0.20.0-beta.218':
-    resolution: {integrity: sha512-TihrC07cUULEcmLQ0Wsj8f9a6vikrWKUx7JWrFFG/Ip31uYohcHY0X46JP+WdAIzPhnE2iVr6OpJG3G5uSKE+w==}
+  '@xterm/addon-webgl@0.18.0':
+    resolution: {integrity: sha512-xCnfMBTI+/HKPdRnSOHaJDRqEpq2Ugy8LEj9GiY4J3zJObo3joylIFaMvzBwbYRg8zLtkO0KQaStCeSfoaI2/w==}
     peerDependencies:
-      '@xterm/xterm': ^6.1.0-beta.219
+      '@xterm/xterm': ^5.0.0
 
-  '@xterm/xterm@6.1.0-beta.219':
-    resolution: {integrity: sha512-cQDv5UMEooIqjlybDPfNO0uI0sB0SWaaOxubHcFNXah8umLHR8SfKQbj5BPaa5gqoTKGYFkVdpowyhZlV+xywQ==}
+  '@xterm/xterm@5.5.0':
+    resolution: {integrity: sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -3788,23 +3783,23 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@xterm/addon-fit@0.12.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+  '@xterm/addon-fit@0.10.0(@xterm/xterm@5.5.0)':
     dependencies:
-      '@xterm/xterm': 6.1.0-beta.219
+      '@xterm/xterm': 5.5.0
 
-  '@xterm/addon-serialize@0.15.0-beta.220(@xterm/xterm@6.1.0-beta.219)':
+  '@xterm/addon-serialize@0.13.0(@xterm/xterm@5.5.0)':
     dependencies:
-      '@xterm/xterm': 6.1.0-beta.219
+      '@xterm/xterm': 5.5.0
 
-  '@xterm/addon-unicode11@0.10.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+  '@xterm/addon-unicode11@0.8.0(@xterm/xterm@5.5.0)':
     dependencies:
-      '@xterm/xterm': 6.1.0-beta.219
+      '@xterm/xterm': 5.5.0
 
-  '@xterm/addon-webgl@0.20.0-beta.218(patch_hash=7c3ffb2835fae9f569927dfacddd55d06f83fe7c3dd8900767736c348bd0c074)(@xterm/xterm@6.1.0-beta.219)':
+  '@xterm/addon-webgl@0.18.0(@xterm/xterm@5.5.0)':
     dependencies:
-      '@xterm/xterm': 6.1.0-beta.219
+      '@xterm/xterm': 5.5.0
 
-  '@xterm/xterm@6.1.0-beta.219': {}
+  '@xterm/xterm@5.5.0': {}
 
   acorn-jsx@5.3.2(acorn@8.16.0):
     dependencies:

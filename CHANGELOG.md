@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-05-26
+
+### Changed
+
+- Moved the terminal stack back to the stable xterm.js 5.5 line used by comparable Tauri terminal apps, keeping the existing Codux input and selection compatibility patches.
+
+### Fixed
+
+- Fixed macOS packaged builds where Claude CLI could enter a TUI state that stopped accepting terminal input while the same flow worked in `pnpm tauri dev`.
+- Fixed terminal packaging regressions caused by the xterm 6.1 beta keyboard path, while preserving existing macOS text-input, selection-release, and shortcut behavior.
+
 ## [1.0.4] - 2026-05-26
 
 ### Added

@@ -172,7 +172,6 @@ function XtermRenderer({
       rescaleOverlappingGlyphs: true,
       rightClickSelectsWord: false,
       scrollback: 2000,
-      showCursorImmediately: true,
       theme: xtermTheme(host),
       windowsPty: isWindowsTerminal
         ? {
