@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-05-27
+
+### Changed
+
+- Removed HeroUI from the desktop interaction layer and replaced the affected buttons, menus, dialogs, popovers, forms, and tooltips with local components built on React Aria and Floating UI.
+- Reduced the default terminal history from 2000 lines to 500 lines to lower long-session memory and restore overhead.
+- Disabled the xterm WebGL renderer on macOS to avoid intermittent WKWebView idle CPU spikes after terminal split, resize, and close operations.
+
+### Fixed
+
+- Fixed terminal menu and text-input handling so shifted punctuation and menu selections work consistently after terminal focus.
+- Fixed terminal scroll position preservation when creating tabs, creating splits, resizing panes, and restoring long sessions.
+- Aligned the titlebar performance HUD, memory status button, and remote connection pill to the same visual height.
+
 ## [1.0.6] - 2026-05-26
 
 ### Changed

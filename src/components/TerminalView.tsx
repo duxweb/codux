@@ -1,6 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import type { WebglAddon as XtermWebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type IDisposable, type ITheme } from "@xterm/xterm";
 import { Copy, Maximize2, PanelBottomClose, Plus, RefreshCw, Square, TerminalSquare } from "../icons";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -16,7 +17,9 @@ import {
   type TerminalRuntimeEvent,
   type TerminalRuntimeSession,
 } from "../terminal/runtime";
+import { installTerminalTextInputAdapter } from "../terminal/inputAdapter";
 import {
+  isPlainTerminalCharacterEvent,
   terminalDeleteSequence,
   terminalLineNavigationSequence,
   terminalModifiedEnterSequence,
@@ -142,6 +145,11 @@ function XtermRenderer({
     let lastWriteFlushAt = 0;
     let lastLocalInputAt = 0;
     let queuedText = "";
+    let stickToBottom = true;
+    let preservingBottom = false;
+    let bottomPreserveFrame: number | null = null;
+    let bottomPreserveFramesRemaining = 0;
+    let userScrollIntentUntil = 0;
     const queuedBytes: Uint8Array[] = [];
     let queuedByteLength = 0;
 
@@ -172,6 +180,7 @@ function XtermRenderer({
     const fitAddon = new FitAddon();
     const serializeAddon = new SerializeAddon();
     const unicode11Addon = new Unicode11Addon();
+    let webglAddon: XtermWebglAddon | null = null;
     const disposables: IDisposable[] = [];
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(serializeAddon);
@@ -183,10 +192,52 @@ function XtermRenderer({
     const traceRendererState = (reason: string) => {
       runtimeTrace(
         "terminal-view",
-        `renderer_state reason=${reason} rows=${terminal.rows} cols=${terminal.cols} canvases=${terminal.element?.querySelectorAll("canvas").length ?? 0}`,
+        `renderer_state reason=${reason} renderer=${webglAddon ? "webgl" : "default"} rows=${terminal.rows} cols=${terminal.cols} canvases=${terminal.element?.querySelectorAll("canvas").length ?? 0}`,
       );
     };
 
+    const loadWebglRenderer = () => {
+      if (isMacTerminal) {
+        runtimeTrace("terminal-view", `webgl_disabled terminal=${terminalId} reason=macos-wkwebview-idle-cpu`);
+        return;
+      }
+      void import("@xterm/addon-webgl")
+        .then(({ WebglAddon }) => {
+          if (disposed) return;
+          try {
+            const addon = new WebglAddon();
+            const contextLossDisposable = addon.onContextLoss(() => {
+              runtimeTrace("terminal-view", `webgl_context_loss terminal=${terminalId}`);
+              addon.dispose();
+              contextLossDisposable.dispose();
+              if (webglAddon === addon) {
+                webglAddon = null;
+              }
+            });
+            terminal.loadAddon(addon);
+            if (disposed) {
+              addon.dispose();
+              contextLossDisposable.dispose();
+              return;
+            }
+            webglAddon = addon;
+            traceRendererState("webgl-ready");
+          } catch (error) {
+            runtimeTrace(
+              "terminal-view",
+              `webgl_unavailable terminal=${terminalId} error=${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        })
+        .catch((error) => {
+          runtimeTrace(
+            "terminal-view",
+            `webgl_unavailable terminal=${terminalId} error=${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    };
+
+    loadWebglRenderer();
     traceRendererState("ready");
 
     const releaseSelectionDrag = () => {
@@ -266,9 +317,49 @@ function XtermRenderer({
     const scrollToBottomAfterPaint = () => {
       window.requestAnimationFrame(() => {
         if (disposed) return;
+        preservingBottom = true;
         terminal.scrollToBottom();
+        preservingBottom = false;
+        stickToBottom = true;
       });
     };
+    const isScrolledToBottom = () => {
+      const buffer = terminal.buffer.active;
+      return buffer.baseY - buffer.viewportY <= 1;
+    };
+    const keepBottomNow = () => {
+      if (!stickToBottom) return;
+      preservingBottom = true;
+      terminal.scrollToBottom();
+      preservingBottom = false;
+    };
+    const scheduleKeepBottom = (frames = 3) => {
+      if (!stickToBottom) return;
+      bottomPreserveFramesRemaining = Math.max(bottomPreserveFramesRemaining, frames);
+      if (bottomPreserveFrame !== null) return;
+      const preserve = () => {
+        bottomPreserveFrame = null;
+        if (disposed) return;
+        keepBottomNow();
+        bottomPreserveFramesRemaining -= 1;
+        if (bottomPreserveFramesRemaining > 0) {
+          bottomPreserveFrame = window.requestAnimationFrame(preserve);
+        }
+      };
+      bottomPreserveFrame = window.requestAnimationFrame(preserve);
+    };
+    const markUserScrollIntent = () => {
+      userScrollIntentUntil = performance.now() + 1200;
+    };
+    const markScrollbarScrollIntent = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".xterm-viewport")) {
+        markUserScrollIntent();
+      }
+    };
+
+    host.addEventListener("wheel", markUserScrollIntent, true);
+    host.addEventListener("mousedown", markScrollbarScrollIntent, true);
 
     const flushQueuedWrites = () => {
       writeTimer = null;
@@ -340,6 +431,13 @@ function XtermRenderer({
       lastLocalInputAt = performance.now();
       onData(data);
     };
+    const textInputAdapter = terminal.textarea
+      ? installTerminalTextInputAdapter({
+          textarea: terminal.textarea,
+          isEnabled: () => inputEnabled,
+          write: sendTerminalInput,
+        })
+      : null;
 
     const flushQueuedWritesNow = () => {
       if (writeTimer !== null) {
@@ -364,7 +462,9 @@ function XtermRenderer({
       lastFitHeight = height;
       const previousCols = terminal.cols;
       const previousRows = terminal.rows;
+      stickToBottom = stickToBottom || isScrolledToBottom();
       fitAddon.fit();
+      scheduleKeepBottom(4);
       if (terminal.cols !== previousCols || terminal.rows !== previousRows) {
         runtimeTrace(
           "terminal-view",
@@ -385,12 +485,14 @@ function XtermRenderer({
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
-      if (!inputEnabled) return false;
       const sequence =
         terminalLineNavigationSequence(event, { isMac: isMacTerminal }) ??
         terminalWordNavigationSequence(event) ??
         terminalDeleteSequence(event, { isMac: isMacTerminal }) ??
         terminalModifiedEnterSequence(event, { isMac: isMacTerminal });
+      if (!inputEnabled) {
+        return !sequence && isPlainTerminalCharacterEvent(event);
+      }
       if (!sequence) return true;
       event.preventDefault();
       if (event.type === "keydown") {
@@ -402,12 +504,27 @@ function XtermRenderer({
     disposables.push(
       terminal.onData((data) => {
         if (!inputEnabled) return;
+        textInputAdapter?.noteNativeData(data);
         sendTerminalInput(data);
       }),
       terminal.onResize(({ cols, rows }) => onResize(cols, rows)),
     );
 
-    const resizeObserver = new ResizeObserver(() => scheduleFit());
+    disposables.push(
+      terminal.onScroll(() => {
+        if (preservingBottom) return;
+        if (performance.now() <= userScrollIntentUntil) {
+          stickToBottom = isScrolledToBottom();
+          return;
+        }
+        scheduleKeepBottom(2);
+      }),
+    );
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleKeepBottom(4);
+      scheduleFit();
+    });
     resizeObserver.observe(host);
     scheduleFit(true);
 
@@ -496,12 +613,19 @@ function XtermRenderer({
           window.cancelAnimationFrame(resizeFrame);
           resizeFrame = null;
         }
+        if (bottomPreserveFrame !== null) {
+          window.cancelAnimationFrame(bottomPreserveFrame);
+          bottomPreserveFrame = null;
+        }
         if (writeTimer !== null) {
           window.clearTimeout(writeTimer);
           writeTimer = null;
         }
         clearQueuedWrites();
+        textInputAdapter?.dispose();
         host.removeEventListener("mousedown", markSelectionStart, true);
+        host.removeEventListener("wheel", markUserScrollIntent, true);
+        host.removeEventListener("mousedown", markScrollbarScrollIntent, true);
         window.removeEventListener("pointerup", releaseSelectionWhenMouseEnds, true);
         window.removeEventListener("pointercancel", releaseSelectionWhenMouseEnds, true);
         window.removeEventListener("mouseup", releaseSelectionWhenMouseEnds, true);

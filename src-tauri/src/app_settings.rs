@@ -1054,11 +1054,11 @@ fn default_terminal_font_size() -> String {
 }
 
 fn default_terminal_scrollback_lines() -> String {
-    "2000".to_string()
+    "500".to_string()
 }
 
 fn sanitize_terminal_scrollback_lines(value: &str) -> String {
-    let parsed = value.trim().parse::<i32>().unwrap_or(2000);
+    let parsed = value.trim().parse::<i32>().unwrap_or(500);
     parsed.clamp(200, 10000).to_string()
 }
 

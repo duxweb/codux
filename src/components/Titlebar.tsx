@@ -67,6 +67,7 @@ const TITLEBAR_TOOL_ICON_SIZE = 14;
 const TITLEBAR_BUTTON_ICON_SIZE = 11;
 const TITLEBAR_MEMORY_ICON_SIZE = 10;
 const TITLEBAR_NAV_ICON_SIZE = 12;
+const TITLEBAR_STATUS_CONTROL_HEIGHT_CLASS = "h-[28px]";
 const TITLEBAR_INTERACTIVE_SELECTOR = [
   "button",
   "a",
@@ -570,12 +571,12 @@ function MemoryStatusButton() {
     <Tooltip
       label={<MemoryStatusTooltip snapshot={snapshot} />}
       placement="bottom"
-      triggerClassName="inline-flex h-[28px] items-center align-middle"
+      triggerClassName={`inline-flex ${TITLEBAR_STATUS_CONTROL_HEIGHT_CLASS} items-center align-middle`}
     >
       <PressableButton
         type="button"
         aria-label={tm("memory.manager.window.title", "Memory Manager")}
-        className={`no-drag relative box-border inline-grid h-[28px] w-[28px] place-items-center rounded-[7px] border p-0 leading-none outline-none transition-colors hover:border-border hover:bg-fill/10 data-[hovered=true]:border-border data-[hovered=true]:bg-fill/10 ${activeSurface} ${tone}`}
+        className={`no-drag relative box-border inline-grid ${TITLEBAR_STATUS_CONTROL_HEIGHT_CLASS} w-[28px] place-items-center rounded-[7px] border p-0 leading-none outline-none transition-colors hover:border-border hover:bg-fill/10 data-[hovered=true]:border-border data-[hovered=true]:bg-fill/10 ${activeSurface} ${tone}`}
         data-active={isActive ? "true" : "false"}
         onPress={openMemoryManager}
       >
@@ -682,7 +683,9 @@ function PerformanceHUD() {
 
   return (
     <Tooltip label={tooltip} placement="bottom">
-      <div className="flex items-center h-[26px] px-2 rounded-pill bg-fill/[0.05] border border-border-subtle text-xs font-medium text-ink-soft font-mono cursor-default">
+      <div
+        className={`box-border flex ${TITLEBAR_STATUS_CONTROL_HEIGHT_CLASS} items-center rounded-pill border border-border-subtle bg-fill/[0.05] px-2 font-mono text-xs font-medium leading-none text-ink-soft cursor-default`}
+      >
         <span className={`flex items-center gap-1.5 px-1.5 ${cpuTone}`}>
           <Cpu size={TITLEBAR_BUTTON_ICON_SIZE} strokeWidth={2.2} />
           <span className="tabular-nums">{cpuText}</span>
@@ -740,7 +743,7 @@ function RemotePill({
         <button
           type="button"
           aria-label={tooltip}
-          className={`no-drag inline-flex h-[28px] items-center gap-1.5 rounded-[9px] border px-2.5 py-0 text-[12.5px] font-medium transition-colors ${
+          className={`no-drag box-border inline-flex ${TITLEBAR_STATUS_CONTROL_HEIGHT_CLASS} items-center gap-1.5 rounded-[9px] border px-2.5 py-0 text-[12.5px] font-medium leading-none transition-colors ${
             enabled
               ? "bg-brand-green/12 border-brand-green/30 text-brand-green hover:bg-brand-green/16 data-[hovered=true]:bg-brand-green/16"
               : "bg-fill/[0.05] border-border-subtle text-ink-soft hover:bg-fill/10 data-[hovered=true]:bg-fill/10"

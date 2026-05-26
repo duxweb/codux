@@ -68,21 +68,28 @@ export function DesktopMenu({
   const triggerRef = (trigger as ReactElement & { ref?: Ref<Element> }).ref;
   const referenceRef = useMergeRefs([refs.setReference, triggerRef]);
   const close = () => onOpenChange(false);
+  const floatingProps = getFloatingProps({
+    role: "menu",
+    "aria-label": ariaLabel,
+    className:
+      "desktop-menu-popover no-drag z-[10000] grid w-[min(240px,calc(100vw_-_24px))] gap-0.5 rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating outline-none",
+  });
 
   return (
     <DesktopMenuContext.Provider value={{ close }}>
-      {renderMenuTrigger(trigger, ariaLabel, referenceRef, getReferenceProps({ className: "no-drag" }), isOpen)}
+      {renderMenuTrigger(
+        trigger,
+        ariaLabel,
+        referenceRef,
+        getReferenceProps({ className: "no-drag" }),
+        isOpen,
+      )}
       {isOpen && (
         <FloatingPortal preserveTabOrder={false}>
           <div
             ref={refs.setFloating}
             style={floatingStyles}
-            {...(getFloatingProps({
-              role: "menu",
-              "aria-label": ariaLabel,
-              className:
-                "desktop-menu-popover no-drag z-[10000] grid w-[min(240px,calc(100vw_-_24px))] gap-0.5 rounded-[10px] border border-border-subtle bg-surface-popover p-1 text-ink shadow-floating outline-none",
-            }) as Record<string, unknown>)}
+            {...(floatingProps as Record<string, unknown>)}
           >
             {children}
           </div>
@@ -107,26 +114,28 @@ export function DesktopMenuItem({
   if (!context) {
     throw new Error("DesktopMenuItem must be used inside DesktopMenu");
   }
-  const ref = useRef<HTMLButtonElement | null>(null);
-  const { pressProps, isPressed } = usePress({
-    ref,
-    isDisabled: disabled,
-    onPress: () => {
-      onSelect?.();
-      context.close();
-    },
-  });
+  const select = () => {
+    if (disabled) return;
+    onSelect?.();
+    context.close();
+  };
 
   return (
     <button
-      {...pressProps}
-      ref={ref}
       type="button"
       role="menuitem"
       disabled={disabled}
       aria-label={label}
-      data-active-item={isPressed ? "" : undefined}
-      className="flex min-h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium leading-4 text-ink-soft outline-none transition-colors hover:bg-default-hover hover:text-ink aria-disabled:opacity-50 data-[active-item]:bg-default-hover data-[active-item]:text-ink"
+      className="flex min-h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium leading-4 text-ink-soft outline-none transition-colors hover:bg-default-hover hover:text-ink disabled:opacity-50 active:bg-default-hover active:text-ink"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        select();
+      }}
+      onClick={(event) => {
+        if (event.detail === 0) select();
+      }}
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
     </button>

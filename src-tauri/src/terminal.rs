@@ -1134,7 +1134,7 @@ fn terminal_history_bytes(settings: &AppSettings, cols: u16) -> usize {
         .terminal_scrollback_lines
         .trim()
         .parse::<usize>()
-        .unwrap_or(2000)
+        .unwrap_or(500)
         .clamp(200, 10000);
     let cols = usize::from(cols.max(20));
     lines

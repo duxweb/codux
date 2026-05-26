@@ -49,6 +49,16 @@ export type WorkspaceCommand =
 
 const WORKSPACE_COMMAND_EVENT = "codux:workspace-command";
 let pendingOpenFileCommand: Extract<WorkspaceCommand, { type: "open-file" }> | null = null;
+const pendingWorkspaceCommands: WorkspaceCommand[] = [];
+const MAX_PENDING_WORKSPACE_COMMANDS = 12;
+
+function shouldQueueWorkspaceCommand(command: WorkspaceCommand) {
+  return (
+    command.type === "add-top-terminal-split" ||
+    command.type === "add-bottom-terminal-tab" ||
+    command.type === "insert-terminal-text"
+  );
+}
 
 function workspacePathKey(value: string) {
   let normalized = value.trim().replace(/\\/g, "/");
@@ -68,6 +78,10 @@ export function workspacePathsMatch(left?: string, right?: string) {
 }
 
 export function dispatchWorkspaceCommand(command: WorkspaceCommand) {
+  if (shouldQueueWorkspaceCommand(command)) {
+    pendingWorkspaceCommands.push(command);
+    pendingWorkspaceCommands.splice(0, Math.max(0, pendingWorkspaceCommands.length - MAX_PENDING_WORKSPACE_COMMANDS));
+  }
   window.dispatchEvent(
     new CustomEvent<WorkspaceCommand>(WORKSPACE_COMMAND_EVENT, {
       detail: command,
@@ -97,6 +111,24 @@ export function consumePendingOpenFileCommand(rootPath?: string) {
 export function clearPendingOpenFileCommand(command: Extract<WorkspaceCommand, { type: "open-file" }>) {
   if (pendingOpenFileCommand?.rootPath === command.rootPath && pendingOpenFileCommand.path === command.path) {
     pendingOpenFileCommand = null;
+  }
+}
+
+export function consumePendingWorkspaceCommands(predicate: (command: WorkspaceCommand) => boolean) {
+  const consumed: WorkspaceCommand[] = [];
+  for (let index = pendingWorkspaceCommands.length - 1; index >= 0; index -= 1) {
+    const command = pendingWorkspaceCommands[index];
+    if (!predicate(command)) continue;
+    consumed.unshift(command);
+    pendingWorkspaceCommands.splice(index, 1);
+  }
+  return consumed;
+}
+
+export function clearPendingWorkspaceCommand(command: WorkspaceCommand) {
+  const index = pendingWorkspaceCommands.indexOf(command);
+  if (index >= 0) {
+    pendingWorkspaceCommands.splice(index, 1);
   }
 }
 

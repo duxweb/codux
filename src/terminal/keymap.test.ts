@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isPlainTerminalCharacterEvent,
   terminalDeleteSequence,
   terminalLineNavigationSequence,
   terminalModifiedEnterSequence,
@@ -40,5 +41,12 @@ describe("terminal keymap", () => {
     expect(terminalModifiedEnterSequence(event({ shiftKey: true, key: "Enter" }), { isMac: true })).toBe("\x1b\r");
     expect(terminalModifiedEnterSequence(event({ metaKey: true, key: "Enter" }), { isMac: true })).toBe("\x1b\r");
     expect(terminalModifiedEnterSequence(event({ metaKey: true, key: "Enter" }), { isMac: false })).toBeNull();
+  });
+
+  it("allows shifted printable characters to pass through xterm", () => {
+    expect(isPlainTerminalCharacterEvent(event({ shiftKey: true, key: "?" }))).toBe(true);
+    expect(isPlainTerminalCharacterEvent(event({ shiftKey: true, key: ">" }))).toBe(true);
+    expect(isPlainTerminalCharacterEvent(event({ metaKey: true, key: "?" }))).toBe(false);
+    expect(isPlainTerminalCharacterEvent(event({ shiftKey: true, key: "Enter" }))).toBe(false);
   });
 });

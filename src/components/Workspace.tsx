@@ -55,8 +55,11 @@ import { openDetachedTerminalWindow } from "../windowing";
 import {
   broadcastWorkspaceCommand,
   clearPendingOpenFileCommand,
+  clearPendingWorkspaceCommand,
   consumePendingOpenFileCommand,
+  consumePendingWorkspaceCommands,
   listenWorkspaceCommand,
+  type WorkspaceCommand,
   workspacePathsMatch,
 } from "../workspaceCommands";
 import { systemConfirm, systemMessage } from "../systemDialog";
@@ -416,52 +419,55 @@ function TerminalMode({
     [activateTerminal, ensureTerminal],
   );
 
-  useEffect(
-    () =>
-      listenWorkspaceCommand((command) => {
-        if (command.type === "add-top-terminal-split") {
-          if (!acceptsWorkspaceCommands && command.projectId !== projectId) return;
-          addTopPane({
-            title: command.title,
-            command: command.command,
-            deferredCommand: command.deferredCommand,
-            tool: command.command || command.deferredCommand ? "manual" : undefined,
-          });
-        }
-        if (command.type === "add-bottom-terminal-tab") {
-          if (!acceptsWorkspaceCommands && command.projectId !== projectId) return;
-          addBottomTab({
-            label: command.label,
-            title: command.label,
-            command: command.command,
-            deferredCommand: command.deferredCommand,
-            tool: command.command || command.deferredCommand ? "manual" : undefined,
-          });
-        }
-        if (command.type === "insert-terminal-text") {
-          const terminalId = resolveVisibleTerminalId(
-            {
-              topPanes,
-              tabs,
-              activeTabId,
-            },
-            activeTerminalId,
-          );
-          if (terminalId) {
-            terminalRuntime.write(terminalId, command.text);
-            activateTerminal(terminalId, { focus: true });
-          }
-        }
-        if (command.type === "reattach-terminal-pane") {
-          setTopPanes((current) =>
-            current.map((pane) =>
-              pane.id === command.paneId && pane.terminalId === command.terminalId
-                ? { ...pane, detached: false }
-                : pane,
-            ),
-          );
-        }
-      }),
+  const handleTerminalWorkspaceCommand = useCallback(
+    (command: WorkspaceCommand) => {
+      if (command.type === "add-top-terminal-split") {
+        if (!acceptsWorkspaceCommands && command.projectId !== projectId) return false;
+        addTopPane({
+          title: command.title,
+          command: command.command,
+          deferredCommand: command.deferredCommand,
+          tool: command.command || command.deferredCommand ? "manual" : undefined,
+        });
+        return true;
+      }
+      if (command.type === "add-bottom-terminal-tab") {
+        if (!acceptsWorkspaceCommands && command.projectId !== projectId) return false;
+        addBottomTab({
+          label: command.label,
+          title: command.label,
+          command: command.command,
+          deferredCommand: command.deferredCommand,
+          tool: command.command || command.deferredCommand ? "manual" : undefined,
+        });
+        return true;
+      }
+      if (command.type === "insert-terminal-text") {
+        const terminalId = resolveVisibleTerminalId(
+          {
+            topPanes,
+            tabs,
+            activeTabId,
+          },
+          activeTerminalId,
+        );
+        if (!terminalId) return false;
+        terminalRuntime.write(terminalId, command.text);
+        activateTerminal(terminalId, { focus: true });
+        return true;
+      }
+      if (command.type === "reattach-terminal-pane") {
+        setTopPanes((current) =>
+          current.map((pane) =>
+            pane.id === command.paneId && pane.terminalId === command.terminalId
+              ? { ...pane, detached: false }
+              : pane,
+          ),
+        );
+        return true;
+      }
+      return false;
+    },
     [
       acceptsWorkspaceCommands,
       activateTerminal,
@@ -474,6 +480,22 @@ function TerminalMode({
       topPanes,
     ],
   );
+
+  useEffect(
+    () =>
+      listenWorkspaceCommand((command) => {
+        if (handleTerminalWorkspaceCommand(command)) {
+          clearPendingWorkspaceCommand(command);
+        }
+      }),
+    [handleTerminalWorkspaceCommand],
+  );
+
+  useEffect(() => {
+    for (const command of consumePendingWorkspaceCommands(handleTerminalWorkspaceCommand)) {
+      void command;
+    }
+  }, [handleTerminalWorkspaceCommand]);
 
   useEffect(() => {
     if (!visible) return;

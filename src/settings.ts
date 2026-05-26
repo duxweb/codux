@@ -159,7 +159,7 @@ export const UPDATE_CHANNEL_ENDPOINTS: Record<"stable" | "beta", string> = {
   stable: "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json",
   beta: "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json",
 };
-const APP_VERSION = "1.0.6";
+const APP_VERSION = "1.0.7";
 const DEFAULT_UPDATE_CHANNEL: "stable" | "beta" = APP_VERSION.includes("-") ? "beta" : "stable";
 const DEFAULT_UPDATE_ENDPOINT = UPDATE_CHANNEL_ENDPOINTS[DEFAULT_UPDATE_CHANNEL];
 const LEGACY_UPDATE_ENDPOINTS = new Set([
@@ -250,7 +250,7 @@ export const defaultSettings: AppSettings = {
   theme: "Auto",
   themeColor: "Blue",
   terminalFontSize: "14",
-  terminalScrollbackLines: "2000",
+  terminalScrollbackLines: "500",
   iconStyle: "default",
   notificationChannels: {},
   shortcuts: {},
@@ -671,7 +671,7 @@ export function readTerminalFontSize(settings = readAppSettings()) {
 
 export function readTerminalScrollbackLines(settings = readAppSettings()) {
   const parsed = Number(settings.terminalScrollbackLines);
-  if (!Number.isFinite(parsed)) return 2000;
+  if (!Number.isFinite(parsed)) return 500;
   return Math.max(200, Math.min(10000, Math.round(parsed)));
 }
 

@@ -40,6 +40,10 @@ export function terminalModifiedEnterSequence(event: TerminalKeyEvent, options: 
   return null;
 }
 
+export function isPlainTerminalCharacterEvent(event: TerminalKeyEvent) {
+  return event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey;
+}
+
 function isKey(event: TerminalKeyEvent, key: string) {
   return event.key === key || event.code === key;
 }
