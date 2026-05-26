@@ -157,6 +157,16 @@ Manual log paths:
 
 ---
 
+## Contributors
+
+Thanks to everyone who has contributed code, issues, testing, and feedback to Codux.
+
+<p align="center">
+  <a href="https://github.com/duxweb/codux/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=duxweb/codux" alt="Codux contributors">
+  </a>
+</p>
+
 ## GitHub Star Trend
 
 [![Star History Chart](https://api.star-history.com/svg?repos=duxweb/codux&type=Date)](https://star-history.com/#duxweb/codux&Date)

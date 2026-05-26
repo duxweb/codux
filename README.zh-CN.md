@@ -157,6 +157,16 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 ---
 
+## 贡献者
+
+感谢所有为 Codux 贡献代码、Issue、测试和反馈的朋友。
+
+<p align="center">
+  <a href="https://github.com/duxweb/codux/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=duxweb/codux" alt="Codux 贡献者">
+  </a>
+</p>
+
 ## GitHub Star 趋势
 
 [![Star History Chart](https://api.star-history.com/svg?repos=duxweb/codux&type=Date)](https://star-history.com/#duxweb/codux&Date)
