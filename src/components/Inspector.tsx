@@ -882,6 +882,7 @@ function GitPanel({ project }: { project?: WorkspaceProject }) {
             isOpen={branchMenuOpen}
             onOpenChange={setBranchMenuOpen}
             placement="bottom-start"
+            submenuPlacement="left top"
             trigger={
               <button
                 type="button"

@@ -18,6 +18,7 @@ import {
   createContext,
   useContext,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type Dispatch,
@@ -29,6 +30,7 @@ import {
 
 type DesktopMenuContextValue = {
   close: () => void;
+  submenuPlacement: "left top" | "right top";
 };
 
 const DesktopMenuContext = createContext<DesktopMenuContextValue | null>(null);
@@ -46,6 +48,7 @@ type DesktopMenuProps = {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   placement?: FloatingPlacement;
+  submenuPlacement?: "auto" | "left top" | "right top";
   trigger: ReactElement<Record<string, unknown>>;
 };
 
@@ -55,9 +58,11 @@ export function DesktopMenu({
   isOpen,
   onOpenChange,
   placement = "bottom-end",
+  submenuPlacement: submenuPlacementProp = "auto",
   trigger,
 }: DesktopMenuProps) {
   const [activeSubmenuId, setActiveSubmenuId] = useState<string | null>(null);
+  const [submenuPlacement, setSubmenuPlacement] = useState<"left top" | "right top">("right top");
   const { context, floatingStyles, refs } = useFloating({
     open: isOpen,
     onOpenChange,
@@ -82,6 +87,12 @@ export function DesktopMenu({
     setActiveSubmenuId(null);
     onOpenChange(false);
   };
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    setSubmenuPlacement(
+      submenuPlacementProp === "auto" ? resolveSubmenuPlacement(refs.floating.current) : submenuPlacementProp,
+    );
+  }, [isOpen, refs.floating, submenuPlacementProp]);
   const floatingProps = getFloatingProps({
     role: "menu",
     "aria-label": ariaLabel,
@@ -90,7 +101,7 @@ export function DesktopMenu({
   });
 
   return (
-    <DesktopMenuContext.Provider value={{ close }}>
+    <DesktopMenuContext.Provider value={{ close, submenuPlacement }}>
       <DesktopMenuLevelContext.Provider value={{ activeSubmenuId, setActiveSubmenuId }}>
         {renderMenuTrigger(
           trigger,
@@ -170,6 +181,7 @@ export function DesktopSubmenu({
   label: string;
 }) {
   const id = useId();
+  const menuContext = useContext(DesktopMenuContext);
   const level = useContext(DesktopMenuLevelContext);
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const [childActiveSubmenuId, setChildActiveSubmenuId] = useState<string | null>(null);
@@ -207,8 +219,8 @@ export function DesktopSubmenu({
     isOpen,
     offset: 6,
     containerPadding: 12,
-    shouldFlip: true,
-    placement: "right top",
+    shouldFlip: false,
+    placement: menuContext?.submenuPlacement ?? "right top",
     onClose: () => setOpen(false),
   });
 
@@ -274,6 +286,15 @@ export function DesktopMenuSectionLabel({ children }: { children: ReactNode }) {
 
 export function DesktopMenuSeparator() {
   return <div role="separator" className="my-1 h-px bg-border-subtle/70" />;
+}
+
+function resolveSubmenuPlacement(menuElement: HTMLElement | null): "left top" | "right top" {
+  if (typeof window === "undefined" || !menuElement) return "right top";
+  const rect = menuElement.getBoundingClientRect();
+  const submenuWidth = Math.min(240, Math.max(0, window.innerWidth - 24));
+  const rightSpace = window.innerWidth - rect.right;
+  const leftSpace = rect.left;
+  return rightSpace >= submenuWidth + 12 || rightSpace >= leftSpace ? "right top" : "left top";
 }
 
 function renderMenuTrigger(
