@@ -1,5 +1,5 @@
 use crate::ai_runtime::{AIRuntimeBridge, AIRuntimeTerminalBinding};
-use crate::app_settings::{AIRuntimeToolSettings, AppSettingsStore};
+use crate::app_settings::{AIRuntimeToolSettings, AppSettings, AppSettingsStore};
 use crate::memory::{MemoryLaunchRequest, MemoryStore};
 use crate::paths::{app_display_name, app_slug, runtime_temp_dir};
 use crate::ssh::{render_ssh_launch_context, ssh_profiles_file_path};
@@ -22,7 +22,8 @@ use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
 
-const MAX_HISTORY_BYTES: usize = 2_000_000;
+const MIN_HISTORY_BYTES: usize = 128 * 1024;
+const MAX_CONFIGURED_HISTORY_BYTES: usize = 8 * 1024 * 1024;
 const OUTPUT_CHUNK_BYTES: usize = 16 * 1024;
 const OUTPUT_BATCH_BYTES: usize = 96 * 1024;
 const OUTPUT_BATCH_DELAY: Duration = Duration::from_millis(16);
@@ -282,6 +283,11 @@ impl TerminalManager {
         session.buffer_characters()
     }
 
+    pub fn clear_history(&self, session_id: &str) -> Result<(), TerminalError> {
+        let session = self.session(session_id)?;
+        session.clear_history()
+    }
+
     fn session(&self, session_id: &str) -> Result<Arc<TerminalSession>, TerminalError> {
         self.sessions
             .lock()
@@ -437,12 +443,13 @@ impl TerminalSession {
             has_buffer: false,
         };
 
+        let history_bytes = terminal_history_bytes(&settings.snapshot(), cols);
         let session = Arc::new(Self {
             master: Mutex::new(pair.master),
             child: Mutex::new(child),
             killer: Mutex::new(killer),
             writer: Mutex::new(writer),
-            history: Mutex::new(RingHistory::new(MAX_HISTORY_BYTES)),
+            history: Mutex::new(RingHistory::new(history_bytes)),
             binding: Mutex::new(binding),
             info: Mutex::new(info),
         });
@@ -507,6 +514,20 @@ impl TerminalSession {
             .lock()
             .map_err(|_| anyhow!("terminal history lock poisoned"))?;
         Ok(history.len_chars())
+    }
+
+    fn clear_history(&self) -> Result<(), TerminalError> {
+        let mut history = self
+            .history
+            .lock()
+            .map_err(|_| anyhow!("terminal history lock poisoned"))?;
+        history.clear();
+        if let Ok(mut info) = self.info.lock() {
+            info.buffer_characters = 0;
+            info.has_buffer = false;
+            info.last_active_at = chrono::Utc::now().to_rfc3339();
+        }
+        Ok(())
     }
 
     fn info(&self) -> Option<TerminalSessionSnapshot> {
@@ -844,6 +865,9 @@ impl TerminalEnvironment {
         for (key, value) in configured_dotenv(&home) {
             values.entry(key).or_insert(value);
         }
+        for (key, value) in configured_codex_env(&home) {
+            values.entry(key).or_insert(value);
+        }
 
         let inherited_path = env::var("PATH").ok();
         let mut path =
@@ -1020,6 +1044,12 @@ impl RingHistory {
         }
     }
 
+    fn clear(&mut self) {
+        self.len_bytes = 0;
+        self.len_chars = 0;
+        self.chunks.clear();
+    }
+
     fn push_text(&mut self, text: &str) {
         if text.is_empty() {
             return;
@@ -1050,6 +1080,20 @@ impl RingHistory {
     fn len_chars(&self) -> usize {
         self.len_chars
     }
+}
+
+fn terminal_history_bytes(settings: &AppSettings, cols: u16) -> usize {
+    let lines = settings
+        .terminal_scrollback_lines
+        .trim()
+        .parse::<usize>()
+        .unwrap_or(2000)
+        .clamp(200, 10000);
+    let cols = usize::from(cols.max(20));
+    lines
+        .saturating_mul(cols)
+        .saturating_mul(4)
+        .clamp(MIN_HISTORY_BYTES, MAX_CONFIGURED_HISTORY_BYTES)
 }
 
 fn append_passthrough_env(values: &mut HashMap<String, String>) {
@@ -1099,6 +1143,160 @@ fn configured_dotenv(home: &str) -> HashMap<String, String> {
         }
     }
     values
+}
+
+fn configured_codex_env(home: &str) -> HashMap<String, String> {
+    let mut values = HashMap::new();
+    let codex_home = Path::new(home).join(".codex");
+
+    if let Ok(text) = fs::read_to_string(codex_home.join("auth.json")) {
+        for (key, value) in codex_auth_env_from_text(&text) {
+            values.entry(key).or_insert(value);
+        }
+    }
+
+    if let Ok(text) = fs::read_to_string(codex_home.join("config.toml")) {
+        for (key, value) in codex_config_env_from_text(&text) {
+            values.entry(key).or_insert(value);
+        }
+    }
+
+    values
+}
+
+fn codex_auth_env_from_text(text: &str) -> HashMap<String, String> {
+    let mut values = HashMap::new();
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
+        return values;
+    };
+    let Some(api_key) = json
+        .get("OPENAI_API_KEY")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return values;
+    };
+
+    values.insert("OPENAI_API_KEY".to_string(), api_key.to_string());
+    values
+}
+
+fn codex_config_env_from_text(text: &str) -> HashMap<String, String> {
+    let mut root = HashMap::new();
+    let mut providers: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let mut profiles: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let mut section = Vec::<String>::new();
+
+    for raw_line in text.lines() {
+        let line = strip_toml_comment(raw_line).trim().to_string();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(next_section) = parse_toml_section(&line) {
+            section = next_section;
+            continue;
+        }
+        let Some((key, value)) = parse_toml_string_assignment(&line) else {
+            continue;
+        };
+        match section.as_slice() {
+            [] => {
+                root.insert(key, value);
+            }
+            [table, provider] if table == "model_providers" => {
+                providers
+                    .entry(provider.clone())
+                    .or_default()
+                    .insert(key, value);
+            }
+            [table, profile] if table == "profiles" => {
+                profiles
+                    .entry(profile.clone())
+                    .or_default()
+                    .insert(key, value);
+            }
+            _ => {}
+        }
+    }
+
+    let active_profile = root.get("profile").and_then(|name| profiles.get(name));
+    let active_provider = active_profile
+        .and_then(|profile| profile.get("model_provider"))
+        .or_else(|| root.get("model_provider"))
+        .map(String::as_str)
+        .unwrap_or("openai");
+    let base_url = providers
+        .get(active_provider)
+        .and_then(|provider| provider.get("base_url"))
+        .or_else(|| active_profile.and_then(|profile| profile.get("openai_base_url")))
+        .or_else(|| root.get("openai_base_url"))
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    let mut values = HashMap::new();
+    if let Some(base_url) = base_url {
+        values.insert("OPENAI_BASE_URL".to_string(), base_url.to_string());
+    }
+    values
+}
+
+fn strip_toml_comment(line: &str) -> &str {
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut escaped = false;
+
+    for (index, ch) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_double_quote => escaped = true,
+            '"' if !in_single_quote => in_double_quote = !in_double_quote,
+            '\'' if !in_double_quote => in_single_quote = !in_single_quote,
+            '#' if !in_single_quote && !in_double_quote => return &line[..index],
+            _ => {}
+        }
+    }
+
+    line
+}
+
+fn parse_toml_section(line: &str) -> Option<Vec<String>> {
+    let name = line.strip_prefix('[')?.strip_suffix(']')?.trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(
+        name.split('.')
+            .map(|part| unquote_env_value(part.trim()))
+            .filter(|part| !part.is_empty())
+            .collect(),
+    )
+}
+
+fn parse_toml_string_assignment(line: &str) -> Option<(String, String)> {
+    let (key, raw_value) = line.split_once('=')?;
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+    let value = parse_toml_string(raw_value.trim())?;
+    Some((key.to_string(), value))
+}
+
+fn parse_toml_string(value: &str) -> Option<String> {
+    if value.len() < 2 {
+        return None;
+    }
+    let bytes = value.as_bytes();
+    match (bytes[0], bytes[value.len() - 1]) {
+        (b'"', b'"') => serde_json::from_str::<String>(value).ok(),
+        (b'\'', b'\'') => Some(value[1..value.len() - 1].to_string()),
+        _ => None,
+    }
 }
 
 fn dotenv_paths(home: &str) -> Vec<PathBuf> {
@@ -1516,5 +1714,87 @@ mod tests {
 
         assert_eq!(history.to_text(), "推de");
         assert_eq!(history.len_chars(), 3);
+    }
+
+    #[test]
+    fn ring_history_clear_removes_buffer() {
+        let mut history = RingHistory::new(32);
+
+        history.push_text("abc推");
+        history.clear();
+
+        assert_eq!(history.to_text(), "");
+        assert_eq!(history.len_chars(), 0);
+    }
+
+    #[test]
+    fn codex_auth_env_reads_openai_api_key() {
+        let values = codex_auth_env_from_text(r#"{"OPENAI_API_KEY":"sk-test"}"#);
+
+        assert_eq!(
+            values.get("OPENAI_API_KEY").map(String::as_str),
+            Some("sk-test")
+        );
+    }
+
+    #[test]
+    fn codex_auth_env_ignores_invalid_json() {
+        let values = codex_auth_env_from_text("{");
+
+        assert!(values.is_empty());
+    }
+
+    #[test]
+    fn codex_config_env_reads_active_provider_base_url() {
+        let values = codex_config_env_from_text(
+            r#"
+model_provider = "custom"
+
+[model_providers.custom]
+base_url = "https://api.example.com/openai/v1"
+"#,
+        );
+
+        assert_eq!(
+            values.get("OPENAI_BASE_URL").map(String::as_str),
+            Some("https://api.example.com/openai/v1")
+        );
+    }
+
+    #[test]
+    fn codex_config_env_reads_profile_provider_base_url() {
+        let values = codex_config_env_from_text(
+            r#"
+profile = "work"
+model_provider = "openai"
+openai_base_url = "https://api.openai.com/v1"
+
+[profiles.work]
+model_provider = "custom"
+
+[model_providers.custom]
+base_url = "https://proxy.example.com/v1" # inline comment
+"#,
+        );
+
+        assert_eq!(
+            values.get("OPENAI_BASE_URL").map(String::as_str),
+            Some("https://proxy.example.com/v1")
+        );
+    }
+
+    #[test]
+    fn codex_config_env_reads_openai_base_url_for_builtin_provider() {
+        let values = codex_config_env_from_text(
+            r#"
+model_provider = "openai"
+openai_base_url = "https://us.api.openai.com/v1"
+"#,
+        );
+
+        assert_eq!(
+            values.get("OPENAI_BASE_URL").map(String::as_str),
+            Some("https://us.api.openai.com/v1")
+        );
     }
 }

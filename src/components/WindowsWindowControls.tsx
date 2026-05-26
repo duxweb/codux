@@ -55,7 +55,7 @@ function WindowControlButton({
         danger ? "hover:bg-brand-red hover:text-white" : "hover:bg-fill/10 hover:text-ink"
       }`}
       tabIndex={-1}
-      onPressUp={onPress}
+      onPress={onPress}
     >
       <Icon size={13} strokeWidth={2} />
     </PressableButton>

@@ -211,6 +211,21 @@ export class TerminalRuntime {
     void invoke("terminal_interrupt", { sessionId: session.backendId });
   }
 
+  clear(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
+    session.replayBuffer = "";
+    session.hasSnapshot = false;
+    this.viewSnapshots.delete(sessionId);
+    this.outputTextDecoders.delete(sessionId);
+    this.flushOutputQueue(sessionId);
+    if (session.backendId && window.__TAURI_INTERNALS__) {
+      void invoke("terminal_clear_history", { sessionId: session.backendId }).catch(() => undefined);
+    }
+    this.emit(sessionId, { type: "reset", session, history: "" });
+  }
+
   saveViewSnapshot(sessionId: string, history: string, pendingOutputs: Array<string | Uint8Array> = []) {
     if (!this.sessions.has(sessionId)) return;
     const pendingBytes = terminalOutputBytes(pendingOutputs);

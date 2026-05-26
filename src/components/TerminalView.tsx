@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   readAppSettings,
   readTerminalFontSize,
+  readTerminalScrollbackLines,
   subscribeAppSettings,
 } from "../settings";
 import { registerTerminalInput } from "../terminal/focus";
@@ -33,6 +34,7 @@ type TerminalRendererAdapter = {
   refreshTheme: () => void;
   setRenderer: (renderer: TerminalResolvedRenderer) => void;
   setFontSize: (fontSize: number) => void;
+  setScrollback: (lines: number) => void;
   setInputEnabled: (enabled: boolean) => void;
   copySelection: () => Promise<void>;
   pasteClipboard: () => Promise<void>;
@@ -171,7 +173,7 @@ function XtermRenderer({
       macOptionIsMeta: true,
       rescaleOverlappingGlyphs: true,
       rightClickSelectsWord: false,
-      scrollback: 2000,
+      scrollback: readTerminalScrollbackLines(),
       theme: xtermTheme(host),
       windowsPty: isWindowsTerminal
         ? {
@@ -537,6 +539,10 @@ function XtermRenderer({
         terminal.options.fontSize = fontSize;
         scheduleFit(true);
       },
+      setScrollback: (lines) => {
+        if (terminal.options.scrollback === lines) return;
+        terminal.options.scrollback = lines;
+      },
       setInputEnabled: (enabled) => {
         inputEnabled = enabled;
         terminal.options.disableStdin = !enabled;
@@ -645,7 +651,6 @@ export function TerminalView({
   onDisposed,
 }: Props) {
   const adapterRef = useRef<TerminalRendererAdapter | null>(null);
-  const resizeFrameRef = useRef<number | null>(null);
   const onDisposedRef = useRef(onDisposed);
   const sessionRef = useRef<TerminalRuntimeSession | undefined>(terminalRuntime.getSession(terminalId));
   const shellRef = useRef<HTMLElement | null>(null);
@@ -681,16 +686,6 @@ export function TerminalView({
   const fitAndResize = useCallback(() => {
     adapterRef.current?.fit();
   }, []);
-
-  const scheduleFitAndResize = useCallback(() => {
-    if (resizeFrameRef.current !== null) {
-      window.cancelAnimationFrame(resizeFrameRef.current);
-    }
-    resizeFrameRef.current = window.requestAnimationFrame(() => {
-      resizeFrameRef.current = null;
-      fitAndResize();
-    });
-  }, [fitAndResize]);
 
   useEffect(() => {
     const current = terminalRuntime.getSession(terminalId);
@@ -835,10 +830,6 @@ export function TerminalView({
       cancelled = true;
       window.cancelAnimationFrame(fitFrame);
       unsubscribe();
-      if (resizeFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeFrameRef.current);
-        resizeFrameRef.current = null;
-      }
     };
   }, [adapterVersion, fitAndResize, terminalId]);
 
@@ -874,6 +865,7 @@ export function TerminalView({
       if (!adapter) return;
       const settings = readAppSettings();
       adapter.setFontSize(readTerminalFontSize(settings));
+      adapter.setScrollback(readTerminalScrollbackLines(settings));
       adapter.refreshTheme();
       adapter.setRenderer("webgl");
     };
@@ -891,16 +883,6 @@ export function TerminalView({
     document.addEventListener("visibilitychange", updateRendererActivity);
     return () => document.removeEventListener("visibilitychange", updateRendererActivity);
   }, [adapterVersion]);
-
-  useEffect(() => {
-    window.addEventListener("resize", scheduleFitAndResize);
-    const visualViewport = window.visualViewport;
-    visualViewport?.addEventListener("resize", scheduleFitAndResize);
-    return () => {
-      window.removeEventListener("resize", scheduleFitAndResize);
-      visualViewport?.removeEventListener("resize", scheduleFitAndResize);
-    };
-  }, [scheduleFitAndResize]);
 
   const close = () => {
     onClose?.();
@@ -938,7 +920,7 @@ export function TerminalView({
       return;
     }
     if (action === "clear") {
-      adapter.clear();
+      terminalRuntime.clear(terminalId);
       return;
     }
     if (action === "selectAll") {

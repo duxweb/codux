@@ -153,6 +153,10 @@ const languageOptions = [
 ];
 
 const shellOptions = shellOptionsForPlatform();
+const terminalScrollbackOptions = [500, 1000, 2000, 5000, 10000].map((value) => ({
+  value: String(value),
+  label: formatI18n(tm("settings.terminal_scrollback.option_format", "%@ lines"), String(value)),
+}));
 const gitRefreshOptions = intervalOptions([30, 60, 120, 300, 600]);
 const aiRefreshOptions = intervalOptions([60, 120, 180, 300, 600]);
 const aiBackgroundRefreshOptions = intervalOptions([300, 600, 900, 1800]);
@@ -613,6 +617,20 @@ function AppearanceSection() {
             max={28}
             value={settings.terminalFontSize}
             onChange={(event) => setSetting("terminalFontSize", event.currentTarget.value)}
+          />
+        </Field>
+        <Field
+          label={tm("settings.terminal_scrollback", "Terminal History")}
+          description={tm(
+            "settings.terminal_scrollback.help",
+            "Limits terminal scrollback and restored output to reduce memory use in long sessions.",
+          )}
+        >
+          <Select
+            ariaLabel={tm("settings.terminal_scrollback", "Terminal History")}
+            value={settings.terminalScrollbackLines}
+            options={terminalScrollbackOptions}
+            onChange={(value) => setSetting("terminalScrollbackLines", value)}
           />
         </Field>
       </SettingsCard>

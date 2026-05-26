@@ -15,6 +15,7 @@ export type AppSettings = {
   theme: string;
   themeColor: string;
   terminalFontSize: string;
+  terminalScrollbackLines: string;
   iconStyle: string;
   notificationChannels: Record<string, NotificationChannelSettings>;
   shortcuts: Record<string, string>;
@@ -249,6 +250,7 @@ export const defaultSettings: AppSettings = {
   theme: "Auto",
   themeColor: "Blue",
   terminalFontSize: "14",
+  terminalScrollbackLines: "2000",
   iconStyle: "default",
   notificationChannels: {},
   shortcuts: {},
@@ -454,6 +456,7 @@ function normalizeAppSettings(settings: Partial<AppSettings>): AppSettings {
     },
     ai: normalizeAISettings(settings.ai, settings.pet),
     statisticsMode: normalizeStatisticsMode(settings.statisticsMode),
+    terminalScrollbackLines: normalizeTerminalScrollbackLines(settings.terminalScrollbackLines),
   };
 }
 
@@ -664,6 +667,18 @@ export function readTerminalFontSize(settings = readAppSettings()) {
   const parsed = Number(settings.terminalFontSize);
   if (!Number.isFinite(parsed)) return 14;
   return Math.max(10, Math.min(28, Math.round(parsed)));
+}
+
+export function readTerminalScrollbackLines(settings = readAppSettings()) {
+  const parsed = Number(settings.terminalScrollbackLines);
+  if (!Number.isFinite(parsed)) return 2000;
+  return Math.max(200, Math.min(10000, Math.round(parsed)));
+}
+
+function normalizeTerminalScrollbackLines(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return defaultSettings.terminalScrollbackLines;
+  return String(Math.max(200, Math.min(10000, Math.round(parsed))));
 }
 
 export function readConfiguredShell(settings = readAppSettings()) {

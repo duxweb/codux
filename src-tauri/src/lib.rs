@@ -940,6 +940,17 @@ fn terminal_interrupt(state: tauri::State<'_, AppState>, session_id: String) -> 
 }
 
 #[tauri::command]
+fn terminal_clear_history(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
+    state
+        .terminals
+        .clear_history(&session_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn terminal_escape(state: tauri::State<'_, AppState>, session_id: String) -> Result<(), String> {
     state
         .terminals
@@ -6924,6 +6935,7 @@ pub fn run() {
             terminal_write,
             terminal_resize,
             terminal_interrupt,
+            terminal_clear_history,
             terminal_escape,
             terminal_kill,
             terminal_snapshot,
