@@ -1,35 +1,35 @@
 {
-  "version": "1.0.5",
-  "notes": "## 中文\n\n## [1.0.5] - 2026-05-26\n\n### 调整\n\n- 将终端依赖回退到同类 Tauri 终端应用普遍使用的 xterm.js 5.5 稳定版本线，同时保留 Codux 现有输入和选区兼容补丁。\n\n### 修复\n\n- 修复 macOS 正式打包版本中 Claude CLI 进入 TUI 后无法继续接收终端输入的问题，该问题在 `pnpm tauri dev` 下不会复现。\n- 修复 xterm 6.1 beta 键盘路径导致的终端打包版本输入回归，同时保留既有 macOS 文本输入、选区释放和快捷键行为。\n\n---\n\n## English\n\n## [1.0.5] - 2026-05-26\n\n### Changed\n\n- Moved the terminal stack back to the stable xterm.js 5.5 line used by comparable Tauri terminal apps, keeping the existing Codux input and selection compatibility patches.\n\n### Fixed\n\n- Fixed macOS packaged builds where Claude CLI could enter a TUI state that stopped accepting terminal input while the same flow worked in `pnpm tauri dev`.\n- Fixed terminal packaging regressions caused by the xterm 6.1 beta keyboard path, while preserving existing macOS text-input, selection-release, and shortcut behavior.",
-  "pub_date": "2026-05-26T07:59:55.551Z",
+  "version": "1.0.6",
+  "notes": "## 中文\n\n## [1.0.6] - 2026-05-26\n\n### 调整\n\n- 将终端窗口尺寸适配恢复为 xterm fit addon 标准路径，移除手动 `proposeDimensions()` 和额外 resize 防抖。\n\n### 修复\n\n- 修复终端拖动调整窗口大小后滚动条位置可能错乱、布局抖动的问题。\n- 修复 Claude 交互确认 hook 同步阻塞风险，并修复 Kiro 托管 agent 配置格式校验错误。\n- 修复终端启动时未自动继承 Codex 的 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`，并优化长会话终端历史清理和内存占用。\n- 修复 Windows 设置窗口关闭按钮偶发点击无效的问题。\n- 修复切换项目后旧的后端终端快照可能覆盖已恢复终端视图的问题。\n- 移除 macOS 性能监控中的 shell 进程 CPU 采样，降低启动和性能监控 CPU 占用。\n- 优化自动记忆提取，后台队列按间隔限速处理，并将长记忆 LLM 请求超时延长到 120 秒。\n\n---\n\n## English\n\n## [1.0.6] - 2026-05-26\n\n### Changed\n\n- Restored terminal resizing to the standard xterm fit addon path, removing manual `proposeDimensions()` sizing and extra resize debouncing.\n\n### Fixed\n\n- Fixed terminal scrollbar drift and layout jitter after repeated window resizing.\n- Fixed Claude interactive hook blocking risk and Kiro managed agent config validation errors.\n- Fixed terminal launches not automatically inheriting Codex `OPENAI_API_KEY` and `OPENAI_BASE_URL`, and improved long-session terminal history cleanup and memory use.\n- Fixed intermittent Windows settings-window close button clicks.\n- Fixed terminal project switching so stale backend snapshots no longer overwrite the restored terminal view.\n- Reduced startup and performance-monitor CPU usage by removing shell-based macOS process CPU sampling.\n- Improved automatic memory extraction by pacing queued background tasks and extending long memory LLM requests to 120 seconds.",
+  "pub_date": "2026-05-26T10:21:37.179Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWdqV1BVTTJiMzRtQlh6MTJ5a0FnQkhKTkhCbUtkWlYyVlZTdFo5VFh3ZTdWbFdFUkZEckZMS0NDeGNTcVhvSUNqY2R5aXZIZURNaUV5cHdNYjNKSUFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzgyMzI0CWZpbGU6Q29kdXguYXBwLnRhci5negpFaGZxWU5leENRd1hjRG5TM0xpUGsxQ3MzQUg4enFuNlVzQkV3MmQ1ajFFWGxNVGc3Rm9LY3A2MkF4NmE1ZW5ZUlRZR3E2Z1dLZXl0U3MyNzljbVZBdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.5/macos-universal-formal-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxnSXZHT0VrTHVqMjUrcldLOWRBbElVcVZCL2RBa3Z6Q254akx6UUxrZ0ZxM1duUm12NEMyOHZDZURFSDZCRDhpT3R1YnVVbVFCRHlTTCtad1JNTGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwODQyCWZpbGU6Q29kdXguYXBwLnRhci5nego4K3g1ZFhvUW9seEJ5VzEvNHAzc2k1YVhNeVhpSXNacjVjV2dUbkhnN1RhWldrSWk4akNxbG1qMjc0b1gyTnJkV29haGRpMXo5bm5adzVSNEtKbjFEdz09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-unsigned-updater.app.tar.gz"
     },
     "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWdqV1BVTTJiMzRtQlh6MTJ5a0FnQkhKTkhCbUtkWlYyVlZTdFo5VFh3ZTdWbFdFUkZEckZMS0NDeGNTcVhvSUNqY2R5aXZIZURNaUV5cHdNYjNKSUFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzgyMzI0CWZpbGU6Q29kdXguYXBwLnRhci5negpFaGZxWU5leENRd1hjRG5TM0xpUGsxQ3MzQUg4enFuNlVzQkV3MmQ1ajFFWGxNVGc3Rm9LY3A2MkF4NmE1ZW5ZUlRZR3E2Z1dLZXl0U3MyNzljbVZBdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.5/macos-universal-formal-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxnSXZHT0VrTHVqMjUrcldLOWRBbElVcVZCL2RBa3Z6Q254akx6UUxrZ0ZxM1duUm12NEMyOHZDZURFSDZCRDhpT3R1YnVVbVFCRHlTTCtad1JNTGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwODQyCWZpbGU6Q29kdXguYXBwLnRhci5nego4K3g1ZFhvUW9seEJ5VzEvNHAzc2k1YVhNeVhpSXNacjVjV2dUbkhnN1RhWldrSWk4akNxbG1qMjc0b1gyTnJkV29haGRpMXo5bm5adzVSNEtKbjFEdz09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-unsigned-updater.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWdqV1BVTTJiMzRtQlh6MTJ5a0FnQkhKTkhCbUtkWlYyVlZTdFo5VFh3ZTdWbFdFUkZEckZMS0NDeGNTcVhvSUNqY2R5aXZIZURNaUV5cHdNYjNKSUFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzgyMzI0CWZpbGU6Q29kdXguYXBwLnRhci5negpFaGZxWU5leENRd1hjRG5TM0xpUGsxQ3MzQUg4enFuNlVzQkV3MmQ1ajFFWGxNVGc3Rm9LY3A2MkF4NmE1ZW5ZUlRZR3E2Z1dLZXl0U3MyNzljbVZBdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.5/macos-universal-formal-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxnSXZHT0VrTHVqMjUrcldLOWRBbElVcVZCL2RBa3Z6Q254akx6UUxrZ0ZxM1duUm12NEMyOHZDZURFSDZCRDhpT3R1YnVVbVFCRHlTTCtad1JNTGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwODQyCWZpbGU6Q29kdXguYXBwLnRhci5nego4K3g1ZFhvUW9seEJ5VzEvNHAzc2k1YVhNeVhpSXNacjVjV2dUbkhnN1RhWldrSWk4akNxbG1qMjc0b1gyTnJkV29haGRpMXo5bm5adzVSNEtKbjFEdz09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-unsigned-updater.app.tar.gz"
     },
     "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWdqV1BVTTJiMzRtQlh6MTJ5a0FnQkhKTkhCbUtkWlYyVlZTdFo5VFh3ZTdWbFdFUkZEckZMS0NDeGNTcVhvSUNqY2R5aXZIZURNaUV5cHdNYjNKSUFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzgyMzI0CWZpbGU6Q29kdXguYXBwLnRhci5negpFaGZxWU5leENRd1hjRG5TM0xpUGsxQ3MzQUg4enFuNlVzQkV3MmQ1ajFFWGxNVGc3Rm9LY3A2MkF4NmE1ZW5ZUlRZR3E2Z1dLZXl0U3MyNzljbVZBdz09Cg==",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.5/macos-universal-formal-updater.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWxnSXZHT0VrTHVqMjUrcldLOWRBbElVcVZCL2RBa3Z6Q254akx6UUxrZ0ZxM1duUm12NEMyOHZDZURFSDZCRDhpT3R1YnVVbVFCRHlTTCtad1JNTGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwODQyCWZpbGU6Q29kdXguYXBwLnRhci5nego4K3g1ZFhvUW9seEJ5VzEvNHAzc2k1YVhNeVhpSXNacjVjV2dUbkhnN1RhWldrSWk4akNxbG1qMjc0b1gyTnJkV29haGRpMXo5bm5adzVSNEtKbjFEdz09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/macos-universal-unsigned-updater.app.tar.gz"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXN6eWpiU1I1L29vWTV3bmhRZEJZMnpZUkdnYVk0Z3NKUEUvNER0Rkg5aUIyeGxpRnZQWXJoY1hoTytFNkxSR2V5OTdnNERtUDBhT1E1dU1kL0dHWHdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzgxNzU4CWZpbGU6Q29kdXhfMS4wLjUtMF94NjQtc2V0dXAuZXhlCkhhdm1mOVRSSnVXUkx6Wjh0Q3R0VzBBSGdWUjRDYVM5ay92eDA4Y3U4ZzRFM0RqQmthOWJGWUlZbURYa1hYdEZkV1FHamk2RW5ZZ2h4aUZEeUpxT0JRPT0K",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.5/windows-x86_64-nsis-Codux_1.0.5-0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWs1bjVybS83TUMrTWY4ZnlkNkxtZVA4UUhaZm03YnVIMkRqeVl6SVJxL2ZvMTBwNmxIM25vME9NcjQwck5VbVFWajRKU3VWZGFEUG1RZnlneHViQ1FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwNjI3CWZpbGU6Q29kdXhfMS4wLjYtMF94NjQtc2V0dXAuZXhlCk41cDB2SnhHazlwWW1YeVVHSExUWmJyZTNhdG1jUVBxK252UmM0dkFDai9WaWpZcjRoNWFDNHd6emEzWGM3RzlZK1U4aGNXYmZLbEROV3E0cjluMUFBPT0K",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/windows-x86_64-nsis-Codux_1.0.6-0_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXN6eWpiU1I1L29vWTV3bmhRZEJZMnpZUkdnYVk0Z3NKUEUvNER0Rkg5aUIyeGxpRnZQWXJoY1hoTytFNkxSR2V5OTdnNERtUDBhT1E1dU1kL0dHWHdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzgxNzU4CWZpbGU6Q29kdXhfMS4wLjUtMF94NjQtc2V0dXAuZXhlCkhhdm1mOVRSSnVXUkx6Wjh0Q3R0VzBBSGdWUjRDYVM5ay92eDA4Y3U4ZzRFM0RqQmthOWJGWUlZbURYa1hYdEZkV1FHamk2RW5ZZ2h4aUZEeUpxT0JRPT0K",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.5/windows-x86_64-nsis-Codux_1.0.5-0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWs1bjVybS83TUMrTWY4ZnlkNkxtZVA4UUhaZm03YnVIMkRqeVl6SVJxL2ZvMTBwNmxIM25vME9NcjQwck5VbVFWajRKU3VWZGFEUG1RZnlneHViQ1FjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwNjI3CWZpbGU6Q29kdXhfMS4wLjYtMF94NjQtc2V0dXAuZXhlCk41cDB2SnhHazlwWW1YeVVHSExUWmJyZTNhdG1jUVBxK252UmM0dkFDai9WaWpZcjRoNWFDNHd6emEzWGM3RzlZK1U4aGNXYmZLbEROV3E0cjluMUFBPT0K",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/windows-x86_64-nsis-Codux_1.0.6-0_x64-setup.exe"
     },
     "windows-x86_64-msi": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQW52T3RhWUgzbVZOam1weEU5dFBGY29Tejc3SG94a2ovczRTMTBmVnEwc0JCcTI4alRGaFREa2NTazBNc0dpK1Z6VFQ0T0NTNm9qUjV6RkwycCt2MkFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzgxNzU4CWZpbGU6Q29kdXhfMS4wLjUtMF94NjRfZW4tVVMubXNpCkpEdjg5RWoyRm9CbjhORGh4T1JNckFHRk5WdHZxa1h2QjlJdnFEc2pXaE1TOUgwbUwwdVFXeG5vTkk3Tkx0MWNlYnNTNzN5TlVHWVhEeXl2Rmx3Z0NBPT0K",
-      "url": "https://github.com/duxweb/codux/releases/download/v1.0.5/windows-x86_64-msi-Codux_1.0.5-0_x64_en-US.msi"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXFwVTFTaVRSTngyV1A5aVg0ZU5rMFVkaGVCbTNlVjB1R1dpTUJzTVZrVWhMSDJDL3ZXNGVrTDlyTlhMWDRKWGVBcDJPMTA5cE0yR3prRzFjL0huRXdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NzkwNjI3CWZpbGU6Q29kdXhfMS4wLjYtMF94NjRfZW4tVVMubXNpCjlVZGxzOEJQU2ZDMS8vUEZKb1RKQ3k0dWJteVQ3Q1h6bW93NlYvOHZldlJXMG9UT01PZ0ZzK2E2Y0I2S3Fac2Z3QmhuSVBGR0V0TkhqU1lMT013YkNnPT0K",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.0.6/windows-x86_64-msi-Codux_1.0.6-0_x64_en-US.msi"
     }
   }
 }
