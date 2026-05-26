@@ -795,8 +795,8 @@ impl AIRuntimeBridge {
                 ("SessionEnd", "session-end", 1, false),
                 ("PermissionRequest", "permission-request", 5, true),
                 ("PermissionDenied", "permission-denied", 5, true),
-                ("Elicitation", "elicitation", 10, false),
-                ("ElicitationResult", "elicitation-result", 10, false),
+                ("Elicitation", "elicitation", 10, true),
+                ("ElicitationResult", "elicitation-result", 10, true),
             ],
             self,
         )?;
