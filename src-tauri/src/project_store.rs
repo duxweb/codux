@@ -1182,17 +1182,72 @@ fn project_uuid(name: &str, path: &str) -> String {
 }
 
 fn badge_from_name(name: &str) -> String {
-    let letters = name
-        .split(|ch: char| !ch.is_ascii_alphanumeric())
-        .filter_map(|part| part.chars().next())
-        .take(2)
-        .collect::<String>()
-        .to_uppercase();
-    if letters.is_empty() {
+    let segments = split_name_segments(name);
+    if segments.is_empty() {
+        return "PR".to_string();
+    }
+
+    let mut chars: Vec<char> = Vec::new();
+    let remaining = 4;
+
+    // First segment: take as many chars as possible
+    let first = &segments[0];
+    let first_take = remaining.min(first.len());
+    for ch in first.chars().take(first_take) {
+        chars.push(ch);
+    }
+
+    // Remaining segments: take 1 initial each
+    for seg in segments.iter().skip(1) {
+        if chars.len() >= 4 {
+            break;
+        }
+        if let Some(ch) = seg.chars().next() {
+            chars.push(ch);
+        }
+    }
+
+    let badge: String = chars.into_iter().collect();
+    let badge = badge.to_uppercase();
+    if badge.is_empty() {
         "PR".to_string()
     } else {
-        letters
+        badge
     }
+}
+
+/// Split name into segments by non-alphanumeric separators AND uppercase transitions (camelCase).
+/// e.g. "getUserInfo" → ["get", "User", "Info"], "yhs-web" → ["yhs", "web"]
+fn split_name_segments(name: &str) -> Vec<String> {
+    let mut segments: Vec<String> = Vec::new();
+    let mut current = String::new();
+
+    let mut prev: Option<char> = None;
+    for ch in name.chars() {
+        if !ch.is_alphanumeric() {
+            if !current.is_empty() {
+                segments.push(std::mem::take(&mut current));
+            }
+            prev = None;
+            continue;
+        }
+
+        // Detect camelCase boundary: lowercase→uppercase transition
+        if let Some(p) = prev {
+            if p.is_lowercase() && ch.is_uppercase() && !current.is_empty() {
+                segments.push(std::mem::take(&mut current));
+            }
+        }
+
+        current.push(ch);
+        prev = Some(ch);
+    }
+
+    if !current.is_empty() {
+        segments.push(current);
+    }
+
+    segments
 }
 
 fn normalized_string(value: &str) -> Option<String> {
@@ -1216,6 +1271,24 @@ fn state_file_path() -> PathBuf {
 mod tests {
     use super::*;
     use crate::worktree::ProjectWorktreeGitSummary;
+
+    #[test]
+    fn test_badge_from_name() {
+        assert_eq!(badge_from_name("yhs-web"), "YHSW");
+        assert_eq!(badge_from_name("shopping-cart"), "SHOP");
+        assert_eq!(badge_from_name("myApp"), "MYA");
+        assert_eq!(badge_from_name("UserService"), "USER");
+        assert_eq!(badge_from_name("UsService"), "USS");
+        assert_eq!(badge_from_name("wxPay"), "WXP");
+        assert_eq!(badge_from_name("getApiData"), "GETA");
+        assert_eq!(badge_from_name("getUserInfo"), "GETU");
+        assert_eq!(badge_from_name("HTMLParser"), "HTML");
+        assert_eq!(badge_from_name("wx-pay-api"), "WXPA");
+        assert_eq!(badge_from_name("a-b-c-d"), "ABCD");
+        assert_eq!(badge_from_name("codux"), "CODU");
+        assert_eq!(badge_from_name("购物车"), "购物车".to_uppercase());
+        assert_eq!(badge_from_name("用户中心"), "用户中心".to_uppercase());
+    }
 
     #[test]
     fn merge_worktree_state_preserves_stored_task_and_selection() {

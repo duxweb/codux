@@ -233,7 +233,7 @@ function ProjectRow({
   onClose?: () => void;
   onReorder?: (sourceId: string, targetId: string) => void;
 }) {
-  const initials = project.badge.slice(0, isExpanded ? 2 : 1).toUpperCase();
+  const initials = project.badge.slice(0, 4).toUpperCase();
   const badgeSize = isExpanded ? 38 : 36;
   const BadgeIcon = project.badgeSymbol ? projectBadgeIcons[project.badgeSymbol] : undefined;
   const contextMenu = useContextMenu();
@@ -281,7 +281,24 @@ function ProjectRow({
             {BadgeIcon ? (
               <BadgeIcon size={isExpanded ? 17 : 16} className="text-on-brand" />
             ) : (
-              <span className="text-on-brand font-bold text-sm tracking-tight">{initials}</span>
+              <span
+                className="text-on-brand font-bold tracking-tight text-center"
+                style={{
+                  fontSize: initials.length > 2 ? 9 : initials.length === 2 ? 11 : 14,
+                  lineHeight: initials.length > 2 ? "1.1" : "1",
+                  letterSpacing: initials.length > 2 ? "-0.02em" : undefined,
+                }}
+              >
+                {initials.length <= 2 ? (
+                  initials
+                ) : (
+                  <>
+                    {initials.slice(0, initials.length === 3 ? 1 : 2)}
+                    <br />
+                    {initials.slice(initials.length === 3 ? 1 : 2)}
+                  </>
+                )}
+              </span>
             )}
           </span>
 

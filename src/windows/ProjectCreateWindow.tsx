@@ -104,6 +104,10 @@ export function ProjectCreateWindow() {
       });
       if (typeof selected === "string") {
         setPath(selected);
+        if (name.trim().length === 0) {
+          const folderName = selected.split("/").filter(Boolean).pop() ?? "";
+          setName(folderName);
+        }
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -121,7 +125,7 @@ export function ProjectCreateWindow() {
             projectId: isEditing ? projectId : undefined,
             name: name.trim(),
             path: path.trim(),
-            badgeText: name.trim().slice(0, 2).toUpperCase(),
+            badgeText: null,
             badgeSymbol: symbolId === "none" ? null : symbolId,
             badgeColorHex: color,
           },
