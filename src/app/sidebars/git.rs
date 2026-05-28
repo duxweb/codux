@@ -1052,10 +1052,9 @@ fn git_status_group(
         .children(rows)
 }
 
-#[derive(Default)]
-struct GitPathTreeNode {
-    files: Vec<GitFileStatus>,
-    dirs: BTreeMap<String, GitPathTreeNode>,
+struct GitImmediateDir {
+    path: String,
+    count: usize,
 }
 
 const MAX_GIT_STATUS_TREE_ROWS: usize = 600;
@@ -1068,21 +1067,11 @@ fn git_status_tree_rows(
     selected_file: Option<&str>,
     cx: &mut Context<CoduxApp>,
 ) -> Vec<AnyElement> {
-    let mut root = GitPathTreeNode::default();
-    for file in files.iter().cloned() {
-        let parts = file
-            .path
-            .split('/')
-            .filter(|part| !part.is_empty())
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        insert_git_status_path(&mut root, &parts, file);
-    }
     let mut rows = Vec::new();
-    append_git_status_tree_rows(
-        &root,
+    append_git_status_directory_rows(
         section,
-        None,
+        "",
+        files,
         0,
         expanded_dirs,
         tree_children,
@@ -1090,8 +1079,7 @@ fn git_status_tree_rows(
         &mut rows,
         cx,
     );
-    let total = child_count(&root);
-    if total > rows.len() {
+    if rows.len() >= MAX_GIT_STATUS_TREE_ROWS {
         rows.push(
             div()
                 .px_3()
@@ -1099,44 +1087,17 @@ fn git_status_tree_rows(
                 .text_size(px(12.0))
                 .line_height(px(16.0))
                 .text_color(color(theme::TEXT_DIM))
-                .child(format!(
-                    "已显示前 {} 项，剩余 {} 项未渲染",
-                    rows.len(),
-                    total - rows.len()
-                ))
+                .child(format!("已显示前 {} 项，继续展开目录查看子级", rows.len()))
                 .into_any_element(),
         );
     }
     rows
 }
 
-fn insert_git_status_path(node: &mut GitPathTreeNode, parts: &[String], file: GitFileStatus) {
-    match parts {
-        [] => node.files.push(file),
-        [_name] => {
-            if file.path.ends_with('/') {
-                let name = file
-                    .path
-                    .trim_end_matches('/')
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(file.path.as_str())
-                    .to_string();
-                node.dirs.entry(name).or_default();
-            } else {
-                node.files.push(file);
-            }
-        }
-        [dir, rest @ ..] => {
-            insert_git_status_path(node.dirs.entry(dir.clone()).or_default(), rest, file);
-        }
-    }
-}
-
-fn append_git_status_tree_rows(
-    node: &GitPathTreeNode,
+fn append_git_status_directory_rows(
     section_id: &'static str,
-    prefix: Option<&str>,
+    base_path: &str,
+    files: &[GitFileStatus],
     depth: usize,
     expanded_dirs: &HashSet<String>,
     tree_children: &HashMap<String, Vec<GitFileStatus>>,
@@ -1147,35 +1108,23 @@ fn append_git_status_tree_rows(
     if rows.len() >= MAX_GIT_STATUS_TREE_ROWS {
         return;
     }
-    for (name, child) in &node.dirs {
+
+    let (dirs, direct_files) = collect_immediate_git_status_entries(section_id, base_path, files);
+
+    for (name, dir) in dirs {
         if rows.len() >= MAX_GIT_STATUS_TREE_ROWS {
             return;
         }
-        let path = prefix
-            .map(|prefix| format!("{prefix}/{name}"))
-            .unwrap_or_else(|| name.clone());
-        let expanded = expanded_dirs.contains(&path);
+        let expanded = expanded_dirs.contains(&dir.path);
         rows.push(
-            git_status_dir_row(name, &path, child_count(child), expanded, depth, cx)
-                .into_any_element(),
+            git_status_dir_row(&name, &dir.path, dir.count, expanded, depth, cx).into_any_element(),
         );
         if expanded {
-            if let Some(children) = tree_children.get(&path) {
-                rows.extend(git_status_child_rows(
-                    &path,
+            if let Some(children) = tree_children.get(&dir.path) {
+                append_git_status_directory_rows(
+                    section_id,
+                    &dir.path,
                     children,
-                    section_id,
-                    expanded_dirs,
-                    tree_children,
-                    selected_file,
-                    depth + 1,
-                    cx,
-                ));
-            } else {
-                append_git_status_tree_rows(
-                    child,
-                    section_id,
-                    Some(path.as_str()),
                     depth + 1,
                     expanded_dirs,
                     tree_children,
@@ -1186,68 +1135,144 @@ fn append_git_status_tree_rows(
             }
         }
     }
-    for file in &node.files {
+    for file in direct_files {
         if rows.len() >= MAX_GIT_STATUS_TREE_ROWS {
             return;
         }
-        rows.push(git_status_file_row(file.clone(), selected_file, depth, cx).into_any_element());
+        rows.push(git_status_file_row(file, selected_file, depth, cx).into_any_element());
     }
 }
 
-fn git_status_child_rows(
-    parent: &str,
-    files: &[GitFileStatus],
+fn collect_immediate_git_status_entries(
     section_id: &'static str,
-    expanded_dirs: &HashSet<String>,
-    tree_children: &HashMap<String, Vec<GitFileStatus>>,
-    selected_file: Option<&str>,
-    depth: usize,
-    cx: &mut Context<CoduxApp>,
-) -> Vec<AnyElement> {
-    let mut root = GitPathTreeNode::default();
-    let parent_prefix = format!("{parent}/");
-    for file in files.iter().cloned() {
-        let matches_section = match section_id {
-            "staged" => is_git_staged_file(&file),
-            "changed" => is_git_worktree_file(&file),
-            "untracked" => is_git_untracked_file(&file),
-            _ => true,
-        };
-        if !matches_section {
+    base_path: &str,
+    files: &[GitFileStatus],
+) -> (BTreeMap<String, GitImmediateDir>, Vec<GitFileStatus>) {
+    let mut dirs = BTreeMap::<String, GitImmediateDir>::new();
+    let mut direct_files = Vec::<GitFileStatus>::new();
+    for file in files {
+        if !git_status_matches_section(section_id, file) {
             continue;
         }
-        let relative_path = file
-            .path
-            .strip_prefix(&parent_prefix)
-            .unwrap_or(file.path.as_str());
+        let Some(relative_path) = relative_git_status_path(base_path, &file.path) else {
+            continue;
+        };
+        let relative_path = relative_path.trim_end_matches('/');
         if relative_path.is_empty() {
             continue;
         }
-        let parts = relative_path
-            .split('/')
-            .filter(|part| !part.is_empty())
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        insert_git_status_path(&mut root, &parts, file);
+        if let Some((dir_name, _rest)) = relative_path.split_once('/') {
+            let dir_path = join_git_path(base_path, dir_name);
+            dirs.entry(dir_name.to_string())
+                .and_modify(|dir| dir.count += 1)
+                .or_insert(GitImmediateDir {
+                    path: dir_path,
+                    count: 1,
+                });
+        } else if file.path.ends_with('/') {
+            let dir_path = join_git_path(base_path, relative_path);
+            dirs.entry(relative_path.to_string())
+                .and_modify(|dir| dir.count += 1)
+                .or_insert(GitImmediateDir {
+                    path: dir_path,
+                    count: 1,
+                });
+        } else {
+            direct_files.push(file.clone());
+        }
     }
-
-    let mut rows = Vec::new();
-    append_git_status_tree_rows(
-        &root,
-        section_id,
-        Some(parent),
-        depth,
-        expanded_dirs,
-        tree_children,
-        selected_file,
-        &mut rows,
-        cx,
-    );
-    rows
+    (dirs, direct_files)
 }
 
-fn child_count(node: &GitPathTreeNode) -> usize {
-    node.files.len() + node.dirs.values().map(child_count).sum::<usize>()
+fn git_status_matches_section(section_id: &'static str, file: &GitFileStatus) -> bool {
+    match section_id {
+        "staged" => is_git_staged_file(file),
+        "changed" => is_git_worktree_file(file),
+        "untracked" => is_git_untracked_file(file),
+        _ => true,
+    }
+}
+
+fn relative_git_status_path<'a>(base_path: &str, file_path: &'a str) -> Option<&'a str> {
+    let base_path = base_path.trim_matches('/');
+    if base_path.is_empty() {
+        return Some(file_path);
+    }
+    file_path
+        .strip_prefix(base_path)
+        .and_then(|path| path.strip_prefix('/'))
+}
+
+fn join_git_path(base_path: &str, name: &str) -> String {
+    let base_path = base_path.trim_matches('/');
+    if base_path.is_empty() {
+        name.to_string()
+    } else {
+        format!("{base_path}/{name}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn git_file(path: &str, index_status: &str, worktree_status: &str) -> GitFileStatus {
+        GitFileStatus {
+            path: path.to_string(),
+            index_status: index_status.to_string(),
+            worktree_status: worktree_status.to_string(),
+        }
+    }
+
+    #[test]
+    fn git_tree_collects_only_immediate_rows_for_current_directory() {
+        let files = vec![
+            git_file("src/main.rs", " ", "M"),
+            git_file("src/nested/lib.rs", " ", "M"),
+            git_file("README.md", " ", "M"),
+            git_file("bulk/", "?", "?"),
+        ];
+
+        let (root_dirs, root_files) = collect_immediate_git_status_entries("changed", "", &files);
+        assert_eq!(root_dirs.keys().cloned().collect::<Vec<_>>(), vec!["src"]);
+        assert_eq!(
+            root_files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["README.md"]
+        );
+
+        let (src_dirs, src_files) = collect_immediate_git_status_entries("changed", "src", &files);
+        assert_eq!(src_dirs.keys().cloned().collect::<Vec<_>>(), vec!["nested"]);
+        assert_eq!(
+            src_files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["src/main.rs"]
+        );
+    }
+
+    #[test]
+    fn git_tree_keeps_untracked_directory_as_lazy_child() {
+        let files = vec![
+            git_file("bulk/", "?", "?"),
+            git_file("bulk/nested/a.txt", "?", "?"),
+        ];
+
+        let (root_dirs, root_files) = collect_immediate_git_status_entries("untracked", "", &files);
+        assert_eq!(root_dirs["bulk"].path, "bulk");
+        assert!(root_files.is_empty());
+
+        let (bulk_dirs, bulk_files) =
+            collect_immediate_git_status_entries("untracked", "bulk", &files);
+        assert_eq!(
+            bulk_dirs.keys().cloned().collect::<Vec<_>>(),
+            vec!["nested"]
+        );
+        assert!(bulk_files.is_empty());
+    }
 }
 
 fn git_status_dir_row(
