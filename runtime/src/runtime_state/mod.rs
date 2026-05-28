@@ -6,7 +6,8 @@ use crate::{
         global_today_normalized_tokens, indexed_sessions_since, normalized_project_totals_since,
     },
     ai_runtime::{
-        AIRuntimeBridge, AIRuntimeBridgeSnapshot, AIRuntimeStateSnapshot, AIRuntimeSupervisorEvent,
+        AIRuntimeBridge, AIRuntimeBridgeSnapshot, AIRuntimeContextSnapshot, AIRuntimeProbeRequest,
+        AIRuntimeStateSnapshot, AIRuntimeSupervisorEvent,
     },
     ai_runtime_state::{AIRuntimeStateService, AIRuntimeStateSummary},
     app_info::{

@@ -29,6 +29,17 @@ impl RuntimeService {
         RuntimeState::load_from_support_dir(self.support_dir.clone())
     }
 
+    pub fn runtime_trace_frontend(&self, category: &str, message: &str) {
+        crate::runtime_trace::runtime_trace(category, message);
+    }
+
+    pub fn ai_runtime_probe(
+        &self,
+        request: AIRuntimeProbeRequest,
+    ) -> Option<AIRuntimeContextSnapshot> {
+        crate::ai_runtime::probe_runtime(&request)
+    }
+
     pub fn app_runtime_ready(&self, visible: bool, focused: bool) -> AppRuntimeReadySnapshot {
         let started_at = std::time::Instant::now();
         let project_store = ProjectStore::new(self.support_dir.clone());

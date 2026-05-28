@@ -40,7 +40,8 @@ pub use probe::probe_runtime;
 pub use registry::{AIRuntimeRegistry, AIRuntimeTerminalBinding, AIRuntimeTerminalState};
 pub use snapshot::{
     AILatestCompletion, AIProjectPhase, AIProjectStateSnapshot, AIProjectTotals,
-    AIRuntimeCompletionEvent, AIRuntimeContextSnapshot, AIRuntimeStateSnapshot, AISessionSnapshot,
+    AIRuntimeCompletionEvent, AIRuntimeContextSnapshot, AIRuntimeProbeRequest,
+    AIRuntimeStateSnapshot, AISessionSnapshot,
 };
 pub use state::{canonical_tool_name, runtime_state_for_hook_kind, status_for_runtime_state};
 pub use store::{AIRuntimeStateMutation, AIRuntimeStateStore};
