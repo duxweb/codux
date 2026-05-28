@@ -66,6 +66,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+mod about;
 mod formatting;
 mod project_column;
 mod project_editor;
@@ -8365,6 +8366,17 @@ impl Render for CoduxApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.window_mode == AppWindowMode::DesktopPet {
             return self.desktop_pet_window(window, cx).into_any_element();
+        }
+
+        if self.window_mode == AppWindowMode::About {
+            return div()
+                .size_full()
+                .font_family("SF Pro Text")
+                .text_color(color(theme::TEXT))
+                .bg(color(theme::BG))
+                .on_key_down(cx.listener(Self::on_key_down))
+                .child(self.about_workspace(window, cx))
+                .into_any_element();
         }
 
         if self.window_mode == AppWindowMode::Settings {

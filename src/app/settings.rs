@@ -1044,6 +1044,34 @@ fn settings_general_pane(
                         .into_any_element(),
                 )
                 .into_any_element(),
+                settings_row(
+                    "关于 Codux",
+                    Some("查看版本信息，打开官网，导出诊断，查看运行日志。".to_string()),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(settings_small_button(
+                            "settings-open-about",
+                            "关于",
+                            cx,
+                            |app, _event, window, cx| app.open_about_window(window, cx),
+                        ))
+                        .child(settings_small_button(
+                            "settings-export-diagnostics",
+                            "导出诊断",
+                            cx,
+                            |app, _event, _window, cx| app.export_diagnostics(cx),
+                        ))
+                        .child(settings_small_button(
+                            "settings-runtime-log",
+                            "Runtime Log",
+                            cx,
+                            |app, _event, _window, cx| app.open_runtime_log(cx),
+                        ))
+                        .into_any_element(),
+                )
+                .into_any_element(),
             ],
         )
         .into_any_element(),
