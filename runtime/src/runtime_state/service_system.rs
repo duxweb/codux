@@ -264,6 +264,10 @@ impl RuntimeService {
         PetService::new(self.support_dir.clone()).hydrate_custom_pet_data_url(pet)
     }
 
+    pub fn custom_pet_sprite(&self, pet: PetCustomPet) -> PetCustomPet {
+        self.hydrate_custom_pet_data_url(pet)
+    }
+
     pub async fn resolve_custom_pet_install(
         &self,
         request: PetCustomPetInstallRequest,
