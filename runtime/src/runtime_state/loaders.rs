@@ -14,6 +14,13 @@ fn load_projects(support_dir: &Path) -> (Vec<ProjectInfo>, Option<ProjectInfo>) 
         .map(|project| ProjectInfo {
             exists: Path::new(&project.path).exists(),
             id: project.id,
+            badge: project
+                .badge_text
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| crate::project_store::badge_from_name(&project.name)),
+            badge_symbol: project.badge_symbol,
+            badge_color_hex: project.badge_color_hex,
             name: project.name,
             path: project.path,
             git_default_push_remote_name: project.git_default_push_remote_name,
@@ -196,6 +203,9 @@ fn fallback_projects() -> Vec<ProjectInfo> {
                 .unwrap_or_else(|| path.to_string()),
             path: path.to_string(),
             exists: Path::new(path).exists(),
+            badge: crate::project_store::badge_from_name(path),
+            badge_symbol: None,
+            badge_color_hex: None,
             git_default_push_remote_name: None,
         })
         .collect()

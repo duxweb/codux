@@ -59,7 +59,7 @@ pub(super) fn normalized_string(value: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
-pub(super) fn badge_from_name(name: &str) -> String {
+pub(crate) fn badge_from_name(name: &str) -> String {
     let letters = name
         .split(|ch: char| !ch.is_ascii_alphanumeric())
         .filter_map(|part| part.chars().next())

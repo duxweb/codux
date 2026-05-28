@@ -287,6 +287,9 @@ fn manager_snapshot_includes_targets_profile_entries_and_summaries() {
         name: "Project A".to_string(),
         path: "/workspace/project-a".to_string(),
         exists: true,
+        badge: "PA".to_string(),
+        badge_symbol: None,
+        badge_color_hex: None,
         git_default_push_remote_name: None,
     }];
 
@@ -459,6 +462,9 @@ fn enqueue_completed_session_creates_pending_memory_task() {
         name: "Project A".to_string(),
         path: transcript_dir.display().to_string(),
         exists: true,
+        badge: "PA".to_string(),
+        badge_symbol: None,
+        badge_color_hex: None,
         git_default_push_remote_name: None,
     };
     let session = AISessionSnapshot {
@@ -585,6 +591,9 @@ fn resolves_extraction_task_transcript_from_file() {
         name: "Project A".to_string(),
         path: transcript_dir.display().to_string(),
         exists: true,
+        badge: "PA".to_string(),
+        badge_symbol: None,
+        badge_color_hex: None,
         git_default_push_remote_name: None,
     };
     let task = MemoryExtractionTask {
@@ -715,6 +724,9 @@ fn extraction_response_recommendation_refreshes_project_profile() {
         name: "Profile Project".to_string(),
         path: project_dir.display().to_string(),
         exists: true,
+        badge: "PP".to_string(),
+        badge_symbol: None,
+        badge_color_hex: None,
         git_default_push_remote_name: None,
     };
     let runtime = tokio::runtime::Builder::new_current_thread()

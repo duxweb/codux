@@ -14,6 +14,9 @@ fn project(path: &str) -> ProjectInfo {
         name: "Project A".to_string(),
         path: path.to_string(),
         exists: true,
+        badge: "PA".to_string(),
+        badge_symbol: None,
+        badge_color_hex: None,
         git_default_push_remote_name: None,
     }
 }

@@ -30,7 +30,7 @@ use codux_runtime::{
     power::PowerService,
     project_activity::ProjectActivityEvent,
     project_open::ProjectOpenApplicationSummary,
-    project_store::{ProjectCreateRequest, ProjectDefaultPushRemoteRequest},
+    project_store::{ProjectCreateRequest, ProjectDefaultPushRemoteRequest, ProjectUpdateRequest},
     remote::{RemoteDeviceSummary, RemotePairingInfo, RemotePairingPollResult, RemoteSummary},
     runtime_activity::RuntimeActivitySummary,
     runtime_bridge::RuntimeInventory,
@@ -169,6 +169,8 @@ pub struct CoduxApp {
     project_editor_project_id: Option<String>,
     project_editor_name: String,
     project_editor_path: String,
+    project_editor_badge_symbol: Option<String>,
+    project_editor_badge_color_hex: String,
 }
 
 fn shortcut_display_from_keystroke(keystroke: &gpui::Keystroke) -> String {
@@ -543,6 +545,11 @@ fn generated_project_child_name(files: &[FileEntry], directory: bool) -> String 
     format!("{prefix}-{timestamp}{suffix}")
 }
 
+const PROJECT_BADGE_COLORS: &[&str] = &[
+    "#0A84FF", "#8C52FF", "#4C8BF5", "#15B8A6", "#32C766", "#FFB020", "#FF7A59", "#FF5C8A",
+    "#7B61FF", "#00A3FF", "#6D9F71",
+];
+
 fn project_badge_text_from_name(name: &str) -> Option<String> {
     let badge = name
         .chars()
@@ -811,6 +818,8 @@ impl CoduxApp {
             project_editor_project_id: None,
             project_editor_name: String::new(),
             project_editor_path: String::new(),
+            project_editor_badge_symbol: None,
+            project_editor_badge_color_hex: PROJECT_BADGE_COLORS[0].to_string(),
         };
         let _ = app.persist_terminal_runtime();
         Ok(app)
@@ -938,6 +947,8 @@ impl CoduxApp {
             project_editor_project_id: None,
             project_editor_name: String::new(),
             project_editor_path: String::new(),
+            project_editor_badge_symbol: None,
+            project_editor_badge_color_hex: PROJECT_BADGE_COLORS[0].to_string(),
         }
     }
 
@@ -948,6 +959,10 @@ impl CoduxApp {
         app.project_editor_project_id = Some(project.id);
         app.project_editor_name = project.name;
         app.project_editor_path = project.path;
+        app.project_editor_badge_symbol = project.badge_symbol;
+        app.project_editor_badge_color_hex = project
+            .badge_color_hex
+            .unwrap_or_else(|| PROJECT_BADGE_COLORS[0].to_string());
         app
     }
 
@@ -958,6 +973,8 @@ impl CoduxApp {
         app.project_editor_project_id = None;
         app.project_editor_name = String::new();
         app.project_editor_path = String::new();
+        app.project_editor_badge_symbol = None;
+        app.project_editor_badge_color_hex = PROJECT_BADGE_COLORS[0].to_string();
         app
     }
 
@@ -1607,6 +1624,26 @@ impl CoduxApp {
         cx.notify();
     }
 
+    fn set_project_editor_badge_symbol(
+        &mut self,
+        value: Option<String>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_badge_symbol = value;
+        cx.notify();
+    }
+
+    fn set_project_editor_badge_color(
+        &mut self,
+        value: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_badge_color_hex = value;
+        cx.notify();
+    }
+
     fn choose_project_editor_directory(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         match self
             .runtime_service
@@ -1646,11 +1683,15 @@ impl CoduxApp {
         }
 
         if let Some(project_id) = self.project_editor_project_id.clone() {
-            match self
-                .runtime_service
-                .update_project(&project_id, &name, &path)
-            {
-                Ok(()) => {
+            match self.runtime_service.project_update(ProjectUpdateRequest {
+                project_id,
+                name: name.clone(),
+                path,
+                badge_text: project_badge_text_from_name(&name),
+                badge_symbol: self.project_editor_badge_symbol.clone(),
+                badge_color_hex: Some(self.project_editor_badge_color_hex.clone()),
+            }) {
+                Ok(_snapshot) => {
                     self.state = self.runtime_service.reload_state();
                     self.status_message = format!("project saved: {name}");
                     window.remove_window();
@@ -1662,8 +1703,8 @@ impl CoduxApp {
                 name: name.clone(),
                 path,
                 badge_text: project_badge_text_from_name(&name),
-                badge_symbol: None,
-                badge_color_hex: None,
+                badge_symbol: self.project_editor_badge_symbol.clone(),
+                badge_color_hex: Some(self.project_editor_badge_color_hex.clone()),
             }) {
                 Ok(_snapshot) => {
                     self.state = self.runtime_service.reload_state();

@@ -8,6 +8,7 @@ mod terminal_layout_store;
 mod tests;
 mod types;
 
+pub(crate) use helpers::badge_from_name;
 pub use terminal_layout::{
     TerminalBottomTabRecord, TerminalLayoutRecord, TerminalLayoutsSnapshot, TerminalTopPaneRecord,
 };

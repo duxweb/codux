@@ -132,6 +132,9 @@ impl MemoryService {
             name: project.project_name.clone(),
             path: project.workspace_path.clone(),
             exists: true,
+            badge: crate::project_store::badge_from_name(&project.project_name),
+            badge_symbol: None,
+            badge_color_hex: None,
             git_default_push_remote_name: None,
         };
         self.apply_extraction_response_with_profile_refresh(

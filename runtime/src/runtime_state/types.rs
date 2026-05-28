@@ -52,6 +52,9 @@ pub struct ProjectInfo {
     pub name: String,
     pub path: String,
     pub exists: bool,
+    pub badge: String,
+    pub badge_symbol: Option<String>,
+    pub badge_color_hex: Option<String>,
     pub git_default_push_remote_name: Option<String>,
 }
 
@@ -104,6 +107,12 @@ struct ProjectRecord {
     id: String,
     name: String,
     path: String,
+    #[serde(default)]
+    badge_text: Option<String>,
+    #[serde(default)]
+    badge_symbol: Option<String>,
+    #[serde(default)]
+    badge_color_hex: Option<String>,
     #[serde(default)]
     git_default_push_remote_name: Option<String>,
 }

@@ -141,6 +141,9 @@ impl RuntimeService {
                 name: project.name,
                 path: project.path,
                 exists: true,
+                badge: project.badge,
+                badge_symbol: project.badge_symbol,
+                badge_color_hex: project.badge_color_hex,
                 git_default_push_remote_name: project.git_default_push_remote_name,
             })
             .collect()
