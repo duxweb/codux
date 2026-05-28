@@ -6,6 +6,10 @@ use crate::{
     ai_history_indexer::AIHistoryProjectState,
     ai_history_normalized::{AIGlobalHistorySnapshot, AIHistoryProjectRequest},
     git::{GitPushRemoteBranchRequest, GitPushRemoteRequest, GitSummary},
+    memory::{
+        MemoryExtractionStatusSnapshot, MemoryProjectMigrationRequest, MemorySummaryRow,
+        MemorySummaryUpdateRequest,
+    },
     notification::{NotificationDispatchRequest, NotificationDispatchResult},
     performance::{PerformanceMonitor, PerformanceSnapshot},
     pet::{
@@ -371,6 +375,55 @@ pub fn ai_history_session_remove(
     session_id: String,
 ) -> Result<AIHistoryProjectState, String> {
     service.remove_indexed_ai_session(project, session_id)
+}
+
+pub fn memory_extraction_cancel(
+    service: &RuntimeService,
+) -> Result<MemoryExtractionStatusSnapshot, String> {
+    service.cancel_memory_extraction_queue()
+}
+
+pub fn memory_archive_entry(service: &RuntimeService, entry_id: String) -> Result<(), String> {
+    service.archive_memory_entry(None, &entry_id).map(|_| ())
+}
+
+pub fn memory_delete_entry(service: &RuntimeService, entry_id: String) -> Result<(), String> {
+    service.delete_memory_entry(None, &entry_id).map(|_| ())
+}
+
+pub fn memory_delete_summary(service: &RuntimeService, summary_id: String) -> Result<(), String> {
+    service.delete_memory_summary(None, &summary_id).map(|_| ())
+}
+
+pub fn memory_delete_project_profile(
+    service: &RuntimeService,
+    project_id: String,
+) -> Result<(), String> {
+    service.delete_memory_project_profile(&project_id).map(|_| ())
+}
+
+pub fn memory_delete_project(service: &RuntimeService, project_id: String) -> Result<(), String> {
+    service.delete_memory_project(&project_id).map(|_| ())
+}
+
+pub fn memory_migrate_project(
+    service: &RuntimeService,
+    request: MemoryProjectMigrationRequest,
+) -> Result<(), String> {
+    service.migrate_memory_project(request).map(|_| ())
+}
+
+pub fn memory_update_summary(
+    service: &RuntimeService,
+    request: MemorySummaryUpdateRequest,
+) -> Result<MemorySummaryRow, String> {
+    service.update_memory_summary(request)
+}
+
+pub async fn memory_index_now(
+    service: &RuntimeService,
+) -> Result<MemoryExtractionStatusSnapshot, String> {
+    service.process_memory_sessions_now().await
 }
 
 pub fn power_set_sleep_prevention(
@@ -819,6 +872,75 @@ mod tests {
                 .expect_err("missing session remove")
                 .contains("Matching session record was not found")
         );
+
+        let _ = std::fs::remove_dir_all(support_dir);
+    }
+
+    #[test]
+    fn memory_commands_delegate_to_runtime_memory_store() {
+        let support_dir = std::env::temp_dir().join(format!(
+            "codux-app-command-memory-{}",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&support_dir).expect("support dir");
+        let service = RuntimeService::new(support_dir.clone());
+
+        let canceled = memory_extraction_cancel(&service).expect("cancel queue");
+        assert_eq!(canceled.pending_count, 0);
+
+        assert!(
+            memory_archive_entry(&service, String::new())
+                .expect_err("empty archive id")
+                .contains("Memory entry id is empty")
+        );
+        assert!(
+            memory_delete_entry(&service, String::new())
+                .expect_err("empty delete id")
+                .contains("Memory entry id is empty")
+        );
+        assert!(
+            memory_delete_summary(&service, String::new())
+                .expect_err("empty summary id")
+                .contains("Memory summary id is empty")
+        );
+        assert!(
+            memory_delete_project_profile(&service, String::new())
+                .expect_err("empty project profile id")
+                .contains("Project id is empty")
+        );
+        assert!(
+            memory_delete_project(&service, String::new())
+                .expect_err("empty project id")
+                .contains("Project id is empty")
+        );
+        assert!(
+            memory_migrate_project(
+                &service,
+                MemoryProjectMigrationRequest {
+                    from_project_id: String::new(),
+                    to_project_id: "project-b".to_string(),
+                    overwrite: false,
+                },
+            )
+            .expect_err("empty migrate project id")
+            .contains("project id cannot be empty")
+        );
+        assert!(
+            memory_update_summary(
+                &service,
+                MemorySummaryUpdateRequest {
+                    summary_id: String::new(),
+                    content: String::new(),
+                    max_versions: None,
+                },
+            )
+            .expect_err("empty summary content")
+            .contains("summary content cannot be empty")
+        );
+
+        let indexed =
+            crate::async_runtime::block_on(memory_index_now(&service)).expect("memory index now");
+        assert_eq!(indexed.running_count, 0);
 
         let _ = std::fs::remove_dir_all(support_dir);
     }
