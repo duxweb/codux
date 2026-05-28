@@ -143,7 +143,7 @@ fn git2_diff_options(path: Option<&str>, context_lines: u32) -> git2::DiffOption
     let mut options = git2::DiffOptions::new();
     options
         .include_untracked(true)
-        .recurse_untracked_dirs(true)
+        .recurse_untracked_dirs(path.is_some_and(|path| !path.trim().is_empty()))
         .context_lines(context_lines);
     if let Some(path) = path.filter(|path| !path.trim().is_empty()) {
         options.pathspec(path);

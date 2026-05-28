@@ -37,7 +37,15 @@ fn is_untracked_status(file: &GitFileStatus) -> bool {
 }
 
 fn is_untracked_path_git2(repo: &GitRepository, path: &str) -> bool {
-    flatten_status_files(repo)
-        .iter()
-        .any(|file| file.path == path && is_untracked_status(file))
+    if let Ok(status) = repo.status_file(Path::new(path)) {
+        return status.contains(git2::Status::WT_NEW);
+    }
+    flatten_path_status_files(
+        repo,
+        path.rsplit_once('/')
+            .map(|(parent, _)| parent)
+            .unwrap_or(""),
+    )
+    .iter()
+    .any(|file| file.path == path && is_untracked_status(file))
 }

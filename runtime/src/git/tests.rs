@@ -73,6 +73,36 @@ mod tests {
     }
 
     #[test]
+    fn review_collapses_untracked_directories_but_file_diff_still_loads_nested_file() {
+        let repo = temp_dir("git-review-untracked-dir");
+        GitService::init(repo.to_str().expect("repo")).expect("init repo");
+        fs::create_dir_all(repo.join("bulk/nested")).expect("bulk dir");
+        fs::write(repo.join("bulk/nested/a.txt"), "a\n").expect("a");
+
+        let review = GitService::review(repo.to_str().expect("repo"), None);
+        assert!(
+            review.files.iter().any(|file| file.path == "bulk/"),
+            "review should show the untracked directory"
+        );
+        assert!(
+            review
+                .files
+                .iter()
+                .all(|file| !file.path.starts_with("bulk/nested/")),
+            "review should not recurse into untracked directories"
+        );
+
+        let diff = GitService::review_file_diff(
+            repo.to_str().expect("repo"),
+            "bulk/nested/a.txt",
+            None,
+        )
+        .expect("nested untracked file diff");
+        assert!(diff.contains("--- untracked ---"));
+        assert!(diff.contains("a"));
+    }
+
+    #[test]
     fn git_watch_filter_allows_worktree_and_known_metadata() {
         let repository = "/repo/app";
         let git_dirs = vec!["/repo/app/.git".to_string()];
