@@ -47,9 +47,10 @@ use codux_runtime::{
 };
 use gpui::{
     AnyElement, App, AppContext, Bounds, Context, FontWeight, InteractiveElement, IntoElement,
-    KeyDownEvent, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div,
-    linear_color_stop, linear_gradient, point, prelude::FluentBuilder as _, px, size,
+    KeyDownEvent, MouseButton, ObjectFit, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, StyledImage, Window, WindowBackgroundAppearance,
+    WindowBounds, WindowKind, WindowOptions, div, img, linear_color_stop, linear_gradient, point,
+    prelude::FluentBuilder as _, px, size,
 };
 use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, Root, Sizable,
@@ -62,6 +63,7 @@ use gpui_component::{
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -644,6 +646,51 @@ fn app_git_review(state: &RuntimeState) -> GitReviewSummary {
 
 fn desktop_pet_fallback_line() -> &'static str {
     "休息一下，我会在这里陪你盯住进度。"
+}
+
+const PET_ATLAS_COLUMNS: f32 = 8.0;
+const PET_ATLAS_ROWS: f32 = 9.0;
+const PET_ATLAS_CELL_WIDTH: f32 = 192.0;
+const PET_ATLAS_CELL_HEIGHT: f32 = 208.0;
+const DESKTOP_PET_SPRITE_SIZE: f32 = 112.0;
+
+fn pet_sprite_visible_width(size: f32) -> f32 {
+    PET_ATLAS_CELL_WIDTH * (size / PET_ATLAS_CELL_HEIGHT)
+}
+
+fn pet_sprite_path(
+    runtime_asset_root: &Path,
+    support_dir: &Path,
+    pet: &PetSummary,
+    custom_pets: &[PetCustomPet],
+) -> PathBuf {
+    let fallback = runtime_asset_root
+        .join("pets")
+        .join("voidcat")
+        .join("spritesheet.png");
+    if let Some(custom_id) = pet.species.strip_prefix("custom:") {
+        if let Some(custom_pet) = custom_pets.iter().find(|item| item.id == custom_id) {
+            let path = support_dir
+                .join("custom-pets")
+                .join(&custom_pet.directory_name)
+                .join(&custom_pet.spritesheet_path);
+            if path.is_file() {
+                return path;
+            }
+        }
+        return fallback;
+    }
+
+    let species = pet.species.trim();
+    let path = runtime_asset_root
+        .join("pets")
+        .join(if species.is_empty() {
+            "voidcat"
+        } else {
+            species
+        })
+        .join("spritesheet.png");
+    if path.is_file() { path } else { fallback }
 }
 
 impl CoduxApp {
@@ -7982,6 +8029,12 @@ impl CoduxApp {
         let level = self.state.pet.level.max(1);
         let progress = self.state.pet.progress.clamp(0.0, 1.0) as f32;
         let line = self.desktop_pet_line.trim().to_string();
+        let sprite_path = pet_sprite_path(
+            &self.runtime.source_root,
+            &self.state.support_dir,
+            &self.state.pet,
+            &self.pet_custom_pets,
+        );
         let name = if self.state.pet.claimed && !self.state.pet.display_name.is_empty() {
             self.state.pet.display_name.clone()
         } else {
@@ -8145,18 +8198,39 @@ impl CoduxApp {
                     .child(
                         div()
                             .size(px(112.0))
-                            .rounded_full()
-                            .border_1()
-                            .border_color(cx.theme().border)
+                            .overflow_hidden()
                             .flex()
                             .items_center()
                             .justify_center()
-                            .bg(cx.theme().primary.opacity(0.18))
-                            .text_color(cx.theme().primary)
-                            .child(Icon::new(IconName::Heart).size_6()),
+                            .child(desktop_pet_sprite(sprite_path, cx)),
                     ),
             )
     }
+}
+
+fn desktop_pet_sprite(sprite_path: PathBuf, cx: &mut Context<CoduxApp>) -> impl IntoElement {
+    let size = DESKTOP_PET_SPRITE_SIZE;
+    let visible_width = pet_sprite_visible_width(size);
+    let fallback_color = cx.theme().primary;
+
+    div().size(px(size)).overflow_hidden().flex_none().child(
+        img(sprite_path)
+            .w(px(PET_ATLAS_COLUMNS * visible_width))
+            .h(px(PET_ATLAS_ROWS * size))
+            .object_fit(ObjectFit::Fill)
+            .with_fallback(move || {
+                div()
+                    .size(px(size))
+                    .rounded_full()
+                    .bg(fallback_color.opacity(0.18))
+                    .text_color(fallback_color)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(Icon::new(IconName::Heart).size_6())
+                    .into_any_element()
+            }),
+    )
 }
 
 impl Render for CoduxApp {

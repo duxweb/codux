@@ -1,0 +1,6 @@
+{
+  "id": "ox-default",
+  "displayName": "ox",
+  "description": "Codux bundled pet atlas.",
+  "spritesheetPath": "spritesheet.png"
+}

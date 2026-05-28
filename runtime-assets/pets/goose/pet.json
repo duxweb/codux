@@ -1,0 +1,6 @@
+{
+  "id": "goose-default",
+  "displayName": "goose",
+  "description": "Codux bundled pet atlas.",
+  "spritesheetPath": "spritesheet.png"
+}
