@@ -1,6 +1,7 @@
 use super::{CoduxApp, empty_label};
 use crate::theme::{self, color};
 use codux_runtime::{
+    app_info::AppAboutMetadata,
     memory::MemorySummary,
     notification::NotificationSummary,
     remote::RemoteSummary,
@@ -277,7 +278,10 @@ fn settings_pane_body(
 ) -> AnyElement {
     match pane {
         SettingsPane::General => {
-            settings_general_pane(&app.state.settings, &app.state.update, window, cx)
+            let about = app
+                .runtime_service
+                .about_metadata(env!("CARGO_PKG_VERSION"), "com.duxweb.dmux.gpui");
+            settings_general_pane(&app.state.settings, &app.state.update, &about, window, cx)
         }
         SettingsPane::Appearance => settings_appearance_pane(&app.state.settings, window, cx),
         SettingsPane::Pet => settings_pet_pane(&app.state.settings, window, cx),
@@ -644,6 +648,19 @@ fn settings_status_tag(value: impl Into<String>, accent: u32) -> AnyElement {
         .into_any_element()
 }
 
+fn settings_static_value(value: impl Into<String>) -> AnyElement {
+    div()
+        .w(relative(0.3))
+        .min_w_0()
+        .text_right()
+        .text_size(px(12.0))
+        .line_height(px(16.0))
+        .text_color(color(theme::TEXT_MUTED))
+        .truncate()
+        .child(value.into())
+        .into_any_element()
+}
+
 fn settings_checkmark(selected: bool) -> AnyElement {
     div()
         .when(!selected, |this| this.hidden())
@@ -883,6 +900,7 @@ fn app_icon_preview(style: &'static str, selected: bool) -> AnyElement {
 fn settings_general_pane(
     settings: &SettingsSummary,
     update: &UpdateSummary,
+    about: &AppAboutMetadata,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
@@ -1120,6 +1138,30 @@ fn settings_general_pane(
                             },
                         ))
                         .into_any_element(),
+                )
+                .into_any_element(),
+            ],
+        )
+        .into_any_element(),
+        settings_card(
+            Some("关于"),
+            Some("来自 runtime 的应用元数据，和 Tauri 版关于窗口保持同源。".to_string()),
+            vec![
+                settings_row("版本", None, settings_static_value(about.version.clone()))
+                    .into_any_element(),
+                settings_row(
+                    "构建",
+                    None,
+                    settings_static_value(format!(
+                        "{} · {}/{}",
+                        about.build_profile, about.target_os, about.target_arch
+                    )),
+                )
+                .into_any_element(),
+                settings_row(
+                    "标识符",
+                    None,
+                    settings_static_value(about.identifier.clone()),
                 )
                 .into_any_element(),
             ],
