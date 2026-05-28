@@ -30,6 +30,7 @@ use crate::{
     runtime_state::RuntimeService,
     settings::{AIProviderSettings, AppSettings, AppSettingsStore, sync_process_locale_preference},
     ssh::{SSHProfileTestResult, SSHProfileUpsertRequest, SSHProfilesSnapshot},
+    ssh::SSHLaunchCommand,
     worktree::{WorktreeCreateRequest, WorktreeMergeRequest, WorktreeRemoveRequest, WorktreeSnapshot},
 };
 use std::path::PathBuf;
@@ -291,6 +292,17 @@ pub fn ssh_profile_test(
     runtime_assets: PathBuf,
 ) -> Result<SSHProfileTestResult, String> {
     service.test_ssh_profile(request, runtime_assets)
+}
+
+pub fn ssh_profiles(service: &RuntimeService) -> SSHProfilesSnapshot {
+    service.ssh_profiles()
+}
+
+pub fn ssh_launch_command(
+    service: &RuntimeService,
+    profile_id: String,
+) -> Result<SSHLaunchCommand, String> {
+    service.ssh_launch_command(profile_id)
 }
 
 pub fn remote_status(service: &RuntimeService) -> RemoteSummary {
@@ -946,6 +958,16 @@ mod tests {
         assert_eq!(snapshot.profiles.len(), 1);
         assert_eq!(snapshot.profiles[0].id, "profile-1");
         assert_eq!(snapshot.profiles[0].host, "example.com");
+
+        let profiles = ssh_profiles(&service);
+        assert_eq!(profiles.profiles.len(), 1);
+        assert_eq!(profiles.profiles[0].id, "profile-1");
+
+        let launch = ssh_launch_command(&service, "profile-1".to_string()).expect("launch command");
+        assert!(launch.command.contains("codux-ssh"));
+        assert!(launch.command.contains("profile-1"));
+        assert!(launch.log_command.contains("codux-ssh"));
+        assert!(launch.log_command.contains("profile-1"));
 
         let test_error = ssh_profile_test(&service, request, support_dir.join("missing-bin"))
             .expect_err("missing wrapper should fail before connecting");
