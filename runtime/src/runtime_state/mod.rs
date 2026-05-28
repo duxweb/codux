@@ -30,7 +30,8 @@ use crate::{
         PetIdleSpeechRequest, PetIdleSpeechResponse,
     },
     memory::{
-        MemoryEnqueueResult, MemoryExtractionStatusSnapshot, MemoryManagerSnapshot,
+        MemoryEnqueueResult, MemoryExtractionStatusSnapshot, MemoryManagementRequest,
+        MemoryManagementSnapshot, MemoryManagerSnapshot, MemoryManagerSnapshotRequest,
         MemoryManualEnqueueResult, MemoryProjectMigrationRequest, MemoryProjectProfile,
         MemoryProjectProfileRefreshResult, MemoryService, MemorySummary, MemorySummaryRow,
         MemorySummaryUpdateRequest,

@@ -192,6 +192,21 @@ impl RuntimeService {
         load_memory_manager(&self.support_dir, projects, scope, project_id, tab)
     }
 
+    pub fn memory_management_snapshot(
+        &self,
+        request: MemoryManagementRequest,
+    ) -> Result<MemoryManagementSnapshot, String> {
+        MemoryService::new(self.support_dir.clone()).management_snapshot(request)
+    }
+
+    pub fn memory_manager_snapshot(
+        &self,
+        projects: &[ProjectInfo],
+        request: MemoryManagerSnapshotRequest,
+    ) -> MemoryManagerSnapshot {
+        MemoryService::new(self.support_dir.clone()).manager_snapshot_for_request(projects, request)
+    }
+
     pub fn archive_memory_entry(
         &self,
         project_id: Option<&str>,
