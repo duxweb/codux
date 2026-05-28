@@ -6,6 +6,7 @@ use crate::{
     ai_history_indexer::AIHistoryProjectState,
     ai_history_normalized::{AIGlobalHistorySnapshot, AIHistoryProjectRequest},
     git::{GitPushRemoteBranchRequest, GitPushRemoteRequest, GitSummary},
+    llm::{LLMCompletionRequest, LLMCompletionResponse, LLMProviderTestResult},
     memory::{
         MemoryExtractionStatusSnapshot, MemoryProjectMigrationRequest, MemorySummaryRow,
         MemorySummaryUpdateRequest,
@@ -21,7 +22,7 @@ use crate::{
     project_store::{ProjectListSnapshot, ProjectSummary},
     remote::RemoteSummary,
     runtime_state::RuntimeService,
-    settings::{AppSettings, AppSettingsStore, sync_process_locale_preference},
+    settings::{AIProviderSettings, AppSettings, AppSettingsStore, sync_process_locale_preference},
     ssh::{SSHProfileTestResult, SSHProfileUpsertRequest, SSHProfilesSnapshot},
     worktree::{WorktreeCreateRequest, WorktreeMergeRequest, WorktreeRemoveRequest, WorktreeSnapshot},
 };
@@ -424,6 +425,19 @@ pub async fn memory_index_now(
     service: &RuntimeService,
 ) -> Result<MemoryExtractionStatusSnapshot, String> {
     service.process_memory_sessions_now().await
+}
+
+pub fn llm_complete(
+    service: &RuntimeService,
+    request: LLMCompletionRequest,
+) -> Result<LLMCompletionResponse, String> {
+    service.complete_llm(request)
+}
+
+pub async fn llm_provider_test(
+    provider: AIProviderSettings,
+) -> Result<LLMProviderTestResult, String> {
+    crate::llm::test_provider(provider).await
 }
 
 pub fn power_set_sleep_prevention(
@@ -941,6 +955,46 @@ mod tests {
         let indexed =
             crate::async_runtime::block_on(memory_index_now(&service)).expect("memory index now");
         assert_eq!(indexed.running_count, 0);
+
+        let _ = std::fs::remove_dir_all(support_dir);
+    }
+
+    #[test]
+    fn llm_commands_delegate_to_runtime_llm_layer_without_network() {
+        let support_dir = std::env::temp_dir().join(format!(
+            "codux-app-command-llm-{}",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&support_dir).expect("support dir");
+        let service = RuntimeService::new(support_dir.clone());
+
+        let completion_error = llm_complete(
+            &service,
+            LLMCompletionRequest {
+                provider_id: Some("missing".to_string()),
+                prompt: "Hello".to_string(),
+                system_prompt: None,
+                purpose: "chat".to_string(),
+            },
+        )
+        .expect_err("missing provider");
+        assert!(completion_error.contains("No available AI provider is configured"));
+
+        let provider_error = crate::async_runtime::block_on(llm_provider_test(
+            AIProviderSettings {
+                id: "provider-a".to_string(),
+                kind: "openAICompatible".to_string(),
+                display_name: "Provider A".to_string(),
+                is_enabled: true,
+                model: "gpt-test".to_string(),
+                base_url: "https://api.example.invalid/v1".to_string(),
+                api_key: String::new(),
+                use_for_memory_extraction: true,
+                priority: 0,
+            },
+        ))
+        .expect_err("missing provider key");
+        assert!(provider_error.contains("missing an API key"));
 
         let _ = std::fs::remove_dir_all(support_dir);
     }
