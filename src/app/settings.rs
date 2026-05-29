@@ -2497,7 +2497,7 @@ fn shortcut_definitions() -> Vec<ShortcutDefinition> {
         ShortcutDefinition {
             id: "task.create",
             label: "新建工作树",
-            default_value: primary_shift_static(primary, "N"),
+            default_value: primary_static(primary, "N"),
         },
         ShortcutDefinition {
             id: "editor.save",
@@ -2535,14 +2535,6 @@ fn primary_static(primary: &str, key: &str) -> &'static str {
         (_, "S") => "Ctrl+S",
         (_, "F") => "Ctrl+F",
         (_, "W") => "Ctrl+W",
-        _ => "",
-    }
-}
-
-fn primary_shift_static(primary: &str, key: &str) -> &'static str {
-    match (primary, key) {
-        ("⌘", "N") => "⌘⇧N",
-        (_, "N") => "Ctrl+Shift+N",
         _ => "",
     }
 }
