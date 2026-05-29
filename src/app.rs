@@ -7657,6 +7657,9 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) -> RuntimeActivityTickResult {
         let window_state = self.runtime_service.app_window_state(visible, focused);
+        let _ = self
+            .runtime_service
+            .set_dock_badge_count(window_state.dock_badge_count);
         if include_scheduled_tick {
             self.runtime_service.tick_project_activity();
         }

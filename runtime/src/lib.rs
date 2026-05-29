@@ -11,6 +11,7 @@ pub mod async_runtime;
 pub mod background_queue;
 pub mod dialog;
 pub mod desktop_pet;
+pub mod dock_badge;
 pub mod files;
 pub mod git;
 pub mod i18n;

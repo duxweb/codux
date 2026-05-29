@@ -96,6 +96,10 @@ impl RuntimeService {
         crate::notification::show_native_notification_blocking(title, body, group)
     }
 
+    pub fn set_dock_badge_count(&self, count: Option<i64>) -> Result<(), String> {
+        crate::dock_badge::set_dock_badge_count(count)
+    }
+
     pub fn localized_open_dialog(
         &self,
         request: LocalizedOpenDialogRequest,
