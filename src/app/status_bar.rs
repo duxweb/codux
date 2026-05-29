@@ -49,6 +49,7 @@ impl CoduxApp {
                         self.state.ai_runtime_state.running_count,
                         self.state.ai_history.indexed,
                         self.state.ai_history.is_loading,
+                        self.state.ai_history.error.as_deref(),
                         cx,
                     ))
                     .child(status_separator())
@@ -212,6 +213,7 @@ fn status_ai_segment(
     running_count: usize,
     indexed: bool,
     is_indexing: bool,
+    error: Option<&str>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let running_color = if running_count > 0 {
@@ -219,14 +221,18 @@ fn status_ai_segment(
     } else {
         theme::TEXT_DIM
     };
-    let index_color = if indexed {
+    let index_color = if error.is_some() {
+        theme::ORANGE
+    } else if indexed {
         theme::GREEN
     } else if is_indexing {
         theme::ORANGE
     } else {
         theme::TEXT_DIM
     };
-    let index_label = if indexed {
+    let index_label = if error.is_some() {
+        "索引失败"
+    } else if indexed {
         "已索引"
     } else if is_indexing {
         "索引中"
