@@ -141,7 +141,7 @@ fn ai_live_sessions_today_total(
     include_cached: bool,
 ) -> i64 {
     let now = ai_now_seconds();
-    let day_start = now - (now % 86_400.0);
+    let day_start = ai_local_day_start_seconds(now);
     sessions
         .iter()
         .filter(|session| session.updated_at >= day_start)
@@ -177,11 +177,11 @@ fn ai_history_today_total(history: &AIHistorySummary, include_cached: bool) -> i
         })
         .sum::<i64>();
     let now = ai_now_seconds();
-    let today = now - (now % 86_400.0);
+    let today = ai_local_day_start_seconds(now);
     let heatmap_total = history
         .heatmap
         .iter()
-        .filter(|day| (day.day - today).abs() < 1.0)
+        .filter(|day| (ai_local_day_start_seconds(day.day) - today).abs() < 1.0)
         .map(|day| ai_display_tokens(day.total_tokens, day.cached_input_tokens, include_cached))
         .sum::<i64>();
     let summary_total = ai_display_tokens(
@@ -2052,6 +2052,10 @@ fn ai_now_seconds() -> f64 {
         .unwrap_or(0.0)
 }
 
+fn ai_local_day_start_seconds(timestamp: f64) -> f64 {
+    codux_runtime::ai_history_normalized::local_day_start_seconds(timestamp)
+}
+
 fn ai_today_bucket_values(
     global: &AIGlobalHistorySummary,
     history: &AIHistorySummary,
@@ -2076,7 +2080,7 @@ fn ai_today_bucket_values(
     }
 
     let now = ai_now_seconds();
-    let day_start = now - (now % 86_400.0);
+    let day_start = ai_local_day_start_seconds(now);
 
     if !has_indexed_buckets {
         for session in ai_history_sessions(history, global) {
@@ -2130,9 +2134,10 @@ fn ai_recent_heatmap_values(
     let mut has_indexed_heatmap = false;
     if !history.heatmap.is_empty() {
         let now = ai_now_seconds();
-        let today = now - (now % 86_400.0);
+        let today = ai_local_day_start_seconds(now);
         for day in &history.heatmap {
-            let day_offset = ((today - day.day) / 86_400.0).round() as isize;
+            let day_start = ai_local_day_start_seconds(day.day);
+            let day_offset = ((today - day_start) / 86_400.0).round() as isize;
             if (0..values.len() as isize).contains(&day_offset) {
                 let index = values.len() - 1 - day_offset as usize;
                 values[index] +=
@@ -2143,11 +2148,11 @@ fn ai_recent_heatmap_values(
     }
 
     let now = ai_now_seconds();
-    let today = now - (now % 86_400.0);
+    let today = ai_local_day_start_seconds(now);
 
     if !has_indexed_heatmap {
         for session in ai_history_sessions(history, global) {
-            let session_day = session.last_seen_at - (session.last_seen_at % 86_400.0);
+            let session_day = ai_local_day_start_seconds(session.last_seen_at);
             let day_offset = ((today - session_day) / 86_400.0).round() as isize;
             if (0..values.len() as isize).contains(&day_offset) {
                 let index = values.len() - 1 - day_offset as usize;
@@ -2161,7 +2166,7 @@ fn ai_recent_heatmap_values(
     }
 
     for session in live_sessions {
-        let session_day = session.updated_at - (session.updated_at % 86_400.0);
+        let session_day = ai_local_day_start_seconds(session.updated_at);
         let day_offset = ((today - session_day) / 86_400.0).round() as isize;
         if (0..values.len() as isize).contains(&day_offset) {
             let index = values.len() - 1 - day_offset as usize;

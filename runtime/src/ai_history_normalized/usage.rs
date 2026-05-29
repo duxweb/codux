@@ -224,7 +224,7 @@ pub(crate) fn half_hour_bucket_start(timestamp: f64) -> f64 {
         .unwrap_or(timestamp)
 }
 
-pub(crate) fn local_day_start_seconds(timestamp: f64) -> f64 {
+pub fn local_day_start_seconds(timestamp: f64) -> f64 {
     let Some(date) = Local.timestamp_opt(timestamp as i64, 0).single() else {
         return timestamp;
     };

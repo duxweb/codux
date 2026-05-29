@@ -570,7 +570,7 @@ fn workspace_today_level_tokens(state: &RuntimeState) -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs_f64())
         .unwrap_or_default();
-    let day_start = now - (now % 86_400.0);
+    let day_start = codux_runtime::ai_history_normalized::local_day_start_seconds(now);
     let live_tokens = state
         .ai_runtime_state
         .sessions
