@@ -55,7 +55,7 @@ pub(in crate::app) fn git_section(
 fn git_panel_header(
     git: &GitSummary,
     branch: &str,
-    selected_branch: Option<&str>,
+    _selected_branch: Option<&str>,
     default_push_remote: Option<&str>,
     running_operation: Option<&GitRunningOperation>,
     cx: &mut Context<CoduxApp>,
@@ -63,10 +63,8 @@ fn git_panel_header(
     let branches = git.branches.clone();
     let remote_branches = git.remote_branches.clone();
     let remotes = git.remotes.clone();
-    let selected_branch = selected_branch.map(str::to_string);
     let default_push_remote = default_push_remote.map(str::to_string);
     let app_entity = cx.entity();
-    let branch_app_entity = app_entity.clone();
 
     div()
         .h(px(44.0))
@@ -78,195 +76,46 @@ fn git_panel_header(
         .border_b_1()
         .border_color(color(theme::BORDER_SOFT))
         .child(
-            div()
-                .flex()
-                .items_center()
-                .min_w_0()
-                .child(
-                    Button::new("git-sidebar-branch-menu")
-                        .compact()
-                        .ghost()
-                        .text_color(cx.theme().foreground)
-                        .child(
-                            div()
-                                .h(px(24.0))
-                                .flex()
-                                .items_center()
-                                .gap_1()
-                                .min_w_0()
-                                .child(
-                                    div()
-                                        .max_w(px(132.0))
-                                        .text_size(px(14.0))
-                                        .line_height(px(18.0))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .truncate()
-                                        .child(branch.to_string()),
-                                )
-                                .child(
-                                    Icon::new(IconName::ChevronDown)
-                                        .size_3()
-                                        .text_color(color(theme::TEXT_DIM)),
-                                ),
+            div().flex().items_center().min_w_0().child(
+                Button::new("git-sidebar-branch-menu")
+                    .compact()
+                    .ghost()
+                    .text_color(cx.theme().foreground)
+                    .child(
+                        div()
+                            .h(px(24.0))
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .max_w(px(132.0))
+                                    .text_size(px(14.0))
+                                    .line_height(px(18.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .truncate()
+                                    .child(branch.to_string()),
+                            )
+                            .child(
+                                Icon::new(IconName::ChevronDown)
+                                    .size_3()
+                                    .text_color(color(theme::TEXT_DIM)),
+                            ),
+                    )
+                    .dropdown_menu(move |menu, window, cx| {
+                        git_branch_dropdown_menu(
+                            menu,
+                            window,
+                            cx,
+                            branches.clone(),
+                            remote_branches.clone(),
+                            remotes.clone(),
+                            default_push_remote.clone(),
+                            app_entity.clone(),
                         )
-                        .dropdown_menu(move |menu, _window, _cx| {
-                            if branches.is_empty() && remote_branches.is_empty() {
-                                menu.item(PopupMenuItem::new("暂无分支").icon(IconName::Github))
-                            } else {
-                                let menu = branches.iter().take(18).fold(menu, |menu, branch| {
-                                    let active = selected_branch
-                                        .as_deref()
-                                        .map(|name| name == branch.name)
-                                        .unwrap_or(branch.is_current);
-                                    let branch_name = branch.name.clone();
-                                    let app_entity = branch_app_entity.clone();
-                                    menu.item(
-                                        PopupMenuItem::new(branch.name.clone())
-                                            .icon(if active {
-                                                IconName::Check
-                                            } else {
-                                                IconName::Github
-                                            })
-                                            .checked(active)
-                                            .on_click(move |_, window, cx| {
-                                                cx.update_entity(&app_entity, |app, cx| {
-                                                    app.select_git_branch(
-                                                        branch_name.clone(),
-                                                        window,
-                                                        cx,
-                                                    );
-                                                    app.checkout_selected_git_branch(window, cx);
-                                                });
-                                            }),
-                                    )
-                                });
-                                let menu = branches
-                                    .iter()
-                                    .filter(|branch| !branch.is_current)
-                                    .take(12)
-                                    .fold(menu.separator(), |menu, branch| {
-                                        let branch_name = branch.name.clone();
-                                        let app_entity = branch_app_entity.clone();
-                                        menu.item(
-                                            PopupMenuItem::new(format!(
-                                                "从 {} 创建分支",
-                                                branch.name
-                                            ))
-                                            .icon(IconName::Plus)
-                                            .on_click(move |_, window, cx| {
-                                                cx.update_entity(&app_entity, |app, cx| {
-                                                    app.create_git_branch_from(
-                                                        branch_name.clone(),
-                                                        window,
-                                                        cx,
-                                                    );
-                                                });
-                                            }),
-                                        )
-                                    });
-                                let menu = branches
-                                    .iter()
-                                    .filter(|branch| !branch.is_current)
-                                    .take(12)
-                                    .fold(menu.separator(), |menu, branch| {
-                                        let branch_name = branch.name.clone();
-                                        let app_entity = branch_app_entity.clone();
-                                        menu.item(
-                                            PopupMenuItem::new(format!("合并 {}", branch.name))
-                                                .icon(IconName::Redo2)
-                                                .on_click(move |_, window, cx| {
-                                                    cx.update_entity(&app_entity, |app, cx| {
-                                                        app.merge_git_branch(
-                                                            branch_name.clone(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    });
-                                                }),
-                                        )
-                                    });
-                                let menu = branches
-                                    .iter()
-                                    .filter(|branch| !branch.is_current)
-                                    .take(12)
-                                    .fold(menu.separator(), |menu, branch| {
-                                        let branch_name = branch.name.clone();
-                                        let app_entity = branch_app_entity.clone();
-                                        menu.item(
-                                            PopupMenuItem::new(format!("压缩合并 {}", branch.name))
-                                                .icon(IconName::Redo)
-                                                .on_click(move |_, window, cx| {
-                                                    cx.update_entity(&app_entity, |app, cx| {
-                                                        app.squash_merge_git_branch(
-                                                            branch_name.clone(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    });
-                                                }),
-                                        )
-                                    });
-                                if remote_branches.is_empty() {
-                                    menu
-                                } else {
-                                    remote_branches.iter().take(24).fold(
-                                        menu.separator(),
-                                        |menu, remote_branch| {
-                                            let remote_branch_name = remote_branch.clone();
-                                            let app_entity = branch_app_entity.clone();
-                                            let push_remote_branch = remote_branch.clone();
-                                            let push_entity = branch_app_entity.clone();
-                                            menu.item(
-                                                PopupMenuItem::new(format!(
-                                                    "检出 {}",
-                                                    remote_branch
-                                                ))
-                                                .icon(IconName::ArrowDown)
-                                                .on_click(move |_, window, cx| {
-                                                    cx.update_entity(&app_entity, |app, cx| {
-                                                        app.checkout_git_remote_branch(
-                                                            remote_branch_name.clone(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    });
-                                                }),
-                                            )
-                                            .item(
-                                                PopupMenuItem::new(format!(
-                                                    "推送到 {}",
-                                                    remote_branch
-                                                ))
-                                                .icon(IconName::ArrowUp)
-                                                .on_click(move |_, window, cx| {
-                                                    cx.update_entity(&push_entity, |app, cx| {
-                                                        app.push_project_git_remote_branch(
-                                                            push_remote_branch.clone(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    });
-                                                }),
-                                            )
-                                        },
-                                    )
-                                }
-                            }
-                        }),
-                )
-                .child(assistant_header_icon_button(
-                    "git-sidebar-create-branch",
-                    IconName::Plus,
-                    cx,
-                    |app, _event, window, cx| app.create_git_branch(window, cx),
-                ))
-                .child(assistant_header_icon_button(
-                    "git-sidebar-delete-branch",
-                    IconName::Delete,
-                    cx,
-                    |app, _event, window, cx| app.delete_selected_git_branch(window, cx),
-                ))
-                .child(git_push_state_tag(git)),
+                    }),
+            ),
         )
         .child(
             div()
@@ -277,30 +126,6 @@ fn git_panel_header(
                     IconName::Asterisk,
                     cx,
                     |app, _event, window, cx| app.generate_git_commit_message_with_ai(window, cx),
-                ))
-                .child(assistant_header_icon_button(
-                    "git-sidebar-fetch",
-                    IconName::ArrowDown,
-                    cx,
-                    |app, _event, window, cx| app.fetch_project_git(window, cx),
-                ))
-                .child(assistant_header_icon_button(
-                    "git-sidebar-pull",
-                    IconName::ArrowDown,
-                    cx,
-                    |app, _event, window, cx| app.pull_project_git(window, cx),
-                ))
-                .child(assistant_header_icon_button(
-                    "git-sidebar-push",
-                    IconName::ArrowUp,
-                    cx,
-                    |app, _event, window, cx| app.push_project_git(window, cx),
-                ))
-                .child(git_remote_menu_button(
-                    remotes,
-                    default_push_remote,
-                    app_entity,
-                    cx,
                 ))
                 .when_some(running_operation, |this, operation| {
                     if operation.cancellable {
@@ -326,14 +151,6 @@ fn git_panel_header(
                         )
                     }
                 })
-                .when(running_operation.is_none(), |this| {
-                    this.child(assistant_header_icon_button(
-                        "git-sidebar-sync",
-                        IconName::Redo2,
-                        cx,
-                        |app, _event, window, cx| app.sync_project_git(window, cx),
-                    ))
-                })
                 .child(assistant_header_icon_button(
                     "git-sidebar-refresh",
                     IconName::Redo2,
@@ -343,141 +160,422 @@ fn git_panel_header(
         )
 }
 
-fn git_push_state_tag(git: &GitSummary) -> impl IntoElement {
-    let (label, accent) = if git.upstream.is_none() {
-        ("无上游", theme::TEXT_DIM)
-    } else if git.head_pushed {
-        ("已推送", theme::GREEN)
-    } else {
-        ("未推送", theme::ORANGE)
-    };
-
-    div()
-        .ml_1()
-        .h(px(22.0))
-        .px_2()
-        .rounded(px(6.0))
-        .flex()
-        .items_center()
-        .bg(color(accent).opacity(0.12))
-        .text_size(px(12.0))
-        .line_height(px(14.0))
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(color(accent))
-        .child(label)
-}
-
-fn git_remote_menu_button(
+fn git_branch_dropdown_menu(
+    menu: PopupMenu,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+    branches: Vec<GitBranchSummary>,
+    remote_branches: Vec<String>,
     remotes: Vec<GitRemoteSummary>,
     default_push_remote: Option<String>,
     app_entity: gpui::Entity<CoduxApp>,
-    cx: &mut Context<CoduxApp>,
-) -> impl IntoElement {
-    let has_remotes = !remotes.is_empty();
+) -> PopupMenu {
+    if branches.is_empty() && remote_branches.is_empty() && remotes.is_empty() {
+        return menu.item(
+            PopupMenuItem::new("暂无 Git 分支")
+                .icon(IconName::Github)
+                .disabled(true),
+        );
+    }
 
-    Button::new("git-sidebar-remote-menu")
-        .compact()
-        .ghost()
-        .tooltip(
-            default_push_remote
-                .as_ref()
-                .map(|remote| format!("默认推送到 {remote}"))
-                .unwrap_or_else(|| "远程仓库".to_string()),
-        )
-        .text_color(cx.theme().secondary_foreground)
-        .icon(
-            Icon::new(IconName::Globe)
-                .size_3p5()
-                .text_color(cx.theme().secondary_foreground),
-        )
-        .dropdown_menu(move |menu, _window, _cx| {
-            if !has_remotes {
+    let create_entity = app_entity.clone();
+    let menu = menu.item(
+        PopupMenuItem::new("新建分支")
+            .icon(IconName::Plus)
+            .on_click(move |_, window, cx| {
+                cx.update_entity(&create_entity, |app, cx| {
+                    app.create_git_branch(window, cx);
+                });
+            }),
+    );
+
+    let local_branches = branches.clone();
+    let local_entity = app_entity.clone();
+    let menu = menu.submenu_with_icon(
+        Some(Icon::new(IconName::Github)),
+        "本地分支",
+        window,
+        cx,
+        move |menu, window, cx| {
+            if local_branches.is_empty() {
                 return menu.item(
-                    PopupMenuItem::new("暂无远程仓库")
-                        .icon(IconName::Globe)
+                    PopupMenuItem::new("暂无本地分支")
+                        .icon(IconName::Github)
                         .disabled(true),
                 );
             }
 
-            let menu = remotes.iter().fold(menu, |menu, remote| {
-                let remote_name = remote.name.clone();
-                let push_entity = app_entity.clone();
-                menu.item(
-                    PopupMenuItem::new(format!("推送到 {}", remote.name))
-                        .icon(IconName::ArrowUp)
-                        .on_click(move |_, window, cx| {
-                            cx.update_entity(&push_entity, |app, cx| {
-                                app.push_project_git_remote(remote_name.clone(), window, cx);
-                            });
-                        }),
+            local_branches.iter().take(40).fold(menu, |menu, branch| {
+                let branch_name = branch.name.clone();
+                let is_current = branch.is_current;
+                let submenu_entity = local_entity.clone();
+                menu.submenu_with_icon(
+                    Some(Icon::new(if is_current {
+                        IconName::Check
+                    } else {
+                        IconName::Github
+                    })),
+                    branch.name.clone(),
+                    window,
+                    cx,
+                    move |menu, _window, _cx| {
+                        let switch_branch = branch_name.clone();
+                        let switch_entity = submenu_entity.clone();
+                        let merge_branch = branch_name.clone();
+                        let merge_entity = submenu_entity.clone();
+                        let squash_branch = branch_name.clone();
+                        let squash_entity = submenu_entity.clone();
+                        let delete_branch = branch_name.clone();
+                        let delete_entity = submenu_entity.clone();
+
+                        menu.item(
+                            PopupMenuItem::new("切换分支")
+                                .icon(IconName::Check)
+                                .disabled(is_current)
+                                .on_click(move |_, window, cx| {
+                                    cx.update_entity(&switch_entity, |app, cx| {
+                                        app.select_git_branch(switch_branch.clone(), window, cx);
+                                        app.checkout_selected_git_branch(window, cx);
+                                    });
+                                }),
+                        )
+                        .separator()
+                        .item(
+                            PopupMenuItem::new("合并到当前分支")
+                                .icon(IconName::Redo2)
+                                .disabled(is_current)
+                                .on_click(move |_, window, cx| {
+                                    cx.update_entity(&merge_entity, |app, cx| {
+                                        app.merge_git_branch(merge_branch.clone(), window, cx);
+                                    });
+                                }),
+                        )
+                        .item(
+                            PopupMenuItem::new("压缩合并到当前分支")
+                                .icon(IconName::Redo)
+                                .disabled(is_current)
+                                .on_click(move |_, window, cx| {
+                                    cx.update_entity(&squash_entity, |app, cx| {
+                                        app.squash_merge_git_branch(
+                                            squash_branch.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                }),
+                        )
+                        .separator()
+                        .item(
+                            PopupMenuItem::new("删除本地分支")
+                                .icon(IconName::Delete)
+                                .disabled(is_current)
+                                .on_click(move |_, window, cx| {
+                                    cx.update_entity(&delete_entity, |app, cx| {
+                                        app.select_git_branch(delete_branch.clone(), window, cx);
+                                        app.delete_selected_git_branch(window, cx);
+                                    });
+                                }),
+                        )
+                    },
                 )
-            });
+            })
+        },
+    );
 
-            let force_push_entity = app_entity.clone();
-            let menu = menu.separator().item(
-                PopupMenuItem::new("强制推送当前分支")
-                    .icon(IconName::TriangleAlert)
-                    .on_click(move |_, window, cx| {
-                        cx.update_entity(&force_push_entity, |app, cx| {
-                            app.force_push_project_git(window, cx);
-                        });
-                    }),
-            );
+    let merge_branches = branches.clone();
+    let merge_entity = app_entity.clone();
+    let menu = menu.submenu(
+        "合并到当前分支",
+        window,
+        cx,
+        move |menu, _window, _cx| {
+            let candidates = merge_branches
+                .iter()
+                .filter(|branch| !branch.is_current)
+                .take(40)
+                .collect::<Vec<_>>();
+            if candidates.is_empty() {
+                return menu.item(
+                    PopupMenuItem::new("暂无可合并分支")
+                        .icon(IconName::Redo2)
+                        .disabled(true),
+                );
+            }
 
-            let menu = menu.separator();
-            let menu = remotes.iter().fold(menu, |menu, remote| {
-                let is_default = default_push_remote
-                    .as_deref()
-                    .map(|name| name == remote.name)
-                    .unwrap_or(false);
-                let remote_name = remote.name.clone();
-                let default_entity = app_entity.clone();
+            candidates.into_iter().fold(menu, |menu, branch| {
+                let branch_name = branch.name.clone();
+                let app_entity = merge_entity.clone();
                 menu.item(
-                    PopupMenuItem::new(format!("设为默认: {}", remote.name))
-                        .icon(if is_default {
-                            IconName::Check
-                        } else {
-                            IconName::Globe
-                        })
-                        .checked(is_default)
+                    PopupMenuItem::new(branch.name.clone())
+                        .icon(IconName::Redo2)
                         .on_click(move |_, window, cx| {
-                            cx.update_entity(&default_entity, |app, cx| {
-                                app.set_project_default_push_remote(
-                                    Some(remote_name.clone()),
-                                    window,
-                                    cx,
-                                );
-                            });
-                        }),
-                )
-            });
-
-            let clear_entity = app_entity.clone();
-            let menu = menu.separator().item(
-                PopupMenuItem::new("清空默认远程")
-                    .icon(IconName::Delete)
-                    .disabled(default_push_remote.is_none())
-                    .on_click(move |_, window, cx| {
-                        cx.update_entity(&clear_entity, |app, cx| {
-                            app.set_project_default_push_remote(None, window, cx);
-                        });
-                    }),
-            );
-
-            remotes.iter().fold(menu.separator(), |menu, remote| {
-                let remote_name = remote.name.clone();
-                let remove_entity = app_entity.clone();
-                menu.item(
-                    PopupMenuItem::new(format!("移除 {}", remote.name))
-                        .icon(IconName::Delete)
-                        .on_click(move |_, window, cx| {
-                            cx.update_entity(&remove_entity, |app, cx| {
-                                app.remove_project_git_remote(remote_name.clone(), window, cx);
+                            cx.update_entity(&app_entity, |app, cx| {
+                                app.merge_git_branch(branch_name.clone(), window, cx);
                             });
                         }),
                 )
             })
+        },
+    );
+
+    let remote_branch_items = remote_branches.clone();
+    let remote_branch_entity = app_entity.clone();
+    let menu = menu.submenu("远程分支", window, cx, move |menu, window, cx| {
+        let fetch_entity = remote_branch_entity.clone();
+        let menu = menu.item(
+            PopupMenuItem::new("刷新远程分支")
+                .icon(IconName::Redo2)
+                .on_click(move |_, window, cx| {
+                    cx.update_entity(&fetch_entity, |app, cx| {
+                        app.fetch_project_git(window, cx);
+                    });
+                }),
+        );
+
+        if remote_branch_items.is_empty() {
+            return menu.separator().item(
+                PopupMenuItem::new("暂无远程分支")
+                    .icon(IconName::ArrowDown)
+                    .disabled(true),
+            );
+        }
+
+        remote_branch_items
+            .iter()
+            .take(80)
+            .fold(menu.separator(), |menu, remote_branch| {
+                let checkout_branch = remote_branch.clone();
+                let checkout_entity = remote_branch_entity.clone();
+                let push_branch = remote_branch.clone();
+                let push_entity = remote_branch_entity.clone();
+                menu.submenu(
+                    remote_branch.clone(),
+                    window,
+                    cx,
+                    move |menu, _window, _cx| {
+                        let checkout_branch = checkout_branch.clone();
+                        let checkout_entity = checkout_entity.clone();
+                        let push_branch = push_branch.clone();
+                        let push_entity = push_entity.clone();
+
+                        menu.item(
+                            PopupMenuItem::new("检出为本地分支")
+                                .icon(IconName::ArrowDown)
+                                .on_click(move |_, window, cx| {
+                                    cx.update_entity(&checkout_entity, |app, cx| {
+                                        app.checkout_git_remote_branch(
+                                            checkout_branch.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                }),
+                        )
+                        .item(
+                            PopupMenuItem::new("推送到此分支")
+                                .icon(IconName::ArrowUp)
+                                .on_click(move |_, window, cx| {
+                                    cx.update_entity(&push_entity, |app, cx| {
+                                        app.push_project_git_remote_branch(
+                                            push_branch.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                }),
+                        )
+                    },
+                )
+            })
+    });
+
+    let remote_items = remotes.clone();
+    let remote_entity = app_entity.clone();
+    let default_remote = default_push_remote.clone();
+    let menu = menu.submenu("远程仓库", window, cx, move |menu, window, cx| {
+        if remote_items.is_empty() {
+            return menu.item(
+                PopupMenuItem::new("暂无远程仓库")
+                    .icon(IconName::Globe)
+                    .disabled(true),
+            );
+        }
+
+        remote_items.iter().fold(menu, |menu, remote| {
+            let is_default = default_remote
+                .as_deref()
+                .map(|name| name == remote.name)
+                .unwrap_or(false);
+            let remote_name = remote.name.clone();
+            let remote_url = remote.url.clone();
+            let set_entity = remote_entity.clone();
+            let remove_entity = remote_entity.clone();
+            menu.submenu_with_icon(
+                Some(Icon::new(if is_default {
+                    IconName::Check
+                } else {
+                    IconName::Globe
+                })),
+                remote.name.clone(),
+                window,
+                cx,
+                move |menu, _window, _cx| {
+                    let set_remote = remote_name.clone();
+                    let set_entity = set_entity.clone();
+                    let remove_remote = remote_name.clone();
+                    let remove_entity = remove_entity.clone();
+                    let copy_url = remote_url.clone();
+
+                    menu.item(
+                        PopupMenuItem::new("设为默认")
+                            .icon(IconName::Check)
+                            .checked(is_default)
+                            .on_click(move |_, window, cx| {
+                                cx.update_entity(&set_entity, |app, cx| {
+                                    app.set_project_default_push_remote(
+                                        Some(set_remote.clone()),
+                                        window,
+                                        cx,
+                                    );
+                                });
+                            }),
+                    )
+                    .item(
+                        PopupMenuItem::new("复制 URL")
+                            .icon(IconName::Copy)
+                            .on_click(move |_, _window, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(copy_url.clone()));
+                            }),
+                    )
+                    .separator()
+                    .item(
+                        PopupMenuItem::new("移除远程仓库")
+                            .icon(IconName::Delete)
+                            .on_click(move |_, window, cx| {
+                                cx.update_entity(&remove_entity, |app, cx| {
+                                    app.remove_project_git_remote(
+                                        remove_remote.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                });
+                            }),
+                    )
+                },
+            )
         })
+    });
+
+    let clear_default_entity = app_entity.clone();
+    let menu = menu.item(
+        PopupMenuItem::new("清空默认远程")
+            .icon(IconName::Delete)
+            .disabled(default_push_remote.is_none())
+            .on_click(move |_, window, cx| {
+                cx.update_entity(&clear_default_entity, |app, cx| {
+                    app.set_project_default_push_remote(None, window, cx);
+                });
+            }),
+    );
+
+    let fetch_entity = app_entity.clone();
+    let pull_entity = app_entity.clone();
+    let push_entity = app_entity.clone();
+    let menu =
+        menu.separator()
+            .item(
+                PopupMenuItem::new("拉取远程状态")
+                    .icon(IconName::ArrowDown)
+                    .on_click(move |_, window, cx| {
+                        cx.update_entity(&fetch_entity, |app, cx| {
+                            app.fetch_project_git(window, cx);
+                        });
+                    }),
+            )
+            .item(
+                PopupMenuItem::new("拉取")
+                    .icon(IconName::ArrowDown)
+                    .on_click(move |_, window, cx| {
+                        cx.update_entity(&pull_entity, |app, cx| {
+                            app.pull_project_git(window, cx);
+                        });
+                    }),
+            )
+            .item(PopupMenuItem::new("推送").icon(IconName::ArrowUp).on_click(
+                move |_, window, cx| {
+                    cx.update_entity(&push_entity, |app, cx| {
+                        app.push_project_git(window, cx);
+                    });
+                },
+            ));
+
+    let push_remotes = remotes.clone();
+    let push_remote_entity = app_entity.clone();
+    let menu = menu.submenu("推送到...", window, cx, move |menu, _window, _cx| {
+        if push_remotes.is_empty() {
+            return menu.item(
+                PopupMenuItem::new("暂无远程仓库")
+                    .icon(IconName::Globe)
+                    .disabled(true),
+            );
+        }
+
+        push_remotes.iter().fold(menu, |menu, remote| {
+            let remote_name = remote.name.clone();
+            let app_entity = push_remote_entity.clone();
+            menu.item(
+                PopupMenuItem::new(remote.name.clone())
+                    .icon(IconName::ArrowUp)
+                    .on_click(move |_, window, cx| {
+                        cx.update_entity(&app_entity, |app, cx| {
+                            app.push_project_git_remote(remote_name.clone(), window, cx);
+                        });
+                    }),
+            )
+        })
+    });
+
+    let force_push_entity = app_entity.clone();
+    let undo_entity = app_entity.clone();
+    let edit_entity = app_entity.clone();
+    let reveal_entity = app_entity.clone();
+    menu.separator()
+        .item(
+            PopupMenuItem::new("强制推送")
+                .icon(IconName::TriangleAlert)
+                .on_click(move |_, window, cx| {
+                    cx.update_entity(&force_push_entity, |app, cx| {
+                        app.force_push_project_git(window, cx);
+                    });
+                }),
+        )
+        .item(
+            PopupMenuItem::new("撤销上次提交")
+                .icon(IconName::Undo2)
+                .on_click(move |_, window, cx| {
+                    cx.update_entity(&undo_entity, |app, cx| {
+                        app.undo_last_git_commit(window, cx);
+                    });
+                }),
+        )
+        .item(
+            PopupMenuItem::new("编辑上次提交信息")
+                .icon(IconName::Redo)
+                .on_click(move |_, window, cx| {
+                    cx.update_entity(&edit_entity, |app, cx| {
+                        app.load_last_git_commit_message(window, cx);
+                    });
+                }),
+        )
+        .item(
+            PopupMenuItem::new("在文件管理器显示仓库")
+                .icon(IconName::FolderOpen)
+                .on_click(move |_, window, cx| {
+                    cx.update_entity(&reveal_entity, |app, cx| {
+                        app.reveal_selected_project_in_file_manager(window, cx);
+                    });
+                }),
+        )
 }
 
 fn git_repository_panel(

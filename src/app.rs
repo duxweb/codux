@@ -44,16 +44,16 @@ use codux_runtime::{
     worktree::{ProjectWorktreeGitSummary, WorktreeInfo, WorktreeTaskInfo},
 };
 use gpui::{
-    AnyElement, AnyWindowHandle, App, AppContext, Bounds, Context, DispatchPhase, FontWeight,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ObjectFit, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, StyledImage, Window,
+    AnyElement, AnyWindowHandle, App, AppContext, Bounds, ClipboardItem, Context, DispatchPhase,
+    FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ObjectFit,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, StyledImage, Window,
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, img,
     linear_color_stop, linear_gradient, point, prelude::FluentBuilder as _, px, size,
 };
 use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, Root, Sizable,
     button::{Button, ButtonVariants},
-    menu::{DropdownMenu, PopupMenuItem},
+    menu::{DropdownMenu, PopupMenu, PopupMenuItem},
     resizable::{resizable_panel, v_resizable},
     scroll::ScrollableElement,
     tag::Tag,
