@@ -22,6 +22,7 @@ use codux_runtime::{
         MemoryProjectMigrationRequest, MemoryProjectProfileRefreshResult, MemorySummary,
         MemorySummaryUpdateRequest,
     },
+    notification::{NotificationChannelConfig, NotificationDispatchRequest},
     pet::{
         PetClaimRequest, PetCustomPet, PetCustomPetInstallPreview, PetCustomPetInstallRequest,
         PetRenameRequest, PetRestoreRequest, PetSnapshot, PetSummary,
@@ -7341,6 +7342,7 @@ impl CoduxApp {
         let drained = self
             .runtime_service
             .drain_ai_runtime_events_and_enqueue_memory();
+        self.dispatch_ai_completion_notifications(&drained.events);
         self.state.runtime_activity = self.runtime_service.reload_runtime_activity();
         self.state.runtime_events = self.runtime_service.reload_runtime_events();
         let live_ai_snapshot = self.runtime_service.ai_runtime_state_snapshot();
@@ -7389,6 +7391,60 @@ impl CoduxApp {
                 || include_scheduled_tick
                 || ai_state_error.is_some(),
             ai_state_error,
+        }
+    }
+
+    fn dispatch_ai_completion_notifications(
+        &self,
+        events: &[codux_runtime::ai_runtime::AIRuntimeSupervisorEvent],
+    ) {
+        let channels = self
+            .state
+            .notifications
+            .channels
+            .iter()
+            .filter(|channel| channel.enabled && !channel.endpoint.trim().is_empty())
+            .map(|channel| NotificationChannelConfig {
+                id: channel.id.clone(),
+                endpoint: channel.endpoint.clone(),
+                token: channel.token.clone(),
+            })
+            .collect::<Vec<_>>();
+        if channels.is_empty() {
+            return;
+        }
+
+        let completions = events
+            .iter()
+            .filter_map(|event| match event {
+                codux_runtime::ai_runtime::AIRuntimeSupervisorEvent::Completion { completion } => {
+                    Some(completion.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if completions.is_empty() {
+            return;
+        }
+
+        for completion in completions {
+            let service = self.runtime_service.clone();
+            let channels = channels.clone();
+            codux_runtime::async_runtime::spawn_blocking(move || {
+                let title = if completion.was_interrupted {
+                    "Task interrupted"
+                } else {
+                    "Task completed"
+                }
+                .to_string();
+                let body = format!("{} · {}", completion.project_name, completion.tool);
+                service.dispatch_notification_channels(NotificationDispatchRequest {
+                    channels,
+                    title,
+                    body,
+                    group: "codux-task".to_string(),
+                });
+            });
         }
     }
 
