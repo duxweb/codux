@@ -22,10 +22,13 @@ pub(in crate::app) fn ai_stats_sidebar(
     _window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let live_project_total_tokens =
-        ai_runtime_live_project_total_tokens(ai_runtime_state, selected_project_id);
+    let live_sessions = ai_live_sessions(ai_runtime_state, selected_project_id);
+    let live_project_total_tokens = ai_live_sessions_total(&live_sessions);
+    let live_today_tokens = ai_live_sessions_today_total(&live_sessions);
     let project_total_tokens = history.project_total_tokens + live_project_total_tokens;
-    let today_total_tokens = history.today_total_tokens + live_project_total_tokens;
+    let today_total_tokens = history.today_total_tokens + live_today_tokens;
+    let tool_rows = ai_tool_rows(history, global, &live_sessions);
+    let model_rows = ai_model_rows(history, global, &live_sessions);
 
     div()
         .flex()
@@ -52,7 +55,7 @@ pub(in crate::app) fn ai_stats_sidebar(
                 .p(px(12.0))
                 .flex()
                 .flex_col()
-                .child(ai_current_session_card(history, cx))
+                .child(ai_current_session_card(&live_sessions, cx))
                 .child(
                     div()
                         .mt(px(12.0))
@@ -68,43 +71,66 @@ pub(in crate::app) fn ai_stats_sidebar(
                             cx,
                         ))),
                 )
-                .child(
-                    div()
-                        .mt(px(12.0))
-                        .child(ai_today_usage_chart(global, history, cx)),
-                )
-                .child(
-                    div()
-                        .mt(px(12.0))
-                        .child(ai_recent_usage_heatmap(global, history, cx)),
-                )
-                .child(div().mt(px(12.0)).child(ai_ranking_card(
-                    "工具排行",
-                    ai_top_tool(history, global),
+                .child(div().mt(px(12.0)).child(ai_today_usage_chart(
+                    global,
+                    history,
+                    &live_sessions,
                     cx,
                 )))
-                .child(div().mt(px(12.0)).child(ai_ranking_card(
-                    "模型排行",
-                    ai_top_model(history, global),
+                .child(div().mt(px(12.0)).child(ai_recent_usage_heatmap(
+                    global,
+                    history,
+                    &live_sessions,
                     cx,
-                ))),
+                )))
+                .child(
+                    div()
+                        .mt(px(12.0))
+                        .child(ai_ranking_card("工具排行", tool_rows, cx)),
+                )
+                .child(
+                    div()
+                        .mt(px(12.0))
+                        .child(ai_ranking_card("模型排行", model_rows, cx)),
+                ),
         )
         .child(ai_indexing_status_bar(history, cx))
 }
 
-fn ai_runtime_live_project_total_tokens(
-    ai_runtime_state: &AIRuntimeStateSummary,
+fn ai_live_sessions<'a>(
+    ai_runtime_state: &'a AIRuntimeStateSummary,
     selected_project_id: Option<&str>,
-) -> i64 {
-    let Some(selected_project_id) = selected_project_id else {
-        return 0;
-    };
+) -> Vec<&'a codux_runtime::ai_runtime_state::AIRuntimeSessionSummary> {
     ai_runtime_state
-        .project_totals
+        .sessions
         .iter()
-        .find(|project| project.project_id == selected_project_id)
-        .map(|project| project.total_tokens.max(0))
-        .unwrap_or(0)
+        .filter(|session| {
+            selected_project_id
+                .map(|project_id| session.project_id == project_id)
+                .unwrap_or(true)
+        })
+        .collect()
+}
+
+fn ai_live_sessions_total(
+    sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
+) -> i64 {
+    sessions
+        .iter()
+        .map(|session| session.total_tokens.max(0))
+        .sum()
+}
+
+fn ai_live_sessions_today_total(
+    sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
+) -> i64 {
+    let now = ai_now_seconds();
+    let day_start = now - (now % 86_400.0);
+    sessions
+        .iter()
+        .filter(|session| session.updated_at >= day_start)
+        .map(|session| session.total_tokens.max(0))
+        .sum()
 }
 
 fn ai_stats_card(title: &'static str, cx: &mut Context<CoduxApp>) -> gpui::Div {
@@ -125,54 +151,101 @@ fn ai_stats_card(title: &'static str, cx: &mut Context<CoduxApp>) -> gpui::Div {
 }
 
 fn ai_current_session_card(
-    history: &AIHistorySummary,
+    sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let body = history.sessions.first().map(|session| {
+    let body = if sessions.is_empty() {
         div()
-            .mt(px(22.0))
+            .flex_1()
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_size(px(12.0))
+            .line_height(px(16.0))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(color(theme::TEXT_DIM))
+            .child("当前没有可显示的 AI 会话")
+            .into_any_element()
+    } else {
+        div()
+            .mt(px(10.0))
             .flex()
             .flex_col()
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .line_height(px(16.0))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(color(theme::TEXT))
-                    .truncate()
-                    .child(session.title.clone()),
-            )
-            .child(
-                div()
-                    .mt(px(4.0))
-                    .text_size(px(12.0))
-                    .line_height(px(16.0))
-                    .text_color(color(theme::TEXT_DIM))
-                    .child(format!(
-                        "{} · {} 请求 · {}",
-                        session.source,
-                        session.request_count,
-                        compact_number(session.total_tokens)
-                    )),
+            .children(
+                sessions
+                    .iter()
+                    .take(6)
+                    .map(|session| ai_live_session_row(session, cx).into_any_element()),
             )
             .into_any_element()
-    });
+    };
 
     ai_stats_card("当前会话累计", cx)
         .min_h(px(100.0))
-        .child(body.unwrap_or_else(|| {
+        .child(body)
+}
+
+fn ai_live_session_row(
+    session: &codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
+    cx: &mut Context<CoduxApp>,
+) -> impl IntoElement {
+    div()
+        .mb(px(8.0))
+        .rounded(px(8.0))
+        .bg(ai_stats_track_surface(cx))
+        .px(px(10.0))
+        .py(px(8.0))
+        .flex()
+        .items_start()
+        .justify_between()
+        .gap_3()
+        .child(
             div()
-                .flex_1()
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_size(px(12.0))
-                .line_height(px(16.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(color(theme::TEXT_DIM))
-                .child("当前没有可显示的 AI 会话")
-                .into_any_element()
-        }))
+                .min_w_0()
+                .child(
+                    div()
+                        .text_size(px(14.0))
+                        .line_height(px(18.0))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(color(theme::TEXT))
+                        .truncate()
+                        .child(if session.tool.trim().is_empty() {
+                            "-".to_string()
+                        } else {
+                            session.tool.clone()
+                        }),
+                )
+                .child(
+                    div()
+                        .mt(px(2.0))
+                        .text_size(px(12.0))
+                        .line_height(px(16.0))
+                        .text_color(color(theme::TEXT_DIM))
+                        .truncate()
+                        .child(session.model.clone().unwrap_or_else(|| "-".to_string())),
+                ),
+        )
+        .child(
+            div()
+                .flex_shrink_0()
+                .text_right()
+                .child(
+                    div()
+                        .text_size(px(16.0))
+                        .line_height(px(18.0))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(color(theme::TEXT))
+                        .child(compact_number(session.total_tokens.max(0))),
+                )
+                .child(
+                    div()
+                        .mt(px(2.0))
+                        .text_size(px(12.0))
+                        .line_height(px(16.0))
+                        .text_color(color(theme::TEXT_MUTED))
+                        .child("会话累计"),
+                ),
+        )
 }
 
 fn ai_indexing_status_bar(
@@ -1742,9 +1815,10 @@ fn ai_metric_card(
 fn ai_today_usage_chart(
     global: &AIGlobalHistorySummary,
     history: &AIHistorySummary,
+    live_sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let values = ai_today_bucket_values(global, history);
+    let values = ai_today_bucket_values(global, history, live_sessions);
     let max_value = values.iter().copied().max().unwrap_or(0).max(1);
 
     ai_stats_card("今日用量", cx)
@@ -1793,9 +1867,10 @@ fn ai_today_usage_chart(
 fn ai_recent_usage_heatmap(
     global: &AIGlobalHistorySummary,
     history: &AIHistorySummary,
+    live_sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let values = ai_recent_heatmap_values(global, history);
+    let values = ai_recent_heatmap_values(global, history, live_sessions);
     let max_value = values.iter().copied().max().unwrap_or(0).max(1);
     let inactive_surface = ai_stats_track_surface(cx);
     ai_stats_card("近期用量", cx).child(div().mt(px(12.0)).flex().flex_wrap().children(
@@ -1819,15 +1894,40 @@ fn ai_recent_usage_heatmap(
 
 fn ai_ranking_card(
     title: &'static str,
-    row: Option<(String, i64, f32)>,
+    rows: Vec<(String, i64, f32)>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let track_surface = ai_stats_track_surface(cx);
-    let (label, value, percent) = row.unwrap_or_else(|| ("暂无数据".to_string(), 0, 0.0));
-    ai_stats_card(title, cx)
+    ai_stats_card(title, cx).child(if rows.is_empty() {
+        div()
+            .mt(px(12.0))
+            .text_size(px(12.0))
+            .line_height(px(16.0))
+            .text_color(color(theme::TEXT_DIM))
+            .child("暂无 AI 统计")
+            .into_any_element()
+    } else {
+        div()
+            .mt(px(12.0))
+            .flex()
+            .flex_col()
+            .children(rows.into_iter().map(|(label, value, percent)| {
+                ai_ranking_row(label, value, percent, track_surface).into_any_element()
+            }))
+            .into_any_element()
+    })
+}
+
+fn ai_ranking_row(
+    label: String,
+    value: i64,
+    percent: f32,
+    track_surface: gpui::Hsla,
+) -> impl IntoElement {
+    div()
+        .mb(px(10.0))
         .child(
             div()
-                .mt(px(16.0))
                 .flex()
                 .items_center()
                 .justify_between()
@@ -1844,27 +1944,17 @@ fn ai_ranking_card(
                 )
                 .child(
                     div()
-                        .flex()
-                        .items_center()
+                        .flex_shrink_0()
                         .text_size(px(12.0))
                         .line_height(px(16.0))
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child(
-                            div()
-                                .text_color(color(theme::TEXT_MUTED))
-                                .child(compact_number(value)),
-                        )
-                        .child(
-                            div()
-                                .ml(px(12.0))
-                                .text_color(color(theme::TEXT_DIM))
-                                .child(format!("{:.0}%", percent * 100.0)),
-                        ),
+                        .text_color(color(theme::TEXT_MUTED))
+                        .child(compact_number(value)),
                 ),
         )
         .child(
             div()
-                .mt(px(16.0))
+                .mt(px(6.0))
                 .h(px(4.0))
                 .w_full()
                 .rounded(px(4.0))
@@ -1900,8 +1990,10 @@ fn ai_now_seconds() -> f64 {
 fn ai_today_bucket_values(
     global: &AIGlobalHistorySummary,
     history: &AIHistorySummary,
+    live_sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
 ) -> [i64; 10] {
     let mut buckets = [0_i64; 10];
+    let mut has_indexed_buckets = false;
     if !history.today_time_buckets.is_empty() {
         for bucket in &history.today_time_buckets {
             let index = (((bucket.start - history.today_time_buckets[0].start) / 86_400.0)
@@ -1910,19 +2002,29 @@ fn ai_today_bucket_values(
                 .clamp(0.0, (buckets.len() - 1) as f64) as usize;
             buckets[index] += bucket.total_tokens.max(0);
         }
-        if buckets.iter().any(|value| *value > 0) {
-            return buckets;
-        }
+        has_indexed_buckets = buckets.iter().any(|value| *value > 0);
     }
 
     let now = ai_now_seconds();
     let day_start = now - (now % 86_400.0);
 
-    for session in ai_history_sessions(history, global) {
-        if session.last_seen_at < day_start {
+    if !has_indexed_buckets {
+        for session in ai_history_sessions(history, global) {
+            if session.last_seen_at < day_start {
+                continue;
+            }
+            let bucket = (((session.last_seen_at - day_start) / 86_400.0) * buckets.len() as f64)
+                .floor()
+                .clamp(0.0, (buckets.len() - 1) as f64) as usize;
+            buckets[bucket] += session.total_tokens.max(0);
+        }
+    }
+
+    for session in live_sessions {
+        if session.updated_at < day_start {
             continue;
         }
-        let bucket = (((session.last_seen_at - day_start) / 86_400.0) * buckets.len() as f64)
+        let bucket = (((session.updated_at - day_start) / 86_400.0) * buckets.len() as f64)
             .floor()
             .clamp(0.0, (buckets.len() - 1) as f64) as usize;
         buckets[bucket] += session.total_tokens.max(0);
@@ -1938,8 +2040,10 @@ fn ai_today_bucket_values(
 fn ai_recent_heatmap_values(
     global: &AIGlobalHistorySummary,
     history: &AIHistorySummary,
+    live_sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
 ) -> [i64; 84] {
     let mut values = [0_i64; 84];
+    let mut has_indexed_heatmap = false;
     if !history.heatmap.is_empty() {
         let now = ai_now_seconds();
         let today = now - (now % 86_400.0);
@@ -1950,16 +2054,25 @@ fn ai_recent_heatmap_values(
                 values[index] += day.total_tokens.max(0);
             }
         }
-        if values.iter().any(|value| *value > 0) {
-            return values;
-        }
+        has_indexed_heatmap = values.iter().any(|value| *value > 0);
     }
 
     let now = ai_now_seconds();
     let today = now - (now % 86_400.0);
 
-    for session in ai_history_sessions(history, global) {
-        let session_day = session.last_seen_at - (session.last_seen_at % 86_400.0);
+    if !has_indexed_heatmap {
+        for session in ai_history_sessions(history, global) {
+            let session_day = session.last_seen_at - (session.last_seen_at % 86_400.0);
+            let day_offset = ((today - session_day) / 86_400.0).round() as isize;
+            if (0..values.len() as isize).contains(&day_offset) {
+                let index = values.len() - 1 - day_offset as usize;
+                values[index] += session.total_tokens.max(0);
+            }
+        }
+    }
+
+    for session in live_sessions {
+        let session_day = session.updated_at - (session.updated_at % 86_400.0);
         let day_offset = ((today - session_day) / 86_400.0).round() as isize;
         if (0..values.len() as isize).contains(&day_offset) {
             let index = values.len() - 1 - day_offset as usize;
@@ -1974,40 +2087,58 @@ fn ai_recent_heatmap_values(
     values
 }
 
-fn ai_top_tool(
+fn ai_tool_rows(
     history: &AIHistorySummary,
     global: &AIGlobalHistorySummary,
-) -> Option<(String, i64, f32)> {
+    live_sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
+) -> Vec<(String, i64, f32)> {
     if !history.tool_breakdown.is_empty() {
-        return ai_top_breakdown(
+        return ai_rank_rows(
             history
                 .tool_breakdown
                 .iter()
-                .map(|item| (item.key.clone(), item.total_tokens)),
+                .map(|item| (item.key.clone(), item.total_tokens))
+                .chain(
+                    live_sessions
+                        .iter()
+                        .map(|session| (session.tool.clone(), session.total_tokens)),
+                ),
         );
     }
 
-    ai_top_breakdown(
+    ai_rank_rows(
         ai_history_sessions(history, global)
             .into_iter()
-            .map(|session| (session.source.clone(), session.total_tokens)),
+            .map(|session| (session.source.clone(), session.total_tokens))
+            .chain(
+                live_sessions
+                    .iter()
+                    .map(|session| (session.tool.clone(), session.total_tokens)),
+            ),
     )
 }
 
-fn ai_top_model(
+fn ai_model_rows(
     history: &AIHistorySummary,
     global: &AIGlobalHistorySummary,
-) -> Option<(String, i64, f32)> {
+    live_sessions: &[&codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
+) -> Vec<(String, i64, f32)> {
     if !history.model_breakdown.is_empty() {
-        return ai_top_breakdown(
+        return ai_rank_rows(
             history
                 .model_breakdown
                 .iter()
-                .map(|item| (item.key.clone(), item.total_tokens)),
+                .map(|item| (item.key.clone(), item.total_tokens))
+                .chain(live_sessions.iter().filter_map(|session| {
+                    session
+                        .model
+                        .clone()
+                        .map(|model| (model, session.total_tokens))
+                })),
         );
     }
 
-    ai_top_breakdown(
+    ai_rank_rows(
         ai_history_sessions(history, global)
             .into_iter()
             .filter_map(|session| {
@@ -2015,24 +2146,33 @@ fn ai_top_model(
                     .last_model
                     .clone()
                     .map(|model| (model, session.total_tokens))
-            }),
+            })
+            .chain(live_sessions.iter().filter_map(|session| {
+                session
+                    .model
+                    .clone()
+                    .map(|model| (model, session.total_tokens))
+            })),
     )
 }
 
-fn ai_top_breakdown(rows: impl Iterator<Item = (String, i64)>) -> Option<(String, i64, f32)> {
+fn ai_rank_rows(rows: impl Iterator<Item = (String, i64)>) -> Vec<(String, i64, f32)> {
     let mut totals = BTreeMap::<String, i64>::new();
     for (label, value) in rows {
-        if label.trim().is_empty() || value <= 0 {
+        let label = label.trim();
+        if label.is_empty() || label.eq_ignore_ascii_case("unknown") || value <= 0 {
             continue;
         }
-        *totals.entry(label).or_default() += value;
+        *totals.entry(label.to_string()).or_default() += value;
     }
 
-    let total = totals.values().sum::<i64>().max(1);
-    totals
-        .into_iter()
-        .max_by_key(|(_, value)| *value)
-        .map(|(label, value)| (label, value, value as f32 / total as f32))
+    let max_value = totals.values().copied().max().unwrap_or(1).max(1);
+    let mut rows = totals.into_iter().collect::<Vec<_>>();
+    rows.sort_by(|left, right| right.1.cmp(&left.1));
+    rows.into_iter()
+        .take(4)
+        .map(|(label, value)| (label, value, value as f32 / max_value as f32))
+        .collect()
 }
 
 fn ai_sessions_panel(
