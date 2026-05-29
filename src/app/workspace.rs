@@ -1,4 +1,5 @@
 use super::*;
+use codux_runtime::{i18n::translate, settings::locale_from_language_setting};
 use gpui::{Anchor, relative};
 use gpui_component::{
     input::{Input, InputEvent, InputState},
@@ -88,7 +89,11 @@ impl CoduxApp {
                             window,
                             cx,
                         ))
-                        .child(workspace_level_button(today_level_tokens, cx))
+                        .child(workspace_level_button(
+                            today_level_tokens,
+                            &self.state.settings.language,
+                            cx,
+                        ))
                         .child(workspace_assistant_button(
                             "AI",
                             AssistantPanel::AIStats,
@@ -549,9 +554,15 @@ fn workspace_open_button(
         })
 }
 
-fn workspace_level_button(tokens: i64, cx: &mut Context<CoduxApp>) -> impl IntoElement {
+fn workspace_level_button(
+    tokens: i64,
+    language: &str,
+    cx: &mut Context<CoduxApp>,
+) -> impl IntoElement {
     let tokens = tokens.max(0);
     let tier = daily_level_tier(tokens);
+    let language = language.to_string();
+    let button_label = daily_level_title(&tier, &language);
 
     Popover::new("workspace-level-popover")
         .anchor(Anchor::TopRight)
@@ -560,9 +571,15 @@ fn workspace_level_button(tokens: i64, cx: &mut Context<CoduxApp>) -> impl IntoE
             workspace_header_button("workspace-level", cx)
                 .secondary()
                 .text_color(cx.theme().foreground)
-                .child(workspace_daily_level_button_content(tier.clone(), cx)),
+                .child(workspace_daily_level_button_content(
+                    tier.clone(),
+                    button_label,
+                    cx,
+                )),
         )
-        .content(move |_, _, _| workspace_level_popover_content(tokens, tier.clone()))
+        .content(move |_, _, _| {
+            workspace_level_popover_content(tokens, tier.clone(), language.clone())
+        })
 }
 
 fn workspace_today_level_tokens(state: &RuntimeState) -> i64 {
@@ -814,8 +831,18 @@ fn daily_level_tier(tokens: i64) -> DailyLevelTier {
         .unwrap_or_else(|| DAILY_LEVEL_TIERS[0].clone())
 }
 
+fn daily_level_title(tier: &DailyLevelTier, language: &str) -> String {
+    workspace_i18n(language, &format!("rank.{}", tier.id), tier.title)
+}
+
+fn workspace_i18n(language: &str, key: &str, fallback: &str) -> String {
+    let locale = locale_from_language_setting(language);
+    translate(&locale, key, fallback)
+}
+
 fn workspace_daily_level_button_content(
     tier: DailyLevelTier,
+    label: String,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     div()
@@ -830,12 +857,21 @@ fn workspace_daily_level_button_content(
                 .text_size(px(12.0))
                 .line_height(px(12.0))
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(tier.title),
+                .child(label),
         )
 }
 
-fn workspace_level_popover_content(tokens: i64, current_tier: DailyLevelTier) -> impl IntoElement {
+fn workspace_level_popover_content(
+    tokens: i64,
+    current_tier: DailyLevelTier,
+    language: String,
+) -> impl IntoElement {
     let tokens = tokens.max(0);
+    let current_title = daily_level_title(&current_tier, &language);
+    let today_level_label = workspace_i18n(&language, "ai.today_level", "Today's Level");
+    let today_tokens_label = workspace_i18n(&language, "ai.today_tokens", "Today's Tokens");
+    let current_label = workspace_i18n(&language, "common.current", "Current");
+    let need_template = workspace_i18n(&language, "common.need_format", "Need %@");
 
     div()
         .flex()
@@ -857,7 +893,7 @@ fn workspace_level_popover_content(tokens: i64, current_tier: DailyLevelTier) ->
                                 .line_height(px(16.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(color(theme::TEXT_MUTED))
-                                .child("今日等级"),
+                                .child(today_level_label),
                         )
                         .child(
                             div()
@@ -865,7 +901,7 @@ fn workspace_level_popover_content(tokens: i64, current_tier: DailyLevelTier) ->
                                 .text_size(px(15.0))
                                 .line_height(px(18.0))
                                 .font_weight(FontWeight::BOLD)
-                                .child(current_tier.title),
+                                .child(current_title),
                         ),
                 )
                 .child(
@@ -877,7 +913,7 @@ fn workspace_level_popover_content(tokens: i64, current_tier: DailyLevelTier) ->
                                 .line_height(px(14.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(color(theme::TEXT_MUTED))
-                                .child("今日 Tokens"),
+                                .child(today_tokens_label),
                         )
                         .child(
                             div()
@@ -892,6 +928,8 @@ fn workspace_level_popover_content(tokens: i64, current_tier: DailyLevelTier) ->
         .child(div().mt(px(12.0)).flex().flex_col().gap_1().children(
             DAILY_LEVEL_TIERS.into_iter().map(|tier| {
                 let current = tier.id == current_tier.id;
+                let title = daily_level_title(&tier, &language);
+                let need = need_template.replace("%@", &compact_number(tier.min));
                 div()
                     .rounded(px(8.0))
                     .px(px(10.0))
@@ -920,7 +958,7 @@ fn workspace_level_popover_content(tokens: i64, current_tier: DailyLevelTier) ->
                                     .text_size(px(13.0))
                                     .line_height(px(16.0))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child(tier.title),
+                                    .child(title),
                             )
                             .child(
                                 div()
@@ -928,7 +966,7 @@ fn workspace_level_popover_content(tokens: i64, current_tier: DailyLevelTier) ->
                                     .text_size(px(11.0))
                                     .line_height(px(14.0))
                                     .text_color(color(theme::TEXT_MUTED))
-                                    .child(format!("需要 {}", compact_number(tier.min))),
+                                    .child(need),
                             ),
                     )
                     .when(current, |this| {
@@ -942,7 +980,7 @@ fn workspace_level_popover_content(tokens: i64, current_tier: DailyLevelTier) ->
                                 .font_weight(FontWeight::BOLD)
                                 .bg(color(tier.color).opacity(0.14))
                                 .text_color(color(tier.color))
-                                .child("当前"),
+                                .child(current_label.clone()),
                         )
                     })
                     .into_any_element()
