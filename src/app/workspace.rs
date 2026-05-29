@@ -51,6 +51,7 @@ impl CoduxApp {
         };
         let pet_snapshot = self.runtime_service.pet_snapshot().ok();
         let today_level_tokens = workspace_today_level_tokens(&self.state);
+        let has_project_context = self.state.selected_project.is_some();
         column_header(
             div()
                 .flex()
@@ -69,11 +70,6 @@ impl CoduxApp {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .child(workspace_open_button(
-                            &self.project_open_applications,
-                            self.state.selected_project.is_some(),
-                            cx,
-                        ))
                         .when(self.state.settings.pet_enabled, |this| {
                             this.child(workspace_pet_button(
                                 &self.state.pet,
@@ -100,30 +96,37 @@ impl CoduxApp {
                                 cx,
                             ))
                         })
-                        .child(workspace_assistant_button(
-                            "AI",
-                            AssistantPanel::AIStats,
-                            self.assistant_panel,
-                            cx,
-                        ))
-                        .child(workspace_assistant_button(
-                            "SSH",
-                            AssistantPanel::SSH,
-                            self.assistant_panel,
-                            cx,
-                        ))
-                        .child(workspace_assistant_button(
-                            "Files",
-                            AssistantPanel::FileManager,
-                            self.assistant_panel,
-                            cx,
-                        ))
-                        .child(workspace_assistant_button(
-                            "Git",
-                            AssistantPanel::Git,
-                            self.assistant_panel,
-                            cx,
-                        )),
+                        .when(has_project_context, |this| {
+                            this.child(workspace_open_button(
+                                &self.project_open_applications,
+                                true,
+                                cx,
+                            ))
+                            .child(workspace_assistant_button(
+                                "AI",
+                                AssistantPanel::AIStats,
+                                self.assistant_panel,
+                                cx,
+                            ))
+                            .child(workspace_assistant_button(
+                                "SSH",
+                                AssistantPanel::SSH,
+                                self.assistant_panel,
+                                cx,
+                            ))
+                            .child(workspace_assistant_button(
+                                "Files",
+                                AssistantPanel::FileManager,
+                                self.assistant_panel,
+                                cx,
+                            ))
+                            .child(workspace_assistant_button(
+                                "Git",
+                                AssistantPanel::Git,
+                                self.assistant_panel,
+                                cx,
+                            ))
+                        }),
                 ),
         )
     }

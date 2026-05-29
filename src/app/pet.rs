@@ -234,6 +234,12 @@ impl CoduxApp {
             selected_species.clone()
         };
         let custom_pets = catalog.custom_pets.clone();
+        let language = self.state.settings.language.clone();
+        let selected_catalog_item = catalog
+            .species
+            .iter()
+            .find(|item| item.species == selected_species)
+            .cloned();
 
         pet_window_shell(
             "领取宠物",
@@ -266,6 +272,7 @@ impl CoduxApp {
                                         &self.runtime.source_root,
                                         &self.state.support_dir,
                                         &self.pet_custom_pets,
+                                        &language,
                                         window,
                                         cx,
                                     )
@@ -308,6 +315,8 @@ impl CoduxApp {
                             &self.runtime.source_root,
                             &self.state.support_dir,
                             &self.pet_custom_pets,
+                            selected_catalog_item.as_ref(),
+                            &language,
                             cx,
                         )))
                         .child(div().px(px(20.0)).pb(px(16.0)).child(
@@ -545,6 +554,7 @@ impl CoduxApp {
                         .child(pet_catalog_section(
                             catalog.species.clone(),
                             &unlocked_species,
+                            &self.state.settings.language,
                             cx,
                         ))
                         .child(pet_custom_section(
@@ -560,6 +570,7 @@ impl CoduxApp {
                 &catalog,
                 &self.runtime.source_root,
                 &self.state.support_dir,
+                &self.state.settings.language,
                 cx,
             ))
         })
@@ -727,13 +738,18 @@ fn pet_claim_option_row(
     runtime_asset_root: &Path,
     support_dir: &Path,
     custom_pets: &[PetCustomPet],
+    language: &str,
     _window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let selected = selected_species == item.species;
     let species = item.species.clone();
-    let title = pet_species_name(&item.species);
-    let subtitle = pet_species_subtitle(&item.species);
+    let title = pet_catalog_text(language, &item.name_key, &pet_species_name(&item.species));
+    let subtitle = pet_catalog_text(
+        language,
+        &item.subtitle_key,
+        &pet_species_subtitle(&item.species),
+    );
     let sprite_path = pet_sprite_path(
         runtime_asset_root,
         support_dir,
@@ -888,6 +904,8 @@ fn pet_claim_preview(
     runtime_asset_root: &Path,
     support_dir: &Path,
     custom_pets: &[PetCustomPet],
+    catalog_item: Option<&PetCatalogItem>,
+    language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let sprite_path = pet_sprite_path(runtime_asset_root, support_dir, pet, custom_pets);
@@ -900,12 +918,26 @@ fn pet_claim_preview(
             .map(|custom| custom.display_name.clone())
             .unwrap_or_else(|| "自定义宠物".to_string())
     } else {
-        pet_species_name(&pet.species)
+        catalog_item
+            .map(|item| pet_catalog_text(language, &item.name_key, &pet_species_name(&pet.species)))
+            .unwrap_or_else(|| pet_species_name(&pet.species))
     };
     let description = if random {
-        "确认领取时会从内置宠物里随机选择一个伙伴。".to_string()
+        pet_catalog_text(
+            language,
+            "pet.claim.random.description",
+            "确认领取时会从内置宠物里随机选择一个伙伴。",
+        )
     } else {
-        "领取后会使用现有 Tauri runtime 的宠物进度、等级和历史统计。".to_string()
+        catalog_item
+            .map(|item| {
+                pet_catalog_text(
+                    language,
+                    &item.description_key,
+                    &pet_species_subtitle(&pet.species),
+                )
+            })
+            .unwrap_or_else(|| pet_species_subtitle(&pet.species))
     };
 
     div()
@@ -1293,6 +1325,7 @@ fn pet_legacy_section(
 fn pet_catalog_section(
     items: Vec<PetCatalogItem>,
     unlocked_species: &HashSet<String>,
+    language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     div()
@@ -1338,7 +1371,11 @@ fn pet_catalog_section(
                                 .line_height(px(18.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .child(if unlocked {
-                                    pet_species_name(&item.species)
+                                    pet_catalog_text(
+                                        language,
+                                        &item.name_key,
+                                        &pet_species_name(&item.species),
+                                    )
                                 } else {
                                     "???".to_string()
                                 }),
@@ -1451,6 +1488,7 @@ fn pet_dex_spotlight_overlay(
     catalog: &PetCatalog,
     runtime_asset_root: &Path,
     support_dir: &Path,
+    language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     if spotlight == PetDexSpotlight::ArchiveConfirm {
@@ -1468,9 +1506,13 @@ fn pet_dex_spotlight_overlay(
                     ..PetSummary::default()
                 };
                 (
-                    pet_species_name(&item.species),
+                    pet_catalog_text(language, &item.name_key, &pet_species_name(&item.species)),
                     "伙伴".to_string(),
-                    pet_species_subtitle(&item.species),
+                    pet_catalog_text(
+                        language,
+                        &item.description_key,
+                        &pet_species_subtitle(&item.species),
+                    ),
                     pet_sprite_path(runtime_asset_root, support_dir, &pet, &[]),
                     None,
                 )
@@ -1697,6 +1739,11 @@ fn pet_section_header(label: &'static str, count: usize) -> impl IntoElement {
                 .text_color(color(theme::ACCENT))
                 .child(count.to_string()),
         )
+}
+
+fn pet_catalog_text(language: &str, key: &str, fallback: &str) -> String {
+    let locale = locale_from_language_setting(language);
+    translate(&locale, key, fallback)
 }
 
 fn pet_species_name(species: &str) -> String {

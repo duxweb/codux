@@ -36,6 +36,9 @@ impl CoduxApp {
         let Some(panel) = self.assistant_panel else {
             return div().into_any_element();
         };
+        if self.state.selected_project.is_none() {
+            return div().into_any_element();
+        }
 
         div()
             .flex()
