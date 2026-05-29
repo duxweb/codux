@@ -425,6 +425,27 @@ impl CoduxApp {
         let custom_pets = catalog.custom_pets.clone();
         let total_count = catalog.species.len() + custom_pets.len();
         let unlocked_count = unlocked_species.len() + custom_pets.len();
+        let current_name = if self.state.pet.claimed {
+            self.state.pet.display_name.clone()
+        } else {
+            "未领取".to_string()
+        };
+        let current_level = if self.state.pet.claimed {
+            format!("Lv.{}", snapshot.progress.level.max(1))
+        } else {
+            "未领取".to_string()
+        };
+        let archived_count = snapshot.legacy.len();
+        let archived_subtitle = if archived_count == 0 {
+            "暂无归档宠物"
+        } else {
+            "历史伙伴"
+        };
+        let collection_subtitle = if total_count > 0 && unlocked_count == total_count {
+            "全部伙伴已解锁"
+        } else {
+            "继续探索"
+        };
         let primary_action = if self.state.pet.claimed {
             pet_inline_button(
                 "pet-dex-archive",
@@ -479,7 +500,15 @@ impl CoduxApp {
                         .flex()
                         .flex_col()
                         .gap(px(12.0))
-                        .child(pet_dex_intro_card(unlocked_count, total_count))
+                        .child(pet_dex_intro_card(
+                            current_name,
+                            current_level,
+                            archived_count,
+                            archived_subtitle,
+                            unlocked_count,
+                            total_count,
+                            collection_subtitle,
+                        ))
                         .child(pet_dex_current_card(
                             &self.state.pet,
                             current_custom_pet.as_ref(),
@@ -1006,7 +1035,15 @@ fn pet_dex_current_card(
         )
 }
 
-fn pet_dex_intro_card(unlocked_count: usize, total_count: usize) -> impl IntoElement {
+fn pet_dex_intro_card(
+    current_name: String,
+    current_level: String,
+    archived_count: usize,
+    archived_subtitle: &'static str,
+    unlocked_count: usize,
+    total_count: usize,
+    collection_subtitle: &'static str,
+) -> impl IntoElement {
     div()
         .rounded(px(8.0))
         .bg(color(0xFFFFFF).opacity(0.055))
@@ -1041,29 +1078,64 @@ fn pet_dex_intro_card(unlocked_count: usize, total_count: usize) -> impl IntoEle
         )
         .child(
             div()
-                .mt(px(10.0))
-                .rounded(px(7.0))
-                .bg(color(0xFFFFFF).opacity(0.045))
-                .px(px(10.0))
-                .py(px(8.0))
+                .mt(px(12.0))
                 .flex()
-                .items_center()
-                .justify_between()
+                .flex_col()
+                .gap(px(8.0))
+                .child(pet_dex_summary_row("当前伙伴", current_level, current_name))
+                .child(pet_dex_summary_row(
+                    "已归档",
+                    archived_subtitle.to_string(),
+                    archived_count.to_string(),
+                ))
+                .child(pet_dex_summary_row(
+                    "图鉴收集",
+                    collection_subtitle.to_string(),
+                    format!("{unlocked_count}/{}", total_count.max(1)),
+                )),
+        )
+}
+
+fn pet_dex_summary_row(label: &'static str, subtitle: String, value: String) -> impl IntoElement {
+    div()
+        .rounded(px(7.0))
+        .bg(color(0xFFFFFF).opacity(0.045))
+        .px(px(10.0))
+        .py(px(8.0))
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(10.0))
+        .child(
+            div()
+                .min_w_0()
                 .child(
                     div()
                         .text_size(px(12.0))
                         .line_height(px(16.0))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(color(theme::TEXT_MUTED))
-                        .child("图鉴收集"),
+                        .child(label),
                 )
                 .child(
                     div()
-                        .text_size(px(14.0))
-                        .line_height(px(18.0))
-                        .font_weight(FontWeight::BOLD)
-                        .child(format!("{unlocked_count}/{}", total_count.max(1))),
+                        .mt(px(2.0))
+                        .truncate()
+                        .text_size(px(12.0))
+                        .line_height(px(15.0))
+                        .text_color(color(theme::TEXT_DIM))
+                        .child(subtitle),
                 ),
+        )
+        .child(
+            div()
+                .max_w(px(96.0))
+                .truncate()
+                .text_right()
+                .text_size(px(14.0))
+                .line_height(px(18.0))
+                .font_weight(FontWeight::BOLD)
+                .child(value),
         )
 }
 
