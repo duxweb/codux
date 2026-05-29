@@ -313,7 +313,7 @@ fn ai_live_session_row(
 
 fn ai_indexing_status_bar(
     history: &AIHistorySummary,
-    _cx: &mut Context<CoduxApp>,
+    cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let (label, accent) = if let Some(error) = history.error.as_ref() {
         (format!("索引失败 · {error}"), theme::ORANGE)
@@ -348,10 +348,36 @@ fn ai_indexing_status_bar(
         .child(
             div()
                 .ml(px(8.0))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .gap_1()
                 .text_size(px(12.0))
                 .line_height(px(16.0))
                 .text_color(color(theme::TEXT_MUTED))
-                .child(format!("{} 会话", history.session_count)),
+                .child(format!("{} 会话", history.session_count))
+                .when(history.error.is_some() || history.indexed, |this| {
+                    this.child(
+                        Button::new("ai-indexing-status-refresh")
+                            .compact()
+                            .ghost()
+                            .text_color(cx.theme().secondary_foreground)
+                            .icon(
+                                Icon::new(IconName::Redo2)
+                                    .size_3()
+                                    .text_color(cx.theme().secondary_foreground),
+                            )
+                            .label(if history.error.is_some() {
+                                "重试"
+                            } else {
+                                "刷新"
+                            })
+                            .on_click(cx.listener(|app, _event, window, cx| {
+                                app.reload_ai_history(window, cx);
+                                app.reload_runtime_activity(window, cx);
+                            })),
+                    )
+                }),
         )
 }
 
