@@ -74,28 +74,32 @@ impl CoduxApp {
                             self.state.selected_project.is_some(),
                             cx,
                         ))
-                        .child(workspace_pet_button(
-                            &self.state.pet,
-                            pet_snapshot.as_ref(),
-                            &self.pet_custom_pets,
-                            &self.runtime.source_root,
-                            &self.state.support_dir,
-                            &self.state.settings.language,
-                            &self.pet_install_url,
-                            &self.pet_install_display_name,
-                            self.pet_install_preview.as_ref(),
-                            self.pet_install_error.as_deref(),
-                            self.pet_install_previewing,
-                            self.pet_installing,
-                            self.pet_name_editing,
-                            window,
-                            cx,
-                        ))
-                        .child(workspace_level_button(
-                            today_level_tokens,
-                            &self.state.settings.language,
-                            cx,
-                        ))
+                        .when(self.state.settings.pet_enabled, |this| {
+                            this.child(workspace_pet_button(
+                                &self.state.pet,
+                                pet_snapshot.as_ref(),
+                                &self.pet_custom_pets,
+                                &self.runtime.source_root,
+                                &self.state.support_dir,
+                                &self.state.settings.language,
+                                &self.pet_install_url,
+                                &self.pet_install_display_name,
+                                self.pet_install_preview.as_ref(),
+                                self.pet_install_error.as_deref(),
+                                self.pet_install_previewing,
+                                self.pet_installing,
+                                self.pet_name_editing,
+                                window,
+                                cx,
+                            ))
+                        })
+                        .when(!self.state.projects.is_empty(), |this| {
+                            this.child(workspace_level_button(
+                                today_level_tokens,
+                                &self.state.settings.language,
+                                cx,
+                            ))
+                        })
                         .child(workspace_assistant_button(
                             "AI",
                             AssistantPanel::AIStats,
