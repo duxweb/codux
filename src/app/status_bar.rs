@@ -15,12 +15,10 @@ impl CoduxApp {
             .text_color(color(theme::TEXT_MUTED))
             .text_xs()
             .font_weight(FontWeight::SEMIBOLD)
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(status_metric(
+            .child(div().flex().items_center().gap_1().when(
+                self.state.settings.developer_hud,
+                |this| {
+                    this.child(status_metric(
                         IconName::ChartPie,
                         "CPU",
                         self.state.performance.cpu_label.clone(),
@@ -36,8 +34,9 @@ impl CoduxApp {
                         IconName::Frame,
                         "GPU",
                         self.state.performance.gpu_label.clone(),
-                    )),
-            )
+                    ))
+                },
+            ))
             .child(
                 div()
                     .flex()

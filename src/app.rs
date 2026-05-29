@@ -2258,6 +2258,9 @@ impl CoduxApp {
         match self.runtime_service.toggle_developer_hud() {
             Ok(settings) => {
                 self.apply_settings_summary(settings);
+                if self.state.settings.developer_hud {
+                    self.state.performance = self.runtime_service.reload_performance();
+                }
                 self.normalize_selected_ai_provider();
                 self.status_message = "developer HUD setting saved".to_string();
             }
@@ -7507,7 +7510,9 @@ impl CoduxApp {
             self.state.terminal_runtime = self.runtime_service.reload_terminal_runtime();
             self.state.notifications = self.runtime_service.reload_notifications();
             self.normalize_selected_notification_channel();
-            self.state.performance = self.runtime_service.reload_performance();
+            if self.state.settings.developer_hud {
+                self.state.performance = self.runtime_service.reload_performance();
+            }
             self.normalize_selected_runtime_session();
         }
         if !drained.memory.is_empty() {
