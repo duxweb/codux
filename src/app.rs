@@ -6838,6 +6838,22 @@ impl CoduxApp {
             }
         );
         register!(
+            native_menu::HideCodux,
+            |_app: &mut CoduxApp, _window: &mut Window, cx: &mut Context<CoduxApp>| { cx.hide() }
+        );
+        register!(
+            native_menu::HideOthers,
+            |_app: &mut CoduxApp, _window: &mut Window, cx: &mut Context<CoduxApp>| {
+                cx.hide_other_apps()
+            }
+        );
+        register!(
+            native_menu::ShowAll,
+            |_app: &mut CoduxApp, _window: &mut Window, cx: &mut Context<CoduxApp>| {
+                cx.unhide_other_apps()
+            }
+        );
+        register!(
             native_menu::NewProject,
             |app: &mut CoduxApp, window: &mut Window, cx: &mut Context<CoduxApp>| {
                 app.open_project_create_window(window, cx)
