@@ -4,9 +4,10 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{Mutex, OnceLock},
 };
 
 pub const DESKTOP_PET_LABEL: &str = "desktop-pet";
@@ -29,7 +30,11 @@ const DESKTOP_PET_SPRITE_VISIBLE_INSET_TOP: f64 = 12.0;
 const DESKTOP_PET_SPRITE_VISIBLE_INSET_BOTTOM: f64 = 4.0;
 const DESKTOP_PET_MARGIN: f64 = 24.0;
 const DESKTOP_PET_DEFAULT_BOTTOM_MARGIN: f64 = 110.0;
-static DESKTOP_PET_BUBBLE_VISIBLE: AtomicBool = AtomicBool::new(false);
+static DESKTOP_PET_BUBBLE_VISIBLE: OnceLock<Mutex<HashMap<PathBuf, bool>>> = OnceLock::new();
+
+fn desktop_pet_bubble_visible() -> &'static Mutex<HashMap<PathBuf, bool>> {
+    DESKTOP_PET_BUBBLE_VISIBLE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -140,7 +145,9 @@ impl DesktopPetService {
     }
 
     pub fn set_bubble_visible(&self, visible: bool) -> DesktopPetVisibilitySnapshot {
-        DESKTOP_PET_BUBBLE_VISIBLE.store(visible, Ordering::Relaxed);
+        if let Ok(mut state) = desktop_pet_bubble_visible().lock() {
+            state.insert(self.support_dir.clone(), visible);
+        }
         DesktopPetVisibilitySnapshot {
             should_show: self.should_show().unwrap_or(false),
             bubble_visible: visible,
@@ -148,7 +155,11 @@ impl DesktopPetService {
     }
 
     pub fn bubble_visible(&self) -> bool {
-        DESKTOP_PET_BUBBLE_VISIBLE.load(Ordering::Relaxed)
+        desktop_pet_bubble_visible()
+            .lock()
+            .ok()
+            .and_then(|state| state.get(&self.support_dir).copied())
+            .unwrap_or(false)
     }
 
     pub fn sync_visibility(&self) -> Result<DesktopPetVisibilitySnapshot, String> {
