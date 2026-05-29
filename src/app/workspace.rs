@@ -1180,29 +1180,59 @@ fn workspace_pet_popover_content(
                         .flex_col()
                         .gap_2()
                         .child(workspace_pet_trait(
+                            "brain",
                             workspace_i18n(&language, "pet.attribute.wisdom", "Wisdom"),
                             stats.wisdom,
                             0x2F8FFF,
+                            workspace_i18n(
+                                &language,
+                                "pet.attribute.wisdom.help",
+                                "Reflects deeper, denser sessions with more substantial exchanges.",
+                            ),
                         ))
                         .child(workspace_pet_trait(
+                            "flame",
                             workspace_i18n(&language, "pet.attribute.chaos", "Chaos"),
                             stats.chaos,
                             0xFF6030,
+                            workspace_i18n(
+                                &language,
+                                "pet.attribute.chaos.help",
+                                "Reflects fast, jumpy, high-tempo sessions with frequent bursts.",
+                            ),
                         ))
                         .child(workspace_pet_trait(
+                            "moon",
                             workspace_i18n(&language, "pet.attribute.night", "Night"),
                             stats.night,
                             0x6060CC,
+                            workspace_i18n(
+                                &language,
+                                "pet.attribute.night.help",
+                                "Reflects how much of your recent activity leans into late-night hours.",
+                            ),
                         ))
                         .child(workspace_pet_trait(
+                            "arm",
                             workspace_i18n(&language, "pet.attribute.stamina", "Stamina"),
                             stats.stamina,
                             0x20A060,
+                            workspace_i18n(
+                                &language,
+                                "pet.attribute.stamina.help",
+                                "Reflects steadier sessions that hold focus across more sustained back-and-forth.",
+                            ),
                         ))
                         .child(workspace_pet_trait(
+                            "bandage",
                             workspace_i18n(&language, "pet.attribute.empathy", "Empathy"),
                             stats.empathy,
                             0xE060A0,
+                            workspace_i18n(
+                                &language,
+                                "pet.attribute.empathy.help",
+                                "Reflects patient repair work, iterative debugging, and careful refinement.",
+                            ),
                         )),
                 ),
         )
@@ -1287,24 +1317,33 @@ fn workspace_pet_meter(
         )
 }
 
-fn workspace_pet_trait(label: String, value: i64, accent: u32) -> impl IntoElement {
+fn workspace_pet_trait(
+    emoji_kind: &'static str,
+    label: String,
+    value: i64,
+    accent: u32,
+    help: String,
+) -> impl IntoElement {
     let ratio = (value as f32 / 330.0).clamp(0.0, 1.0);
     div()
+        .id(SharedString::from(format!("pet-trait-{emoji_kind}")))
+        .tooltip(move |window, cx| Tooltip::new(help.clone()).build(window, cx))
         .grid()
         .grid_cols(4)
         .items_center()
-        .gap_2()
+        .gap(px(6.0))
         .text_size(px(12.0))
         .line_height(px(16.0))
+        .child(pet_trait_emoji(emoji_kind))
         .child(
             div()
                 .text_color(color(theme::TEXT_MUTED))
                 .font_weight(FontWeight::MEDIUM)
+                .truncate()
                 .child(label),
         )
         .child(
             div()
-                .col_span(2)
                 .h(px(5.0))
                 .rounded_full()
                 .overflow_hidden()
@@ -1324,6 +1363,23 @@ fn workspace_pet_trait(label: String, value: i64, accent: u32) -> impl IntoEleme
                 .text_color(color(theme::TEXT_DIM))
                 .child(compact_number(value)),
         )
+}
+
+fn pet_trait_emoji(kind: &'static str) -> impl IntoElement {
+    let emoji = match kind {
+        "brain" => "🧠",
+        "flame" => "🔥",
+        "moon" => "🌙",
+        "arm" => "💪",
+        "bandage" => "🩹",
+        _ => "",
+    };
+    div()
+        .w(px(16.0))
+        .text_center()
+        .text_size(px(12.0))
+        .line_height(px(12.0))
+        .child(emoji)
 }
 
 fn pet_persona_label(persona: &str, language: &str) -> String {
