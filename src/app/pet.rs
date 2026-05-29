@@ -376,6 +376,7 @@ impl CoduxApp {
             )
             .disabled(
                 self.pet_install_preview.is_none()
+                    || self.pet_install_display_name.trim().is_empty()
                     || self.pet_install_previewing
                     || self.pet_installing,
             )

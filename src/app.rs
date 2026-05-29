@@ -7936,7 +7936,6 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         self.pet_install_display_name = value;
-        self.pet_install_preview = None;
         cx.notify();
     }
 
@@ -7992,6 +7991,7 @@ impl CoduxApp {
         }
         match result {
             Ok(preview) => {
+                self.pet_install_display_name = preview.display_name.clone();
                 self.status_message =
                     format!("custom pet preview loaded: {}", preview.display_name);
                 self.pet_install_preview = Some(preview);
@@ -8038,6 +8038,11 @@ impl CoduxApp {
             return;
         }
         let display_name = self.pet_install_display_name.trim().to_string();
+        if display_name.is_empty() {
+            self.status_message = "enter a pet name before installing".to_string();
+            cx.notify();
+            return;
+        }
         let request = PetCustomPetInstallRequest {
             page_url: page_url.clone(),
             display_name: display_name.clone(),
