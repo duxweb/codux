@@ -49,6 +49,7 @@ impl CoduxApp {
             WorkspaceView::Review => 2,
         };
         let pet_snapshot = self.runtime_service.pet_snapshot().ok();
+        let today_level_tokens = workspace_today_level_tokens(&self.state);
         column_header(
             div()
                 .flex()
@@ -86,7 +87,7 @@ impl CoduxApp {
                             window,
                             cx,
                         ))
-                        .child(workspace_level_button(&self.state.pet, cx))
+                        .child(workspace_level_button(today_level_tokens, cx))
                         .child(workspace_assistant_button(
                             "AI",
                             AssistantPanel::AIStats,
@@ -547,8 +548,8 @@ fn workspace_open_button(
         })
 }
 
-fn workspace_level_button(pet: &PetSummary, cx: &mut Context<CoduxApp>) -> impl IntoElement {
-    let tokens = pet.daily_xp.max(0);
+fn workspace_level_button(tokens: i64, cx: &mut Context<CoduxApp>) -> impl IntoElement {
+    let tokens = tokens.max(0);
     let tier = daily_level_tier(tokens);
 
     Popover::new("workspace-level-popover")
@@ -561,6 +562,24 @@ fn workspace_level_button(pet: &PetSummary, cx: &mut Context<CoduxApp>) -> impl 
                 .child(workspace_daily_level_button_content(tier.clone(), cx)),
         )
         .content(move |_, _, _| workspace_level_popover_content(tokens, tier.clone()))
+}
+
+fn workspace_today_level_tokens(state: &RuntimeState) -> i64 {
+    let history_tokens = state.ai_global_history.today_total_tokens.max(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or_default();
+    let day_start = now - (now % 86_400.0);
+    let live_tokens = state
+        .ai_runtime_state
+        .sessions
+        .iter()
+        .filter(|session| session.updated_at >= day_start)
+        .map(|session| session.total_tokens.max(0))
+        .sum::<i64>();
+
+    history_tokens + live_tokens
 }
 
 fn workspace_pet_button(
