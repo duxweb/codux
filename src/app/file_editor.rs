@@ -3,6 +3,10 @@ use crate::app::app_state::FileEditorTab;
 use crate::app::ui_helpers::codux_tooltip_container;
 use gpui_component::input::{Redo, Search, TabSize, Undo};
 
+const FILE_EDITOR_TAB_BAR_HEIGHT: f32 = 38.0;
+const FILE_EDITOR_TOOLBAR_HEIGHT: f32 = 56.0;
+const FILE_EDITOR_CHROME_HEIGHT: f32 = FILE_EDITOR_TAB_BAR_HEIGHT + FILE_EDITOR_TOOLBAR_HEIGHT;
+
 #[derive(Clone)]
 pub(in crate::app) struct FileEditorWorkspaceSnapshot {
     tabs: Vec<FileEditorTab>,
@@ -575,7 +579,10 @@ pub(in crate::app) fn file_editor_workspace(
         .when(!tabs.is_empty(), |this| {
             this.child(
                 gpui::AnyView::from(chrome_view).cached(
-                    gpui::StyleRefinement::default().flex_none().w_full(),
+                    gpui::StyleRefinement::default()
+                        .flex_none()
+                        .w_full()
+                        .h(px(FILE_EDITOR_CHROME_HEIGHT)),
                 ),
             )
             .child(
@@ -598,7 +605,7 @@ fn file_editor_tab_bar(
     cx: &mut Context<FileEditorChromeView>,
 ) -> impl IntoElement {
     div()
-        .h(px(38.0))
+        .h(px(FILE_EDITOR_TAB_BAR_HEIGHT))
         .w_full()
         .min_w_0()
         .flex()
@@ -740,7 +747,7 @@ fn file_editor_toolbar(
         .unwrap_or_default();
 
     div()
-        .h(px(56.0))
+        .h(px(FILE_EDITOR_TOOLBAR_HEIGHT))
         .flex()
         .items_center()
         .justify_between()
