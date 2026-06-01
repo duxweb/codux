@@ -685,6 +685,7 @@ export function TerminalView({
   const sessionRef = useRef<TerminalRuntimeSession | undefined>(terminalRuntime.getSession(terminalId));
   const snapshotRunRef = useRef(0);
   const shellRef = useRef<HTMLElement | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [adapterVersion, setAdapterVersion] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [session, setSession] = useState<TerminalRuntimeSession | undefined>(() => sessionRef.current);
@@ -939,18 +940,22 @@ export function TerminalView({
     if (!adapter) return;
     if (action === "copy") {
       await adapter.copySelection();
+      adapter.focus();
       return;
     }
     if (action === "paste") {
       await adapter.pasteClipboard();
+      adapter.focus();
       return;
     }
     if (action === "clear") {
       terminalRuntime.clear(terminalId);
+      adapter.focus();
       return;
     }
     if (action === "selectAll") {
       adapter.selectAll();
+      adapter.focus();
       return;
     }
     if (action === "split") {
@@ -962,7 +967,15 @@ export function TerminalView({
 
   useEffect(() => {
     if (!contextMenu) return;
-    const closeMenu = () => setContextMenu(null);
+    // closeMenu runs as a capture-phase window listener, so a bubble-phase
+    // stopPropagation on the menu element cannot prevent it. Skip closing when
+    // the interaction targets the menu itself, otherwise a pointerdown on a menu
+    // item would unmount the menu before its click fires (no copy/paste on
+    // Chromium-based WebView2 / Windows).
+    const closeMenu = (event?: Event) => {
+      if (event && contextMenuRef.current?.contains(event.target as Node)) return;
+      setContextMenu(null);
+    };
     const closeFromKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeMenu();
     };
@@ -1017,10 +1030,10 @@ export function TerminalView({
       />
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className="terminal-context-menu no-drag"
           data-native-context-menu
           style={{ left: contextMenu.x, top: contextMenu.y }}
-          onPointerDown={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
         >
           <TerminalContextMenuItem
