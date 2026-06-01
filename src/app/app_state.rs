@@ -201,6 +201,8 @@ pub struct CoduxApp {
     pub(in crate::app) project_editor_badge_symbol: Option<String>,
     pub(in crate::app) project_editor_badge_color_hex: String,
     pub(in crate::app) tooltip_state: CoduxTooltipState,
+    pub(in crate::app) ui_invalidation_counts: HashMap<&'static str, u64>,
+    pub(in crate::app) ui_invalidation_last_report_at: f64,
 }
 
 #[derive(Clone, Debug, Default)]

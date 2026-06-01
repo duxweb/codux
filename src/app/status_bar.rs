@@ -40,10 +40,8 @@ impl CoduxApp {
         view
     }
 
-    pub(in crate::app) fn notify_status_bar(&self, cx: &mut Context<Self>) {
-        if let Some(view) = &self.status_bar_view {
-            view.update(cx, |_view, cx| cx.notify());
-        }
+    pub(in crate::app) fn notify_status_bar(&mut self, cx: &mut Context<Self>) {
+        self.invalidate_status_bar(cx);
     }
 }
 

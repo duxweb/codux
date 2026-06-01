@@ -269,6 +269,8 @@ impl CoduxApp {
             project_editor_badge_symbol: None,
             project_editor_badge_color_hex: PROJECT_BADGE_COLORS[0].to_string(),
             tooltip_state: CoduxTooltipState::default(),
+            ui_invalidation_counts: HashMap::new(),
+            ui_invalidation_last_report_at: 0.0,
         }
     }
 
@@ -834,13 +836,12 @@ impl CoduxApp {
             WorkspaceView::Files => {
                 self.assistant_panel = Some(AssistantPanel::FileManager);
                 self.refresh_files_panel_state();
-                self.notify_workspace_chrome(cx);
             }
             WorkspaceView::Review => self.refresh_git_panel_state(),
             WorkspaceView::Terminal => {}
         }
-        self.notify_workspace_body(cx);
-        cx.notify();
+        self.invalidate_workspace(cx);
+        self.invalidate_status_bar(cx);
     }
 
     pub(super) fn set_settings_pane(&mut self, pane: SettingsPane, cx: &mut Context<Self>) {
@@ -862,23 +863,16 @@ impl CoduxApp {
         if self.assistant_panel == Some(panel) {
             self.refresh_assistant_panel_state(panel);
         }
-        self.notify_workspace_chrome(cx);
-        cx.notify();
+        self.invalidate_workspace_chrome(cx);
+        self.invalidate_status_bar(cx);
     }
 
-    pub(super) fn notify_workspace_chrome(&self, cx: &mut Context<Self>) {
-        if let Some(view) = &self.workspace_toolbar_view {
-            view.update(cx, |_view, cx| cx.notify());
-        }
-        if let Some(view) = &self.workspace_assistant_view {
-            view.update(cx, |_view, cx| cx.notify());
-        }
+    pub(super) fn notify_workspace_chrome(&mut self, cx: &mut Context<Self>) {
+        self.invalidate_workspace_chrome(cx);
     }
 
-    pub(super) fn notify_workspace_body(&self, cx: &mut Context<Self>) {
-        if let Some(view) = &self.workspace_body_view {
-            view.update(cx, |_view, cx| cx.notify());
-        }
+    pub(super) fn notify_workspace_body(&mut self, cx: &mut Context<Self>) {
+        self.invalidate_workspace_body(cx);
     }
 
     pub(super) fn refresh_assistant_panel_state(&mut self, panel: AssistantPanel) {

@@ -225,7 +225,7 @@ impl CoduxApp {
     ) {
         let Some(worktree_path) = self.selected_worktree_path() else {
             self.status_message = "no selected project to open file".to_string();
-            cx.notify();
+            self.invalidate_status_bar(cx);
             return;
         };
         let key = self.file_editor_state_key(&relative_path);
@@ -259,7 +259,7 @@ impl CoduxApp {
                 }
                 Err(error) => {
                     self.status_message = format!("failed to open file: {error}");
-                    cx.notify();
+                    self.invalidate_status_bar(cx);
                     return;
                 }
             }
@@ -275,9 +275,16 @@ impl CoduxApp {
         self.save_current_worktree_view_state();
         self.persist_file_editor_layout_async(cx);
         self.status_message = format!("file opened: {relative_path}");
-        self.notify_workspace_chrome(cx);
-        self.notify_workspace_body(cx);
-        cx.notify();
+        self.invalidate_ui(
+            cx,
+            [
+                UiRegion::WorkspaceChrome,
+                UiRegion::WorkspaceAssistant,
+                UiRegion::WorkspaceBody,
+                UiRegion::FileSidebar,
+                UiRegion::StatusBar,
+            ],
+        );
     }
 
     pub(super) fn select_file_editor_tab(
@@ -293,8 +300,10 @@ impl CoduxApp {
         }
         self.save_current_worktree_view_state();
         self.persist_file_editor_layout_async(cx);
-        self.notify_workspace_body(cx);
-        cx.notify();
+        self.invalidate_ui(
+            cx,
+            [UiRegion::WorkspaceBody, UiRegion::FileSidebar, UiRegion::StatusBar],
+        );
     }
 
     pub(super) fn close_file_editor_tab(
@@ -327,8 +336,10 @@ impl CoduxApp {
         }
         self.save_current_worktree_view_state();
         self.persist_file_editor_layout_async(cx);
-        self.notify_workspace_body(cx);
-        cx.notify();
+        self.invalidate_ui(
+            cx,
+            [UiRegion::WorkspaceBody, UiRegion::FileSidebar, UiRegion::StatusBar],
+        );
     }
 
     pub(super) fn mark_file_editor_dirty(
@@ -348,9 +359,7 @@ impl CoduxApp {
             self.file_dirty = dirty;
         }
         if self.workspace_view == WorkspaceView::Files {
-            if let Some(view) = &self.workspace_body_view {
-                view.update(cx, |_view, cx| cx.notify());
-            }
+            self.invalidate_workspace_body(cx);
         }
     }
 
@@ -418,7 +427,6 @@ impl CoduxApp {
         cx.subscribe_in(&state, window, move |app, _state, event, _window, cx| {
             if matches!(event, InputEvent::Change) {
                 app.mark_file_editor_dirty(&relative_path, true, cx);
-                cx.notify();
             }
         })
         .detach();

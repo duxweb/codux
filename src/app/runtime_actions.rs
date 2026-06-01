@@ -100,8 +100,22 @@ impl CoduxApp {
                         if result.pet_update_events > 0 {
                             app.sync_desktop_pet_window(false, cx);
                         }
-                        if result.changed || performance_changed || today_level_changed {
-                            cx.notify();
+                        if performance_changed {
+                            app.invalidate_status_bar(cx);
+                        }
+                        if today_level_changed {
+                            app.invalidate_ui(
+                                cx,
+                                [
+                                    UiRegion::ProjectColumn,
+                                    UiRegion::TaskColumn,
+                                    UiRegion::WorkspaceChrome,
+                                    UiRegion::StatusBar,
+                                ],
+                            );
+                        }
+                        if result.changed {
+                            app.invalidate_for_runtime_activity(&result, cx);
                             cx.refresh_windows();
                         }
                     })
@@ -173,6 +187,53 @@ impl CoduxApp {
                 self.state.ai_history.error = Some(error.clone());
                 self.status_message = format!("failed to queue AI history indexing: {error}");
             }
+        }
+    }
+}
+
+impl CoduxApp {
+    pub(in crate::app) fn invalidate_for_runtime_activity(
+        &mut self,
+        result: &RuntimeActivityTickResult,
+        cx: &mut Context<Self>,
+    ) {
+        if result.project_events > 0 || result.ai_events > 0 {
+            self.invalidate_ui(
+                cx,
+                [
+                    UiRegion::ProjectColumn,
+                    UiRegion::TaskColumn,
+                    UiRegion::StatusBar,
+                ],
+            );
+        }
+        if result.file_events > 0 {
+            self.invalidate_ui(
+                cx,
+                [UiRegion::FileSidebar, UiRegion::WorkspaceBody],
+            );
+        }
+        if result.ai_history_events > 0 {
+            self.invalidate_ui(
+                cx,
+                [
+                    UiRegion::TaskColumn,
+                    UiRegion::WorkspaceAssistant,
+                    UiRegion::StatusBar,
+                ],
+            );
+        }
+        if result.memory_events > 0 {
+            self.invalidate_ui(
+                cx,
+                [UiRegion::WorkspaceAssistant, UiRegion::StatusBar],
+            );
+        }
+        if result.pet_events > 0 || result.pet_update_events > 0 {
+            self.invalidate_ui_region(cx, UiRegion::Root);
+        }
+        if result.dock_badge_count.is_some() {
+            self.invalidate_status_bar(cx);
         }
     }
 }

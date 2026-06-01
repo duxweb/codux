@@ -122,6 +122,7 @@ mod terminal_worktree_actions;
 mod tests;
 mod types;
 mod ui_helpers;
+mod ui_invalidation;
 mod window_actions;
 mod window_shell;
 mod workspace;
@@ -188,6 +189,7 @@ use self::{
     ui_helpers::{
         assistant_header_icon_button, column_header, empty_label, header_icon_button, section,
     },
+    ui_invalidation::UiRegion,
     window_shell::child_window_shell,
     workspace_views::WorkspaceColumnView,
 };

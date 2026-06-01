@@ -526,10 +526,8 @@ impl CoduxApp {
         );
     }
 
-    pub(super) fn notify_task_column(&self, cx: &mut Context<Self>) {
-        if let Some(view) = &self.task_column_view {
-            view.update(cx, |_view, cx| cx.notify());
-        }
+    pub(super) fn notify_task_column(&mut self, cx: &mut Context<Self>) {
+        self.invalidate_task_column(cx);
     }
 
     pub(super) fn should_skip_scheduled_project_activity_tick(&self) -> bool {

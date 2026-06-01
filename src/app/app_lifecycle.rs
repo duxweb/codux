@@ -339,6 +339,8 @@ impl CoduxApp {
             project_editor_badge_symbol: None,
             project_editor_badge_color_hex: PROJECT_BADGE_COLORS[0].to_string(),
             tooltip_state: CoduxTooltipState::default(),
+            ui_invalidation_counts: HashMap::new(),
+            ui_invalidation_last_report_at: 0.0,
         };
         let _ = app.persist_terminal_runtime();
         Ok(app)
