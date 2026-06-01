@@ -73,9 +73,8 @@ fn ai_background_refresh_is_skipped_during_idle_tick() {
     coordinator.mark_main_window_visible(true);
 
     let due = coordinator.projects_due_for_ai(Duration::from_secs(120), Duration::from_secs(600));
-    assert_eq!(due.len(), 2);
-    assert!(due.iter().any(|project| project.id == "active"));
-    assert!(due.iter().any(|project| project.id == "background"));
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].id, "active");
 }
 
 #[test]

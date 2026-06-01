@@ -1158,15 +1158,18 @@ dependencies = [
  "gpui-component",
  "gpui-component-assets",
  "gpui_platform",
+ "image",
  "objc",
  "parking_lot",
  "portable-pty",
+ "qrcode",
  "raw-window-handle",
  "rust-embed",
  "rustls",
  "serde",
  "uuid",
  "windows-sys 0.61.2",
+ "winresource",
 ]
 
 [[package]]
@@ -1186,6 +1189,7 @@ dependencies = [
  "genai",
  "git2",
  "hkdf",
+ "image",
  "libc",
  "llm-json-repair",
  "notify 8.2.0",
@@ -5577,6 +5581,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
+dependencies = [
+ "image",
+]
+
+[[package]]
 name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9614,6 +9627,16 @@ checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
 dependencies = [
  "cfg-if",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "winresource"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0986a8b1d586b7d3e4fe3d9ea39fb451ae22869dcea4aa109d287a374d866087"
+dependencies = [
+ "toml 1.1.2+spec-1.1.0",
+ "version_check",
 ]
 
 [[package]]

@@ -246,12 +246,18 @@ impl RuntimeService {
     }
 
     pub fn reconnect_remote(&self) -> Result<RemoteSummary, String> {
-        RemoteService::new(self.support_dir.clone()).register_host()?;
         Ok(self.remote_host.reconnect())
     }
 
     pub fn create_remote_pairing(&self) -> Result<RemoteSummary, String> {
         let summary = RemoteService::new(self.support_dir.clone()).create_pairing()?;
+        Ok(self.remote_host.apply_snapshot(summary))
+    }
+
+    pub async fn create_remote_pairing_async(&self) -> Result<RemoteSummary, String> {
+        let summary = RemoteService::new(self.support_dir.clone())
+            .create_pairing_async()
+            .await?;
         Ok(self.remote_host.apply_snapshot(summary))
     }
 

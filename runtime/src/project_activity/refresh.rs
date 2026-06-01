@@ -178,7 +178,7 @@ impl ProjectActivityCoordinator {
     fn projects_due_for_ai(
         &self,
         foreground_interval: Duration,
-        background_interval: Duration,
+        _background_interval: Duration,
     ) -> Vec<TrackedProject> {
         let active_project_id = self.active_project_id.lock().ok().and_then(|id| id.clone());
         let is_foreground = self.main_window_visible.load(Ordering::Relaxed)
@@ -191,38 +191,20 @@ impl ProjectActivityCoordinator {
             return Vec::new();
         };
         let mut due = Vec::new();
-        let mut background_due = None;
-
         for project in projects.values_mut() {
-            let is_active = Some(project.id.as_str()) == active_project_id.as_deref();
-            let interval = if is_active {
-                foreground_interval
-            } else {
-                background_interval
-            };
+            if Some(project.id.as_str()) != active_project_id.as_deref() {
+                continue;
+            }
             let is_due = project
                 .last_ai_refresh
-                .map(|value| now.duration_since(value) >= interval)
+                .map(|value| now.duration_since(value) >= foreground_interval)
                 .unwrap_or(false);
             if !is_due {
                 continue;
             }
-            if is_active {
-                project.last_ai_refresh = Some(now);
-                due.push(project.clone());
-                break;
-            } else if background_due.is_none() {
-                background_due = Some(project.id.clone());
-            }
-        }
-
-        if due.is_empty() {
-            if let Some(project_id) = background_due {
-                if let Some(project) = projects.get_mut(&project_id) {
-                    project.last_ai_refresh = Some(now);
-                    due.push(project.clone());
-                }
-            }
+            project.last_ai_refresh = Some(now);
+            due.push(project.clone());
+            break;
         }
 
         due.truncate(MAX_AI_REFRESH_PER_TICK);

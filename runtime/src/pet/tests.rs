@@ -43,6 +43,7 @@ fn reads_encrypted_pet_state_summary() {
         custom_name: "Ferris".to_string(),
         current_experience_tokens: 4_000_000,
         daily_experience_tokens: 120,
+        daily_experience_day: Some(day_index(now_seconds())),
         legacy: vec![PetLegacyRecord {
             id: "old".to_string(),
             species: "voidcat".to_string(),
@@ -71,6 +72,33 @@ fn reads_encrypted_pet_state_summary() {
     assert_eq!(summary.archived_count, 1);
     assert_eq!(summary.custom_pet_count, 1);
     assert_eq!(summary.daily_xp, 120);
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn summary_resets_daily_xp_after_local_day_changes() {
+    let support_dir = temp_support_dir();
+    let yesterday = Local
+        .with_ymd_and_hms(2026, 5, 22, 12, 0, 0)
+        .single()
+        .unwrap()
+        .timestamp();
+    let snapshot = PetSnapshot {
+        claimed_at: Some(10),
+        daily_experience_tokens: 120,
+        daily_experience_day: Some(day_index(yesterday)),
+        ..PetSnapshot::default()
+    };
+    fs::write(
+        support_dir.join("pet-state.dat"),
+        encrypt_for_test(&snapshot),
+    )
+    .unwrap();
+
+    let summary = PetService::new(support_dir.clone()).summary();
+
+    assert_eq!(summary.daily_xp, 0);
 
     fs::remove_dir_all(support_dir).unwrap();
 }
@@ -217,6 +245,62 @@ fn pet_store_claim_refresh_rename_archive_restore_and_persist() {
         serde_json::from_slice::<Value>(&fs::read(support_dir.join("pet-state.dat")).unwrap())
             .is_err()
     );
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn adding_or_removing_projects_does_not_backfill_pet_xp() {
+    let support_dir = temp_support_dir();
+    let store = PetStore {
+        state: Mutex::new(PetSnapshot::default()),
+        state_file: support_dir.join("pet-state.dat"),
+    };
+
+    store
+        .claim(PetClaimInput {
+            species: "dragon".to_string(),
+            custom_name: String::new(),
+            custom_pet: None,
+            project_totals: vec![PetProjectTokenTotal {
+                project_id: "project-a".to_string(),
+                total_tokens: 100,
+            }],
+            fallback_total_tokens: 100,
+        })
+        .unwrap();
+
+    let with_added_project = store
+        .refresh(PetRefreshInput {
+            project_totals: vec![
+                PetProjectTokenTotal {
+                    project_id: "project-a".to_string(),
+                    total_tokens: 120,
+                },
+                PetProjectTokenTotal {
+                    project_id: "project-b".to_string(),
+                    total_tokens: 10_000,
+                },
+            ],
+            fallback_total_tokens: 10_120,
+            computed_stats: PetStats::default(),
+        })
+        .unwrap();
+    assert_eq!(with_added_project.current_experience_tokens, 20);
+    assert_eq!(with_added_project.daily_experience_tokens, 20);
+
+    let with_removed_project = store
+        .refresh(PetRefreshInput {
+            project_totals: vec![PetProjectTokenTotal {
+                project_id: "project-b".to_string(),
+                total_tokens: 10_010,
+            }],
+            fallback_total_tokens: 10_010,
+            computed_stats: PetStats::default(),
+        })
+        .unwrap();
+    assert_eq!(with_removed_project.current_experience_tokens, 30);
+    assert_eq!(with_removed_project.daily_experience_tokens, 30);
 
     fs::remove_dir_all(support_dir).unwrap();
 }

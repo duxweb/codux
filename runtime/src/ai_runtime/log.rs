@@ -1,4 +1,5 @@
 use super::paths::runtime_live_log_path;
+use crate::runtime_paths::LIVE_LOG_FILE_NAME;
 use std::{
     fs,
     io::Write,
@@ -65,6 +66,6 @@ fn rotated_log_path(path: &Path, index: usize) -> PathBuf {
     let file_name = path
         .file_name()
         .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "live.log".to_string());
+        .unwrap_or_else(|| LIVE_LOG_FILE_NAME.to_string());
     path.with_file_name(format!("{file_name}.{index}"))
 }

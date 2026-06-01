@@ -49,6 +49,13 @@ impl CoduxApp {
         };
         let ready_snapshot = runtime_service.app_runtime_ready(true, window.is_window_active());
         state.remote = ready_snapshot.remote.clone();
+        let (terminal_layout, terminal_runtime) = normalize_terminal_restore_state(
+            super::ai_runtime_status::terminal_layout_owner_id(&state).as_deref(),
+            state.terminal_layout.clone(),
+            state.terminal_runtime.clone(),
+        );
+        state.terminal_layout = terminal_layout;
+        state.terminal_runtime = terminal_runtime;
         let restore_plan = terminal_restore_plan_for_language(
             &state.terminal_layout,
             &state.terminal_runtime,
@@ -137,7 +144,9 @@ impl CoduxApp {
             .map(|project| HashSet::from([project.id.clone()]))
             .unwrap_or_default();
         let ai_history_active_index_count = runtime_service.active_ai_history_index_count();
-        let project_view_cache = initial_project_view_cache(&state);
+        let project_view_store = initial_project_view_store(&state);
+        let worktree_view_store = initial_worktree_view_store(&state);
+        let terminal_view_store = initial_terminal_view_store(&state);
 
         let mut app = Self {
             window_mode: AppWindowMode::Main,
@@ -262,10 +271,19 @@ impl CoduxApp {
             ai_history_active_index_count,
             ai_history_refresh_project_ids,
             project_switch_generation: 0,
+            project_task_load_in_flight: HashSet::new(),
+            project_task_load_last_started_at: HashMap::new(),
+            project_task_load_last_finished_at: HashMap::new(),
+            worktree_sidebar_load_in_flight: HashSet::new(),
+            worktree_sidebar_load_last_started_at: HashMap::new(),
+            worktree_sidebar_load_last_finished_at: HashMap::new(),
             memory_progress_visible_until: 0.0,
             memory_progress_generation: 0,
             performance_refresh_in_flight: false,
             pending_performance_refresh: None,
+            today_level_day_start: codux_runtime::ai_history_normalized::local_day_start_seconds(
+                app_now_seconds(),
+            ),
             active_settings_pane: SettingsPane::General,
             memory_manager_tab: MemoryManagerTab::Summary,
             memory_manager_scope: "project".to_string(),
@@ -285,6 +303,9 @@ impl CoduxApp {
             ssh_draft_password: String::new(),
             ssh_draft_key_passphrase: String::new(),
             selected_remote_device_id,
+            remote_reconnecting: false,
+            remote_pairing_sheet_open: false,
+            remote_pairing_creating: false,
             remote_pairing_poll_generation: 0,
             recording_shortcut_id: None,
             agent_split_enabled: false,
@@ -301,7 +322,9 @@ impl CoduxApp {
             workspace_assistant_view: None,
             status_bar_view: None,
             file_sidebar_view: None,
-            project_view_cache,
+            project_view_store,
+            worktree_view_store,
+            terminal_view_store,
             project_open_applications,
             project_editor_project_id: None,
             project_editor_name: String::new(),

@@ -1,6 +1,44 @@
 use super::*;
 
 impl CoduxApp {
+    pub(crate) fn start_settings_remote_snapshot_loop(&mut self, cx: &mut Context<Self>) {
+        if self.window_mode != AppWindowMode::Settings {
+            return;
+        }
+        let timer = cx.background_executor().clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            loop {
+                timer.timer(Duration::from_millis(500)).await;
+                if this
+                    .update(cx, |app, cx| {
+                        if app.window_mode != AppWindowMode::Settings {
+                            return;
+                        }
+                        let remote = app.runtime_service.reload_remote();
+                        if app.state.remote.status != remote.status
+                            || app.state.remote.message != remote.message
+                            || app.state.remote.devices != remote.devices
+                            || app.state.remote.online_devices != remote.online_devices
+                            || app.state.remote.pending_pairings != remote.pending_pairings
+                            || app.state.remote.pairing.is_some() != remote.pairing.is_some()
+                        {
+                            app.state.remote = remote;
+                            app.normalize_selected_remote_device();
+                            if app.remote_reconnecting && app.state.remote.status != "connecting" {
+                                app.remote_reconnecting = false;
+                            }
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(crate) fn start_runtime_event_loop(&mut self, cx: &mut Context<Self>) {
         if self.window_mode != AppWindowMode::Main {
             return;
@@ -9,9 +47,11 @@ impl CoduxApp {
         let timer = cx.background_executor().clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let mut ticks = 0_u64;
+            let mut performance_ticks_until_refresh = 0_u64;
             loop {
                 timer.timer(Duration::from_millis(200)).await;
                 ticks = ticks.wrapping_add(1);
+                performance_ticks_until_refresh = performance_ticks_until_refresh.saturating_sub(1);
                 let include_slow_tick = ticks % 5 == 0;
                 let include_project_activity_tick = ticks % 75 == 0;
                 let include_runtime_refresh_tick = ticks % 150 == 0;
@@ -21,17 +61,17 @@ impl CoduxApp {
                         if app.window_mode != AppWindowMode::Main {
                             return;
                         }
-                        let performance_interval =
-                            app.performance_refresh_interval_seconds().saturating_mul(5);
-                        let include_performance_tick =
-                            performance_interval > 0 && ticks % performance_interval == 0;
                         let performance_changed = app.apply_pending_performance_refresh();
-                        if include_performance_tick {
+                        if performance_ticks_until_refresh == 0 && app.state.settings.developer_hud
+                        {
+                            performance_ticks_until_refresh =
+                                app.performance_refresh_interval_seconds().saturating_mul(5);
                             app.spawn_performance_refresh(cx);
                         }
                         if include_runtime_refresh_tick {
                             app.spawn_runtime_scheduled_refresh(cx);
                         }
+                        let today_level_changed = app.refresh_today_level_after_day_change();
                         let result = if include_slow_tick {
                             app.apply_runtime_activity_tick(
                                 true,
@@ -45,7 +85,7 @@ impl CoduxApp {
                         if result.pet_update_events > 0 {
                             app.sync_desktop_pet_window(false, cx);
                         }
-                        if result.changed || performance_changed {
+                        if result.changed || performance_changed || today_level_changed {
                             cx.notify();
                             cx.refresh_windows();
                         }
@@ -101,12 +141,13 @@ impl CoduxApp {
             self.state.ai_history.queued = true;
             self.state.ai_history.progress = Some(0.0);
             self.state.ai_history.detail = "queued".to_string();
-            self.cache_current_project_view();
+            self.save_current_project_view_state();
             self.notify_task_column(cx);
             self.schedule_ai_index_progress_expiry(self.ai_index_progress_generation, cx);
         }
 
-        let request = ai_history_project_request(&project);
+        let worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
+        let request = ai_history_worktree_request(&project, worktree.as_ref());
         match self
             .runtime_service
             .refresh_indexed_project_ai_history(request)

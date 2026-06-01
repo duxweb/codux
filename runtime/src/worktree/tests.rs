@@ -52,6 +52,30 @@ fn reads_and_selects_project_worktree_without_losing_unknown_fields() {
 }
 
 #[test]
+fn state_summary_falls_back_to_project_worktree_when_state_is_malformed() {
+    let support_dir = temp_dir("worktree-state-fallback");
+    let project_dir = temp_dir("worktree-state-fallback-project");
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(support_dir.join("state.json"), "{ bad json").unwrap();
+
+    let summary = WorktreeService::new(support_dir.clone()).state_summary(
+        Some("project"),
+        Some(project_dir.to_str().expect("project path")),
+    );
+
+    assert!(summary.available);
+    assert_eq!(summary.selected_worktree_id.as_deref(), Some("project"));
+    assert_eq!(summary.worktrees.len(), 1);
+    assert_eq!(summary.worktrees[0].id, "project");
+    assert!(summary.worktrees[0].is_default);
+    assert!(summary.error.is_some());
+
+    fs::remove_dir_all(support_dir).ok();
+    fs::remove_dir_all(project_dir).ok();
+}
+
+#[test]
 fn summary_includes_per_worktree_git_stats() {
     let support_dir = temp_dir("worktree-summary-git");
     let repo = temp_dir("worktree-summary-git-repo");

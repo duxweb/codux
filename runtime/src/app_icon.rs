@@ -33,6 +33,66 @@ pub fn render_app_icon(style: &str, size: u32) -> AppIconImage {
     }
 }
 
+pub fn apply_app_icon(style: &str) -> Result<(), String> {
+    apply_app_icon_impl(style)
+}
+
+#[cfg(target_os = "macos")]
+fn apply_app_icon_impl(style: &str) -> Result<(), String> {
+    use dispatch2::DispatchQueue;
+    use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
+    use objc2::{AnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+    use std::io::Cursor;
+    use std::sync::Mutex;
+
+    fn run_on_main<F, R>(f: F) -> R
+    where
+        F: FnOnce(MainThreadMarker) -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        if let Some(marker) = MainThreadMarker::new() {
+            return f(marker);
+        }
+
+        let result = Mutex::new(None);
+        DispatchQueue::main().exec_sync(|| {
+            let marker = unsafe { MainThreadMarker::new_unchecked() };
+            *result.lock().expect("icon main-thread result poisoned") = Some(f(marker));
+        });
+        result
+            .into_inner()
+            .expect("icon main-thread result poisoned")
+            .expect("main dispatch did not run")
+    }
+
+    let image = render_app_icon(style, 512);
+    let mut png = Vec::new();
+    PngEncoder::new(Cursor::new(&mut png))
+        .write_image(
+            &image.pixels,
+            image.width,
+            image.height,
+            ExtendedColorType::Rgba8,
+        )
+        .map_err(|error| error.to_string())?;
+
+    run_on_main(move |marker| {
+        let data = NSData::with_bytes(&png);
+        let ns_image = NSImage::initWithData(NSImage::alloc(), &data)
+            .ok_or_else(|| "failed to create application icon image".to_string())?;
+        let app = NSApplication::sharedApplication(marker);
+        unsafe { app.setApplicationIconImage(Some(&ns_image)) };
+        Ok(())
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_app_icon_impl(_style: &str) -> Result<(), String> {
+    Ok(())
+}
+
 fn icon_pixel(x: f32, y: f32, size: f32, palette: IconPalette) -> [f32; 4] {
     let inset = size * 0.04;
     let rect_min = inset;

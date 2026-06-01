@@ -58,9 +58,9 @@ fn default_shortcut_display(shortcut_id: &str) -> Option<&'static str> {
         "Ctrl+"
     };
     match (shortcut_id, primary) {
-        ("view.terminal", "⌘") => Some("⌘1"),
-        ("view.files", "⌘") => Some("⌘2"),
-        ("view.review", "⌘") => Some("⌘3"),
+        ("view.terminal", "⌘") => Some("⌘⌥1"),
+        ("view.files", "⌘") => Some("⌘⌥2"),
+        ("view.review", "⌘") => Some("⌘⌥3"),
         ("project.create", "⌘") => Some("⌘N"),
         ("project.open_folder", "⌘") => Some("⌘O"),
         ("settings.open", "⌘") => Some("⌘,"),
@@ -80,9 +80,9 @@ fn default_shortcut_display(shortcut_id: &str) -> Option<&'static str> {
         ("terminal.split.create", "⌘") => Some("⌘⇧\\"),
         ("terminal.tab", "⌘") => Some("⌘⇧T"),
         ("terminal.tab.create", "⌘") => Some("⌘⇧T"),
-        ("view.terminal", _) => Some("Ctrl+1"),
-        ("view.files", _) => Some("Ctrl+2"),
-        ("view.review", _) => Some("Ctrl+3"),
+        ("view.terminal", _) => Some("Ctrl+Alt+1"),
+        ("view.files", _) => Some("Ctrl+Alt+2"),
+        ("view.review", _) => Some("Ctrl+Alt+3"),
         ("project.create", _) => Some("Ctrl+N"),
         ("project.open_folder", _) => Some("Ctrl+O"),
         ("settings.open", _) => Some("Ctrl+,"),

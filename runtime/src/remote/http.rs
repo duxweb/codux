@@ -1,6 +1,8 @@
 use super::types::RemoteSettings;
+use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
+use std::{any::type_name, time::Instant};
 
 pub(crate) fn default_remote_server_url() -> String {
     "http://127.0.0.1:8088".to_string()
@@ -51,8 +53,20 @@ pub(crate) fn remote_http_client() -> Result<reqwest::Client, String> {
 pub(crate) async fn remote_parse_response<T: serde::de::DeserializeOwned>(
     response: reqwest::Response,
 ) -> Result<T, String> {
+    let started_at = Instant::now();
     let status = response.status();
     let bytes = response.bytes().await.map_err(remote_error_message)?;
+    runtime_trace_elapsed(
+        "remote-http",
+        "parse_response",
+        started_at,
+        &format!(
+            "status={} bytes={} target={}",
+            status.as_u16(),
+            bytes.len(),
+            type_name::<T>()
+        ),
+    );
     if !status.is_success() {
         if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
             if let Some(error) = value.get("error").and_then(Value::as_str) {
@@ -74,14 +88,49 @@ pub(crate) async fn remote_post<T: serde::de::DeserializeOwned>(
     path: &str,
     body: Value,
 ) -> Result<T, String> {
+    let started_at = Instant::now();
     let url = remote_url(base, path, &[], false)?;
-    let response = remote_http_client()?
+    runtime_trace(
+        "remote-http",
+        &format!("post start path={path} base={}", base.trim()),
+    );
+    let client = match remote_http_client() {
+        Ok(client) => client,
+        Err(error) => {
+            runtime_trace(
+                "remote-http",
+                &format!("post client_failed path={path} error={error}"),
+            );
+            return Err(error);
+        }
+    };
+    let response = match client
         .post(url)
         .header(CONTENT_TYPE, "application/json")
         .json(&body)
         .send()
         .await
-        .map_err(remote_error_message)?;
+    {
+        Ok(response) => {
+            runtime_trace_elapsed(
+                "remote-http",
+                "post response",
+                started_at,
+                &format!("path={path} status={}", response.status().as_u16()),
+            );
+            response
+        }
+        Err(error) => {
+            let error = remote_error_message(error);
+            runtime_trace_elapsed(
+                "remote-http",
+                "post failed",
+                started_at,
+                &format!("path={path} error={error}"),
+            );
+            return Err(error);
+        }
+    };
     remote_parse_response(response).await
 }
 
@@ -91,12 +140,6 @@ pub(crate) fn remote_post_blocking<T: serde::de::DeserializeOwned + Send>(
     body: Value,
 ) -> Result<T, String> {
     crate::async_runtime::block_on(remote_post(base, path, body))
-}
-
-pub(crate) fn remote_parse_response_blocking<T: serde::de::DeserializeOwned + Send>(
-    response: reqwest::Response,
-) -> Result<T, String> {
-    crate::async_runtime::block_on(remote_parse_response(response))
 }
 
 pub(crate) fn remote_error_message(error: impl std::fmt::Display) -> String {

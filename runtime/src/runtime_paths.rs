@@ -1,4 +1,14 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+pub const RUNTIME_ROOT_DIR_NAME: &str = "runtime-root";
+pub const RUNTIME_EVENT_DIR_NAME: &str = "runtime-events";
+pub const RUNTIME_SOCKET_FILE_NAME: &str = "runtime-events.sock";
+pub const RUNTIME_SUPPORT_DIR_NAME: &str = "runtime-support";
+pub const RUNTIME_LOG_FILE_NAME: &str = "runtime-rust.log";
+pub const LIVE_LOG_FILE_NAME: &str = "live-rust.log";
+pub const RUNTIME_LOG_PREVIEW_FILE_NAME: &str = "runtime-log-preview.txt";
+pub const CLAUDE_SESSION_MAP_DIR_NAME: &str = "claude-session-map";
+pub const OPENCODE_SESSION_MAP_DIR_NAME: &str = "opencode-session-map";
 
 pub fn app_support_dir() -> PathBuf {
     app_support_candidates()
@@ -12,11 +22,75 @@ pub fn runtime_temp_dir() -> PathBuf {
 }
 
 pub fn runtime_log_path() -> PathBuf {
-    app_support_dir().join("runtime.log")
+    runtime_log_path_in(&app_support_dir())
 }
 
 pub fn live_log_path() -> PathBuf {
-    runtime_temp_dir().join("live.log")
+    live_log_path_in(&runtime_temp_dir())
+}
+
+pub fn runtime_root_dir() -> PathBuf {
+    runtime_root_dir_in(&runtime_temp_dir())
+}
+
+pub fn runtime_event_dir() -> PathBuf {
+    runtime_event_dir_in(&runtime_temp_dir())
+}
+
+pub fn runtime_socket_path() -> PathBuf {
+    runtime_socket_path_in(&runtime_temp_dir())
+}
+
+pub fn runtime_log_preview_path() -> PathBuf {
+    runtime_log_preview_path_in(&runtime_temp_dir())
+}
+
+pub fn runtime_support_dir() -> PathBuf {
+    runtime_support_dir_in(&app_support_dir())
+}
+
+pub fn claude_session_map_dir() -> PathBuf {
+    claude_session_map_dir_in(&runtime_temp_dir())
+}
+
+pub fn opencode_session_map_dir() -> PathBuf {
+    opencode_session_map_dir_in(&runtime_temp_dir())
+}
+
+pub fn runtime_log_path_in(app_support_dir: &Path) -> PathBuf {
+    app_support_dir.join(RUNTIME_LOG_FILE_NAME)
+}
+
+pub fn live_log_path_in(runtime_temp_dir: &Path) -> PathBuf {
+    runtime_temp_dir.join(LIVE_LOG_FILE_NAME)
+}
+
+pub fn runtime_root_dir_in(runtime_temp_dir: &Path) -> PathBuf {
+    runtime_temp_dir.join(RUNTIME_ROOT_DIR_NAME)
+}
+
+pub fn runtime_event_dir_in(runtime_temp_dir: &Path) -> PathBuf {
+    runtime_temp_dir.join(RUNTIME_EVENT_DIR_NAME)
+}
+
+pub fn runtime_socket_path_in(runtime_temp_dir: &Path) -> PathBuf {
+    runtime_temp_dir.join(RUNTIME_SOCKET_FILE_NAME)
+}
+
+pub fn runtime_log_preview_path_in(runtime_temp_dir: &Path) -> PathBuf {
+    runtime_temp_dir.join(RUNTIME_LOG_PREVIEW_FILE_NAME)
+}
+
+pub fn runtime_support_dir_in(app_support_dir: &Path) -> PathBuf {
+    app_support_dir.join(RUNTIME_SUPPORT_DIR_NAME)
+}
+
+pub fn claude_session_map_dir_in(runtime_temp_dir: &Path) -> PathBuf {
+    runtime_temp_dir.join(CLAUDE_SESSION_MAP_DIR_NAME)
+}
+
+pub fn opencode_session_map_dir_in(runtime_temp_dir: &Path) -> PathBuf {
+    runtime_temp_dir.join(OPENCODE_SESSION_MAP_DIR_NAME)
 }
 
 pub fn app_display_name() -> &'static str {

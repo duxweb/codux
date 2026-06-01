@@ -27,6 +27,7 @@ impl RuntimeService {
 
     fn sync_app_settings_side_effects(&self, settings: &AppSettings) -> Result<(), String> {
         sync_process_locale_preference(settings);
+        let _ = app_icon::apply_app_icon(&settings.icon_style);
         self.power_manager
             .set_sleep_prevention(settings.sleep_mode.clone())?;
         let _ = RemoteService::new(self.support_dir.clone()).sync_settings_background();

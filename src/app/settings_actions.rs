@@ -30,6 +30,7 @@ impl CoduxApp {
         match self.runtime_service.set_terminal_scrollback_value(&lines) {
             Ok(settings) => {
                 self.apply_settings_summary(settings);
+                self.apply_terminal_text_settings(cx);
                 self.status_message = format!(
                     "terminal scrollback saved: {}",
                     self.state.settings.terminal_scrollback_lines
@@ -152,6 +153,7 @@ impl CoduxApp {
         match self.runtime_service.set_icon_style(&icon_style) {
             Ok(settings) => {
                 self.apply_settings_summary(settings);
+                let _ = codux_runtime::app_icon::apply_app_icon(&self.state.settings.icon_style);
                 self.status_message =
                     format!("icon style saved: {}", self.state.settings.icon_style);
             }

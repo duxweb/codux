@@ -109,6 +109,20 @@ pub(in crate::app) fn ai_history_project_request(project: &ProjectInfo) -> AIHis
     }
 }
 
+pub(in crate::app) fn ai_history_worktree_request(
+    project: &ProjectInfo,
+    worktree: Option<&crate::app::WorktreeInfo>,
+) -> AIHistoryProjectRequest {
+    let Some(worktree) = worktree else {
+        return ai_history_project_request(project);
+    };
+    AIHistoryProjectRequest {
+        id: worktree.id.clone(),
+        name: worktree.name.clone(),
+        path: worktree.path.clone(),
+    }
+}
+
 pub(in crate::app) fn ai_history_project_requests(
     projects: &[ProjectInfo],
 ) -> Vec<AIHistoryProjectRequest> {

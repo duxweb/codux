@@ -10,6 +10,14 @@ impl WorktreeService {
         let content = match fs::read_to_string(&self.state_file) {
             Ok(content) => content,
             Err(error) => {
+                if let Some(project_path) = project_path {
+                    return fallback_project_worktree_summary(
+                        project_id,
+                        project_path,
+                        true,
+                        Some(error.to_string()),
+                    );
+                }
                 return WorktreeSummary {
                     error: Some(error.to_string()),
                     ..Default::default()
@@ -19,6 +27,14 @@ impl WorktreeService {
         let state = match serde_json::from_str::<StateFile>(&content) {
             Ok(state) => state,
             Err(error) => {
+                if let Some(project_path) = project_path {
+                    return fallback_project_worktree_summary(
+                        project_id,
+                        project_path,
+                        true,
+                        Some(error.to_string()),
+                    );
+                }
                 return WorktreeSummary {
                     error: Some(error.to_string()),
                     ..Default::default()
@@ -43,20 +59,10 @@ impl WorktreeService {
             })
             .collect::<Vec<_>>();
 
-        if worktrees.is_empty() {
-            if let Some(project_path) = project_path {
-                worktrees.push(WorktreeInfo {
-                    git_summary: project_worktree_git_summary(project_path),
-                    id: project_id.to_string(),
-                    project_id: project_id.to_string(),
-                    name: "main".to_string(),
-                    branch: current_branch(project_path).unwrap_or_else(|| "main".to_string()),
-                    path: project_path.to_string(),
-                    status: "todo".to_string(),
-                    is_default: true,
-                    exists: Path::new(project_path).exists(),
-                });
-            }
+        if worktrees.is_empty()
+            && let Some(project_path) = project_path
+        {
+            worktrees.push(default_project_worktree(project_id, project_path, true));
         }
 
         let selected_worktree_id = state
@@ -120,6 +126,14 @@ impl WorktreeService {
         let content = match fs::read_to_string(&self.state_file) {
             Ok(content) => content,
             Err(error) => {
+                if let Some(project_path) = project_path {
+                    return fallback_project_worktree_summary(
+                        project_id,
+                        project_path,
+                        false,
+                        Some(error.to_string()),
+                    );
+                }
                 return WorktreeSummary {
                     error: Some(error.to_string()),
                     ..Default::default()
@@ -129,6 +143,14 @@ impl WorktreeService {
         let state = match serde_json::from_str::<StateFile>(&content) {
             Ok(state) => state,
             Err(error) => {
+                if let Some(project_path) = project_path {
+                    return fallback_project_worktree_summary(
+                        project_id,
+                        project_path,
+                        false,
+                        Some(error.to_string()),
+                    );
+                }
                 return WorktreeSummary {
                     error: Some(error.to_string()),
                     ..Default::default()
@@ -153,20 +175,10 @@ impl WorktreeService {
             })
             .collect::<Vec<_>>();
 
-        if worktrees.is_empty() {
-            if let Some(project_path) = project_path {
-                worktrees.push(WorktreeInfo {
-                    git_summary: ProjectWorktreeGitSummary::default(),
-                    id: project_id.to_string(),
-                    project_id: project_id.to_string(),
-                    name: "main".to_string(),
-                    branch: "main".to_string(),
-                    path: project_path.to_string(),
-                    status: "todo".to_string(),
-                    is_default: true,
-                    exists: Path::new(project_path).exists(),
-                });
-            }
+        if worktrees.is_empty()
+            && let Some(project_path) = project_path
+        {
+            worktrees.push(default_project_worktree(project_id, project_path, false));
         }
 
         let selected_worktree_id = state
@@ -206,5 +218,55 @@ impl WorktreeService {
             active_git: crate::git::GitSummary::default(),
             error: None,
         }
+    }
+}
+
+fn fallback_project_worktree_summary(
+    project_id: &str,
+    project_path: &str,
+    include_git_stats: bool,
+    error: Option<String>,
+) -> WorktreeSummary {
+    WorktreeSummary {
+        available: true,
+        selected_worktree_id: Some(project_id.to_string()),
+        worktrees: vec![default_project_worktree(
+            project_id,
+            project_path,
+            include_git_stats,
+        )],
+        tasks: Vec::new(),
+        active_git: if include_git_stats {
+            GitService::status(project_path)
+        } else {
+            crate::git::GitSummary::default()
+        },
+        error,
+    }
+}
+
+fn default_project_worktree(
+    project_id: &str,
+    project_path: &str,
+    include_git_stats: bool,
+) -> WorktreeInfo {
+    WorktreeInfo {
+        git_summary: if include_git_stats {
+            project_worktree_git_summary(project_path)
+        } else {
+            ProjectWorktreeGitSummary::default()
+        },
+        id: project_id.to_string(),
+        project_id: project_id.to_string(),
+        name: "main".to_string(),
+        branch: if include_git_stats {
+            current_branch(project_path).unwrap_or_else(|| "main".to_string())
+        } else {
+            "main".to_string()
+        },
+        path: project_path.to_string(),
+        status: "todo".to_string(),
+        is_default: true,
+        exists: Path::new(project_path).exists(),
     }
 }

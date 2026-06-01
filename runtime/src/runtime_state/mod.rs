@@ -10,6 +10,7 @@ use crate::{
         AIRuntimeStateSnapshot, AIRuntimeSupervisorEvent,
     },
     ai_runtime_state::{AIRuntimeStateService, AIRuntimeStateSummary},
+    app_icon,
     app_info::{
         AppAboutMetadata, AppDiagnosticsSnapshot, DiagnosticsExportRequest,
         DiagnosticsExportResult, UpdateInstallResult,

@@ -76,7 +76,7 @@ pub(super) fn refresh_state(state: &mut PetSnapshot, request: PetRefreshInput) {
     state.updated_at = now;
 }
 
-fn reset_daily_tokens_if_needed(state: &mut PetSnapshot, now: i64) {
+pub(super) fn reset_daily_tokens_if_needed(state: &mut PetSnapshot, now: i64) {
     let day = day_index(now);
     if state.daily_experience_day == Some(day) {
         return;

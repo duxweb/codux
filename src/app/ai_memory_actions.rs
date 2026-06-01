@@ -19,7 +19,8 @@ impl CoduxApp {
             return;
         }
 
-        let request = ai_history_project_request(&project);
+        let worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
+        let request = ai_history_worktree_request(&project, worktree.as_ref());
         match self
             .runtime_service
             .indexed_project_ai_history_state(request)
@@ -35,7 +36,7 @@ impl CoduxApp {
                 self.refresh_ai_global_history_summary();
                 self.normalize_selected_ai_session();
                 self.reload_selected_ai_session_detail();
-                self.cache_current_project_view();
+                self.save_current_project_view_state();
                 self.notify_task_column(cx);
             }
             Err(error) => {
@@ -159,17 +160,21 @@ impl CoduxApp {
     }
 
     pub(super) fn reload_selected_ai_session_detail(&mut self) {
-        let Some(project) = self.state.selected_project.as_ref() else {
+        if self.state.selected_project.is_none() {
+            self.state.ai_session_detail = None;
+            return;
+        }
+        let Some(session_id) = self.selected_ai_session_id.as_deref() else {
             self.state.ai_session_detail = None;
             return;
         };
-        let Some(session_id) = self.selected_ai_session_id.as_deref() else {
+        let Some(project_path) = self.selected_worktree_path() else {
             self.state.ai_session_detail = None;
             return;
         };
         self.state.ai_session_detail = Some(
             self.runtime_service
-                .reload_project_ai_session_detail(&project.path, session_id),
+                .reload_project_ai_session_detail(&project_path, session_id),
         );
     }
 
@@ -183,7 +188,8 @@ impl CoduxApp {
             cx.notify();
             return;
         };
-        let project_request = ai_history_project_request(project);
+        let worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
+        let project_request = ai_history_worktree_request(project, worktree.as_ref());
         let Some(session) = self.selected_ai_session().cloned() else {
             self.status_message = "no AI session to remove".to_string();
             cx.notify();
@@ -275,7 +281,8 @@ impl CoduxApp {
             cx.notify();
             return;
         };
-        let project_request = ai_history_project_request(project);
+        let worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
+        let project_request = ai_history_worktree_request(project, worktree.as_ref());
         let Some(session) = self.selected_ai_session().cloned() else {
             self.status_message = "no AI session to rename".to_string();
             cx.notify();
@@ -586,7 +593,12 @@ impl CoduxApp {
             .update_memory_summary(MemorySummaryUpdateRequest {
                 summary_id: summary_id.clone(),
                 content,
-                max_versions: Some(20),
+                max_versions: self
+                    .state
+                    .settings
+                    .memory_max_summary_versions
+                    .parse::<i32>()
+                    .ok(),
             }) {
             Ok(_) => {
                 self.selected_memory_summary_id = Some(summary_id);

@@ -305,14 +305,24 @@ mod tests {
 
         shortcuts.clear();
         let default_terminal = if cfg!(target_os = "macos") {
-            "⌘1"
+            "⌘⌥1"
         } else {
-            "Ctrl+1"
+            "Ctrl+Alt+1"
         };
         assert!(shortcut_matches(
             &shortcuts,
             "view.terminal",
             default_terminal
+        ));
+        let project_switch = if cfg!(target_os = "macos") {
+            "⌘1"
+        } else {
+            "Ctrl+1"
+        };
+        assert!(!shortcut_matches(
+            &shortcuts,
+            "view.terminal",
+            project_switch
         ));
         let default_task = if cfg!(target_os = "macos") {
             "⌘N"

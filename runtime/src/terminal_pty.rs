@@ -1136,36 +1136,35 @@ pub fn terminal_environment(
             .and_then(|context| context.session_instance_id.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string().to_lowercase()),
     );
-    values.insert("DMUX_RUNTIME_OWNER".to_string(), app_slug().to_string());
+    values.insert(
+        "DMUX_RUNTIME_OWNER".to_string(),
+        crate::runtime_paths::app_slug().to_string(),
+    );
     values.insert(
         "DMUX_RUNTIME_SOCKET".to_string(),
-        runtime_temp_dir()
-            .join("runtime-events.sock")
+        crate::runtime_paths::runtime_socket_path()
             .display()
             .to_string(),
     );
     values.insert(
         "DMUX_RUNTIME_EVENT_DIR".to_string(),
-        runtime_temp_dir()
-            .join("runtime-events")
+        crate::runtime_paths::runtime_event_dir()
             .display()
             .to_string(),
     );
     values.insert(
         "DMUX_LOG_FILE".to_string(),
-        runtime_temp_dir().join("live.log").display().to_string(),
+        crate::runtime_paths::live_log_path().display().to_string(),
     );
     values.insert(
         "DMUX_CLAUDE_SESSION_MAP_DIR".to_string(),
-        runtime_temp_dir()
-            .join("claude-session-map")
+        crate::runtime_paths::claude_session_map_dir()
             .display()
             .to_string(),
     );
     values.insert(
         "DMUX_OPENCODE_SESSION_MAP_DIR".to_string(),
-        runtime_temp_dir()
-            .join("opencode-session-map")
+        crate::runtime_paths::opencode_session_map_dir()
             .display()
             .to_string(),
     );
@@ -1864,18 +1863,6 @@ fn app_display_name() -> &'static str {
     } else {
         "Codux"
     }
-}
-
-fn app_slug() -> &'static str {
-    if cfg!(debug_assertions) {
-        "codux-dev"
-    } else {
-        "codux"
-    }
-}
-
-fn runtime_temp_dir() -> PathBuf {
-    std::env::temp_dir().join(app_slug())
 }
 
 fn default_lang() -> String {

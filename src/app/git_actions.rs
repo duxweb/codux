@@ -361,7 +361,7 @@ impl CoduxApp {
                     self.state.worktrees = self
                         .runtime_service
                         .reload_worktrees(Some(&project_id), Some(&project_path));
-                    self.cache_current_project_view();
+                    self.save_current_worktree_view_state();
                     self.notify_task_column(cx);
                 }
                 self.status_message = success_message;
@@ -1370,7 +1370,7 @@ impl CoduxApp {
                     self.state.worktrees = self
                         .runtime_service
                         .reload_worktrees(Some(&project_id), Some(&project_path));
-                    self.cache_current_project_view();
+                    self.save_current_worktree_view_state();
                     self.notify_task_column(cx);
                 }
                 self.status_message = format!("Git {} completed", git_remote_action_label(&action));
@@ -1519,7 +1519,7 @@ impl CoduxApp {
                     self.state.worktrees = self
                         .runtime_service
                         .reload_worktrees(Some(&project_id), Some(&project_path));
-                    self.cache_current_project_view();
+                    self.save_current_worktree_view_state();
                     self.notify_task_column(cx);
                 }
                 self.status_message = completion.success_message;

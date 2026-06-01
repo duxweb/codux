@@ -8,12 +8,17 @@ impl CoduxApp {
             return;
         };
         let project_name = project.name.clone();
-        let project_path = project.path.clone();
+        let Some(project_path) = self.selected_worktree_path() else {
+            self.status_message = "no selected worktree to refresh".to_string();
+            cx.notify();
+            return;
+        };
         self.state.files = self
             .runtime_service
             .reload_project_files(&project_path, file_directory_option(&self.file_directory));
         self.reset_file_tree_cache();
         self.normalize_selected_file_entry();
+        self.save_current_worktree_view_state();
         self.status_message = format!(
             "file list reloaded for {}{}",
             project_name,
@@ -81,22 +86,21 @@ impl CoduxApp {
     }
 
     pub(super) fn reload_file_tree_directory(&mut self, directory_path: &str) {
-        let Some(project) = &self.state.selected_project else {
+        let Some(project_path) = self.selected_worktree_path() else {
             return;
         };
         let children = self
             .runtime_service
-            .reload_project_files(&project.path, Some(directory_path));
+            .reload_project_files(&project_path, Some(directory_path));
         self.file_tree_children
             .insert(directory_path.to_string(), children);
     }
 
     pub(super) fn refresh_file_tree_cache(&mut self) {
-        let Some(project) = &self.state.selected_project else {
+        let Some(project_path) = self.selected_worktree_path() else {
             self.reset_file_tree_cache();
             return;
         };
-        let project_path = project.path.clone();
         self.state.files = self
             .runtime_service
             .reload_project_files(&project_path, file_directory_option(&self.file_directory));
@@ -149,6 +153,7 @@ impl CoduxApp {
             self.reload_file_tree_directory(&relative_path);
             self.status_message = format!("directory expanded: {relative_path}");
         }
+        self.save_current_worktree_view_state();
         cx.notify();
     }
 
@@ -168,6 +173,7 @@ impl CoduxApp {
     pub(super) fn select_file_entry(&mut self, relative_path: String, cx: &mut Context<Self>) {
         self.set_single_file_selection(relative_path.clone());
         self.status_message = format!("selected file item: {relative_path}");
+        self.save_current_worktree_view_state();
         cx.notify();
     }
 
@@ -190,6 +196,7 @@ impl CoduxApp {
             self.selected_file_entries.len(),
             plural(self.selected_file_entries.len())
         );
+        self.save_current_worktree_view_state();
         cx.notify();
     }
 
@@ -245,6 +252,7 @@ impl CoduxApp {
             self.selected_file_entries.len(),
             plural(self.selected_file_entries.len())
         );
+        self.save_current_worktree_view_state();
         cx.notify();
     }
 

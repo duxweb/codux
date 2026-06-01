@@ -451,13 +451,46 @@ impl CoduxApp {
     }
 
     pub(super) fn reconnect_remote(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        match self.runtime_service.reconnect_remote() {
+        if self.remote_reconnecting {
+            return;
+        }
+
+        let service = self.runtime_service.clone();
+        self.remote_reconnecting = true;
+        self.status_message = "remote reconnect requested".to_string();
+        self.runtime_trace("remote", "reconnect start");
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result =
+                codux_runtime::async_runtime::spawn_blocking(move || service.reconnect_remote())
+                    .await
+                    .map_err(|error| error.to_string())
+                    .and_then(|result| result);
+            let _ = this.update(cx, |app, cx| {
+                app.apply_remote_reconnect_result(result, cx);
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn apply_remote_reconnect_result(
+        &mut self,
+        result: Result<RemoteSummary, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.remote_reconnecting = false;
+        match result {
             Ok(remote) => {
                 self.state.remote = remote;
+                self.remote_reconnecting = self.state.remote.status == "connecting";
                 self.normalize_selected_remote_device();
                 self.status_message = "remote reconnect requested".to_string();
+                self.runtime_trace("remote", "reconnect ok");
             }
-            Err(error) => self.status_message = format!("failed to reconnect remote: {error}"),
+            Err(error) => {
+                self.status_message = format!("failed to reconnect remote: {error}");
+                self.runtime_trace("remote", &format!("reconnect failed error={error}"));
+            }
         }
         cx.notify();
     }
@@ -477,7 +510,37 @@ impl CoduxApp {
     }
 
     pub(super) fn create_remote_pairing(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        match self.runtime_service.create_remote_pairing() {
+        if self.remote_pairing_creating {
+            return;
+        }
+
+        let service = self.runtime_service.clone();
+        self.remote_pairing_sheet_open = true;
+        self.remote_pairing_creating = true;
+        self.status_message = "remote pairing request started".to_string();
+        self.runtime_trace("remote", "pairing_create start");
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::spawn(async move {
+                service.create_remote_pairing_async().await
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result);
+            let _ = this.update(cx, |app, cx| {
+                app.apply_remote_pairing_create_result(result, cx);
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn apply_remote_pairing_create_result(
+        &mut self,
+        result: Result<RemoteSummary, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.remote_pairing_creating = false;
+        match result {
             Ok(remote) => {
                 let code = remote
                     .pairing
@@ -486,6 +549,7 @@ impl CoduxApp {
                     .unwrap_or_default();
                 let pairing = remote.pairing.clone();
                 self.state.remote = remote;
+                self.remote_pairing_sheet_open = self.state.remote.pairing.is_some();
                 self.normalize_selected_remote_device();
                 self.status_message = if code.is_empty() {
                     "remote pairing created".to_string()
@@ -495,8 +559,13 @@ impl CoduxApp {
                 if let Some(pairing) = pairing {
                     self.start_remote_pairing_poll(pairing, cx);
                 }
+                self.runtime_trace("remote", "pairing_create ok");
             }
-            Err(error) => self.status_message = format!("failed to create remote pairing: {error}"),
+            Err(error) => {
+                self.remote_pairing_sheet_open = false;
+                self.runtime_trace("remote", &format!("pairing_create failed error={error}"));
+                self.status_message = format!("failed to create remote pairing: {error}");
+            }
         }
         cx.notify();
     }
@@ -553,6 +622,12 @@ impl CoduxApp {
         .detach();
     }
 
+    pub(super) fn close_remote_pairing_sheet(&mut self, cx: &mut Context<Self>) {
+        self.remote_pairing_sheet_open = false;
+        self.remote_pairing_creating = false;
+        cx.notify();
+    }
+
     pub(super) fn apply_remote_pairing_poll_result(
         &mut self,
         generation: u64,
@@ -576,6 +651,7 @@ impl CoduxApp {
             Ok(result) => {
                 let finished = result.finished;
                 self.state.remote = result.summary;
+                self.remote_pairing_sheet_open = self.state.remote.pairing.is_some();
                 self.normalize_selected_remote_device();
                 self.status_message = self.state.remote.message.clone();
                 cx.notify();
@@ -583,6 +659,7 @@ impl CoduxApp {
             }
             Err(error) => {
                 self.state.remote.pairing = None;
+                self.remote_pairing_sheet_open = false;
                 self.status_message = format!("remote pairing poll failed: {error}");
                 cx.notify();
                 true
@@ -597,13 +674,43 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         self.remote_pairing_poll_generation = self.remote_pairing_poll_generation.wrapping_add(1);
-        match self.runtime_service.cancel_remote_pairing(&pairing_id) {
+        self.remote_pairing_sheet_open = false;
+        self.state.remote.pairing = None;
+        self.status_message = "remote pairing cancelled".to_string();
+
+        let service = self.runtime_service.clone();
+        self.runtime_trace("remote", "pairing_cancel start");
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                service.cancel_remote_pairing(&pairing_id)
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result);
+            let _ = this.update(cx, |app, cx| {
+                app.apply_remote_pairing_cancel_result(result, cx);
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn apply_remote_pairing_cancel_result(
+        &mut self,
+        result: Result<RemoteSummary, String>,
+        cx: &mut Context<Self>,
+    ) {
+        match result {
             Ok(remote) => {
                 self.state.remote = remote;
                 self.normalize_selected_remote_device();
                 self.status_message = "remote pairing cancelled".to_string();
+                self.runtime_trace("remote", "pairing_cancel ok");
             }
-            Err(error) => self.status_message = format!("failed to cancel remote pairing: {error}"),
+            Err(error) => {
+                self.status_message = format!("failed to cancel remote pairing: {error}");
+                self.runtime_trace("remote", &format!("pairing_cancel failed error={error}"));
+            }
         }
         cx.notify();
     }
@@ -790,7 +897,7 @@ impl CoduxApp {
                 .mark_main_window_state(visible, focused);
             None
         };
-        if include_scheduled_tick {
+        if include_scheduled_tick && !self.should_skip_scheduled_project_activity_tick() {
             self.runtime_service.tick_project_activity();
         }
         let applied_settings_events = usize::from(self.apply_settings_update_event(cx));
@@ -806,6 +913,9 @@ impl CoduxApp {
         let remote_events = self.runtime_service.drain_remote_events();
         if let Some(remote) = remote_events.last().cloned() {
             self.state.remote = remote;
+            if self.remote_reconnecting && self.state.remote.status != "connecting" {
+                self.remote_reconnecting = false;
+            }
             self.normalize_selected_remote_device();
         }
         let scheduled_refresh = self.pending_runtime_refresh.take();
@@ -1027,10 +1137,27 @@ impl CoduxApp {
         }
     }
 
-    pub(super) fn refresh_global_today_ai_tokens(&mut self) {
-        if let Ok(tokens) = self.runtime_service.global_today_normalized_ai_tokens() {
-            self.state.ai_global_history.today_total_tokens = tokens.max(0);
+    pub(super) fn refresh_global_today_ai_tokens(&mut self) -> bool {
+        let Ok(tokens) = self.runtime_service.global_today_normalized_ai_tokens() else {
+            return false;
+        };
+        let tokens = tokens.max(0);
+        if self.state.ai_global_history.today_total_tokens == tokens {
+            return false;
         }
+        self.state.ai_global_history.today_total_tokens = tokens;
+        true
+    }
+
+    pub(super) fn refresh_today_level_after_day_change(&mut self) -> bool {
+        let day_start =
+            codux_runtime::ai_history_normalized::local_day_start_seconds(app_now_seconds());
+        if (day_start - self.today_level_day_start).abs() < 1.0 {
+            return false;
+        }
+        self.today_level_day_start = day_start;
+        self.refresh_global_today_ai_tokens();
+        true
     }
 
     pub(super) fn apply_ai_history_events(
@@ -1038,12 +1165,16 @@ impl CoduxApp {
         events: Vec<AIHistoryEvent>,
         cx: &mut Context<Self>,
     ) -> usize {
+        if events.is_empty() {
+            return 0;
+        }
         let selected_project = self.state.selected_project.clone();
         let selected_id = selected_project.as_ref().map(|project| project.id.as_str());
         let selected_path = selected_project
             .as_ref()
             .map(|project| project.path.as_str());
         let mut applied = 0;
+        let previous_active_index_count = self.ai_history_active_index_count;
 
         for event in events {
             match event {
@@ -1092,14 +1223,19 @@ impl CoduxApp {
             }
         }
 
+        self.ai_history_active_index_count = self.runtime_service.active_ai_history_index_count();
+        let global_changed = self.ai_history_active_index_count != previous_active_index_count;
+
         if applied > 0 {
-            self.ai_history_active_index_count =
-                self.runtime_service.active_ai_history_index_count();
-            self.cache_current_project_view();
+            self.save_current_project_view_state();
             self.notify_task_column(cx);
         }
 
-        applied
+        if global_changed {
+            applied.max(1)
+        } else {
+            applied
+        }
     }
 
     pub(super) fn apply_project_activity_events(
@@ -1124,6 +1260,7 @@ impl CoduxApp {
                     self.state.git = snapshot;
                     self.normalize_selected_git_file();
                     self.normalize_selected_git_branch();
+                    self.save_current_worktree_view_state();
                     applied += 1;
                 }
                 ProjectActivityEvent::GitReview {
@@ -1133,6 +1270,7 @@ impl CoduxApp {
                 } if selected_path == Some(project_path.as_str()) => {
                     self.git_review = snapshot;
                     self.normalize_selected_git_file();
+                    self.save_current_worktree_view_state();
                     applied += 1;
                 }
                 ProjectActivityEvent::WorktreeSnapshot {
@@ -1142,13 +1280,14 @@ impl CoduxApp {
                 } if selected_id == Some(project_id.as_str())
                     || selected_path == Some(project_path.as_str()) =>
                 {
-                    self.state.worktrees = snapshot;
-                    self.cache_current_project_view();
+                    self.merge_selected_project_worktrees(snapshot);
+                    self.save_current_project_view_state();
                     applied += 1;
                 }
                 ProjectActivityEvent::GitChanged { project_path, .. }
                     if selected_path == Some(project_path.as_str()) =>
                 {
+                    self.refresh_file_tree_cache();
                     applied += 1;
                 }
                 ProjectActivityEvent::AIHistory {
@@ -1161,7 +1300,7 @@ impl CoduxApp {
                 {
                     self.state.ai_history = normalized_ai_history_snapshot_to_summary(snapshot);
                     self.normalize_selected_ai_session();
-                    self.cache_current_project_view();
+                    self.save_current_project_view_state();
                     applied += 1;
                 }
                 _ => {}

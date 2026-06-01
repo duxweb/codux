@@ -5,7 +5,10 @@ use super::{
     registry::{AIRuntimeRegistry, AIRuntimeTerminalState},
     supervisor::{AIRuntimeSupervisor, AIRuntimeSupervisorEvent},
 };
-use crate::runtime_paths::{home_dir, runtime_temp_dir};
+use crate::runtime_paths::{
+    claude_session_map_dir_in, home_dir, opencode_session_map_dir_in, runtime_event_dir_in,
+    runtime_socket_path_in, runtime_temp_dir,
+};
 use serde::Serialize;
 use std::{
     fs,
@@ -68,8 +71,8 @@ impl AIRuntimeBridge {
             root_dir,
             wrapper_bin_dir,
             managed_hook_script,
-            runtime_event_dir: temp_dir.join("runtime-events"),
-            socket_path: temp_dir.join("runtime-events.sock"),
+            runtime_event_dir: runtime_event_dir_in(&temp_dir),
+            socket_path: runtime_socket_path_in(&temp_dir),
             temp_dir,
             home_dir,
             registry: AIRuntimeRegistry::shared(),
@@ -227,11 +230,11 @@ impl AIRuntimeBridge {
     }
 
     pub fn claude_session_map_dir(&self) -> PathBuf {
-        self.temp_dir.join("claude-session-map")
+        claude_session_map_dir_in(&self.temp_dir)
     }
 
     pub fn opencode_session_map_dir(&self) -> PathBuf {
-        self.temp_dir.join("opencode-session-map")
+        opencode_session_map_dir_in(&self.temp_dir)
     }
 
     pub fn snapshot(&self) -> AIRuntimeBridgeSnapshot {

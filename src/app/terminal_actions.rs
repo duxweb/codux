@@ -5,12 +5,16 @@ impl CoduxApp {
     pub(in crate::app) fn add_terminal_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         prepare_memory_launch_artifacts(&self.state);
         let launch_context = self.current_terminal_launch_context();
+        let owner_id = launch_context
+            .as_ref()
+            .map(|context| context.project_id.as_str())
+            .unwrap_or("unscoped");
         let id = self.next_terminal_index;
         let tab_number = self.bottom_terminals().count() + 1;
         let title = format!("Tab {tab_number}");
         let pane_plan = TerminalPanePlan {
-            source_id: Some(format!("bottom-{id}")),
-            terminal_id: Some(format!("gpui-term-{id}")),
+            source_id: Some(bottom_slot_id(owner_id, tab_number.saturating_sub(1))),
+            terminal_id: Some(bottom_terminal_id(owner_id, tab_number.saturating_sub(1))),
             title: title.clone(),
             restored_output_bytes: 0,
             restored_output_tail: String::new(),
@@ -71,12 +75,16 @@ impl CoduxApp {
         }
         let tab_id = active_tab.id;
         let pane_index = active_tab.panes.len();
+        let owner_id = launch_context
+            .as_ref()
+            .map(|context| context.project_id.as_str())
+            .unwrap_or("unscoped");
         let title = self
             .text("terminal.split.default_format", "Split %d")
             .replace("%d", &(pane_index + 1).to_string());
         let pane_plan = TerminalPanePlan {
-            source_id: Some(format!("top-{}", pane_index + 1)),
-            terminal_id: Some(format!("gpui-pane-{tab_id}-{}", pane_index + 1)),
+            source_id: Some(top_slot_id(owner_id, pane_index)),
+            terminal_id: Some(top_terminal_id(owner_id, pane_index)),
             title: title.clone(),
             restored_output_bytes: 0,
             restored_output_tail: String::new(),
@@ -307,7 +315,7 @@ impl CoduxApp {
             .or_else(|| self.terminals[tab_index].terminal_id.clone())
             .unwrap_or_else(|| {
                 format!(
-                    "gpui-pane-{}-{}",
+                    "gpui-pane-unscoped-{}-{}",
                     self.terminals[tab_index].id,
                     pane_index + 1
                 )
@@ -397,8 +405,12 @@ impl CoduxApp {
 
         let tab_id = active_tab.id;
         let pane_index = active_tab.panes.len();
-        let terminal_id = format!("gpui-ai-restore-{tab_id}-{}", Uuid::new_v4());
-        let slot_id = format!("top-ai-restore-{}", Uuid::new_v4());
+        let owner_id = launch_context
+            .as_ref()
+            .map(|context| context.project_id.as_str())
+            .unwrap_or("unscoped");
+        let terminal_id = format!("gpui-term-{owner_id}-ai-restore-{}", Uuid::new_v4());
+        let slot_id = format!("gpui-pane-{owner_id}-ai-restore-{}", Uuid::new_v4());
         let pane_plan = TerminalPanePlan {
             source_id: Some(slot_id),
             terminal_id: Some(terminal_id),

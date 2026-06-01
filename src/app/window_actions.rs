@@ -6,6 +6,7 @@ impl CoduxApp {
         state.settings = settings_with_active_restart_locked_values(&state.settings);
         let runtime = RuntimeInventory::load();
         let runtime_service = RuntimeService::new(state.support_dir.clone());
+        state.remote = runtime_service.reload_remote();
         let power_sync_error = runtime_service.start_power_settings_sync().err();
         state.power = runtime_service.power_summary(&state.settings.sleep_mode);
         if let Some(error) = power_sync_error {
@@ -59,7 +60,9 @@ impl CoduxApp {
         let pet_custom_pets = pet_catalog.custom_pets.clone();
         let pet_sprite_paths =
             pet_sprite_path_cache(&runtime.source_root, &state.support_dir, &pet_catalog);
-        let project_view_cache = initial_project_view_cache(&state);
+        let project_view_store = initial_project_view_store(&state);
+        let worktree_view_store = initial_worktree_view_store(&state);
+        let terminal_view_store = initial_terminal_view_store(&state);
 
         Self {
             window_mode: AppWindowMode::Settings,
@@ -171,10 +174,19 @@ impl CoduxApp {
             ai_history_active_index_count: 0,
             ai_history_refresh_project_ids: HashSet::new(),
             project_switch_generation: 0,
+            project_task_load_in_flight: HashSet::new(),
+            project_task_load_last_started_at: HashMap::new(),
+            project_task_load_last_finished_at: HashMap::new(),
+            worktree_sidebar_load_in_flight: HashSet::new(),
+            worktree_sidebar_load_last_started_at: HashMap::new(),
+            worktree_sidebar_load_last_finished_at: HashMap::new(),
             memory_progress_visible_until: 0.0,
             memory_progress_generation: 0,
             performance_refresh_in_flight: false,
             pending_performance_refresh: None,
+            today_level_day_start: codux_runtime::ai_history_normalized::local_day_start_seconds(
+                app_now_seconds(),
+            ),
             active_settings_pane: SettingsPane::General,
             memory_manager_tab: MemoryManagerTab::Summary,
             memory_manager_scope: "project".to_string(),
@@ -194,6 +206,9 @@ impl CoduxApp {
             ssh_draft_password: String::new(),
             ssh_draft_key_passphrase: String::new(),
             selected_remote_device_id,
+            remote_reconnecting: false,
+            remote_pairing_sheet_open: false,
+            remote_pairing_creating: false,
             remote_pairing_poll_generation: 0,
             recording_shortcut_id: None,
             agent_split_enabled: false,
@@ -210,7 +225,9 @@ impl CoduxApp {
             workspace_assistant_view: None,
             status_bar_view: None,
             file_sidebar_view: None,
-            project_view_cache,
+            project_view_store,
+            worktree_view_store,
+            terminal_view_store,
             project_open_applications,
             project_editor_project_id: None,
             project_editor_name: String::new(),
@@ -396,6 +413,10 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.handle_project_number_shortcut(event, window, cx) {
+            return true;
+        }
+
         let actual = shortcut_display_from_keystroke(&event.keystroke);
         let shortcuts = &self.state.settings.shortcuts;
 
@@ -489,6 +510,35 @@ impl CoduxApp {
         false
     }
 
+    fn handle_project_number_shortcut(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let keystroke = &event.keystroke;
+        if !keystroke.modifiers.platform
+            || keystroke.modifiers.control
+            || keystroke.modifiers.alt
+            || keystroke.modifiers.shift
+        {
+            return false;
+        }
+
+        let Ok(index) = keystroke.key.parse::<usize>() else {
+            return false;
+        };
+        if !(1..=9).contains(&index) {
+            return false;
+        }
+
+        let Some(project) = self.state.projects.get(index - 1) else {
+            return true;
+        };
+        self.select_project(project.id.clone(), window, cx);
+        true
+    }
+
     pub(super) fn handle_file_clipboard_key(
         &mut self,
         event: &KeyDownEvent,
@@ -552,6 +602,7 @@ impl CoduxApp {
                     cx,
                 );
                 let view = cx.new(|_| app);
+                view.update(cx, |app, cx| app.start_settings_remote_snapshot_loop(cx));
                 cx.new(|cx| Root::new(view, window, cx))
             },
         );

@@ -1,5 +1,6 @@
 use crate::runtime_paths::{
-    app_display_name, app_support_dir, live_log_path, runtime_log_path, runtime_temp_dir,
+    app_display_name, app_support_dir, live_log_path, runtime_log_path, runtime_log_preview_path,
+    runtime_temp_dir,
 };
 use crate::settings::AppSettings;
 use crate::update::UpdateService;
@@ -148,7 +149,7 @@ pub fn write_runtime_log_preview() -> Result<PathBuf, String> {
             ),
         )?;
     }
-    let preview_path = runtime_temp_dir().join("runtime-log-preview.txt");
+    let preview_path = runtime_log_preview_path();
     write_runtime_log_preview_file(&path, &preview_path)?;
     Ok(preview_path)
 }

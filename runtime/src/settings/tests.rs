@@ -344,6 +344,49 @@ mod tests {
         fs::remove_dir_all(support_dir).ok();
     }
 
+    #[test]
+    fn accepts_all_gpui_shortcut_setting_ids() {
+        let support_dir = temp_dir("settings-shortcuts");
+        let service = SettingsService::new(support_dir.clone());
+        for shortcut_id in [
+            "view.terminal",
+            "view.files",
+            "view.review",
+            "project.create",
+            "project.open_folder",
+            "settings.open",
+            "task.create",
+            "sidebar.projects.toggle",
+            "sidebar.tasks.toggle",
+            "assistant.git.open",
+            "assistant.files.open",
+            "assistant.ai.open",
+            "assistant.ssh.open",
+            "terminal.split.create",
+            "terminal.tab.create",
+            "editor.save",
+            "editor.search",
+            "close.active",
+            "panel.git",
+            "panel.ai",
+            "terminal.split",
+            "terminal.tab",
+        ] {
+            let summary = service
+                .set_shortcut(shortcut_id, "Cmd+Shift+P")
+                .expect("set shortcut");
+            assert_eq!(
+                summary.shortcuts.get(shortcut_id),
+                Some(&"Cmd+Shift+P".to_string())
+            );
+            let summary = service.reset_shortcut(shortcut_id).expect("reset shortcut");
+            assert!(!summary.shortcuts.contains_key(shortcut_id));
+        }
+
+        assert!(service.set_shortcut("unsupported.shortcut", "Cmd+P").is_err());
+        fs::remove_dir_all(support_dir).ok();
+    }
+
     fn temp_dir(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)

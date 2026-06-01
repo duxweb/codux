@@ -29,6 +29,7 @@ zip = { version = "2.2", default-features = false, features = ["deflate"] }
 genai = "0.6.1"
 git2 = { version = "0.21.0", features = ["cred", "https", "ssh", "vendored-openssl"] }
 hkdf = "0.12"
+image = "0.25.1"
 libc = "0.2"
 llm-json-repair = "0.1"
 notify = "8"
@@ -40,7 +41,7 @@ webrtc = "0.20.0-alpha.1"
 core-foundation-sys = "0.8"
 dispatch2 = "0.3"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAlert", "NSApplication", "NSButton", "NSControl", "NSDockTile", "NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAlert", "NSApplication", "NSButton", "NSControl", "NSDockTile", "NSImage", "NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSView", "NSWindow"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSProcessInfo", "NSString", "NSURL"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]

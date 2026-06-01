@@ -56,13 +56,7 @@ pub fn runtime_assets_path() -> PathBuf {
 }
 
 pub fn staged_runtime_root_path() -> PathBuf {
-    std::env::temp_dir()
-        .join(if cfg!(debug_assertions) {
-            "codux-dev"
-        } else {
-            "codux"
-        })
-        .join("runtime-root")
+    crate::runtime_paths::runtime_root_dir()
 }
 
 pub fn runtime_src_path() -> PathBuf {

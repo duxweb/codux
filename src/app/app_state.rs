@@ -129,10 +129,17 @@ pub struct CoduxApp {
     pub(in crate::app) ai_history_active_index_count: usize,
     pub(in crate::app) ai_history_refresh_project_ids: HashSet<String>,
     pub(in crate::app) project_switch_generation: u64,
+    pub(in crate::app) project_task_load_in_flight: HashSet<String>,
+    pub(in crate::app) project_task_load_last_started_at: HashMap<String, f64>,
+    pub(in crate::app) project_task_load_last_finished_at: HashMap<String, f64>,
+    pub(in crate::app) worktree_sidebar_load_in_flight: HashSet<WorktreeViewStoreKey>,
+    pub(in crate::app) worktree_sidebar_load_last_started_at: HashMap<WorktreeViewStoreKey, f64>,
+    pub(in crate::app) worktree_sidebar_load_last_finished_at: HashMap<WorktreeViewStoreKey, f64>,
     pub(in crate::app) memory_progress_visible_until: f64,
     pub(in crate::app) memory_progress_generation: u64,
     pub(in crate::app) performance_refresh_in_flight: bool,
     pub(in crate::app) pending_performance_refresh: Option<PerformanceSummary>,
+    pub(in crate::app) today_level_day_start: f64,
     pub(in crate::app) active_settings_pane: SettingsPane,
     pub(in crate::app) memory_manager_tab: MemoryManagerTab,
     pub(in crate::app) memory_manager_scope: String,
@@ -152,6 +159,9 @@ pub struct CoduxApp {
     pub(in crate::app) ssh_draft_password: String,
     pub(in crate::app) ssh_draft_key_passphrase: String,
     pub(in crate::app) selected_remote_device_id: Option<String>,
+    pub(in crate::app) remote_reconnecting: bool,
+    pub(in crate::app) remote_pairing_sheet_open: bool,
+    pub(in crate::app) remote_pairing_creating: bool,
     pub(in crate::app) remote_pairing_poll_generation: u64,
     pub(in crate::app) recording_shortcut_id: Option<String>,
     pub(in crate::app) agent_split_enabled: bool,
@@ -171,7 +181,9 @@ pub struct CoduxApp {
         Option<gpui::Entity<workspace_views::WorkspaceAssistantView>>,
     pub(in crate::app) status_bar_view: Option<gpui::Entity<StatusBarView>>,
     pub(in crate::app) file_sidebar_view: Option<gpui::Entity<FileSidebarView>>,
-    pub(in crate::app) project_view_cache: HashMap<String, ProjectViewCache>,
+    pub(in crate::app) project_view_store: HashMap<String, ProjectViewState>,
+    pub(in crate::app) worktree_view_store: HashMap<WorktreeViewStoreKey, WorktreeViewState>,
+    pub(in crate::app) terminal_view_store: HashMap<TerminalViewStoreKey, TerminalViewState>,
     pub(in crate::app) project_open_applications: Vec<ProjectOpenApplicationSummary>,
     pub(in crate::app) project_editor_project_id: Option<String>,
     pub(in crate::app) project_editor_name: String,
@@ -221,13 +233,18 @@ pub(in crate::app) struct ProjectSwitchLoad {
     pub(in crate::app) ai_global_history: AIGlobalHistorySummary,
     pub(in crate::app) memory: MemorySummary,
     pub(in crate::app) memory_manager: MemoryManagerSnapshot,
+}
+
+pub(in crate::app) struct ProjectSwitchTaskLoad {
+    pub(in crate::app) project_id: String,
+    pub(in crate::app) generation: u64,
     pub(in crate::app) worktrees: WorktreeSummary,
 }
 
 pub(in crate::app) struct ProjectSwitchTerminalLoad {
     pub(in crate::app) project_id: String,
     pub(in crate::app) generation: u64,
-    pub(in crate::app) worktrees: WorktreeSummary,
+    pub(in crate::app) store_key: TerminalViewStoreKey,
     pub(in crate::app) terminal_layout: TerminalLayoutSummary,
     pub(in crate::app) terminal_runtime: TerminalRuntimeSummary,
 }
@@ -237,11 +254,26 @@ pub(in crate::app) struct ProjectSwitchPrimaryLoad {
     pub(in crate::app) generation: u64,
     pub(in crate::app) ai_history: AIHistorySummary,
     pub(in crate::app) ai_session_detail: Option<AISessionDetail>,
-    pub(in crate::app) worktrees: WorktreeSummary,
+}
+
+pub(in crate::app) struct WorktreeSwitchTerminalLoad {
+    pub(in crate::app) project_id: String,
+    pub(in crate::app) generation: u64,
+    pub(in crate::app) store_key: TerminalViewStoreKey,
+    pub(in crate::app) terminal_layout: TerminalLayoutSummary,
+    pub(in crate::app) terminal_runtime: TerminalRuntimeSummary,
+}
+
+pub(in crate::app) struct WorktreeSidebarLoad {
+    pub(in crate::app) generation: u64,
+    pub(in crate::app) store_key: WorktreeViewStoreKey,
+    pub(in crate::app) files: Vec<FileEntry>,
+    pub(in crate::app) git: GitSummary,
+    pub(in crate::app) git_review: GitReviewSummary,
 }
 
 #[derive(Clone)]
-pub(in crate::app) struct ProjectViewCache {
+pub(in crate::app) struct ProjectViewState {
     pub(in crate::app) ai_history: AIHistorySummary,
     pub(in crate::app) ai_global_history: AIGlobalHistorySummary,
     pub(in crate::app) ai_session_detail: Option<AISessionDetail>,
@@ -250,16 +282,65 @@ pub(in crate::app) struct ProjectViewCache {
     pub(in crate::app) worktrees: WorktreeSummary,
 }
 
-pub(in crate::app) fn initial_project_view_cache(
+#[derive(Clone)]
+pub(in crate::app) struct WorktreeViewState {
+    pub(in crate::app) files: FileWorktreeViewState,
+    pub(in crate::app) git: GitWorktreeViewState,
+}
+
+#[derive(Clone)]
+pub(in crate::app) struct FileWorktreeViewState {
+    pub(in crate::app) files: Vec<FileEntry>,
+    pub(in crate::app) file_directory: String,
+    pub(in crate::app) selected_file_entry: Option<String>,
+    pub(in crate::app) selected_file_entries: HashSet<String>,
+    pub(in crate::app) file_selection_anchor: Option<String>,
+    pub(in crate::app) file_tree_expanded_dirs: HashSet<String>,
+    pub(in crate::app) file_tree_children: HashMap<String, Vec<FileEntry>>,
+}
+
+#[derive(Clone)]
+pub(in crate::app) struct GitWorktreeViewState {
+    pub(in crate::app) git: GitSummary,
+    pub(in crate::app) git_review: GitReviewSummary,
+    pub(in crate::app) selected_git_file: Option<String>,
+    pub(in crate::app) selected_git_files: HashSet<String>,
+    pub(in crate::app) selected_git_branch: Option<String>,
+    pub(in crate::app) git_expanded_sections: HashSet<String>,
+    pub(in crate::app) git_expanded_dirs: HashSet<String>,
+    pub(in crate::app) git_tree_children: HashMap<String, Vec<GitFileStatus>>,
+    pub(in crate::app) git_diff_preview: String,
+    pub(in crate::app) git_review_content: Option<GitReviewContentSummary>,
+}
+
+#[derive(Clone)]
+pub(in crate::app) struct TerminalViewState {
+    pub(in crate::app) terminal_layout: TerminalLayoutSummary,
+    pub(in crate::app) terminal_runtime: TerminalRuntimeSummary,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub(in crate::app) struct TerminalViewStoreKey {
+    pub(in crate::app) project_id: String,
+    pub(in crate::app) task_id: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub(in crate::app) struct WorktreeViewStoreKey {
+    pub(in crate::app) project_id: String,
+    pub(in crate::app) worktree_id: String,
+}
+
+pub(in crate::app) fn initial_project_view_store(
     state: &RuntimeState,
-) -> HashMap<String, ProjectViewCache> {
+) -> HashMap<String, ProjectViewState> {
     state
         .selected_project
         .as_ref()
         .map(|project| {
             HashMap::from([(
                 project.id.clone(),
-                ProjectViewCache {
+                ProjectViewState {
                     ai_history: state.ai_history.clone(),
                     ai_global_history: state.ai_global_history.clone(),
                     ai_session_detail: state.ai_session_detail.clone(),
@@ -272,11 +353,113 @@ pub(in crate::app) fn initial_project_view_cache(
         .unwrap_or_default()
 }
 
+pub(in crate::app) fn initial_terminal_view_store(
+    state: &RuntimeState,
+) -> HashMap<TerminalViewStoreKey, TerminalViewState> {
+    terminal_view_store_key(state)
+        .map(|key| {
+            HashMap::from([(
+                key,
+                TerminalViewState {
+                    terminal_layout: state.terminal_layout.clone(),
+                    terminal_runtime: state.terminal_runtime.clone(),
+                },
+            )])
+        })
+        .unwrap_or_default()
+}
+
+pub(in crate::app) fn initial_worktree_view_store(
+    state: &RuntimeState,
+) -> HashMap<WorktreeViewStoreKey, WorktreeViewState> {
+    worktree_view_store_key(state)
+        .map(|key| {
+            HashMap::from([(
+                key,
+                WorktreeViewState {
+                    files: FileWorktreeViewState {
+                        files: state.files.clone(),
+                        file_directory: String::new(),
+                        selected_file_entry: None,
+                        selected_file_entries: HashSet::new(),
+                        file_selection_anchor: None,
+                        file_tree_expanded_dirs: HashSet::new(),
+                        file_tree_children: HashMap::new(),
+                    },
+                    git: GitWorktreeViewState {
+                        git: state.git.clone(),
+                        git_review: state.git_review.clone(),
+                        selected_git_file: None,
+                        selected_git_files: HashSet::new(),
+                        selected_git_branch: state
+                            .git
+                            .branches
+                            .iter()
+                            .find(|branch| branch.is_current)
+                            .or_else(|| state.git.branches.first())
+                            .map(|branch| branch.name.clone()),
+                        git_expanded_sections: HashSet::from([
+                            "changed".to_string(),
+                            "untracked".to_string(),
+                        ]),
+                        git_expanded_dirs: HashSet::new(),
+                        git_tree_children: HashMap::new(),
+                        git_diff_preview: "select a changed file to preview its diff".to_string(),
+                        git_review_content: None,
+                    },
+                },
+            )])
+        })
+        .unwrap_or_default()
+}
+
+pub(in crate::app) fn terminal_view_store_key(
+    state: &RuntimeState,
+) -> Option<TerminalViewStoreKey> {
+    let project_id = state.selected_project.as_ref()?.id.clone();
+    let task_id = super::ai_runtime_status::terminal_layout_owner_id(state)?;
+    Some(TerminalViewStoreKey {
+        project_id,
+        task_id,
+    })
+}
+
+pub(in crate::app) fn worktree_view_store_key(
+    state: &RuntimeState,
+) -> Option<WorktreeViewStoreKey> {
+    let project_id = state.selected_project.as_ref()?.id.clone();
+    let worktree_id = super::ai_runtime_status::terminal_layout_owner_id(state)?;
+    Some(WorktreeViewStoreKey {
+        project_id,
+        worktree_id,
+    })
+}
+
+pub(in crate::app) fn worktree_summary_has_rows(summary: &WorktreeSummary) -> bool {
+    summary.available && !summary.worktrees.is_empty()
+}
+
+pub(in crate::app) fn worktree_summary_has_git_counts(summary: &WorktreeSummary) -> bool {
+    summary.worktrees.iter().any(|worktree| {
+        let git = &worktree.git_summary;
+        git.changes > 0
+            || git.incoming != 0
+            || git.outgoing != 0
+            || git.additions != 0
+            || git.deletions != 0
+    })
+}
+
 pub(in crate::app) fn prewarm_terminal_restore(state: &RuntimeState, runtime: &RuntimeInventory) {
     prepare_memory_launch_artifacts(state);
+    let (terminal_layout, terminal_runtime) = normalize_terminal_restore_state(
+        super::ai_runtime_status::terminal_layout_owner_id(state).as_deref(),
+        state.terminal_layout.clone(),
+        state.terminal_runtime.clone(),
+    );
     let restore_plan = terminal_restore_plan_for_language(
-        &state.terminal_layout,
-        &state.terminal_runtime,
+        &terminal_layout,
+        &terminal_runtime,
         &state.settings.language,
     );
     let base_context = terminal_launch_context(state, runtime, &state.tool_permissions);

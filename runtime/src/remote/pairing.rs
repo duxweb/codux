@@ -1,36 +1,65 @@
 use super::crypto::{remote_pairing_match_code, remote_pairing_qr_payload};
-use super::http::{remote_post_blocking, remote_server_url};
+use super::http::{remote_post, remote_post_blocking, remote_server_url};
 use super::summary::remote_summary_from_settings;
 use super::types::{
     RemotePairingInfo, RemotePairingPollResult, RemotePairingStatusResponse,
     RemotePendingPairing, RemoteSettings, RemoteSummary,
 };
 use super::{RemoteService, remote_settings_from_raw};
+use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use serde_json::{Value, json};
+use std::time::Instant;
 
 impl RemoteService {
     pub fn create_pairing(&self) -> Result<RemoteSummary, String> {
+        crate::async_runtime::block_on(self.create_pairing_async())
+    }
+
+    pub async fn create_pairing_async(&self) -> Result<RemoteSummary, String> {
+        let started_at = Instant::now();
+        runtime_trace("remote", "create_pairing service_start");
         let mut raw = self.raw_settings();
-        let settings = self.register_host_in_raw(&mut raw)?;
+        let settings = self.register_host_in_raw_async(&mut raw).await?;
         if settings.host_id.trim().is_empty() || settings.host_token.trim().is_empty() {
+            runtime_trace("remote", "create_pairing failed reason=host_not_registered");
             return Err("Remote Host is not registered.".to_string());
         }
         let body = json!({
             "hostId": settings.host_id,
             "token": settings.host_token,
         });
+        runtime_trace(
+            "remote",
+            &format!("create_pairing request relay={}", remote_server_url(&settings)),
+        );
         let mut pairing =
-            remote_post_blocking::<RemotePairingInfo>(&remote_server_url(&settings), "/api/pairings", body)?;
+            remote_post::<RemotePairingInfo>(&remote_server_url(&settings), "/api/pairings", body)
+                .await?;
         pairing.host_public_key =
             (!settings.host_public_key.trim().is_empty()).then(|| settings.host_public_key.clone());
         pairing.crypto_version = Some(1);
         pairing.qr_payload = remote_pairing_qr_payload(&settings, &pairing);
+        runtime_trace(
+            "remote",
+            &format!(
+                "create_pairing payload_ready pairing_id={} code={} qr_bytes={}",
+                pairing.pairing_id,
+                pairing.code,
+                pairing.qr_payload.len()
+            ),
+        );
         self.save_raw_settings(&raw)?;
 
         let mut summary = remote_summary_from_settings(settings);
         summary.pairing = Some(pairing.clone());
         summary.status = "connected".to_string();
         summary.message = format!("Pairing code: {}", pairing.code);
+        runtime_trace_elapsed(
+            "remote",
+            "create_pairing ok",
+            started_at,
+            &format!("pairing_id={}", pairing.pairing_id),
+        );
         Ok(summary)
     }
 

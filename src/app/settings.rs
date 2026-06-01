@@ -5,7 +5,7 @@ use codux_runtime::{
     i18n::translate,
     memory::MemorySummary,
     notification::NotificationSummary,
-    remote::RemoteSummary,
+    remote::{RemotePairingInfo, RemotePendingPairing, RemoteSummary},
     settings::{SettingsSummary, locale_from_language_setting},
     tool_permissions::ToolPermissionsSummary,
     update::UpdateSummary,
@@ -21,6 +21,7 @@ use gpui_component::{
     select::{Select, SelectEvent, SelectItem, SelectState},
     switch::Switch,
 };
+use qrcode::{QrCode, types::Color as QrColor};
 
 #[derive(Clone)]
 struct SettingsSelectOption {
@@ -101,71 +102,18 @@ impl SettingsPane {
         }
     }
 
-    fn description(self, language: &str) -> String {
-        let key = match self {
-            Self::General => "settings.tab.general.description",
-            Self::Appearance => "settings.tab.appearance.description",
-            Self::Pet => "settings.tab.pet.description",
-            Self::AI => "settings.tab.ai.description",
-            Self::Git => "settings.tab.git.description",
-            Self::Memory => "settings.tab.memory.description",
-            Self::Notifications => "settings.tab.notifications.description",
-            Self::Remote => "settings.tab.remote.description",
-            Self::Shortcuts => "settings.tab.shortcuts.description",
-            Self::Experiments => "settings.tab.experiments.description",
-            Self::Developer => "settings.tab.developer.description",
-        };
-        match self {
-            Self::General => {
-                settings_text(language, key, "Language, shell, refresh, and statistics.")
-            }
-            Self::Appearance => settings_text(
-                language,
-                key,
-                "Theme, accent color, icon, and terminal text.",
-            ),
-            Self::Pet => settings_text(
-                language,
-                key,
-                "Pet, desktop pet, speech, LLM, and reminders.",
-            ),
-            Self::AI => settings_text(language, key, "AI CLI tools and provider defaults."),
-            Self::Git => settings_text(language, key, "Git commit message generation and format."),
-            Self::Memory => {
-                settings_text(language, key, "Memory injection, extraction, and indexing.")
-            }
-            Self::Notifications => {
-                settings_text(language, key, "Notification channels and switches.")
-            }
-            Self::Remote => settings_text(
-                language,
-                key,
-                "Relay server, remote hosts, and device pairing.",
-            ),
-            Self::Shortcuts => {
-                settings_text(language, key, "Split, tab, panel, and project shortcuts.")
-            }
-            Self::Experiments => {
-                settings_text(language, key, "Experimental split and agent workflows.")
-            }
-            Self::Developer => {
-                settings_text(language, key, "Debug performance HUD and diagnostics.")
-            }
-        }
-    }
-
     fn icon(self) -> IconName {
         match self {
             Self::General => IconName::Settings,
             Self::Appearance => IconName::Palette,
-            Self::Pet => IconName::CircleUser,
+            Self::Pet => IconName::Heart,
             Self::AI => IconName::Bot,
             Self::Git => IconName::Github,
             Self::Memory => IconName::BookOpen,
             Self::Notifications => IconName::Bell,
             Self::Remote => IconName::Globe,
-            Self::Shortcuts => IconName::CaseSensitive,
-            Self::Experiments => IconName::Asterisk,
+            Self::Shortcuts => IconName::ALargeSmall,
+            Self::Experiments => IconName::Inspector,
             Self::Developer => IconName::Settings2,
         }
     }
@@ -200,6 +148,7 @@ impl CoduxApp {
         let language = self.state.settings.language.as_str();
 
         div()
+            .relative()
             .flex()
             .flex_1()
             .h_full()
@@ -214,7 +163,7 @@ impl CoduxApp {
                     .border_r_1()
                     .border_color(cx.theme().sidebar_border)
                     .bg(cx.theme().sidebar)
-                    .child(div().h(px(54.0)).flex_shrink_0())
+                    .child(div().h(px(48.0)).flex_shrink_0())
                     .child(
                         div()
                             .flex()
@@ -241,10 +190,10 @@ impl CoduxApp {
                     .bg(cx.theme().tab_bar)
                     .child(
                         div()
-                            .h(px(92.0))
+                            .h(px(68.0))
                             .flex_shrink_0()
                             .px(px(28.0))
-                            .pb(px(16.0))
+                            .pb(px(14.0))
                             .flex()
                             .flex_col()
                             .justify_end()
@@ -254,14 +203,6 @@ impl CoduxApp {
                                     .line_height(px(26.0))
                                     .text_color(cx.theme().foreground)
                                     .child(pane.label(language)),
-                            )
-                            .child(
-                                div()
-                                    .mt(px(8.0))
-                                    .text_size(px(14.0))
-                                    .line_height(px(20.0))
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(pane.description(language)),
                             ),
                     )
                     .child(
@@ -273,6 +214,21 @@ impl CoduxApp {
                             .pb(px(28.0))
                             .child(settings_pane_body(self, pane, window, cx)),
                     ),
+            )
+            .when(
+                self.remote_pairing_sheet_open || self.state.remote.pairing.is_some(),
+                |this| {
+                    this.child(remote_pairing_overlay(
+                        self.state.remote.pairing.clone(),
+                        self.remote_pairing_creating,
+                        language,
+                        cx,
+                    ))
+                },
+            )
+            .when_some(
+                self.state.remote.pending_pairing_list.first().cloned(),
+                |this, pairing| this.child(remote_pending_pairing_overlay(pairing, language, cx)),
             )
     }
 }
@@ -343,9 +299,11 @@ fn settings_pane_body(
             cx,
         ),
         SettingsPane::Remote => settings_remote_pane(
-            &app.state.remote,
+            &app.runtime_service.reload_remote(),
             app.selected_remote_device_id.as_deref(),
             app.state.settings.language.as_str(),
+            app.remote_reconnecting,
+            app.remote_pairing_creating,
             window,
             cx,
         ),
@@ -370,7 +328,7 @@ fn settings_form(children: Vec<AnyElement>) -> impl IntoElement {
         .flex_col()
         .w_full()
         .max_w(px(720.0))
-        .gap(px(20.0))
+        .gap(px(22.0))
         .children(children)
 }
 
@@ -380,47 +338,58 @@ fn settings_card(
     children: Vec<AnyElement>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    settings_card_with_actions(title, description, None, children, cx)
+}
+
+fn settings_card_with_actions(
+    title: Option<String>,
+    _description: Option<String>,
+    actions: Option<AnyElement>,
+    children: Vec<AnyElement>,
+    cx: &mut Context<CoduxApp>,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
-        .rounded(px(12.0))
-        .bg(cx.theme().group_box)
-        .px(px(22.0))
-        .py(px(18.0))
-        .child(if title.is_some() || description.is_some() {
+        .child(if title.is_some() || actions.is_some() {
             div()
-                .mb(px(10.0))
+                .mb(px(8.0))
+                .px(px(1.0))
+                .min_h(px(28.0))
                 .flex()
-                .flex_col()
+                .items_center()
+                .justify_between()
+                .gap(px(12.0))
                 .child(
                     div()
-                        .when(title.is_none(), |this| this.hidden())
                         .text_size(px(14.0))
                         .line_height(px(18.0))
                         .text_color(color(theme::TEXT))
                         .child(title.clone().unwrap_or_default()),
                 )
-                .child(
-                    div()
-                        .when(description.is_none(), |this| this.hidden())
-                        .mt(px(4.0))
-                        .text_size(px(12.0))
-                        .line_height(px(17.0))
-                        .text_color(color(theme::TEXT_DIM))
-                        .child(description.unwrap_or_default()),
-                )
+                .child(actions.unwrap_or_else(|| div().hidden().into_any_element()))
                 .into_any_element()
         } else {
             div().hidden().into_any_element()
         })
-        .children(children.into_iter().enumerate().map(|(index, child)| {
+        .child(
             div()
-                .when(index > 0, |this| {
-                    this.border_t_1().border_color(color(theme::BORDER_SOFT))
-                })
-                .child(child)
-                .into_any_element()
-        }))
+                .flex()
+                .flex_col()
+                .rounded(px(12.0))
+                .bg(cx.theme().group_box)
+                .px(px(22.0))
+                .py(px(10.0))
+                .children(children.into_iter().enumerate().map(|(index, child)| {
+                    div()
+                        .when(index > 0, |this| {
+                            this.border_t_1()
+                                .border_color(cx.theme().border.opacity(0.45))
+                        })
+                        .child(child)
+                        .into_any_element()
+                })),
+        )
 }
 
 fn settings_row(
@@ -492,6 +461,28 @@ fn settings_small_button_state(
                 .text_color(color(theme::TEXT))
                 .child(value.into()),
         )
+        .into_any_element()
+}
+
+fn settings_icon_button_state(
+    id: impl Into<SharedString>,
+    icon: IconName,
+    disabled: bool,
+    cx: &mut Context<CoduxApp>,
+    action: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
+) -> AnyElement {
+    Button::new(id.into())
+        .compact()
+        .ghost()
+        .disabled(disabled)
+        .text_color(cx.theme().secondary_foreground)
+        .bg(cx.theme().transparent)
+        .icon(
+            Icon::new(icon)
+                .size_3p5()
+                .text_color(cx.theme().secondary_foreground),
+        )
+        .on_click(cx.listener(action))
         .into_any_element()
 }
 
@@ -606,10 +597,10 @@ fn settings_select_impl(
     let searchable = false;
     let items = settings_select_options(options.clone());
     let selected_index = items.iter().position(|item| item.value == value);
-    let state = window.use_keyed_state(
-        SharedString::from(format!("settings-select-{id}")),
-        cx,
-        |window, cx| {
+    let state_key = format!("settings-select-{id}");
+    let state = window.use_keyed_state(SharedString::from(state_key), cx, {
+        let items = items.clone();
+        move |window, cx| {
             SelectState::new(
                 items,
                 selected_index.map(|row| gpui_component::IndexPath::default().row(row)),
@@ -617,11 +608,9 @@ fn settings_select_impl(
                 cx,
             )
             .searchable(searchable)
-        },
-    );
+        }
+    });
     state.update(cx, |state, cx| {
-        let items = settings_select_options(options);
-        let selected_index = items.iter().position(|item| item.value == value);
         state.set_items(items, window, cx);
         state.set_selected_index(
             selected_index.map(|row| gpui_component::IndexPath::default().row(row)),
@@ -667,16 +656,16 @@ fn settings_checkmark(selected: bool) -> AnyElement {
     div()
         .when(!selected, |this| this.hidden())
         .absolute()
-        .top(px(6.0))
-        .right(px(6.0))
-        .size(px(16.0))
+        .top(px(4.0))
+        .right(px(4.0))
+        .size(px(13.0))
         .rounded_full()
         .bg(color(theme::ACCENT))
         .flex()
         .items_center()
         .justify_center()
-        .text_color(color(theme::TEXT))
-        .child(Icon::new(IconName::Check).size_2p5())
+        .text_color(color(0xFFFFFF))
+        .child(Icon::new(IconName::Check).size_2())
         .into_any_element()
 }
 
@@ -715,10 +704,322 @@ fn settings_selectable_tile(
         .into_any_element()
 }
 
+fn remote_pairing_overlay(
+    pairing: Option<RemotePairingInfo>,
+    loading: bool,
+    language: &str,
+    cx: &mut Context<CoduxApp>,
+) -> AnyElement {
+    let title = settings_text(language, "settings.remote.pairing", "Pairing");
+    div()
+        .absolute()
+        .top(px(0.0))
+        .right(px(0.0))
+        .bottom(px(0.0))
+        .left(px(0.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .p(px(16.0))
+        .bg(cx.theme().overlay)
+        .child(
+            div()
+                .w(px(420.0))
+                .max_w(relative(1.0))
+                .rounded(px(16.0))
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().background)
+                .shadow_lg()
+                .p(px(20.0))
+                .child(
+                    div()
+                        .text_size(px(18.0))
+                        .line_height(px(24.0))
+                        .text_color(cx.theme().foreground)
+                        .child(title),
+                )
+                .child(
+                    div()
+                        .mt(px(24.0))
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .child(if let Some(pairing) = pairing.as_ref() {
+                            remote_pairing_qr(&pairing.qr_payload)
+                        } else {
+                            remote_pairing_placeholder(language, cx)
+                        })
+                        .child(remote_pairing_detail(
+                            pairing.as_ref(),
+                            loading,
+                            language,
+                            cx,
+                        )),
+                )
+                .child(
+                    div()
+                        .mt(px(24.0))
+                        .flex()
+                        .justify_center()
+                        .child(remote_pairing_cancel_button(pairing, language, cx)),
+                ),
+        )
+        .into_any_element()
+}
+
+fn remote_pairing_placeholder(language: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
+    div()
+        .size(px(242.0))
+        .rounded(px(14.0))
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(color(0xFFFFFF))
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(px(12.0))
+        .line_height(px(16.0))
+        .text_color(cx.theme().muted_foreground)
+        .child(settings_text(
+            language,
+            "settings.remote.creating_pairing",
+            "Creating pairing QR...",
+        ))
+        .into_any_element()
+}
+
+fn remote_pairing_detail(
+    pairing: Option<&RemotePairingInfo>,
+    loading: bool,
+    language: &str,
+    cx: &mut Context<CoduxApp>,
+) -> AnyElement {
+    if let Some(pairing) = pairing {
+        return div()
+            .mt(px(16.0))
+            .text_align(gpui::TextAlign::Center)
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .line_height(px(16.0))
+                    .text_color(cx.theme().muted_foreground)
+                    .child(settings_text(
+                        language,
+                        "settings.remote.waiting_scan",
+                        "Waiting for mobile scan...",
+                    )),
+            )
+            .child(
+                div()
+                    .mt(px(4.0))
+                    .text_size(px(11.0))
+                    .line_height(px(14.0))
+                    .text_color(cx.theme().muted_foreground)
+                    .child(settings_text(
+                        language,
+                        "settings.remote.scan_code",
+                        "Scan code",
+                    )),
+            )
+            .child(
+                div()
+                    .mt(px(6.0))
+                    .text_size(px(20.0))
+                    .line_height(px(26.0))
+                    .text_color(cx.theme().foreground)
+                    .child(pairing.code.clone()),
+            )
+            .into_any_element();
+    }
+
+    div()
+        .h(px(54.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(px(14.0))
+        .line_height(px(20.0))
+        .text_color(cx.theme().muted_foreground)
+        .child(if loading {
+            settings_text(
+                language,
+                "settings.remote.creating_pairing",
+                "Creating pairing QR...",
+            )
+        } else {
+            settings_text(
+                language,
+                "settings.remote.configure_hint",
+                "Configure a relay server URL before pairing mobile devices.",
+            )
+        })
+        .into_any_element()
+}
+
+fn remote_pairing_cancel_button(
+    pairing: Option<RemotePairingInfo>,
+    language: &str,
+    cx: &mut Context<CoduxApp>,
+) -> AnyElement {
+    if let Some(pairing) = pairing {
+        let pairing_id = pairing.pairing_id;
+        return settings_small_button(
+            "settings-remote-pairing-cancel",
+            settings_text(language, "common.cancel", "Cancel"),
+            cx,
+            move |app, _event, window, cx| {
+                app.cancel_remote_pairing(pairing_id.clone(), window, cx)
+            },
+        );
+    }
+
+    settings_small_button(
+        "settings-remote-pairing-close",
+        settings_text(language, "common.cancel", "Cancel"),
+        cx,
+        |app, _event, _window, cx| app.close_remote_pairing_sheet(cx),
+    )
+}
+
+fn remote_pending_pairing_overlay(
+    pairing: RemotePendingPairing,
+    language: &str,
+    cx: &mut Context<CoduxApp>,
+) -> AnyElement {
+    let confirm_id = pairing.id.clone();
+    let reject_id = pairing.id.clone();
+    div()
+        .absolute()
+        .top(px(0.0))
+        .right(px(0.0))
+        .bottom(px(0.0))
+        .left(px(0.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .p(px(24.0))
+        .bg(cx.theme().overlay)
+        .child(
+            div()
+                .w(px(380.0))
+                .rounded(px(12.0))
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().background)
+                .shadow_lg()
+                .p(px(18.0))
+                .child(
+                    div()
+                        .text_size(px(14.0))
+                        .line_height(px(18.0))
+                        .text_color(cx.theme().foreground)
+                        .child(settings_text(
+                            language,
+                            "settings.remote.confirm_pairing_title",
+                            "Confirm Device Pairing",
+                        )),
+                )
+                .child(
+                    div()
+                        .mt(px(8.0))
+                        .text_size(px(12.0))
+                        .line_height(px(17.0))
+                        .text_color(cx.theme().muted_foreground)
+                        .child(empty_label(&pairing.device_name)),
+                )
+                .child(
+                    div()
+                        .mt(px(14.0))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(settings_status_tag(pairing.code.clone(), theme::ACCENT))
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .line_height(px(16.0))
+                                .text_color(cx.theme().muted_foreground)
+                                .child(settings_text(language, "settings.remote.code", "Code")),
+                        ),
+                )
+                .child(
+                    div()
+                        .mt(px(18.0))
+                        .flex()
+                        .justify_end()
+                        .gap(px(8.0))
+                        .child(settings_small_button(
+                            "settings-remote-pending-reject",
+                            settings_text(language, "settings.remote.reject_pairing", "Reject"),
+                            cx,
+                            move |app, _event, window, cx| {
+                                app.reject_remote_pairing(reject_id.clone(), window, cx)
+                            },
+                        ))
+                        .child(settings_small_button(
+                            "settings-remote-pending-confirm",
+                            settings_text(language, "settings.remote.confirm_pairing", "Confirm"),
+                            cx,
+                            move |app, _event, window, cx| {
+                                app.confirm_remote_pairing(confirm_id.clone(), window, cx)
+                            },
+                        )),
+                ),
+        )
+        .into_any_element()
+}
+
+fn remote_pairing_qr(payload: &str) -> AnyElement {
+    const OUTER_SIZE: f32 = 242.0;
+    const QR_SIZE: f32 = 220.0;
+    let Ok(code) = QrCode::new(payload.as_bytes()) else {
+        return div()
+            .size(px(OUTER_SIZE))
+            .rounded(px(14.0))
+            .bg(color(0xFFFFFF))
+            .into_any_element();
+    };
+    let width = code.width();
+    let module_size = QR_SIZE / width as f32;
+
+    div()
+        .relative()
+        .flex_none()
+        .size(px(OUTER_SIZE))
+        .rounded(px(14.0))
+        .border_1()
+        .border_color(color(theme::BORDER_SOFT))
+        .bg(color(0xFFFFFF))
+        .children(
+            code.to_colors()
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, module)| {
+                    if module != QrColor::Dark {
+                        return None;
+                    }
+                    let x = index % width;
+                    let y = index / width;
+                    Some(
+                        div()
+                            .absolute()
+                            .left(px(11.0 + x as f32 * module_size))
+                            .top(px(11.0 + y as f32 * module_size))
+                            .size(px(module_size.ceil()))
+                            .bg(color(0x111827))
+                            .into_any_element(),
+                    )
+                }),
+        )
+        .into_any_element()
+}
+
 fn theme_preview_grid(
     title: Option<String>,
     options: Vec<(&'static str, &'static str)>,
     selected: &str,
+    language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
     div()
@@ -736,11 +1037,13 @@ fn theme_preview_grid(
             )
         })
         .child(
-            div().flex().flex_wrap().gap(px(10.0)).children(
-                options.into_iter().map(|(value, label)| {
-                    theme_preview_button(value, label, selected == value, cx)
-                }),
-            ),
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(10.0))
+                .children(options.into_iter().map(|(value, label)| {
+                    theme_preview_button(value, label, selected == value, language, cx)
+                })),
         )
         .into_any_element()
 }
@@ -749,9 +1052,11 @@ fn theme_preview_button(
     value: &'static str,
     label: &'static str,
     selected: bool,
+    language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
     let preview = terminal_theme_preview(value);
+    let label = settings_text(language, terminal_theme_label_key(value), label);
     let tile_id = format!("settings-theme-preview-{value}");
     settings_selectable_tile(
         tile_id,
@@ -809,7 +1114,7 @@ fn theme_color_grid(selected: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
     div()
         .flex()
         .flex_wrap()
-        .gap(px(12.0))
+        .gap(px(8.0))
         .children(theme_color_values().into_iter().map(|item| {
             let selected = selected == item.label;
             let value = item.label;
@@ -819,17 +1124,27 @@ fn theme_color_grid(selected: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
                 value,
                 div()
                     .relative()
-                    .size(px(32.0))
+                    .size(px(20.0))
                     .rounded_full()
-                    .border_1()
+                    .border_2()
                     .border_color(color(if selected {
-                        theme::ACCENT
+                        0xFFFFFF
                     } else {
                         theme::BORDER_SOFT
                     }))
                     .bg(color(item.color))
-                    .hover(|style| style.border_color(color(theme::BORDER)))
-                    .child(settings_checkmark(selected))
+                    .shadow_sm()
+                    .child(
+                        div()
+                            .when(!selected, |this| this.hidden())
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_color(color(0xFFFFFF))
+                            .child(Icon::new(IconName::Check).size_2p5()),
+                    )
                     .into_any_element(),
                 cx,
                 move |app, _event, window, cx| app.set_theme_color(value.to_string(), window, cx),
@@ -838,7 +1153,7 @@ fn theme_color_grid(selected: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
         .into_any_element()
 }
 
-fn app_icon_grid(selected: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
+fn app_icon_grid(selected: &str, language: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
     div()
         .flex()
         .flex_wrap()
@@ -846,10 +1161,11 @@ fn app_icon_grid(selected: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
         .children(icon_style_values().into_iter().map(|item| {
             let selected = selected == item.value;
             let value = item.value;
+            let label = settings_text(language, item.label_key, item.fallback);
             settings_selectable_tile(
                 format!("settings-app-icon-{value}"),
                 selected,
-                item.label,
+                label,
                 app_icon_preview(item.value, selected),
                 cx,
                 move |app, _event, window, cx| app.set_icon_style(value.to_string(), window, cx),
@@ -862,14 +1178,15 @@ fn app_icon_preview(style: &'static str, selected: bool) -> AnyElement {
     let palette = app_icon_palette(style);
     div()
         .relative()
-        .size(px(52.0))
-        .rounded(px(12.0))
-        .border_1()
+        .size(px(48.0))
+        .rounded(px(11.0))
+        .border_2()
         .border_color(color(if selected {
-            theme::ACCENT
+            0xFFFFFF
         } else {
             theme::BORDER_SOFT
         }))
+        .shadow_sm()
         .bg(color(palette.0))
         .child(
             div()
@@ -881,14 +1198,19 @@ fn app_icon_preview(style: &'static str, selected: bool) -> AnyElement {
         .child(
             div()
                 .absolute()
-                .left(px(17.0))
-                .top(px(17.0))
-                .text_size(px(18.0))
-                .line_height(px(18.0))
-                .text_color(color(0xFFFFFF))
-                .child(">"),
+                .left(px(13.0))
+                .top(px(14.0))
+                .text_color(color(0xFFFFFF).opacity(0.4))
+                .child(Icon::new(IconName::ChevronRight).size_5()),
         )
-        .child(settings_checkmark(selected))
+        .child(
+            div()
+                .absolute()
+                .left(px(23.0))
+                .top(px(14.0))
+                .text_color(color(0xFFFFFF))
+                .child(Icon::new(IconName::ChevronRight).size_5()),
+        )
         .into_any_element()
 }
 
@@ -1086,38 +1408,6 @@ fn settings_general_pane(
                         .into_any_element(),
                 )
                 .into_any_element(),
-                settings_row(
-                    "Codux",
-                    None,
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(settings_small_button(
-                            "settings-open-about",
-                            settings_text(language, "common.about", "About"),
-                            cx,
-                            |app, _event, window, cx| app.open_about_window(window, cx),
-                        ))
-                        .child(settings_small_button(
-                            "settings-export-diagnostics",
-                            settings_text(
-                                language,
-                                "menu.help.export_diagnostics",
-                                "Export Diagnostics...",
-                            ),
-                            cx,
-                            |app, _event, _window, cx| app.export_diagnostics(cx),
-                        ))
-                        .child(settings_small_button(
-                            "settings-runtime-log",
-                            "Runtime Log",
-                            cx,
-                            |app, _event, _window, cx| app.open_runtime_log(cx),
-                        ))
-                        .into_any_element(),
-                )
-                .into_any_element(),
             ],
             cx,)
         .into_any_element(),
@@ -1192,18 +1482,21 @@ fn settings_appearance_pane(
                         None,
                         system_theme_options(),
                         &settings.theme,
+                        language,
                         cx,
                     ))
                     .child(theme_preview_grid(
                         Some(settings_text(language, "settings.theme.group.dark", "Dark")),
                         dark_theme_options(),
                         &settings.theme,
+                        language,
                         cx,
                     ))
                     .child(theme_preview_grid(
                         Some(settings_text(language, "settings.theme.group.light", "Light")),
                         light_theme_options(),
                         &settings.theme,
+                        language,
                         cx,
                     ))
                     .into_any_element(),
@@ -1248,7 +1541,7 @@ fn settings_appearance_pane(
                     settings_select_impl(
                         "settings-terminal-scrollback",
                         &settings.terminal_scrollback_lines,
-                        terminal_scrollback_options(),
+                        terminal_scrollback_options(language),
                         window,
                         cx,
                         language,
@@ -1272,7 +1565,7 @@ fn settings_appearance_pane(
                     "settings.app_icon.restart_message",
                     "Icon changes fully apply after restart.",
                 )),
-                vec![app_icon_grid(&settings.icon_style, cx)],
+                vec![app_icon_grid(&settings.icon_style, language, cx)],
                 cx,
             )
             .into_any_element(),
@@ -1584,15 +1877,6 @@ fn settings_ai_pane(
             ))
             .into_any_element(),
     );
-    provider_rows.insert(
-        1,
-        div()
-            .h(px(1.0))
-            .my(px(10.0))
-            .bg(color(theme::BORDER_SOFT))
-            .into_any_element(),
-    );
-
     let mut runtime_tool_rows = Vec::new();
     runtime_tool_rows.extend(vec![
         settings_runtime_tool_block(
@@ -1730,7 +2014,20 @@ fn settings_ai_pane(
             cx,
         )
         .into_any_element(),
-        settings_card(None, None, provider_rows, cx).into_any_element(),
+        settings_card(
+            None,
+            None,
+            vec![
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.0))
+                    .children(provider_rows)
+                    .into_any_element(),
+            ],
+            cx,
+        )
+        .into_any_element(),
     ])
     .into_any_element()
 }
@@ -1957,7 +2254,7 @@ fn settings_memory_pane(
                         settings_select_impl(
                             "settings-memory-max-index",
                             &settings.memory_max_index_sessions,
-                            memory_max_index_options(),
+                            memory_max_index_options(language),
                             window,
                             cx,
                             language,
@@ -2059,143 +2356,12 @@ fn settings_remote_pane(
     remote: &RemoteSummary,
     _selected_device_id: Option<&str>,
     language: &str,
+    remote_reconnecting: bool,
+    remote_pairing_creating: bool,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
-    let active_pairing_rows = remote
-        .pairing
-        .as_ref()
-        .map(|pairing| {
-            let pairing_id = pairing.pairing_id.clone();
-            vec![
-                div()
-                    .py(px(10.0))
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(16.0))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .text_size(px(14.0))
-                                    .line_height(px(18.0))
-                                    .text_color(color(theme::TEXT))
-                                    .child(settings_text(
-                                        language,
-                                        "settings.remote.code",
-                                        "Pairing Code",
-                                    )),
-                            )
-                            .child(
-                                div()
-                                    .mt(px(3.0))
-                                    .text_size(px(12.0))
-                                    .line_height(px(16.0))
-                                    .text_color(color(theme::TEXT_DIM))
-                                    .truncate()
-                                    .child(format!(
-                                        "{} {}",
-                                        settings_text(language, "common.until", "Until"),
-                                        empty_label(&pairing.expires_at)
-                                    )),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.0))
-                            .child(settings_status_tag(pairing.code.clone(), theme::ACCENT))
-                            .child(settings_small_button(
-                                format!("settings-remote-cancel-pairing-{}", pairing.pairing_id),
-                                settings_text(language, "common.cancel", "Cancel"),
-                                cx,
-                                move |app, _event, window, cx| {
-                                    app.cancel_remote_pairing(pairing_id.clone(), window, cx)
-                                },
-                            )),
-                    )
-                    .into_any_element(),
-                div()
-                    .py(px(8.0))
-                    .text_size(px(12.0))
-                    .line_height(px(16.0))
-                    .text_color(color(theme::TEXT_DIM))
-                    .truncate()
-                    .child(pairing.qr_payload.clone())
-                    .into_any_element(),
-            ]
-        })
-        .unwrap_or_default();
-    let pending_pairing_rows = remote
-        .pending_pairing_list
-        .iter()
-        .cloned()
-        .map(|pairing| {
-            let confirm_id = pairing.id.clone();
-            let reject_id = pairing.id.clone();
-            div()
-                .py(px(10.0))
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(px(16.0))
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .text_size(px(14.0))
-                                .line_height(px(18.0))
-                                .text_color(color(theme::TEXT))
-                                .truncate()
-                                .child(empty_label(&pairing.device_name)),
-                        )
-                        .child(
-                            div()
-                                .mt(px(3.0))
-                                .text_size(px(12.0))
-                                .line_height(px(16.0))
-                                .text_color(color(theme::TEXT_DIM))
-                                .truncate()
-                                .child(format!(
-                                    "{} {}",
-                                    settings_text(language, "settings.remote.code", "Code"),
-                                    empty_label(&pairing.code)
-                                )),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(settings_small_button(
-                            format!("settings-remote-confirm-pairing-{}", pairing.id),
-                            settings_text(language, "settings.remote.confirm_pairing", "Confirm"),
-                            cx,
-                            move |app, _event, window, cx| {
-                                app.confirm_remote_pairing(confirm_id.clone(), window, cx)
-                            },
-                        ))
-                        .child(settings_small_button(
-                            format!("settings-remote-reject-pairing-{}", pairing.id),
-                            settings_text(language, "settings.remote.reject_pairing", "Reject"),
-                            cx,
-                            move |app, _event, window, cx| {
-                                app.reject_remote_pairing(reject_id.clone(), window, cx)
-                            },
-                        )),
-                )
-                .into_any_element()
-        })
-        .collect::<Vec<_>>();
+    let configured = !remote.relay.trim().is_empty();
     let device_rows = if remote.device_list.is_empty() {
         vec![
             div()
@@ -2208,8 +2374,8 @@ fn settings_remote_pane(
                 } else {
                     settings_text(
                         language,
-                        "settings.remote.configure_hint",
-                        "Configure a relay server before pairing mobile devices.",
+                        "remote.devices.empty_hint",
+                        "Pair a phone to control terminals on the go.",
                     )
                 })
                 .into_any_element(),
@@ -2227,8 +2393,8 @@ fn settings_remote_pane(
                         "settings-remote-device-{}",
                         device.id
                     )))
-                    .min_h(px(58.0))
-                    .py(px(10.0))
+                    .min_h(px(64.0))
+                    .py(px(12.0))
                     .flex()
                     .items_center()
                     .justify_between()
@@ -2244,8 +2410,8 @@ fn settings_remote_pane(
                             .flex_col()
                             .child(
                                 div()
-                                    .text_size(px(14.0))
-                                    .line_height(px(18.0))
+                                    .text_size(px(15.0))
+                                    .line_height(px(20.0))
                                     .text_color(color(theme::TEXT))
                                     .child(empty_label(&device.name)),
                             )
@@ -2256,33 +2422,37 @@ fn settings_remote_pane(
                                     .line_height(px(16.0))
                                     .text_color(color(theme::TEXT_DIM))
                                     .truncate()
-                                    .child(format!(
-                                        "{} · {} {}",
-                                        empty_label(&device.id),
-                                        settings_text(language, "common.last_seen", "last seen"),
-                                        empty_label(&device.last_seen)
-                                    )),
+                                    .child(empty_label(&device.id)),
                             ),
                     )
                     .child(
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(8.0))
+                            .gap(px(12.0))
                             .child(if device.online.unwrap_or(false) {
                                 settings_status_tag(
-                                    settings_text(language, "common.online", "Online"),
+                                    settings_text(
+                                        language,
+                                        "remote.status.connected_label",
+                                        "Connected",
+                                    ),
                                     theme::GREEN,
                                 )
                             } else {
                                 settings_status_tag(
-                                    settings_text(language, "common.offline", "Offline"),
+                                    settings_text(
+                                        language,
+                                        "remote.status.disconnected_label",
+                                        "Disconnected",
+                                    ),
                                     theme::TEXT_DIM,
                                 )
                             })
-                            .child(settings_small_button(
-                                format!("settings-remote-remove-{}", device.id),
-                                settings_text(language, "settings.remote.revoke", "Remove"),
+                            .child(settings_icon_button_state(
+                                SharedString::from(format!("settings-remote-remove-{}", device.id)),
+                                IconName::Delete,
+                                false,
                                 cx,
                                 move |app, _event, window, cx| {
                                     app.select_remote_device(remove_id.clone(), window, cx);
@@ -2295,123 +2465,107 @@ fn settings_remote_pane(
             .collect::<Vec<_>>()
     };
 
-    settings_form(vec![
-        settings_card(
-            Some(settings_text(language, "settings.remote.server", "Server")),
-            None,
-            vec![
-                settings_row(
-                    settings_text(language, "settings.remote.server_url", "Relay Server URL"),
-                    None,
-                    settings_text_input(
-                        "settings-remote-server-url",
-                        &remote.relay,
-                        "https://relay.example.com",
-                        false,
-                        window,
-                        cx,
-                        |app, value, window, cx| app.set_remote_server_url(value, window, cx),
-                    ),
-                )
-                .into_any_element(),
-                settings_row(
-                    settings_text(language, "settings.remote.enabled", "Enable Remote Host"),
-                    None,
-                    settings_toggle(
-                        "settings-remote-enabled",
-                        remote.enabled,
-                        cx,
-                        |app, window, cx| app.toggle_remote_host(window, cx),
-                    ),
-                )
-                .into_any_element(),
-                div()
-                    .py(px(10.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .size(px(8.0))
-                            .rounded_full()
-                            .bg(color(if remote.enabled {
-                                theme::GREEN
-                            } else {
-                                theme::TEXT_DIM
-                            })),
+    div()
+        .relative()
+        .size_full()
+        .child(settings_form(vec![
+            settings_card(
+                Some(settings_text(language, "settings.remote.server", "Server")),
+                None,
+                vec![
+                    settings_row(
+                        settings_text(language, "settings.remote.server_url", "Relay Server URL"),
+                        None,
+                        settings_text_input(
+                            "settings-remote-server-url",
+                            &remote.relay,
+                            "https://relay.example.com",
+                            false,
+                            window,
+                            cx,
+                            |app, value, window, cx| app.set_remote_server_url(value, window, cx),
+                        ),
                     )
-                    .child(
-                        div()
-                            .min_w_0()
-                            .flex_1()
-                            .text_size(px(12.0))
-                            .line_height(px(16.0))
-                            .text_color(color(theme::TEXT_DIM))
-                            .truncate()
-                            .child(remote_status_label(&remote.status, language)),
-                    )
-                    .child(settings_small_button(
-                        "settings-remote-reconnect",
-                        settings_text(language, "settings.remote.reconnect", "Reconnect"),
-                        cx,
-                        |app, _event, window, cx| app.reconnect_remote(window, cx),
-                    ))
                     .into_any_element(),
-            ],
-            cx,
-        )
-        .into_any_element(),
-        settings_card(
-            Some(settings_text(
-                language,
-                "settings.remote.devices",
-                "Devices",
-            )),
-            Some(
-                settings_text(
-                    language,
-                    "settings.remote.devices_summary_format",
-                    "%d devices, %d online, %d pending pairings.",
-                )
-                .replacen("%d", &remote.devices.to_string(), 1)
-                .replacen("%d", &remote.online_devices.to_string(), 1)
-                .replacen("%d", &remote.pending_pairings.to_string(), 1),
-            ),
-            {
-                let mut rows = vec![
+                    settings_row(
+                        settings_text(language, "settings.remote.enabled", "Enable Remote Host"),
+                        None,
+                        settings_toggle(
+                            "settings-remote-enabled",
+                            remote.enabled,
+                            cx,
+                            |app, window, cx| app.toggle_remote_host(window, cx),
+                        ),
+                    )
+                    .into_any_element(),
                     div()
-                        .pb(px(10.0))
+                        .py(px(10.0))
                         .flex()
-                        .justify_end()
+                        .items_center()
                         .gap(px(8.0))
-                        .child(settings_small_button(
+                        .child(
+                            div()
+                                .size(px(8.0))
+                                .rounded_full()
+                                .bg(color(remote_status_color(remote))),
+                        )
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .text_size(px(12.0))
+                                .line_height(px(16.0))
+                                .text_color(color(theme::TEXT_DIM))
+                                .truncate()
+                                .child(remote_status_label(remote, language)),
+                        )
+                        .child(settings_small_button_state(
+                            "settings-remote-reconnect",
+                            settings_text(language, "settings.remote.reconnect", "Reconnect"),
+                            remote_reconnecting,
+                            !configured,
+                            cx,
+                            |app, _event, window, cx| app.reconnect_remote(window, cx),
+                        ))
+                        .into_any_element(),
+                ],
+                cx,
+            )
+            .into_any_element(),
+            settings_card_with_actions(
+                Some(settings_text(
+                    language,
+                    "settings.remote.devices",
+                    "Devices",
+                )),
+                None,
+                Some(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(settings_icon_button_state(
                             "settings-remote-create-pairing",
-                            settings_text(
-                                language,
-                                "settings.remote.create_pairing",
-                                "Create Pairing QR",
-                            ),
+                            IconName::Plus,
+                            remote_pairing_creating || !remote.enabled || !configured,
                             cx,
                             |app, _event, window, cx| app.create_remote_pairing(window, cx),
                         ))
-                        .child(settings_small_button(
+                        .child(settings_icon_button_state(
                             "settings-remote-refresh",
-                            settings_text(language, "settings.remote.refresh_devices", "Refresh"),
+                            IconName::Redo2,
+                            !remote.enabled || !configured,
                             cx,
                             |app, _event, window, cx| app.refresh_remote_devices(window, cx),
                         ))
                         .into_any_element(),
-                ];
-                rows.extend(active_pairing_rows);
-                rows.extend(pending_pairing_rows);
-                rows.extend(device_rows);
-                rows
-            },
-            cx,
-        )
-        .into_any_element(),
-    ])
-    .into_any_element()
+                ),
+                device_rows,
+                cx,
+            )
+            .into_any_element(),
+        ]))
+        .into_any_element()
 }
 
 fn settings_shortcuts_pane(
@@ -2485,25 +2639,31 @@ fn shortcut_definitions() -> Vec<ShortcutDefinition> {
             id: "view.terminal",
             label_key: "shortcut.view.terminal",
             fallback: "Terminal View",
-            default_value: primary_static(primary, "1"),
+            default_value: primary_static(primary, "Alt+1"),
         },
         ShortcutDefinition {
             id: "view.files",
             label_key: "shortcut.view.files",
             fallback: "Files View",
-            default_value: primary_static(primary, "2"),
+            default_value: primary_static(primary, "Alt+2"),
         },
         ShortcutDefinition {
             id: "view.review",
             label_key: "shortcut.view.review",
             fallback: "Review View",
-            default_value: primary_static(primary, "3"),
+            default_value: primary_static(primary, "Alt+3"),
         },
         ShortcutDefinition {
             id: "project.create",
             label_key: "shortcut.project.create",
             fallback: "New Project",
             default_value: primary_static(primary, "N"),
+        },
+        ShortcutDefinition {
+            id: "project.open_folder",
+            label_key: "settings.shortcut.open_project_folder",
+            fallback: "Open Project Folder",
+            default_value: primary_static(primary, "O"),
         },
         ShortcutDefinition {
             id: "settings.open",
@@ -2535,29 +2695,95 @@ fn shortcut_definitions() -> Vec<ShortcutDefinition> {
             fallback: "Close Current Project",
             default_value: primary_static(primary, "W"),
         },
+        ShortcutDefinition {
+            id: "sidebar.projects.toggle",
+            label_key: "menu.view.projects_sidebar",
+            fallback: "Projects Sidebar",
+            default_value: primary_static(primary, "Alt+P"),
+        },
+        ShortcutDefinition {
+            id: "sidebar.tasks.toggle",
+            label_key: "menu.view.tasks_sidebar",
+            fallback: "Worktree Sidebar",
+            default_value: primary_static(primary, "Alt+T"),
+        },
+        ShortcutDefinition {
+            id: "assistant.git.open",
+            label_key: "settings.shortcut.open_git_panel",
+            fallback: "Git Panel",
+            default_value: primary_static(primary, "Shift+G"),
+        },
+        ShortcutDefinition {
+            id: "assistant.files.open",
+            label_key: "settings.shortcut.open_files_panel",
+            fallback: "Files Panel",
+            default_value: primary_static(primary, "Shift+F"),
+        },
+        ShortcutDefinition {
+            id: "assistant.ai.open",
+            label_key: "settings.shortcut.open_ai_panel",
+            fallback: "AI Panel",
+            default_value: primary_static(primary, "Shift+A"),
+        },
+        ShortcutDefinition {
+            id: "assistant.ssh.open",
+            label_key: "settings.shortcut.open_ssh_panel",
+            fallback: "SSH Panel",
+            default_value: primary_static(primary, "Shift+S"),
+        },
+        ShortcutDefinition {
+            id: "terminal.split.create",
+            label_key: "settings.shortcut.create_split",
+            fallback: "Create Split",
+            default_value: primary_static(primary, "Shift+Backslash"),
+        },
+        ShortcutDefinition {
+            id: "terminal.tab.create",
+            label_key: "settings.shortcut.create_tab",
+            fallback: "Create Tab",
+            default_value: primary_static(primary, "Shift+T"),
+        },
     ]
 }
 
 fn primary_static(primary: &str, key: &str) -> &'static str {
     match (primary, key) {
-        ("⌘", "1") => "⌘1",
-        ("⌘", "2") => "⌘2",
-        ("⌘", "3") => "⌘3",
+        ("⌘", "Alt+1") => "⌘⌥1",
+        ("⌘", "Alt+2") => "⌘⌥2",
+        ("⌘", "Alt+3") => "⌘⌥3",
         ("⌘", "N") => "⌘N",
+        ("⌘", "O") => "⌘O",
         ("⌘", "Shift+N") => "⌘⇧N",
         ("⌘", ",") => "⌘,",
         ("⌘", "S") => "⌘S",
         ("⌘", "F") => "⌘F",
         ("⌘", "W") => "⌘W",
-        (_, "1") => "Ctrl+1",
-        (_, "2") => "Ctrl+2",
-        (_, "3") => "Ctrl+3",
+        ("⌘", "Alt+P") => "⌘⌥P",
+        ("⌘", "Alt+T") => "⌘⌥T",
+        ("⌘", "Shift+G") => "⌘⇧G",
+        ("⌘", "Shift+F") => "⌘⇧F",
+        ("⌘", "Shift+A") => "⌘⇧A",
+        ("⌘", "Shift+S") => "⌘⇧S",
+        ("⌘", "Shift+Backslash") => "⌘⇧\\",
+        ("⌘", "Shift+T") => "⌘⇧T",
+        (_, "Alt+1") => "Ctrl+Alt+1",
+        (_, "Alt+2") => "Ctrl+Alt+2",
+        (_, "Alt+3") => "Ctrl+Alt+3",
         (_, "N") => "Ctrl+N",
+        (_, "O") => "Ctrl+O",
         (_, "Shift+N") => "Ctrl+Shift+N",
         (_, ",") => "Ctrl+,",
         (_, "S") => "Ctrl+S",
         (_, "F") => "Ctrl+F",
         (_, "W") => "Ctrl+W",
+        (_, "Alt+P") => "Ctrl+Alt+P",
+        (_, "Alt+T") => "Ctrl+Alt+T",
+        (_, "Shift+G") => "Ctrl+Shift+G",
+        (_, "Shift+F") => "Ctrl+Shift+F",
+        (_, "Shift+A") => "Ctrl+Shift+A",
+        (_, "Shift+S") => "Ctrl+Shift+S",
+        (_, "Shift+Backslash") => "Ctrl+Shift+\\",
+        (_, "Shift+T") => "Ctrl+Shift+T",
         _ => "",
     }
 }
@@ -2877,7 +3103,7 @@ fn settings_ai_provider_card(
                 )),
         )
         .child(settings_row(
-            settings_text(language, "settings.ai.provider.type", "Type"),
+            settings_text(language, "settings.ai.provider.kind", "Kind"),
             None,
             settings_select_impl(
                 format!("settings-provider-kind-{}", provider.id),
@@ -2938,19 +3164,7 @@ fn settings_ai_provider_card(
         ))
         .child(settings_row(
             settings_text(language, "settings.ai.provider.api_key", "API Key"),
-            Some(if provider.api_key_configured {
-                settings_text(
-                    language,
-                    "settings.ai.provider.api_key.configured",
-                    "Configured. Enter a new value to replace it.",
-                )
-            } else {
-                settings_text(
-                    language,
-                    "settings.ai.provider.api_key.not_configured",
-                    "Not configured.",
-                )
-            }),
+            None,
             settings_text_input(
                 SharedString::from(format!("settings-provider-api-key-{}", provider.id)),
                 "",
@@ -3224,7 +3438,8 @@ struct ThemeColorValue {
 #[derive(Clone, Copy)]
 struct IconStyleValue {
     value: &'static str,
-    label: &'static str,
+    label_key: &'static str,
+    fallback: &'static str,
 }
 
 fn opt(value: &'static str, label: &'static str) -> (String, SharedString) {
@@ -3427,6 +3642,35 @@ fn terminal_theme_preview(value: &str) -> TerminalThemePreview {
     }
 }
 
+fn terminal_theme_label_key(value: &str) -> &'static str {
+    match value {
+        "Auto" => "settings.theme.system",
+        "Atom One Light" => "settings.terminal_theme.preset.atom_one_light",
+        "Ayu Mirage" => "settings.terminal_theme.preset.ayu_mirage",
+        "Catppuccin Latte" => "settings.terminal_theme.preset.catppuccin_latte",
+        "Catppuccin Mocha" => "settings.terminal_theme.preset.catppuccin_mocha",
+        "Dracula" => "settings.terminal_theme.preset.dracula",
+        "Dracula+" => "settings.terminal_theme.preset.dracula_plus",
+        "Flexoki Dark" => "settings.terminal_theme.preset.flexoki_dark",
+        "Flexoki Light" => "settings.terminal_theme.preset.flexoki_light",
+        "GitHub Dark" => "settings.terminal_theme.preset.github_dark",
+        "GitHub Light" => "settings.terminal_theme.preset.github_light",
+        "Gruvbox Dark" => "settings.terminal_theme.preset.gruvbox_dark",
+        "Gruvbox Light" => "settings.terminal_theme.preset.gruvbox_light",
+        "Gruvbox Material Dark" => "settings.terminal_theme.preset.gruvbox_material_dark",
+        "Gruvbox Material Light" => "settings.terminal_theme.preset.gruvbox_material_light",
+        "Kanagawa Wave" => "settings.terminal_theme.preset.kanagawa_wave",
+        "Material Ocean" => "settings.terminal_theme.preset.material_ocean",
+        "Nord" => "settings.terminal_theme.preset.nord",
+        "Nord Light" => "settings.terminal_theme.preset.nord_light",
+        "Rose Pine Moon" => "settings.terminal_theme.preset.rose_pine_moon",
+        "Tokyo Night Day" => "settings.terminal_theme.preset.tokyonight_day",
+        "Tokyo Night Night" => "settings.terminal_theme.preset.tokyonight_night",
+        "Tokyo Night Storm" => "settings.terminal_theme.preset.tokyonight_storm",
+        _ => "settings.terminal_theme",
+    }
+}
+
 fn theme_color_values() -> Vec<ThemeColorValue> {
     vec![
         ThemeColorValue {
@@ -3500,40 +3744,47 @@ fn icon_style_values() -> Vec<IconStyleValue> {
     vec![
         IconStyleValue {
             value: "default",
-            label: "Default",
+            label_key: "settings.app_icon.option.default",
+            fallback: "Default",
         },
         IconStyleValue {
             value: "cobalt",
-            label: "Cobalt",
+            label_key: "settings.app_icon.option.cobalt",
+            fallback: "Cobalt",
         },
         IconStyleValue {
             value: "sunset",
-            label: "Sunset",
+            label_key: "settings.app_icon.option.sunset",
+            fallback: "Sunset",
         },
         IconStyleValue {
             value: "forest",
-            label: "Forest",
+            label_key: "settings.app_icon.option.forest",
+            fallback: "Forest",
         },
     ]
 }
 
 fn app_icon_palette(style: &str) -> (u32, u32) {
     match style {
-        "cobalt" => (0x1D4ED8, 0x60A5FA),
-        "sunset" => (0xEA580C, 0xF97316),
-        "forest" => (0x047857, 0x34D399),
-        _ => (0x111827, 0x3B82F6),
+        "cobalt" => (0x1F2433, 0x1C202E),
+        "sunset" => (0xF56B52, 0xEE604B),
+        "forest" => (0x2E9E73, 0x29926A),
+        _ => (0x3D80FA, 0x3773EE),
     }
 }
 
-fn terminal_scrollback_options() -> Vec<(String, SharedString)> {
+fn terminal_scrollback_options(language: &str) -> Vec<(String, SharedString)> {
     ["500", "1000", "2000", "5000", "10000"]
         .into_iter()
         .map(|value| {
-            (
-                value.to_string(),
-                SharedString::from(format!("{value} lines")),
+            let label = settings_text(
+                language,
+                "settings.terminal_scrollback.option_format",
+                "%@ lines",
             )
+            .replace("%@", value);
+            (value.to_string(), SharedString::from(label))
         })
         .collect()
 }
@@ -3740,14 +3991,17 @@ fn memory_extraction_interval_options() -> Vec<(String, SharedString)> {
     ])
 }
 
-fn memory_max_index_options() -> Vec<(String, SharedString)> {
+fn memory_max_index_options(language: &str) -> Vec<(String, SharedString)> {
     ["5", "10", "20", "50", "100"]
         .into_iter()
         .map(|value| {
-            (
-                value.to_string(),
-                SharedString::from(format!("{value} sessions")),
+            let label = settings_text(
+                language,
+                "settings.ai.memory.max_index_sessions.option_format",
+                "%@ sessions",
             )
+            .replace("%@", value);
+            (value.to_string(), SharedString::from(label))
         })
         .collect()
 }
@@ -3809,12 +4063,18 @@ fn notification_channel_description(channel_id: &str, language: &str) -> String 
     )
 }
 
-fn remote_status_label(value: &str, language: &str) -> String {
-    let (key, fallback) = match value {
-        "connected" => ("remote.status.connected_label", "Connected"),
-        "connecting" | "registering" => ("remote.status.connecting_label", "Connecting"),
-        "failed" => ("remote.status.failed_label", "Failed"),
-        _ => ("remote.status.disconnected_label", "Disconnected"),
-    };
-    settings_text(language, key, fallback)
+fn remote_status_label(remote: &RemoteSummary, language: &str) -> String {
+    match remote.status.as_str() {
+        "connected" => settings_text(language, "remote.status.connected_label", "Connected"),
+        "connecting" => settings_text(language, "remote.status.connecting_label", "Connecting"),
+        _ => settings_text(language, "remote.status.disconnected_label", "Disconnected"),
+    }
+}
+
+fn remote_status_color(remote: &RemoteSummary) -> u32 {
+    match remote.status.as_str() {
+        "connected" => theme::GREEN,
+        "connecting" => theme::ORANGE,
+        _ => theme::TEXT_DIM,
+    }
 }

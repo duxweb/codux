@@ -168,6 +168,107 @@ pub(in crate::app) fn terminal_restore_plan_for_language(
     TerminalRestorePlan { tabs, active_index }
 }
 
+pub(in crate::app) fn normalize_terminal_restore_state(
+    owner_id: Option<&str>,
+    mut layout: TerminalLayoutSummary,
+    runtime: TerminalRuntimeSummary,
+) -> (TerminalLayoutSummary, TerminalRuntimeSummary) {
+    let Some(owner_id) = owner_id.filter(|id| !id.trim().is_empty()) else {
+        return (layout, runtime);
+    };
+
+    let old_active_tab_id = layout.active_tab_id.clone();
+    let old_active_slot_id = layout.active_slot_id.clone();
+    let mut active_tab_id = String::new();
+    let mut active_slot_id = String::new();
+
+    for (index, pane) in layout.top_panes.iter_mut().enumerate() {
+        let old_id = pane.id.clone();
+        let old_terminal_id = pane.terminal_id.clone();
+        pane.id = top_slot_id(owner_id, index);
+        pane.terminal_id = top_terminal_id(owner_id, index);
+        if old_active_slot_id == old_id || old_active_slot_id == old_terminal_id {
+            active_slot_id = pane.id.clone();
+        }
+    }
+
+    for (index, tab) in layout.tabs.iter_mut().enumerate() {
+        let old_id = tab.id.clone();
+        let old_terminal_id = tab.terminal_id.clone();
+        tab.id = bottom_slot_id(owner_id, index);
+        tab.terminal_id = bottom_terminal_id(owner_id, index);
+        if old_active_tab_id == old_id || old_active_tab_id == old_terminal_id {
+            active_tab_id = tab.id.clone();
+            active_slot_id = tab.id.clone();
+        }
+    }
+
+    if active_tab_id.is_empty() {
+        active_tab_id = layout
+            .tabs
+            .first()
+            .map(|tab| tab.id.clone())
+            .unwrap_or_default();
+    }
+    if active_slot_id.is_empty() {
+        active_slot_id = layout
+            .top_panes
+            .first()
+            .map(|pane| pane.id.clone())
+            .or_else(|| layout.tabs.first().map(|tab| tab.id.clone()))
+            .unwrap_or_default();
+    }
+    layout.active_tab_id = active_tab_id;
+    layout.active_slot_id = active_slot_id;
+
+    let mut runtime = runtime_for_owner(runtime, owner_id);
+    if !runtime
+        .sessions
+        .iter()
+        .any(|session| session.terminal_id == runtime.active_terminal_id)
+    {
+        runtime.active_terminal_id.clear();
+    }
+    if !runtime.sessions.iter().any(|session| {
+        session.slot_id == runtime.active_slot_id || session.tab_id == runtime.active_slot_id
+    }) {
+        runtime.active_slot_id.clear();
+    }
+    (layout, runtime)
+}
+
+pub(in crate::app) fn bottom_slot_id(owner_id: &str, index: usize) -> String {
+    format!("bottom-{owner_id}-{}", index + 1)
+}
+
+pub(in crate::app) fn bottom_terminal_id(owner_id: &str, index: usize) -> String {
+    format!("gpui-term-{owner_id}-bottom-{}", index + 1)
+}
+
+pub(in crate::app) fn top_slot_id(owner_id: &str, index: usize) -> String {
+    format!("gpui-pane-{owner_id}-top-{}", index + 1)
+}
+
+pub(in crate::app) fn top_terminal_id(owner_id: &str, index: usize) -> String {
+    format!("gpui-term-{owner_id}-top-{}", index + 1)
+}
+
+fn runtime_for_owner(
+    mut runtime: TerminalRuntimeSummary,
+    owner_id: &str,
+) -> TerminalRuntimeSummary {
+    runtime
+        .sessions
+        .retain(|session| session.project_id.trim() == owner_id);
+    runtime.open_count = runtime
+        .sessions
+        .iter()
+        .filter(|session| session.is_running)
+        .count();
+    runtime.closed_count = runtime.sessions.len().saturating_sub(runtime.open_count);
+    runtime
+}
+
 fn restored_terminal_output_tail(
     runtime: &TerminalRuntimeSummary,
     terminal_id: Option<&str>,
@@ -207,7 +308,7 @@ fn terminal_session_matches(
         (Some(_), Some(_)) => terminal_matches && slot_matches,
         (Some(_), None) => terminal_matches,
         (None, Some(_)) => slot_matches,
-        (None, None) => session.is_running,
+        (None, None) => false,
     }
 }
 
@@ -375,6 +476,11 @@ pub(in crate::app) fn terminal_config_for_settings(settings: &SettingsSummary) -
         .unwrap_or(14.0)
         .clamp(10.0, 28.0);
     config.font_size = px(font_size);
+    config.scrollback = settings
+        .terminal_scrollback_lines
+        .parse::<usize>()
+        .unwrap_or(config.scrollback)
+        .clamp(200, 10_000);
     config.colors = terminal_color_palette(&settings.theme, &settings.theme_color);
     config
 }

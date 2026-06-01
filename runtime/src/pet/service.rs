@@ -1,4 +1,5 @@
 use super::*;
+use crate::pet::refresh::reset_daily_tokens_if_needed;
 
 impl PetService {
     pub fn new(support_dir: PathBuf) -> Self {
@@ -9,7 +10,8 @@ impl PetService {
         migrate_mac_custom_pets_if_needed(&self.support_dir);
         match self.load_snapshot() {
             Ok((snapshot, source)) => {
-                let snapshot = sanitize_state(snapshot);
+                let mut snapshot = sanitize_state(snapshot);
+                reset_daily_tokens_if_needed(&mut snapshot, now_seconds());
                 let custom_pet_count = load_custom_pets(&self.support_dir, false).len();
                 PetSummary {
                     available: true,

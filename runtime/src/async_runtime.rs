@@ -1,11 +1,14 @@
 use std::{future::Future, sync::OnceLock};
 
 pub use tokio::{
+    sync::Semaphore,
     sync::mpsc::{Receiver, Sender, channel},
     task::JoinHandle,
 };
 
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+static BLOCKING_LIMITER: OnceLock<Semaphore> = OnceLock::new();
+const MAX_CONCURRENT_BLOCKING_LOADS: usize = 1;
 
 fn runtime() -> &'static tokio::runtime::Runtime {
     RUNTIME.get_or_init(|| {
@@ -31,6 +34,21 @@ where
     R: Send + 'static,
 {
     runtime().spawn_blocking(function)
+}
+
+pub async fn run_limited_blocking<F, R>(function: F) -> Result<R, tokio::task::JoinError>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let permit = BLOCKING_LIMITER
+        .get_or_init(|| Semaphore::new(MAX_CONCURRENT_BLOCKING_LOADS))
+        .acquire()
+        .await
+        .expect("Codux blocking limiter closed");
+    let result = spawn_blocking(function).await;
+    drop(permit);
+    result
 }
 
 pub fn block_on<F>(future: F) -> F::Output

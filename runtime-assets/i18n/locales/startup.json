@@ -1,6 +1,55 @@
 {
   "strings": {
+    "de": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
+    },
     "en": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
+    },
+    "es": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
+    },
+    "fr": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
+    },
+    "ja": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
+    },
+    "ko": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
+    },
+    "pt-BR": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
+    },
+    "ru": {
       "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
       "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
       "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
@@ -13,6 +62,13 @@
       "startup.recovery.sanitized": "部分已保存的项目或终端布局数据存在异常，现已自动修复。",
       "startup.recovery.status": "已恢复异常的应用保存数据。",
       "startup.recovery.title": "已恢复应用数据"
+    },
+    "zh-Hant": {
+      "startup.recovery.invalid_state": "The saved app configuration was invalid and has been reset to defaults.",
+      "startup.recovery.invalid_state.backup_format": "The saved app configuration was invalid and has been reset to defaults. A backup was saved as %@.",
+      "startup.recovery.sanitized": "Some saved projects or terminal layout data were invalid and were repaired automatically.",
+      "startup.recovery.status": "Recovered invalid saved app data.",
+      "startup.recovery.title": "Recovered App Data"
     }
   }
 }

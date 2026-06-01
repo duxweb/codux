@@ -46,14 +46,18 @@ impl CoduxApp {
         &self,
         worktree: &WorktreeInfo,
     ) -> AIActivityState {
-        ai_activity_for_worktree_with_dismissed_at(
-            &self.state,
-            worktree,
-            self.dismissed_worktree_ai_completion_at
-                .get(&worktree.id)
-                .copied()
-                .unwrap_or(0.0),
-        )
+        let dismissed_at = self
+            .dismissed_worktree_ai_completion_at
+            .get(&worktree.id)
+            .copied()
+            .unwrap_or(0.0)
+            .max(
+                self.dismissed_worktree_ai_completion_at
+                    .get(&worktree.project_id)
+                    .copied()
+                    .unwrap_or(0.0),
+            );
+        ai_activity_for_worktree_with_dismissed_at(&self.state, worktree, dismissed_at)
     }
 }
 
@@ -62,7 +66,7 @@ pub(in crate::app) fn ai_activity_for_worktree_with_dismissed_at(
     worktree: &WorktreeInfo,
     dismissed_at: f64,
 ) -> AIActivityState {
-    let Some(project_state) = runtime_project_state(state, &worktree.id) else {
+    let Some(project_state) = runtime_project_state_for_worktree(state, worktree) else {
         return AIActivityState::Idle;
     };
     let phase =
@@ -115,10 +119,7 @@ fn aggregate_project_activity(
     if activities.contains(&AIActivityState::Running) {
         return Some(AIActivityState::Running);
     }
-    if activities
-        .iter()
-        .all(|activity| *activity == AIActivityState::Done)
-    {
+    if activities.contains(&AIActivityState::Done) {
         return Some(AIActivityState::Done);
     }
     Some(AIActivityState::Idle)
@@ -133,6 +134,19 @@ fn runtime_project_state<'a>(
         .project_states
         .iter()
         .find(|project| project.project_id == id)
+}
+
+fn runtime_project_state_for_worktree<'a>(
+    state: &'a RuntimeState,
+    worktree: &WorktreeInfo,
+) -> Option<&'a AIRuntimeProjectStateSummary> {
+    runtime_project_state(state, &worktree.id).or_else(|| {
+        if worktree.is_default {
+            runtime_project_state(state, &worktree.project_id)
+        } else {
+            None
+        }
+    })
 }
 
 fn resolve_displayed_phase<'a>(

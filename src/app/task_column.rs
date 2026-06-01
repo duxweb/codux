@@ -279,6 +279,11 @@ fn worktree_compact_row(
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let worktree_id = worktree.id.clone();
+    let activity_dismiss_id = if worktree.is_default {
+        worktree.project_id.clone()
+    } else {
+        worktree.id.clone()
+    };
     let git = worktree.git_summary.clone();
     let title = worktree_row_title(&worktree);
     div()
@@ -299,7 +304,7 @@ fn worktree_compact_row(
         .hover(|style| style.bg(cx.theme().secondary_hover))
         .on_click(cx.listener(move |app, _event, window, cx| {
             if activity_state == AIActivityState::Done {
-                app.dismiss_worktree_ai_completion(&worktree_id, cx);
+                app.dismiss_worktree_ai_completion(&activity_dismiss_id, cx);
             }
             app.select_worktree(worktree_id.clone(), window, cx)
         }))
@@ -370,8 +375,9 @@ fn worktree_activity_dot(state: AIActivityState) -> AnyElement {
             .h(px(10.0))
             .flex_shrink_0()
             .rounded_full()
-            .border_2()
-            .border_color(color(theme::ORANGE))
+            .border_1()
+            .border_color(color(0xFFFFFF))
+            .bg(color(theme::ORANGE))
             .into_any_element(),
         AIActivityState::Review => div()
             .w(px(10.0))
@@ -386,6 +392,8 @@ fn worktree_activity_dot(state: AIActivityState) -> AnyElement {
             .h(px(10.0))
             .rounded_full()
             .flex_shrink_0()
+            .border_1()
+            .border_color(color(0xFFFFFF))
             .bg(color(theme::GREEN))
             .into_any_element(),
     }

@@ -1,14 +1,17 @@
-use crate::runtime_paths::runtime_temp_dir;
+use crate::runtime_paths::{
+    live_log_path, runtime_event_dir as shared_runtime_event_dir,
+    runtime_root_dir as shared_runtime_root_dir,
+};
 use std::path::PathBuf;
 
 pub fn runtime_root_dir() -> PathBuf {
-    runtime_temp_dir().join("runtime-root")
+    shared_runtime_root_dir()
 }
 
 pub fn runtime_event_dir() -> PathBuf {
-    runtime_temp_dir().join("runtime-events")
+    shared_runtime_event_dir()
 }
 
 pub fn runtime_live_log_path() -> PathBuf {
-    runtime_temp_dir().join("live.log")
+    live_log_path()
 }

@@ -64,7 +64,6 @@ use gpui_component::{
     button::{Button, ButtonCustomVariant, ButtonVariants},
     input::{Input, InputEvent, InputState},
     menu::{ContextMenuExt, DropdownMenu, PopupMenu, PopupMenuItem},
-    progress::Progress,
     resizable::{resizable_panel, v_resizable},
     select::{Select, SelectEvent, SelectItem, SelectState},
     tag::Tag,
@@ -129,9 +128,9 @@ pub(crate) use self::app_state::set_active_settings_snapshot;
 
 use self::{
     ai_history_mapping::{
-        ai_history_project_request, ai_history_project_requests,
-        ai_history_summary_from_project_state, ai_session_restore_command,
-        apply_ai_history_project_state, normalized_ai_history_snapshot_to_summary,
+        ai_history_project_requests, ai_history_summary_from_project_state,
+        ai_history_worktree_request, ai_session_restore_command, apply_ai_history_project_state,
+        normalized_ai_history_snapshot_to_summary,
         normalized_global_ai_history_snapshot_to_summary,
     },
     app_events::{
@@ -148,11 +147,15 @@ use self::{
     app_state::{
         GitOperationCompletion, PET_CUSTOM_INSTALL_ERROR_HEIGHT, PET_CUSTOM_INSTALL_INPUT_HEIGHT,
         PET_CUSTOM_INSTALL_READY_HEIGHT, PET_CUSTOM_INSTALL_WINDOW_WIDTH, PET_DEX_FRAME_INTERVAL,
-        ProjectSwitchLoad, ProjectSwitchPrimaryLoad, ProjectSwitchTerminalLoad, ProjectViewCache,
-        RuntimeActivityTickResult, RuntimeScheduledRefresh, TASK_COLUMN_FIXED_WIDTH,
-        app_git_review, app_now_seconds, git_status_tree_key, initial_project_view_cache,
-        prewarm_terminal_restore, resize_pet_custom_install_window,
+        ProjectSwitchLoad, ProjectSwitchPrimaryLoad, ProjectSwitchTaskLoad,
+        ProjectSwitchTerminalLoad, ProjectViewState, RuntimeActivityTickResult,
+        RuntimeScheduledRefresh, TASK_COLUMN_FIXED_WIDTH, TerminalViewState, TerminalViewStoreKey,
+        WorktreeSidebarLoad, WorktreeSwitchTerminalLoad, app_git_review, app_now_seconds,
+        git_status_tree_key, initial_project_view_store, initial_terminal_view_store,
+        initial_worktree_view_store, prewarm_terminal_restore, resize_pet_custom_install_window,
         resize_pet_custom_install_window_handle, settings_with_active_restart_locked_values,
+        terminal_view_store_key, worktree_summary_has_git_counts, worktree_summary_has_rows,
+        worktree_view_store_key,
     },
     desktop_pet::*,
     formatting::compact_number,
@@ -172,9 +175,10 @@ use self::{
     task_column::TaskColumnView,
     terminal_float::terminal_float_window,
     terminal_state::{
+        bottom_slot_id, bottom_terminal_id, normalize_terminal_restore_state,
         prepare_memory_launch_artifacts, spawn_terminal_tabs, terminal_config_for_settings,
         terminal_launch_context, terminal_pane_launch_context, terminal_pane_summary,
-        terminal_restore_plan_for_language, terminal_tab_summary,
+        terminal_restore_plan_for_language, terminal_tab_summary, top_slot_id, top_terminal_id,
     },
     types::*,
     ui_helpers::{

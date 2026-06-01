@@ -1,13 +1,7 @@
 use super::{MemoryLaunchArtifacts, MemoryProjectProfile, MemorySummary, normalized_non_empty};
 
 pub fn launch_artifact_paths(project_id: &str) -> MemoryLaunchArtifacts {
-    let workspace_root = std::env::temp_dir()
-        .join(if cfg!(debug_assertions) {
-            "codux-dev"
-        } else {
-            "codux"
-        })
-        .join("runtime-root")
+    let workspace_root = crate::runtime_paths::runtime_root_dir()
         .join("memory-workspaces")
         .join(safe_path_segment(project_id));
     MemoryLaunchArtifacts {

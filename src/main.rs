@@ -44,6 +44,7 @@ fn main() -> Result<()> {
         disable_root_tab_focus_bindings(cx);
         cx.on_action(|_: &crate::app::native_menu::QuitCodux, cx| cx.quit());
         let initial_state = codux_runtime::runtime_state::RuntimeState::load();
+        let _ = codux_runtime::app_icon::apply_app_icon(&initial_state.settings.icon_style);
         app::set_active_settings_snapshot(initial_state.settings.clone());
         theme::apply_component_theme(
             &initial_state.settings.theme,
@@ -72,6 +73,7 @@ fn open_main_window(cx: &mut App, main_window_handle: &Rc<Cell<Option<AnyWindowH
             titlebar: Some(theme::codux_titlebar("Codux GPUI")),
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             window_min_size: Some(size(px(1120.0), px(640.0))),
+            icon: Some(std::sync::Arc::new(window_icon_image())),
             ..Default::default()
         },
         |window, cx| {
@@ -92,6 +94,17 @@ fn open_main_window(cx: &mut App, main_window_handle: &Rc<Cell<Option<AnyWindowH
             false
         }
     }
+}
+
+fn window_icon_image() -> image::RgbaImage {
+    let icon = codux_runtime::app_icon::render_app_icon(
+        &codux_runtime::runtime_state::RuntimeState::load()
+            .settings
+            .icon_style,
+        codux_runtime::app_icon::ICON_SIZE,
+    );
+    image::RgbaImage::from_raw(icon.width, icon.height, icon.pixels)
+        .unwrap_or_else(|| image::RgbaImage::new(icon.width, icon.height))
 }
 
 #[cfg(target_os = "macos")]
@@ -139,12 +152,12 @@ fn disable_root_tab_focus_bindings(cx: &mut App) {
         KeyBinding::new("ctrl-o", crate::app::native_menu::OpenProjectFolder, None),
         KeyBinding::new("cmd-,", crate::app::native_menu::OpenSettings, None),
         KeyBinding::new("ctrl-,", crate::app::native_menu::OpenSettings, None),
-        KeyBinding::new("cmd-1", crate::app::native_menu::ViewTerminal, None),
-        KeyBinding::new("ctrl-1", crate::app::native_menu::ViewTerminal, None),
-        KeyBinding::new("cmd-2", crate::app::native_menu::ViewFiles, None),
-        KeyBinding::new("ctrl-2", crate::app::native_menu::ViewFiles, None),
-        KeyBinding::new("cmd-3", crate::app::native_menu::ViewReview, None),
-        KeyBinding::new("ctrl-3", crate::app::native_menu::ViewReview, None),
+        KeyBinding::new("cmd-alt-1", crate::app::native_menu::ViewTerminal, None),
+        KeyBinding::new("ctrl-alt-1", crate::app::native_menu::ViewTerminal, None),
+        KeyBinding::new("cmd-alt-2", crate::app::native_menu::ViewFiles, None),
+        KeyBinding::new("ctrl-alt-2", crate::app::native_menu::ViewFiles, None),
+        KeyBinding::new("cmd-alt-3", crate::app::native_menu::ViewReview, None),
+        KeyBinding::new("ctrl-alt-3", crate::app::native_menu::ViewReview, None),
         KeyBinding::new("cmd-alt-p", crate::app::native_menu::ToggleProjects, None),
         KeyBinding::new("ctrl-alt-p", crate::app::native_menu::ToggleProjects, None),
         KeyBinding::new("cmd-alt-t", crate::app::native_menu::ToggleTasks, None),

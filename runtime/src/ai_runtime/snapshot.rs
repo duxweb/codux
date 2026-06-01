@@ -60,7 +60,9 @@ pub enum AIProjectPhase {
     },
     Completed {
         tool: String,
+        #[serde(rename = "wasInterrupted")]
         was_interrupted: bool,
+        #[serde(rename = "updatedAt")]
         updated_at: f64,
     },
 }

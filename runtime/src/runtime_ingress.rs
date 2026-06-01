@@ -1,4 +1,9 @@
-use crate::ai_runtime::AIRuntimeBridge;
+use crate::{
+    ai_runtime::AIRuntimeBridge,
+    runtime_paths::{
+        runtime_event_dir_in, runtime_socket_path_in, runtime_temp_dir as default_runtime_temp_dir,
+    },
+};
 use std::{
     fs,
     io::{Read, Write},
@@ -30,7 +35,7 @@ pub struct RuntimeIngressStatus {
 impl RuntimeIngressService {
     pub fn new() -> Self {
         Self {
-            runtime_temp_dir: runtime_temp_dir(),
+            runtime_temp_dir: default_runtime_temp_dir(),
         }
     }
 
@@ -47,8 +52,8 @@ fn start_background_at(
     runtime_temp_dir: PathBuf,
     ai_runtime: Option<Arc<AIRuntimeBridge>>,
 ) -> RuntimeIngressStatus {
-    let socket_path = runtime_temp_dir.join("runtime-events.sock");
-    let event_dir = runtime_temp_dir.join("runtime-events");
+    let socket_path = runtime_socket_path_in(&runtime_temp_dir);
+    let event_dir = runtime_event_dir_in(&runtime_temp_dir);
 
     #[cfg(not(unix))]
     {
@@ -166,14 +171,6 @@ fn unix_socket_is_live(path: &Path) -> bool {
         .is_ok()
 }
 
-fn runtime_temp_dir() -> PathBuf {
-    std::env::temp_dir().join(if cfg!(debug_assertions) {
-        "codux-dev"
-    } else {
-        "codux"
-    })
-}
-
 fn now_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -229,7 +226,7 @@ mod tests {
             assert!(event_count >= 1);
         }
 
-        let _ = fs::remove_file(runtime_dir.join("runtime-events.sock"));
+        let _ = fs::remove_file(runtime_socket_path_in(&runtime_dir));
         let _ = fs::remove_dir_all(runtime_dir);
     }
 }

@@ -1,7 +1,9 @@
 use super::{formatting::relative_time_label_for_language, *};
 use chrono::{Datelike as _, TimeZone as _, Timelike as _};
 use codux_runtime::{
-    ai_runtime_state::AIRuntimeStateSummary, i18n::translate,
+    ai_runtime_state::AIRuntimeStateSummary,
+    i18n::translate,
+    runtime_paths::{LIVE_LOG_FILE_NAME, RUNTIME_LOG_FILE_NAME},
     settings::locale_from_language_setting,
 };
 use gpui_component::input::{Input, InputState};
@@ -710,19 +712,21 @@ fn ai_runtime_infrastructure_card(
     };
     let runtime_log_label = if runtime_activity.runtime_log_present {
         format!(
-            "runtime.log · {}",
+            "{} · {}",
+            RUNTIME_LOG_FILE_NAME,
             compact_number(runtime_activity.runtime_log_bytes.min(i64::MAX as u64) as i64)
         )
     } else {
-        format!("runtime.log {log_missing_label}")
+        format!("{RUNTIME_LOG_FILE_NAME} {log_missing_label}")
     };
     let live_log_label = if runtime_activity.live_log_present {
         format!(
-            "live.log · {}",
+            "{} · {}",
+            LIVE_LOG_FILE_NAME,
             compact_number(runtime_activity.live_log_bytes.min(i64::MAX as u64) as i64)
         )
     } else {
-        format!("live.log {log_missing_label}")
+        format!("{LIVE_LOG_FILE_NAME} {log_missing_label}")
     };
 
     let card = ai_stats_card(runtime_title, cx)
@@ -1110,8 +1114,8 @@ pub(in crate::app) fn memory_manager_window_workspace(
                                                 .child(
                                                     div()
                                                         .truncate()
-                                                        .text_size(px(20.0))
-                                                        .line_height(px(25.0))
+                                                        .text_size(px(14.0))
+                                                        .line_height(px(18.0))
                                                         .text_color(cx.theme().foreground)
                                                         .child(selected_target_title),
                                                 )
@@ -1476,23 +1480,24 @@ fn ai_memory_project_profile_row(
     div()
         .mt(px(8.0))
         .rounded(px(8.0))
-        .px(px(8.0))
-        .py(px(7.0))
+        .border_1()
+        .border_color(color(theme::ACCENT).opacity(0.20))
+        .px(px(12.0))
+        .py(px(11.0))
         .bg(ai_stats_track_surface(cx))
         .child(
             div()
                 .flex()
-                .items_center()
+                .items_start()
                 .justify_between()
                 .gap_2()
                 .child(
                     div()
                         .min_w_0()
                         .flex_1()
-                        .text_size(px(12.0))
-                        .line_height(px(16.0))
+                        .text_size(px(14.0))
+                        .line_height(px(18.0))
                         .text_color(color(theme::TEXT))
-                        .truncate()
                         .child(label),
                 )
                 .child(ai_memory_row_icon_button(
@@ -1514,11 +1519,11 @@ fn ai_memory_project_profile_row(
         )
         .child(
             div()
-                .mt(px(2.0))
+                .mt(px(10.0))
                 .text_size(px(12.0))
-                .line_height(px(16.0))
-                .text_color(color(theme::TEXT_MUTED))
-                .truncate()
+                .line_height(px(18.0))
+                .text_color(color(theme::TEXT))
+                .w_full()
                 .child(profile.content),
         )
 }
@@ -1540,8 +1545,10 @@ fn ai_memory_project_profile_empty_row(
     div()
         .mt(px(8.0))
         .rounded(px(8.0))
-        .px(px(8.0))
-        .py(px(7.0))
+        .border_1()
+        .border_color(cx.theme().border)
+        .px(px(12.0))
+        .py(px(11.0))
         .bg(ai_stats_track_surface(cx))
         .child(
             div()
@@ -1553,10 +1560,9 @@ fn ai_memory_project_profile_empty_row(
                     div()
                         .min_w_0()
                         .flex_1()
-                        .text_size(px(12.0))
-                        .line_height(px(16.0))
+                        .text_size(px(14.0))
+                        .line_height(px(18.0))
                         .text_color(color(theme::TEXT))
-                        .truncate()
                         .child(label),
                 )
                 .child(ai_memory_row_icon_button(
@@ -1570,11 +1576,10 @@ fn ai_memory_project_profile_empty_row(
         )
         .child(
             div()
-                .mt(px(2.0))
+                .mt(px(8.0))
                 .text_size(px(12.0))
-                .line_height(px(16.0))
+                .line_height(px(17.0))
                 .text_color(color(theme::TEXT_MUTED))
-                .truncate()
                 .child(empty_label),
         )
 }
@@ -1588,6 +1593,14 @@ fn ai_memory_manager_summary_row(
 ) -> impl IntoElement {
     let summary_placeholder =
         ai_sidebar_text(language, "memory.manager.edit_summary.title", "Summary");
+    let version_label = ai_sidebar_text(language, "memory.manager.summary.version_format", "v%lld")
+        .replacen("%lld", &summary.version.to_string(), 1);
+    let tokens_label = ai_sidebar_text(
+        language,
+        "memory.manager.summary.tokens_format",
+        "%lld tokens",
+    )
+    .replacen("%lld", &summary.token_estimate.to_string(), 1);
     let summary_id = summary.id.clone();
     let save_id = summary.id.clone();
     let delete_id = summary.id.clone();
@@ -1622,8 +1635,14 @@ fn ai_memory_manager_summary_row(
         )))
         .mb(px(6.0))
         .rounded(px(8.0))
-        .px(px(8.0))
-        .py(px(7.0))
+        .border_1()
+        .border_color(if active {
+            color(theme::ACCENT).opacity(0.28)
+        } else {
+            cx.theme().border
+        })
+        .px(px(12.0))
+        .py(px(11.0))
         .cursor_pointer()
         .bg(if active {
             active_bg
@@ -1646,11 +1665,10 @@ fn ai_memory_manager_summary_row(
                     div()
                         .min_w_0()
                         .flex_1()
-                        .text_size(px(12.0))
-                        .line_height(px(16.0))
+                        .text_size(px(14.0))
+                        .line_height(px(18.0))
                         .text_color(color(theme::TEXT))
-                        .truncate()
-                        .child(format!("{} v{}", summary.scope, summary.version)),
+                        .child(format!("{} {}", summary.scope, version_label)),
                 )
                 .child(
                     div()
@@ -1662,7 +1680,7 @@ fn ai_memory_manager_summary_row(
                                 .text_size(px(12.0))
                                 .line_height(px(16.0))
                                 .text_color(color(theme::TEXT_DIM))
-                                .child(format!("{}t", summary.token_estimate)),
+                                .child(tokens_label),
                         )
                         .child(ai_memory_row_icon_button(
                             format!("ai-memory-save-summary-{save_id}"),
@@ -1689,11 +1707,21 @@ fn ai_memory_manager_summary_row(
                         )),
                 ),
         )
-        .child(
+        .child(if active {
             div()
-                .mt(px(2.0))
-                .child(Input::new(&input_state).with_size(gpui_component::Size::Small)),
-        )
+                .mt(px(8.0))
+                .child(Input::new(&input_state).with_size(gpui_component::Size::Small))
+                .into_any_element()
+        } else {
+            div()
+                .mt(px(10.0))
+                .text_size(px(12.0))
+                .line_height(px(18.0))
+                .text_color(color(theme::TEXT))
+                .w_full()
+                .child(summary.content.clone())
+                .into_any_element()
+        })
 }
 
 fn ai_memory_manager_entry_row(
@@ -1714,8 +1742,14 @@ fn ai_memory_manager_entry_row(
         )))
         .mb(px(6.0))
         .rounded(px(8.0))
-        .px(px(8.0))
-        .py(px(7.0))
+        .border_1()
+        .border_color(if active {
+            color(theme::ACCENT).opacity(0.28)
+        } else {
+            cx.theme().border
+        })
+        .px(px(12.0))
+        .py(px(11.0))
         .cursor_pointer()
         .bg(if active {
             active_bg
@@ -1739,18 +1773,17 @@ fn ai_memory_manager_entry_row(
                         .child(
                             div()
                                 .text_size(px(12.0))
-                                .line_height(px(16.0))
+                                .line_height(px(18.0))
                                 .text_color(color(theme::TEXT))
-                                .truncate()
+                                .w_full()
                                 .child(entry.content.clone()),
                         )
                         .child(
                             div()
-                                .mt(px(2.0))
+                                .mt(px(8.0))
                                 .text_size(px(12.0))
                                 .line_height(px(16.0))
                                 .text_color(color(theme::TEXT_DIM))
-                                .truncate()
                                 .child(format!(
                                     "{} · {} · {} · {}",
                                     entry.scope, entry.tier, entry.kind, entry.status

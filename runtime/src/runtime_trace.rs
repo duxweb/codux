@@ -1,4 +1,7 @@
-use crate::runtime_paths::{app_support_candidates, app_support_dir, runtime_temp_dir};
+use crate::runtime_paths::{
+    LIVE_LOG_FILE_NAME, RUNTIME_LOG_FILE_NAME, RUNTIME_LOG_PREVIEW_FILE_NAME,
+    app_support_candidates, runtime_temp_dir,
+};
 use std::{
     fs,
     io::Write,
@@ -16,7 +19,7 @@ pub fn runtime_trace(category: &str, message: &str) {
     let Ok(_guard) = RUNTIME_TRACE_LOCK.get_or_init(|| Mutex::new(())).lock() else {
         return;
     };
-    let path = app_support_dir().join("runtime.log");
+    let path = crate::runtime_paths::runtime_log_path();
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -59,12 +62,12 @@ fn clear_runtime_logs(path: &Path) {
         let _ = fs::remove_file(rotated_log_path(path, index));
     }
     for support_dir in app_support_candidates() {
-        clear_log_family(&support_dir.join("runtime.log"));
+        clear_log_family(&support_dir.join(RUNTIME_LOG_FILE_NAME));
         clear_logs_dir(&support_dir.join("logs"));
     }
     let temp_dir = runtime_temp_dir();
-    clear_log_family(&temp_dir.join("live.log"));
-    let _ = fs::remove_file(temp_dir.join("runtime-log-preview.txt"));
+    clear_log_family(&temp_dir.join(LIVE_LOG_FILE_NAME));
+    let _ = fs::remove_file(temp_dir.join(RUNTIME_LOG_PREVIEW_FILE_NAME));
 }
 
 fn clear_log_family(path: &Path) {
@@ -99,7 +102,7 @@ fn clear_logs_dir(path: &Path) {
         let Some(name) = entry_path.file_name().and_then(|value| value.to_str()) else {
             continue;
         };
-        if name.contains(".log") || name == "runtime-log-preview.txt" {
+        if name.contains(".log") || name == RUNTIME_LOG_PREVIEW_FILE_NAME {
             let _ = fs::remove_file(entry_path);
         }
     }
@@ -127,6 +130,6 @@ fn rotated_log_path(path: &Path, index: usize) -> PathBuf {
     let file_name = path
         .file_name()
         .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "runtime.log".to_string());
+        .unwrap_or_else(|| RUNTIME_LOG_FILE_NAME.to_string());
     path.with_file_name(format!("{file_name}.{index}"))
 }

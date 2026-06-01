@@ -63,11 +63,15 @@ impl RuntimeActivityService {
             }
         }
 
-        let runtime_log = self.support_dir.join("runtime.log");
-        let live_log = self.runtime_temp_dir.join("live.log");
-        let runtime_root = self.runtime_temp_dir.join("runtime-root");
-        let runtime_support = self.support_dir.join("runtime-support");
-        let runtime_events = self.runtime_temp_dir.join("runtime-events");
+        let runtime_log = crate::runtime_paths::runtime_log_path();
+        let live_log = crate::runtime_paths::live_log_path();
+        let runtime_root = self.runtime_temp_dir.join(crate::runtime_paths::RUNTIME_ROOT_DIR_NAME);
+        let runtime_support = self
+            .support_dir
+            .join(crate::runtime_paths::RUNTIME_SUPPORT_DIR_NAME);
+        let runtime_events = self
+            .runtime_temp_dir
+            .join(crate::runtime_paths::RUNTIME_EVENT_DIR_NAME);
 
         let summary = RuntimeActivitySummary {
             support_dir: self.support_dir.display().to_string(),
@@ -227,10 +231,17 @@ mod tests {
     fn summary_reads_runtime_logs_and_support_files() {
         let support_dir =
             std::env::temp_dir().join(format!("codux-gpui-runtime-test-{}", Uuid::new_v4()));
-        fs::create_dir_all(support_dir.join("runtime-support/runtime-hooks")).unwrap();
-        fs::write(support_dir.join("runtime.log"), "one\ntwo\nthree\n").unwrap();
+        let hook_dir = support_dir
+            .join(crate::runtime_paths::RUNTIME_SUPPORT_DIR_NAME)
+            .join("runtime-hooks");
+        fs::create_dir_all(&hook_dir).unwrap();
         fs::write(
-            support_dir.join("runtime-support/runtime-hooks/dmux-ai-state.sh"),
+            support_dir.join(crate::runtime_paths::RUNTIME_LOG_FILE_NAME),
+            "one\ntwo\nthree\n",
+        )
+        .unwrap();
+        fs::write(
+            hook_dir.join("dmux-ai-state.sh"),
             "#!/bin/sh\n",
         )
         .unwrap();
@@ -239,17 +250,18 @@ mod tests {
             support_dir: support_dir.clone(),
             runtime_temp_dir: support_dir.join("tmp"),
         };
-        fs::create_dir_all(service.runtime_temp_dir.join("runtime-events")).unwrap();
+        let event_dir = service
+            .runtime_temp_dir
+            .join(crate::runtime_paths::RUNTIME_EVENT_DIR_NAME);
+        fs::create_dir_all(&event_dir).unwrap();
         fs::write(
-            service.runtime_temp_dir.join("live.log"),
+            service
+                .runtime_temp_dir
+                .join(crate::runtime_paths::LIVE_LOG_FILE_NAME),
             "live-one\nlive-two\n",
         )
         .unwrap();
-        fs::write(
-            service.runtime_temp_dir.join("runtime-events/event.json"),
-            "{}",
-        )
-        .unwrap();
+        fs::write(event_dir.join("event.json"), "{}").unwrap();
 
         let summary = service.summary();
 

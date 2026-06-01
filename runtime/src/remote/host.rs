@@ -75,7 +75,7 @@ impl RemoteHostRuntime {
     }
 
     pub fn reload_snapshot_from_settings(&self) -> RemoteSummary {
-        let summary = self.service().summary();
+        let summary = self.summary_from_settings_preserving_connection();
         self.update_snapshot(summary.clone());
         summary
     }
@@ -99,8 +99,18 @@ impl RemoteHostRuntime {
             self.stop_with_message("Remote Host stopped.");
             return self.snapshot();
         }
+        let current = self.snapshot();
+        let has_started_connect_loop = self.connection_generation.load(Ordering::SeqCst) > 0;
+        if has_started_connect_loop
+            && current.enabled
+            && current.relay == summary.relay
+            && matches!(current.status.as_str(), "connected" | "connecting")
+        {
+            return current;
+        }
+        self.update_snapshot(summary);
         self.spawn_connect_loop(0);
-        summary
+        self.snapshot()
     }
 
     pub fn stop_with_message(&self, message: &str) {
@@ -131,6 +141,15 @@ impl RemoteHostRuntime {
     }
 
     pub fn reconnect(self: &Arc<Self>) -> RemoteSummary {
+        crate::runtime_trace::runtime_trace("remote", "host_reconnect requested");
+        if let Ok(mut tx) = self.socket_tx.lock() {
+            *tx = None;
+        }
+        let mut summary = self.service().summary();
+        summary.status = "connecting".to_string();
+        summary.message = "Connecting relay...".to_string();
+        summary.pairing = self.snapshot().pairing;
+        self.update_snapshot(summary);
         self.spawn_connect_loop(0);
         self.snapshot()
     }
@@ -190,8 +209,28 @@ impl RemoteHostRuntime {
     }
 
     async fn connect_once(self: &Arc<Self>, generation: u64) -> Result<(), String> {
-        self.service().register_host()?;
-        self.service().refresh_devices().ok();
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!("connect_once start generation={generation}"),
+        );
+        self.service().register_host_async().await?;
+        if generation != self.connection_generation.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let snapshot = self.snapshot();
+        if snapshot.status == "connecting" && self.socket_tx.lock().ok().and_then(|tx| tx.clone()).is_none() {
+            let mut connecting = self.service().summary();
+            connecting.status = "connecting".to_string();
+            connecting.message = "Connecting relay...".to_string();
+            connecting.pairing = snapshot.pairing;
+            self.update_snapshot(connecting);
+        }
+        if let Err(error) = self.service().refresh_devices_async().await {
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                &format!("connect_once refresh_devices failed error={error}"),
+            );
+        }
         let settings = super::remote_settings_from_raw(&self.service().raw_settings());
         let ws_url = remote_url(
             &remote_server_url(&settings),
@@ -202,6 +241,10 @@ impl RemoteHostRuntime {
             ],
             true,
         )?;
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!("connect_once websocket_connect generation={generation}"),
+        );
         let (socket, _) = tokio_tungstenite::connect_async(&ws_url)
             .await
             .map_err(remote_error_message)?;
@@ -216,6 +259,10 @@ impl RemoteHostRuntime {
         connected.message = "Remote Host connected.".to_string();
         connected.pairing = self.snapshot().pairing;
         self.update_snapshot(connected);
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!("connect_once connected generation={generation}"),
+        );
 
         let writer = crate::async_runtime::spawn(async move {
             while let Some(message) = rx.recv().await {
@@ -1313,6 +1360,19 @@ impl RemoteHostRuntime {
                 }
             }
         }
+    }
+
+    fn summary_from_settings_preserving_connection(&self) -> RemoteSummary {
+        let mut summary = self.service().summary();
+        let current = self.snapshot();
+        if summary.enabled && current.enabled && summary.relay == current.relay {
+            summary.status = current.status;
+            summary.message = current.message;
+            summary.pairing = current.pairing;
+            summary.pending_pairing_list = current.pending_pairing_list;
+            summary.pending_pairings = summary.pending_pairing_list.len();
+        }
+        summary
     }
 
     fn service(&self) -> RemoteService {

@@ -41,12 +41,11 @@ impl CoduxApp {
         let memory_label = self.state.performance.memory_label.clone();
         let ai_running_count = self.state.ai_runtime_state.running_count;
         let ai_index_count = self.ai_history_active_index_count;
-        let ai_indexed = self.state.ai_history.indexed;
-        let ai_is_loading = self.state.ai_history.is_loading;
-        let ai_queued = self.state.ai_history.queued;
-        let ai_progress = self.state.ai_history.progress;
-        let ai_error = self.state.ai_history.error.clone();
-        let ai_show_progress = now < self.ai_index_progress_visible_until;
+        let ai_indexed = self.state.ai_global_history.indexed_project_count > 0;
+        let ai_error = self.state.ai_global_history.error.clone();
+        let ai_is_indexing = ai_index_count > 0;
+        let ai_is_foreground_indexing =
+            ai_is_indexing && now < self.ai_index_progress_visible_until;
         let memory_queued = self.state.memory_manager.extraction.queued;
         let memory_running = self.state.memory_manager.extraction.running;
         let memory_processing = self.memory_processing;
@@ -103,11 +102,9 @@ impl CoduxApp {
                         ai_running_count,
                         ai_index_count,
                         ai_indexed,
-                        ai_is_loading,
-                        ai_queued,
-                        ai_progress,
+                        ai_is_indexing,
+                        ai_is_foreground_indexing,
                         ai_error.as_deref(),
-                        ai_show_progress,
                         &language,
                         cx,
                     ))
@@ -269,20 +266,16 @@ fn status_ai_segment(
     index_count: usize,
     indexed: bool,
     is_indexing: bool,
-    is_queued: bool,
-    progress: Option<f64>,
+    is_foreground_indexing: bool,
     error: Option<&str>,
-    show_progress: bool,
     language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let running_label = status_text(language, "agent.status.running", "Running");
     let index_count_label = status_text(language, "ai.status.index_count", "Index");
-    let index_failed_label = status_text(language, "ai.indexing.status.failed", "Index Failed");
-    let indexing_label = status_text(language, "ai.indexing.status.manual_refreshing", "Indexing");
-    let indexed_label = status_text(language, "ai.indexing.status.completed", "Indexed");
-    let unindexed_label = status_text(language, "ai.empty.no_stats", "Unindexed");
-    let loading = error.is_none() && (is_indexing || is_queued || index_count > 0);
+    let indexing_label = status_text(language, "ai.indexing.status.short_indexing", "Indexing");
+    let indexed_label = status_text(language, "ai.indexing.status.short_indexed", "Indexed");
+    let loading = is_indexing;
     let running_color = if running_count > 0 {
         theme::GREEN
     } else {
@@ -293,31 +286,26 @@ fn status_ai_segment(
     } else {
         theme::TEXT_DIM
     };
-    let index_color = if error.is_some() {
+    let index_color = if loading {
         theme::ORANGE
-    } else if loading {
+    } else if error.is_some() {
         theme::ORANGE
     } else if indexed {
-        theme::GREEN
+        0x5F9F70
     } else {
         theme::TEXT_DIM
     };
-    let index_label = if error.is_some() {
-        index_failed_label
-    } else if loading {
+    let index_label = if loading {
         indexing_label
     } else if indexed {
         indexed_label
     } else {
-        unindexed_label
+        indexed_label
     };
-    let progress_value = progress.unwrap_or(0.0).clamp(0.0, 1.0);
-    let progress_loading = progress.is_none() || progress_value <= 0.0;
-    let show_progress = show_progress && loading;
 
     div()
         .id("status-ai-panel")
-        .h(if show_progress { px(24.0) } else { px(20.0) })
+        .h(px(20.0))
         .px(px(6.0))
         .flex()
         .items_center()
@@ -330,8 +318,13 @@ fn status_ai_segment(
         .on_click(cx.listener(|app, _event, window, cx| {
             app.toggle_assistant_panel(AssistantPanel::AIStats, window, cx)
         }))
-        .child(if loading && !show_progress {
-            status_spinner().into_any_element()
+        .child(if loading {
+            status_activity_dot(if is_foreground_indexing {
+                theme::ACCENT
+            } else {
+                theme::ORANGE
+            })
+            .into_any_element()
         } else {
             Icon::new(IconName::Bot).size_2p5().into_any_element()
         })
@@ -354,17 +347,6 @@ fn status_ai_segment(
                 .text_color(color(index_color))
                 .child(index_label),
         )
-        .when(show_progress, |this| {
-            this.child(
-                div().w(px(72.0)).child(
-                    Progress::new("status-ai-index-progress")
-                        .with_size(Size::XSmall)
-                        .color(color(theme::ACCENT))
-                        .loading(loading && progress_loading)
-                        .value((progress_value * 100.0) as f32),
-                ),
-            )
-        })
 }
 
 fn status_memory_segment(
@@ -377,8 +359,8 @@ fn status_memory_segment(
 ) -> impl IntoElement {
     let running_label = status_text(language, "agent.status.running", "Running");
     let index_count_label = status_text(language, "ai.status.index_count", "Index");
-    let indexed_label = status_text(language, "ai.indexing.status.completed", "Indexed");
-    let indexing_label = status_text(language, "memory.status.processing", "Indexing");
+    let indexed_label = status_text(language, "ai.indexing.status.short_indexed", "Indexed");
+    let indexing_label = status_text(language, "memory.status.short_indexing", "Indexing");
     let queued = queued.max(0);
     let running = running.max(0);
     let total_queued = queued + running;
@@ -386,7 +368,7 @@ fn status_memory_segment(
     let visible_loading = loading || show_processing;
     let queued_color = theme::TEXT_DIM;
     let running_color = if running > 0 {
-        theme::GREEN
+        theme::ORANGE
     } else {
         theme::TEXT_DIM
     };
@@ -405,7 +387,7 @@ fn status_memory_segment(
         .hover(|style| style.bg(cx.theme().list_hover))
         .on_click(cx.listener(|app, _event, window, cx| app.open_memory_manager_window(window, cx)))
         .child(if visible_loading {
-            status_spinner().into_any_element()
+            status_activity_dot(theme::ORANGE).into_any_element()
         } else {
             Icon::new(IconName::BookOpen).size_2p5().into_any_element()
         })
@@ -443,10 +425,19 @@ fn status_memory_segment(
             this.child(
                 div()
                     .mt(px(1.0))
-                    .text_color(color(theme::GREEN))
+                    .text_color(color(0x5F9F70))
                     .child(indexed_label),
             )
         })
+}
+
+fn status_activity_dot(accent: u32) -> impl IntoElement {
+    div()
+        .size(px(9.0))
+        .rounded_full()
+        .border_1()
+        .border_color(color(0xFFFFFF))
+        .bg(color(accent))
 }
 
 fn status_remote_segment(
@@ -455,23 +446,19 @@ fn status_remote_segment(
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let remote_label = status_text(language, "settings.tab.remote", "Remote");
-    let connected_label = status_text(language, "status.connected", "Connected");
-    let connecting_label = status_text(language, "status.connecting", "Connecting");
-    let disconnected_label = status_text(language, "status.disconnected", "Disconnected");
-    let connected = remote.enabled && (remote.online_devices > 0 || remote.status == "connected");
-    let state_label = if connected {
-        connected_label
-    } else if remote.enabled {
-        connecting_label
-    } else {
-        disconnected_label
+    let connected_label = status_text(language, "remote.status.connected_label", "Connected");
+    let connecting_label = status_text(language, "remote.status.connecting_label", "Connecting");
+    let disconnected_label =
+        status_text(language, "remote.status.disconnected_label", "Disconnected");
+    let state_label = match remote.status.as_str() {
+        "connected" => connected_label,
+        "connecting" => connecting_label,
+        _ => disconnected_label,
     };
-    let state_color = if connected {
-        theme::GREEN
-    } else if remote.enabled {
-        theme::ORANGE
-    } else {
-        theme::TEXT_DIM
+    let state_color = match remote.status.as_str() {
+        "connected" => theme::GREEN,
+        "connecting" => theme::ORANGE,
+        _ => theme::TEXT_DIM,
     };
 
     div()
@@ -512,15 +499,6 @@ fn status_remote_segment(
 
 fn status_text(language: &str, key: &str, fallback: &str) -> String {
     translate(&locale_from_language_setting(language), key, fallback)
-}
-
-fn status_spinner() -> impl IntoElement {
-    div()
-        .w(px(10.0))
-        .h(px(10.0))
-        .rounded_full()
-        .border_2()
-        .border_color(color(theme::ORANGE))
 }
 
 fn status_git_segment(

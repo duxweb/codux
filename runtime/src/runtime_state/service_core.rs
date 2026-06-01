@@ -1,5 +1,6 @@
 static POWER_MANAGER: OnceLock<Arc<PowerManager>> = OnceLock::new();
 static AI_HISTORY_INDEXER: OnceLock<AIHistoryIndexer> = OnceLock::new();
+static REMOTE_HOST_RUNTIME: OnceLock<Arc<RemoteHostRuntime>> = OnceLock::new();
 
 fn shared_power_manager() -> Arc<PowerManager> {
     Arc::clone(POWER_MANAGER.get_or_init(|| Arc::new(PowerManager::default())))
@@ -7,6 +8,12 @@ fn shared_power_manager() -> Arc<PowerManager> {
 
 fn shared_ai_history_indexer() -> AIHistoryIndexer {
     AI_HISTORY_INDEXER.get_or_init(AIHistoryIndexer::new).clone()
+}
+
+fn shared_remote_host_runtime(support_dir: PathBuf, ai_history: AIHistoryIndexer) -> Arc<RemoteHostRuntime> {
+    Arc::clone(REMOTE_HOST_RUNTIME.get_or_init(|| {
+        Arc::new(RemoteHostRuntime::new_with_ai_history(support_dir, ai_history))
+    }))
 }
 
 impl RuntimeService {
@@ -18,6 +25,8 @@ impl RuntimeService {
         ));
         project_activity.seed_projects(ProjectStore::new(support_dir.clone()).projects_snapshot());
         let remote_ai_history_indexer = ai_history_indexer.clone();
+        let remote_host =
+            shared_remote_host_runtime(support_dir.clone(), remote_ai_history_indexer);
         Self {
             support_dir: support_dir.clone(),
             ai_history_indexer,
@@ -29,10 +38,7 @@ impl RuntimeService {
             active_file_watch_path: Arc::new(Mutex::new(None)),
             git_cancels: Arc::new(Mutex::new(HashMap::new())),
             power_manager: shared_power_manager(),
-            remote_host: Arc::new(RemoteHostRuntime::new_with_ai_history(
-                support_dir.clone(),
-                remote_ai_history_indexer,
-            )),
+            remote_host,
         }
     }
 

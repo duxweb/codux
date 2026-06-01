@@ -602,19 +602,19 @@ fn project_row(
 
 fn project_activity_badge(
     state: AIActivityState,
-    cx: &mut Context<ProjectColumnView>,
+    _cx: &mut Context<ProjectColumnView>,
 ) -> AnyElement {
     match state {
         AIActivityState::Running => div()
             .absolute()
             .right(px(-2.0))
             .top(px(-2.0))
-            .w(px(12.0))
-            .h(px(12.0))
+            .w(px(10.0))
+            .h(px(10.0))
             .rounded_full()
-            .border_2()
-            .border_color(color(theme::ORANGE))
-            .bg(color(theme::BG_COLUMN))
+            .border_1()
+            .border_color(color(0xFFFFFF))
+            .bg(color(theme::ORANGE))
             .into_any_element(),
         AIActivityState::Review => div()
             .absolute()
@@ -635,7 +635,7 @@ fn project_activity_badge(
             .h(px(10.0))
             .rounded_full()
             .border_1()
-            .border_color(cx.theme().sidebar)
+            .border_color(color(0xFFFFFF))
             .bg(color(theme::GREEN))
             .into_any_element(),
         AIActivityState::Idle => div().into_any_element(),
