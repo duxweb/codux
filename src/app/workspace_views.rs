@@ -118,7 +118,6 @@ impl Render for WorkspaceBodyView {
             if app.workspace_view == WorkspaceView::Terminal {
                 let snapshot = app.terminal_workspace_snapshot();
                 let terminal_view = if let Some(view) = &self.terminal_workspace_view {
-                    view.update(app_cx, |view, cx| view.set_snapshot(snapshot, cx));
                     view.clone()
                 } else {
                     let view =
@@ -130,7 +129,6 @@ impl Render for WorkspaceBodyView {
             } else if app.workspace_view == WorkspaceView::Files {
                 let snapshot = app.file_editor_workspace_snapshot();
                 let file_editor_view = if let Some(view) = &self.file_editor_workspace_view {
-                    view.update(app_cx, |view, cx| view.set_snapshot(snapshot, cx));
                     view.clone()
                 } else {
                     let view = app_cx.new(|_| {
