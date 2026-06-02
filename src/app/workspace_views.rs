@@ -603,6 +603,7 @@ struct TerminalBottomTabViewSnapshot {
 pub(in crate::app) struct TerminalWorkspaceView {
     app_entity: gpui::Entity<CoduxApp>,
     snapshot: TerminalWorkspaceSnapshot,
+    tab_scroll_handle: ScrollHandle,
 }
 
 impl TerminalWorkspaceView {
@@ -610,6 +611,7 @@ impl TerminalWorkspaceView {
         Self {
             app_entity,
             snapshot,
+            tab_scroll_handle: ScrollHandle::new(),
         }
     }
 
@@ -620,6 +622,12 @@ impl TerminalWorkspaceView {
     ) {
         if self.snapshot == snapshot {
             return;
+        }
+        if active_terminal_bottom_tab_id(&self.snapshot.bottom_tabs)
+            != active_terminal_bottom_tab_id(&snapshot.bottom_tabs)
+            && let Some(index) = snapshot.bottom_tabs.iter().position(|tab| tab.active)
+        {
+            self.tab_scroll_handle.scroll_to_item(index);
         }
         self.snapshot = snapshot;
         cx.notify();
@@ -638,6 +646,7 @@ impl Render for TerminalWorkspaceView {
             self.app_entity.clone(),
             self.snapshot.bottom_tabs.clone(),
             self.snapshot.active_bottom.clone(),
+            self.tab_scroll_handle.clone(),
             cx,
         );
 
@@ -764,6 +773,10 @@ impl CoduxApp {
     }
 }
 
+fn active_terminal_bottom_tab_id(tabs: &[TerminalBottomTabViewSnapshot]) -> Option<usize> {
+    tabs.iter().find(|tab| tab.active).map(|tab| tab.id)
+}
+
 fn terminal_main_split_area(
     app_entity: gpui::Entity<CoduxApp>,
     panes: Vec<TerminalPaneViewSnapshot>,
@@ -881,6 +894,7 @@ fn terminal_bottom_tabs_area(
     app_entity: gpui::Entity<CoduxApp>,
     tabs: Vec<TerminalBottomTabViewSnapshot>,
     active: Option<TerminalPaneViewSnapshot>,
+    tab_scroll_handle: ScrollHandle,
     cx: &mut Context<TerminalWorkspaceView>,
 ) -> AnyElement {
     let has_bottom_tabs = active.is_some();
@@ -919,10 +933,21 @@ fn terminal_bottom_tabs_area(
                                     .child("终端"),
                             )
                         })
-                        .children(tabs.into_iter().map(|tab| {
-                            terminal_bottom_tab_button(app_entity.clone(), tab, cx)
-                                .into_any_element()
-                        })),
+                        .child(
+                            div()
+                                .id("terminal-bottom-tab-scroll")
+                                .flex()
+                                .h_full()
+                                .min_w_0()
+                                .items_center()
+                                .gap_1()
+                                .overflow_x_scroll()
+                                .track_scroll(&tab_scroll_handle)
+                                .children(tabs.into_iter().map(|tab| {
+                                    terminal_bottom_tab_button(app_entity.clone(), tab, cx)
+                                        .into_any_element()
+                                })),
+                        ),
                 )
                 .child(terminal_bottom_add_button(app_entity.clone(), cx)),
         )
@@ -1010,6 +1035,7 @@ fn terminal_bottom_tab_button(
         .px_3()
         .relative()
         .flex()
+        .flex_none()
         .items_center()
         .gap_2()
         .rounded_md()

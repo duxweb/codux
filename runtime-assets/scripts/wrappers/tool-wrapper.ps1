@@ -339,8 +339,8 @@ if ($Tool -eq "codex" -and
       $content = Get-Content -LiteralPath $memoryAgents -Raw
       if (-not [string]::IsNullOrWhiteSpace($content)) {
         $profileName = Write-Codex-Developer-Instructions-Profile $content "$env:DMUX_SESSION_ID|$memoryAgents"
-        if (-not [string]::IsNullOrWhiteSpace($profileName) -and -not (Has-Option-Value $launchArgs @("--profile-v2"))) {
-          $launchArgs = @("--profile-v2", $profileName) + $launchArgs
+        if (-not [string]::IsNullOrWhiteSpace($profileName) -and -not (Has-Option-Value $launchArgs @("--profile", "--profile-v2"))) {
+          $launchArgs = @("--profile", $profileName) + $launchArgs
         } else {
           $tomlString = $content | ConvertTo-Json -Compress
           $launchArgs = @("-c", "developer_instructions=$tomlString") + $launchArgs

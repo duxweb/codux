@@ -209,6 +209,7 @@ struct FileEditorTabBarSnapshot {
 pub(in crate::app) struct FileEditorTabBarView {
     app_entity: gpui::Entity<CoduxApp>,
     snapshot: FileEditorTabBarSnapshot,
+    tab_scroll_handle: ScrollHandle,
 }
 
 impl FileEditorTabBarView {
@@ -216,12 +217,20 @@ impl FileEditorTabBarView {
         Self {
             app_entity,
             snapshot,
+            tab_scroll_handle: ScrollHandle::new(),
         }
     }
 
     fn set_snapshot(&mut self, snapshot: FileEditorTabBarSnapshot, cx: &mut Context<Self>) {
         if self.snapshot == snapshot {
             return;
+        }
+        if self.snapshot.active_path != snapshot.active_path
+            && let Some(index) = snapshot.tabs.iter().position(|tab| {
+                Some(tab.relative_path.as_str()) == snapshot.active_path.as_deref()
+            })
+        {
+            self.tab_scroll_handle.scroll_to_item(index);
         }
         self.snapshot = snapshot;
         cx.notify();
@@ -234,6 +243,7 @@ impl Render for FileEditorTabBarView {
             self.app_entity.clone(),
             self.snapshot.tabs.clone(),
             self.snapshot.active_path.clone(),
+            self.tab_scroll_handle.clone(),
             cx,
         )
     }
@@ -875,6 +885,7 @@ fn file_editor_tab_bar(
     app_entity: gpui::Entity<CoduxApp>,
     tabs: Vec<FileEditorTab>,
     active_path: Option<String>,
+    tab_scroll_handle: ScrollHandle,
     cx: &mut Context<FileEditorTabBarView>,
 ) -> impl IntoElement {
     div()
@@ -897,10 +908,21 @@ fn file_editor_tab_bar(
                 .items_center()
                 .gap_1()
                 .overflow_x_hidden()
-                .children(tabs.into_iter().map(|tab| {
-                    let active = active_path.as_deref() == Some(tab.relative_path.as_str());
-                    file_editor_tab_button(app_entity.clone(), tab, active, cx)
-                })),
+                .child(
+                    div()
+                        .id("file-editor-tab-scroll")
+                        .flex()
+                        .h_full()
+                        .min_w_0()
+                        .items_center()
+                        .gap_1()
+                        .overflow_x_scroll()
+                        .track_scroll(&tab_scroll_handle)
+                        .children(tabs.into_iter().map(|tab| {
+                            let active = active_path.as_deref() == Some(tab.relative_path.as_str());
+                            file_editor_tab_button(app_entity.clone(), tab, active, cx)
+                        })),
+                ),
         )
 }
 
