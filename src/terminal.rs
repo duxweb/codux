@@ -1946,7 +1946,7 @@ impl TerminalRenderer {
             self.paint_row_text(line, row, grid.columns(), grid, colors, origin, window, cx);
         }
 
-        if display_offset == 0 && cursor_visible {
+        if display_offset == 0 && cursor_visible && term.mode().contains(TermMode::SHOW_CURSOR) {
             self.paint_cursor(grid.cursor.point, colors, origin, window);
         }
     }
