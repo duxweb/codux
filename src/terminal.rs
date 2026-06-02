@@ -1026,13 +1026,25 @@ fn terminal_protocol_flags(bytes: &[u8]) -> TerminalProtocolFlags {
     }
 }
 
-fn trace_terminal_paint_snapshot(content: &TerminalContent, cursor_visible: bool) {
+fn trace_terminal_paint_snapshot(
+    content: &TerminalContent,
+    cursor_visible: bool,
+    fallback_cursor_point: Option<TerminalPoint>,
+) {
     if !terminal_trace_enabled() {
         return;
     }
+    let cursor_drawn = cursor_visible || fallback_cursor_point.is_some();
     terminal_trace(&format!(
-        "paint cursor_visible={} show_cursor={} cursor_hidden={} cursor_row={} cursor_col={} cursor_shape={:?} display_offset={} cells={} cols={} rows={}",
+        "paint cursor_visible={} cursor_drawn={} fallback_cursor_row={} fallback_cursor_col={} show_cursor={} cursor_hidden={} cursor_row={} cursor_col={} cursor_shape={:?} display_offset={} cells={} cols={} rows={}",
         cursor_visible,
+        cursor_drawn,
+        fallback_cursor_point
+            .map(|point| point.line.0.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        fallback_cursor_point
+            .map(|point| point.column.0.to_string())
+            .unwrap_or_else(|| "-".to_string()),
         content.mode.contains(TermMode::SHOW_CURSOR),
         content.cursor.shape == CursorShape::Hidden,
         content.cursor.point.line.0,
@@ -1053,6 +1065,9 @@ impl Render for TerminalView {
         self.ensure_focus_report_subscriptions(window, cx);
         let has_marked_text = self.marked_text.is_some();
         let cursor_visible = !has_marked_text && !self.is_terminal_cursor_suppressed();
+        let fallback_cursor_point = (!has_marked_text && self.is_terminal_cursor_suppressed())
+            .then_some(self.stable_cursor_point)
+            .flatten();
         let element = TerminalElement {
             state: self.state.handle(),
             renderer: self.renderer.clone(),
@@ -1065,6 +1080,7 @@ impl Render for TerminalView {
             padding: self.config.padding,
             marked_text: self.marked_text.clone(),
             cursor_visible,
+            fallback_cursor_point,
         };
 
         div()
@@ -1286,7 +1302,12 @@ fn should_suppress_transient_cursor(
     cursor_point: TerminalPoint,
     transient_context: bool,
 ) -> bool {
-    transient_context && stable_cursor_point.is_some_and(|stable| stable != cursor_point)
+    transient_context
+        && stable_cursor_point.is_some_and(|stable| {
+            stable != cursor_point
+                && !(stable.column == cursor_point.column
+                    && (stable.line.0 - cursor_point.line.0).abs() <= 1)
+        })
 }
 
 #[derive(Clone)]
@@ -1315,6 +1336,7 @@ struct TerminalElement {
     padding: Edges<Pixels>,
     marked_text: Option<String>,
     cursor_visible: bool,
+    fallback_cursor_point: Option<TerminalPoint>,
 }
 
 impl IntoElement for TerminalElement {
@@ -1384,7 +1406,7 @@ impl Element for TerminalElement {
         }
 
         let snapshot = self.state.snapshot();
-        trace_terminal_paint_snapshot(&snapshot, self.cursor_visible);
+        trace_terminal_paint_snapshot(&snapshot, self.cursor_visible, self.fallback_cursor_point);
         let selection = self.selection.lock().range();
         self.renderer.prepare_paint(
             bounds,
@@ -1392,6 +1414,7 @@ impl Element for TerminalElement {
             &snapshot,
             selection,
             self.cursor_visible,
+            self.fallback_cursor_point,
         )
     }
 
@@ -2467,6 +2490,7 @@ impl TerminalRenderer {
         content: &TerminalContent,
         selection: Option<SelectionRange>,
         cursor_visible: bool,
+        fallback_cursor_point: Option<TerminalPoint>,
     ) -> TerminalPaintState {
         let colors = &content.colors;
         let default_bg = self
@@ -2505,12 +2529,18 @@ impl TerminalRenderer {
             self.prepare_row_text(row, cells, colors, &mut text_runs);
         }
 
+        let cursor_point = if cursor_visible {
+            Some(content.cursor.point)
+        } else {
+            fallback_cursor_point
+        };
         let cursor = (content.display_offset == 0
-            && cursor_visible
             && content.mode.contains(TermMode::SHOW_CURSOR)
             && content.cursor.shape != CursorShape::Hidden)
-            .then(|| TerminalCursorPaint {
-                point: content.cursor.point,
+            .then_some(cursor_point)
+            .flatten()
+            .map(|point| TerminalCursorPaint {
+                point,
                 shape: content.cursor.shape,
                 color: self
                     .palette
@@ -3447,6 +3477,11 @@ mod tests {
         assert!(should_suppress_transient_cursor(
             Some(stable),
             TerminalPoint::new(Line(21), Column(33)),
+            true
+        ));
+        assert!(!should_suppress_transient_cursor(
+            Some(stable),
+            TerminalPoint::new(Line(17), Column(2)),
             true
         ));
         assert!(!should_suppress_transient_cursor(
