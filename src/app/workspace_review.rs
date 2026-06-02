@@ -3,7 +3,10 @@ use codux_runtime::{i18n::translate, settings::locale_from_language_setting};
 use gpui_component::resizable::{h_resizable, resizable_panel};
 
 impl CoduxApp {
-    pub(in crate::app) fn review_workspace_body(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::app) fn review_workspace_body(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let locale = locale_from_language_setting(&self.state.settings.language);
         let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
         let review_title = if self.git_review.mode == "taskBranch" {
@@ -31,12 +34,21 @@ impl CoduxApp {
         let selected_path = self
             .selected_git_file
             .as_deref()
-            .filter(|path| self.git_review.files.iter().any(|file| file.path == *path));
-        let selected_content = self
+            .filter(|path| self.git_review.files.iter().any(|file| file.path == *path))
+            .map(str::to_string);
+        let selected_content_matches = self
             .git_review_content
             .as_ref()
-            .filter(|content| selected_path == Some(content.path.as_str()));
-        let selected_rows = selected_content.and(self.git_review_aligned_rows.as_ref());
+            .is_some_and(|content| selected_path.as_deref() == Some(content.path.as_str()));
+        if selected_content_matches {
+            self.ensure_git_review_aligned_rows();
+        }
+        let selected_rows = selected_content_matches
+            .then_some(())
+            .and(self.git_review_aligned_rows.as_ref());
+        let selected_content = selected_content_matches
+            .then_some(())
+            .and(self.git_review_content.as_ref());
         let git_labels = Rc::new(sidebars::GitSidebarLabels::load(
             &self.state.settings.language,
         ));
@@ -115,7 +127,7 @@ impl CoduxApp {
                             .child(div().flex().flex_col().size_full().min_h_0().child(
                                 git_review_file_list(
                                     &self.git_review,
-                                    selected_path,
+                                    selected_path.as_deref(),
                                     &self.git_expanded_dirs,
                                     self.git_review_refreshing,
                                     git_labels.clone(),
@@ -125,7 +137,7 @@ impl CoduxApp {
                     )
                     .child(resizable_panel().size_range(px(520.0)..px(1600.0)).child(
                         div().size_full().min_w_0().child(git_review_workspace(
-                            selected_path,
+                            selected_path.as_deref(),
                             &self.git_review,
                             selected_content,
                             selected_rows,

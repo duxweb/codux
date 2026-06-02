@@ -145,7 +145,7 @@ impl CoduxApp {
         let worktree_view_store = initial_worktree_view_store(&state, &project_view_store);
         let terminal_view_store = initial_terminal_view_store(&state);
 
-        let mut app = Self {
+        let app = Self {
             window_mode: AppWindowMode::Main,
             root_focus_handle: None,
             terminals,
@@ -186,6 +186,7 @@ impl CoduxApp {
             ssh_profile_editor_window: None,
             project_editor_window: None,
             worktree_creator_window: None,
+            parent_main_window: None,
             desktop_pet_line: desktop_pet_fallback_line().to_string(),
             desktop_pet_tone: DesktopPetActivityTone::Normal,
             desktop_pet_active_llm_key: String::new(),
@@ -215,6 +216,7 @@ impl CoduxApp {
             file_tree_children: HashMap::new(),
             file_tree_scroll_handle: UniformListScrollHandle::new(),
             file_preview_scroll_handle: UniformListScrollHandle::new(),
+            file_panel_refreshing: false,
             selected_git_file: None,
             selected_git_branch,
             git_review,
@@ -274,6 +276,8 @@ impl CoduxApp {
             child_window_memory_seen_revision: current_child_window_update_event().memory_revision,
             child_window_project_seen_revision: current_child_window_update_event()
                 .project_revision,
+            child_window_worktree_seen_revision: current_child_window_update_event()
+                .worktree_revision,
             child_window_git_seen_revision: current_child_window_update_event().git_revision,
             pet_claim_species: String::new(),
             pet_name_editing: false,
@@ -377,7 +381,20 @@ impl CoduxApp {
             ui_performance_counts: HashMap::new(),
             ui_performance_last_report_at: 0.0,
         };
-        let _ = app.persist_terminal_runtime();
+        let support_dir = app.state.support_dir.clone();
+        let (active_terminal_id, active_slot_id, sessions) = app.terminal_runtime_snapshot();
+        codux_runtime::async_runtime::spawn_blocking(move || {
+            if let Err(error) = TerminalRuntimeService::new(support_dir).save_from_gpui(
+                active_terminal_id,
+                active_slot_id,
+                sessions,
+            ) {
+                codux_runtime::runtime_trace::runtime_trace(
+                    "terminal-runtime",
+                    &format!("failed to persist startup terminal runtime: {error}"),
+                );
+            }
+        });
         Ok(app)
     }
 
@@ -477,6 +494,8 @@ impl CoduxApp {
             return;
         }
         self.is_exiting = true;
+
+        codux_runtime::config::flush_all_config_writes();
 
         let support_dir = self.state.support_dir.clone();
         let terminal_snapshot = self.terminal_runtime_snapshot();

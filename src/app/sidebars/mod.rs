@@ -622,6 +622,7 @@ impl CoduxApp {
             files_empty: self.state.files.is_empty(),
             rows,
             language: self.state.settings.language.clone(),
+            refreshing: self.file_panel_refreshing,
             draft_kind: self.file_name_draft_kind,
             draft_value: self.file_name_draft_value.clone(),
             draft_select_all: self.file_name_draft_select_all,
@@ -632,6 +633,7 @@ impl CoduxApp {
                 hash_sidebar_value(&self.file_directory),
                 selection_fingerprint,
                 draft_fingerprint,
+                hash_sidebar_value(&self.file_panel_refreshing),
                 hash_sidebar_value(&self.state.settings.language),
             ]),
         }
@@ -644,6 +646,7 @@ pub(in crate::app) struct FileSidebarSnapshot {
     files_empty: bool,
     rows: Rc<Vec<FileTreeRow>>,
     language: String,
+    refreshing: bool,
     draft_kind: Option<FileNameDraftKind>,
     draft_value: String,
     draft_select_all: bool,
@@ -699,6 +702,7 @@ impl Render for FileSidebarView {
             snapshot.rows.clone(),
             self.scroll_handle.clone(),
             &snapshot.language,
+            snapshot.refreshing,
             window,
             cx,
         )

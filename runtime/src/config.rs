@@ -159,6 +159,31 @@ impl ConfigStore {
     }
 }
 
+pub fn flush_all_config_writes() {
+    if let Some(stores) = CONFIG_STORES.get() {
+        for store in stores.lock().values() {
+            let snapshot = store.snapshot.read().clone();
+            if let Err(error) = write_snapshot(&store.path, &snapshot) {
+                crate::runtime_trace::runtime_trace(
+                    "config",
+                    &format!("failed to flush {}: {error}", store.path.display()),
+                );
+            }
+        }
+    }
+    if let Some(stores) = CONFIG_DOCUMENT_STORES.get() {
+        for store in stores.lock().values() {
+            let snapshot = store.snapshot.read().clone();
+            if let Err(error) = write_value_snapshot(&store.path, &snapshot) {
+                crate::runtime_trace::runtime_trace(
+                    "config",
+                    &format!("failed to flush {}: {error}", store.path.display()),
+                );
+            }
+        }
+    }
+}
+
 pub struct ConfigDocumentStore {
     path: PathBuf,
     snapshot: Arc<RwLock<Value>>,
@@ -395,6 +420,24 @@ mod tests {
         assert!(worktree.get("gitSummary").is_none());
         assert!(worktree.get("git_summary").is_none());
 
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn flush_all_config_writes_persists_pending_state_snapshot() {
+        let path = temp_config_path("flush-state");
+        let mut snapshot = Map::new();
+        snapshot.insert(
+            "projects".to_string(),
+            json!([{ "id": "p1", "name": "Project", "path": "/tmp/project" }]),
+        );
+
+        save_raw_state_snapshot(&path, &snapshot).expect("save state");
+        flush_all_config_writes();
+        let content = fs::read_to_string(&path).expect("flushed state file");
+
+        assert!(content.contains("\"projects\""));
+        assert!(content.contains("\"p1\""));
         fs::remove_file(path).ok();
     }
 

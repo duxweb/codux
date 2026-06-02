@@ -33,6 +33,7 @@ pub(in crate::app) struct ChildWindowUpdateEvent {
     pub(in crate::app) ssh_revision: u64,
     pub(in crate::app) memory_revision: u64,
     pub(in crate::app) project_revision: u64,
+    pub(in crate::app) worktree_revision: u64,
     pub(in crate::app) git_revision: u64,
     pub(in crate::app) git_running_label: Option<String>,
 }
@@ -43,6 +44,7 @@ pub(in crate::app) enum ChildWindowUpdateKind {
     Ssh,
     Memory,
     Project,
+    Worktree,
     Git,
 }
 
@@ -175,6 +177,9 @@ pub(in crate::app) fn publish_child_window_update(kind: ChildWindowUpdateKind) -
         }
         ChildWindowUpdateKind::Project => {
             event.project_revision = event.project_revision.saturating_add(1)
+        }
+        ChildWindowUpdateKind::Worktree => {
+            event.worktree_revision = event.worktree_revision.saturating_add(1)
         }
         ChildWindowUpdateKind::Git => event.git_revision = event.git_revision.saturating_add(1),
     }

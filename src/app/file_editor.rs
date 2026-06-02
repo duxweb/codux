@@ -684,14 +684,37 @@ impl CoduxApp {
         self.save_current_worktree_view_state();
     }
 
-    pub(super) fn load_current_file_editor_layout(&mut self) {
+    pub(super) fn load_current_file_editor_layout_async(&mut self, cx: &mut Context<Self>) {
         let Some(owner_id) = super::ai_runtime_status::terminal_layout_owner_id(&self.state) else {
             return;
         };
-        let layout = self
-            .runtime_service
-            .reload_file_editor_layout(Some(&owner_id));
-        self.apply_file_editor_layout(layout);
+        let runtime_service = self.runtime_service.clone();
+        let store_key = super::app_state::worktree_view_store_key(&self.state);
+        let generation = self.project_switch_generation;
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::run_limited_blocking_with_priority(
+                codux_runtime::async_runtime::BLOCKING_PRIORITY_FOREGROUND + generation,
+                move || runtime_service.reload_file_editor_layout(Some(&owner_id)),
+            )
+            .await
+            .ok();
+            let _ = this.update(cx, |app, cx| {
+                let Some(layout) = result else {
+                    return;
+                };
+                if app.project_switch_generation != generation
+                    || super::app_state::worktree_view_store_key(&app.state) != store_key
+                {
+                    return;
+                }
+                app.apply_file_editor_layout(layout);
+                app.invalidate_file_panel(cx);
+                if app.workspace_view == WorkspaceView::Files {
+                    app.invalidate_ui_region(cx, UiRegion::WorkspaceBody);
+                }
+            });
+        })
+        .detach();
     }
 
     pub(super) fn persist_file_editor_layout_async(&self, cx: &mut Context<Self>) {
@@ -710,10 +733,28 @@ impl CoduxApp {
         let active_path = self.active_file_editor_tab.clone();
         let runtime_service = self.runtime_service.clone();
         cx.spawn(async move |_: gpui::WeakEntity<Self>, _cx| {
-            let _ = codux_runtime::async_runtime::spawn_blocking(move || {
+            let owner_id_for_log = owner_id.clone();
+            let result = codux_runtime::async_runtime::spawn_blocking(move || {
                 runtime_service.save_file_editor_layout(&owner_id, tabs, active_path)
             })
             .await;
+            match result {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => codux_runtime::runtime_trace::runtime_trace(
+                    "config",
+                    &format!(
+                        "failed to persist file editor layout {}: {error}",
+                        owner_id_for_log
+                    ),
+                ),
+                Err(error) => codux_runtime::runtime_trace::runtime_trace(
+                    "config",
+                    &format!(
+                        "file editor layout writer failed {}: {error}",
+                        owner_id_for_log
+                    ),
+                ),
+            }
         })
         .detach();
     }
@@ -754,7 +795,7 @@ impl CoduxApp {
 }
 
 pub(in crate::app) fn file_editor_workspace(
-    _app_entity: gpui::Entity<CoduxApp>,
+    app_entity: gpui::Entity<CoduxApp>,
     snapshot: FileEditorWorkspaceSnapshot,
     chrome_view: gpui::Entity<FileEditorChromeView>,
     content_view: gpui::Entity<FileEditorContentView>,
@@ -768,6 +809,12 @@ pub(in crate::app) fn file_editor_workspace(
         active_editor: _,
         active_loading: _,
     } = snapshot;
+    let empty_text = file_editor_i18n(
+        app_entity.clone(),
+        cx,
+        "files.editor.empty",
+        "Double-click a file to open it",
+    );
 
     div()
         .flex()
@@ -798,7 +845,7 @@ pub(in crate::app) fn file_editor_workspace(
                         div()
                             .text_size(px(13.0))
                             .line_height(px(18.0))
-                            .child("Double-click a file to open it"),
+                            .child(empty_text),
                     ),
             )
         })
@@ -1164,7 +1211,7 @@ fn file_editor_parent_label(relative_path: &str, label: &str) -> String {
 
 fn file_editor_i18n(
     app_entity: gpui::Entity<CoduxApp>,
-    cx: &mut Context<FileEditorToolbarView>,
+    cx: &mut impl AppContext,
     key: &str,
     fallback: &str,
 ) -> String {

@@ -67,27 +67,8 @@ impl CoduxApp {
         .detach();
     }
 
-    pub(super) fn refresh_files_panel_state(&mut self) {
-        let Some(project_path) = self.selected_worktree_path() else {
-            return;
-        };
-        self.state.files = self
-            .runtime_service
-            .reload_project_files(&project_path, file_directory_option(&self.file_directory));
-        self.refresh_file_tree_cache();
-        self.normalize_selected_file_entry();
-        self.save_current_worktree_view_state();
-    }
-
-    pub(super) fn refresh_git_panel_state(&mut self) {
-        let Some(project_path) = self.selected_worktree_path() else {
-            return;
-        };
-        self.state.git = self.runtime_service.reload_project_git(&project_path);
-        self.refresh_git_review_for_project(&project_path);
-        self.normalize_selected_git_file();
-        self.normalize_selected_git_branch();
-        self.save_current_worktree_view_state();
+    pub(super) fn refresh_files_panel_state_async(&mut self, cx: &mut Context<Self>) {
+        self.reload_project_files_async(cx);
     }
 
     pub(super) fn refresh_git_panel_state_async(&mut self, cx: &mut Context<Self>) {
@@ -144,11 +125,29 @@ impl CoduxApp {
                 app.git_review_refreshing = false;
                 app.normalize_selected_git_file();
                 app.normalize_selected_git_branch();
+                app.status_message = format!(
+                    "git status reloaded: {} changed, {} staged, {} unstaged, {} untracked",
+                    app.state.git.changed_files.len(),
+                    app.state.git.staged,
+                    app.state.git.unstaged,
+                    app.state.git.untracked
+                );
+                app.runtime_trace(
+                    "git",
+                    &format!(
+                        "manual_reload done changed={} staged={} unstaged={} untracked={}",
+                        app.state.git.changed_files.len(),
+                        app.state.git.staged,
+                        app.state.git.unstaged,
+                        app.state.git.untracked
+                    ),
+                );
                 if app.workspace_view == WorkspaceView::Review {
                     app.ensure_selected_git_review_file_loaded_async(cx);
                 }
                 app.save_current_worktree_view_state();
                 app.invalidate_git_panel(cx);
+                app.invalidate_status_bar(cx);
             });
         })
         .detach();
@@ -177,14 +176,49 @@ impl CoduxApp {
             ),
         );
         if previous_project_id.is_some() {
-            self.save_current_project_view_state();
+            self.save_current_project_view_state_for_switch();
             self.spawn_persist_terminal_state(cx);
         }
-        match self.runtime_service.select_project(&project_id) {
-            Ok(()) => self.status_message = "selected project saved to state.json".to_string(),
-            Err(error) => self.status_message = format!("selected in memory only: {error}"),
-        }
+        self.status_message = "selected project in memory".to_string();
+        self.persist_selected_project_async(project_id.clone(), cx);
         self.select_project_after_state_reload(project_id, window, cx);
+    }
+
+    fn persist_selected_project_async(&mut self, project_id: String, cx: &mut Context<Self>) {
+        let runtime_service = self.runtime_service.clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::spawn_blocking({
+                let project_id = project_id.clone();
+                move || runtime_service.select_project(&project_id)
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result);
+            let _ = this.update(cx, |app, cx| {
+                if app
+                    .state
+                    .selected_project
+                    .as_ref()
+                    .map(|project| project.id.as_str())
+                    != Some(project_id.as_str())
+                {
+                    return;
+                }
+                match result {
+                    Ok(()) => {
+                        app.runtime_trace(
+                            "project-switch",
+                            &format!("select persist done project={project_id}"),
+                        );
+                    }
+                    Err(error) => {
+                        app.status_message = format!("selected in memory only: {error}");
+                        app.invalidate_status_bar(cx);
+                    }
+                }
+            });
+        })
+        .detach();
     }
 
     fn select_project_after_state_reload(
@@ -201,9 +235,11 @@ impl CoduxApp {
         self.memory_manager_scope = "project".to_string();
         self.memory_manager_project_id = Some(project_id.clone());
         if let Some(terminal_view_state) = terminal_view_state {
-            self.apply_terminal_layout_from_summary(
+            self.schedule_terminal_layout_restore(
                 terminal_view_state.terminal_layout,
                 terminal_view_state.terminal_runtime,
+                switch_generation,
+                window,
                 cx,
             );
         } else {
@@ -223,6 +259,7 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let started_at = Instant::now();
         let Some(project) = self
             .state
             .projects
@@ -243,15 +280,16 @@ impl CoduxApp {
             self.state.memory = view_state.memory;
             self.state.memory_manager = view_state.memory_manager;
             self.state.worktrees = view_state.worktrees;
-            self.apply_saved_worktree_view_state();
+            self.apply_saved_worktree_view_state(cx);
             self.ensure_active_file_editor_state(window, cx);
             self.apply_saved_terminal_view_state();
             self.selected_ai_session_id = None;
             self.runtime_trace(
                 "project-switch",
                 &format!(
-                    "shell memory_hit project={} worktrees={} tasks={} sessions={}",
+                    "shell memory_hit project={} elapsed_ms={} worktrees={} tasks={} sessions={}",
                     project_id,
+                    started_at.elapsed().as_millis(),
                     self.state.worktrees.worktrees.len(),
                     self.state.worktrees.tasks.len(),
                     self.state.ai_history.sessions.len()
@@ -278,14 +316,20 @@ impl CoduxApp {
             self.runtime_trace(
                 "project-switch",
                 &format!(
-                    "shell memory_miss project={} worktrees=0 tasks=0 sessions=0",
-                    project_id
+                    "shell memory_miss project={} elapsed_ms={} worktrees=0 tasks=0 sessions=0",
+                    project_id,
+                    started_at.elapsed().as_millis()
                 ),
             );
         }
     }
 
     pub(super) fn save_current_project_view_state(&mut self) {
+        self.save_current_project_view_state_in_memory();
+        self.persist_current_worktree_view_state();
+    }
+
+    pub(super) fn save_current_project_view_state_in_memory(&mut self) {
         let Some(project_id) = self
             .state
             .selected_project
@@ -304,7 +348,30 @@ impl CoduxApp {
                 worktrees: self.state.worktrees.clone(),
             },
         );
-        self.save_current_worktree_view_state();
+        self.save_current_worktree_view_state_in_memory();
+        self.save_current_terminal_view_state();
+    }
+
+    pub(super) fn save_current_project_view_state_for_switch(&mut self) {
+        let Some(project_id) = self
+            .state
+            .selected_project
+            .as_ref()
+            .map(|project| project.id.clone())
+        else {
+            return;
+        };
+        self.project_view_store.insert(
+            project_id,
+            ProjectViewState {
+                ai_history: self.state.ai_history.clone(),
+                ai_global_history: self.state.ai_global_history.clone(),
+                memory: self.state.memory.clone(),
+                memory_manager: self.state.memory_manager.clone(),
+                worktrees: self.state.worktrees.clone(),
+            },
+        );
+        self.save_current_worktree_view_state_for_switch();
         self.save_current_terminal_view_state();
     }
 
@@ -392,7 +459,7 @@ impl CoduxApp {
         self.git_tree_children = state.git_tree_children;
         self.git_diff_preview = state.git_diff_preview;
         if let Some(content) = state.git_review_content {
-            self.set_git_review_content_cache(content);
+            self.restore_git_review_content_cache(content);
         } else {
             self.clear_git_review_content_cache();
         }
@@ -425,6 +492,11 @@ impl CoduxApp {
     }
 
     pub(super) fn save_current_worktree_view_state(&mut self) {
+        self.save_current_worktree_view_state_in_memory();
+        self.persist_current_worktree_view_state();
+    }
+
+    pub(super) fn save_current_worktree_view_state_in_memory(&mut self) {
         let Some(key) = worktree_view_store_key(&self.state) else {
             return;
         };
@@ -435,6 +507,59 @@ impl CoduxApp {
                 git: self.git_worktree_view_state(),
             },
         );
+    }
+
+    pub(super) fn save_current_worktree_view_state_for_switch(&mut self) {
+        let Some(key) = worktree_view_store_key(&self.state) else {
+            return;
+        };
+        let (files, file_tree_children, git_tree_children, git_review_content) =
+            match self.worktree_view_store.remove(&key) {
+                Some(state) => (
+                    state.files.files,
+                    state.files.file_tree_children,
+                    state.git.git_tree_children,
+                    state.git.git_review_content,
+                ),
+                None => (
+                    self.state.files.clone(),
+                    HashMap::new(),
+                    HashMap::new(),
+                    None,
+                ),
+            };
+        self.worktree_view_store.insert(
+            key,
+            super::app_state::WorktreeViewState {
+                files: super::app_state::FileWorktreeViewState {
+                    files,
+                    file_directory: self.file_directory.clone(),
+                    selected_file_entry: self.selected_file_entry.clone(),
+                    selected_file_entries: self.selected_file_entries.clone(),
+                    file_selection_anchor: self.file_selection_anchor.clone(),
+                    file_tree_expanded_dirs: self.file_tree_expanded_dirs.clone(),
+                    file_tree_children,
+                    file_editor_tabs: self.file_editor_tabs.clone(),
+                    active_file_editor_tab: self.active_file_editor_tab.clone(),
+                },
+                git: super::app_state::GitWorktreeViewState {
+                    git: self.state.git.clone(),
+                    git_review: self.git_review.clone(),
+                    selected_git_file: self.selected_git_file.clone(),
+                    selected_git_files: self.selected_git_files.clone(),
+                    selected_git_branch: self.selected_git_branch.clone(),
+                    git_expanded_sections: self.git_expanded_sections.clone(),
+                    git_expanded_dirs: self.git_expanded_dirs.clone(),
+                    git_tree_children,
+                    git_diff_preview: self.git_diff_preview.clone(),
+                    git_review_content: git_review_content
+                        .or_else(|| self.git_review_content.clone()),
+                },
+            },
+        );
+    }
+
+    pub(super) fn persist_current_worktree_view_state(&self) {
         self.persist_current_file_tree_state();
         self.persist_current_git_ui_state();
     }
@@ -453,9 +578,18 @@ impl CoduxApp {
             file_tree_children: self.file_tree_children.clone(),
             error: None,
         };
-        let _ = self
+        if let Err(error) = self
             .runtime_service
-            .save_file_tree_state(&key.worktree_id, summary);
+            .save_file_tree_state(&key.worktree_id, summary)
+        {
+            self.runtime_trace(
+                "config",
+                &format!(
+                    "failed to persist file tree state {}: {error}",
+                    key.worktree_id
+                ),
+            );
+        }
     }
 
     pub(super) fn persist_current_git_ui_state(&self) {
@@ -464,12 +598,21 @@ impl CoduxApp {
         };
         let summary =
             super::app_state::git_ui_state_summary_from_worktree(&self.git_worktree_view_state());
-        let _ = self
+        if let Err(error) = self
             .runtime_service
-            .save_git_ui_state(&key.worktree_id, summary);
+            .save_git_ui_state(&key.worktree_id, summary)
+        {
+            self.runtime_trace(
+                "config",
+                &format!(
+                    "failed to persist git ui state {}: {error}",
+                    key.worktree_id
+                ),
+            );
+        }
     }
 
-    pub(super) fn apply_saved_worktree_view_state(&mut self) {
+    pub(super) fn apply_saved_worktree_view_state(&mut self, cx: &mut Context<Self>) {
         let Some(key) = worktree_view_store_key(&self.state) else {
             self.clear_worktree_view_state();
             return;
@@ -478,11 +621,11 @@ impl CoduxApp {
             self.apply_file_worktree_view_state(view_state.files);
             self.apply_git_worktree_view_state(view_state.git);
             if self.file_editor_tabs.is_empty() {
-                self.load_current_file_editor_layout();
+                self.load_current_file_editor_layout_async(cx);
             }
         } else {
             self.clear_worktree_view_state();
-            self.load_current_file_editor_layout();
+            self.load_current_file_editor_layout_async(cx);
         }
     }
 
@@ -719,24 +862,52 @@ impl CoduxApp {
             return;
         };
         self.refresh_terminal_slot_snapshots();
-        let (tabs, active_tab_id, top_panes, active_slot_id) = self.terminal_layout_snapshot();
-        let (active_terminal_id, active_runtime_slot_id, sessions) =
-            self.terminal_runtime_snapshot();
+        let layout_snapshot = self.terminal_layout_snapshot();
+        let runtime_snapshot = self.terminal_runtime_snapshot();
+        self.spawn_persist_terminal_snapshot(Some(owner_id), layout_snapshot, runtime_snapshot);
+    }
+
+    pub(super) fn spawn_persist_terminal_snapshot(
+        &self,
+        owner_id: Option<String>,
+        layout_snapshot: (
+            Vec<TerminalTabSummary>,
+            String,
+            Vec<TerminalPaneSummary>,
+            String,
+        ),
+        runtime_snapshot: (String, String, Vec<TerminalRuntimeSessionInput>),
+    ) {
+        let Some(owner_id) = owner_id else {
+            return;
+        };
+        let (tabs, active_tab_id, top_panes, active_slot_id) = layout_snapshot;
+        let (active_terminal_id, active_runtime_slot_id, sessions) = runtime_snapshot;
         let runtime_service = self.runtime_service.clone();
         let support_dir = self.state.support_dir.clone();
         codux_runtime::async_runtime::spawn_blocking(move || {
-            let _ = runtime_service.save_terminal_layout(
+            if let Err(error) = runtime_service.save_terminal_layout(
                 &owner_id,
                 tabs,
                 active_tab_id,
                 top_panes,
                 active_slot_id,
-            );
-            let _ = TerminalRuntimeService::new(support_dir).save_from_gpui(
+            ) {
+                codux_runtime::runtime_trace::runtime_trace(
+                    "terminal-layout",
+                    &format!("failed to persist terminal layout {owner_id}: {error}"),
+                );
+            }
+            if let Err(error) = TerminalRuntimeService::new(support_dir).save_from_gpui(
                 active_terminal_id,
                 active_runtime_slot_id,
                 sessions,
-            );
+            ) {
+                codux_runtime::runtime_trace::runtime_trace(
+                    "terminal-runtime",
+                    &format!("failed to persist terminal runtime {owner_id}: {error}"),
+                );
+            }
         });
     }
 
@@ -808,9 +979,9 @@ impl CoduxApp {
             )
             .await
             .ok();
-            let _ = this.update(cx, |app, cx| {
+            let _ = this.update_in(cx, |app, window, cx| {
                 if let Some(terminal) = terminal {
-                    app.apply_project_switch_terminal_load(terminal, cx);
+                    app.apply_project_switch_terminal_load(terminal, window, cx);
                 }
             });
         })
@@ -906,6 +1077,7 @@ impl CoduxApp {
     pub(super) fn apply_project_switch_terminal_load(
         &mut self,
         load: ProjectSwitchTerminalLoad,
+        window: &Window,
         cx: &mut Context<Self>,
     ) {
         self.terminal_view_store.insert(
@@ -956,10 +1128,11 @@ impl CoduxApp {
                 load.terminal_layout,
                 load.terminal_runtime,
                 load.generation,
+                window,
                 cx,
             );
         }
-        self.save_current_project_view_state();
+        self.save_current_project_view_state_in_memory();
         self.invalidate_terminal_workspace(cx);
     }
 
@@ -1003,7 +1176,7 @@ impl CoduxApp {
             return;
         }
         self.state.worktrees = load.worktrees;
-        self.apply_saved_worktree_view_state();
+        self.apply_saved_worktree_view_state(cx);
         self.spawn_worktree_sidebar_load(load.generation, cx);
         self.apply_saved_terminal_view_state();
         self.runtime_trace(
@@ -1016,7 +1189,7 @@ impl CoduxApp {
                 self.state.worktrees.tasks.len()
             ),
         );
-        self.save_current_project_view_state();
+        self.save_current_project_view_state_in_memory();
         self.invalidate_worktree_context(cx);
     }
 
@@ -1073,7 +1246,7 @@ impl CoduxApp {
             ),
         );
         self.refresh_ai_history_after_project_switch(cx);
-        self.save_current_project_view_state();
+        self.save_current_project_view_state_in_memory();
         self.invalidate_ui(
             cx,
             [
@@ -1127,7 +1300,7 @@ impl CoduxApp {
                 self.state.worktrees.tasks.len()
             ),
         );
-        self.save_current_project_view_state();
+        self.save_current_project_view_state_in_memory();
         self.invalidate_ui(
             cx,
             [
@@ -1157,20 +1330,18 @@ impl CoduxApp {
         terminal_layout: TerminalLayoutSummary,
         terminal_runtime: TerminalRuntimeSummary,
         generation: u64,
+        window: &Window,
         cx: &mut Context<Self>,
     ) {
         self.state.terminal_layout = terminal_layout.clone();
         self.state.terminal_runtime = terminal_runtime.clone();
         self.terminal_layout_loading = true;
-        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            let _ = this.update(cx, |app, cx| {
-                if app.project_switch_generation != generation {
-                    return;
-                }
-                app.apply_terminal_layout_from_summary(terminal_layout, terminal_runtime, cx);
-            });
-        })
-        .detach();
+        cx.defer_in(window, move |app, _window, cx| {
+            if app.project_switch_generation != generation {
+                return;
+            }
+            app.apply_terminal_layout_from_summary(terminal_layout, terminal_runtime, cx);
+        });
     }
 
     pub(super) fn reload_runtime_state(&mut self, _window: &mut Window, cx: &mut Context<Self>) {

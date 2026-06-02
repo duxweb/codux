@@ -34,7 +34,8 @@ fn main() -> Result<()> {
             reopen_main_window.set(None);
         }
 
-        if open_main_window(cx, &reopen_main_window) {
+        let settings = app::active_settings_snapshot().unwrap_or_default();
+        if open_main_window(cx, &reopen_main_window, &settings) {
             cx.activate(true);
         }
     });
@@ -43,7 +44,10 @@ fn main() -> Result<()> {
         app::macos_window::install_dock_reopen_handler();
         gpui_component::init(cx);
         disable_root_tab_focus_bindings(cx);
-        cx.on_action(|_: &crate::app::native_menu::QuitCodux, cx| cx.quit());
+        cx.on_action(|_: &crate::app::native_menu::QuitCodux, cx| {
+            codux_runtime::config::flush_all_config_writes();
+            cx.quit();
+        });
         let initial_state = codux_runtime::runtime_state::RuntimeState::load();
         let _ = codux_runtime::app_icon::apply_app_icon(&initial_state.settings.icon_style);
         app::set_active_settings_snapshot(initial_state.settings.clone());
@@ -56,7 +60,7 @@ fn main() -> Result<()> {
         cx.set_menus(crate::app::native_menu::codux_menus(
             &initial_state.settings.language,
         ));
-        if !open_main_window(cx, &main_window_handle) {
+        if !open_main_window(cx, &main_window_handle, &initial_state.settings) {
             cx.quit();
             return;
         }
@@ -67,14 +71,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn open_main_window(cx: &mut App, main_window_handle: &Rc<Cell<Option<AnyWindowHandle>>>) -> bool {
+fn open_main_window(
+    cx: &mut App,
+    main_window_handle: &Rc<Cell<Option<AnyWindowHandle>>>,
+    settings: &codux_runtime::settings::SettingsSummary,
+) -> bool {
     let bounds = Bounds::centered(None, size(px(1280.0), px(820.0)), cx);
     let result = cx.open_window(
         WindowOptions {
             titlebar: Some(theme::codux_titlebar("Codux GPUI")),
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             window_min_size: Some(size(px(1120.0), px(640.0))),
-            icon: Some(std::sync::Arc::new(window_icon_image())),
+            icon: Some(std::sync::Arc::new(window_icon_image(settings))),
             ..Default::default()
         },
         |window, cx| {
@@ -97,11 +105,9 @@ fn open_main_window(cx: &mut App, main_window_handle: &Rc<Cell<Option<AnyWindowH
     }
 }
 
-fn window_icon_image() -> image::RgbaImage {
+fn window_icon_image(settings: &codux_runtime::settings::SettingsSummary) -> image::RgbaImage {
     let icon = codux_runtime::app_icon::render_app_icon(
-        &codux_runtime::runtime_state::RuntimeState::load()
-            .settings
-            .icon_style,
+        &settings.icon_style,
         codux_runtime::app_icon::ICON_SIZE,
     );
     image::RgbaImage::from_raw(icon.width, icon.height, icon.pixels)

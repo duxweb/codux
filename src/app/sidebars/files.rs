@@ -70,6 +70,7 @@ pub(in crate::app) fn file_section(
     rows: Rc<Vec<FileTreeRow>>,
     tree_scroll_handle: UniformListScrollHandle,
     language: &str,
+    refreshing: bool,
     window: &mut Window,
     cx: &mut Context<FileSidebarView>,
 ) -> impl IntoElement {
@@ -132,8 +133,18 @@ pub(in crate::app) fn file_section(
                 .flex()
                 .items_center()
                 .child(assistant_header_icon_button(
+                    "file-sidebar-refresh",
+                    HeroIconName::ArrowPath,
+                    refreshing,
+                    app_entity.clone(),
+                    window,
+                    cx,
+                    |app, _event, _window, cx| app.reload_project_files_async(cx),
+                ))
+                .child(assistant_header_icon_button(
                     "file-sidebar-new-file",
                     HeroIconName::Document,
+                    false,
                     app_entity.clone(),
                     window,
                     cx,
@@ -142,6 +153,7 @@ pub(in crate::app) fn file_section(
                 .child(assistant_header_icon_button(
                     "file-sidebar-new-dir",
                     HeroIconName::Folder,
+                    false,
                     app_entity.clone(),
                     window,
                     cx,
@@ -396,6 +408,7 @@ fn file_empty_state(label: impl Into<String>) -> impl IntoElement {
 fn assistant_header_icon_button(
     id: &'static str,
     icon: HeroIconName,
+    loading: bool,
     app_entity: gpui::Entity<CoduxApp>,
     window: &mut Window,
     cx: &mut Context<FileSidebarView>,
@@ -404,6 +417,7 @@ fn assistant_header_icon_button(
     Button::new(id)
         .compact()
         .ghost()
+        .loading(loading)
         .text_color(cx.theme().secondary_foreground)
         .icon(
             Icon::new(icon)

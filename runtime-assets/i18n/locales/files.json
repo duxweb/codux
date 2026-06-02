@@ -116,7 +116,8 @@
       "files.delete.confirm_one_format": "Delete \"%@\"?",
       "files.delete.confirm_many_format": "Delete %d file items?",
       "files.delete.confirm.message": "Deleted file items will be moved to Trash.",
-      "files.panel.items_count_format": "%d file items"
+      "files.panel.items_count_format": "%d file items",
+      "files.editor.empty": "Datei doppelklicken zum Öffnen"
     },
     "en": {
       "files.panel.title": "Files",
@@ -234,7 +235,8 @@
       "files.delete.confirm_one_format": "Delete \"%@\"?",
       "files.delete.confirm_many_format": "Delete %d file items?",
       "files.delete.confirm.message": "Deleted file items will be moved to Trash.",
-      "files.panel.items_count_format": "%d file items"
+      "files.panel.items_count_format": "%d file items",
+      "files.editor.empty": "Double-click a file to open it"
     },
     "es": {
       "files.panel.title": "Archivos",
@@ -352,7 +354,8 @@
       "files.delete.confirm_one_format": "Delete \"%@\"?",
       "files.delete.confirm_many_format": "Delete %d file items?",
       "files.delete.confirm.message": "Deleted file items will be moved to Trash.",
-      "files.panel.items_count_format": "%d file items"
+      "files.panel.items_count_format": "%d file items",
+      "files.editor.empty": "Haz doble clic en un archivo para abrirlo"
     },
     "fr": {
       "files.panel.title": "Fichiers",
@@ -470,7 +473,8 @@
       "files.delete.confirm_one_format": "Delete \"%@\"?",
       "files.delete.confirm_many_format": "Delete %d file items?",
       "files.delete.confirm.message": "Deleted file items will be moved to Trash.",
-      "files.panel.items_count_format": "%d file items"
+      "files.panel.items_count_format": "%d file items",
+      "files.editor.empty": "Double-cliquez sur un fichier pour l’ouvrir"
     },
     "ja": {
       "files.panel.title": "ファイル",
@@ -588,7 +592,8 @@
       "files.delete.confirm_one_format": "Delete \"%@\"?",
       "files.delete.confirm_many_format": "Delete %d file items?",
       "files.delete.confirm.message": "Deleted file items will be moved to Trash.",
-      "files.panel.items_count_format": "%d file items"
+      "files.panel.items_count_format": "%d file items",
+      "files.editor.empty": "ファイルをダブルクリックして開く"
     },
     "ko": {
       "files.panel.title": "파일",
@@ -706,7 +711,8 @@
       "files.delete.confirm_one_format": "Delete \"%@\"?",
       "files.delete.confirm_many_format": "Delete %d file items?",
       "files.delete.confirm.message": "Deleted file items will be moved to Trash.",
-      "files.panel.items_count_format": "%d file items"
+      "files.panel.items_count_format": "%d file items",
+      "files.editor.empty": "파일을 두 번 클릭해 열기"
     },
     "pt-BR": {
       "files.panel.title": "Arquivos",
@@ -824,7 +830,8 @@
       "files.delete.confirm_one_format": "Delete \"%@\"?",
       "files.delete.confirm_many_format": "Delete %d file items?",
       "files.delete.confirm.message": "Deleted file items will be moved to Trash.",
-      "files.panel.items_count_format": "%d file items"
+      "files.panel.items_count_format": "%d file items",
+      "files.editor.empty": "Clique duas vezes em um arquivo para abrir"
     },
     "ru": {
       "files.panel.title": "Файлы",
@@ -942,7 +949,8 @@
       "files.delete.confirm_one_format": "Delete \"%@\"?",
       "files.delete.confirm_many_format": "Delete %d file items?",
       "files.delete.confirm.message": "Deleted file items will be moved to Trash.",
-      "files.panel.items_count_format": "%d file items"
+      "files.panel.items_count_format": "%d file items",
+      "files.editor.empty": "Дважды щелкните файл, чтобы открыть"
     },
     "zh-Hans": {
       "files.panel.title": "文件",
@@ -1060,7 +1068,8 @@
       "files.delete.confirm_one_format": "删除 \"%@\"？",
       "files.delete.confirm_many_format": "删除 %d 个文件项？",
       "files.delete.confirm.message": "删除后会移动到废纸篓。",
-      "files.panel.items_count_format": "%d 个文件项"
+      "files.panel.items_count_format": "%d 个文件项",
+      "files.editor.empty": "双击文件打开"
     },
     "zh-Hant": {
       "files.panel.title": "檔案",
@@ -1178,7 +1187,8 @@
       "files.delete.confirm_one_format": "刪除 \"%@\"？",
       "files.delete.confirm_many_format": "刪除 %d 個檔案項目？",
       "files.delete.confirm.message": "刪除後會移到垃圾桶。",
-      "files.panel.items_count_format": "%d 個檔案項目"
+      "files.panel.items_count_format": "%d 個檔案項目",
+      "files.editor.empty": "雙擊檔案開啟"
     }
   }
 }

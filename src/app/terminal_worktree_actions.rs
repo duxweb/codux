@@ -16,6 +16,7 @@ impl CoduxApp {
         let locale = locale_from_language_setting(&self.state.settings.language);
         let default_base_branch = self.default_worktree_base_branch();
         let default_name = default_worktree_name();
+        let parent_main_window = cx.entity().downgrade();
 
         self.open_auxiliary_window(
             AuxiliaryWindowSpec {
@@ -42,6 +43,7 @@ impl CoduxApp {
                 app.worktree_creator_project_path = project.path.clone();
                 app.worktree_creator_base_branch = default_base_branch;
                 app.worktree_creator_name = default_name;
+                app.parent_main_window = Some(parent_main_window);
                 app
             },
             |_view, _window, _cx| {},
@@ -95,10 +97,17 @@ impl CoduxApp {
 
         self.worktree_creator_submitting = true;
         self.worktree_creator_error = None;
+        if let Some(parent) = self.parent_main_window.clone() {
+            let _ = parent.update(cx, |app, cx| {
+                app.task_column_refreshing = true;
+                app.invalidate_task_column(cx);
+            });
+        }
         cx.notify();
 
         let service = self.runtime_service.clone();
         let parent_service = self.runtime_service.clone();
+        let parent_main_window = self.parent_main_window.clone();
         let title = self.text("worktree.create.title", "New Worktree");
         let button_label = self.text("common.ok", "OK");
         cx.spawn(async move |_: gpui::WeakEntity<Self>, _cx| {
@@ -121,10 +130,21 @@ impl CoduxApp {
             .and_then(|result| result);
 
             match result {
-                Ok(_) => {
-                    publish_child_window_update(ChildWindowUpdateKind::Project);
+                Ok(snapshot) => {
+                    publish_child_window_update(ChildWindowUpdateKind::Worktree);
+                    if let Some(parent) = parent_main_window.clone() {
+                        let _ = parent.update(_cx, |app, cx| {
+                            app.apply_worktree_creator_snapshot(snapshot, cx);
+                        });
+                    }
                 }
                 Err(error) => {
+                    if let Some(parent) = parent_main_window.clone() {
+                        let _ = parent.update(_cx, |app, cx| {
+                            app.task_column_refreshing = false;
+                            app.invalidate_task_column(cx);
+                        });
+                    }
                     let message = error.clone();
                     let alert_service = parent_service.clone();
                     let alert_title = title.clone();
@@ -142,6 +162,81 @@ impl CoduxApp {
         })
         .detach();
         window.remove_window();
+    }
+
+    fn apply_worktree_creator_snapshot(
+        &mut self,
+        snapshot: WorktreeSnapshot,
+        cx: &mut Context<Self>,
+    ) {
+        self.task_column_refreshing = false;
+        if self
+            .state
+            .selected_project
+            .as_ref()
+            .is_some_and(|project| project.id == snapshot.project_id)
+        {
+            self.save_current_worktree_view_state();
+            self.spawn_persist_terminal_state(cx);
+
+            self.state.worktrees = WorktreeSummary {
+                available: true,
+                selected_worktree_id: Some(snapshot.selected_worktree_id.clone()),
+                worktrees: snapshot
+                    .worktrees
+                    .into_iter()
+                    .map(|worktree| WorktreeInfo {
+                        id: worktree.id,
+                        project_id: worktree.project_id,
+                        name: worktree.name,
+                        branch: worktree.branch,
+                        path: worktree.path.clone(),
+                        status: worktree.status,
+                        is_default: worktree.is_default,
+                        exists: Path::new(&worktree.path).exists(),
+                        git_summary: worktree.git_summary,
+                    })
+                    .collect(),
+                tasks: snapshot
+                    .tasks
+                    .into_iter()
+                    .map(|task| WorktreeTaskInfo {
+                        worktree_id: task.worktree_id,
+                        title: task.title,
+                        base_branch: task.base_branch,
+                        status: task.status,
+                    })
+                    .collect(),
+                active_git: self.state.worktrees.active_git.clone(),
+                error: snapshot.error,
+            };
+            if self
+                .state
+                .worktrees
+                .worktrees
+                .iter()
+                .any(|worktree| worktree.id == snapshot.selected_worktree_id)
+            {
+                self.state.worktrees.selected_worktree_id = Some(snapshot.selected_worktree_id);
+            }
+            self.apply_saved_worktree_view_state(cx);
+            self.file_editor_states.clear();
+            self.file_editor_loading_states.clear();
+            self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
+            let generation = self.project_switch_generation;
+            self.apply_terminal_layout_from_summary(
+                TerminalLayoutSummary::default(),
+                self.runtime_service.reload_terminal_runtime(),
+                cx,
+            );
+            self.save_current_terminal_view_state();
+            self.spawn_worktree_sidebar_load(generation, cx);
+            self.invalidate_task_column(cx);
+            self.invalidate_worktree_context(cx);
+            self.refresh_git_panel_state_async(cx);
+        } else {
+            self.invalidate_task_column(cx);
+        }
     }
 
     pub(super) fn open_worktree_folder(&mut self, path: String, cx: &mut Context<Self>) {
@@ -313,51 +408,38 @@ impl CoduxApp {
         }
     }
 
-    pub(super) fn save_terminal_layout(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        match self.persist_terminal_layout() {
-            Ok(()) => self.status_message = "terminal layout saved to state.json".to_string(),
-            Err(error) => self.status_message = error,
-        }
-        self.invalidate_terminal_workspace(cx);
-    }
-
-    pub(super) fn persist_terminal_layout(&mut self) -> Result<(), String> {
-        let Some(owner_id) = super::ai_runtime_status::terminal_layout_owner_id(&self.state) else {
-            return Err("no selected project to save terminal layout".to_string());
+    pub(super) fn sync_terminal_state_for_background_persist(&mut self, _cx: &mut Context<Self>) {
+        self.refresh_terminal_slot_snapshots();
+        let owner_id = super::ai_runtime_status::terminal_layout_owner_id(&self.state);
+        let layout_snapshot = self.terminal_layout_snapshot();
+        let runtime_snapshot = self.terminal_runtime_snapshot();
+        let (tabs, active_tab_id, top_panes, active_slot_id) = layout_snapshot.clone();
+        let top_ratios = if top_panes.is_empty() {
+            Vec::new()
+        } else {
+            vec![1.0 / top_panes.len() as f64; top_panes.len()]
         };
-        let (tabs, active_tab_id, top_panes, active_slot_id) = self.terminal_layout_snapshot();
-        let raw_layout = self.runtime_service.save_terminal_layout(
-            &owner_id,
-            tabs,
+        let layout = TerminalLayoutSummary {
+            active_slot_id,
             active_tab_id,
             top_panes,
-            active_slot_id,
-        )?;
-        let (layout, runtime) = normalize_terminal_restore_state(
-            Some(&owner_id),
-            raw_layout,
-            self.state.terminal_runtime.clone(),
+            tabs,
+            top_ratios,
+            bottom_ratio: 0.32,
+            error: None,
+        };
+        let runtime = terminal_runtime_summary_from_inputs(
+            &self.state.terminal_runtime,
+            runtime_snapshot.0.clone(),
+            runtime_snapshot.1.clone(),
+            runtime_snapshot.2.clone(),
         );
+        let (layout, runtime) =
+            normalize_terminal_restore_state(owner_id.as_deref(), layout, runtime);
         self.state.terminal_layout = layout;
         self.state.terminal_runtime = runtime;
         self.save_current_terminal_view_state();
-        Ok(())
-    }
-
-    pub(super) fn persist_terminal_runtime(&mut self) -> Result<(), String> {
-        self.refresh_terminal_slot_snapshots();
-        let (active_terminal_id, active_slot_id, sessions) = self.terminal_runtime_snapshot();
-        let raw_runtime = TerminalRuntimeService::new(self.state.support_dir.clone())
-            .save_from_gpui(active_terminal_id, active_slot_id, sessions)?;
-        let (layout, runtime) = normalize_terminal_restore_state(
-            super::ai_runtime_status::terminal_layout_owner_id(&self.state).as_deref(),
-            self.state.terminal_layout.clone(),
-            raw_runtime,
-        );
-        self.state.terminal_layout = layout;
-        self.state.terminal_runtime = runtime;
-        self.save_current_terminal_view_state();
-        Ok(())
+        self.spawn_persist_terminal_snapshot(owner_id, layout_snapshot, runtime_snapshot);
     }
 
     pub(super) fn terminal_runtime_snapshot(
@@ -996,7 +1078,7 @@ impl CoduxApp {
 
             let error = match result {
                 Ok(summary) => {
-                    publish_child_window_update(ChildWindowUpdateKind::Project);
+                    publish_child_window_update(ChildWindowUpdateKind::Worktree);
                     let _ = this.update(cx, |app, cx| {
                         let selected_matches =
                             app.state.selected_project.as_ref().is_some_and(|project| {
@@ -1058,22 +1140,11 @@ impl CoduxApp {
         {
             Ok(()) => {
                 self.save_current_worktree_view_state();
-                if let Err(error) = self.persist_terminal_layout() {
-                    self.runtime_trace(
-                        "terminal-layout",
-                        &format!("worktree switch layout save failed: {error}"),
-                    );
-                }
-                if let Err(error) = self.persist_terminal_runtime() {
-                    self.runtime_trace(
-                        "terminal-runtime",
-                        &format!("worktree switch runtime save failed: {error}"),
-                    );
-                }
+                self.sync_terminal_state_for_background_persist(cx);
                 self.state.worktrees = self
                     .runtime_service
                     .reload_worktrees(Some(&project.id), Some(&project.path));
-                self.apply_saved_worktree_view_state();
+                self.apply_saved_worktree_view_state(cx);
                 self.ensure_active_file_editor_state(window, cx);
                 self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
                 let generation = self.project_switch_generation;
@@ -1132,9 +1203,9 @@ impl CoduxApp {
             })
             .await
             .ok();
-            let _ = this.update(cx, |app, cx| {
+            let _ = this.update_in(cx, |app, window, cx| {
                 if let Some(load) = load {
-                    app.apply_worktree_terminal_load(load, cx);
+                    app.apply_worktree_terminal_load(load, window, cx);
                 }
             });
         })
@@ -1144,6 +1215,7 @@ impl CoduxApp {
     pub(super) fn apply_worktree_terminal_load(
         &mut self,
         load: WorktreeSwitchTerminalLoad,
+        window: &Window,
         cx: &mut Context<Self>,
     ) {
         if self
@@ -1157,7 +1229,13 @@ impl CoduxApp {
         {
             return;
         }
-        self.apply_terminal_layout_from_summary(load.terminal_layout, load.terminal_runtime, cx);
+        self.schedule_terminal_layout_restore(
+            load.terminal_layout,
+            load.terminal_runtime,
+            load.generation,
+            window,
+            cx,
+        );
         self.save_current_terminal_view_state();
         self.invalidate_terminal_workspace(cx);
     }
@@ -1239,4 +1317,90 @@ fn worktree_confirm_display_name(worktree: &WorktreeInfo) -> String {
 
 fn default_worktree_name() -> String {
     chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
+}
+
+fn terminal_runtime_summary_from_inputs(
+    existing: &TerminalRuntimeSummary,
+    active_terminal_id: String,
+    active_slot_id: String,
+    sessions: Vec<TerminalRuntimeSessionInput>,
+) -> TerminalRuntimeSummary {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or_default();
+    let created_at_by_key = existing
+        .sessions
+        .iter()
+        .map(|session| {
+            (
+                terminal_session_key(&session.terminal_id, &session.slot_id),
+                session.created_at,
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let open_keys = sessions
+        .iter()
+        .map(|session| terminal_session_key(&session.terminal_id, &session.slot_id))
+        .collect::<HashSet<_>>();
+    let mut sessions = sessions
+        .into_iter()
+        .map(|session| TerminalRuntimeSessionSummary {
+            created_at: created_at_by_key
+                .get(&terminal_session_key(
+                    &session.terminal_id,
+                    &session.slot_id,
+                ))
+                .copied()
+                .unwrap_or(now),
+            terminal_id: session.terminal_id,
+            slot_id: session.slot_id,
+            tab_id: session.tab_id,
+            pane_index: session.pane_index,
+            title: session.title,
+            project_id: session.project_id,
+            project_name: session.project_name,
+            project_path: session.project_path,
+            cwd: session.cwd,
+            status: "running".to_string(),
+            is_running: true,
+            last_active_at: now,
+            has_buffer: false,
+            buffer_characters: 0,
+            input_bytes: session.input_bytes,
+            last_input_at: session.input_history.last().map(|input| input.timestamp),
+            input_history: session.input_history,
+            output_bytes: session.output_bytes,
+            output_tail: session.output_tail,
+            source: "gpui".to_string(),
+        })
+        .collect::<Vec<_>>();
+    let open_count = sessions.len();
+    sessions.extend(
+        existing
+            .sessions
+            .iter()
+            .filter(|session| {
+                !session.is_running
+                    && !open_keys.contains(&terminal_session_key(
+                        &session.terminal_id,
+                        &session.slot_id,
+                    ))
+            })
+            .cloned(),
+    );
+    let closed_count = sessions.len().saturating_sub(open_count);
+    TerminalRuntimeSummary {
+        path: String::new(),
+        active_terminal_id,
+        active_slot_id,
+        open_count,
+        closed_count,
+        sessions,
+        error: None,
+    }
+}
+
+fn terminal_session_key(terminal_id: &str, slot_id: &str) -> String {
+    format!("{terminal_id}\n{slot_id}")
 }

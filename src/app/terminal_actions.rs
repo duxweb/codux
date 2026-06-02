@@ -47,15 +47,8 @@ impl CoduxApp {
                 if let Some(view) = self.active_bottom_terminal_view() {
                     view.read(cx).focus_handle().focus(window, cx);
                 }
-                if let Err(error) = self.persist_terminal_layout() {
-                    self.status_message =
-                        format!("terminal tab added; layout save failed: {error}");
-                } else if let Err(error) = self.persist_terminal_runtime() {
-                    self.status_message =
-                        format!("terminal tab added; runtime save failed: {error}");
-                } else {
-                    self.status_message = format!("terminal tab added: {title}");
-                }
+                self.status_message = format!("terminal tab added: {title}");
+                self.sync_terminal_state_for_background_persist(cx);
                 self.invalidate_terminal_workspace(cx);
             }
             Err(error) => eprintln!("failed to create terminal tab: {error}"),
@@ -108,15 +101,8 @@ impl CoduxApp {
                         restored_output_tail: String::new(),
                     });
                 }
-                if let Err(error) = self.persist_terminal_layout() {
-                    self.status_message =
-                        format!("terminal split added; layout save failed: {error}");
-                } else if let Err(error) = self.persist_terminal_runtime() {
-                    self.status_message =
-                        format!("terminal split added; runtime save failed: {error}");
-                } else {
-                    self.status_message = "terminal split added and layout saved".to_string();
-                }
+                self.status_message = "terminal split added".to_string();
+                self.sync_terminal_state_for_background_persist(cx);
                 self.invalidate_terminal_workspace(cx);
             }
             Err(error) => eprintln!("failed to split terminal: {error}"),
@@ -178,13 +164,8 @@ impl CoduxApp {
                 }
             }
         }
-        if let Err(error) = self.persist_terminal_layout() {
-            self.status_message = format!("terminal pane floated; layout save failed: {error}");
-        } else if let Err(error) = self.persist_terminal_runtime() {
-            self.status_message = format!("terminal pane floated; runtime save failed: {error}");
-        } else {
-            self.status_message = format!("terminal pane floated: {title}");
-        }
+        self.status_message = format!("terminal pane floated: {title}");
+        self.sync_terminal_state_for_background_persist(cx);
 
         let project_id = self
             .state
@@ -270,13 +251,8 @@ impl CoduxApp {
         };
         let insert_index = pane_index.min(self.terminals[tab_index].panes.len());
         self.terminals[tab_index].panes.insert(insert_index, slot);
-        if let Err(error) = self.persist_terminal_layout() {
-            self.status_message = format!("terminal pane restored; layout save failed: {error}");
-        } else if let Err(error) = self.persist_terminal_runtime() {
-            self.status_message = format!("terminal pane restored; runtime save failed: {error}");
-        } else {
-            self.status_message = format!("terminal pane restored: {title}");
-        }
+        self.status_message = format!("terminal pane restored: {title}");
+        self.sync_terminal_state_for_background_persist(cx);
         self.invalidate_terminal_workspace(cx);
     }
 
@@ -329,11 +305,8 @@ impl CoduxApp {
         {
             view.read(cx).focus_handle().focus(window, cx);
         }
-        if let Err(error) = self.persist_terminal_layout() {
-            self.status_message = format!("terminal split closed; layout save failed: {error}");
-        } else if let Err(error) = self.persist_terminal_runtime() {
-            self.status_message = format!("terminal split closed; runtime save failed: {error}");
-        } else if let Err(error) = kill_result {
+        self.sync_terminal_state_for_background_persist(cx);
+        if let Err(error) = kill_result {
             self.status_message = format!("terminal split closed; PTY cleanup failed: {error}");
         } else {
             self.status_message = "terminal split closed".to_string();
@@ -369,12 +342,8 @@ impl CoduxApp {
         match result {
             Ok(()) => {
                 let tab_label = self.terminals[tab_index].label.clone();
-                if let Err(error) = self.persist_terminal_runtime() {
-                    self.status_message =
-                        format!("sent command to {tab_label}; runtime save failed: {error}");
-                } else {
-                    self.status_message = format!("sent command to {tab_label}");
-                }
+                self.status_message = format!("sent command to {tab_label}");
+                self.sync_terminal_state_for_background_persist(cx);
             }
             Err(error) => {
                 self.status_message = format!("failed to send terminal command: {error}");
@@ -441,15 +410,10 @@ impl CoduxApp {
                 if let Err(error) = send_result {
                     self.status_message =
                         format!("AI session split created; restore send failed: {error}");
-                } else if let Err(error) = self.persist_terminal_layout() {
-                    self.status_message =
-                        format!("AI session split restored; layout save failed: {error}");
-                } else if let Err(error) = self.persist_terminal_runtime() {
-                    self.status_message =
-                        format!("AI session split restored; runtime save failed: {error}");
                 } else {
                     self.status_message = "AI session restored in main split".to_string();
                 }
+                self.sync_terminal_state_for_background_persist(cx);
                 self.invalidate_terminal_workspace(cx);
             }
             Err(error) => {
@@ -491,11 +455,8 @@ impl CoduxApp {
         if let Some(view) = self.active_bottom_terminal_view() {
             view.read(cx).focus_handle().focus(window, cx);
         }
-        if let Err(error) = self.persist_terminal_layout() {
-            self.status_message = format!("terminal tab closed; layout save failed: {error}");
-        } else if let Err(error) = self.persist_terminal_runtime() {
-            self.status_message = format!("terminal tab closed; runtime save failed: {error}");
-        } else if let Err(error) = mount_result {
+        self.sync_terminal_state_for_background_persist(cx);
+        if let Err(error) = mount_result {
             self.status_message = format!("terminal tab closed; mount failed: {error}");
         } else if let Some(error) = kill_errors.first() {
             self.status_message = format!("terminal tab closed; PTY cleanup failed: {error}");
@@ -522,11 +483,7 @@ impl CoduxApp {
             view.read(cx).focus_handle().focus(window, cx);
         }
         self.detach_inactive_terminal_views();
-        if let Err(error) = self.persist_terminal_layout() {
-            self.status_message = format!("terminal selected; layout save failed: {error}");
-        } else if let Err(error) = self.persist_terminal_runtime() {
-            self.status_message = format!("terminal selected; runtime save failed: {error}");
-        }
+        self.sync_terminal_state_for_background_persist(cx);
         self.invalidate_terminal_workspace(cx);
     }
 }

@@ -6,7 +6,7 @@ pub(crate) fn set_active_settings_snapshot(settings: SettingsSummary) {
     let _ = ACTIVE_SETTINGS_SNAPSHOT.set(settings);
 }
 
-pub(in crate::app) fn active_settings_snapshot() -> Option<SettingsSummary> {
+pub(crate) fn active_settings_snapshot() -> Option<SettingsSummary> {
     ACTIVE_SETTINGS_SNAPSHOT.get().cloned()
 }
 
@@ -47,6 +47,7 @@ pub struct CoduxApp {
     pub(in crate::app) ssh_profile_editor_window: Option<AnyWindowHandle>,
     pub(in crate::app) project_editor_window: Option<AnyWindowHandle>,
     pub(in crate::app) worktree_creator_window: Option<AnyWindowHandle>,
+    pub(in crate::app) parent_main_window: Option<gpui::WeakEntity<CoduxApp>>,
     pub(in crate::app) desktop_pet_line: String,
     pub(in crate::app) desktop_pet_tone: DesktopPetActivityTone,
     pub(in crate::app) desktop_pet_active_llm_key: String,
@@ -76,6 +77,7 @@ pub struct CoduxApp {
     pub(in crate::app) file_tree_children: HashMap<String, Vec<FileEntry>>,
     pub(in crate::app) file_tree_scroll_handle: UniformListScrollHandle,
     pub(in crate::app) file_preview_scroll_handle: UniformListScrollHandle,
+    pub(in crate::app) file_panel_refreshing: bool,
     pub(in crate::app) selected_git_file: Option<String>,
     pub(in crate::app) selected_git_branch: Option<String>,
     pub(in crate::app) git_review: GitReviewSummary,
@@ -133,6 +135,7 @@ pub struct CoduxApp {
     pub(in crate::app) child_window_ssh_seen_revision: u64,
     pub(in crate::app) child_window_memory_seen_revision: u64,
     pub(in crate::app) child_window_project_seen_revision: u64,
+    pub(in crate::app) child_window_worktree_seen_revision: u64,
     pub(in crate::app) child_window_git_seen_revision: u64,
     pub(in crate::app) pet_claim_species: String,
     pub(in crate::app) pet_name_editing: bool,
@@ -341,6 +344,13 @@ pub(in crate::app) struct WorktreeSidebarLoad {
     pub(in crate::app) git_review: GitReviewSummary,
 }
 
+pub(in crate::app) struct WorktreeFilePanelLoad {
+    pub(in crate::app) generation: u64,
+    pub(in crate::app) store_key: WorktreeViewStoreKey,
+    pub(in crate::app) files: Vec<FileEntry>,
+    pub(in crate::app) file_tree_children: HashMap<String, Vec<FileEntry>>,
+}
+
 #[derive(Clone)]
 pub(in crate::app) struct ProjectViewState {
     pub(in crate::app) ai_history: AIHistorySummary,
@@ -456,17 +466,67 @@ pub(in crate::app) fn initial_project_view_store(
 pub(in crate::app) fn initial_terminal_view_store(
     state: &RuntimeState,
 ) -> HashMap<TerminalViewStoreKey, TerminalViewState> {
-    terminal_view_store_key(state)
-        .map(|key| {
-            HashMap::from([(
-                key,
-                TerminalViewState {
-                    terminal_layout: state.terminal_layout.clone(),
-                    terminal_runtime: state.terminal_runtime.clone(),
-                },
-            )])
+    let worktree_service = WorktreeService::new(state.support_dir.clone());
+    let persisted_worktrees = worktree_service.state_summaries(
+        state
+            .projects
+            .iter()
+            .map(|project| (project.id.as_str(), project.path.as_str())),
+    );
+    let worktree_keys = state
+        .projects
+        .iter()
+        .flat_map(|project| {
+            let worktrees = if state
+                .selected_project
+                .as_ref()
+                .is_some_and(|selected| selected.id == project.id)
+            {
+                state.worktrees.clone()
+            } else {
+                persisted_worktrees
+                    .get(&project.id)
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            worktrees
+                .worktrees
+                .into_iter()
+                .map(move |worktree| TerminalViewStoreKey {
+                    project_id: project.id.clone(),
+                    task_id: worktree.id,
+                })
         })
-        .unwrap_or_default()
+        .collect::<Vec<_>>();
+    let terminal_layout_service =
+        codux_runtime::terminal_layout::TerminalLayoutService::new(state.support_dir.clone());
+    let terminal_layouts =
+        terminal_layout_service.load_many(worktree_keys.iter().map(|key| key.task_id.as_str()));
+    let current_key = terminal_view_store_key(state);
+    let mut store = worktree_keys
+        .into_iter()
+        .filter_map(|key| {
+            terminal_layouts.get(&key.task_id).cloned().map(|layout| {
+                (
+                    key,
+                    TerminalViewState {
+                        terminal_layout: layout,
+                        terminal_runtime: state.terminal_runtime.clone(),
+                    },
+                )
+            })
+        })
+        .collect::<HashMap<_, _>>();
+    if let Some(key) = current_key {
+        store.insert(
+            key,
+            TerminalViewState {
+                terminal_layout: state.terminal_layout.clone(),
+                terminal_runtime: state.terminal_runtime.clone(),
+            },
+        );
+    }
+    store
 }
 
 pub(in crate::app) fn initial_worktree_view_store(

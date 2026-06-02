@@ -41,11 +41,6 @@ impl CoduxApp {
         if event.project_revision > self.child_window_project_seen_revision {
             self.child_window_project_seen_revision = event.project_revision;
             self.state = self.runtime_service.reload_state();
-            if let Some(project) = self.state.selected_project.as_ref() {
-                self.state.worktrees = self
-                    .runtime_service
-                    .reload_worktrees(Some(&project.id), Some(&project.path));
-            }
             self.project_open_applications = self.runtime_service.project_open_applications();
             self.normalize_selected_git_branch();
             self.normalize_selected_ai_session();
@@ -55,6 +50,18 @@ impl CoduxApp {
             self.invalidate_project_management(cx);
             self.invalidate_task_column(cx);
             applied += 1;
+        }
+        if event.worktree_revision > self.child_window_worktree_seen_revision {
+            self.child_window_worktree_seen_revision = event.worktree_revision;
+            if let Some(project) = self.state.selected_project.as_ref() {
+                self.state.worktrees = self
+                    .runtime_service
+                    .reload_worktrees(Some(&project.id), Some(&project.path));
+                self.save_current_worktree_view_state();
+                self.invalidate_task_column(cx);
+                self.refresh_git_panel_state_async(cx);
+                applied += 1;
+            }
         }
         if event.git_revision > self.child_window_git_seen_revision {
             self.child_window_git_seen_revision = event.git_revision;

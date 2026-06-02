@@ -2,6 +2,10 @@ use super::*;
 
 impl CoduxApp {
     pub(super) fn reload_project_files(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.reload_project_files_async(cx);
+    }
+
+    pub(super) fn reload_project_files_async(&mut self, cx: &mut Context<Self>) {
         let Some(project) = &self.state.selected_project else {
             self.status_message = "no selected project to refresh".to_string();
             self.invalidate_file_panel(cx);
@@ -13,10 +17,90 @@ impl CoduxApp {
             self.invalidate_file_panel(cx);
             return;
         };
-        self.state.files = self
-            .runtime_service
-            .reload_project_files(&project_path, file_directory_option(&self.file_directory));
-        self.reset_file_tree_cache();
+        let Some(store_key) = super::app_state::worktree_view_store_key(&self.state) else {
+            self.status_message = "no selected worktree to refresh".to_string();
+            self.invalidate_file_panel(cx);
+            return;
+        };
+        if self.file_panel_refreshing {
+            return;
+        }
+        let file_directory = self.file_directory.clone();
+        let expanded = self
+            .file_tree_expanded_dirs
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let runtime_service = self.runtime_service.clone();
+        let generation = self.project_switch_generation;
+        self.file_panel_refreshing = true;
+        self.status_message = format!(
+            "refreshing files for {}{}",
+            project_name,
+            current_directory_suffix(&self.file_directory)
+        );
+        self.invalidate_file_panel(cx);
+        self.invalidate_status_bar(cx);
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::run_limited_blocking_with_priority(
+                codux_runtime::async_runtime::BLOCKING_PRIORITY_FOREGROUND + generation,
+                move || {
+                    let files = runtime_service.reload_project_files(
+                        &project_path,
+                        file_directory_option(&file_directory),
+                    );
+                    let file_tree_children = expanded
+                        .into_iter()
+                        .map(|directory_path| {
+                            let children = runtime_service
+                                .reload_project_files(&project_path, Some(directory_path.as_str()));
+                            (directory_path, children)
+                        })
+                        .collect::<HashMap<_, _>>();
+                    super::app_state::WorktreeFilePanelLoad {
+                        generation,
+                        store_key,
+                        files,
+                        file_tree_children,
+                    }
+                },
+            )
+            .await
+            .ok();
+            let _ = this.update(cx, |app, cx| {
+                app.file_panel_refreshing = false;
+                let Some(load) = result else {
+                    app.status_message = "failed to refresh file list".to_string();
+                    app.invalidate_file_panel(cx);
+                    app.invalidate_status_bar(cx);
+                    return;
+                };
+                app.apply_worktree_file_panel_load(load, &project_name, cx);
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn apply_worktree_file_panel_load(
+        &mut self,
+        load: super::app_state::WorktreeFilePanelLoad,
+        project_name: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let current_key = super::app_state::worktree_view_store_key(&self.state);
+        if let Some(view_state) = self.worktree_view_store.get_mut(&load.store_key) {
+            view_state.files.files = load.files.clone();
+            view_state.files.file_tree_children = load.file_tree_children.clone();
+        }
+        if self.project_switch_generation != load.generation
+            || current_key.as_ref() != Some(&load.store_key)
+        {
+            self.invalidate_status_bar(cx);
+            return;
+        }
+        self.state.files = load.files;
+        self.file_tree_children = load.file_tree_children;
+        self.prune_missing_file_tree_directories();
         self.normalize_selected_file_entry();
         self.save_current_worktree_view_state();
         self.status_message = format!(
@@ -34,6 +118,7 @@ impl CoduxApp {
             ),
         );
         self.invalidate_file_panel(cx);
+        self.invalidate_status_bar(cx);
     }
 
     pub(super) fn reset_file_tree_cache(&mut self) {

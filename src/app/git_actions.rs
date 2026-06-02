@@ -10,7 +10,18 @@ impl CoduxApp {
         self.git_review_aligned_rows = None;
     }
 
-    pub(super) fn set_git_review_content_cache(&mut self, content: GitReviewContentSummary) {
+    pub(super) fn restore_git_review_content_cache(&mut self, content: GitReviewContentSummary) {
+        self.git_review_content = Some(content);
+        self.git_review_aligned_rows = None;
+    }
+
+    pub(super) fn ensure_git_review_aligned_rows(&mut self) {
+        if self.git_review_aligned_rows.is_some() {
+            return;
+        }
+        let Some(content) = self.git_review_content.as_ref() else {
+            return;
+        };
         let original_content = if self.git_review.mode == "taskBranch" {
             content.base_content.as_deref().unwrap_or("")
         } else {
@@ -31,7 +42,12 @@ impl CoduxApp {
             &content.deleted_lines,
             &content.added_lines,
         ));
+    }
+
+    pub(super) fn set_git_review_content_cache(&mut self, content: GitReviewContentSummary) {
         self.git_review_content = Some(content);
+        self.git_review_aligned_rows = None;
+        self.ensure_git_review_aligned_rows();
     }
 
     pub(super) fn reload_project_git(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -41,26 +57,12 @@ impl CoduxApp {
             return;
         };
         let project_name = project.name.clone();
-        let project_path = project.path.clone();
-        self.state.git = self.runtime_service.reload_project_git(&project_path);
-        self.refresh_git_review_for_project(&project_path);
-        self.git_expanded_dirs.clear();
-        self.git_tree_children.clear();
-        self.record_ui_cache_clear("git_tree");
-        self.normalize_selected_git_file();
-        self.normalize_selected_git_branch();
-        self.status_message = format!("git status reloaded for {project_name}");
+        self.status_message = format!("refreshing git status for {project_name}");
         self.runtime_trace(
             "git",
-            &format!(
-                "manual_reload project={} changed={} staged={} unstaged={} untracked={}",
-                project_name,
-                self.state.git.changed_files.len(),
-                self.state.git.staged,
-                self.state.git.unstaged,
-                self.state.git.untracked
-            ),
+            &format!("manual_reload start project={project_name}"),
         );
+        self.refresh_git_panel_state_async(cx);
         self.invalidate_git_panel(cx);
     }
 

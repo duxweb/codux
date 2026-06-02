@@ -49,9 +49,11 @@ use codux_runtime::{
     terminal_pty::{TerminalManager, TerminalPtyConfig, default_shell, terminal_environment},
     terminal_runtime::{
         TerminalInputSummary, TerminalRuntimeService, TerminalRuntimeSessionInput,
-        TerminalRuntimeSummary,
+        TerminalRuntimeSessionSummary, TerminalRuntimeSummary,
     },
-    worktree::{WorktreeInfo, WorktreeService, WorktreeSummary},
+    worktree::{
+        WorktreeInfo, WorktreeService, WorktreeSnapshot, WorktreeSummary, WorktreeTaskInfo,
+    },
 };
 use gpui::{
     AnyElement, AnyWindowHandle, App, AppContext, Bounds, ClipboardItem, Context, ElementId,
@@ -78,7 +80,7 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
     sync::{Arc, OnceLock},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 mod about;
@@ -138,7 +140,7 @@ mod workspace_views;
 mod worktree_creator;
 
 pub use self::app_state::CoduxApp;
-pub(crate) use self::app_state::set_active_settings_snapshot;
+pub(crate) use self::app_state::{active_settings_snapshot, set_active_settings_snapshot};
 
 use self::{
     ai_history_mapping::{

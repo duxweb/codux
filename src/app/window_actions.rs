@@ -138,6 +138,7 @@ impl CoduxApp {
             ssh_profile_editor_window: None,
             project_editor_window: None,
             worktree_creator_window: None,
+            parent_main_window: None,
             desktop_pet_line: desktop_pet_fallback_line().to_string(),
             desktop_pet_tone: DesktopPetActivityTone::Normal,
             desktop_pet_active_llm_key: String::new(),
@@ -167,6 +168,7 @@ impl CoduxApp {
             file_tree_children: HashMap::new(),
             file_tree_scroll_handle: UniformListScrollHandle::new(),
             file_preview_scroll_handle: UniformListScrollHandle::new(),
+            file_panel_refreshing: false,
             selected_git_file: None,
             selected_git_branch,
             git_review,
@@ -226,6 +228,8 @@ impl CoduxApp {
             child_window_memory_seen_revision: current_child_window_update_event().memory_revision,
             child_window_project_seen_revision: current_child_window_update_event()
                 .project_revision,
+            child_window_worktree_seen_revision: current_child_window_update_event()
+                .worktree_revision,
             child_window_git_seen_revision: current_child_window_update_event().git_revision,
             pet_claim_species: String::new(),
             pet_name_editing: false,
@@ -1012,7 +1016,7 @@ impl CoduxApp {
         match view {
             WorkspaceView::Files => {
                 self.assistant_panel = Some(AssistantPanel::FileManager);
-                self.refresh_files_panel_state();
+                self.refresh_files_panel_state_async(cx);
             }
             WorkspaceView::Review => {
                 self.assistant_panel = Some(AssistantPanel::Git);
@@ -1080,7 +1084,7 @@ impl CoduxApp {
                 self.normalize_selected_ssh_profile();
             }
             AssistantPanel::FileManager => {
-                self.refresh_files_panel_state();
+                self.refresh_files_panel_state_async(cx);
             }
             AssistantPanel::Git => {
                 self.refresh_git_panel_state_async(cx);

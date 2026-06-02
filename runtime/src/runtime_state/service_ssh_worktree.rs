@@ -38,6 +38,16 @@ impl RuntimeService {
         load_terminal_layout(&self.support_dir, project_id)
     }
 
+    pub fn reload_terminal_layouts<'a, I>(
+        &self,
+        project_ids: I,
+    ) -> std::collections::HashMap<String, TerminalLayoutSummary>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        TerminalLayoutService::new(self.support_dir.clone()).load_many(project_ids)
+    }
+
     pub fn reload_terminal_runtime(&self) -> TerminalRuntimeSummary {
         load_terminal_runtime(&self.support_dir)
     }
