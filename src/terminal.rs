@@ -3,7 +3,7 @@ use alacritty_terminal::{
     grid::Dimensions,
     index::{Column, Line, Point as TerminalPoint},
     term::{
-        Config as AlacrittyConfig, Term, TermMode,
+        Config as AlacrittyConfig, RenderableCursor, Term, TermMode,
         cell::{Cell, Flags},
         color::Colors,
     },
@@ -15,12 +15,13 @@ use codux_runtime::terminal_pty::{
     TerminalPtyConfig, TerminalPtySession, TerminalPtySessionHandle,
 };
 use gpui::{
-    App, AppContext, Bounds, ClipboardItem, Context, Edges, Entity, FocusHandle, Font,
-    FontFeatures, FontStyle, FontWeight, Hsla, InputHandler, InteractiveElement, IntoElement,
-    KeyDownEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    NavigationDirection, ParentElement, Pixels, Point, Render, ScrollWheelEvent, SharedString,
-    Size, Styled, Subscription, Task, TextAlign, TextRun, UTF16Selection, UnderlineStyle,
-    WeakEntity, Window, canvas, div, px, quad, rgb, transparent_black,
+    App, AppContext, Bounds, ClipboardItem, Context, Edges, Element, ElementId, Entity,
+    FocusHandle, Font, FontFeatures, FontStyle, FontWeight, GlobalElementId, Hsla, InputHandler,
+    InspectorElementId, InteractiveElement, IntoElement, KeyDownEvent, Keystroke, LayoutId,
+    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection,
+    ParentElement, Pixels, Point, Render, ScrollWheelEvent, SharedString, Size, Style, Styled,
+    Subscription, Task, TextAlign, TextRun, UTF16Selection, UnderlineStyle, WeakEntity, Window,
+    div, px, quad, rgb, transparent_black,
 };
 use parking_lot::Mutex;
 use std::{
@@ -677,7 +678,9 @@ impl TerminalView {
                 }
             }
             TerminalUiEvent::ColorRequest(index, format) => {
-                let color = self.state.term.lock().colors()[index]
+                let color = self
+                    .state
+                    .color(index)
                     .unwrap_or_else(|| terminal_color_request_default(index));
                 self.write_bytes(format(color).as_bytes());
             }
@@ -709,11 +712,7 @@ impl TerminalView {
         self.write_bytes(if focused { b"\x1b[I" } else { b"\x1b[O" });
     }
 
-    fn ensure_focus_report_subscriptions(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn ensure_focus_report_subscriptions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.focus_in_subscription.is_none() {
             let focus_handle = self.focus_handle.clone();
             self.focus_in_subscription = Some(cx.on_focus(&focus_handle, window, |view, _, _| {
@@ -839,21 +838,26 @@ impl Render for TerminalView {
 
         self.renderer.measure_cell(window);
         self.ensure_focus_report_subscriptions(window, cx);
-        let term = self.state.term.clone();
-        let renderer = self.renderer.clone();
-        let layout = self.layout.clone();
-        let selection = self.selection.clone();
-        let focus_handle = self.focus_handle.clone();
-        let stdin_writer = self.stdin_writer.clone();
-        let terminal_view = cx.weak_entity();
-        let marked_text = self.marked_text.clone();
-        let padding = self.config.padding;
+        let has_marked_text = self.marked_text.is_some();
         let cursor_visible = if self.state.mode().contains(TermMode::ALT_SCREEN) {
-            true
+            !has_marked_text
         } else {
-            !self.focus_handle.contains_focused(window, cx) || self.cursor_visible
+            !has_marked_text
+                && (!self.focus_handle.contains_focused(window, cx) || self.cursor_visible)
         };
-        let resize_handle = self.resize_handle.clone();
+        let element = TerminalElement {
+            state: self.state.handle(),
+            renderer: self.renderer.clone(),
+            layout: self.layout.clone(),
+            selection: self.selection.clone(),
+            resize_handle: self.resize_handle.clone(),
+            focus_handle: self.focus_handle.clone(),
+            stdin_writer: self.stdin_writer.clone(),
+            terminal_view: cx.weak_entity(),
+            padding: self.config.padding,
+            marked_text: self.marked_text.clone(),
+            cursor_visible,
+        };
 
         div()
             .size_full()
@@ -868,75 +872,19 @@ impl Render for TerminalView {
             .on_mouse_up(MouseButton::Right, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
-            .child(
-                canvas(
-                    move |bounds, _window, _cx| bounds,
-                    move |bounds, _, window, cx| {
-                        let available_width =
-                            (bounds.size.width - padding.left - padding.right).max(px(1.0));
-                        let available_height =
-                            (bounds.size.height - padding.top - padding.bottom).max(px(1.0));
-                        let available_width: f32 = available_width.into();
-                        let available_height: f32 = available_height.into();
-                        let cell_width: f32 = renderer.cell_width.into();
-                        let cell_height: f32 = renderer.cell_height.into();
-                        let cols = ((available_width / cell_width) as usize).max(20);
-                        let rows = ((available_height / cell_height) as usize).max(8);
-                        layout.lock().update(
-                            bounds,
-                            padding,
-                            renderer.cell_width,
-                            renderer.cell_height,
-                            cols,
-                            rows,
-                        );
-
-                        let mut term = term.lock();
-                        if cols != term.columns() || rows != term.screen_lines() {
-                            term.resize(TermSize::new(cols, rows));
-                            if let Err(error) = resize_handle.resize(cols as u16, rows as u16) {
-                                eprintln!("failed to resize terminal pty: {error}");
-                            }
-                        }
-                        let selection = selection.lock().range();
-                        renderer.paint(
-                            bounds,
-                            padding,
-                            &term,
-                            selection,
-                            cursor_visible,
-                            window,
-                            cx,
-                        );
-                        if let Some(marked_text) = marked_text.as_deref() {
-                            renderer.paint_marked_text(
-                                bounds,
-                                padding,
-                                &term,
-                                marked_text,
-                                window,
-                                cx,
-                            );
-                        }
-                        window.handle_input(
-                            &focus_handle,
-                            TerminalInputHandler {
-                                stdin_writer: stdin_writer.clone(),
-                                layout: layout.clone(),
-                                terminal_view: terminal_view.clone(),
-                            },
-                            cx,
-                        );
-                    },
-                )
-                .size_full(),
-            )
+            .child(element)
     }
 }
 
 struct TerminalState {
-    term: Arc<Mutex<Term<GpuiEventProxy>>>,
+    handle: TerminalStateHandle,
     parser: Processor,
+}
+
+#[derive(Clone)]
+struct TerminalStateHandle {
+    term: Arc<Mutex<Term<GpuiEventProxy>>>,
+    snapshot: Arc<Mutex<TerminalContent>>,
 }
 
 impl TerminalState {
@@ -945,26 +893,73 @@ impl TerminalState {
             scrolling_history: scrollback,
             ..Default::default()
         };
+        let term = Arc::new(Mutex::new(Term::new(
+            config,
+            &TermSize::new(cols, rows),
+            event_proxy,
+        )));
+        let snapshot = TerminalContent::from_term(&term.lock());
         Self {
-            term: Arc::new(Mutex::new(Term::new(
-                config,
-                &TermSize::new(cols, rows),
-                event_proxy,
-            ))),
+            handle: TerminalStateHandle {
+                term,
+                snapshot: Arc::new(Mutex::new(snapshot)),
+            },
             parser: Processor::new(),
         }
     }
 
     fn process_bytes(&mut self, bytes: &[u8]) {
-        self.parser.advance(&mut *self.term.lock(), bytes);
+        let mut term = self.handle.term.lock();
+        self.parser.advance(&mut *term, bytes);
+        *self.handle.snapshot.lock() = TerminalContent::from_term(&term);
+    }
+
+    fn handle(&self) -> TerminalStateHandle {
+        self.handle.clone()
     }
 
     fn mode(&self) -> TermMode {
-        *self.term.lock().mode()
+        self.handle.mode()
     }
 
     fn display_offset(&self) -> usize {
-        self.term.lock().grid().display_offset()
+        self.handle.display_offset()
+    }
+
+    fn color(&self, index: usize) -> Option<Rgb> {
+        self.handle.term.lock().colors()[index]
+    }
+
+    fn scroll_display(&self, lines: i32) -> bool {
+        self.handle.scroll_display(lines)
+    }
+
+    fn selected_text(&self, selection: SelectionRange) -> String {
+        self.handle.selected_text(selection)
+    }
+}
+
+impl TerminalStateHandle {
+    fn mode(&self) -> TermMode {
+        self.snapshot.lock().mode
+    }
+
+    fn display_offset(&self) -> usize {
+        self.snapshot.lock().display_offset
+    }
+
+    fn snapshot(&self) -> TerminalContent {
+        self.snapshot.lock().clone()
+    }
+
+    fn resize(&self, cols: usize, rows: usize) -> bool {
+        let mut term = self.term.lock();
+        if cols == term.columns() && rows == term.screen_lines() {
+            return false;
+        }
+        term.resize(TermSize::new(cols, rows));
+        *self.snapshot.lock() = TerminalContent::from_term(&term);
+        true
     }
 
     fn scroll_display(&self, lines: i32) -> bool {
@@ -974,7 +969,11 @@ impl TerminalState {
         let before = term.grid().display_offset();
         let scroll = Scroll::Delta(lines);
         term.scroll_display(scroll);
-        term.grid().display_offset() != before
+        let did_scroll = term.grid().display_offset() != before;
+        if did_scroll {
+            *self.snapshot.lock() = TerminalContent::from_term(&term);
+        }
+        did_scroll
     }
 
     fn selected_text(&self, selection: SelectionRange) -> String {
@@ -1020,6 +1019,242 @@ impl TerminalState {
         }
 
         text
+    }
+}
+
+#[derive(Clone)]
+struct TerminalContent {
+    cells: Vec<TerminalIndexedCell>,
+    colors: Colors,
+    cursor: RenderableCursor,
+    mode: TermMode,
+    display_offset: usize,
+    columns: usize,
+    screen_lines: usize,
+}
+
+impl TerminalContent {
+    fn from_term(term: &Term<GpuiEventProxy>) -> Self {
+        let content = term.renderable_content();
+        let mut cells = Vec::with_capacity(content.display_iter.size_hint().0);
+        cells.extend(content.display_iter.map(|indexed| TerminalIndexedCell {
+            point: indexed.point,
+            cell: indexed.cell.clone(),
+        }));
+        Self {
+            cells,
+            colors: *content.colors,
+            cursor: content.cursor,
+            mode: content.mode,
+            display_offset: content.display_offset,
+            columns: term.columns(),
+            screen_lines: term.screen_lines(),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TerminalIndexedCell {
+    point: TerminalPoint,
+    cell: Cell,
+}
+
+impl std::ops::Deref for TerminalIndexedCell {
+    type Target = Cell;
+
+    fn deref(&self) -> &Self::Target {
+        &self.cell
+    }
+}
+
+struct TerminalElement {
+    state: TerminalStateHandle,
+    renderer: TerminalRenderer,
+    layout: Arc<Mutex<TerminalLayoutMetrics>>,
+    selection: Arc<Mutex<SelectionState>>,
+    resize_handle: TerminalPtySessionHandle,
+    focus_handle: FocusHandle,
+    stdin_writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    terminal_view: WeakEntity<TerminalView>,
+    padding: Edges<Pixels>,
+    marked_text: Option<String>,
+    cursor_visible: bool,
+}
+
+impl IntoElement for TerminalElement {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for TerminalElement {
+    type RequestLayoutState = ();
+    type PrepaintState = TerminalPaintState;
+
+    fn id(&self) -> Option<ElementId> {
+        Some(ElementId::from(&self.focus_handle))
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        let mut style = Style::default();
+        style.size = Size::full();
+        (window.request_layout(style, [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Self::PrepaintState {
+        let available_width =
+            (bounds.size.width - self.padding.left - self.padding.right).max(px(1.0));
+        let available_height =
+            (bounds.size.height - self.padding.top - self.padding.bottom).max(px(1.0));
+        let available_width: f32 = available_width.into();
+        let available_height: f32 = available_height.into();
+        let cell_width: f32 = self.renderer.cell_width.into();
+        let cell_height: f32 = self.renderer.cell_height.into();
+        let cols = ((available_width / cell_width) as usize).max(20);
+        let rows = ((available_height / cell_height) as usize).max(8);
+        self.layout.lock().update(
+            bounds,
+            self.padding,
+            self.renderer.cell_width,
+            self.renderer.cell_height,
+            cols,
+            rows,
+        );
+
+        if self.state.resize(cols, rows)
+            && let Err(error) = self.resize_handle.resize(cols as u16, rows as u16)
+        {
+            eprintln!("failed to resize terminal pty: {error}");
+        }
+
+        let snapshot = self.state.snapshot();
+        let selection = self.selection.lock().range();
+        self.renderer.prepare_paint(
+            bounds,
+            self.padding,
+            &snapshot,
+            selection,
+            self.cursor_visible,
+        )
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        paint_state: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.renderer.paint_prepared(paint_state, window, cx);
+        if let Some(marked_text) = self.marked_text.as_deref() {
+            self.renderer
+                .paint_marked_text(paint_state, marked_text, window, cx);
+        }
+        window.handle_input(
+            &self.focus_handle,
+            TerminalInputHandler {
+                stdin_writer: self.stdin_writer.clone(),
+                layout: self.layout.clone(),
+                terminal_view: self.terminal_view.clone(),
+                cursor_bounds: paint_state.ime_cursor_bounds,
+            },
+            cx,
+        );
+    }
+}
+
+struct TerminalPaintState {
+    bounds: Bounds<Pixels>,
+    origin: Point<Pixels>,
+    background: Hsla,
+    background_rects: Vec<TerminalBackgroundRect>,
+    text_runs: Vec<TerminalTextRun>,
+    cursor: Option<TerminalCursorPaint>,
+    marked_text_cursor: Option<TerminalPoint>,
+    ime_cursor_bounds: Option<Bounds<Pixels>>,
+}
+
+struct TerminalBackgroundRect {
+    row: usize,
+    start_col: usize,
+    width_cols: usize,
+    color: Hsla,
+}
+
+struct TerminalCursorPaint {
+    point: TerminalPoint,
+    color: Hsla,
+}
+
+impl TerminalBackgroundRect {
+    fn paint(&self, renderer: &TerminalRenderer, origin: Point<Pixels>, window: &mut Window) {
+        if self.width_cols == 0 {
+            return;
+        }
+        window.paint_quad(quad(
+            Bounds {
+                origin: Point {
+                    x: origin.x + renderer.cell_width * self.start_col as f32,
+                    y: origin.y + renderer.cell_height * self.row as f32,
+                },
+                size: Size {
+                    width: renderer.cell_width * self.width_cols as f32,
+                    height: renderer.cell_height,
+                },
+            },
+            px(0.0),
+            self.color,
+            Edges::<Pixels>::default(),
+            transparent_black(),
+            Default::default(),
+        ));
+    }
+}
+
+impl TerminalCursorPaint {
+    fn paint(&self, renderer: &TerminalRenderer, origin: Point<Pixels>, window: &mut Window) {
+        let x = origin.x + renderer.cell_width * self.point.column.0 as f32;
+        let y = origin.y + renderer.cell_height * self.point.line.0 as f32;
+        window.paint_quad(quad(
+            Bounds {
+                origin: Point {
+                    x: px(f32::from(x).floor()),
+                    y: px(f32::from(y).floor()),
+                },
+                size: Size {
+                    width: px(f32::from(renderer.cell_width).round().max(1.0)),
+                    height: px(f32::from(renderer.cell_height).round().max(1.0)),
+                },
+            },
+            px(0.0),
+            self.color,
+            Edges::<Pixels>::default(),
+            transparent_black(),
+            Default::default(),
+        ));
     }
 }
 
@@ -1248,6 +1483,7 @@ struct TerminalInputHandler {
     stdin_writer: Arc<Mutex<Box<dyn Write + Send>>>,
     layout: Arc<Mutex<TerminalLayoutMetrics>>,
     terminal_view: WeakEntity<TerminalView>,
+    cursor_bounds: Option<Bounds<Pixels>>,
 }
 
 impl TerminalInputHandler {
@@ -1342,11 +1578,14 @@ impl InputHandler for TerminalInputHandler {
 
     fn bounds_for_range(
         &mut self,
-        _range_utf16: Range<usize>,
+        range_utf16: Range<usize>,
         _window: &mut Window,
         _cx: &mut App,
     ) -> Option<Bounds<Pixels>> {
-        Some(self.layout.lock().input_bounds())
+        let layout = self.layout.lock();
+        let mut bounds = self.cursor_bounds.unwrap_or_else(|| layout.input_bounds());
+        bounds.origin.x += layout.cell_width * range_utf16.start as f32;
+        Some(bounds)
     }
 
     fn character_index_for_point(
@@ -2023,77 +2262,98 @@ impl TerminalRenderer {
         }
     }
 
-    fn paint(
+    fn prepare_paint(
         &self,
         bounds: Bounds<Pixels>,
         padding: Edges<Pixels>,
-        term: &Term<GpuiEventProxy>,
+        content: &TerminalContent,
         selection: Option<SelectionRange>,
         cursor_visible: bool,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let grid = term.grid();
-        let colors = term.colors();
+    ) -> TerminalPaintState {
+        let colors = &content.colors;
         let default_bg = self
             .palette
             .resolve(Color::Named(NamedColor::Background), colors);
-
-        window.paint_quad(quad(
-            bounds,
-            px(0.0),
-            default_bg,
-            Edges::<Pixels>::default(),
-            transparent_black(),
-            Default::default(),
-        ));
-
         let origin = Point {
             x: bounds.origin.x + padding.left,
             y: bounds.origin.y + padding.top,
         };
         let content_right = bounds.origin.x + bounds.size.width - padding.right;
-        let display_offset = grid.display_offset() as i32;
+        let display_offset = content.display_offset as i32;
+        let mut rows = vec![vec![None; content.columns]; content.screen_lines];
+        for indexed in &content.cells {
+            let row = indexed.point.line.0 + display_offset;
+            let col = indexed.point.column.0;
+            if row >= 0 && (row as usize) < content.screen_lines && col < content.columns {
+                rows[row as usize][col] = Some(&indexed.cell);
+            }
+        }
 
-        for row in 0..grid.screen_lines() {
+        let mut background_rects = Vec::new();
+        let mut text_runs = Vec::new();
+        for (row, cells) in rows.iter().enumerate() {
             let line = Line(row as i32 - display_offset);
-            self.paint_row_backgrounds(
+            self.prepare_row_backgrounds(
                 line,
                 row,
-                grid.columns(),
-                grid,
+                cells,
                 colors,
-                origin,
                 default_bg,
                 selection,
                 content_right,
-                window,
+                origin,
+                &mut background_rects,
             );
-            self.paint_row_text(line, row, grid.columns(), grid, colors, origin, window, cx);
+            self.prepare_row_text(row, cells, colors, &mut text_runs);
         }
 
-        if display_offset == 0
+        let cursor = (content.display_offset == 0
             && cursor_visible
-            && term.mode().contains(TermMode::SHOW_CURSOR)
-            && term.cursor_style().shape != CursorShape::Hidden
-        {
-            self.paint_cursor(grid.cursor.point, colors, origin, window);
+            && content.mode.contains(TermMode::SHOW_CURSOR)
+            && content.cursor.shape != CursorShape::Hidden)
+            .then(|| TerminalCursorPaint {
+                point: content.cursor.point,
+                color: self
+                    .palette
+                    .resolve(Color::Named(NamedColor::Cursor), colors),
+            });
+        let ime_cursor_bounds = (content.display_offset == 0).then(|| {
+            let x = origin.x + self.cell_width * content.cursor.point.column.0 as f32;
+            let y = origin.y + self.cell_height * content.cursor.point.line.0 as f32;
+            Bounds {
+                origin: Point { x, y },
+                size: Size {
+                    width: self.cell_width,
+                    height: self.cell_height,
+                },
+            }
+        });
+
+        TerminalPaintState {
+            bounds,
+            origin,
+            background: default_bg,
+            background_rects,
+            text_runs,
+            cursor,
+            marked_text_cursor: (content.display_offset == 0).then_some(content.cursor.point),
+            ime_cursor_bounds,
         }
     }
 
-    fn paint_row_backgrounds(
+    fn prepare_row_backgrounds(
         &self,
         line: Line,
         row: usize,
-        columns: usize,
-        grid: &alacritty_terminal::Grid<Cell>,
+        cells: &[Option<&Cell>],
         colors: &Colors,
-        origin: Point<Pixels>,
         default_bg: Hsla,
         selection: Option<SelectionRange>,
         content_right: Pixels,
-        window: &mut Window,
+        origin: Point<Pixels>,
+        background_rects: &mut Vec<TerminalBackgroundRect>,
     ) {
+        let columns = cells.len();
         let mut start_col = 0;
         let mut current = self
             .palette
@@ -2101,8 +2361,9 @@ impl TerminalRenderer {
 
         for col in 0..=columns {
             let bg = if col < columns {
-                let cell = &grid[TerminalPoint::new(line, Column(col))];
-                self.palette.resolve(cell.bg, colors)
+                cells[col]
+                    .map(|cell| self.palette.resolve(cell.bg, colors))
+                    .unwrap_or(default_bg)
             } else {
                 Hsla::default()
             };
@@ -2110,41 +2371,46 @@ impl TerminalRenderer {
                 current = bg;
             }
             if col == columns || bg != current {
-                self.paint_cell_background(
-                    row,
-                    start_col,
-                    col - start_col,
-                    current,
-                    default_bg,
-                    origin,
-                    window,
-                );
+                if col > start_col && current != default_bg {
+                    background_rects.push(TerminalBackgroundRect {
+                        row,
+                        start_col,
+                        width_cols: col - start_col,
+                        color: current,
+                    });
+                }
                 start_col = col;
                 current = bg;
             }
         }
 
         if let Some(selection) = selection {
-            self.paint_selection(line, row, columns, origin, content_right, selection, window);
+            self.prepare_selection(
+                line,
+                row,
+                origin,
+                columns,
+                content_right,
+                selection,
+                background_rects,
+            );
         }
     }
 
-    fn paint_row_text(
+    fn prepare_row_text(
         &self,
-        line: Line,
         row: usize,
-        columns: usize,
-        grid: &alacritty_terminal::Grid<Cell>,
+        cells: &[Option<&Cell>],
         colors: &Colors,
-        origin: Point<Pixels>,
-        window: &mut Window,
-        cx: &mut App,
+        text_runs: &mut Vec<TerminalTextRun>,
     ) {
-        let mut text_runs = Vec::new();
         let mut current_run: Option<TerminalTextRun> = None;
         let mut pending_spaces = 0usize;
-        for col in 0..columns {
-            let cell = &grid[TerminalPoint::new(line, Column(col))];
+        for (col, cell) in cells.iter().enumerate() {
+            let Some(cell) = cell else {
+                pending_spaces = 0;
+                continue;
+            };
             if cell.flags.contains(Flags::WIDE_CHAR_SPACER) || cell.c == '\0' {
                 pending_spaces = 0;
                 continue;
@@ -2190,10 +2456,9 @@ impl TerminalRenderer {
             } else {
                 1
             };
-            if current_run
-                .as_ref()
-                .is_some_and(|current| current.can_append(col, cell_width, pending_spaces, &run))
-            {
+            if current_run.as_ref().is_some_and(|current| {
+                current.can_append(row, col, cell_width, pending_spaces, &run)
+            }) {
                 if let Some(current) = current_run.as_mut() {
                     current.append_spaces(pending_spaces);
                     current.append(cell.c, cell_width);
@@ -2202,7 +2467,7 @@ impl TerminalRenderer {
                 if let Some(current) = current_run.take() {
                     text_runs.push(current);
                 }
-                current_run = Some(TerminalTextRun::new(col, cell.c, cell_width, run));
+                current_run = Some(TerminalTextRun::new(row, col, cell.c, cell_width, run));
             }
             pending_spaces = 0;
         }
@@ -2210,53 +2475,17 @@ impl TerminalRenderer {
         if let Some(current) = current_run {
             text_runs.push(current);
         }
-
-        for text_run in &text_runs {
-            text_run.paint(self, row, origin, window, cx);
-        }
     }
 
-    fn paint_cell_background(
-        &self,
-        row: usize,
-        start_col: usize,
-        width_cols: usize,
-        color: Hsla,
-        default_bg: Hsla,
-        origin: Point<Pixels>,
-        window: &mut Window,
-    ) {
-        if width_cols == 0 || color == default_bg {
-            return;
-        }
-
-        let x = origin.x + self.cell_width * start_col as f32;
-        let y = origin.y + self.cell_height * row as f32;
-        window.paint_quad(quad(
-            Bounds {
-                origin: Point { x, y },
-                size: Size {
-                    width: self.cell_width * width_cols as f32,
-                    height: self.cell_height,
-                },
-            },
-            px(0.0),
-            color,
-            Edges::<Pixels>::default(),
-            transparent_black(),
-            Default::default(),
-        ));
-    }
-
-    fn paint_selection(
+    fn prepare_selection(
         &self,
         line: Line,
         row: usize,
-        columns: usize,
         origin: Point<Pixels>,
+        columns: usize,
         content_right: Pixels,
         selection: SelectionRange,
-        window: &mut Window,
+        background_rects: &mut Vec<TerminalBackgroundRect>,
     ) {
         if line.0 < selection.start.line || line.0 > selection.end.line {
             return;
@@ -2276,91 +2505,63 @@ impl TerminalRenderer {
             return;
         }
 
-        let x = origin.x + self.cell_width * start_col as f32;
-        let width = if end_col >= columns {
-            content_right - x
+        let width_cols = if end_col >= columns {
+            let x = origin.x + self.cell_width * start_col as f32;
+            if content_right <= x {
+                return;
+            }
+            columns.saturating_sub(start_col).max(1)
         } else {
-            self.cell_width * end_col.saturating_sub(start_col) as f32
+            end_col.saturating_sub(start_col)
         };
-        if width <= px(0.0) {
-            return;
-        }
-
-        window.paint_quad(quad(
-            Bounds {
-                origin: Point {
-                    x,
-                    y: origin.y + self.cell_height * row as f32,
-                },
-                size: Size {
-                    width,
-                    height: self.cell_height,
-                },
-            },
-            px(0.0),
-            self.palette.selection,
-            Edges::<Pixels>::default(),
-            transparent_black(),
-            Default::default(),
-        ));
+        background_rects.push(TerminalBackgroundRect {
+            row,
+            start_col,
+            width_cols,
+            color: self.palette.selection,
+        });
     }
 
-    fn paint_cursor(
-        &self,
-        cursor: TerminalPoint,
-        colors: &Colors,
-        origin: Point<Pixels>,
-        window: &mut Window,
-    ) {
-        let cursor_color = self
-            .palette
-            .resolve(Color::Named(NamedColor::Cursor), colors);
-        let x = origin.x + self.cell_width * cursor.column.0 as f32;
-        let y = origin.y + self.cell_height * cursor.line.0 as f32;
+    fn paint_prepared(&self, state: &TerminalPaintState, window: &mut Window, cx: &mut App) {
         window.paint_quad(quad(
-            Bounds {
-                origin: Point {
-                    x: px(f32::from(x).floor()),
-                    y: px(f32::from(y).floor()),
-                },
-                size: Size {
-                    width: px(f32::from(self.cell_width).round().max(1.0)),
-                    height: px(f32::from(self.cell_height).round().max(1.0)),
-                },
-            },
+            state.bounds,
             px(0.0),
-            cursor_color,
+            state.background,
             Edges::<Pixels>::default(),
             transparent_black(),
             Default::default(),
         ));
+
+        for rect in &state.background_rects {
+            rect.paint(self, state.origin, window);
+        }
+        for text_run in &state.text_runs {
+            text_run.paint(self, state.origin, window, cx);
+        }
+        if let Some(cursor) = &state.cursor {
+            cursor.paint(self, state.origin, window);
+        }
     }
 
     fn paint_marked_text(
         &self,
-        bounds: Bounds<Pixels>,
-        padding: Edges<Pixels>,
-        term: &Term<GpuiEventProxy>,
+        state: &TerminalPaintState,
         marked_text: &str,
         window: &mut Window,
         cx: &mut App,
     ) {
-        if marked_text.is_empty() || term.grid().display_offset() != 0 {
+        let Some(cursor) = state.marked_text_cursor else {
+            return;
+        };
+        if marked_text.is_empty() {
             return;
         }
-
-        let colors = term.colors();
-        let cursor = term.grid().cursor.point;
         let origin = Point {
-            x: bounds.origin.x + padding.left + self.cell_width * cursor.column.0 as f32,
-            y: bounds.origin.y + padding.top + self.cell_height * cursor.line.0 as f32,
+            x: state.origin.x + self.cell_width * cursor.column.0 as f32,
+            y: state.origin.y + self.cell_height * cursor.line.0 as f32,
         };
-        let fg = self
-            .palette
-            .resolve(Color::Named(NamedColor::Foreground), colors);
-        let bg = self
-            .palette
-            .resolve(Color::Named(NamedColor::Background), colors);
+        let fg = self.palette.foreground;
+        let bg = self.palette.background;
         let run = TextRun {
             len: marked_text.len(),
             font: self.font(FontWeight::NORMAL, FontStyle::Normal),
@@ -2399,6 +2600,7 @@ impl TerminalRenderer {
 
 #[derive(Clone)]
 struct TerminalTextRun {
+    row: usize,
     start_col: usize,
     width_cols: usize,
     text: String,
@@ -2407,10 +2609,13 @@ struct TerminalTextRun {
 }
 
 impl TerminalTextRun {
-    fn new(start_col: usize, c: char, width_cols: usize, style: TextRun) -> Self {
+    fn new(row: usize, start_col: usize, c: char, width_cols: usize, style: TextRun) -> Self {
         let mut hasher = DefaultHasher::new();
+        row.hash(&mut hasher);
+        start_col.hash(&mut hasher);
         c.hash(&mut hasher);
         Self {
+            row,
             start_col,
             width_cols,
             text: c.to_string(),
@@ -2421,12 +2626,14 @@ impl TerminalTextRun {
 
     fn can_append(
         &self,
+        row: usize,
         col: usize,
         width_cols: usize,
         pending_spaces: usize,
         style: &TextRun,
     ) -> bool {
-        self.start_col + self.width_cols + pending_spaces == col
+        self.row == row
+            && self.start_col + self.width_cols + pending_spaces == col
             && width_cols == 1
             && self.width_cols == self.text.chars().count()
             && self.style.font == style.font
@@ -2455,7 +2662,6 @@ impl TerminalTextRun {
     fn paint(
         &self,
         renderer: &TerminalRenderer,
-        row: usize,
         origin: Point<Pixels>,
         window: &mut Window,
         cx: &mut App,
@@ -2476,7 +2682,7 @@ impl TerminalTextRun {
         let _ = shaped.paint(
             Point {
                 x: origin.x + renderer.cell_width * self.start_col as f32,
-                y: origin.y + renderer.cell_height * row as f32,
+                y: origin.y + renderer.cell_height * self.row as f32,
             },
             renderer.cell_height,
             TextAlign::Left,
@@ -3118,5 +3324,36 @@ mod tests {
             }),
             "中文恢复记录"
         );
+    }
+
+    #[test]
+    fn updates_render_snapshot_after_output() {
+        let mut state = TerminalState::new(10, 4, 100, GpuiEventProxy::new(mpsc::channel().0));
+        state.process_bytes(b"hello");
+
+        let snapshot = state.handle().snapshot();
+        let text: String = snapshot
+            .cells
+            .iter()
+            .filter(|cell| cell.point.line.0 == 0)
+            .map(|cell| cell.c)
+            .collect();
+
+        assert!(text.contains("hello"));
+        assert_eq!(snapshot.columns, 10);
+        assert_eq!(snapshot.screen_lines, 4);
+    }
+
+    #[test]
+    fn updates_render_snapshot_after_resize() {
+        let state = TerminalState::new(10, 4, 100, GpuiEventProxy::new(mpsc::channel().0));
+
+        let handle = state.handle();
+        assert!(handle.resize(20, 8));
+
+        let snapshot = handle.snapshot();
+        assert_eq!(snapshot.columns, 20);
+        assert_eq!(snapshot.screen_lines, 8);
+        assert!(!handle.resize(20, 8));
     }
 }
