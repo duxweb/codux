@@ -7,7 +7,7 @@ use alacritty_terminal::{
         cell::{Cell, Flags},
         color::Colors,
     },
-    vte::ansi::{Color, NamedColor, Processor, Rgb},
+    vte::ansi::{Color, CursorShape, NamedColor, Processor, Rgb},
 };
 use anyhow::Result;
 use codux_runtime::terminal_pty::{
@@ -302,8 +302,13 @@ impl TerminalView {
                 blink_timer.timer(Duration::from_millis(500)).await;
                 if this
                     .update(cx, |view, cx| {
-                        view.cursor_visible = !view.cursor_visible;
-                        cx.notify();
+                        if !view.state.mode().contains(TermMode::ALT_SCREEN) {
+                            view.cursor_visible = !view.cursor_visible;
+                            cx.notify();
+                        } else if !view.cursor_visible {
+                            view.cursor_visible = true;
+                            cx.notify();
+                        }
                     })
                     .is_err()
                 {
@@ -726,7 +731,11 @@ impl Render for TerminalView {
         let terminal_view = cx.weak_entity();
         let marked_text = self.marked_text.clone();
         let padding = self.config.padding;
-        let cursor_visible = !self.focus_handle.contains_focused(window, cx) || self.cursor_visible;
+        let cursor_visible = if self.state.mode().contains(TermMode::ALT_SCREEN) {
+            true
+        } else {
+            !self.focus_handle.contains_focused(window, cx) || self.cursor_visible
+        };
         let resize_handle = self.resize_handle.clone();
 
         div()
@@ -1946,7 +1955,11 @@ impl TerminalRenderer {
             self.paint_row_text(line, row, grid.columns(), grid, colors, origin, window, cx);
         }
 
-        if display_offset == 0 && cursor_visible && term.mode().contains(TermMode::SHOW_CURSOR) {
+        if display_offset == 0
+            && cursor_visible
+            && term.mode().contains(TermMode::SHOW_CURSOR)
+            && term.cursor_style().shape != CursorShape::Hidden
+        {
             self.paint_cursor(grid.cursor.point, colors, origin, window);
         }
     }
