@@ -1,0 +1,214 @@
+name: Release macOS Formal
+
+on:
+  workflow_run:
+    workflows: ["Release GPUI Desktop"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build, for example v1.0.0-beta.3."
+        required: true
+        type: string
+      channel:
+        description: "Updater channel to update."
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - beta
+          - stable
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MACOSX_DEPLOYMENT_TARGET: "14.0"
+  CMAKE_OSX_DEPLOYMENT_TARGET: "14.0"
+
+jobs:
+  metadata:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v')) }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
+      source_ref: ${{ steps.ref.outputs.source_ref }}
+    steps:
+      - name: Resolve source ref
+        id: ref
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+          WORKFLOW_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || '' }}
+        run: |
+          source_ref="${DISPATCH_TAG:-$WORKFLOW_TAG}"
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.source_ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        env:
+          RELEASE_NOTES_PATH: dist/release-notes.md
+        run: |
+          mkdir -p dist
+          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
+          node scripts/release/prepare-release.mjs "${{ steps.ref.outputs.source_ref }}" "${requested_channel}"
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-formal
+          path: dist/release-notes.md
+          if-no-files-found: error
+
+  build:
+    needs: metadata
+    runs-on: macos-15
+    env:
+      CARGO_BUILD_TARGET: universal-apple-darwin
+      RELEASE_BUILD_ID: macos-universal-formal
+      RELEASE_STAGE_DIR: release-artifacts
+      RELEASE_ARTIFACT_SUFFIX: -formal
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: formal-rust-${{ runner.os }}-macos-universal-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            formal-rust-${{ runner.os }}-macos-universal-
+            rust-${{ runner.os }}-macos-universal-
+            rust-${{ runner.os }}-
+
+      - name: Print macOS build environment
+        shell: bash
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          echo "MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
+
+      - name: Import Apple signing certificate
+        shell: bash
+        run: |
+          certificate_path="$RUNNER_TEMP/apple-certificate.p12"
+          keychain_path="$RUNNER_TEMP/apple-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | sed 's/[\" ]//g')
+          security find-identity -v -p codesigning "$keychain_path"
+
+      - name: Apply release version
+        shell: bash
+        env:
+          RELEASE_NOTES_PATH: dist/release-notes.md
+        run: |
+          mkdir -p dist
+          node scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
+
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          mkdir -p target/universal-apple-darwin/release
+          lipo -create \
+            -output target/universal-apple-darwin/release/codux \
+            target/aarch64-apple-darwin/release/codux \
+            target/x86_64-apple-darwin/release/codux
+
+      - name: Package formal macOS bundle
+        shell: bash
+        run: node scripts/release/package-gpui.mjs
+
+      - name: Upload formal macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-macos-universal-formal
+          path: release-artifacts/macos-universal-formal/*
+          if-no-files-found: error
+
+  publish:
+    needs:
+      - metadata
+      - build
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
+      RELEASE_TAG: ${{ needs.metadata.outputs.source_ref }}
+      RELEASE_NOTES_PATH: dist/release-notes.md
+      RELEASE_ARTIFACTS_DIR: release-artifacts/macos-universal-formal
+      RELEASE_REQUIRE_EXISTING: true
+      RELEASE_MERGE_EXISTING_LATEST: true
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes-formal
+          path: dist
+
+      - name: Download formal macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: package-macos-universal-formal
+          path: release-artifacts/macos-universal-formal
+
+      - name: Publish formal macOS assets and updater metadata
+        run: node scripts/release/publish-github-release.mjs

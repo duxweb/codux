@@ -25,6 +25,7 @@ permissions:
   contents: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   MACOSX_DEPLOYMENT_TARGET: "14.0"
   CMAKE_OSX_DEPLOYMENT_TARGET: "14.0"
 
@@ -76,12 +77,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: macos-aarch64
+          - id: macos-universal
             os: macos-15
-            target: aarch64-apple-darwin
-          - id: macos-x86_64
-            os: macos-15-intel
-            target: x86_64-apple-darwin
+            target: universal-apple-darwin
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+            artifact_suffix: -adhoc
           - id: windows-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -91,13 +91,8 @@ jobs:
       CARGO_BUILD_TARGET: ${{ matrix.target }}
       RELEASE_BUILD_ID: ${{ matrix.id }}
       RELEASE_STAGE_DIR: release-artifacts
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      RELEASE_ARTIFACT_SUFFIX: ${{ matrix.artifact_suffix || '' }}
+      MACOS_ADHOC_SIGN: ${{ startsWith(matrix.id, 'macos-') && 'true' || '' }}
 
     steps:
       - name: Checkout
@@ -113,7 +108,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.targets || matrix.target }}
 
       - name: Install NSIS
         if: runner.os == 'Windows'
@@ -140,25 +135,20 @@ jobs:
           mkdir -p dist
           node scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
 
-      - name: Import Apple signing certificate
-        if: startsWith(matrix.id, 'macos-') && env.APPLE_CERTIFICATE != '' && env.APPLE_CERTIFICATE_PASSWORD != '' && env.KEYCHAIN_PASSWORD != ''
-        shell: bash
-        run: |
-          certificate_path="$RUNNER_TEMP/apple-certificate.p12"
-          keychain_path="$RUNNER_TEMP/apple-signing.keychain-db"
-          echo "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security default-keychain -s "$keychain_path"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
-          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -k "$keychain_path"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
-          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | sed 's/[\" ]//g')
-          security find-identity -v -p codesigning "$keychain_path"
-
       - name: Build
         shell: bash
-        run: cargo build --release --target "${CARGO_BUILD_TARGET}"
+        run: |
+          if [[ "${CARGO_BUILD_TARGET}" == "universal-apple-darwin" ]]; then
+            cargo build --release --target aarch64-apple-darwin
+            cargo build --release --target x86_64-apple-darwin
+            mkdir -p target/universal-apple-darwin/release
+            lipo -create \
+              -output target/universal-apple-darwin/release/codux \
+              target/aarch64-apple-darwin/release/codux \
+              target/x86_64-apple-darwin/release/codux
+          else
+            cargo build --release --target "${CARGO_BUILD_TARGET}"
+          fi
 
       - name: Package
         shell: bash

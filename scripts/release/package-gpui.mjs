@@ -15,6 +15,7 @@ const buildId = process.env.RELEASE_BUILD_ID || `${process.platform}-${process.a
 const target = process.env.CARGO_BUILD_TARGET || "";
 const profile = process.env.CARGO_PROFILE || "release";
 const stageRoot = process.env.RELEASE_STAGE_DIR || "release-artifacts";
+const artifactSuffix = process.env.RELEASE_ARTIFACT_SUFFIX?.trim() || "";
 const outputDir = path.join(root, stageRoot, buildId);
 
 fs.rmSync(outputDir, { recursive: true, force: true });
@@ -40,25 +41,18 @@ function packageMacos() {
   fs.copyFileSync(path.join(root, "runtime-assets", "icons", "icon.icns"), path.join(resourcesDir, "AppIcon.icns"));
   fs.writeFileSync(path.join(contentsDir, "Info.plist"), macosInfoPlist(), "utf8");
 
-  const signingIdentity = process.env.APPLE_SIGNING_IDENTITY?.trim();
+  const signingIdentity = macosSigningIdentity();
   if (signingIdentity) {
-    run("codesign", [
-      "--force",
-      "--deep",
-      "--options",
-      "runtime",
-      "--timestamp",
-      "--sign",
-      signingIdentity,
-      appDir,
-    ]);
-    notarizeMacosApp(appDir);
+    codesignMacos(appDir, signingIdentity);
+    if (signingIdentity !== "-") {
+      notarizeMacosApp(appDir);
+    }
   }
 
   const dmgName = `${artifactBaseName("macos")}.dmg`;
   const dmgPath = path.join(outputDir, dmgName);
   run("hdiutil", ["create", "-volname", appName, "-srcfolder", appDir, "-ov", "-format", "UDZO", dmgPath]);
-  if (signingIdentity) {
+  if (signingIdentity && signingIdentity !== "-") {
     run("codesign", ["--force", "--timestamp", "--sign", signingIdentity, dmgPath]);
     notarizeMacosArtifact(dmgPath);
   }
@@ -76,6 +70,22 @@ function notarizeMacosApp(appDir) {
   notarizeMacosArtifact(notaryZip);
   fs.rmSync(notaryZip, { force: true });
   run("xcrun", ["stapler", "staple", appDir]);
+}
+
+function macosSigningIdentity() {
+  const explicit = process.env.MACOS_SIGNING_IDENTITY?.trim() || process.env.APPLE_SIGNING_IDENTITY?.trim();
+  if (explicit) return explicit;
+  if (process.env.MACOS_ADHOC_SIGN === "false") return "";
+  return "-";
+}
+
+function codesignMacos(appDir, signingIdentity) {
+  const args = ["--force", "--deep"];
+  if (signingIdentity !== "-") {
+    args.push("--options", "runtime", "--timestamp");
+  }
+  args.push("--sign", signingIdentity, appDir);
+  run("codesign", args);
 }
 
 function notarizeMacosArtifact(artifactPath) {
@@ -148,7 +158,7 @@ function releaseBinaryPath(extension) {
 function artifactBaseName(platform) {
   const version = readCargoVersion();
   const arch = targetArchLabel();
-  return `codux-${version}-${platform}-${arch}`;
+  return `codux-${version}-${platform}-${arch}${artifactSuffix}`;
 }
 
 function targetArchLabel() {

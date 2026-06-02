@@ -16,14 +16,17 @@ const notesPath = process.env.RELEASE_NOTES_PATH || path.join(root, "dist", `rel
 const artifactsDir = process.env.RELEASE_ARTIFACTS_DIR || path.join(root, "release-artifacts");
 const notes = fs.existsSync(notesPath) ? fs.readFileSync(notesPath, "utf8") : `Codux ${version}`;
 const manifestPath = path.join(root, "updates", channel, "latest.json");
+const requireExistingRelease = process.env.RELEASE_REQUIRE_EXISTING === "true";
+const uploadLatest = process.env.RELEASE_UPLOAD_LATEST !== "false";
 const publishManifest = process.env.RELEASE_PUBLISH_MANIFEST !== "false";
+const mergeExistingLatest = process.env.RELEASE_MERGE_EXISTING_LATEST === "true";
 
 const assets = collectAssets(artifactsDir);
 if (!assets.length) {
   throw new Error(`No release assets found in ${artifactsDir}`);
 }
 
-const latestJson = buildLatestJson(assets);
+const latestJson = mergeExistingLatest ? mergeWithExistingLatest(buildLatestJson(assets)) : buildLatestJson(assets);
 const latestPath = path.join(artifactsDir, "latest.json");
 fs.writeFileSync(latestPath, `${JSON.stringify(latestJson, null, 2)}\n`, "utf8");
 
@@ -32,10 +35,47 @@ if (!dryRun) {
   for (const asset of assets) {
     run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${asset.path}#${asset.name}`]);
   }
-  run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${latestPath}#latest.json`]);
+  if (uploadLatest) {
+    run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${latestPath}#latest.json`]);
+  }
   if (publishManifest) {
     publishChannelManifest(latestPath);
   }
+}
+
+function mergeWithExistingLatest(next) {
+  if (dryRun) return next;
+  const tempDir = path.join(artifactsDir, `.existing-latest-${Date.now()}`);
+  fs.rmSync(tempDir, { recursive: true, force: true });
+  fs.mkdirSync(tempDir, { recursive: true });
+  const downloaded = spawnSync(
+    "gh",
+    ["release", "download", tagName, "--repo", repo, "--pattern", "latest.json", "--dir", tempDir],
+    { stdio: "ignore", env: process.env },
+  );
+  if (downloaded.status !== 0) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    return next;
+  }
+  const existingPath = path.join(tempDir, "latest.json");
+  if (!fs.existsSync(existingPath)) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    return next;
+  }
+  const existing = JSON.parse(fs.readFileSync(existingPath, "utf8"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+  return {
+    ...existing,
+    version: next.version,
+    notes: next.notes,
+    pub_date: next.pub_date,
+    platforms: {
+      ...(existing.platforms || {}),
+      ...next.platforms,
+    },
+    downloadUrl: next.downloadUrl || existing.downloadUrl,
+    checksum: next.checksum || existing.checksum,
+  };
 }
 
 console.log(
@@ -194,6 +234,9 @@ function upsertRelease() {
       stdio: "ignore",
       env: process.env,
     }).status === 0;
+  if (!releaseExists && requireExistingRelease) {
+    throw new Error(`Release ${tagName} does not exist.`);
+  }
   if (releaseExists) {
     run("gh", [
       "release",
