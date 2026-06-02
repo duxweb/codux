@@ -297,9 +297,10 @@ impl TerminalView {
                 if this
                     .update(cx, |view, cx| {
                         view.cursor_visible = true;
-                        view.output_cursor_suppressed = true;
+                        let cursor_before = view.state.cursor_point();
                         let sync_notify = view.update_synchronized_output_state(&bytes);
                         view.state.process_bytes(&bytes);
+                        view.output_cursor_suppressed = cursor_before != view.state.cursor_point();
                         let mut event_should_notify = false;
                         view.process_pending_events(cx, &mut event_should_notify);
                         if view.sync_output_depth > 0 {
@@ -969,6 +970,10 @@ impl TerminalState {
         self.handle.display_offset()
     }
 
+    fn cursor_point(&self) -> TerminalPoint {
+        self.handle.cursor_point()
+    }
+
     fn color(&self, index: usize) -> Option<Rgb> {
         self.handle.term.lock().colors()[index]
     }
@@ -989,6 +994,10 @@ impl TerminalStateHandle {
 
     fn display_offset(&self) -> usize {
         self.snapshot.lock().display_offset
+    }
+
+    fn cursor_point(&self) -> TerminalPoint {
+        self.snapshot.lock().cursor.point
     }
 
     fn snapshot(&self) -> TerminalContent {
