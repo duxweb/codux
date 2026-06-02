@@ -19,8 +19,8 @@ use gpui::{
     FontFeatures, FontStyle, FontWeight, Hsla, InputHandler, InteractiveElement, IntoElement,
     KeyDownEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     NavigationDirection, ParentElement, Pixels, Point, Render, ScrollWheelEvent, SharedString,
-    Size, Styled, Task, TextAlign, TextRun, UTF16Selection, UnderlineStyle, WeakEntity, Window,
-    canvas, div, px, quad, rgb, transparent_black,
+    Size, Styled, Subscription, Task, TextAlign, TextRun, UTF16Selection, UnderlineStyle,
+    WeakEntity, Window, canvas, div, px, quad, rgb, transparent_black,
 };
 use parking_lot::Mutex;
 use std::{
@@ -249,6 +249,11 @@ pub struct TerminalView {
     pending_scroll_lines: i32,
     pending_scroll_pixels: f32,
     scroll_frame_pending: bool,
+    sync_output_depth: usize,
+    sync_output_pending_notify: bool,
+    sync_output_scan_tail: Vec<u8>,
+    focus_in_subscription: Option<Subscription>,
+    focus_out_subscription: Option<Subscription>,
     selection_autoscroll: Option<SelectionAutoScroll>,
     _reader_task: Task<()>,
     _cursor_blink_task: Task<()>,
@@ -287,26 +292,14 @@ impl TerminalView {
                 if this
                     .update(cx, |view, cx| {
                         view.cursor_visible = true;
+                        let sync_notify = view.update_synchronized_output_state(&bytes);
                         view.state.process_bytes(&bytes);
-                        cx.notify();
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        });
-        let blink_timer = cx.background_executor().clone();
-        let cursor_blink_task = cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            loop {
-                blink_timer.timer(Duration::from_millis(500)).await;
-                if this
-                    .update(cx, |view, cx| {
-                        if !view.state.mode().contains(TermMode::ALT_SCREEN) {
-                            view.cursor_visible = !view.cursor_visible;
+                        if view.sync_output_depth > 0 {
+                            view.sync_output_pending_notify = true;
+                        } else if sync_notify || view.sync_output_pending_notify {
+                            view.sync_output_pending_notify = false;
                             cx.notify();
-                        } else if !view.cursor_visible {
-                            view.cursor_visible = true;
+                        } else {
                             cx.notify();
                         }
                     })
@@ -316,6 +309,30 @@ impl TerminalView {
                 }
             }
         });
+        let cursor_blink_task = if cfg!(target_os = "windows") {
+            Task::ready(())
+        } else {
+            let blink_timer = cx.background_executor().clone();
+            cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+                loop {
+                    blink_timer.timer(Duration::from_millis(500)).await;
+                    if this
+                        .update(cx, |view, cx| {
+                            if !view.state.mode().contains(TermMode::ALT_SCREEN) {
+                                view.cursor_visible = !view.cursor_visible;
+                                cx.notify();
+                            } else if !view.cursor_visible {
+                                view.cursor_visible = true;
+                                cx.notify();
+                            }
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+        };
 
         Self {
             state,
@@ -336,10 +353,23 @@ impl TerminalView {
             pending_scroll_lines: 0,
             pending_scroll_pixels: 0.0,
             scroll_frame_pending: false,
+            sync_output_depth: 0,
+            sync_output_pending_notify: false,
+            sync_output_scan_tail: Vec::new(),
+            focus_in_subscription: None,
+            focus_out_subscription: None,
             selection_autoscroll: None,
             _reader_task: reader_task,
             _cursor_blink_task: cursor_blink_task,
         }
+    }
+
+    fn update_synchronized_output_state(&mut self, bytes: &[u8]) -> bool {
+        update_synchronized_output_state(
+            bytes,
+            &mut self.sync_output_depth,
+            &mut self.sync_output_scan_tail,
+        )
     }
 
     pub fn focus_handle(&self) -> FocusHandle {
@@ -650,6 +680,33 @@ impl TerminalView {
         let _ = writer.flush();
     }
 
+    fn report_focus_change(&self, focused: bool) {
+        if !self.state.mode().contains(TermMode::FOCUS_IN_OUT) {
+            return;
+        }
+        self.write_bytes(if focused { b"\x1b[I" } else { b"\x1b[O" });
+    }
+
+    fn ensure_focus_report_subscriptions(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.focus_in_subscription.is_none() {
+            let focus_handle = self.focus_handle.clone();
+            self.focus_in_subscription = Some(cx.on_focus(&focus_handle, window, |view, _, _| {
+                view.report_focus_change(true);
+            }));
+        }
+        if self.focus_out_subscription.is_none() {
+            let focus_handle = self.focus_handle.clone();
+            self.focus_out_subscription =
+                Some(cx.on_focus_out(&focus_handle, window, |view, _, _, _| {
+                    view.report_focus_change(false);
+                }));
+        }
+    }
+
     fn paste_text(&self, text: &str) {
         if self.state.mode().contains(TermMode::BRACKETED_PASTE) {
             self.write_bytes(b"\x1b[200~");
@@ -717,11 +774,49 @@ fn should_send_alternate_scroll(mode: TermMode, shift_pressed: bool) -> bool {
     !shift_pressed && mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL)
 }
 
+fn update_synchronized_output_state(
+    bytes: &[u8],
+    depth: &mut usize,
+    scan_tail: &mut Vec<u8>,
+) -> bool {
+    const START: &[u8] = b"\x1b[?2026h";
+    const END: &[u8] = b"\x1b[?2026l";
+    const MAX_PATTERN_LEN: usize = START.len();
+
+    let mut should_notify = false;
+    let mut scan = Vec::with_capacity(scan_tail.len() + bytes.len());
+    scan.extend_from_slice(scan_tail);
+    scan.extend_from_slice(bytes);
+
+    let mut index = 0;
+    while index < scan.len() {
+        if scan[index..].starts_with(START) {
+            *depth = depth.saturating_add(1);
+            index += START.len();
+            continue;
+        }
+        if scan[index..].starts_with(END) {
+            *depth = depth.saturating_sub(1);
+            should_notify = true;
+            index += END.len();
+            continue;
+        }
+        index += 1;
+    }
+
+    let tail_len = scan.len().min(MAX_PATTERN_LEN.saturating_sub(1));
+    scan_tail.clear();
+    scan_tail.extend_from_slice(&scan[scan.len().saturating_sub(tail_len)..]);
+
+    should_notify
+}
+
 impl Render for TerminalView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.process_events(window, cx);
 
         self.renderer.measure_cell(window);
+        self.ensure_focus_report_subscriptions(window, cx);
         let term = self.state.term.clone();
         let renderer = self.renderer.clone();
         let layout = self.layout.clone();
@@ -1959,7 +2054,6 @@ impl TerminalRenderer {
             && cursor_visible
             && term.mode().contains(TermMode::SHOW_CURSOR)
             && term.cursor_style().shape != CursorShape::Hidden
-            && !(cfg!(target_os = "windows") && term.mode().contains(TermMode::ALT_SCREEN))
         {
             self.paint_cursor(grid.cursor.point, colors, origin, window);
         }
@@ -2743,6 +2837,46 @@ mod tests {
         let mode = TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL;
         assert!(should_send_alternate_scroll(mode, false));
         assert!(!should_send_alternate_scroll(mode, true));
+    }
+
+    #[test]
+    fn tracks_synchronized_output_across_chunks() {
+        let mut depth = 0;
+        let mut tail = Vec::new();
+
+        assert!(!update_synchronized_output_state(
+            b"\x1b[?202",
+            &mut depth,
+            &mut tail
+        ));
+        assert_eq!(depth, 0);
+
+        assert!(!update_synchronized_output_state(
+            b"6hpartial frame",
+            &mut depth,
+            &mut tail
+        ));
+        assert_eq!(depth, 1);
+
+        assert!(update_synchronized_output_state(
+            b"done\x1b[?2026l",
+            &mut depth,
+            &mut tail
+        ));
+        assert_eq!(depth, 0);
+    }
+
+    #[test]
+    fn reports_notify_when_synchronized_output_ends() {
+        let mut depth = 0;
+        let mut tail = Vec::new();
+
+        assert!(update_synchronized_output_state(
+            b"\x1b[?2026hframe\x1b[?2026l",
+            &mut depth,
+            &mut tail
+        ));
+        assert_eq!(depth, 0);
     }
 
     #[test]
