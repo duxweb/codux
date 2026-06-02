@@ -247,13 +247,10 @@ pub struct TerminalView {
     title: Option<String>,
     bell_count: usize,
     exited: bool,
-    cursor_visible: bool,
     pending_scroll_lines: i32,
     pending_scroll_pixels: f32,
     scroll_frame_pending: bool,
     output_notify_pending: bool,
-    output_cursor_suppressed: bool,
-    cursor_restore_pending: bool,
     sync_output_depth: usize,
     sync_output_pending_notify: bool,
     sync_output_scan_tail: Vec<u8>,
@@ -261,7 +258,6 @@ pub struct TerminalView {
     focus_out_subscription: Option<Subscription>,
     selection_autoscroll: Option<SelectionAutoScroll>,
     _reader_task: Task<()>,
-    _cursor_blink_task: Task<()>,
 }
 
 impl TerminalView {
@@ -296,11 +292,8 @@ impl TerminalView {
             while let Ok(bytes) = bytes_rx.recv_async().await {
                 if this
                     .update(cx, |view, cx| {
-                        view.cursor_visible = true;
-                        let cursor_before = view.state.cursor_point();
                         let sync_notify = view.update_synchronized_output_state(&bytes);
                         view.state.process_bytes(&bytes);
-                        view.output_cursor_suppressed = cursor_before != view.state.cursor_point();
                         let mut event_should_notify = false;
                         view.process_pending_events(cx, &mut event_should_notify);
                         if view.sync_output_depth > 0 {
@@ -321,30 +314,6 @@ impl TerminalView {
                 }
             }
         });
-        let cursor_blink_task = if cfg!(target_os = "windows") {
-            Task::ready(())
-        } else {
-            let blink_timer = cx.background_executor().clone();
-            cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-                loop {
-                    blink_timer.timer(Duration::from_millis(500)).await;
-                    if this
-                        .update(cx, |view, cx| {
-                            if !view.state.mode().contains(TermMode::ALT_SCREEN) {
-                                view.cursor_visible = !view.cursor_visible;
-                                cx.notify();
-                            } else if !view.cursor_visible {
-                                view.cursor_visible = true;
-                                cx.notify();
-                            }
-                        })
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-            })
-        };
 
         Self {
             state,
@@ -361,13 +330,10 @@ impl TerminalView {
             title: None,
             bell_count: 0,
             exited: false,
-            cursor_visible: true,
             pending_scroll_lines: 0,
             pending_scroll_pixels: 0.0,
             scroll_frame_pending: false,
             output_notify_pending: false,
-            output_cursor_suppressed: false,
-            cursor_restore_pending: false,
             sync_output_depth: 0,
             sync_output_pending_notify: false,
             sync_output_scan_tail: Vec::new(),
@@ -375,7 +341,6 @@ impl TerminalView {
             focus_out_subscription: None,
             selection_autoscroll: None,
             _reader_task: reader_task,
-            _cursor_blink_task: cursor_blink_task,
         }
     }
 
@@ -405,7 +370,6 @@ impl TerminalView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        self.cursor_visible = true;
         if is_copy_keystroke(&event.keystroke) {
             if let Some(text) = self.selected_text() {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
@@ -619,34 +583,7 @@ impl TerminalView {
             timer.timer(TERMINAL_SCROLL_FRAME_INTERVAL).await;
             let _ = terminal.update(cx, |terminal, cx| {
                 terminal.output_notify_pending = false;
-                if terminal.output_cursor_suppressed {
-                    terminal.schedule_cursor_restore(cx);
-                }
                 cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    fn schedule_cursor_restore(&mut self, cx: &mut Context<Self>) {
-        if self.cursor_restore_pending {
-            return;
-        }
-
-        self.cursor_restore_pending = true;
-        let timer = cx.background_executor().clone();
-        cx.spawn(async move |terminal: WeakEntity<Self>, cx| {
-            timer.timer(TERMINAL_SCROLL_FRAME_INTERVAL).await;
-            let _ = terminal.update(cx, |terminal, cx| {
-                terminal.cursor_restore_pending = false;
-                if terminal.output_notify_pending {
-                    terminal.schedule_cursor_restore(cx);
-                    return;
-                }
-                if terminal.output_cursor_suppressed {
-                    terminal.output_cursor_suppressed = false;
-                    cx.notify();
-                }
             });
         })
         .detach();
@@ -882,13 +819,7 @@ impl Render for TerminalView {
         self.renderer.measure_cell(window);
         self.ensure_focus_report_subscriptions(window, cx);
         let has_marked_text = self.marked_text.is_some();
-        let cursor_visible = if self.state.mode().contains(TermMode::ALT_SCREEN) {
-            !has_marked_text && !self.output_cursor_suppressed
-        } else {
-            !has_marked_text
-                && !self.output_cursor_suppressed
-                && (!self.focus_handle.contains_focused(window, cx) || self.cursor_visible)
-        };
+        let cursor_visible = !has_marked_text;
         let element = TerminalElement {
             state: self.state.handle(),
             renderer: self.renderer.clone(),
@@ -970,10 +901,6 @@ impl TerminalState {
         self.handle.display_offset()
     }
 
-    fn cursor_point(&self) -> TerminalPoint {
-        self.handle.cursor_point()
-    }
-
     fn color(&self, index: usize) -> Option<Rgb> {
         self.handle.term.lock().colors()[index]
     }
@@ -994,10 +921,6 @@ impl TerminalStateHandle {
 
     fn display_offset(&self) -> usize {
         self.snapshot.lock().display_offset
-    }
-
-    fn cursor_point(&self) -> TerminalPoint {
-        self.snapshot.lock().cursor.point
     }
 
     fn snapshot(&self) -> TerminalContent {
