@@ -297,9 +297,14 @@ impl TerminalView {
                         view.cursor_visible = true;
                         let sync_notify = view.update_synchronized_output_state(&bytes);
                         view.state.process_bytes(&bytes);
+                        let mut event_should_notify = false;
+                        view.process_pending_events(cx, &mut event_should_notify);
                         if view.sync_output_depth > 0 {
                             view.sync_output_pending_notify = true;
-                        } else if sync_notify || view.sync_output_pending_notify {
+                        } else if sync_notify
+                            || event_should_notify
+                            || view.sync_output_pending_notify
+                        {
                             view.sync_output_pending_notify = false;
                             view.schedule_output_notify(cx);
                         } else {
@@ -642,14 +647,18 @@ impl TerminalView {
 
     fn process_events(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let mut should_notify = false;
-        while let Ok(event) = self.event_rx.try_recv() {
-            self.handle_ui_event(event, cx, &mut should_notify);
-        }
-        while let Ok(event) = self.session_event_rx.try_recv() {
-            self.handle_ui_event(event, cx, &mut should_notify);
-        }
+        self.process_pending_events(cx, &mut should_notify);
         if should_notify {
             cx.notify();
+        }
+    }
+
+    fn process_pending_events(&mut self, cx: &mut Context<Self>, should_notify: &mut bool) {
+        while let Ok(event) = self.event_rx.try_recv() {
+            self.handle_ui_event(event, cx, should_notify);
+        }
+        while let Ok(event) = self.session_event_rx.try_recv() {
+            self.handle_ui_event(event, cx, should_notify);
         }
     }
 
