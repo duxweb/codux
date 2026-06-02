@@ -65,12 +65,12 @@ function Find-Real-Binary([string]$Name, [string]$SearchPath) {
   try {
     $env:PATH = $SearchPath
     $candidateNames = switch ($Name) {
-      "claude" { @("claude.cmd", "claude-code.cmd", "claude.exe", "claude-code.exe"); break }
-      "claude-code" { @("claude-code.cmd", "claude.cmd", "claude-code.exe", "claude.exe"); break }
-      default { @("$Name.cmd", "$Name.exe") }
+      "claude" { @("claude.ps1", "claude.exe", "claude-code.ps1", "claude-code.exe"); break }
+      "claude-code" { @("claude-code.ps1", "claude-code.exe", "claude.ps1", "claude.exe"); break }
+      default { @("$Name.ps1", "$Name.exe") }
     }
     foreach ($candidate in $candidateNames) {
-      $commands = @(Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue)
+      $commands = @(Get-Command $candidate -CommandType Application,ExternalScript -ErrorAction SilentlyContinue)
       foreach ($command in $commands) {
         if ($command -and $command.Source -and -not (Same-Directory (Split-Path -Parent $command.Source) $wrapperBin)) {
           return $command.Source
@@ -210,6 +210,39 @@ function Is-Metadata-Invocation([string[]]$CommandArgs) {
   return $false
 }
 
+function Codex-Profile-Name([string]$Seed) {
+  if ([string]::IsNullOrWhiteSpace($Seed)) {
+    $Seed = [Guid]::NewGuid().ToString("N")
+  }
+  try {
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Seed)
+    $hash = [Security.Cryptography.SHA256]::Create().ComputeHash($bytes)
+    $hex = -join ($hash | ForEach-Object { $_.ToString("x2") })
+    return "codux-runtime-$($hex.Substring(0, 16))"
+  } catch {
+    return "codux-runtime-$([Guid]::NewGuid().ToString("N").Substring(0, 16))"
+  }
+}
+
+function Write-Codex-Developer-Instructions-Profile([string]$Content, [string]$Seed) {
+  if ([string]::IsNullOrWhiteSpace($Content)) { return "" }
+  try {
+    $codexHome = $env:CODEX_HOME
+    if ([string]::IsNullOrWhiteSpace($codexHome)) {
+      $codexHome = Join-Path $env:USERPROFILE ".codex"
+    }
+    New-Item -ItemType Directory -Force -Path $codexHome | Out-Null
+    $profileName = Codex-Profile-Name $Seed
+    $profilePath = Join-Path $codexHome "$profileName.config.toml"
+    $tomlString = $Content | ConvertTo-Json -Compress
+    Set-Content -LiteralPath $profilePath -Value "developer_instructions = $tomlString" -Encoding UTF8
+    return $profileName
+  } catch {
+    Write-Live-Log "failed to write codex developer instructions profile: $($_.Exception.Message)"
+    return ""
+  }
+}
+
 function Codex-Hooks-Feature-Flag([string]$Binary, [string]$SearchPath) {
   $previousPath = $env:PATH
   try {
@@ -305,8 +338,13 @@ if ($Tool -eq "codex" -and
     try {
       $content = Get-Content -LiteralPath $memoryAgents -Raw
       if (-not [string]::IsNullOrWhiteSpace($content)) {
-        $tomlString = $content | ConvertTo-Json -Compress
-        $launchArgs = @("-c", "developer_instructions=$tomlString") + $launchArgs
+        $profileName = Write-Codex-Developer-Instructions-Profile $content "$env:DMUX_SESSION_ID|$memoryAgents"
+        if (-not [string]::IsNullOrWhiteSpace($profileName) -and -not (Has-Option-Value $launchArgs @("--profile-v2"))) {
+          $launchArgs = @("--profile-v2", $profileName) + $launchArgs
+        } else {
+          $tomlString = $content | ConvertTo-Json -Compress
+          $launchArgs = @("-c", "developer_instructions=$tomlString") + $launchArgs
+        }
       }
     } catch {
     }

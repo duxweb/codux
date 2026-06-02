@@ -21,9 +21,9 @@ pub(super) fn ssh_wrapper_path(runtime_assets: impl AsRef<Path>) -> PathBuf {
     {
         let runtime_assets = runtime_assets.as_ref();
         if runtime_assets.ends_with("bin") {
-            runtime_assets.join("codux-ssh.cmd")
+            runtime_assets.join("codux-ssh.ps1")
         } else {
-            runtime_assets.join("scripts/wrappers/bin/codux-ssh.cmd")
+            runtime_assets.join("scripts/wrappers/bin/codux-ssh.ps1")
         }
     }
     #[cfg(not(windows))]

@@ -1669,9 +1669,7 @@ fn build_shell_command(shell: &str, initial_command: Option<&str>) -> CommandBui
         Some("powershell.exe" | "powershell" | "pwsh.exe" | "pwsh")
     ) {
         command.args(["-NoLogo", "-NoProfile", "-NoExit"]);
-        if matches!(shell_name.as_deref(), Some("powershell.exe" | "powershell")) {
-            command.args(["-ExecutionPolicy", "Bypass"]);
-        }
+        command.args(["-ExecutionPolicy", "Bypass"]);
         if let Some(initial_command) = initial_command {
             command.args(["-Command", initial_command]);
         }

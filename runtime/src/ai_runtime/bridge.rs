@@ -137,11 +137,7 @@ impl AIRuntimeBridge {
         )?;
         #[cfg(windows)]
         {
-            stage_runtime_asset(
-                "scripts/wrappers/dmux-ai-state.cmd",
-                &wrapper_dir.join("dmux-ai-state.cmd"),
-                false,
-            )?;
+            let _ = fs::remove_file(wrapper_dir.join("dmux-ai-state.cmd"));
             stage_runtime_asset(
                 "scripts/wrappers/dmux-ai-state.ps1",
                 &wrapper_dir.join("dmux-ai-state.ps1"),
@@ -161,11 +157,7 @@ impl AIRuntimeBridge {
         )?;
         #[cfg(windows)]
         {
-            stage_runtime_asset(
-                "scripts/wrappers/tool-wrapper.cmd",
-                &wrapper_dir.join("tool-wrapper.cmd"),
-                false,
-            )?;
+            let _ = fs::remove_file(wrapper_dir.join("tool-wrapper.cmd"));
             stage_runtime_asset(
                 "scripts/wrappers/tool-wrapper.ps1",
                 &wrapper_dir.join("tool-wrapper.ps1"),
@@ -202,9 +194,10 @@ impl AIRuntimeBridge {
             #[cfg(windows)]
             {
                 let _ = fs::remove_file(self.wrapper_bin_dir.join(bin_name));
+                let _ = fs::remove_file(self.wrapper_bin_dir.join(format!("{bin_name}.cmd")));
                 stage_runtime_asset(
-                    &format!("scripts/wrappers/bin/{bin_name}.cmd"),
-                    &self.wrapper_bin_dir.join(format!("{bin_name}.cmd")),
+                    &format!("scripts/wrappers/bin/{bin_name}.ps1"),
+                    &self.wrapper_bin_dir.join(format!("{bin_name}.ps1")),
                     false,
                 )?;
             }
@@ -274,7 +267,13 @@ mod tests {
         bridge.stage_assets().unwrap();
 
         assert!(bridge.managed_hook_script().is_file());
+        #[cfg(not(windows))]
         assert!(bridge.wrapper_bin_dir().join("codex").is_file());
+        #[cfg(windows)]
+        {
+            assert!(bridge.wrapper_bin_dir().join("codex.ps1").is_file());
+            assert!(!bridge.wrapper_bin_dir().join("codex.cmd").exists());
+        }
         assert!(
             dir.join("root")
                 .join("scripts/wrappers/opencode-config/package.json")

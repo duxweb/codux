@@ -9,8 +9,8 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/agy"),
     ),
     (
-        "scripts/wrappers/bin/agy.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/agy.cmd"),
+        "scripts/wrappers/bin/agy.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/agy.ps1"),
     ),
     (
         "scripts/wrappers/bin/claude",
@@ -21,36 +21,36 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/claude-code"),
     ),
     (
-        "scripts/wrappers/bin/claude-code.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/claude-code.cmd"),
+        "scripts/wrappers/bin/claude-code.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/claude-code.ps1"),
     ),
     (
-        "scripts/wrappers/bin/claude.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/claude.cmd"),
+        "scripts/wrappers/bin/claude.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/claude.ps1"),
     ),
     (
         "scripts/wrappers/bin/codex",
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codex"),
     ),
     (
-        "scripts/wrappers/bin/codex.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codex.cmd"),
+        "scripts/wrappers/bin/codex.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codex.ps1"),
     ),
     (
         "scripts/wrappers/bin/codux-ssh",
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codux-ssh"),
     ),
     (
-        "scripts/wrappers/bin/codux-ssh.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codux-ssh.cmd"),
+        "scripts/wrappers/bin/codux-ssh.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codux-ssh.ps1"),
     ),
     (
         "scripts/wrappers/bin/gemini",
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/gemini"),
     ),
     (
-        "scripts/wrappers/bin/gemini.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/gemini.cmd"),
+        "scripts/wrappers/bin/gemini.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/gemini.ps1"),
     ),
     (
         "scripts/wrappers/bin/kiro",
@@ -61,20 +61,20 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kiro-cli"),
     ),
     (
-        "scripts/wrappers/bin/kiro-cli.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kiro-cli.cmd"),
+        "scripts/wrappers/bin/kiro-cli.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kiro-cli.ps1"),
     ),
     (
-        "scripts/wrappers/bin/kiro.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kiro.cmd"),
+        "scripts/wrappers/bin/kiro.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kiro.ps1"),
     ),
     (
         "scripts/wrappers/bin/opencode",
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/opencode"),
     ),
     (
-        "scripts/wrappers/bin/opencode.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/opencode.cmd"),
+        "scripts/wrappers/bin/opencode.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/opencode.ps1"),
     ),
     (
         "scripts/wrappers/codux-ssh-expect.exp",
@@ -83,10 +83,6 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
     (
         "scripts/wrappers/codux-ssh.ps1",
         include_bytes!("../../../runtime-assets/scripts/wrappers/codux-ssh.ps1"),
-    ),
-    (
-        "scripts/wrappers/dmux-ai-state.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/dmux-ai-state.cmd"),
     ),
     (
         "scripts/wrappers/dmux-ai-state.ps1",
@@ -105,10 +101,6 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         include_bytes!(
             "../../../runtime-assets/scripts/wrappers/opencode-config/plugins/dmux-runtime.js"
         ),
-    ),
-    (
-        "scripts/wrappers/tool-wrapper.cmd",
-        include_bytes!("../../../runtime-assets/scripts/wrappers/tool-wrapper.cmd"),
     ),
     (
         "scripts/wrappers/tool-wrapper.ps1",

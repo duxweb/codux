@@ -1,6 +1,8 @@
 use super::{
     super::{
-        command::{shell_quote, windows_cmd_quote_cross_platform},
+        command::{
+            shell_quote, windows_cmd_quote_cross_platform, windows_powershell_quote_cross_platform,
+        },
         json::load_json_object,
     },
     toml::json_string_literal,
@@ -101,6 +103,12 @@ fn is_codex_managed_hook_command(command: &str, action: &str) -> bool {
     if command.contains("dmux-ai-state.sh")
         && command.contains(&shell_quote(action))
         && command.contains(&shell_quote("codex"))
+    {
+        return true;
+    }
+    if command.contains("dmux-ai-state.ps1")
+        && command.contains(&windows_powershell_quote_cross_platform(action))
+        && command.contains(&windows_powershell_quote_cross_platform("codex"))
     {
         return true;
     }
