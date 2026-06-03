@@ -1,6 +1,6 @@
 use super::ai_runtime_status::AIActivityState;
 use super::app_state::CoduxTooltipPlacement;
-use super::ui_helpers::codux_tooltip_container_with_placement;
+use super::ui_helpers::{codux_tooltip_container_with_placement, titlebar_drag_area};
 use super::*;
 use codux_runtime::{i18n::translate, settings::locale_from_language_setting};
 
@@ -166,25 +166,27 @@ impl Render for ProjectColumnView {
 
 fn project_column_header(collapsed: bool) -> impl IntoElement {
     if collapsed {
-        div()
-            .h(px(48.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .window_control_area(WindowControlArea::Drag)
-            .when(!cfg!(target_os = "macos"), |this| {
-                this.child(
-                    div()
-                        .max_w(px(PROJECT_COLUMN_COLLAPSED_WIDTH - 12.0))
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .text_size(rems(1.0))
-                        .line_height(rems(1.25))
-                        .text_color(color(theme::TEXT))
-                        .child("Codux"),
-                )
-            })
-            .into_any_element()
+        titlebar_drag_area(
+            "project-column-titlebar-drag-collapsed",
+            div()
+                .h(px(48.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .when(!cfg!(target_os = "macos"), |this| {
+                    this.child(
+                        div()
+                            .max_w(px(PROJECT_COLUMN_COLLAPSED_WIDTH - 12.0))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_size(rems(1.0))
+                            .line_height(rems(1.25))
+                            .text_color(color(theme::TEXT))
+                            .child("Codux"),
+                    )
+                }),
+        )
+        .into_any_element()
     } else {
         div()
             .h(px(44.0))
@@ -193,20 +195,20 @@ fn project_column_header(collapsed: bool) -> impl IntoElement {
             .items_center()
             .border_b_1()
             .border_color(color(theme::BORDER_SOFT))
-            .child(
+            .child(titlebar_drag_area(
+                "project-column-titlebar-drag",
                 div()
                     .min_w_0()
                     .flex_1()
                     .h_full()
                     .flex()
                     .items_center()
-                    .window_control_area(WindowControlArea::Drag)
                     .text_size(rems(1.0))
                     .line_height(rems(1.25))
                     .text_color(color(theme::TEXT))
                     .when(cfg!(target_os = "macos"), |this| this.invisible())
                     .child("Codux"),
-            )
+            ))
             .into_any_element()
     }
 }

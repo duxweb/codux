@@ -30,7 +30,7 @@ impl CoduxApp {
                     .overflow_y_scrollbar()
                     .flex()
                     .flex_col()
-                    .gap(px(16.0))
+                    .gap(px(18.0))
                     .p(px(18.0))
                     .child(project_editor_field(
                         tr("project.editor.name", "Project Name"),
@@ -63,24 +63,14 @@ impl CoduxApp {
             )
             .child(
                 div()
-                    .h(px(62.0))
+                    .h(px(52.0))
                     .flex_shrink_0()
                     .border_t_1()
                     .border_color(color(theme::BORDER_SOFT).opacity(0.45))
                     .px(px(18.0))
                     .flex()
                     .items_center()
-                    .justify_between()
-                    .gap(px(12.0))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(rems(0.75))
-                            .line_height(rems(1.0))
-                            .text_color(color(theme::TEXT_DIM))
-                            .child(self.status_message.clone()),
-                    )
+                    .justify_end()
                     .child(
                         div()
                             .flex_none()
@@ -90,6 +80,7 @@ impl CoduxApp {
                             .child(
                                 Button::new("project-editor-cancel")
                                     .ghost()
+                                    .compact()
                                     .text_color(cx.theme().secondary_foreground)
                                     .label(tr("common.cancel", "Cancel"))
                                     .on_click(cx.listener(|_app, _event, window, _cx| {
@@ -99,6 +90,7 @@ impl CoduxApp {
                             .child(
                                 Button::new("project-editor-save")
                                     .primary()
+                                    .compact()
                                     .label(submit_label)
                                     .on_click(cx.listener(|app, _event, window, cx| {
                                         app.save_project_editor(window, cx);
@@ -177,7 +169,7 @@ fn project_editor_field(
     div()
         .flex()
         .flex_col()
-        .gap_2()
+        .gap(px(6.0))
         .child(
             div()
                 .text_size(rems(0.875))
@@ -207,7 +199,7 @@ fn project_editor_symbol_field(
     div()
         .flex()
         .flex_col()
-        .gap_2()
+        .gap(px(6.0))
         .child(
             div()
                 .text_size(rems(0.875))
@@ -217,8 +209,8 @@ fn project_editor_symbol_field(
         )
         .child(
             div()
-                .grid()
-                .grid_cols(6)
+                .flex()
+                .flex_wrap()
                 .gap_2()
                 .children(PROJECT_EDITOR_SYMBOLS.iter().map(|symbol| {
                     let id = symbol.id;
@@ -229,7 +221,7 @@ fn project_editor_symbol_field(
                     };
                     div()
                         .id(SharedString::from(format!("project-editor-symbol-{id}")))
-                        .h(px(34.0))
+                        .size(px(36.0))
                         .rounded(px(8.0))
                         .border_1()
                         .border_color(color(if selected {
@@ -277,7 +269,7 @@ fn project_editor_color_field(
     div()
         .flex()
         .flex_col()
-        .gap_2()
+        .gap(px(6.0))
         .child(
             div()
                 .text_size(rems(0.875))
@@ -285,33 +277,29 @@ fn project_editor_color_field(
                 .text_color(color(theme::TEXT))
                 .child(label),
         )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_3()
-                .children(PROJECT_BADGE_COLORS.iter().map(|value| {
-                    let selected = *value == selected_color;
-                    let swatch = hex_color(value).unwrap_or(theme::ACCENT);
-                    div()
-                        .id(SharedString::from(format!("project-editor-color-{value}")))
-                        .size(px(24.0))
-                        .rounded_full()
-                        .bg(color(swatch))
-                        .border_1()
-                        .border_color(color(if selected {
-                            theme::TEXT
-                        } else {
-                            theme::BORDER_SOFT
-                        }))
-                        .cursor_pointer()
-                        .hover(|style| style.opacity(0.86))
-                        .on_click(cx.listener(move |app, _event, window, cx| {
-                            app.set_project_editor_badge_color((*value).to_string(), window, cx);
-                        }))
-                        .into_any_element()
-                })),
-        )
+        .child(div().flex().flex_wrap().items_center().gap_3().children(
+            PROJECT_BADGE_COLORS.iter().map(|value| {
+                let selected = *value == selected_color;
+                let swatch = hex_color(value).unwrap_or(theme::ACCENT);
+                div()
+                    .id(SharedString::from(format!("project-editor-color-{value}")))
+                    .size(px(24.0))
+                    .rounded_full()
+                    .bg(color(swatch))
+                    .border_1()
+                    .border_color(color(if selected {
+                        theme::TEXT
+                    } else {
+                        theme::BORDER_SOFT
+                    }))
+                    .cursor_pointer()
+                    .hover(|style| style.opacity(0.86))
+                    .on_click(cx.listener(move |app, _event, window, cx| {
+                        app.set_project_editor_badge_color((*value).to_string(), window, cx);
+                    }))
+                    .into_any_element()
+            }),
+        ))
         .into_any_element()
 }
 
@@ -370,7 +358,7 @@ fn project_editor_path_field(
     div()
         .flex()
         .flex_col()
-        .gap_2()
+        .gap(px(6.0))
         .child(
             div()
                 .text_size(rems(0.875))
@@ -394,6 +382,7 @@ fn project_editor_path_field(
                 .child(
                     Button::new("project-editor-choose-path")
                         .secondary()
+                        .compact()
                         .text_color(cx.theme().secondary_foreground)
                         .label(choose_label)
                         .on_click(cx.listener(|app, _event, window, cx| {

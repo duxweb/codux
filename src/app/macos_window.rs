@@ -174,6 +174,7 @@ unsafe fn compact_window_button(button: id) {
         let target_size = 10.0;
         frame.origin.x += (frame.size.width - target_size) / 2.0;
         frame.origin.y += (frame.size.height - target_size) / 2.0;
+        frame.origin.y -= 3.0;
         frame.size = NSSize::new(target_size, target_size);
         let _: () = msg_send![button, setFrame: frame];
     }

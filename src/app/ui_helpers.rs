@@ -1,8 +1,8 @@
 use super::*;
 use crate::app::app_state::{CoduxTooltipPlacement, CoduxTooltipState};
 use gpui::{
-    deferred, AnyElement, Display, Element, GlobalElementId, InspectorElementId,
-    InteractiveElement, LayoutId, Position, Stateful, Style,
+    AnyElement, Display, Element, GlobalElementId, InspectorElementId, InteractiveElement,
+    LayoutId, Position, Stateful, Style, deferred,
 };
 
 pub(in crate::app) fn with_codux_tooltip(
@@ -37,6 +37,12 @@ pub(in crate::app) fn codux_tooltip_container_with_placement(
         .id(id)
         .flex_none()
         .on_prepaint(move |element_bounds, _, _| bounds_writer.set(element_bounds))
+        .on_click({
+            let app_entity = app_entity.clone();
+            move |_event, _window, cx| {
+                app_entity.update(cx, |app, cx| app.clear_codux_tooltip(cx));
+            }
+        })
         .on_hover(move |hovered, _window, cx| {
             app_entity.update(cx, |app, cx| {
                 app.set_codux_tooltip(
@@ -307,6 +313,26 @@ pub(in crate::app) fn column_header(
         .border_color(cx.theme().border)
         .bg(cx.theme().title_bar)
         .child(content)
+}
+
+pub(in crate::app) fn titlebar_drag_area(
+    id: impl Into<ElementId>,
+    element: gpui::Div,
+) -> impl IntoElement {
+    element
+        .id(id)
+        .window_control_area(WindowControlArea::Drag)
+        .when(!cfg!(target_os = "windows"), |this| {
+            this.on_click(|event, window, _| {
+                if event.click_count() == 2 {
+                    if cfg!(target_os = "macos") {
+                        window.titlebar_double_click();
+                    } else {
+                        window.zoom_window();
+                    }
+                }
+            })
+        })
 }
 
 pub(in crate::app) fn header_icon_button(

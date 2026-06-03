@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::{
-    ui_helpers::with_codux_tooltip,
+    ui_helpers::{titlebar_drag_area, with_codux_tooltip},
     workspace_daily_level::{workspace_level_button, workspace_today_level_tokens},
     workspace_pet_widgets::workspace_pet_button,
     workspace_shared::{workspace_header_button, workspace_i18n},
@@ -40,12 +40,10 @@ impl CoduxApp {
                             cx,
                         )),
                 )
-                .child(
-                    div()
-                        .flex_1()
-                        .h_full()
-                        .window_control_area(WindowControlArea::Drag),
-                )
+                .child(titlebar_drag_area(
+                    "workspace-titlebar-drag",
+                    div().flex_1().h_full(),
+                ))
                 .child(
                     div()
                         .flex()

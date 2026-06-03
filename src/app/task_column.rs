@@ -1,7 +1,7 @@
 use gpui_component::{InteractiveElementExt as _, menu::ContextMenuExt as _};
 
 use super::ai_runtime_status::AIActivityState;
-use super::ui_helpers::codux_tooltip_container;
+use super::ui_helpers::{codux_tooltip_container, titlebar_drag_area};
 use super::{formatting::relative_time_label_for_language, *};
 
 pub(in crate::app) struct TaskColumnView {
@@ -421,18 +421,18 @@ fn task_column_header(
                 .items_center()
                 .justify_between()
                 .w_full()
-                .child(
+                .child(titlebar_drag_area(
+                    "task-column-titlebar-drag",
                     div()
                         .flex_1()
                         .h_full()
                         .flex()
                         .items_center()
-                        .window_control_area(WindowControlArea::Drag)
                         .text_sm()
                         .text_color(color(theme::TEXT))
                         .truncate()
                         .child(project_name),
-                )
+                ))
                 .child(
                     div()
                         .flex()
