@@ -198,6 +198,10 @@ impl CoduxApp {
     }
 
     pub(super) fn open_desktop_pet_window(&mut self, cx: &mut Context<Self>) {
+        if self.window_mode != AppWindowMode::Main {
+            return;
+        }
+
         if let Some(handle) = self.desktop_pet_window {
             if handle.update(cx, |_view, _window, _cx| {}).is_ok() {
                 self.status_message = "desktop pet window already opened".to_string();

@@ -380,11 +380,8 @@ impl CoduxApp {
                     "desktop pet setting saved: {}",
                     if enabled { "on" } else { "off" }
                 );
-                if enabled {
-                    self.open_desktop_pet_window(cx);
-                    return;
-                } else {
-                    self.close_desktop_pet_window(cx);
+                if self.window_mode == AppWindowMode::Main {
+                    self.sync_desktop_pet_window(false, cx);
                 }
             }
             Err(error) => {

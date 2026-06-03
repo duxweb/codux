@@ -178,7 +178,7 @@ impl CoduxApp {
         let subtitle = translate(
             &locale,
             "welcome.subtitle",
-            "Create a new project or open an existing folder to get started.",
+            "Create a new project or open an existing folder to get started",
         );
         let new_project = translate(&locale, "menu.file.new_project", "New Project");
         let open_project = translate(&locale, "welcome.open_project", "Open Project");

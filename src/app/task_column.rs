@@ -847,7 +847,7 @@ fn ai_session_compact_row(
         .gap(px(2.0))
         .rounded(px(8.0))
         .px_2()
-        .py_2()
+        .py_1()
         .cursor_pointer()
         .hover(|style| style.bg(cx.theme().secondary_hover))
         .on_double_click(move |_, window, cx| {
