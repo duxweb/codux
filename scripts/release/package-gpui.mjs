@@ -254,7 +254,7 @@ function signTauriUpdaterArtifact(filePath) {
     TAURI_PRIVATE_KEY_PASSWORD: password,
   };
   run(
-    "npx",
+    nodeBin("npx"),
     ["--yes", "@tauri-apps/cli@2.0.0-rc.4", "signer", "sign", filePath],
     { env },
   );
@@ -310,6 +310,10 @@ function windowsMakensisCommand() {
     "makensis",
   ].filter(Boolean);
   return candidates.find((candidate) => candidate === "makensis" || fs.existsSync(candidate)) || "makensis";
+}
+
+function nodeBin(command) {
+  return process.platform === "win32" ? `${command}.cmd` : command;
 }
 
 function run(command, args, options = {}) {
