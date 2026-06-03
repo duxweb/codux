@@ -1537,6 +1537,7 @@ impl Element for TerminalElement {
             &snapshot,
             selection,
             self.cursor_visible,
+            _window,
         )
     }
 
@@ -1590,7 +1591,7 @@ struct TerminalCursorPaint {
     point: TerminalPoint,
     shape: CursorShape,
     color: Hsla,
-    width_cols: usize,
+    width: Pixels,
     text_run: Option<TerminalTextRun>,
 }
 
@@ -1635,11 +1636,7 @@ impl TerminalCursorPaint {
                 y: px(f32::from(y).floor()),
             },
             size: Size {
-                width: px(
-                    (f32::from(renderer.cell_width) * self.width_cols.max(1) as f32)
-                        .round()
-                        .max(1.0),
-                ),
+                width: px(f32::from(self.width).round().max(1.0)),
                 height: px(f32::from(renderer.cell_height).round().max(1.0)),
             },
         };
@@ -2631,6 +2628,7 @@ impl TerminalRenderer {
         content: &TerminalContent,
         selection: Option<SelectionRange>,
         cursor_visible: bool,
+        window: &mut Window,
     ) -> TerminalPaintState {
         let colors = &content.colors;
         let default_bg = self
@@ -2678,9 +2676,7 @@ impl TerminalRenderer {
                 let col = content.cursor.point.column.0;
                 if row >= 0 && (row as usize) < content.screen_lines && col < content.columns {
                     let cursor_cell = rows[row as usize][col];
-                    let width_cols = cursor_cell
-                        .filter(|cell| cell.flags.contains(Flags::WIDE_CHAR))
-                        .map_or(1, |_| 2);
+                    let cursor_width = self.cursor_width(cursor_cell, default_bg, window);
                     let text_run = cursor_cell
                         .filter(|cell| {
                             content.cursor.shape == CursorShape::Block
@@ -2726,7 +2722,7 @@ impl TerminalRenderer {
                         color: self
                             .palette
                             .resolve(Color::Named(NamedColor::Cursor), colors),
-                        width_cols,
+                        width: cursor_width,
                         text_run,
                     }
                 } else {
@@ -2736,28 +2732,30 @@ impl TerminalRenderer {
                         color: self
                             .palette
                             .resolve(Color::Named(NamedColor::Cursor), colors),
-                        width_cols: 1,
+                        width: self.cell_width,
                         text_run: None,
                     }
                 }
             });
         let ime_cursor_bounds = (content.display_offset == 0).then(|| {
-            let width_cols = if content.cursor.point.line.0 >= 0
+            let width = if content.cursor.point.line.0 >= 0
                 && (content.cursor.point.line.0 as usize) < content.screen_lines
                 && content.cursor.point.column.0 < content.columns
             {
-                rows[content.cursor.point.line.0 as usize][content.cursor.point.column.0]
-                    .filter(|cell| cell.flags.contains(Flags::WIDE_CHAR))
-                    .map_or(1, |_| 2)
+                self.cursor_width(
+                    rows[content.cursor.point.line.0 as usize][content.cursor.point.column.0],
+                    default_bg,
+                    window,
+                )
             } else {
-                1
+                self.cell_width
             };
             let x = origin.x + self.cell_width * content.cursor.point.column.0 as f32;
             let y = origin.y + self.cell_height * content.cursor.point.line.0 as f32;
             Bounds {
                 origin: Point { x, y },
                 size: Size {
-                    width: self.cell_width * width_cols as f32,
+                    width,
                     height: self.cell_height,
                 },
             }
@@ -2773,6 +2771,50 @@ impl TerminalRenderer {
             marked_text_cursor: (content.display_offset == 0).then_some(content.cursor.point),
             ime_cursor_bounds,
         }
+    }
+
+    fn cursor_width(
+        &self,
+        cursor_cell: Option<&Cell>,
+        default_bg: Hsla,
+        window: &mut Window,
+    ) -> Pixels {
+        let Some(cell) = cursor_cell else {
+            return self.cell_width;
+        };
+        if cell.c == '\0' || cell.c.is_whitespace() || cell.flags.contains(Flags::WIDE_CHAR_SPACER)
+        {
+            return self.cell_width;
+        }
+
+        let font = self.font(
+            if cell.flags.contains(Flags::BOLD) {
+                FontWeight::SEMIBOLD
+            } else {
+                FontWeight::NORMAL
+            },
+            if cell.flags.contains(Flags::ITALIC) {
+                FontStyle::Italic
+            } else {
+                FontStyle::Normal
+            },
+        );
+        let text = cell.c.to_string();
+        let shaped = window.text_system().shape_line(
+            SharedString::from(text),
+            self.font_size,
+            &[TextRun {
+                len: cell.c.len_utf8(),
+                font,
+                color: default_bg,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            }],
+            None,
+        );
+
+        shaped.width.max(self.cell_width)
     }
 
     fn prepare_row_backgrounds(
