@@ -29,8 +29,8 @@ use std::time::Duration;
 use windows_sys::Win32::{
     Foundation::{HWND, POINT},
     Graphics::Dwm::{
-        DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY, DWMWA_WINDOW_CORNER_PREFERENCE,
-        DWMWCP_DONOTROUND, DWMNCRP_DISABLED, DwmSetWindowAttribute,
+        DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY,
+        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute,
     },
     Graphics::Gdi::ClientToScreen,
     UI::WindowsAndMessaging::{
@@ -233,12 +233,7 @@ pub(in crate::app) fn make_desktop_pet_window_transparent(window: &mut gpui::Win
 
     unsafe {
         let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-        let style = style
-            & !(WS_CAPTION
-                | WS_THICKFRAME
-                | WS_BORDER
-                | WS_DLGFRAME
-                | WS_SYSMENU);
+        let style = style & !(WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME | WS_SYSMENU);
         let _ = SetWindowLongPtrW(hwnd, GWL_STYLE, style as isize);
 
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;

@@ -1,5 +1,4 @@
 use super::*;
-use uuid::Uuid;
 
 impl CoduxApp {
     pub(in crate::app) fn add_terminal_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -380,11 +379,9 @@ impl CoduxApp {
             .as_ref()
             .map(|context| context.project_id.as_str())
             .unwrap_or("unscoped");
-        let terminal_id = format!("gpui-term-{owner_id}-ai-restore-{}", Uuid::new_v4());
-        let slot_id = format!("gpui-pane-{owner_id}-ai-restore-{}", Uuid::new_v4());
         let pane_plan = TerminalPanePlan {
-            source_id: Some(slot_id),
-            terminal_id: Some(terminal_id),
+            source_id: Some(top_slot_id(owner_id, pane_index)),
+            terminal_id: Some(top_terminal_id(owner_id, pane_index)),
             title: title.clone(),
             restored_output_bytes: 0,
             restored_output_tail: String::new(),

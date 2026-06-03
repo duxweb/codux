@@ -516,7 +516,6 @@ impl CoduxApp {
     }
 
     fn shutdown_runtime_state(&mut self) {
-
         codux_runtime::config::flush_all_config_writes();
 
         let support_dir = self.state.support_dir.clone();

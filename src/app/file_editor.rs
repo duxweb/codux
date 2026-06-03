@@ -226,9 +226,10 @@ impl FileEditorTabBarView {
             return;
         }
         if self.snapshot.active_path != snapshot.active_path
-            && let Some(index) = snapshot.tabs.iter().position(|tab| {
-                Some(tab.relative_path.as_str()) == snapshot.active_path.as_deref()
-            })
+            && let Some(index) = snapshot
+                .tabs
+                .iter()
+                .position(|tab| Some(tab.relative_path.as_str()) == snapshot.active_path.as_deref())
         {
             self.tab_scroll_handle.scroll_to_item(index);
         }
