@@ -17,8 +17,12 @@ impl CoduxApp {
             return store.clone();
         }
 
+        let activity = self.project_activity_snapshot();
         let store = cx.new(|_| {
-            ProjectListStore::new(self.state.projects.clone(), self.selected_project_id())
+            let mut store =
+                ProjectListStore::new(self.state.projects.clone(), self.selected_project_id());
+            store.activity = activity;
+            store
         });
         self.project_list_store = Some(store.clone());
         store

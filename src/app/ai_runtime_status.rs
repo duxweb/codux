@@ -37,6 +37,13 @@ pub(in crate::app) fn terminal_layout_owner_id(state: &RuntimeState) -> Option<S
         })
 }
 
+pub(in crate::app) fn ai_activity_project_states_changed(
+    previous: &[AIRuntimeProjectStateSummary],
+    next: &[AIRuntimeProjectStateSummary],
+) -> bool {
+    previous != next
+}
+
 impl CoduxApp {
     pub(in crate::app) fn ai_activity_for_worktree(
         &self,
@@ -172,4 +179,42 @@ fn phase_to_activity(phase: &AIRuntimeProjectPhaseSummary) -> AIActivityState {
 
 fn is_idle_phase(phase: &AIRuntimeProjectPhaseSummary) -> bool {
     phase.kind.is_empty() || phase.kind == "idle"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codux_runtime::ai_runtime_state::AIRuntimeProjectTotalsSummary;
+
+    fn project_state(project_id: &str, kind: &str) -> AIRuntimeProjectStateSummary {
+        AIRuntimeProjectStateSummary {
+            project_id: project_id.to_string(),
+            project_phase: AIRuntimeProjectPhaseSummary {
+                kind: kind.to_string(),
+                updated_at: 1.0,
+                ..Default::default()
+            },
+            completed_phase: AIRuntimeProjectPhaseSummary::default(),
+            totals: AIRuntimeProjectTotalsSummary {
+                project_id: project_id.to_string(),
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn ai_activity_project_states_changed_tracks_phase_changes() {
+        let previous = vec![project_state("project-a", "idle")];
+        let next = vec![project_state("project-a", "running")];
+
+        assert!(ai_activity_project_states_changed(&previous, &next));
+    }
+
+    #[test]
+    fn ai_activity_project_states_changed_ignores_equal_project_states() {
+        let previous = vec![project_state("project-a", "running")];
+        let next = previous.clone();
+
+        assert!(!ai_activity_project_states_changed(&previous, &next));
+    }
 }

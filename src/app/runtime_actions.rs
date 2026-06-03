@@ -197,7 +197,7 @@ impl CoduxApp {
         result: &RuntimeActivityTickResult,
         cx: &mut Context<Self>,
     ) {
-        if result.project_events > 0 || result.ai_events > 0 {
+        if result.project_events > 0 || result.ai_events > 0 || result.ai_activity_changed {
             self.invalidate_ui(
                 cx,
                 [

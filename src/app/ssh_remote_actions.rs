@@ -1015,11 +1015,17 @@ impl CoduxApp {
         let should_refresh_ai_state = include_scheduled_tick
             || !drained.events.is_empty()
             || self.ai_runtime_state_save_tick % 30 == 0;
+        let mut ai_activity_changed = false;
         if should_refresh_ai_state {
+            let previous_project_states = self.state.ai_runtime_state.project_states.clone();
             let live_ai_snapshot = self.runtime_service.ai_runtime_state_snapshot();
             self.state.ai_runtime_state = self
                 .runtime_service
                 .summarize_ai_runtime_state_snapshot(&live_ai_snapshot);
+            ai_activity_changed = super::ai_runtime_status::ai_activity_project_states_changed(
+                &previous_project_states,
+                &self.state.ai_runtime_state.project_states,
+            );
         }
         if include_scheduled_tick {
             self.refresh_global_today_ai_tokens();
@@ -1053,11 +1059,12 @@ impl CoduxApp {
             || child_window_events > 0
             || !remote_events.is_empty()
             || !drained.events.is_empty()
+            || ai_activity_changed
             || !drained.memory.is_empty()
             || memory_update_event
             || has_scheduled_refresh;
         if changed {
-            if !drained.events.is_empty() {
+            if !drained.events.is_empty() || ai_activity_changed {
                 self.sync_project_activity_store(cx);
                 self.invalidate_task_column(cx);
             }
@@ -1088,6 +1095,7 @@ impl CoduxApp {
             pet_events: applied_pet_events,
             pet_update_events: applied_pet_update_events,
             ai_events: drained.events.len(),
+            ai_activity_changed,
             memory_events: drained.memory.len(),
             dock_badge_count,
             changed,
@@ -1112,10 +1120,15 @@ impl CoduxApp {
         }
 
         self.dispatch_ai_completion_notifications(&drained.events);
+        let previous_project_states = self.state.ai_runtime_state.project_states.clone();
         let live_ai_snapshot = self.runtime_service.ai_runtime_state_snapshot();
         self.state.ai_runtime_state = self
             .runtime_service
             .summarize_ai_runtime_state_snapshot(&live_ai_snapshot);
+        let ai_activity_changed = super::ai_runtime_status::ai_activity_project_states_changed(
+            &previous_project_states,
+            &self.state.ai_runtime_state.project_states,
+        );
 
         if !drained.memory.is_empty() || memory_update_event {
             self.state.memory = self.runtime_service.reload_memory(
@@ -1147,6 +1160,7 @@ impl CoduxApp {
 
         RuntimeActivityTickResult {
             ai_events: drained.events.len(),
+            ai_activity_changed,
             memory_events: drained.memory.len() + usize::from(memory_update_event),
             changed: true,
             ai_state_error: None,

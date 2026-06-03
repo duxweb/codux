@@ -296,6 +296,7 @@ pub(in crate::app) struct RuntimeActivityTickResult {
     pub(in crate::app) pet_events: usize,
     pub(in crate::app) pet_update_events: usize,
     pub(in crate::app) ai_events: usize,
+    pub(in crate::app) ai_activity_changed: bool,
     pub(in crate::app) memory_events: usize,
     pub(in crate::app) dock_badge_count: Option<i64>,
     pub(in crate::app) changed: bool,
