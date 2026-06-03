@@ -117,6 +117,12 @@ fn open_main_window(
 }
 
 fn window_icon_image(settings: &codux_runtime::settings::SettingsSummary) -> image::RgbaImage {
+    #[cfg(target_os = "windows")]
+    let icon = codux_runtime::app_icon::render_windows_app_icon(
+        &settings.icon_style,
+        codux_runtime::app_icon::ICON_SIZE,
+    );
+    #[cfg(not(target_os = "windows"))]
     let icon = codux_runtime::app_icon::render_app_icon(
         &settings.icon_style,
         codux_runtime::app_icon::ICON_SIZE,

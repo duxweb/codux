@@ -12,14 +12,29 @@ struct IconPalette {
 }
 
 pub const ICON_SIZE: u32 = 128;
-const ICON_CONTENT_INSET_RATIO: f32 = 0.09;
+const MACOS_ICON_CONTENT_INSET_RATIO: f32 = 0.09;
+const WINDOWS_ICON_CONTENT_INSET_RATIO: f32 = 0.0;
 
 pub fn render_app_icon(style: &str, size: u32) -> AppIconImage {
+    render_app_icon_with_inset(style, size, MACOS_ICON_CONTENT_INSET_RATIO)
+}
+
+pub fn render_windows_app_icon(style: &str, size: u32) -> AppIconImage {
+    render_app_icon_with_inset(style, size, WINDOWS_ICON_CONTENT_INSET_RATIO)
+}
+
+fn render_app_icon_with_inset(style: &str, size: u32, inset_ratio: f32) -> AppIconImage {
     let palette = icon_palette(style);
     let mut pixels = vec![0_u8; (size * size * 4) as usize];
     for y in 0..size {
         for x in 0..size {
-            let color = icon_pixel(x as f32 + 0.5, y as f32 + 0.5, size as f32, palette);
+            let color = icon_pixel(
+                x as f32 + 0.5,
+                y as f32 + 0.5,
+                size as f32,
+                palette,
+                inset_ratio,
+            );
             let offset = ((y * size + x) * 4) as usize;
             pixels[offset] = to_u8(color[0]);
             pixels[offset + 1] = to_u8(color[1]);
@@ -94,8 +109,8 @@ fn apply_app_icon_impl(_style: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn icon_pixel(x: f32, y: f32, size: f32, palette: IconPalette) -> [f32; 4] {
-    let inset = size * ICON_CONTENT_INSET_RATIO;
+fn icon_pixel(x: f32, y: f32, size: f32, palette: IconPalette, inset_ratio: f32) -> [f32; 4] {
+    let inset = size * inset_ratio;
     let rect_min = inset;
     let rect_max = size - inset;
     let rect_size = rect_max - rect_min;
@@ -256,5 +271,31 @@ mod tests {
         let ratio = visual_width as f32 / image.width as f32;
 
         assert!((0.81..=0.83).contains(&ratio), "ratio={ratio}");
+    }
+
+    #[test]
+    fn rendered_windows_icon_uses_full_canvas() {
+        let image = render_windows_app_icon("default", 256);
+        let mut min_x = image.width;
+        let mut min_y = image.height;
+        let mut max_x = 0;
+        let mut max_y = 0;
+        for y in 0..image.height {
+            for x in 0..image.width {
+                let alpha = image.pixels[((y * image.width + x) * 4 + 3) as usize];
+                if alpha == 0 {
+                    continue;
+                }
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+        }
+
+        assert_eq!(min_x, 0);
+        assert_eq!(min_y, 0);
+        assert_eq!(max_x, image.width - 1);
+        assert_eq!(max_y, image.height - 1);
     }
 }
