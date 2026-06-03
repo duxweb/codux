@@ -73,6 +73,11 @@ impl FileTreeStateService {
             .put_json_debounced(FILE_TREE_STATE_NAMESPACE, owner_id, state)
     }
 
+    pub fn delete(&self, owner_id: &str) -> Result<bool, String> {
+        crate::persistent_cache::PersistentCacheStore::for_support_dir(self.support_dir.clone())?
+            .delete_json(FILE_TREE_STATE_NAMESPACE, owner_id)
+    }
+
     fn cache_state(&self, owner_id: &str) -> Option<FileTreeStateSummary> {
         crate::persistent_cache::PersistentCacheStore::for_support_dir(self.support_dir.clone())
             .ok()?

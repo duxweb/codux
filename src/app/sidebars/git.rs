@@ -1,9 +1,9 @@
 use super::*;
 use crate::app::ui_helpers::codux_tooltip_container;
 use codux_runtime::git::GitReviewFile;
-use gpui::{ClickEvent, Div, ListSizingBehavior, Pixels, Stateful};
+use gpui::{Animation, AnimationExt as _, ClickEvent, Div, ListSizingBehavior, Pixels, Stateful};
 use gpui_component::input::{Input, InputEvent, InputState};
-use std::ops::Range;
+use std::{ops::Range, time::Duration};
 
 #[derive(Clone)]
 pub(in crate::app) struct GitSidebarLabels {
@@ -1601,17 +1601,23 @@ fn git_empty_repository_panel(
 
 fn git_clone_indeterminate_progress() -> impl IntoElement {
     div()
-        .mt(px(12.0))
-        .w(px(180.0))
+        .mt(px(8.0))
+        .w_full()
         .h(px(4.0))
         .rounded(px(4.0))
+        .overflow_hidden()
         .bg(color(theme::BORDER_SOFT))
         .child(
             div()
                 .h_full()
-                .w(gpui::relative(0.42))
+                .w(gpui::relative(0.34))
                 .rounded(px(4.0))
-                .bg(color(theme::ACCENT)),
+                .bg(color(theme::ACCENT))
+                .with_animation(
+                    "git-clone-progress",
+                    Animation::new(Duration::from_millis(980)).repeat(),
+                    |bar, delta| bar.ml(gpui::relative(-0.34 + delta * 1.34)),
+                ),
         )
 }
 
@@ -1684,23 +1690,19 @@ pub(in crate::app) fn git_clone_window_workspace(
                 .p(px(18.0))
                 .flex()
                 .flex_col()
-                .gap(px(14.0))
+                .gap(px(12.0))
                 .child(git_clone_input_label(labels.remote_url.clone()))
                 .child(
-                    Input::new(&input_state)
-                        .disabled(cloning)
-                        .with_size(gpui_component::Size::Medium),
-                )
-                .when(cloning, |this| {
-                    this.child(
-                        div()
-                            .text_size(rems(0.75))
-                            .line_height(rems(1.0))
-                            .text_color(color(theme::TEXT_MUTED))
-                            .child(labels.clone_preparing.clone()),
-                    )
-                    .child(git_clone_indeterminate_progress())
-                }),
+                    div()
+                        .child(
+                            Input::new(&input_state)
+                                .disabled(cloning)
+                                .with_size(gpui_component::Size::Medium),
+                        )
+                        .when(cloning, |this| {
+                            this.child(git_clone_indeterminate_progress())
+                        }),
+                ),
         )
         .child(
             div()

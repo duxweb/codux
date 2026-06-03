@@ -120,6 +120,11 @@ impl TerminalLayoutService {
             .put_json_debounced(TERMINAL_LAYOUT_NAMESPACE, project_id, &layout)?;
         Ok(layout)
     }
+
+    pub fn delete(&self, project_id: &str) -> Result<bool, String> {
+        crate::persistent_cache::PersistentCacheStore::for_support_dir(self.support_dir.clone())?
+            .delete_json(TERMINAL_LAYOUT_NAMESPACE, project_id)
+    }
 }
 
 pub(crate) fn terminal_layout_cache_namespace() -> &'static str {

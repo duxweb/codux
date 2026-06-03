@@ -847,8 +847,8 @@ impl CoduxApp {
             AuxiliaryWindowSpec {
                 slot: AuxiliaryWindowSlot::GitClone,
                 title: SharedString::from(labels.clone_repository.clone()),
-                size: size(px(420.0), px(230.0)),
-                min_size: size(px(360.0), px(210.0)),
+                size: size(px(420.0), px(204.0)),
+                min_size: size(px(360.0), px(190.0)),
                 already_open_message: "Git clone window already opened",
                 opened_message: "Git clone window opened",
                 failed_prefix: "failed to open Git clone window",
@@ -1053,7 +1053,7 @@ impl CoduxApp {
                 self.refresh_files_panel_state_async(cx);
             }
             WorkspaceView::Review => {
-                self.assistant_panel = Some(AssistantPanel::Git);
+                self.assistant_panel = None;
                 self.refresh_git_panel_state_async(cx);
                 self.ensure_selected_git_review_file_loaded_async(cx);
             }

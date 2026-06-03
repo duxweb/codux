@@ -25,7 +25,7 @@ use constants::*;
 #[cfg(test)]
 use crypto::pet_state_cipher_key;
 use crypto::{decode_pet_state_data, encode_pet_state_data};
-pub use history_inputs::{claim_input_from_indexed_history, refresh_input_from_indexed_history};
+pub use history_inputs::refresh_input_from_indexed_history;
 use install::install_custom_pet;
 use migration::{load_mac_pet_state, migrate_mac_custom_pets_if_needed};
 use progress::{default_persona_id, pet_progress_info};

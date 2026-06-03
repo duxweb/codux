@@ -61,9 +61,10 @@ impl RuntimeService {
         request: ProjectCloseRequest,
     ) -> Result<ProjectListSnapshot, String> {
         let project_id = request.project_id.clone();
+        let workspace_ids = self.project_workspace_ids_for_root(&project_id);
         let snapshot =
             ProjectStore::new(self.support_dir.clone()).close_project_snapshot(project_id.clone())?;
-        let _ = self.forget_pet_project_baseline(&project_id);
+        self.cleanup_project_workspace_data(&workspace_ids);
         self.project_activity.remove_project(&project_id);
         if let Some(next_project_id) = snapshot.selected_project_id.as_deref() {
             let _ = self.mark_project_active_with_watch(next_project_id);
@@ -74,7 +75,9 @@ impl RuntimeService {
     }
 
     pub fn project_close_all(&self) -> Result<ProjectListSnapshot, String> {
+        let workspace_ids = self.all_project_workspace_ids();
         let snapshot = ProjectStore::new(self.support_dir.clone()).close_all_projects()?;
+        self.cleanup_project_workspace_data(&workspace_ids);
         let _ = self.forget_all_pet_project_baselines();
         self.project_activity.clear();
         self.stop_active_project_files();
@@ -162,8 +165,9 @@ impl RuntimeService {
     }
 
     pub fn close_project(&self, project_id: &str) -> Result<Option<String>, String> {
+        let workspace_ids = self.project_workspace_ids_for_root(project_id);
         let next_project_id = ProjectStore::new(self.support_dir.clone()).close_project(project_id)?;
-        let _ = self.forget_pet_project_baseline(project_id);
+        self.cleanup_project_workspace_data(&workspace_ids);
         self.project_activity.remove_project(project_id);
         if let Some(next_project_id) = next_project_id.as_deref() {
             let _ = self.mark_project_active_with_watch(next_project_id);
@@ -186,5 +190,41 @@ impl RuntimeService {
             result.content,
             !result.is_binary && !result.is_large && !result.is_truncated,
         ))
+    }
+
+    fn project_workspace_ids_for_root(&self, project_id: &str) -> Vec<String> {
+        ProjectStore::new(self.support_dir.clone())
+            .project_workspaces_snapshot()
+            .into_iter()
+            .filter(|workspace| workspace.root_project_id == project_id)
+            .map(|workspace| workspace.id)
+            .collect()
+    }
+
+    fn all_project_workspace_ids(&self) -> Vec<String> {
+        ProjectStore::new(self.support_dir.clone())
+            .project_workspaces_snapshot()
+            .into_iter()
+            .map(|workspace| workspace.id)
+            .collect()
+    }
+
+    fn cleanup_project_workspace_data(&self, workspace_ids: &[String]) {
+        if workspace_ids.is_empty() {
+            return;
+        }
+
+        let terminal_layout = TerminalLayoutService::new(self.support_dir.clone());
+        let file_editor_layout = FileEditorLayoutService::new(self.support_dir.clone());
+        let file_tree_state = FileTreeStateService::new(self.support_dir.clone());
+        let git_ui_state = GitUiStateService::new(self.support_dir.clone());
+
+        for workspace_id in workspace_ids {
+            let _ = self.forget_pet_project_baseline(workspace_id);
+            let _ = terminal_layout.delete(workspace_id);
+            let _ = file_editor_layout.delete(workspace_id);
+            let _ = file_tree_state.delete(workspace_id);
+            let _ = git_ui_state.delete(workspace_id);
+        }
     }
 }

@@ -494,6 +494,7 @@ fn runtime_dock_badge_count(
 #[cfg(test)]
 mod app_runtime_ready_tests {
     use super::*;
+    use crate::terminal_layout::TerminalPaneSummary;
     use serde_json::json;
     use std::{fs, path::PathBuf};
 
@@ -771,6 +772,186 @@ mod app_runtime_ready_tests {
         assert_eq!(pet.global_normalized_total_watermark, None);
 
         let _ = fs::remove_dir_all(support_dir);
+    }
+
+    #[test]
+    fn project_close_cleans_workspace_cache_for_root_and_worktrees() {
+        let support_dir = std::env::temp_dir().join(format!(
+            "codux-project-close-workspace-cache-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let project_dir = support_dir.join("project");
+        let worktree_dir = support_dir.join("worktree");
+        fs::create_dir_all(&project_dir).expect("create project dir");
+        fs::create_dir_all(&worktree_dir).expect("create worktree dir");
+        fs::write(
+            support_dir.join("state.json"),
+            json!({
+                "projects": [
+                    {
+                        "id": "project-1",
+                        "name": "Project",
+                        "path": project_dir.to_string_lossy()
+                    }
+                ],
+                "worktrees": [
+                    {
+                        "id": "worktree-1",
+                        "projectId": "project-1",
+                        "name": "Task",
+                        "branch": "task",
+                        "path": worktree_dir.to_string_lossy(),
+                        "status": "active",
+                        "isDefault": false,
+                        "createdAt": 1,
+                        "updatedAt": 1
+                    }
+                ],
+                "worktreeTasks": [
+                    {
+                        "worktreeId": "worktree-1",
+                        "title": "Task",
+                        "baseBranch": "main",
+                        "status": "active",
+                        "createdAt": 1,
+                        "updatedAt": 1
+                    }
+                ],
+                "selectedProjectId": "project-1",
+                "selectedWorktreeIdByProject": {
+                    "project-1": "worktree-1"
+                }
+            })
+            .to_string(),
+        )
+        .expect("write state");
+
+        let service = RuntimeService::new(PathBuf::from(&support_dir));
+        service
+            .save_terminal_layout(
+                "project-1",
+                Vec::new(),
+                String::new(),
+                vec![TerminalPaneSummary {
+                    id: "pane-1".to_string(),
+                    title: "Shell".to_string(),
+                    terminal_id: "terminal-1".to_string(),
+                }],
+                "pane-1".to_string(),
+            )
+            .expect("save project terminal layout");
+        service
+            .save_file_editor_layout(
+                "worktree-1",
+                vec![FileEditorTabSummary {
+                    path: "src/main.rs".to_string(),
+                    label: "main.rs".to_string(),
+                    language: "rust".to_string(),
+                }],
+                Some("src/main.rs".to_string()),
+            )
+            .expect("save worktree file editor layout");
+        service
+            .save_file_tree_state(
+                "worktree-1",
+                FileTreeStateSummary {
+                    file_directory: "src".to_string(),
+                    selected_file_entry: Some("src/main.rs".to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect("save worktree file tree state");
+        service
+            .save_git_ui_state(
+                "worktree-1",
+                GitUiStateSummary {
+                    selected_git_file: Some("src/main.rs".to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect("save worktree git ui state");
+
+        let mut pet_snapshot = crate::pet::PetSnapshot {
+            claimed_at: Some(1),
+            species: "codux".to_string(),
+            global_normalized_total_watermark: Some(30),
+            ..crate::pet::PetSnapshot::default()
+        };
+        pet_snapshot
+            .project_normalized_token_watermarks
+            .insert("project-1".to_string(), 10);
+        pet_snapshot
+            .project_normalized_token_watermarks
+            .insert("worktree-1".to_string(), 20);
+        fs::write(
+            support_dir.join("pet-state.json"),
+            serde_json::to_vec(&pet_snapshot).expect("encode pet"),
+        )
+        .expect("write pet state");
+
+        service
+            .project_close(ProjectCloseRequest {
+                project_id: "project-1".to_string(),
+            })
+            .expect("close project");
+
+        assert!(service.project_list().projects.is_empty());
+        assert!(
+            service
+                .project_list()
+                .selected_worktree_id_by_project
+                .is_empty()
+        );
+        assert!(service.terminal_layout_record("project-1").is_none());
+        assert!(service.reload_file_editor_layout(Some("worktree-1")).tabs.is_empty());
+        assert_eq!(
+            service
+                .reload_file_tree_state(Some("worktree-1"))
+                .selected_file_entry,
+            None
+        );
+        assert_eq!(
+            service
+                .reload_git_ui_state(Some("worktree-1"))
+                .selected_git_file,
+            None
+        );
+        let pet = service.pet_snapshot().expect("pet snapshot");
+        assert!(pet.project_normalized_token_watermarks.is_empty());
+        assert_eq!(pet.global_normalized_total_watermark, None);
+
+        let _ = fs::remove_dir_all(support_dir);
+    }
+
+    #[test]
+    fn indexed_pet_totals_are_filtered_to_active_project_workspaces() {
+        let mut active = HashSet::new();
+        active.insert("project-1".to_string());
+        active.insert("worktree-1".to_string());
+
+        let filtered = filter_active_indexed_project_totals(
+            vec![
+                crate::ai_usage_store::AIUsageProjectTotal {
+                    project_id: "project-1".to_string(),
+                    total_tokens: 10,
+                },
+                crate::ai_usage_store::AIUsageProjectTotal {
+                    project_id: "removed-project".to_string(),
+                    total_tokens: 9_999,
+                },
+                crate::ai_usage_store::AIUsageProjectTotal {
+                    project_id: "worktree-1".to_string(),
+                    total_tokens: 20,
+                },
+            ],
+            &active,
+        );
+
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].project_id, "project-1");
+        assert_eq!(filtered[0].total_tokens, 10);
+        assert_eq!(filtered[1].project_id, "worktree-1");
+        assert_eq!(filtered[1].total_tokens, 20);
     }
 
     #[test]

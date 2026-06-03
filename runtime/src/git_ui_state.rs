@@ -80,6 +80,11 @@ impl GitUiStateService {
             .put_json_debounced(GIT_UI_STATE_NAMESPACE, owner_id, state)
     }
 
+    pub fn delete(&self, owner_id: &str) -> Result<bool, String> {
+        PersistentCacheStore::for_support_dir(self.support_dir.clone())?
+            .delete_json(GIT_UI_STATE_NAMESPACE, owner_id)
+    }
+
     fn cache_state(&self, owner_id: &str) -> Option<GitUiStateSummary> {
         PersistentCacheStore::for_support_dir(self.support_dir.clone())
             .ok()?

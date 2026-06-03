@@ -2,8 +2,8 @@ use crate::{
     ai_history::{AIGlobalHistorySummary, AIHistoryService, AIHistorySummary, AISessionDetail},
     ai_history_indexer::{AIHistoryEvent, AIHistoryIndexer, AIHistoryProjectState},
     ai_history_normalized::{
-        AIGlobalHistorySnapshot, AIHistoryProjectRequest, global_all_time_normalized_tokens,
-        global_today_normalized_tokens, indexed_sessions_since, normalized_project_totals_since,
+        AIGlobalHistorySnapshot, AIHistoryProjectRequest, global_today_normalized_tokens,
+        indexed_sessions_since, normalized_project_totals_since,
     },
     ai_runtime::{
         AIRuntimeBridge, AIRuntimeBridgeSnapshot, AIRuntimeContextSnapshot, AIRuntimeProbeRequest,
@@ -51,8 +51,9 @@ use crate::{
     performance::{PerformanceService, PerformanceSummary},
     pet::{
         PetCatalog, PetClaimInput, PetCustomPet, PetCustomPetInstallPreview,
-        PetCustomPetInstallRequest, PetRefreshInput, PetRenameRequest, PetRestoreRequest,
-        PetService, PetSnapshot, PetStore, PetSummary, refresh_input_from_indexed_history,
+        PetCustomPetInstallRequest, PetProjectTokenTotal, PetRefreshInput, PetRenameRequest,
+        PetRestoreRequest, PetService, PetSnapshot, PetStore, PetSummary,
+        refresh_input_from_indexed_history,
     },
     power::{PowerManager, PowerService, PowerSummary},
     project_activity::{ProjectActivityCoordinator, ProjectActivityEvent, ProjectActivitySnapshot},
@@ -90,7 +91,7 @@ use crate::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
 };

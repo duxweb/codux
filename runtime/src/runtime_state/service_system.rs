@@ -348,11 +348,11 @@ impl RuntimeService {
         let current = store.snapshot()?;
         let claimed_at = current.claimed_at;
         let cutoff = claimed_at.map(|value| value as f64);
-        let project_totals =
-            normalized_project_totals_since(cutoff).map_err(|error| error.to_string())?;
-        let all_time_total_tokens =
-            global_all_time_normalized_tokens().map_err(|error| error.to_string())?;
-        let sessions = indexed_sessions_since(cutoff).map_err(|error| error.to_string())?;
+        let active_project_ids = self.active_project_workspace_ids();
+        let project_totals = self.active_indexed_project_totals(cutoff, &active_project_ids)?;
+        let all_time_total_tokens = project_totals.iter().map(|project| project.total_tokens).sum();
+        let mut sessions = indexed_sessions_since(cutoff).map_err(|error| error.to_string())?;
+        sessions.retain(|session| active_project_ids.contains(&session.project_id));
         let input = refresh_input_from_indexed_history(
             claimed_at,
             project_totals,
@@ -385,10 +385,44 @@ impl RuntimeService {
         &self,
         request: crate::pet::PetClaimRequest,
     ) -> Result<PetSnapshot, String> {
-        let all_time_total_tokens =
-            global_all_time_normalized_tokens().map_err(|error| error.to_string())?;
-        let input = crate::pet::claim_input_from_indexed_history(request, all_time_total_tokens);
+        let active_project_ids = self.active_project_workspace_ids();
+        let project_totals = self.active_indexed_project_totals(None, &active_project_ids)?;
+        let all_time_total_tokens = project_totals.iter().map(|project| project.total_tokens).sum();
+        let input = PetClaimInput {
+            species: request.species,
+            custom_name: request.custom_name,
+            custom_pet: request.custom_pet,
+            project_totals: project_totals
+                .into_iter()
+                .map(|project| PetProjectTokenTotal {
+                    project_id: project.project_id,
+                    total_tokens: project.total_tokens,
+                })
+                .collect(),
+            fallback_total_tokens: all_time_total_tokens,
+        };
         self.claim_pet(input)
+    }
+
+    fn active_project_workspace_ids(&self) -> HashSet<String> {
+        ProjectStore::new(self.support_dir.clone())
+            .project_workspaces_snapshot()
+            .into_iter()
+            .map(|project| project.id)
+            .collect()
+    }
+
+    fn active_indexed_project_totals(
+        &self,
+        cutoff: Option<f64>,
+        active_project_ids: &HashSet<String>,
+    ) -> Result<Vec<crate::ai_usage_store::AIUsageProjectTotal>, String> {
+        let project_totals =
+            normalized_project_totals_since(cutoff).map_err(|error| error.to_string())?;
+        Ok(filter_active_indexed_project_totals(
+            project_totals,
+            active_project_ids,
+        ))
     }
 
     pub fn rename_pet(&self, request: PetRenameRequest) -> Result<PetSnapshot, String> {
@@ -444,4 +478,14 @@ impl RuntimeService {
     pub fn sync_tool_permissions(&self) -> ToolPermissionsSummary {
         ToolPermissionsService::new(self.support_dir.clone()).sync()
     }
+}
+
+fn filter_active_indexed_project_totals(
+    project_totals: Vec<crate::ai_usage_store::AIUsageProjectTotal>,
+    active_project_ids: &HashSet<String>,
+) -> Vec<crate::ai_usage_store::AIUsageProjectTotal> {
+    project_totals
+        .into_iter()
+        .filter(|project| active_project_ids.contains(&project.project_id))
+        .collect()
 }

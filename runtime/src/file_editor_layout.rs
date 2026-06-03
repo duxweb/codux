@@ -107,4 +107,9 @@ impl FileEditorLayoutService {
         }
         Ok(self.load(Some(owner_id)))
     }
+
+    pub fn delete(&self, owner_id: &str) -> Result<bool, String> {
+        crate::persistent_cache::PersistentCacheStore::for_support_dir(self.support_dir.clone())?
+            .delete_json(FILE_EDITOR_LAYOUT_NAMESPACE, owner_id)
+    }
 }
