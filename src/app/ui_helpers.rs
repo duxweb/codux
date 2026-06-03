@@ -1,8 +1,8 @@
 use super::*;
 use crate::app::app_state::{CoduxTooltipPlacement, CoduxTooltipState};
 use gpui::{
-    AnyElement, Display, Element, GlobalElementId, InspectorElementId, LayoutId, Position,
-    Stateful, Style, deferred,
+    deferred, AnyElement, Display, Element, GlobalElementId, InspectorElementId,
+    InteractiveElement, LayoutId, Position, Stateful, Style,
 };
 
 pub(in crate::app) fn with_codux_tooltip(
@@ -89,7 +89,15 @@ impl CoduxApp {
         cx.notify();
     }
 
-    pub(in crate::app) fn codux_tooltip_layer(&self, _window: &mut Window) -> impl IntoElement {
+    pub(in crate::app) fn clear_codux_tooltip(&mut self, cx: &mut Context<Self>) {
+        if self.tooltip_state.id.is_none() {
+            return;
+        }
+        self.tooltip_state = CoduxTooltipState::default();
+        cx.notify();
+    }
+
+    pub(in crate::app) fn codux_tooltip_layer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(_) = self.tooltip_state.id.as_ref() else {
             return div().hidden().into_any_element();
         };
@@ -98,6 +106,7 @@ impl CoduxApp {
             codux_tooltip_positioner(self.tooltip_state.bounds, self.tooltip_state.placement)
                 .child(
                     div()
+                        .id("codux-tooltip-layer")
                         .max_w(px(260.0))
                         .rounded(px(6.0))
                         .border_1()
@@ -109,6 +118,10 @@ impl CoduxApp {
                         .line_height(rems(1.0))
                         .text_color(color(0xF4F6FA))
                         .whitespace_normal()
+                        .on_click(cx.listener(|app, _event, _window, cx| {
+                            app.clear_codux_tooltip(cx);
+                            cx.stop_propagation();
+                        }))
                         .child(self.tooltip_state.text.clone()),
                 ),
         )

@@ -15,7 +15,7 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(self.about_workspace(window, cx))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -28,7 +28,7 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(self.update_dialog_workspace(window, cx))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -47,7 +47,7 @@ impl Render for CoduxApp {
                     &self.state.settings.language,
                     cx,
                 ))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -66,7 +66,7 @@ impl Render for CoduxApp {
                     window,
                     cx,
                 ))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -84,7 +84,7 @@ impl Render for CoduxApp {
                     window,
                     cx,
                 ))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -112,7 +112,7 @@ impl Render for CoduxApp {
                     window,
                     cx,
                 ))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -125,7 +125,7 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(self.pet_claim_workspace(window, cx))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -138,7 +138,7 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(self.pet_custom_install_workspace(window, cx))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -151,7 +151,7 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(self.pet_dex_workspace(window, cx))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -164,7 +164,7 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(self.settings_workspace(window, cx))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -177,7 +177,7 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(self.project_editor_workspace(window, cx))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -190,7 +190,7 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(self.worktree_creator_workspace(window, cx))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -208,7 +208,7 @@ impl Render for CoduxApp {
                     window,
                     cx,
                 ))
-                .child(self.codux_tooltip_layer(window));
+                .child(self.codux_tooltip_layer(cx));
             return self
                 .register_child_window_actions(root, cx)
                 .into_any_element();
@@ -331,7 +331,7 @@ impl Render for CoduxApp {
                         .h(px(28.0)),
                 ),
             )
-            .child(self.codux_tooltip_layer(window));
+            .child(self.codux_tooltip_layer(cx));
 
         self.register_native_menu_actions(root, cx)
             .into_any_element()
