@@ -46,13 +46,13 @@ use windows_sys::Win32::{
     UI::WindowsAndMessaging::{
         AppendMenuW, CallWindowProcW, CreatePopupMenu, DefWindowProcW, DestroyMenu, GWL_EXSTYLE,
         GWL_STYLE, GWLP_WNDPROC, GetClientRect, GetCursorPos, GetWindowLongPtrW, GetWindowRect,
-        HTCAPTION, HTTRANSPARENT, HWND_TOPMOST, MF_SEPARATOR, MF_STRING, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetForegroundWindow,
-        SetWindowLongPtrW, SetWindowPos, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-        TPM_TOPALIGN, TrackPopupMenu, WINDOW_LONG_PTR_INDEX, WM_NCHITTEST, WNDPROC, WS_BORDER,
-        WS_CAPTION, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME,
-        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_EX_WINDOWEDGE, WS_SYSMENU,
-        WS_THICKFRAME,
+        HTCAPTION, HTTRANSPARENT, HWND_TOPMOST, LWA_ALPHA, MF_SEPARATOR, MF_STRING,
+        SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
+        TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_TOPALIGN, TrackPopupMenu,
+        WINDOW_LONG_PTR_INDEX, WM_NCHITTEST, WNDPROC, WS_BORDER, WS_CAPTION, WS_DLGFRAME,
+        WS_EX_APPWINDOW, WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_EX_WINDOWEDGE, WS_SYSMENU, WS_THICKFRAME,
     },
 };
 
@@ -363,9 +363,10 @@ pub(in crate::app) fn make_desktop_pet_window_transparent(window: &mut gpui::Win
         let _ = SetWindowLongPtrW(hwnd, GWL_STYLE, style as isize);
 
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        let ex_style = (ex_style | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
+        let ex_style = (ex_style | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED)
             & !(WS_EX_APPWINDOW | WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE);
         let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
+        let _ = SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
 
         let no_corner = DWMWCP_DONOTROUND;
         let _ = DwmSetWindowAttribute(
