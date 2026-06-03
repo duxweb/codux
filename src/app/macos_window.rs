@@ -44,12 +44,12 @@ use windows_sys::Win32::{
         ScreenToClient,
     },
     UI::WindowsAndMessaging::{
-        AppendMenuW, CallWindowProcW, CreatePopupMenu, DefWindowProcW, DestroyMenu, GWL_EXSTYLE,
-        GWL_STYLE, GWLP_WNDPROC, GetClientRect, GetCursorPos, GetWindowLongPtrW, GetWindowRect,
-        HTCAPTION, HTTRANSPARENT, HWND_TOPMOST, LWA_ALPHA, MF_SEPARATOR, MF_STRING,
-        SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-        SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
-        TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_TOPALIGN, TrackPopupMenu,
+        AppendMenuW, CallWindowProcW, CreatePopupMenu, DefWindowProcW, DestroyMenu, GA_ROOT,
+        GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, GetAncestor, GetClientRect, GetCursorPos,
+        GetWindowLongPtrW, GetWindowRect, HTCAPTION, HTTRANSPARENT, HWND_TOPMOST, LWA_ALPHA,
+        MF_SEPARATOR, MF_STRING, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SWP_NOZORDER, SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW,
+        SetWindowPos, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_TOPALIGN, TrackPopupMenu,
         WINDOW_LONG_PTR_INDEX, WM_NCHITTEST, WNDPROC, WS_BORDER, WS_CAPTION, WS_DLGFRAME,
         WS_EX_APPWINDOW, WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME, WS_EX_LAYERED, WS_EX_NOACTIVATE,
         WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_EX_WINDOWEDGE, WS_SYSMENU, WS_THICKFRAME,
@@ -900,7 +900,9 @@ fn win32_hwnd(window: &mut Window) -> Option<HWND> {
     let RawWindowHandle::Win32(handle) = handle.as_raw() else {
         return None;
     };
-    Some(handle.hwnd.get() as HWND)
+    let hwnd = handle.hwnd.get() as HWND;
+    let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+    Some(if root.is_null() { hwnd } else { root })
 }
 
 #[cfg(target_os = "windows")]
