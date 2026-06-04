@@ -10,10 +10,12 @@ const CODUX_WEBSITE_URL: &str = "https://codux.dux.cn";
 const CODUX_GITHUB_URL: &str = "https://github.com/duxweb/codux";
 const CODUX_IDENTIFIER: &str = "com.duxweb.codux";
 const UPDATE_DIALOG_WIDTH: f32 = 440.0;
-const UPDATE_DIALOG_DEFAULT_HEIGHT: f32 = 200.0;
-const UPDATE_DIALOG_AVAILABLE_HEIGHT: f32 = 340.0;
-const UPDATE_DIALOG_PROGRESS_HEIGHT: f32 = 320.0;
-const UPDATE_DIALOG_MIN_HEIGHT: f32 = 200.0;
+const UPDATE_DIALOG_DEFAULT_HEIGHT: f32 = 210.0;
+const UPDATE_DIALOG_AVAILABLE_HEIGHT: f32 = 362.0;
+const UPDATE_DIALOG_DOWNLOADING_HEIGHT: f32 = 200.0;
+const UPDATE_DIALOG_RESULT_HEIGHT: f32 = 262.0;
+const UPDATE_DIALOG_MIN_HEIGHT: f32 = 210.0;
+const UPDATE_DIALOG_NOTES_HEIGHT: f32 = 130.0;
 
 impl CoduxApp {
     pub(in crate::app) fn about_workspace(
@@ -273,7 +275,12 @@ impl CoduxApp {
                         app.status_message = format!("update check failed: {error}");
                     }
                 }
-                resize_update_dialog_window_handle(window_handle, app.update_dialog_phase, cx);
+                resize_update_dialog_window_handle(
+                    window_handle,
+                    app.update_dialog_phase,
+                    app.state.settings.language.clone(),
+                    cx,
+                );
                 cx.notify();
             });
         })
@@ -281,7 +288,11 @@ impl CoduxApp {
         cx.notify();
     }
 
-    pub(in crate::app) fn download_update_in_dialog(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::app) fn download_update_in_dialog(
+        &mut self,
+        window_handle: AnyWindowHandle,
+        cx: &mut Context<Self>,
+    ) {
         let Some(status) = self.update_dialog_status.clone() else {
             self.update_dialog_error = Some("No update status is available.".to_string());
             self.update_dialog_phase = UpdateDialogPhase::Error;
@@ -302,12 +313,14 @@ impl CoduxApp {
             downloaded_bytes: 0,
             total_bytes: None,
         });
+        cx.notify();
         let service = self.runtime_service.clone();
         let repo_root = std::env::current_dir().unwrap_or_default();
+        let timer = cx.background_executor().clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let (progress_tx, progress_rx) = flume::unbounded::<UpdateInstallProgressEvent>();
             let install_service = service.clone();
-            let install_task = codux_runtime::async_runtime::spawn(async move {
+            let install_task = codux_runtime::async_runtime::spawn_blocking(move || {
                 install_service.install_update_with_progress(
                     repo_root,
                     env!("CARGO_PKG_VERSION"),
@@ -317,20 +330,22 @@ impl CoduxApp {
                 )
             });
             loop {
-                match progress_rx.recv_timeout(std::time::Duration::from_millis(80)) {
-                    Ok(progress) => {
-                        let _ = this.update(cx, |app, cx| {
-                            app.update_dialog_progress = Some(progress);
-                            cx.notify();
-                        });
-                    }
-                    Err(flume::RecvTimeoutError::Timeout) => {
-                        if install_task.is_finished() {
-                            break;
-                        }
-                    }
-                    Err(flume::RecvTimeoutError::Disconnected) => break,
+                while let Ok(progress) = progress_rx.try_recv() {
+                    let _ = this.update(cx, |app, cx| {
+                        app.update_dialog_progress = Some(progress);
+                        cx.notify();
+                    });
                 }
+                if install_task.is_finished() {
+                    break;
+                }
+                timer.timer(std::time::Duration::from_millis(80)).await;
+            }
+            while let Ok(progress) = progress_rx.try_recv() {
+                let _ = this.update(cx, |app, cx| {
+                    app.update_dialog_progress = Some(progress);
+                    cx.notify();
+                });
             }
             let result = install_task.await;
             let _ = this.update(cx, |app, cx| {
@@ -358,6 +373,12 @@ impl CoduxApp {
                         app.status_message = format!("failed to download update: {message}");
                     }
                 }
+                resize_update_dialog_window_handle(
+                    window_handle,
+                    app.update_dialog_phase,
+                    app.state.settings.language.clone(),
+                    cx,
+                );
                 cx.notify();
             });
         })
@@ -371,16 +392,24 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let language = self.state.settings.language.as_str();
-        let window_title = translate(language, "about.updates", "Check for Updates");
+        let window_title = update_dialog_title(self.update_dialog_phase, language);
+        let busy = matches!(
+            self.update_dialog_phase,
+            UpdateDialogPhase::Checking | UpdateDialogPhase::Downloading
+        );
         child_window_shell(window_title, cx)
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
-                    .p(px(16.0))
+                    .px(px(16.0))
+                    .pt(px(16.0))
+                    .pb(px(14.0))
                     .child(update_dialog_content(self, language, cx)),
             )
-            .child(update_dialog_footer(self, language, cx))
+            .when(!busy, |this| {
+                this.child(update_dialog_footer(self, language, cx))
+            })
     }
 
     pub(in crate::app) fn open_runtime_log(&mut self, cx: &mut Context<Self>) {
@@ -559,18 +588,7 @@ fn about_button(
 
 fn update_dialog_content(app: &CoduxApp, language: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
     let phase = app.update_dialog_phase;
-    if matches!(phase, UpdateDialogPhase::Available) {
-        return div()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .w_full()
-            .child(update_dialog_body(app, language, cx))
-            .into_any_element();
-    }
-
-    let title = update_dialog_title(phase, language);
+    let title = update_dialog_header_title(app, language);
     let subtitle = update_dialog_subtitle(app, language);
     div()
         .flex_1()
@@ -578,10 +596,7 @@ fn update_dialog_content(app: &CoduxApp, language: &str, cx: &mut Context<CoduxA
         .flex()
         .flex_col()
         .w_full()
-        .items_start()
-        .justify_start()
-        .gap(px(18.0))
-        .pt(px(18.0))
+        .gap(px(16.0))
         .child(
             div()
                 .flex()
@@ -592,14 +607,16 @@ fn update_dialog_content(app: &CoduxApp, language: &str, cx: &mut Context<CoduxA
                 .child(
                     div()
                         .min_w_0()
+                        .flex_1()
                         .flex()
                         .flex_col()
                         .gap(px(3.0))
                         .child(
                             div()
-                                .text_size(rems(0.875))
+                                .text_size(rems(0.9375))
                                 .line_height(rems(1.25))
-                                .text_color(color(theme::TEXT))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(cx.theme().foreground)
                                 .child(title),
                         )
                         .when(!subtitle.is_empty(), |this| {
@@ -607,7 +624,7 @@ fn update_dialog_content(app: &CoduxApp, language: &str, cx: &mut Context<CoduxA
                                 div()
                                     .text_size(rems(0.75))
                                     .line_height(rems(1.0))
-                                    .text_color(color(theme::TEXT_MUTED))
+                                    .text_color(cx.theme().muted_foreground)
                                     .child(subtitle),
                             )
                         }),
@@ -622,124 +639,103 @@ fn update_dialog_icon(phase: UpdateDialogPhase, cx: &mut Context<CoduxApp>) -> A
         phase,
         UpdateDialogPhase::Checking | UpdateDialogPhase::Downloading
     );
+    let (accent, icon) = match phase {
+        UpdateDialogPhase::Error => (cx.theme().danger, HeroIconName::ExclamationTriangle),
+        UpdateDialogPhase::Latest | UpdateDialogPhase::Finished => {
+            (cx.theme().success, HeroIconName::CheckCircle)
+        }
+        UpdateDialogPhase::Available => (cx.theme().primary, HeroIconName::ArrowUpCircle),
+        UpdateDialogPhase::NotConfigured => {
+            (cx.theme().muted_foreground, HeroIconName::InformationCircle)
+        }
+        UpdateDialogPhase::Checking | UpdateDialogPhase::Downloading => {
+            (cx.theme().primary, HeroIconName::ArrowPath)
+        }
+    };
     div()
-        .size(px(36.0))
+        .size(px(40.0))
         .flex_shrink_0()
-        .rounded(px(9.0))
+        .rounded(px(10.0))
         .flex()
         .items_center()
         .justify_center()
-        .bg(if matches!(phase, UpdateDialogPhase::Error) {
-            color(0x3A1E22)
-        } else if matches!(
-            phase,
-            UpdateDialogPhase::Latest | UpdateDialogPhase::Finished
-        ) {
-            color(0x173224)
-        } else {
-            color(0x1C2C48)
-        })
+        .bg(accent.opacity(0.14))
         .child(if busy {
             Spinner::new().small().into_any_element()
         } else {
-            Icon::new(if matches!(phase, UpdateDialogPhase::Error) {
-                HeroIconName::ExclamationTriangle
-            } else if matches!(
-                phase,
-                UpdateDialogPhase::Latest | UpdateDialogPhase::Finished
-            ) {
-                HeroIconName::CheckCircle
-            } else {
-                HeroIconName::ArrowPath
-            })
-            .size_4()
-            .text_color(if matches!(phase, UpdateDialogPhase::Error) {
-                color(0xF87171)
-            } else if matches!(
-                phase,
-                UpdateDialogPhase::Latest | UpdateDialogPhase::Finished
-            ) {
-                color(0x34D399)
-            } else {
-                cx.theme().accent
-            })
-            .into_any_element()
+            Icon::new(icon)
+                .size_5()
+                .text_color(accent)
+                .into_any_element()
         })
         .into_any_element()
 }
 
-fn update_dialog_body(app: &CoduxApp, language: &str, _cx: &mut Context<CoduxApp>) -> AnyElement {
+fn update_dialog_body(app: &CoduxApp, language: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
     let body = div().w_full().min_h_0().flex().flex_col().gap(px(10.0));
     match app.update_dialog_phase {
         UpdateDialogPhase::Available => body
             .child(
                 div()
-                    .mt(px(2.0))
-                    .text_size(rems(0.875))
-                    .line_height(rems(1.25))
-                    .text_color(color(theme::TEXT))
-                    .child(update_dialog_available_title(app, language)),
+                    .text_size(rems(0.75))
+                    .line_height(rems(1.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(translate(
+                        language,
+                        "update.available.notes_title",
+                        "Release Notes",
+                    )),
             )
             .child(
                 div()
-                    .h(px(164.0))
+                    .h(px(UPDATE_DIALOG_NOTES_HEIGHT))
                     .flex_none()
                     .overflow_y_scrollbar()
-                    .rounded(px(6.0))
+                    .rounded(px(8.0))
                     .border_1()
-                    .border_color(color(theme::BORDER_SOFT))
-                    .bg(color(theme::BG_PANEL))
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().secondary)
                     .p(px(12.0))
-                    .text_size(rems(0.875))
-                    .line_height(rems(1.375))
-                    .text_color(color(theme::TEXT_MUTED))
-                    .child(
-                        app.update_dialog_status
-                            .as_ref()
-                            .and_then(|status| status.notes.clone())
-                            .filter(|notes| !notes.trim().is_empty())
-                            .unwrap_or_else(|| {
-                                translate(
-                                    language,
-                                    "update.release_notes.empty",
-                                    "No release notes were provided for this update.",
-                                )
-                            }),
-                    ),
+                    .text_size(rems(0.8125))
+                    .line_height(rems(1.5))
+                    .text_color(cx.theme().muted_foreground)
+                    .child(update_dialog_release_notes(app, language)),
             )
             .into_any_element(),
         UpdateDialogPhase::Downloading => body
-            .child(update_progress_view(app.update_dialog_progress.as_ref(), language))
+            .justify_center()
+            .child(update_progress_view(
+                app.update_dialog_progress.as_ref(),
+                language,
+                cx,
+            ))
             .into_any_element(),
         UpdateDialogPhase::Finished => body
             .child(
                 div()
-                    .text_size(rems(0.875))
-                    .line_height(rems(1.375))
-                    .text_color(color(theme::TEXT_MUTED))
-                    .child(
-                        app.update_dialog_result
-                            .as_ref()
-                            .map(|result| result.message.clone())
-                            .unwrap_or_else(|| {
-                                translate(
-                                    language,
-                                    "update.installed.message",
-                                    "The update was downloaded. Restart Codux to finish applying it.",
-                                )
-                            }),
-                    ),
+                    .text_size(rems(0.8125))
+                    .line_height(rems(1.5))
+                    .text_color(cx.theme().muted_foreground)
+                    .child(translate(
+                        language,
+                        "update.installed.message",
+                        "The update was downloaded. Restart Codux to finish applying it.",
+                    )),
             )
-            .child(update_progress_view(app.update_dialog_progress.as_ref(), language))
+            .child(update_progress_view(
+                app.update_dialog_progress.as_ref(),
+                language,
+                cx,
+            ))
             .into_any_element(),
         UpdateDialogPhase::Error => body
-            .mt(px(10.0))
             .child(
                 div()
                     .w_full()
-                    .text_size(rems(0.875))
-                    .line_height(rems(1.375))
-                    .text_color(color(0xF87171))
+                    .text_size(rems(0.8125))
+                    .line_height(rems(1.5))
+                    .text_color(cx.theme().danger)
                     .child(app.update_dialog_error.clone().unwrap_or_else(|| {
                         translate(
                             language,
@@ -751,13 +747,12 @@ fn update_dialog_body(app: &CoduxApp, language: &str, _cx: &mut Context<CoduxApp
             .into_any_element(),
         UpdateDialogPhase::Latest => body.hidden().into_any_element(),
         UpdateDialogPhase::NotConfigured => body
-            .mt(px(10.0))
             .child(
                 div()
                     .w_full()
-                    .text_size(rems(0.875))
-                    .line_height(rems(1.375))
-                    .text_color(color(theme::TEXT_MUTED))
+                    .text_size(rems(0.8125))
+                    .line_height(rems(1.5))
+                    .text_color(cx.theme().muted_foreground)
                     .child(
                         app.update_dialog_status
                             .as_ref()
@@ -772,22 +767,26 @@ fn update_dialog_body(app: &CoduxApp, language: &str, _cx: &mut Context<CoduxApp
                     ),
             )
             .into_any_element(),
-        UpdateDialogPhase::Checking => body
-            .mt(px(10.0))
-            .child(
-                div()
-                    .w_full()
-                    .text_size(rems(0.875))
-                    .line_height(rems(1.375))
-                    .text_color(color(theme::TEXT_MUTED))
-                    .child(translate(
-                        language,
-                        "update.checking",
-                        "Checking for updates...",
-                    )),
-            )
-            .into_any_element(),
+        UpdateDialogPhase::Checking => body.hidden().into_any_element(),
     }
+}
+
+fn update_dialog_release_notes(app: &CoduxApp, language: &str) -> String {
+    app.update_dialog_status
+        .as_ref()
+        .and_then(|status| status.notes.clone())
+        .or_else(|| {
+            let notes = app.state.update.notes_preview.trim();
+            (!notes.is_empty()).then(|| notes.to_string())
+        })
+        .filter(|notes| !notes.trim().is_empty())
+        .unwrap_or_else(|| {
+            translate(
+                language,
+                "update.release_notes.empty",
+                "No release notes were provided for this update.",
+            )
+        })
 }
 
 fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
@@ -803,18 +802,18 @@ fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxAp
         } else {
             translate(language, "common.cancel", "Cancel")
         };
-        footer = footer.child(update_dialog_close_button(
+        footer = footer.child(dialog_cancel_button(
             "update-dialog-cancel",
             cancel_label,
             cx,
+            |_app, _event, window, _cx| window.remove_window(),
         ));
     }
     match phase {
         UpdateDialogPhase::Available => {
-            footer = footer.child(update_dialog_button(
+            footer = footer.child(dialog_primary_button(
                 "update-dialog-download",
                 translate(language, "common.update", "Update"),
-                true,
                 cx,
                 |app, _event, window, cx| {
                     if app.update_dialog_status.is_none() {
@@ -824,28 +823,34 @@ fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxAp
                         cx.notify();
                         return;
                     };
-                    resize_update_dialog_window(window, UpdateDialogPhase::Downloading);
-                    app.download_update_in_dialog(cx);
+                    set_update_dialog_window_phase(
+                        window,
+                        UpdateDialogPhase::Downloading,
+                        &app.state.settings.language,
+                    );
+                    app.download_update_in_dialog(window.window_handle(), cx);
                 },
             ));
         }
         UpdateDialogPhase::Finished => {
-            footer = footer.child(update_dialog_button(
+            footer = footer.child(dialog_primary_button(
                 "update-dialog-restart",
                 translate(language, "common.restart_now", "Restart Now"),
-                true,
                 cx,
                 |app, _event, _window, cx| app.request_restart(cx),
             ));
         }
         UpdateDialogPhase::Error | UpdateDialogPhase::NotConfigured => {
-            footer = footer.child(update_dialog_button(
+            footer = footer.child(dialog_secondary_button(
                 "update-dialog-retry",
                 translate(language, "about.updates", "Check for Updates"),
-                false,
                 cx,
                 |app, _event, window, cx| {
-                    resize_update_dialog_window(window, UpdateDialogPhase::Checking);
+                    set_update_dialog_window_phase(
+                        window,
+                        UpdateDialogPhase::Checking,
+                        &app.state.settings.language,
+                    );
                     app.check_update_in_dialog(window.window_handle(), cx);
                 },
             ));
@@ -854,93 +859,39 @@ fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxAp
         | UpdateDialogPhase::Checking
         | UpdateDialogPhase::Downloading => {}
     }
-    div()
-        .h(px(54.0))
-        .flex_shrink_0()
-        .border_t_1()
-        .border_color(color(theme::BORDER_SOFT))
-        .px(px(16.0))
-        .flex()
-        .items_center()
-        .justify_end()
-        .gap(px(10.0))
-        .child(footer)
-        .into_any_element()
+    dialog_footer_bar(footer, cx).into_any_element()
 }
 
 fn resize_update_dialog_window(window: &mut Window, phase: UpdateDialogPhase) {
     let height = match phase {
         UpdateDialogPhase::Available => UPDATE_DIALOG_AVAILABLE_HEIGHT,
-        UpdateDialogPhase::Downloading | UpdateDialogPhase::Finished => {
-            UPDATE_DIALOG_PROGRESS_HEIGHT
-        }
+        UpdateDialogPhase::Downloading => UPDATE_DIALOG_DOWNLOADING_HEIGHT,
+        UpdateDialogPhase::Finished | UpdateDialogPhase::Error => UPDATE_DIALOG_RESULT_HEIGHT,
         _ => UPDATE_DIALOG_DEFAULT_HEIGHT,
     };
     window.resize(size(px(UPDATE_DIALOG_WIDTH), px(height)));
 }
 
+fn set_update_dialog_window_phase(window: &mut Window, phase: UpdateDialogPhase, language: &str) {
+    resize_update_dialog_window(window, phase);
+    window.set_window_title(&update_dialog_title(phase, language));
+}
+
 fn resize_update_dialog_window_handle(
     handle: AnyWindowHandle,
     phase: UpdateDialogPhase,
+    language: String,
     cx: &mut Context<CoduxApp>,
 ) {
     let _ = handle.update(cx, |_view, window, _cx| {
-        resize_update_dialog_window(window, phase);
+        set_update_dialog_window_phase(window, phase, &language);
     });
-}
-
-fn update_dialog_button_label(
-    label: impl Into<SharedString>,
-    text_color: gpui::Hsla,
-) -> impl IntoElement {
-    div()
-        .text_size(rems(0.75))
-        .line_height(rems(1.0))
-        .text_color(text_color)
-        .child(label.into())
-}
-
-fn update_dialog_button(
-    id: &'static str,
-    label: String,
-    primary: bool,
-    cx: &mut Context<CoduxApp>,
-    on_click: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
-) -> Button {
-    let text_color = if primary {
-        cx.theme().primary_foreground
-    } else {
-        cx.theme().secondary_foreground
-    };
-    let button = Button::new(id)
-        .compact()
-        .text_color(text_color)
-        .child(update_dialog_button_label(label, text_color))
-        .on_click(cx.listener(on_click));
-    if primary {
-        button.primary()
-    } else {
-        button.secondary()
-    }
-}
-
-fn update_dialog_close_button(
-    id: &'static str,
-    label: String,
-    cx: &mut Context<CoduxApp>,
-) -> Button {
-    let text_color = cx.theme().secondary_foreground;
-    Button::new(id)
-        .compact()
-        .secondary()
-        .text_color(text_color)
-        .child(update_dialog_button_label(label, text_color))
-        .on_click(|_, window, _| window.remove_window())
 }
 
 fn update_progress_view(
     progress: Option<&UpdateInstallProgressEvent>,
     language: &str,
+    cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
     let downloaded = progress
         .map(|progress| progress.downloaded_bytes)
@@ -949,6 +900,7 @@ fn update_progress_view(
     let ratio = total
         .filter(|total| *total > 0)
         .map(|total| (downloaded as f32 / total as f32).clamp(0.0, 1.0));
+    let percent_label = ratio.map(|ratio| format!("{}%", (ratio * 100.0).round() as u32));
     div()
         .w_full()
         .flex()
@@ -957,36 +909,54 @@ fn update_progress_view(
         .child(
             div()
                 .w_full()
-                .text_size(rems(0.875))
-                .line_height(rems(1.375))
-                .text_color(color(theme::TEXT_MUTED))
-                .child(translate(
-                    language,
-                    "update.progress.downloading",
-                    "Downloading update...",
-                )),
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .text_size(rems(0.8125))
+                        .line_height(rems(1.25))
+                        .text_color(cx.theme().muted_foreground)
+                        .child(translate(
+                            language,
+                            "update.progress.downloading",
+                            "Downloading update...",
+                        )),
+                )
+                .when_some(percent_label, |this, percent| {
+                    this.child(
+                        div()
+                            .flex_none()
+                            .text_size(rems(0.8125))
+                            .line_height(rems(1.25))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground)
+                            .child(percent),
+                    )
+                }),
         )
         .child(
             div()
                 .w_full()
-                .h(px(6.0))
+                .h(px(8.0))
                 .rounded(px(999.0))
                 .overflow_hidden()
-                .bg(color(0x303442))
+                .bg(cx.theme().secondary)
                 .child(
                     div()
-                        .h(px(6.0))
+                        .h(px(8.0))
                         .w(relative(ratio.unwrap_or(0.35)))
                         .rounded(px(999.0))
-                        .bg(color(theme::ACCENT)),
+                        .bg(cx.theme().primary),
                 ),
         )
         .child(
             div()
                 .w_full()
-                .text_size(rems(0.875))
-                .line_height(rems(1.375))
-                .text_color(color(theme::TEXT_DIM))
+                .text_size(rems(0.75))
+                .line_height(rems(1.0))
+                .text_color(cx.theme().muted_foreground)
                 .child(match total {
                     Some(total) => {
                         format!("{} / {}", format_bytes(downloaded), format_bytes(total))
@@ -1060,16 +1030,21 @@ fn update_dialog_subtitle(app: &CoduxApp, language: &str) -> String {
     String::new()
 }
 
-fn update_dialog_available_title(app: &CoduxApp, language: &str) -> String {
-    let Some(status) = &app.update_dialog_status else {
-        return translate(language, "update.available.title", "Update Available");
-    };
-    translate(
-        language,
-        "update.available.version_title_format",
-        "New version v%@: ",
-    )
-    .replace("%@", status.latest_version.as_deref().unwrap_or(""))
+fn update_dialog_header_title(app: &CoduxApp, language: &str) -> String {
+    if app.update_dialog_phase == UpdateDialogPhase::Available
+        && let Some(status) = &app.update_dialog_status
+        && let Some(version) = status.latest_version.as_deref().filter(|v| !v.is_empty())
+    {
+        return translate(
+            language,
+            "update.available.version_title_format",
+            "New version v%@: ",
+        )
+        .replace("%@", version)
+        .trim_end_matches([':', '：', ' '])
+        .to_string();
+    }
+    update_dialog_title(app.update_dialog_phase, language)
 }
 
 fn format_bytes(bytes: u64) -> String {

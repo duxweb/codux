@@ -124,6 +124,12 @@ pub fn global_today_normalized_tokens() -> Result<i64> {
     store.global_today_normalized_tokens(&conn)
 }
 
+pub fn global_today_normalized_tokens_at(database_path: PathBuf) -> Result<i64> {
+    let store = AIUsageStore::at_path(database_path);
+    let conn = store.connect()?;
+    store.global_today_normalized_tokens(&conn)
+}
+
 pub fn global_all_time_normalized_tokens() -> Result<i64> {
     let store = AIUsageStore::default();
     let conn = store.connect()?;

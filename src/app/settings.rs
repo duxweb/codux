@@ -689,8 +689,7 @@ fn settings_select_state(
     let selected_index = items.iter().position(|item| item.value == value);
     let current_value = value.to_string();
     let state_key = format!(
-        "settings-select-{id}-{}-{}",
-        value,
+        "settings-select-{id}-{}",
         settings_select_options_key(&items)
     );
     let state = window.use_keyed_state(SharedString::from(state_key), cx, {
@@ -704,6 +703,14 @@ fn settings_select_state(
             )
             .searchable(searchable)
         }
+    });
+    state.update(cx, |state, cx| {
+        state.set_items(items.clone(), window, cx);
+        state.set_selected_index(
+            selected_index.map(|row| gpui_component::IndexPath::default().row(row)),
+            window,
+            cx,
+        );
     });
     cx.subscribe_in(&state, window, move |app, _, event, window, cx| {
         let SelectEvent::Confirm(selected) = event;

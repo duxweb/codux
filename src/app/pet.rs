@@ -2236,34 +2236,28 @@ fn pet_dex_archive_confirm_overlay(language: &str, cx: &mut Context<CoduxApp>) -
                         .justify_end()
                         .gap_2()
                         .child(
-                            Button::new("pet-dex-cancel-archive")
-                                .compact()
-                                .ghost()
-                                .text_color(cx.theme().secondary_foreground)
-                                .child(pet_button_label(
-                                    pet_catalog_text(&language, "common.cancel", "Cancel"),
-                                    cx.theme().secondary_foreground,
-                                ))
-                                .on_click(cx.listener(|app, _event, _window, cx| {
-                                    app.close_pet_dex_spotlight(cx)
-                                })),
+                            dialog_cancel_button(
+                                "pet-dex-cancel-archive",
+                                pet_catalog_text(&language, "common.cancel", "Cancel"),
+                                cx,
+                                |app, _event, _window, cx| app.close_pet_dex_spotlight(cx),
+                            )
+                            .compact(),
                         )
                         .child(
-                            Button::new("pet-dex-confirm-archive")
-                                .compact()
-                                .primary()
-                                .text_color(cx.theme().primary_foreground)
-                                .child(pet_button_label(
-                                    pet_catalog_text(
-                                        &language,
-                                        "pet.archive.confirm",
-                                        "Confirm Archive",
-                                    ),
-                                    cx.theme().primary_foreground,
-                                ))
-                                .on_click(cx.listener(|app, _event, window, cx| {
+                            dialog_primary_button(
+                                "pet-dex-confirm-archive",
+                                pet_catalog_text(
+                                    &language,
+                                    "pet.archive.confirm",
+                                    "Confirm Archive",
+                                ),
+                                cx,
+                                |app, _event, window, cx| {
                                     app.archive_current_pet_confirmed(window, cx)
-                                })),
+                                },
+                            )
+                            .compact(),
                         ),
                 ),
         )

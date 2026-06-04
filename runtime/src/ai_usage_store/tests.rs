@@ -108,6 +108,28 @@ mod tests {
     }
 
     #[test]
+    fn global_today_tokens_excludes_historical_project_totals() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        let today_start = local_day_start_seconds(now_seconds());
+        let old_start = today_start - 7_200.0;
+        let current_start = today_start + 1_800.0;
+
+        insert_usage_bucket(&conn, "/tmp/project-a", "old-session", old_start, 325_000_000);
+        insert_usage_bucket(
+            &conn,
+            "/tmp/project-a",
+            "today-session",
+            current_start,
+            12_000_000,
+        );
+
+        assert_eq!(store.global_today_normalized_tokens(&conn).unwrap(), 12_000_000);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn jsonl_append_indexes_only_new_bytes() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -322,5 +344,38 @@ mod tests {
                 reasoning_output_tokens: 0,
             }],
         }
+    }
+
+    fn insert_usage_bucket(
+        conn: &Connection,
+        project_path: &str,
+        session_key: &str,
+        bucket_start: f64,
+        total_tokens: i64,
+    ) {
+        conn.execute(
+            r#"
+            INSERT INTO ai_history_file_usage_bucket (
+                source, file_path, project_path, session_key, model, bucket_start, bucket_end,
+                input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            "#,
+            params![
+                "codex",
+                "session.jsonl",
+                project_path,
+                session_key,
+                "gpt-5",
+                bucket_start,
+                bucket_start + 1_800.0,
+                total_tokens / 2,
+                total_tokens / 2,
+                total_tokens,
+                0,
+                1
+            ],
+        )
+        .unwrap();
     }
 }

@@ -5,6 +5,7 @@ use crate::runtime_paths::{
 use crate::settings::AppSettings;
 use crate::update::UpdateService;
 pub use crate::update::UpdateStatus;
+use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
 use minisign_verify::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
@@ -471,12 +472,25 @@ fn verify_download_signature(path: &Path, signature: Option<&str>) -> Result<(),
     };
     let public_key = PublicKey::from_base64(TAURI_UPDATER_PUBLIC_KEY)
         .map_err(|error| format!("Invalid updater public key: {error}"))?;
-    let signature = Signature::decode(signature)
-        .map_err(|error| format!("Invalid updater signature: {error}"))?;
+    let signature = decode_updater_signature(signature)?;
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     public_key
         .verify(&bytes, &signature, true)
         .map_err(|error| format!("Downloaded update signature verification failed: {error}"))
+}
+
+fn decode_updater_signature(signature: &str) -> Result<Signature, String> {
+    match Signature::decode(signature) {
+        Ok(signature) => Ok(signature),
+        Err(raw_error) => {
+            let decoded = general_purpose::STANDARD
+                .decode(signature)
+                .map_err(|_| format!("Invalid updater signature: {raw_error}"))?;
+            let decoded = std::str::from_utf8(&decoded)
+                .map_err(|_| format!("Invalid updater signature: {raw_error}"))?;
+            Signature::decode(decoded).map_err(|error| format!("Invalid updater signature: {error}"))
+        }
+    }
 }
 
 fn prepare_update_install(artifact_path: &Path) -> Result<PendingUpdateInstall, String> {
@@ -887,6 +901,13 @@ mod tests {
         assert!(verify_download_signature(&path, Some("invalid")).is_err());
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn update_signature_decoder_accepts_tauri_base64_signature() {
+        let signature = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWd5dUtWdks5SEhBbUFUa3ZSL3RGUE9EZVBLUlp0TEN2UE5IWkFwekVyYXRaOE43Z0xIY0lmYzk2cXVMSXc1UHl0U214cktwTTh5bWxjeno0enY2a2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTc5MjU5CWZpbGU6Y29kdXgtMS41LjEtbWFjb3MtdW5pdmVyc2FsLWZvcm1hbC11cGRhdGVyLmFwcC50YXIuZ3oKUDBLdTN4Szh1eWgyNmNVMlIvZkE5R1M4aDIvVWZOaGM3SXljRkFSdG5WOWlpN3laSnl2V3c4N1ZYeDkvUUpma1VieHpSNVVtMElLbmtqM2pKNVhiQlE9PQo=";
+
+        assert!(decode_updater_signature(signature).is_ok());
     }
 
     #[cfg(target_os = "macos")]

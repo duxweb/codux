@@ -2,7 +2,7 @@ use crate::{
     ai_history::{AIGlobalHistorySummary, AIHistoryService, AIHistorySummary, AISessionDetail},
     ai_history_indexer::{AIHistoryEvent, AIHistoryIndexer, AIHistoryProjectState},
     ai_history_normalized::{
-        AIGlobalHistorySnapshot, AIHistoryProjectRequest, global_today_normalized_tokens,
+        AIGlobalHistorySnapshot, AIHistoryProjectRequest, global_today_normalized_tokens_at,
         indexed_sessions_since, normalized_project_totals_since,
     },
     ai_runtime::{

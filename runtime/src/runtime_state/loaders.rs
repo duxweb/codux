@@ -102,7 +102,18 @@ fn load_ai_history(support_dir: &Path, project_path: &str) -> AIHistorySummary {
 }
 
 fn load_global_ai_history(support_dir: &Path) -> AIGlobalHistorySummary {
-    AIHistoryService::new(support_dir.to_path_buf()).global_summary()
+    let mut summary = AIHistoryService::new(support_dir.to_path_buf()).global_summary();
+    summary.today_total_tokens =
+        normalized_global_today_tokens(support_dir).unwrap_or(summary.today_total_tokens);
+    summary
+}
+
+fn normalized_global_today_tokens(support_dir: &Path) -> Result<i64, String> {
+    crate::ai_history_normalized::global_today_normalized_tokens_at(
+        support_dir.join("ai-usage.sqlite3"),
+    )
+    .map(|tokens| tokens.max(0))
+    .map_err(|error| error.to_string())
 }
 
 fn load_ai_session_detail(

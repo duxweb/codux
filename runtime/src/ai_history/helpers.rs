@@ -69,7 +69,7 @@ pub(super) fn deterministic_uuid(value: &str) -> String {
 pub(super) fn local_today_start_seconds() -> f64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
-    (now / 86_400 * 86_400) as f64
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or(0.0);
+    crate::ai_history_normalized::local_day_start_seconds(now)
 }

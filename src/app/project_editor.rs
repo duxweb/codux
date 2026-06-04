@@ -60,35 +60,29 @@ impl CoduxApp {
                         cx,
                     )),
             )
-            .child(
+            .child(dialog_footer_bar(
                 div()
-                    .h(px(58.0))
-                    .flex_shrink_0()
-                    .border_t_1()
-                    .border_color(color(theme::BORDER_SOFT).opacity(0.45))
-                    .px(px(18.0))
                     .flex()
                     .items_center()
-                    .justify_end()
                     .gap(px(8.0))
-                    .child(
-                        Button::new("project-editor-cancel")
-                            .ghost()
-                            .text_color(cx.theme().secondary_foreground)
-                            .child(project_editor_button_label(tr("common.cancel", "Cancel")))
-                            .on_click(cx.listener(|_app, _event, window, _cx| {
-                                window.remove_window();
-                            })),
-                    )
-                    .child(
-                        Button::new("project-editor-save")
-                            .primary()
-                            .child(project_editor_button_label(submit_label))
-                            .on_click(cx.listener(|app, _event, window, cx| {
-                                app.save_project_editor(window, cx);
-                            })),
-                    ),
-            )
+                    .child(dialog_cancel_button(
+                        "project-editor-cancel",
+                        tr("common.cancel", "Cancel"),
+                        cx,
+                        |_app, _event, window, _cx| {
+                            window.remove_window();
+                        },
+                    ))
+                    .child(dialog_primary_button(
+                        "project-editor-save",
+                        submit_label,
+                        cx,
+                        |app, _event, window, cx| {
+                            app.save_project_editor(window, cx);
+                        },
+                    )),
+                cx,
+            ))
     }
 }
 
@@ -296,13 +290,6 @@ fn project_editor_color_field(
         .into_any_element()
 }
 
-fn project_editor_button_label(label: impl Into<String>) -> impl IntoElement {
-    div()
-        .text_size(rems(0.875))
-        .line_height(rems(1.125))
-        .child(label.into())
-}
-
 fn hex_color(value: &str) -> Option<u32> {
     let value = value.trim().trim_start_matches('#');
     if value.len() == 6 {
@@ -385,7 +372,7 @@ fn project_editor_path_field(
                         .secondary()
                         .compact()
                         .text_color(cx.theme().secondary_foreground)
-                        .child(project_editor_button_label(choose_label))
+                        .child(dialog_button_label(choose_label))
                         .on_click(cx.listener(|app, _event, window, cx| {
                             app.choose_project_editor_directory(window, cx);
                         })),

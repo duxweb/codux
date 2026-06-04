@@ -449,3 +449,74 @@ pub(in crate::app) fn empty_label(value: &str) -> String {
         value.to_string()
     }
 }
+
+/// Shared text label for dialog footer buttons. Keeps every sub-window button at
+/// the same size and line-height instead of each module rolling its own.
+pub(in crate::app) fn dialog_button_label(label: impl Into<SharedString>) -> impl IntoElement {
+    div()
+        .text_size(rems(0.875))
+        .line_height(rems(1.125))
+        .child(label.into())
+}
+
+/// Primary action button used in dialog footers (save / update / confirm).
+pub(in crate::app) fn dialog_primary_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    cx: &mut Context<CoduxApp>,
+    on_click: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
+) -> Button {
+    Button::new(id)
+        .primary()
+        .text_color(cx.theme().primary_foreground)
+        .child(dialog_button_label(label))
+        .on_click(cx.listener(on_click))
+}
+
+/// Secondary action button used in dialog footers (test / retry / neutral).
+pub(in crate::app) fn dialog_secondary_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    cx: &mut Context<CoduxApp>,
+    on_click: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
+) -> Button {
+    Button::new(id)
+        .secondary()
+        .text_color(cx.theme().secondary_foreground)
+        .child(dialog_button_label(label))
+        .on_click(cx.listener(on_click))
+}
+
+/// Cancel / dismiss button used in dialog footers. Ghost styled so it reads as
+/// the lower-emphasis action next to a primary button.
+pub(in crate::app) fn dialog_cancel_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    cx: &mut Context<CoduxApp>,
+    on_click: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .text_color(cx.theme().secondary_foreground)
+        .child(dialog_button_label(label))
+        .on_click(cx.listener(on_click))
+}
+
+/// Standard bottom action bar shared by every sub-window dialog: fixed height,
+/// top divider, right-aligned actions with consistent spacing.
+pub(in crate::app) fn dialog_footer_bar(
+    children: impl IntoElement,
+    cx: &mut Context<CoduxApp>,
+) -> gpui::Div {
+    div()
+        .h(px(56.0))
+        .flex_shrink_0()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .px(px(16.0))
+        .flex()
+        .items_center()
+        .justify_end()
+        .gap(px(8.0))
+        .child(children)
+}

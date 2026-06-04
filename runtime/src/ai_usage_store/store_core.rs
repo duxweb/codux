@@ -5,7 +5,6 @@ impl AIUsageStore {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn at_path(database_path: PathBuf) -> Self {
         Self { database_path }
     }

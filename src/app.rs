@@ -213,7 +213,9 @@ use self::{
     },
     types::*,
     ui_helpers::{
-        assistant_header_icon_button, column_header, empty_label, header_icon_button, section,
+        assistant_header_icon_button, column_header, dialog_button_label, dialog_cancel_button,
+        dialog_footer_bar, dialog_primary_button, dialog_secondary_button, empty_label,
+        header_icon_button, section,
     },
     ui_invalidation::UiRegion,
     window_shell::child_window_shell,

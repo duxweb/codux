@@ -404,7 +404,8 @@ impl RuntimeService {
     }
 
     pub fn global_today_normalized_ai_tokens(&self) -> Result<i64, String> {
-        global_today_normalized_tokens().map_err(|error| error.to_string())
+        global_today_normalized_tokens_at(self.support_dir.join("ai-usage.sqlite3"))
+            .map_err(|error| error.to_string())
     }
 
     pub fn rename_indexed_ai_session(

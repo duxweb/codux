@@ -95,37 +95,33 @@ impl CoduxApp {
                         )
                     }),
             )
-            .child(
+            .child(dialog_footer_bar(
                 div()
-                    .h(px(58.0))
-                    .flex_shrink_0()
-                    .border_t_1()
-                    .border_color(color(theme::BORDER_SOFT).opacity(0.45))
-                    .px(px(18.0))
                     .flex()
                     .items_center()
-                    .justify_end()
                     .gap(px(8.0))
+                    .child(dialog_cancel_button(
+                        "worktree-create-cancel",
+                        tr("common.cancel", "Cancel"),
+                        cx,
+                        |_app, _event, window, _cx| {
+                            window.remove_window();
+                        },
+                    ))
                     .child(
-                        Button::new("worktree-create-cancel")
-                            .ghost()
-                            .text_color(cx.theme().secondary_foreground)
-                            .child(worktree_creator_button_label(tr("common.cancel", "Cancel")))
-                            .on_click(cx.listener(|_app, _event, window, _cx| {
-                                window.remove_window();
-                            })),
-                    )
-                    .child(
-                        Button::new("worktree-create-confirm")
-                            .primary()
-                            .disabled(!can_submit)
-                            .loading(self.worktree_creator_submitting)
-                            .child(worktree_creator_button_label(tr("common.create", "Create")))
-                            .on_click(cx.listener(|app, _event, window, cx| {
+                        dialog_primary_button(
+                            "worktree-create-confirm",
+                            tr("common.create", "Create"),
+                            cx,
+                            |app, _event, window, cx| {
                                 app.submit_worktree_creator(window, cx);
-                            })),
+                            },
+                        )
+                        .disabled(!can_submit)
+                        .loading(self.worktree_creator_submitting),
                     ),
-            )
+                cx,
+            ))
     }
 
     fn worktree_creator_branch_options(&self) -> Vec<String> {
@@ -247,11 +243,4 @@ fn worktree_creator_label(label: String) -> impl IntoElement {
         .line_height(rems(1.125))
         .text_color(color(theme::TEXT))
         .child(label)
-}
-
-fn worktree_creator_button_label(label: impl Into<String>) -> impl IntoElement {
-    div()
-        .text_size(rems(0.875))
-        .line_height(rems(1.125))
-        .child(label.into())
 }

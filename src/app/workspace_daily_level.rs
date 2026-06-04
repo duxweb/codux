@@ -39,44 +39,7 @@ pub(in crate::app) fn workspace_level_button(
 }
 
 pub(in crate::app) fn workspace_today_level_tokens(state: &RuntimeState) -> i64 {
-    let history_tokens = state.ai_global_history.today_total_tokens.max(0);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs_f64())
-        .unwrap_or_default();
-    let day_start = codux_runtime::ai_history_normalized::local_day_start_seconds(now);
-    let live_tokens = state
-        .ai_runtime_state
-        .sessions
-        .iter()
-        .map(|session| workspace_live_session_tokens_for_day(session, day_start))
-        .sum::<i64>();
-
-    history_tokens + live_tokens
-}
-
-pub(in crate::app) fn workspace_live_session_tokens_for_day(
-    session: &codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
-    day_start: f64,
-) -> i64 {
-    if session.updated_at < day_start {
-        return 0;
-    }
-
-    let started_at = session.started_at.unwrap_or(session.updated_at);
-    let started_day = codux_runtime::ai_history_normalized::local_day_start_seconds(started_at);
-    let baseline = if (started_day - day_start).abs() < 1.0 {
-        session.baseline_total_tokens.max(0)
-    } else {
-        session.raw_total_tokens.max(session.total_tokens).max(0)
-    };
-    let total = if session.raw_total_tokens > 0 {
-        session.raw_total_tokens
-    } else {
-        session.total_tokens + session.baseline_total_tokens
-    };
-
-    (total - baseline).max(0)
+    state.ai_global_history.today_total_tokens.max(0)
 }
 #[derive(Clone)]
 struct DailyLevelTier {

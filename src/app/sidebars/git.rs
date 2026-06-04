@@ -1704,31 +1704,19 @@ pub(in crate::app) fn git_clone_window_workspace(
                         }),
                 ),
         )
-        .child(
-            div()
-                .h(px(58.0))
-                .flex_shrink_0()
-                .border_t_1()
-                .border_color(color(theme::BORDER_SOFT).opacity(0.45))
-                .px(px(18.0))
-                .flex()
-                .items_center()
-                .justify_end()
-                .gap(px(8.0))
-                .child(
-                    Button::new("git-clone-confirm")
-                        .primary()
-                        .loading(cloning)
-                        .disabled(cloning || clone_remote_url.trim().is_empty())
-                        .text_color(color(0xFFFFFF))
-                        .child(git_clone_button_label(labels.confirm.clone()))
-                        .on_click(
-                            cx.listener(|app, _event, window, cx| {
-                                app.clone_project_git(window, cx)
-                            }),
-                        ),
-                ),
-        )
+        .child(dialog_footer_bar(
+            div().flex().items_center().gap(px(8.0)).child(
+                dialog_primary_button(
+                    "git-clone-confirm",
+                    labels.confirm.clone(),
+                    cx,
+                    |app, _event, window, cx| app.clone_project_git(window, cx),
+                )
+                .loading(cloning)
+                .disabled(cloning || clone_remote_url.trim().is_empty()),
+            ),
+            cx,
+        ))
 }
 
 fn git_clone_input_label(label: impl Into<String>) -> impl IntoElement {
@@ -1736,13 +1724,6 @@ fn git_clone_input_label(label: impl Into<String>) -> impl IntoElement {
         .text_size(rems(0.875))
         .line_height(rems(1.125))
         .text_color(color(theme::TEXT))
-        .child(label.into())
-}
-
-fn git_clone_button_label(label: impl Into<String>) -> impl IntoElement {
-    div()
-        .text_size(rems(0.875))
-        .line_height(rems(1.125))
         .child(label.into())
 }
 
@@ -1809,46 +1790,32 @@ pub(in crate::app) fn git_credentials_window_workspace(
                     )
                 }),
         )
-        .child(
+        .child(dialog_footer_bar(
             div()
-                .h(px(56.0))
-                .flex_shrink_0()
-                .border_t_1()
-                .border_color(color(theme::BORDER_SOFT).opacity(0.45))
-                .px(px(16.0))
                 .flex()
                 .items_center()
-                .justify_end()
                 .gap(px(8.0))
                 .child(
-                    Button::new("git-credentials-cancel")
-                        .ghost()
-                        .disabled(retrying)
-                        .text_color(cx.theme().secondary_foreground)
-                        .child(git_credentials_button_label(labels.cancel.clone()))
-                        .on_click(cx.listener(|app, _event, window, cx| {
-                            app.close_git_credentials_dialog(window, cx)
-                        })),
+                    dialog_cancel_button(
+                        "git-credentials-cancel",
+                        labels.cancel.clone(),
+                        cx,
+                        |app, _event, window, cx| app.close_git_credentials_dialog(window, cx),
+                    )
+                    .disabled(retrying),
                 )
                 .child(
-                    Button::new("git-credentials-confirm")
-                        .primary()
-                        .loading(retrying)
-                        .disabled(retrying)
-                        .text_color(color(0xFFFFFF))
-                        .child(git_credentials_button_label(labels.confirm.clone()))
-                        .on_click(cx.listener(|app, _event, window, cx| {
-                            app.retry_git_clone_with_credentials(window, cx)
-                        })),
+                    dialog_primary_button(
+                        "git-credentials-confirm",
+                        labels.confirm.clone(),
+                        cx,
+                        |app, _event, window, cx| app.retry_git_clone_with_credentials(window, cx),
+                    )
+                    .loading(retrying)
+                    .disabled(retrying),
                 ),
-        )
-}
-
-fn git_credentials_button_label(label: impl Into<String>) -> impl IntoElement {
-    div()
-        .text_size(rems(0.875))
-        .line_height(rems(1.125))
-        .child(label.into())
+            cx,
+        ))
 }
 
 fn git_credentials_input(

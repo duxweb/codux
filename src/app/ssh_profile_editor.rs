@@ -202,56 +202,42 @@ pub(in crate::app) fn ssh_profile_editor_workspace(
                 ))
             }),
     )
-    .child(
+    .child(dialog_footer_bar(
         div()
-            .h(px(62.0))
-            .flex_shrink_0()
-            .border_t_1()
-            .border_color(color(theme::BORDER_SOFT).opacity(0.45))
-            .px(px(18.0))
+            .flex_none()
             .flex()
             .items_center()
-            .justify_end()
-            .gap(px(12.0))
+            .gap(px(8.0))
+            .child(dialog_cancel_button(
+                "ssh-editor-cancel",
+                labels.cancel.clone(),
+                cx,
+                |_app, _event, window, _cx| {
+                    window.remove_window();
+                },
+            ))
             .child(
-                div()
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .child(
-                        Button::new("ssh-editor-cancel")
-                            .ghost()
-                            .text_color(cx.theme().secondary_foreground)
-                            .label(labels.cancel.clone())
-                            .on_click(cx.listener(|_app, _event, window, _cx| {
-                                window.remove_window();
-                            })),
-                    )
-                    .child(
-                        Button::new("ssh-editor-test")
-                            .secondary()
-                            .loading(ssh_testing)
-                            .disabled(ssh_testing)
-                            .child(ssh_button_label(if ssh_testing {
-                                labels.testing.clone()
-                            } else {
-                                labels.test.clone()
-                            }))
-                            .on_click(cx.listener(|app, _event, window, cx| {
-                                app.test_ssh_profile_draft(window, cx)
-                            })),
-                    )
-                    .child(
-                        Button::new("ssh-editor-save")
-                            .primary()
-                            .child(ssh_button_label(labels.save.clone()))
-                            .on_click(cx.listener(|app, _event, window, cx| {
-                                app.save_ssh_profile_draft(window, cx)
-                            })),
-                    ),
-            ),
-    )
+                dialog_secondary_button(
+                    "ssh-editor-test",
+                    if ssh_testing {
+                        labels.testing.clone()
+                    } else {
+                        labels.test.clone()
+                    },
+                    cx,
+                    |app, _event, window, cx| app.test_ssh_profile_draft(window, cx),
+                )
+                .loading(ssh_testing)
+                .disabled(ssh_testing),
+            )
+            .child(dialog_primary_button(
+                "ssh-editor-save",
+                labels.save.clone(),
+                cx,
+                |app, _event, window, cx| app.save_ssh_profile_draft(window, cx),
+            )),
+        cx,
+    ))
 }
 
 fn ssh_dialog_input(
@@ -354,7 +340,7 @@ fn ssh_private_key_path_input(
                 .child(
                     Button::new("ssh-editor-choose-key")
                         .secondary()
-                        .child(ssh_button_label(labels.choose.clone()))
+                        .child(dialog_button_label(labels.choose.clone()))
                         .on_click(cx.listener(|app, _event, window, cx| {
                             app.choose_ssh_private_key_path(window, cx)
                         })),
@@ -417,11 +403,4 @@ fn ssh_dialog_select(
                 .menu_width(px(220.0))
                 .with_size(Size::Medium),
         )
-}
-
-fn ssh_button_label(label: impl Into<String>) -> impl IntoElement {
-    div()
-        .text_size(rems(0.875))
-        .line_height(rems(1.125))
-        .child(label.into())
 }

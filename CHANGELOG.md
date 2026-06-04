@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-06-05
+
+### Fixed
+
+- Fixed daily level token totals so the workspace rank uses today's normalized global AI usage instead of historical project totals.
+- Fixed update signature verification for Tauri-style base64-wrapped minisign signatures.
+- Fixed update dialog release notes rendering and supported additional manifest note fields.
+- Hid technical download paths from the update completion message.
+- Refined child dialogs, settings, project and worktree forms, Git status indicators, and desktop pet chat rendering.
+
 ## [1.5.1] - 2026-06-04
 
 ### Fixed

@@ -75,9 +75,8 @@ impl UpdateService {
                     .and_then(Value::as_object)
                     .map(|platforms| platforms.len())
                     .unwrap_or(0);
-                summary.notes_preview = value
-                    .get("notes")
-                    .and_then(Value::as_str)
+                summary.notes_preview = manifest_notes(&value)
+                    .as_deref()
                     .unwrap_or("")
                     .lines()
                     .take(4)
@@ -274,12 +273,7 @@ fn update_status_from_manifest(
         download_url,
         download_checksum,
         download_signature,
-        notes: manifest
-            .get("notes")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string),
+        notes: manifest_notes(&manifest),
         channel: Some(channel).filter(|value| !value.trim().is_empty()),
         installation_mode: if automatic_install_supported {
             "automatic".to_string()
@@ -288,6 +282,26 @@ fn update_status_from_manifest(
         },
         message,
     }
+}
+
+fn manifest_notes(manifest: &Value) -> Option<String> {
+    [
+        "notes",
+        "releaseNotes",
+        "release_notes",
+        "changelog",
+        "body",
+        "description",
+    ]
+    .into_iter()
+    .find_map(|key| {
+        manifest
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
 }
 
 fn current_platform_manifest_entry<'a>(manifest: &'a Value) -> Option<&'a Value> {
