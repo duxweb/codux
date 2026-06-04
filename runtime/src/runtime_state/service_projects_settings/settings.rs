@@ -10,9 +10,10 @@ impl RuntimeService {
     }
 
     pub fn replace_app_settings(&self, settings: AppSettings) -> Result<AppSettings, String> {
+        let previous = AppSettingsStore::from_support_dir(self.support_dir.clone()).snapshot();
         let settings =
             AppSettingsStore::from_support_dir(self.support_dir.clone()).replace(settings)?;
-        self.sync_app_settings_side_effects(&settings)?;
+        self.sync_app_settings_side_effects(&previous, &settings)?;
         Ok(settings)
     }
 
@@ -20,17 +21,30 @@ impl RuntimeService {
         &self,
         apply: impl FnOnce(&mut AppSettings),
     ) -> Result<AppSettings, String> {
+        let previous = AppSettingsStore::from_support_dir(self.support_dir.clone()).snapshot();
         let settings = AppSettingsStore::from_support_dir(self.support_dir.clone()).update(apply)?;
-        self.sync_app_settings_side_effects(&settings)?;
+        self.sync_app_settings_side_effects(&previous, &settings)?;
         Ok(settings)
     }
 
-    fn sync_app_settings_side_effects(&self, settings: &AppSettings) -> Result<(), String> {
-        sync_process_locale_preference(settings);
-        let _ = app_icon::apply_app_icon(&settings.icon_style);
-        self.power_manager
-            .set_sleep_prevention(settings.sleep_mode.clone())?;
-        let _ = RemoteService::new(self.support_dir.clone()).sync_settings_background();
+    fn sync_app_settings_side_effects(
+        &self,
+        previous: &AppSettings,
+        settings: &AppSettings,
+    ) -> Result<(), String> {
+        if previous.language != settings.language {
+            sync_process_locale_preference(settings);
+        }
+        if previous.icon_style != settings.icon_style {
+            let _ = app_icon::apply_app_icon(&settings.icon_style);
+        }
+        if previous.sleep_mode != settings.sleep_mode {
+            self.power_manager
+                .set_sleep_prevention(settings.sleep_mode.clone())?;
+        }
+        if previous.remote != settings.remote {
+            let _ = RemoteService::new(self.support_dir.clone()).sync_settings_background();
+        }
         Ok(())
     }
 
@@ -38,9 +52,10 @@ impl RuntimeService {
         &self,
         update: impl FnOnce(SettingsService) -> Result<SettingsSummary, String>,
     ) -> Result<SettingsSummary, String> {
+        let previous = AppSettingsStore::from_support_dir(self.support_dir.clone()).snapshot();
         let settings = update(SettingsService::new(self.support_dir.clone()))?;
         let app_settings = AppSettingsStore::from_support_dir(self.support_dir.clone()).snapshot();
-        self.sync_app_settings_side_effects(&app_settings)?;
+        self.sync_app_settings_side_effects(&previous, &app_settings)?;
         Ok(settings)
     }
 

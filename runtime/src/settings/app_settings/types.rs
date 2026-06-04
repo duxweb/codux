@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use super::defaults::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotificationChannelSettings {
     #[serde(default)]
@@ -14,7 +14,7 @@ pub struct NotificationChannelSettings {
     pub token: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     #[serde(default = "default_language")]
@@ -61,7 +61,7 @@ pub struct AppSettings {
     pub developer_refresh: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSettings {
     #[serde(default)]
@@ -72,7 +72,7 @@ pub struct UpdateSettings {
     pub endpoint: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PetSettings {
     #[serde(default = "default_true")]
@@ -89,7 +89,7 @@ pub struct PetSettings {
     pub speech_frequency: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AISettings {
     #[serde(default)]
@@ -112,7 +112,7 @@ pub struct AISettings {
     pub providers: Vec<AIProviderSettings>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIRuntimeToolSettings {
     #[serde(default = "default_ai_tool_permission_mode")]
@@ -139,7 +139,7 @@ pub struct AIRuntimeToolSettings {
     pub codex_effort: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIMemorySettings {
     #[serde(default = "default_true")]
@@ -176,7 +176,7 @@ pub struct AIMemorySettings {
     pub max_extraction_transcript_tokens: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIPetSettings {
     #[serde(default = "default_ai_pet_speech_mode")]
@@ -201,7 +201,7 @@ pub struct AIPetSettings {
     pub speech_temporary_mute_until: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIProviderSettings {
     pub id: String,
@@ -219,7 +219,7 @@ pub struct AIProviderSettings {
     pub priority: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteSettings {
     #[serde(default, rename = "isEnabled")]
@@ -238,7 +238,7 @@ pub struct RemoteSettings {
     pub cached_devices: Vec<RemoteHostDeviceSettings>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteHostDeviceSettings {
     #[serde(default)]

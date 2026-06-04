@@ -4,7 +4,6 @@ use crate::app::window_actions::{AuxiliaryWindowSlot, AuxiliaryWindowSpec};
 use codux_runtime::{
     app_info::{DiagnosticsExportRequest, UpdateInstallProgressEvent},
     dialog::{DialogFilter, LocalizedAlertDialogRequest, LocalizedSaveDialogRequest},
-    update::UpdateStatus,
 };
 
 const CODUX_WEBSITE_URL: &str = "https://codux.dux.cn";
@@ -358,45 +357,6 @@ impl CoduxApp {
         })
         .detach();
         cx.notify();
-    }
-
-    pub(in crate::app) fn open_update_download_window(
-        &mut self,
-        status: UpdateStatus,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_auxiliary_window(
-            AuxiliaryWindowSpec {
-                slot: AuxiliaryWindowSlot::UpdateDialog,
-                title: SharedString::from("Download Update"),
-                size: size(px(UPDATE_DIALOG_WIDTH), px(UPDATE_DIALOG_PROGRESS_HEIGHT)),
-                min_size: size(px(400.0), px(UPDATE_DIALOG_MIN_HEIGHT)),
-                already_open_message: "update download window already opened",
-                opened_message: "update download window opened",
-                failed_prefix: "failed to open update download window",
-            },
-            cx,
-            move |state, runtime, runtime_service, _window, _cx| {
-                let mut app =
-                    CoduxApp::new_settings_window_from_state(state, runtime, runtime_service);
-                app.window_mode = AppWindowMode::UpdateDialog;
-                app.update_dialog_phase = UpdateDialogPhase::Downloading;
-                app.update_dialog_status = Some(status.clone());
-                app.update_dialog_progress = Some(UpdateInstallProgressEvent {
-                    phase: "downloading".to_string(),
-                    version: status.latest_version.clone(),
-                    downloaded_bytes: 0,
-                    total_bytes: None,
-                });
-                app.update_dialog_result = None;
-                app.update_dialog_error = None;
-                app
-            },
-            |view, _window, cx| {
-                view.update(cx, |app, cx| app.download_update_in_dialog(cx));
-            },
-        );
-        self.invalidate_status_bar(cx);
     }
 
     pub(in crate::app) fn update_dialog_workspace(
@@ -851,20 +811,15 @@ fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxAp
                 true,
                 cx,
                 |app, _event, window, cx| {
-                    let Some(status) = app.update_dialog_status.clone() else {
+                    if app.update_dialog_status.is_none() {
                         app.update_dialog_error =
                             Some("No update status is available.".to_string());
                         app.update_dialog_phase = UpdateDialogPhase::Error;
                         cx.notify();
                         return;
                     };
-                    let app_entity = cx.entity();
-                    window.remove_window();
-                    window.defer(cx, move |_window, cx| {
-                        app_entity.update(cx, |app, cx| {
-                            app.open_update_download_window(status, cx);
-                        });
-                    });
+                    resize_update_dialog_window(window, UpdateDialogPhase::Downloading);
+                    app.download_update_in_dialog(cx);
                 },
             ));
         }
