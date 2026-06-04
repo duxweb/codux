@@ -761,3 +761,12 @@ fn ai_stats_surface(cx: &mut Context<CoduxApp>) -> gpui::Hsla {
 fn ai_stats_track_surface(cx: &mut Context<CoduxApp>) -> gpui::Hsla {
     cx.theme().secondary_hover
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn ai_display_tokens_respects_cache_mode() {
+        assert_eq!(super::ai::ai_display_tokens(100, 40, false), 100);
+        assert_eq!(super::ai::ai_display_tokens(100, 40, true), 140);
+    }
+}

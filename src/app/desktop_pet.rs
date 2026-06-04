@@ -424,11 +424,8 @@ pub(in crate::app) fn pet_sprite_path(
     support_dir: &Path,
     pet: &PetSummary,
     custom_pets: &[PetCustomPet],
-) -> PathBuf {
-    let fallback = runtime_asset_root
-        .join("pets")
-        .join("voidcat")
-        .join("spritesheet.png");
+) -> ImageSource {
+    let fallback = "pets/voidcat/spritesheet.png".to_string();
     if let Some(custom_id) = pet.species.strip_prefix("custom:") {
         if let Some(custom_pet) = custom_pets.iter().find(|item| item.id == custom_id) {
             let path = support_dir
@@ -436,14 +433,14 @@ pub(in crate::app) fn pet_sprite_path(
                 .join(&custom_pet.directory_name)
                 .join(&custom_pet.spritesheet_path);
             if path.is_file() {
-                return path;
+                return path.into();
             }
         }
-        return fallback;
+        return fallback.into();
     }
 
     let species = pet.species.trim();
-    let path = runtime_asset_root
+    let filesystem_path = runtime_asset_root
         .join("pets")
         .join(if species.is_empty() {
             "voidcat"
@@ -451,7 +448,16 @@ pub(in crate::app) fn pet_sprite_path(
             species
         })
         .join("spritesheet.png");
-    if path.is_file() { path } else { fallback }
+    if filesystem_path.is_file() {
+        filesystem_path.into()
+    } else {
+        let species = if species.is_empty() {
+            "voidcat"
+        } else {
+            species
+        };
+        format!("pets/{species}/spritesheet.png").into()
+    }
 }
 
 pub(in crate::app) fn custom_pet_sprite_path(
@@ -468,7 +474,7 @@ pub(in crate::app) fn pet_sprite_path_cache(
     runtime_asset_root: &Path,
     support_dir: &Path,
     catalog: &PetCatalog,
-) -> HashMap<String, PathBuf> {
+) -> HashMap<String, ImageSource> {
     let mut paths = HashMap::new();
     for item in &catalog.species {
         paths.insert(
@@ -487,14 +493,14 @@ pub(in crate::app) fn pet_sprite_path_cache(
     for custom_pet in &catalog.custom_pets {
         paths.insert(
             format!("custom:{}", custom_pet.id),
-            custom_pet_sprite_path(support_dir, custom_pet),
+            custom_pet_sprite_path(support_dir, custom_pet).into(),
         );
     }
     paths
 }
 
 pub(in crate::app) fn desktop_pet_sprite(
-    sprite_path: PathBuf,
+    sprite_path: ImageSource,
     frame: usize,
     row: usize,
     cx: &mut Context<CoduxApp>,
@@ -542,6 +548,9 @@ pub(in crate::app) fn desktop_pet_bubble(
                 .items_center()
                 .justify_center()
                 .overflow_hidden()
+                .w(px(DESKTOP_PET_BUBBLE_WIDTH
+                    - text_pad_left
+                    - text_pad_right))
                 .font_family("SF Mono")
                 .text_size(rems(0.875))
                 .line_height(rems(1.0625))
@@ -549,7 +558,7 @@ pub(in crate::app) fn desktop_pet_bubble(
                 .text_center()
                 .text_color(color(text))
                 .line_clamp(3)
-                .child(line),
+                .child(div().w_full().overflow_hidden().child(line)),
         )
         .into_any_element()
 }
@@ -679,7 +688,7 @@ fn pixel_bubble_points(width: f32, height: f32, left_tail: bool) -> Vec<(f32, f3
 }
 
 pub(in crate::app) fn pet_sprite_element(
-    sprite_path: PathBuf,
+    sprite_path: ImageSource,
     size: f32,
     frame: usize,
     row: usize,

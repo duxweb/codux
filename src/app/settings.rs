@@ -688,7 +688,11 @@ fn settings_select_state(
     let items = settings_select_options(options.clone());
     let selected_index = items.iter().position(|item| item.value == value);
     let current_value = value.to_string();
-    let state_key = format!("settings-select-{id}");
+    let state_key = format!(
+        "settings-select-{id}-{}-{}",
+        value,
+        settings_select_options_key(&items)
+    );
     let state = window.use_keyed_state(SharedString::from(state_key), cx, {
         let items = items.clone();
         move |window, cx| {
@@ -700,14 +704,6 @@ fn settings_select_state(
             )
             .searchable(searchable)
         }
-    });
-    state.update(cx, |state, cx| {
-        state.set_items(items, window, cx);
-        state.set_selected_index(
-            selected_index.map(|row| gpui_component::IndexPath::default().row(row)),
-            window,
-            cx,
-        );
     });
     cx.subscribe_in(&state, window, move |app, _, event, window, cx| {
         let SelectEvent::Confirm(selected) = event;
@@ -730,6 +726,14 @@ fn settings_select_state(
                 .disabled(disabled),
         )
         .into_any_element()
+}
+
+fn settings_select_options_key(items: &[SettingsSelectOption]) -> String {
+    items
+        .iter()
+        .map(|item| format!("{}={}", item.value, item.label))
+        .collect::<Vec<_>>()
+        .join("|")
 }
 
 fn settings_status_tag(value: impl Into<String>, accent: u32) -> AnyElement {

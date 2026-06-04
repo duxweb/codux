@@ -232,7 +232,7 @@ fn default_terminal_font_family() -> &'static str {
 
 const DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER: f32 = 1.45;
 const TERMINAL_SCROLL_FRAME_INTERVAL: Duration = Duration::from_millis(16);
-const TERMINAL_OUTPUT_FRAME_INTERVAL: Duration = Duration::from_millis(4);
+const TERMINAL_OUTPUT_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 static TERMINAL_TRACE_ENABLED: OnceLock<bool> = OnceLock::new();
 
 pub struct TerminalView {
@@ -305,6 +305,10 @@ impl TerminalView {
         self.focus_handle.clone()
     }
 
+    pub fn is_focused(&self, window: &Window) -> bool {
+        self.focus_handle.is_focused(window)
+    }
+
     pub fn config(&self) -> &TerminalConfig {
         &self.config
     }
@@ -336,13 +340,24 @@ impl TerminalView {
             }
         }
 
-        let mode = self.model.read(cx).mode();
-        if let Some(bytes) = keystroke_to_bytes(&event.keystroke, mode) {
-            self.blink_manager
-                .update(cx, TerminalBlinkManager::pause_blinking);
-            self.write_bytes(&bytes, cx);
+        if self.handle_terminal_keystroke(&event.keystroke, cx) {
             cx.stop_propagation();
         }
+    }
+
+    pub fn handle_terminal_keystroke(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let mode = self.model.read(cx).mode();
+        let Some(bytes) = keystroke_to_bytes(keystroke, mode) else {
+            return false;
+        };
+        self.blink_manager
+            .update(cx, TerminalBlinkManager::pause_blinking);
+        self.write_bytes(&bytes, cx);
+        true
     }
 
     fn on_mouse_down(
@@ -2134,6 +2149,7 @@ enum TerminalKeyModifiers {
     Alt,
     Ctrl,
     Shift,
+    Platform,
     CtrlShift,
     Other,
 }
@@ -2145,13 +2161,13 @@ impl TerminalKeyModifiers {
             keystroke.modifiers.control,
             keystroke.modifiers.shift,
             keystroke.modifiers.platform,
-            keystroke.modifiers.function,
         ) {
-            (false, false, false, false, false) => Self::None,
-            (true, false, false, false, false) => Self::Alt,
-            (false, true, false, false, false) => Self::Ctrl,
-            (false, false, true, false, false) => Self::Shift,
-            (false, true, true, false, false) => Self::CtrlShift,
+            (false, false, false, false) => Self::None,
+            (true, false, false, false) => Self::Alt,
+            (false, true, false, false) => Self::Ctrl,
+            (false, false, true, false) => Self::Shift,
+            (false, false, false, true) => Self::Platform,
+            (false, true, true, false) => Self::CtrlShift,
             _ => Self::Other,
         }
     }
@@ -2176,6 +2192,11 @@ fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u8>> 
         ("tab", TerminalKeyModifiers::Shift) => Some("\x1b[Z"),
         ("backspace", TerminalKeyModifiers::Ctrl) => Some("\x08"),
         ("backspace", TerminalKeyModifiers::Alt) => Some("\x1b\x7f"),
+        ("back", TerminalKeyModifiers::Alt) => Some("\x1b\x7f"),
+        ("delete", TerminalKeyModifiers::Alt) => Some("\x1bd"),
+        ("backspace", TerminalKeyModifiers::Platform) => Some("\x15"),
+        ("back", TerminalKeyModifiers::Platform) => Some("\x15"),
+        ("delete", TerminalKeyModifiers::Platform) => Some("\x0b"),
         ("backspace", TerminalKeyModifiers::Shift) => Some("\x7f"),
         ("space", TerminalKeyModifiers::Ctrl) => Some("\x00"),
         ("home", TerminalKeyModifiers::None) if mode.contains(TermMode::APP_CURSOR) => {
@@ -2200,6 +2221,12 @@ fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u8>> 
             Some("\x1bOD")
         }
         ("left", TerminalKeyModifiers::None) => Some("\x1b[D"),
+        ("right", TerminalKeyModifiers::Alt) => Some("\x1bf"),
+        ("left", TerminalKeyModifiers::Alt) => Some("\x1bb"),
+        ("right", TerminalKeyModifiers::Platform) => Some("\x05"),
+        ("left", TerminalKeyModifiers::Platform) => Some("\x01"),
+        ("end", TerminalKeyModifiers::Platform) => Some("\x05"),
+        ("home", TerminalKeyModifiers::Platform) => Some("\x01"),
         ("insert", TerminalKeyModifiers::None) => Some("\x1b[2~"),
         ("delete", TerminalKeyModifiers::None) => Some("\x1b[3~"),
         ("pageup", TerminalKeyModifiers::None) => Some("\x1b[5~"),
@@ -3531,6 +3558,17 @@ mod tests {
     }
 
     fn modified_key(key: &str, shift: bool, alt: bool, control: bool, platform: bool) -> Keystroke {
+        modified_key_with_function(key, shift, alt, control, platform, false)
+    }
+
+    fn modified_key_with_function(
+        key: &str,
+        shift: bool,
+        alt: bool,
+        control: bool,
+        platform: bool,
+        function: bool,
+    ) -> Keystroke {
         Keystroke {
             key: key.to_string(),
             key_char: None,
@@ -3539,7 +3577,7 @@ mod tests {
                 alt,
                 control,
                 platform,
-                function: false,
+                function,
             },
         }
     }
@@ -3789,6 +3827,108 @@ mod tests {
                 TermMode::NONE
             ),
             b"\x1b[3;2~"
+        );
+    }
+
+    #[test]
+    fn maps_macos_terminal_navigation_shortcuts() {
+        assert_eq!(
+            bytes(
+                modified_key("left", false, true, false, false),
+                TermMode::NONE
+            ),
+            b"\x1bb"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("right", false, true, false, false),
+                TermMode::NONE
+            ),
+            b"\x1bf"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("left", false, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x01"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("right", false, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x05"
+        );
+        assert_eq!(
+            bytes(
+                modified_key_with_function("left", false, false, false, true, true),
+                TermMode::NONE
+            ),
+            b"\x01"
+        );
+        assert_eq!(
+            bytes(
+                modified_key_with_function("right", false, false, false, true, true),
+                TermMode::NONE
+            ),
+            b"\x05"
+        );
+        assert_eq!(
+            bytes(
+                modified_key_with_function("left", false, true, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x1bb"
+        );
+        assert_eq!(
+            bytes(
+                modified_key_with_function("right", false, true, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x1bf"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("home", false, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x01"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("end", false, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x05"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("delete", false, true, false, false),
+                TermMode::NONE
+            ),
+            b"\x1bd"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("backspace", false, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x15"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("back", false, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x15"
+        );
+        assert_eq!(
+            bytes(
+                modified_key("delete", false, false, false, true),
+                TermMode::NONE
+            ),
+            b"\x0b"
         );
     }
 

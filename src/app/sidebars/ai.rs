@@ -311,7 +311,11 @@ fn ai_live_session_counts_for_day(
     ai_local_day_start_seconds(started_at) == day_start
 }
 
-fn ai_display_tokens(total_tokens: i64, cached_input_tokens: i64, include_cached: bool) -> i64 {
+pub(in crate::app) fn ai_display_tokens(
+    total_tokens: i64,
+    cached_input_tokens: i64,
+    include_cached: bool,
+) -> i64 {
     total_tokens.max(0)
         + if include_cached {
             cached_input_tokens.max(0)

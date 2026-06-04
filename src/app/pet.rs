@@ -673,7 +673,7 @@ enum PetDexVirtualRow {
     },
     LegacyRow {
         record: PetLegacyRecord,
-        sprite_path: PathBuf,
+        sprite_path: ImageSource,
         language: String,
     },
 }
@@ -683,13 +683,13 @@ enum PetDexCard {
     Bundled {
         item: PetCatalogItem,
         unlocked: bool,
-        sprite_path: Option<PathBuf>,
+        sprite_path: Option<ImageSource>,
         title: String,
         subtitle: String,
     },
     Custom {
         pet: PetCustomPet,
-        sprite_path: PathBuf,
+        sprite_path: ImageSource,
         subtitle: String,
     },
 }
@@ -772,7 +772,7 @@ fn pet_dex_virtual_rows(
     legacy_records: Vec<PetLegacyRecord>,
     runtime_asset_root: &Path,
     support_dir: &Path,
-    sprite_paths: &HashMap<String, PathBuf>,
+    sprite_paths: &HashMap<String, ImageSource>,
     language: &str,
     window: &mut Window,
 ) -> Vec<PetDexVirtualRow> {
@@ -850,7 +850,7 @@ fn pet_dex_virtual_rows(
                         sprite_path: sprite_paths
                             .get(&format!("custom:{}", pet.id))
                             .cloned()
-                            .unwrap_or_default(),
+                            .unwrap_or_else(|| custom_pet_sprite_path(support_dir, pet).into()),
                         subtitle: pet_catalog_text(language, "pet.custom.installed", "Custom pet"),
                     })
                     .collect(),
@@ -951,14 +951,18 @@ fn pet_dex_virtual_card(card: PetDexCard, cx: &mut Context<CoduxApp>) -> AnyElem
                         } else {
                             cx.theme().secondary
                         })
-                        .child(if unlocked && sprite_path.is_some() {
-                            pet_sprite_element(
-                                sprite_path.unwrap_or_default(),
-                                44.0,
-                                0,
-                                0,
-                                cx.theme().primary,
-                            )
+                        .child(if unlocked {
+                            if let Some(sprite_path) = sprite_path {
+                                pet_sprite_element(sprite_path, 44.0, 0, 0, cx.theme().primary)
+                            } else {
+                                div()
+                                    .text_size(rems(1.75))
+                                    .line_height(rems(2.0))
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(color(theme::TEXT_DIM))
+                                    .child("?")
+                                    .into_any_element()
+                            }
                         } else {
                             div()
                                 .text_size(rems(1.75))
@@ -1066,7 +1070,7 @@ fn pet_dex_empty_state(message: String, cx: &mut Context<CoduxApp>) -> impl Into
 
 fn pet_legacy_row(
     record: PetLegacyRecord,
-    sprite_path: PathBuf,
+    sprite_path: ImageSource,
     language: String,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
@@ -1386,7 +1390,7 @@ fn pet_claim_custom_row(
         selected,
         title,
         subtitle,
-        pet_claim_sprite_thumb(sprite_path, cx.theme().primary, cx),
+        pet_claim_sprite_thumb(sprite_path.into(), cx.theme().primary, cx),
         cx,
     )
     .on_click(cx.listener(move |app, _event, _window, cx| {
@@ -1466,7 +1470,7 @@ fn pet_select_row(
 }
 
 fn pet_claim_sprite_thumb(
-    sprite_path: PathBuf,
+    sprite_path: ImageSource,
     fallback_color: gpui::Hsla,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
@@ -1974,9 +1978,9 @@ fn legacy_pet_sprite_path(
     runtime_asset_root: &Path,
     support_dir: &Path,
     record: &PetLegacyRecord,
-) -> PathBuf {
+) -> ImageSource {
     if let Some(custom_pet) = record.custom_pet.as_ref() {
-        return custom_pet_sprite_path(support_dir, custom_pet);
+        return custom_pet_sprite_path(support_dir, custom_pet).into();
     }
 
     pet_sprite_path(
@@ -2062,7 +2066,7 @@ fn pet_dex_spotlight_overlay(
                     pet.display_name.clone(),
                     pet_catalog_text(language, "pet.custom.installed", "Custom pet"),
                     empty_label(&pet.description),
-                    custom_pet_sprite_path(support_dir, pet),
+                    custom_pet_sprite_path(support_dir, pet).into(),
                     theme::ACCENT,
                 )
             }),

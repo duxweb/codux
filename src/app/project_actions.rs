@@ -191,6 +191,7 @@ impl CoduxApp {
         );
         if previous_project_id.is_some() {
             let save_started_at = Instant::now();
+            self.sync_terminal_state_for_project_switch();
             self.save_current_project_view_state_for_switch();
             self.runtime_trace(
                 "project-switch",
@@ -199,7 +200,6 @@ impl CoduxApp {
                     save_started_at.elapsed().as_millis()
                 ),
             );
-            self.spawn_persist_terminal_state(cx);
         }
         self.status_message = "selected project in memory".to_string();
         self.persist_selected_project_async(project_id.clone(), cx);
@@ -274,21 +274,23 @@ impl CoduxApp {
         self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
         let switch_generation = self.project_switch_generation;
         self.apply_selected_project_shell(&project_id, window, cx);
-        let terminal_view_state = terminal_view_store_key(&self.state)
-            .and_then(|key| self.terminal_view_store.get(&key).cloned());
+        let terminal_view_state = worktree_view_store_key(&self.state).and_then(|key| {
+            self.worktree_view_store
+                .get(&key)
+                .map(|state| state.terminal.clone())
+        });
         self.memory_manager_scope = "project".to_string();
         self.memory_manager_project_id = Some(project_id.clone());
         if let Some(terminal_view_state) = terminal_view_state {
-            self.state.terminal_layout = terminal_view_state.terminal_layout;
-            self.state.terminal_runtime = terminal_view_state.terminal_runtime;
-            self.terminal_layout_loading = true;
-            self.terminals.clear();
-            self.active_terminal_id = 1;
-            self.next_terminal_index = 1;
+            self.apply_terminal_layout_from_summary(
+                terminal_view_state.terminal_layout,
+                terminal_view_state.terminal_runtime,
+                cx,
+            );
             self.runtime_trace(
                 "project-switch",
                 &format!(
-                    "terminal_restore deferred_to_load project={} generation={}",
+                    "terminal_restore memory_apply project={} generation={}",
                     project_id, switch_generation
                 ),
             );
@@ -379,7 +381,17 @@ impl CoduxApp {
         self.persist_current_worktree_view_state();
     }
 
+    pub(super) fn save_project_view_shell(&mut self) {
+        self.save_project_view_shell_in_memory();
+        self.persist_current_worktree_view_state();
+    }
+
     pub(super) fn save_current_project_view_state_in_memory(&mut self) {
+        self.save_project_view_shell_in_memory();
+        self.save_current_terminal_view_state();
+    }
+
+    pub(super) fn save_project_view_shell_in_memory(&mut self) {
         let Some(project_id) = self
             .state
             .selected_project
@@ -389,7 +401,7 @@ impl CoduxApp {
             return;
         };
         self.project_view_store.insert(
-            project_id,
+            project_id.clone(),
             ProjectViewState {
                 ai_history: self.state.ai_history.clone(),
                 ai_global_history: self.state.ai_global_history.clone(),
@@ -399,7 +411,20 @@ impl CoduxApp {
             },
         );
         self.save_current_worktree_view_state_in_memory();
-        self.save_current_terminal_view_state();
+        self.trace_workspace_state(
+            "save_project_shell",
+            self.state
+                .worktrees
+                .selected_worktree_id
+                .as_deref()
+                .unwrap_or(""),
+            &format!(
+                "project={} worktrees={} tasks={}",
+                project_id,
+                self.state.worktrees.worktrees.len(),
+                self.state.worktrees.tasks.len()
+            ),
+        );
     }
 
     pub(super) fn save_current_project_view_state_for_switch(&mut self) {
@@ -421,7 +446,7 @@ impl CoduxApp {
                 worktrees: self.state.worktrees.clone(),
             },
         );
-        self.save_current_worktree_view_state_for_switch();
+        self.save_worktree_view_for_switch();
         self.save_current_terminal_view_state();
     }
 
@@ -555,31 +580,34 @@ impl CoduxApp {
             super::app_state::WorktreeViewState {
                 files: self.file_worktree_view_state(),
                 git: self.git_worktree_view_state(),
+                terminal: self.terminal_view_state(),
             },
         );
     }
 
-    pub(super) fn save_current_worktree_view_state_for_switch(&mut self) {
+    pub(super) fn save_worktree_view_for_switch(&mut self) {
         let Some(key) = worktree_view_store_key(&self.state) else {
             return;
         };
-        let (files, file_tree_children, git_tree_children, git_review_content) =
+        let (files, file_tree_children, git_tree_children, git_review_content, terminal) =
             match self.worktree_view_store.remove(&key) {
                 Some(state) => (
                     state.files.files,
                     state.files.file_tree_children,
                     state.git.git_tree_children,
                     state.git.git_review_content,
+                    state.terminal,
                 ),
                 None => (
                     self.state.files.clone(),
                     HashMap::new(),
                     HashMap::new(),
                     None,
+                    self.terminal_view_state(),
                 ),
             };
         self.worktree_view_store.insert(
-            key,
+            key.clone(),
             super::app_state::WorktreeViewState {
                 files: super::app_state::FileWorktreeViewState {
                     files,
@@ -605,7 +633,19 @@ impl CoduxApp {
                     git_review_content: git_review_content
                         .or_else(|| self.git_review_content.clone()),
                 },
+                terminal,
             },
+        );
+        self.trace_workspace_state(
+            "save_worktree_for_switch",
+            &key.worktree_id,
+            &format!(
+                "files={} tabs={} top_panes={} bottom_tabs={}",
+                self.state.files.len(),
+                self.file_editor_tabs.len(),
+                self.state.terminal_layout.top_panes.len(),
+                self.state.terminal_layout.tabs.len()
+            ),
         );
     }
 
@@ -670,6 +710,7 @@ impl CoduxApp {
         if let Some(view_state) = self.worktree_view_store.get(&key).cloned() {
             self.apply_file_worktree_view_state(view_state.files);
             self.apply_git_worktree_view_state(view_state.git);
+            self.apply_terminal_view_state(view_state.terminal);
             if self.file_editor_tabs.is_empty() {
                 self.load_current_file_editor_layout_async(cx);
             }
@@ -796,6 +837,11 @@ impl CoduxApp {
             super::app_state::WorktreeViewState {
                 files: file_state.clone(),
                 git: git_state.clone(),
+                terminal: self
+                    .worktree_view_store
+                    .get(&load.store_key)
+                    .map(|state| state.terminal.clone())
+                    .unwrap_or_else(|| self.terminal_view_state()),
             },
         );
         let current_key = worktree_view_store_key(&self.state);
@@ -815,14 +861,13 @@ impl CoduxApp {
     }
 
     pub(super) fn apply_saved_terminal_view_state(&mut self) {
-        let Some(key) = terminal_view_store_key(&self.state) else {
+        let Some(key) = worktree_view_store_key(&self.state) else {
             self.state.terminal_layout = TerminalLayoutSummary::default();
             self.state.terminal_runtime = TerminalRuntimeSummary::default();
             return;
         };
-        if let Some(view_state) = self.terminal_view_store.get(&key).cloned() {
-            self.state.terminal_layout = view_state.terminal_layout;
-            self.state.terminal_runtime = view_state.terminal_runtime;
+        if let Some(view_state) = self.worktree_view_store.get(&key).cloned() {
+            self.apply_terminal_view_state(view_state.terminal);
         } else {
             self.state.terminal_layout = TerminalLayoutSummary::default();
             self.state.terminal_runtime = TerminalRuntimeSummary::default();
@@ -830,15 +875,81 @@ impl CoduxApp {
     }
 
     pub(super) fn save_current_terminal_view_state(&mut self) {
-        let Some(key) = terminal_view_store_key(&self.state) else {
+        let Some(key) = worktree_view_store_key(&self.state) else {
             return;
         };
-        self.terminal_view_store.insert(
-            key,
-            TerminalViewState {
-                terminal_layout: self.state.terminal_layout.clone(),
-                terminal_runtime: self.state.terminal_runtime.clone(),
+        let terminal = self.terminal_view_state();
+        if let Some(view_state) = self.worktree_view_store.get_mut(&key) {
+            view_state.terminal = terminal;
+        } else {
+            self.worktree_view_store.insert(
+                key,
+                super::app_state::WorktreeViewState {
+                    files: self.file_worktree_view_state(),
+                    git: self.git_worktree_view_state(),
+                    terminal,
+                },
+            );
+        }
+    }
+
+    pub(super) fn terminal_view_state(&self) -> TerminalViewState {
+        TerminalViewState {
+            terminal_layout: self.state.terminal_layout.clone(),
+            terminal_runtime: self.state.terminal_runtime.clone(),
+        }
+    }
+
+    pub(super) fn apply_terminal_view_state(&mut self, state: TerminalViewState) {
+        self.state.terminal_layout = state.terminal_layout;
+        self.state.terminal_runtime = state.terminal_runtime;
+    }
+
+    pub(super) fn upsert_worktree_terminal_view_state(
+        &mut self,
+        key: super::app_state::WorktreeViewStoreKey,
+        terminal: TerminalViewState,
+    ) {
+        let top_panes = terminal.terminal_layout.top_panes.len();
+        let bottom_tabs = terminal.terminal_layout.tabs.len();
+        let sessions = terminal.terminal_runtime.sessions.len();
+        if let Some(view_state) = self.worktree_view_store.get_mut(&key) {
+            view_state.terminal = terminal;
+            self.trace_workspace_state(
+                "upsert_terminal_memory_hit",
+                &key.worktree_id,
+                &format!("top_panes={top_panes} bottom_tabs={bottom_tabs} sessions={sessions}"),
+            );
+            return;
+        }
+        self.worktree_view_store.insert(
+            key.clone(),
+            super::app_state::WorktreeViewState {
+                files: self.file_worktree_view_state(),
+                git: self.git_worktree_view_state(),
+                terminal,
             },
+        );
+        self.trace_workspace_state(
+            "upsert_terminal_created",
+            &key.worktree_id,
+            &format!("top_panes={top_panes} bottom_tabs={bottom_tabs} sessions={sessions}"),
+        );
+    }
+
+    pub(super) fn trace_workspace_state(&self, event: &str, worktree_id: &str, detail: &str) {
+        let project_id = self
+            .state
+            .selected_project
+            .as_ref()
+            .map(|project| project.id.as_str())
+            .unwrap_or("");
+        self.runtime_trace(
+            "workspace-switch",
+            &format!(
+                "{event} project={} worktree={} generation={} {detail}",
+                project_id, worktree_id, self.project_switch_generation
+            ),
         );
     }
 
@@ -907,17 +1018,18 @@ impl CoduxApp {
         self.finish_scheduled_work(&worktree_sidebar_load_scheduler_key(key));
     }
 
-    pub(super) fn spawn_persist_terminal_state(&mut self, _cx: &mut Context<Self>) {
-        let Some(owner_id) = super::ai_runtime_status::terminal_layout_owner_id(&self.state) else {
+    pub(super) fn spawn_persist_terminal_layout(&mut self, _cx: &mut Context<Self>) {
+        let Some(owner_id) =
+            super::ai_runtime_status::current_terminal_layout_storage_key(&self.state)
+        else {
             return;
         };
         self.refresh_terminal_slot_snapshots();
         let layout_snapshot = self.terminal_layout_snapshot();
-        let runtime_snapshot = self.terminal_runtime_snapshot();
-        self.spawn_persist_terminal_snapshot(Some(owner_id), layout_snapshot, runtime_snapshot);
+        self.spawn_persist_terminal_layout_snapshot(Some(owner_id), layout_snapshot);
     }
 
-    pub(super) fn spawn_persist_terminal_snapshot(
+    pub(super) fn spawn_persist_terminal_layout_snapshot(
         &self,
         owner_id: Option<String>,
         layout_snapshot: (
@@ -926,15 +1038,12 @@ impl CoduxApp {
             Vec<TerminalPaneSummary>,
             String,
         ),
-        runtime_snapshot: (String, String, Vec<TerminalRuntimeSessionInput>),
     ) {
         let Some(owner_id) = owner_id else {
             return;
         };
         let (tabs, active_tab_id, top_panes, active_slot_id) = layout_snapshot;
-        let (active_terminal_id, active_runtime_slot_id, sessions) = runtime_snapshot;
         let runtime_service = self.runtime_service.clone();
-        let support_dir = self.state.support_dir.clone();
         codux_runtime::async_runtime::spawn_blocking(move || {
             if let Err(error) = runtime_service.save_terminal_layout(
                 &owner_id,
@@ -946,16 +1055,6 @@ impl CoduxApp {
                 codux_runtime::runtime_trace::runtime_trace(
                     "terminal-layout",
                     &format!("failed to persist terminal layout {owner_id}: {error}"),
-                );
-            }
-            if let Err(error) = TerminalRuntimeService::new(support_dir).save_from_gpui(
-                active_terminal_id,
-                active_runtime_slot_id,
-                sessions,
-            ) {
-                codux_runtime::runtime_trace::runtime_trace(
-                    "terminal-runtime",
-                    &format!("failed to persist terminal runtime {owner_id}: {error}"),
                 );
             }
         });
@@ -978,12 +1077,8 @@ impl CoduxApp {
         };
         let projects = self.state.projects.clone();
         let runtime_service = self.runtime_service.clone();
-        let runtime_inventory = self.runtime.clone();
-        let terminal_state = self.state.clone();
-        let terminal_manager = self.terminal_manager.clone();
-        let terminal_runtime_service = runtime_service.clone();
+        let terminal_layout_service = runtime_service.clone();
         let terminal_project = project.clone();
-        let terminal_runtime_inventory = runtime_inventory.clone();
         let task_runtime_service = runtime_service.clone();
         let task_project = project.clone();
         let primary_runtime_service = runtime_service.clone();
@@ -1015,7 +1110,7 @@ impl CoduxApp {
                             terminal_queued_at.elapsed().as_millis()
                         ),
                     );
-                    let worktrees = terminal_runtime_service.reload_worktrees_from_state(
+                    let worktrees = terminal_layout_service.reload_worktrees_from_state(
                         Some(&terminal_project.id),
                         Some(&terminal_project.path),
                     );
@@ -1024,23 +1119,18 @@ impl CoduxApp {
                         .as_deref()
                         .unwrap_or(terminal_project.id.as_str())
                         .to_string();
-                    let store_key = TerminalViewStoreKey {
+                    let terminal_storage_key =
+                        super::ai_runtime_status::terminal_layout_storage_key(
+                            &terminal_project.id,
+                            &terminal_owner_id,
+                        );
+                    let store_key = WorktreeViewStoreKey {
                         project_id: terminal_project.id.clone(),
-                        task_id: terminal_owner_id.clone(),
+                        worktree_id: terminal_owner_id.clone(),
                     };
                     let terminal_layout =
-                        terminal_runtime_service.reload_terminal_layout(Some(&terminal_owner_id));
-                    let terminal_runtime = terminal_runtime_service.reload_terminal_runtime();
-                    let mut terminal_state = terminal_state;
-                    terminal_state.selected_project = Some(terminal_project.clone());
-                    terminal_state.worktrees = worktrees.clone();
-                    terminal_state.terminal_layout = terminal_layout.clone();
-                    terminal_state.terminal_runtime = terminal_runtime.clone();
-                    prewarm_terminal_restore(
-                        &terminal_state,
-                        &terminal_runtime_inventory,
-                        Some(&terminal_manager),
-                    );
+                        terminal_layout_service.reload_terminal_layout(Some(&terminal_storage_key));
+                    let terminal_runtime = TerminalRuntimeSummary::default();
                     codux_runtime::runtime_trace::runtime_trace(
                         "project-switch",
                         &format!(
@@ -1231,16 +1321,20 @@ impl CoduxApp {
     pub(super) fn apply_project_switch_terminal_load(
         &mut self,
         load: ProjectSwitchTerminalLoad,
-        window: &Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.terminal_view_store.insert(
-            load.store_key.clone(),
-            TerminalViewState {
+        let existing_view_state = self
+            .worktree_view_store
+            .get(&load.store_key)
+            .map(|state| state.terminal.clone());
+        let view_state = existing_view_state
+            .clone()
+            .unwrap_or_else(|| TerminalViewState {
                 terminal_layout: load.terminal_layout.clone(),
                 terminal_runtime: load.terminal_runtime.clone(),
-            },
-        );
+            });
+        self.upsert_worktree_terminal_view_state(load.store_key.clone(), view_state.clone());
         if self
             .state
             .selected_project
@@ -1251,19 +1345,19 @@ impl CoduxApp {
         {
             return;
         }
-        let selected_terminal_key = terminal_view_store_key(&self.state);
+        let selected_terminal_key = worktree_view_store_key(&self.state);
         let is_selected_terminal_owner = selected_terminal_key
             .as_ref()
             .is_some_and(|key| key == &load.store_key);
         let has_selected_terminal_view = selected_terminal_key
             .as_ref()
-            .is_some_and(|key| self.terminal_view_store.contains_key(key));
+            .is_some_and(|key| self.worktree_view_store.contains_key(key));
         self.runtime_trace(
             "project-switch",
             &format!(
-                "terminal_load apply project={} task={} generation={} selected={} saved={}",
+                "terminal_load apply project={} worktree={} generation={} selected={} saved={}",
                 load.project_id,
-                load.store_key.task_id,
+                load.store_key.worktree_id,
                 load.generation,
                 is_selected_terminal_owner,
                 has_selected_terminal_view
@@ -1277,10 +1371,18 @@ impl CoduxApp {
                     load.project_id, load.generation
                 ),
             );
+        } else if existing_view_state.is_some() && !self.terminals.is_empty() {
+            self.runtime_trace(
+                "project-switch",
+                &format!(
+                    "terminal_load memory_skip_restore project={} generation={}",
+                    load.project_id, load.generation
+                ),
+            );
         } else {
             self.schedule_terminal_layout_restore(
-                load.terminal_layout,
-                load.terminal_runtime,
+                view_state.terminal_layout,
+                view_state.terminal_runtime,
                 load.generation,
                 window,
                 cx,
@@ -1503,27 +1605,32 @@ impl CoduxApp {
         terminal_layout: TerminalLayoutSummary,
         terminal_runtime: TerminalRuntimeSummary,
         generation: u64,
-        window: &Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.state.terminal_layout = terminal_layout.clone();
         self.state.terminal_runtime = terminal_runtime.clone();
         self.terminal_layout_loading = true;
         let scheduled_at = Instant::now();
-        cx.defer_in(window, move |app, _window, cx| {
-            app.runtime_trace(
-                "terminal-restore",
-                &format!(
-                    "deferred_start generation={} delay_ms={}",
-                    generation,
-                    scheduled_at.elapsed().as_millis()
-                ),
-            );
-            if app.project_switch_generation != generation {
-                return;
-            }
-            app.apply_terminal_layout_from_summary(terminal_layout, terminal_runtime, cx);
-        });
+        let timer = cx.background_executor().clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            timer.timer(Duration::from_millis(16)).await;
+            let _ = this.update(cx, |app, cx| {
+                app.runtime_trace(
+                    "terminal-restore",
+                    &format!(
+                        "after_frame_start generation={} delay_ms={}",
+                        generation,
+                        scheduled_at.elapsed().as_millis()
+                    ),
+                );
+                if app.project_switch_generation != generation {
+                    return;
+                }
+                app.apply_terminal_layout_from_summary(terminal_layout, terminal_runtime, cx);
+            });
+        })
+        .detach();
     }
 
     pub(super) fn reload_runtime_state(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -1826,8 +1933,6 @@ impl CoduxApp {
                 self.project_view_store.remove(&project.id);
                 self.worktree_view_store
                     .retain(|key, _| key.project_id != project.id);
-                self.terminal_view_store
-                    .retain(|key, _| key.project_id != project.id);
                 self.state = self.runtime_service.reload_state();
                 self.normalize_selected_ai_session();
                 self.normalize_selected_runtime_session();
@@ -1857,7 +1962,6 @@ impl CoduxApp {
             Ok(_snapshot) => {
                 self.project_view_store.clear();
                 self.worktree_view_store.clear();
-                self.terminal_view_store.clear();
                 self.state = self.runtime_service.reload_state();
                 self.clear_file_selection();
                 self.file_tree_expanded_dirs.clear();

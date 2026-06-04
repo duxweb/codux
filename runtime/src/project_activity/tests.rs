@@ -14,6 +14,7 @@ fn ai_refresh_uses_foreground_and_background_intervals() {
                 name: "Active".to_string(),
                 path: "/tmp/active".to_string(),
                 last_git_refresh: None,
+                last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
                 last_ai_refresh: Some(now - Duration::from_secs(180)),
             },
@@ -25,6 +26,7 @@ fn ai_refresh_uses_foreground_and_background_intervals() {
                 name: "Background".to_string(),
                 path: "/tmp/background".to_string(),
                 last_git_refresh: None,
+                last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
                 last_ai_refresh: Some(now - Duration::from_secs(180)),
             },
@@ -53,6 +55,7 @@ fn ai_background_refresh_is_skipped_during_idle_tick() {
                 name: "Active".to_string(),
                 path: "/tmp/active".to_string(),
                 last_git_refresh: None,
+                last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
                 last_ai_refresh: Some(now - Duration::from_secs(700)),
             },
@@ -64,6 +67,7 @@ fn ai_background_refresh_is_skipped_during_idle_tick() {
                 name: "Background".to_string(),
                 path: "/tmp/background".to_string(),
                 last_git_refresh: None,
+                last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
                 last_ai_refresh: Some(now - Duration::from_secs(700)),
             },
@@ -91,6 +95,7 @@ fn git_background_refresh_is_limited_per_tick() {
                     name: format!("Background {index}"),
                     path: format!("/tmp/background-{index}"),
                     last_git_refresh: Some(now - Duration::from_secs(700)),
+                    last_remote_git_refresh: None,
                     last_git_changed_refresh: None,
                     last_ai_refresh: None,
                 },
@@ -103,6 +108,7 @@ fn git_background_refresh_is_limited_per_tick() {
                 name: "Active".to_string(),
                 path: "/tmp/active".to_string(),
                 last_git_refresh: Some(now - Duration::from_secs(30)),
+                last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
                 last_ai_refresh: None,
             },
@@ -174,4 +180,42 @@ fn git_changed_refresh_is_debounced_per_project() {
     assert_eq!(first, second);
     assert_eq!(coordinator.drain_events().len(), 2);
     let _ = std::fs::remove_dir_all(support_dir);
+}
+
+#[test]
+fn remote_git_refresh_is_throttled_per_project() {
+    let coordinator =
+        ProjectActivityCoordinator::new(std::env::temp_dir(), AIHistoryIndexer::new());
+    let project = ProjectSummary {
+        id: "p1".to_string(),
+        name: "Project".to_string(),
+        path: "/tmp/project".to_string(),
+        badge: String::new(),
+        status: "active".to_string(),
+        branch: "main".to_string(),
+        changes: 0,
+        badge_symbol: None,
+        badge_color_hex: None,
+        git_default_push_remote_name: None,
+    };
+
+    coordinator.mark_project_summary(&project);
+    coordinator.refresh_git_once(&project);
+    let first = coordinator
+        .projects
+        .lock()
+        .unwrap()
+        .get("p1")
+        .and_then(|project| project.last_remote_git_refresh)
+        .expect("first remote refresh");
+    coordinator.refresh_git_once(&project);
+    let second = coordinator
+        .projects
+        .lock()
+        .unwrap()
+        .get("p1")
+        .and_then(|project| project.last_remote_git_refresh)
+        .expect("second remote refresh");
+
+    assert_eq!(first, second);
 }

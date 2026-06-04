@@ -109,7 +109,6 @@ impl CoduxApp {
             pet_sprite_path_cache(&runtime.source_root, &state.support_dir, &pet_catalog);
         let project_view_store = initial_project_view_store(&state);
         let worktree_view_store = initial_worktree_view_store(&state, &project_view_store);
-        let terminal_view_store = initial_terminal_view_store(&state);
 
         Self {
             window_mode: AppWindowMode::Settings,
@@ -317,7 +316,6 @@ impl CoduxApp {
             file_sidebar_view: None,
             project_view_store,
             worktree_view_store,
-            terminal_view_store,
             project_open_applications,
             project_editor_project_id: None,
             project_editor_name: String::new(),
@@ -577,6 +575,11 @@ impl CoduxApp {
             return;
         }
 
+        if self.handle_focused_terminal_key(event, window, cx) {
+            cx.stop_propagation();
+            return;
+        }
+
         if self.handle_configured_shortcut(event, window, cx) {
             cx.stop_propagation();
             return;
@@ -623,6 +626,23 @@ impl CoduxApp {
         if self.handle_file_editor_key(event, cx) {
             cx.stop_propagation();
         }
+    }
+
+    fn handle_focused_terminal_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.window_mode != AppWindowMode::Main {
+            return false;
+        }
+        let Some(view) = self.focused_terminal_view(window, cx) else {
+            return false;
+        };
+        view.update(cx, |terminal, cx| {
+            terminal.handle_terminal_keystroke(&event.keystroke, cx)
+        })
     }
 
     pub(super) fn should_close_window_for_keystroke(&self, keystroke: &gpui::Keystroke) -> bool {

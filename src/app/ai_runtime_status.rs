@@ -37,6 +37,16 @@ pub(in crate::app) fn terminal_layout_owner_id(state: &RuntimeState) -> Option<S
         })
 }
 
+pub(in crate::app) fn terminal_layout_storage_key(project_id: &str, worktree_id: &str) -> String {
+    codux_runtime::terminal_layout::terminal_layout_storage_key(project_id, worktree_id)
+}
+
+pub(in crate::app) fn current_terminal_layout_storage_key(state: &RuntimeState) -> Option<String> {
+    let project_id = state.selected_project.as_ref()?.id.as_str();
+    let worktree_id = terminal_layout_owner_id(state)?;
+    Some(terminal_layout_storage_key(project_id, &worktree_id))
+}
+
 pub(in crate::app) fn ai_activity_project_states_changed(
     previous: &[AIRuntimeProjectStateSummary],
     next: &[AIRuntimeProjectStateSummary],

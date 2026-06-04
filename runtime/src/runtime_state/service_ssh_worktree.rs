@@ -48,10 +48,6 @@ impl RuntimeService {
         TerminalLayoutService::new(self.support_dir.clone()).load_many(project_ids)
     }
 
-    pub fn reload_terminal_runtime(&self) -> TerminalRuntimeSummary {
-        load_terminal_runtime(&self.support_dir)
-    }
-
     pub fn reload_file_editor_layout(&self, owner_id: Option<&str>) -> FileEditorLayoutSummary {
         FileEditorLayoutService::new(self.support_dir.clone()).load(owner_id)
     }

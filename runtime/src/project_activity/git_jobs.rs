@@ -31,6 +31,7 @@ impl GitJobQueue {
 pub(super) enum GitJob {
     Refresh {
         project: TrackedProject,
+        fetch_remote: bool,
     },
     Review {
         project: TrackedProject,
@@ -44,7 +45,17 @@ pub(super) enum GitJob {
 impl SerialJob for GitJob {
     fn queue_key(&self) -> String {
         match self {
-            Self::Refresh { project } => git_job_key("refresh", &project.path),
+            Self::Refresh {
+                project,
+                fetch_remote,
+            } => git_job_key(
+                if *fetch_remote {
+                    "refresh-remote"
+                } else {
+                    "refresh-local"
+                },
+                &project.path,
+            ),
             Self::Review { project } => git_job_key("review", &project.path),
             Self::Worktree { project, .. } => git_job_key("worktree", &project.path),
         }
@@ -53,7 +64,10 @@ impl SerialJob for GitJob {
 
 fn run_git_job(job: GitJob, events: Arc<Mutex<VecDeque<ProjectActivityEvent>>>) {
     match job {
-        GitJob::Refresh { project } => run_git_refresh_job(&events, project),
+        GitJob::Refresh {
+            project,
+            fetch_remote,
+        } => run_git_refresh_job(&events, project, fetch_remote),
         GitJob::Review { project } => run_git_review_job(&events, project),
         GitJob::Worktree {
             support_dir,
@@ -65,14 +79,15 @@ fn run_git_job(job: GitJob, events: Arc<Mutex<VecDeque<ProjectActivityEvent>>>) 
 fn run_git_refresh_job(
     events: &Arc<Mutex<VecDeque<ProjectActivityEvent>>>,
     project: TrackedProject,
+    fetch_remote: bool,
 ) {
     let started_at = Instant::now();
     let project_id = project.id.clone();
     let project_name = project.name.clone();
     let project_path = project.path.clone();
     let mut snapshot = GitService::status(&project_path);
-    let mut remote_refresh = "skipped";
-    if snapshot.is_repository && !snapshot.remotes.is_empty() {
+    let mut remote_refresh = if fetch_remote { "skipped" } else { "disabled" };
+    if fetch_remote && snapshot.is_repository && !snapshot.remotes.is_empty() {
         match GitService::fetch(&project_path) {
             Ok(()) => {
                 snapshot = GitService::status(&project_path);

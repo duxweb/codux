@@ -150,7 +150,7 @@ fn workspace_pet_install_action_button(
 fn workspace_pet_popover_content(
     pet: PetSummary,
     pet_snapshot: Option<PetSnapshot>,
-    pet_sprite_path: std::path::PathBuf,
+    pet_sprite_path: ImageSource,
     pet_name_editing: bool,
     _pet_sprite_frame: usize,
     language: String,

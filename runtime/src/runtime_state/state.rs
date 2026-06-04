@@ -45,12 +45,17 @@ impl RuntimeState {
                 .as_ref()
                 .map(|project| project.path.as_str()),
         );
-        let terminal_layout_owner = worktrees
-            .selected_worktree_id
-            .as_deref()
-            .or_else(|| selected_project.as_ref().map(|project| project.id.as_str()));
-        let terminal_layout = load_terminal_layout(&support_dir, terminal_layout_owner);
-        let terminal_runtime = load_terminal_runtime(&support_dir);
+        let terminal_layout_owner = selected_project.as_ref().map(|project| {
+            crate::terminal_layout::terminal_layout_storage_key(
+                &project.id,
+                worktrees
+                    .selected_worktree_id
+                    .as_deref()
+                    .unwrap_or(project.id.as_str()),
+            )
+        });
+        let terminal_layout = load_terminal_layout(&support_dir, terminal_layout_owner.as_deref());
+        let terminal_runtime = TerminalRuntimeSummary::default();
         let update = load_update(&support_dir, std::env::current_dir().unwrap_or_default());
         let runtime_activity = load_runtime_activity(&support_dir);
         let runtime_events = load_runtime_events();
@@ -121,13 +126,15 @@ impl RuntimeState {
         self.notifications = load_notifications(&self.support_dir);
         self.worktrees =
             load_worktrees_from_state(&self.support_dir, Some(&project.id), Some(&project.path));
-        let terminal_layout_owner = self
-            .worktrees
-            .selected_worktree_id
-            .as_deref()
-            .unwrap_or(project.id.as_str());
-        self.terminal_layout = load_terminal_layout(&self.support_dir, Some(terminal_layout_owner));
-        self.terminal_runtime = load_terminal_runtime(&self.support_dir);
+        let terminal_layout_owner = crate::terminal_layout::terminal_layout_storage_key(
+            &project.id,
+            self.worktrees
+                .selected_worktree_id
+                .as_deref()
+                .unwrap_or(project.id.as_str()),
+        );
+        self.terminal_layout = load_terminal_layout(&self.support_dir, Some(&terminal_layout_owner));
+        self.terminal_runtime = TerminalRuntimeSummary::default();
         self.runtime_activity = load_runtime_activity(&self.support_dir);
         self.runtime_events = load_runtime_events();
         self.ai_runtime_state = load_ai_runtime_state(&self.support_dir, &self.runtime_events);

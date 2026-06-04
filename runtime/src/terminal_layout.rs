@@ -3,6 +3,10 @@ use std::path::PathBuf;
 
 const TERMINAL_LAYOUT_NAMESPACE: &str = "terminal-layout";
 
+pub fn terminal_layout_storage_key(project_id: &str, worktree_id: &str) -> String {
+    format!("{project_id}::{worktree_id}")
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalLayoutSummary {

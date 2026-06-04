@@ -81,7 +81,7 @@ use crate::{
     },
     terminal_layout::{TerminalLayoutService, TerminalLayoutSummary},
     terminal_pty::TerminalManager,
-    terminal_runtime::{TerminalRuntimeService, TerminalRuntimeSummary},
+    terminal_runtime::TerminalRuntimeSummary,
     tool_permissions::{ToolPermissionsService, ToolPermissionsSummary},
     update::{UpdateService, UpdateStatus, UpdateSummary},
     worktree::{

@@ -45,10 +45,10 @@ use codux_runtime::{
     settings::{SettingsSummary, locale_from_language_setting},
     ssh::{SSHConnectionProfile, SSHProfileSummary, SSHProfileUpsertRequest, SSHSummary},
     terminal_layout::{TerminalLayoutSummary, TerminalPaneSummary, TerminalTabSummary},
-    terminal_pty::{TerminalManager, TerminalPtyConfig, default_shell, terminal_environment},
+    terminal_pty::TerminalManager,
     terminal_runtime::{
-        TerminalInputSummary, TerminalRuntimeService, TerminalRuntimeSessionInput,
-        TerminalRuntimeSessionSummary, TerminalRuntimeSummary,
+        TerminalInputSummary, TerminalRuntimeSessionInput, TerminalRuntimeSessionSummary,
+        TerminalRuntimeSummary,
     },
     worktree::{
         WorktreeInfo, WorktreeService, WorktreeSnapshot, WorktreeSummary, WorktreeTaskInfo,
@@ -56,8 +56,8 @@ use codux_runtime::{
 };
 use gpui::{
     AnyElement, AnyWindowHandle, App, AppContext, Bounds, ClipboardItem, Context, ElementId,
-    FocusHandle, FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ObjectFit,
-    ParentElement, PathBuilder, Pixels, Render, ScrollHandle, SharedString,
+    FocusHandle, FontWeight, ImageSource, InteractiveElement, IntoElement, KeyDownEvent,
+    MouseButton, ObjectFit, ParentElement, PathBuilder, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement, Styled, StyledImage, Subscription, UniformListScrollHandle, Window,
     WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowKind, WindowOptions, canvas,
     div, img, linear_color_stop, linear_gradient, point, prelude::FluentBuilder as _, px, relative,
@@ -164,6 +164,7 @@ use self::{
         current_pet_custom_install_event, current_pet_update_event, current_settings_update_event,
         current_ssh_update_event, publish_child_window_update, publish_pet_custom_install,
         publish_pet_update, publish_settings_update, publish_ssh_update,
+        publish_statistics_settings_update,
     },
     app_helpers::{
         PROJECT_BADGE_COLORS, file_search_status_message, generated_git_branch_name,
@@ -177,12 +178,11 @@ use self::{
         PET_CUSTOM_INSTALL_READY_HEIGHT, PET_CUSTOM_INSTALL_WINDOW_WIDTH, PET_DEX_FRAME_INTERVAL,
         ProjectSwitchLoad, ProjectSwitchPrimaryLoad, ProjectSwitchTaskLoad,
         ProjectSwitchTerminalLoad, ProjectViewState, RuntimeActivityTickResult,
-        RuntimeScheduledRefresh, TerminalViewState, TerminalViewStoreKey, UpdateDialogPhase,
-        WorktreeSidebarLoad, WorktreeSwitchTerminalLoad, app_git_review, app_now_seconds,
-        git_status_tree_key, initial_project_view_store, initial_terminal_view_store,
-        initial_worktree_view_store, prewarm_terminal_restore, resize_git_credentials_window,
-        resize_pet_custom_install_window, resize_pet_custom_install_window_handle,
-        settings_with_active_restart_locked_values, terminal_view_store_key,
+        RuntimeScheduledRefresh, TerminalViewState, UpdateDialogPhase, WorktreeSidebarLoad,
+        WorktreeSwitchLoad, WorktreeViewStoreKey, app_git_review, app_now_seconds,
+        git_status_tree_key, initial_project_view_store, initial_worktree_view_store,
+        resize_git_credentials_window, resize_pet_custom_install_window,
+        resize_pet_custom_install_window_handle, settings_with_active_restart_locked_values,
         worktree_summary_has_git_counts, worktree_summary_has_rows, worktree_view_store_key,
     },
     desktop_pet::*,
@@ -209,6 +209,7 @@ use self::{
         prepare_memory_launch_artifacts, spawn_terminal_tabs, terminal_config_for_settings,
         terminal_launch_context, terminal_pane_launch_context, terminal_pane_summary,
         terminal_restore_plan_for_language, terminal_tab_summary, top_slot_id, top_terminal_id,
+        unique_bottom_slot_id,
     },
     types::*,
     ui_helpers::{

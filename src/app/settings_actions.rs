@@ -68,7 +68,24 @@ impl CoduxApp {
         }
 
         self.settings_seen_revision = event.revision;
-        self.replace_settings_summary(self.runtime_service.reload_state().settings);
+        let settings = self.runtime_service.reload_settings();
+        if event.statistics_revision == event.revision {
+            self.apply_settings_summary_local(settings);
+            self.status_message = "AI statistics mode updated".to_string();
+            if self.window_mode == AppWindowMode::Main {
+                self.invalidate_ui(
+                    cx,
+                    [
+                        UiRegion::WorkspaceAssistant,
+                        UiRegion::AIStatsSidebar,
+                        UiRegion::StatusBar,
+                    ],
+                );
+            }
+            return true;
+        }
+
+        self.replace_settings_summary(settings);
         self.normalize_selected_ai_provider();
         self.normalize_selected_notification_channel();
         self.normalize_selected_remote_device();
@@ -94,6 +111,10 @@ impl CoduxApp {
         self.state.power = self
             .runtime_service
             .power_summary(&self.state.settings.sleep_mode);
+    }
+
+    pub(super) fn apply_settings_summary_local(&mut self, settings: SettingsSummary) {
+        self.state.settings = settings_with_active_restart_locked_values(&settings);
     }
 
     pub(super) fn apply_settings_summary(&mut self, settings: SettingsSummary) {
@@ -280,7 +301,12 @@ impl CoduxApp {
     ) {
         match self.runtime_service.set_statistics_mode(&mode) {
             Ok(settings) => {
-                self.apply_settings_summary(settings);
+                self.apply_settings_summary_local(settings);
+                let revision = publish_statistics_settings_update();
+                publish_child_window_update(ChildWindowUpdateKind::Settings);
+                if revision > 0 {
+                    self.settings_seen_revision = revision;
+                }
                 self.status_message = format!(
                     "AI statistics mode saved: {}",
                     self.state.settings.statistics_mode
@@ -290,7 +316,18 @@ impl CoduxApp {
                 self.status_message = format!("failed to save AI statistics mode: {error}")
             }
         }
-        self.invalidate_ui_region(cx, UiRegion::Root);
+        if self.window_mode == AppWindowMode::Main {
+            self.invalidate_ui(
+                cx,
+                [
+                    UiRegion::WorkspaceAssistant,
+                    UiRegion::AIStatsSidebar,
+                    UiRegion::StatusBar,
+                ],
+            );
+        } else {
+            self.invalidate_ui_region(cx, UiRegion::Root);
+        }
     }
 
     pub(super) fn set_git_refresh(

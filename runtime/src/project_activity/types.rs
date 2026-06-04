@@ -156,6 +156,7 @@ pub(super) struct TrackedProject {
     pub(super) name: String,
     pub(super) path: String,
     pub(super) last_git_refresh: Option<Instant>,
+    pub(super) last_remote_git_refresh: Option<Instant>,
     pub(super) last_git_changed_refresh: Option<Instant>,
     pub(super) last_ai_refresh: Option<Instant>,
 }
@@ -167,6 +168,7 @@ impl From<ProjectSummary> for TrackedProject {
             name: project.name,
             path: project.path,
             last_git_refresh: None,
+            last_remote_git_refresh: None,
             last_git_changed_refresh: None,
             last_ai_refresh: Some(Instant::now()),
         }

@@ -119,7 +119,7 @@ pub struct CoduxApp {
     pub(in crate::app) pet_catalog: PetCatalog,
     pub(in crate::app) pet_snapshot: PetSnapshot,
     pub(in crate::app) pet_custom_pets: Vec<PetCustomPet>,
-    pub(in crate::app) pet_sprite_paths: HashMap<String, PathBuf>,
+    pub(in crate::app) pet_sprite_paths: HashMap<String, ImageSource>,
     pub(in crate::app) project_scroll_handle: UniformListScrollHandle,
     pub(in crate::app) task_scroll_handle: UniformListScrollHandle,
     pub(in crate::app) session_scroll_handle: UniformListScrollHandle,
@@ -223,7 +223,6 @@ pub struct CoduxApp {
     pub(in crate::app) file_sidebar_view: Option<gpui::Entity<FileSidebarView>>,
     pub(in crate::app) project_view_store: HashMap<String, ProjectViewState>,
     pub(in crate::app) worktree_view_store: HashMap<WorktreeViewStoreKey, WorktreeViewState>,
-    pub(in crate::app) terminal_view_store: HashMap<TerminalViewStoreKey, TerminalViewState>,
     pub(in crate::app) project_open_applications: Vec<ProjectOpenApplicationSummary>,
     pub(in crate::app) project_editor_project_id: Option<String>,
     pub(in crate::app) project_editor_name: String,
@@ -344,7 +343,7 @@ pub(in crate::app) struct ProjectSwitchTaskLoad {
 pub(in crate::app) struct ProjectSwitchTerminalLoad {
     pub(in crate::app) project_id: String,
     pub(in crate::app) generation: u64,
-    pub(in crate::app) store_key: TerminalViewStoreKey,
+    pub(in crate::app) store_key: WorktreeViewStoreKey,
     pub(in crate::app) terminal_layout: TerminalLayoutSummary,
     pub(in crate::app) terminal_runtime: TerminalRuntimeSummary,
 }
@@ -355,10 +354,11 @@ pub(in crate::app) struct ProjectSwitchPrimaryLoad {
     pub(in crate::app) ai_history: AIHistorySummary,
 }
 
-pub(in crate::app) struct WorktreeSwitchTerminalLoad {
+pub(in crate::app) struct WorktreeSwitchLoad {
     pub(in crate::app) project_id: String,
     pub(in crate::app) generation: u64,
-    pub(in crate::app) store_key: TerminalViewStoreKey,
+    pub(in crate::app) store_key: WorktreeViewStoreKey,
+    pub(in crate::app) worktrees: WorktreeSummary,
     pub(in crate::app) terminal_layout: TerminalLayoutSummary,
     pub(in crate::app) terminal_runtime: TerminalRuntimeSummary,
 }
@@ -392,6 +392,7 @@ pub(in crate::app) struct ProjectViewState {
 pub(in crate::app) struct WorktreeViewState {
     pub(in crate::app) files: FileWorktreeViewState,
     pub(in crate::app) git: GitWorktreeViewState,
+    pub(in crate::app) terminal: TerminalViewState,
 }
 
 #[derive(Clone)]
@@ -425,12 +426,6 @@ pub(in crate::app) struct GitWorktreeViewState {
 pub(in crate::app) struct TerminalViewState {
     pub(in crate::app) terminal_layout: TerminalLayoutSummary,
     pub(in crate::app) terminal_runtime: TerminalRuntimeSummary,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(in crate::app) struct TerminalViewStoreKey {
-    pub(in crate::app) project_id: String,
-    pub(in crate::app) task_id: String,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -491,72 +486,6 @@ pub(in crate::app) fn initial_project_view_store(
         .collect()
 }
 
-pub(in crate::app) fn initial_terminal_view_store(
-    state: &RuntimeState,
-) -> HashMap<TerminalViewStoreKey, TerminalViewState> {
-    let worktree_service = WorktreeService::new(state.support_dir.clone());
-    let persisted_worktrees = worktree_service.state_summaries(
-        state
-            .projects
-            .iter()
-            .map(|project| (project.id.as_str(), project.path.as_str())),
-    );
-    let worktree_keys = state
-        .projects
-        .iter()
-        .flat_map(|project| {
-            let worktrees = if state
-                .selected_project
-                .as_ref()
-                .is_some_and(|selected| selected.id == project.id)
-            {
-                state.worktrees.clone()
-            } else {
-                persisted_worktrees
-                    .get(&project.id)
-                    .cloned()
-                    .unwrap_or_default()
-            };
-            worktrees
-                .worktrees
-                .into_iter()
-                .map(move |worktree| TerminalViewStoreKey {
-                    project_id: project.id.clone(),
-                    task_id: worktree.id,
-                })
-        })
-        .collect::<Vec<_>>();
-    let terminal_layout_service =
-        codux_runtime::terminal_layout::TerminalLayoutService::new(state.support_dir.clone());
-    let terminal_layouts =
-        terminal_layout_service.load_many(worktree_keys.iter().map(|key| key.task_id.as_str()));
-    let current_key = terminal_view_store_key(state);
-    let mut store = worktree_keys
-        .into_iter()
-        .filter_map(|key| {
-            terminal_layouts.get(&key.task_id).cloned().map(|layout| {
-                (
-                    key,
-                    TerminalViewState {
-                        terminal_layout: layout,
-                        terminal_runtime: state.terminal_runtime.clone(),
-                    },
-                )
-            })
-        })
-        .collect::<HashMap<_, _>>();
-    if let Some(key) = current_key {
-        store.insert(
-            key,
-            TerminalViewState {
-                terminal_layout: state.terminal_layout.clone(),
-                terminal_runtime: state.terminal_runtime.clone(),
-            },
-        );
-    }
-    store
-}
-
 pub(in crate::app) fn initial_worktree_view_store(
     state: &RuntimeState,
     project_view_store: &HashMap<String, ProjectViewState>,
@@ -586,12 +515,21 @@ pub(in crate::app) fn initial_worktree_view_store(
         file_tree_state_service.load_many(worktree_keys.iter().map(|key| key.worktree_id.as_str()));
     let git_ui_states =
         git_ui_state_service.load_many(worktree_keys.iter().map(|key| key.worktree_id.as_str()));
+    let terminal_layout_service =
+        codux_runtime::terminal_layout::TerminalLayoutService::new(state.support_dir.clone());
+    let terminal_layout_keys = worktree_keys
+        .iter()
+        .map(worktree_terminal_storage_key)
+        .collect::<Vec<_>>();
+    let terminal_layouts =
+        terminal_layout_service.load_many(terminal_layout_keys.iter().map(|key| key.as_str()));
     let current_key = worktree_view_store_key(state);
 
     worktree_keys
         .into_iter()
         .map(|key| {
             let is_current = current_key.as_ref() == Some(&key);
+            let terminal_storage_key = worktree_terminal_storage_key(&key);
             let file_editor_layout = file_editor_layouts
                 .get(&key.worktree_id)
                 .cloned()
@@ -631,6 +569,21 @@ pub(in crate::app) fn initial_worktree_view_store(
                         active_file_editor_tab,
                     },
                     git: git_worktree_view_state_from_summary(git_ui_state, state, is_current),
+                    terminal: TerminalViewState {
+                        terminal_layout: if is_current {
+                            state.terminal_layout.clone()
+                        } else {
+                            terminal_layouts
+                                .get(&terminal_storage_key)
+                                .cloned()
+                                .unwrap_or_default()
+                        },
+                        terminal_runtime: if is_current {
+                            state.terminal_runtime.clone()
+                        } else {
+                            TerminalRuntimeSummary::default()
+                        },
+                    },
                 },
             )
         })
@@ -730,17 +683,6 @@ pub(in crate::app) fn file_editor_tabs_from_layout(
     (tabs, active_path)
 }
 
-pub(in crate::app) fn terminal_view_store_key(
-    state: &RuntimeState,
-) -> Option<TerminalViewStoreKey> {
-    let project_id = state.selected_project.as_ref()?.id.clone();
-    let task_id = super::ai_runtime_status::terminal_layout_owner_id(state)?;
-    Some(TerminalViewStoreKey {
-        project_id,
-        task_id,
-    })
-}
-
 pub(in crate::app) fn worktree_view_store_key(
     state: &RuntimeState,
 ) -> Option<WorktreeViewStoreKey> {
@@ -750,6 +692,10 @@ pub(in crate::app) fn worktree_view_store_key(
         project_id,
         worktree_id,
     })
+}
+
+pub(in crate::app) fn worktree_terminal_storage_key(key: &WorktreeViewStoreKey) -> String {
+    super::ai_runtime_status::terminal_layout_storage_key(&key.project_id, &key.worktree_id)
 }
 
 pub(in crate::app) fn worktree_summary_has_rows(summary: &WorktreeSummary) -> bool {
@@ -765,95 +711,6 @@ pub(in crate::app) fn worktree_summary_has_git_counts(summary: &WorktreeSummary)
             || git.additions != 0
             || git.deletions != 0
     })
-}
-
-pub(in crate::app) fn prewarm_terminal_restore(
-    state: &RuntimeState,
-    runtime: &RuntimeInventory,
-    terminal_manager: Option<&Arc<TerminalManager>>,
-) {
-    prepare_memory_launch_artifacts(state);
-    let (terminal_layout, terminal_runtime) = normalize_terminal_restore_state(
-        super::ai_runtime_status::terminal_layout_owner_id(state).as_deref(),
-        state.terminal_layout.clone(),
-        state.terminal_runtime.clone(),
-    );
-    let restore_plan = terminal_restore_plan_for_language(
-        &terminal_layout,
-        &terminal_runtime,
-        &state.settings.language,
-    );
-    let base_context = terminal_launch_context(state, runtime, &state.tool_permissions);
-
-    for (tab_index, tab) in restore_plan.tabs.iter().enumerate() {
-        let mount_tab = tab_index == restore_plan.active_index
-            || (tab.source_id.is_none() && tab.terminal_id.is_none());
-        if !mount_tab {
-            continue;
-        }
-        let tab_id = tab_index + 1;
-        for (pane_index, pane) in tab.panes.iter().enumerate() {
-            let pane_context =
-                terminal_pane_launch_context(base_context.as_ref(), tab_id, pane_index, pane);
-            let config = pane_context
-                .as_ref()
-                .map(TerminalLaunchContext::to_config)
-                .unwrap_or_else(TerminalPtyConfig::default);
-            let shell = config.shell.clone().unwrap_or_else(default_shell);
-            let cwd = config.cwd.clone().or_else(|| {
-                pane_context
-                    .as_ref()
-                    .map(|context| context.project_path.display().to_string())
-            });
-            let session_id = config
-                .terminal_id
-                .as_deref()
-                .or_else(|| {
-                    pane_context
-                        .as_ref()
-                        .and_then(|context| context.terminal_id.as_deref())
-                })
-                .unwrap_or("terminal-prewarm");
-            let _ = terminal_environment(
-                &shell,
-                cwd.as_deref(),
-                session_id,
-                &config,
-                pane_context.as_ref(),
-            );
-            if let Some(terminal_manager) = terminal_manager {
-                let started_at = Instant::now();
-                let terminal_id = config
-                    .terminal_id
-                    .as_deref()
-                    .or_else(|| {
-                        pane_context
-                            .as_ref()
-                            .and_then(|context| context.terminal_id.as_deref())
-                    })
-                    .unwrap_or("none")
-                    .to_string();
-                match terminal_manager.ensure_session_with_context(config, pane_context.as_ref()) {
-                    Ok(_) => codux_runtime::runtime_trace::runtime_trace(
-                        "terminal-restore",
-                        &format!(
-                            "prewarm_attach elapsed_ms={} terminal_id={}",
-                            started_at.elapsed().as_millis(),
-                            terminal_id
-                        ),
-                    ),
-                    Err(error) => codux_runtime::runtime_trace::runtime_trace(
-                        "terminal-restore",
-                        &format!(
-                            "prewarm_attach failed elapsed_ms={} terminal_id={} error={error}",
-                            started_at.elapsed().as_millis(),
-                            terminal_id
-                        ),
-                    ),
-                }
-            }
-        }
-    }
 }
 
 impl Default for GitOperationCompletion {

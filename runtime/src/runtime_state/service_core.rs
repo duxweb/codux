@@ -71,6 +71,10 @@ impl RuntimeService {
         RuntimeState::load_from_support_dir(self.support_dir.clone())
     }
 
+    pub fn reload_settings(&self) -> SettingsSummary {
+        SettingsService::new(self.support_dir.clone()).summary()
+    }
+
     pub fn runtime_trace_frontend(&self, category: &str, message: &str) {
         crate::runtime_trace::runtime_trace(category, message);
     }
@@ -345,19 +349,6 @@ impl RuntimeService {
         let _ = self.git_watch(project.path.clone());
         let _ = self.watch_active_project_files(project.path);
 
-        Ok(self.project_activity.snapshot())
-    }
-
-    pub fn refresh_project_activity(
-        &self,
-        project_id: &str,
-    ) -> Result<ProjectActivitySnapshot, String> {
-        let project = ProjectStore::new(self.support_dir.clone())
-            .project_summaries()
-            .into_iter()
-            .find(|project| project.id == project_id)
-            .ok_or_else(|| "Project not found.".to_string())?;
-        self.project_activity.refresh_project_now(project);
         Ok(self.project_activity.snapshot())
     }
 

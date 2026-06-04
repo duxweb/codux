@@ -641,25 +641,28 @@ fn remote_ai_stats_payload_matches_tauri_empty_snapshot_shape() {
 
 #[test]
 fn remote_terminal_snapshot_payload_matches_tauri_shape() {
-    let payload = super::host::remote_terminal_snapshot_payload(TerminalSessionSnapshot {
-        id: "term-1".to_string(),
-        title: "Shell".to_string(),
-        slot_id: "slot-1".to_string(),
-        session_key: Some("session-key-1".to_string()),
-        project_id: "project-1".to_string(),
-        project_name: "Codux".to_string(),
-        cwd: "/workspace/codux".to_string(),
-        shell: "zsh".to_string(),
-        command: String::new(),
-        cols: 120,
-        rows: 36,
-        status: "running".to_string(),
-        is_running: true,
-        created_at: "2026-01-01T00:00:00Z".to_string(),
-        last_active_at: "2026-01-01T00:00:01Z".to_string(),
-        buffer_characters: 42,
-        has_buffer: true,
-    }, &std::collections::HashMap::new());
+    let payload = super::host::remote_terminal_snapshot_payload(
+        TerminalSessionSnapshot {
+            id: "term-1".to_string(),
+            title: "Shell".to_string(),
+            slot_id: "slot-1".to_string(),
+            session_key: Some("session-key-1".to_string()),
+            project_id: "project-1".to_string(),
+            project_name: "Codux".to_string(),
+            cwd: "/workspace/codux".to_string(),
+            shell: "zsh".to_string(),
+            command: String::new(),
+            cols: 120,
+            rows: 36,
+            status: "running".to_string(),
+            is_running: true,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            last_active_at: "2026-01-01T00:00:01Z".to_string(),
+            buffer_characters: 42,
+            has_buffer: true,
+        },
+        0,
+    );
 
     assert_eq!(payload.get("id").and_then(serde_json::Value::as_str), Some("term-1"));
     assert_eq!(

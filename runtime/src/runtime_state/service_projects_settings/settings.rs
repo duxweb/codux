@@ -129,11 +129,11 @@ impl RuntimeService {
     }
 
     pub fn cycle_statistics_mode(&self) -> Result<SettingsSummary, String> {
-        self.update_settings_with_side_effects(|settings| settings.cycle_statistics_mode())
+        SettingsService::new(self.support_dir.clone()).cycle_statistics_mode()
     }
 
     pub fn set_statistics_mode(&self, mode: &str) -> Result<SettingsSummary, String> {
-        self.update_settings_with_side_effects(|settings| settings.set_statistics_mode(mode))
+        SettingsService::new(self.support_dir.clone()).set_statistics_mode(mode)
     }
 
     pub fn cycle_git_refresh(&self) -> Result<SettingsSummary, String> {

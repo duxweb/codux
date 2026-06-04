@@ -307,6 +307,21 @@ fn status_sync_action_button(
                 theme::TEXT_MUTED
             })))
         })
+        .when(count > 0, |this| {
+            this.child(
+                div()
+                    .size(px(12.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_full()
+                    .bg(color(0xFFFFFF))
+                    .text_size(rems(0.5625))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(color(accent))
+                    .child(count.min(99).to_string()),
+            )
+        })
         .child(
             div()
                 .mt(px(1.0))

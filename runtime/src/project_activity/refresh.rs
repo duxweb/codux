@@ -1,23 +1,33 @@
 impl ProjectActivityCoordinator {
-    pub fn refresh_project_now(&self, project: ProjectSummary) {
-        self.mark_project_summary(&project);
-        self.refresh_git_once(&project);
-        if self.mark_ai_activation(&project.id) {
-            self.refresh_ai_once(project);
-        }
-    }
-
     pub fn refresh_git_once(&self, project: &ProjectSummary) {
         self.mark_project_summary(project);
         let mut tracked_project = TrackedProject::from(project.clone());
+        let now = Instant::now();
         if let Ok(mut guard) = self.projects.lock() {
             if let Some(tracked) = guard.get_mut(&project.id) {
-                tracked.last_git_refresh = Some(Instant::now());
+                let minimum_remote_interval = Duration::from_secs(MIN_GIT_REFRESH_SECONDS);
+                if tracked
+                    .last_remote_git_refresh
+                    .map(|last| now.duration_since(last) < minimum_remote_interval)
+                    .unwrap_or(false)
+                {
+                    runtime_trace(
+                        "git",
+                        &format!(
+                            "refresh_remote skipped project={} path={} reason=throttled",
+                            project.id, project.path
+                        ),
+                    );
+                    return;
+                }
+                tracked.last_git_refresh = Some(now);
+                tracked.last_remote_git_refresh = Some(now);
                 tracked_project = tracked.clone();
             }
         }
         self.git_jobs.submit(GitJob::Refresh {
             project: tracked_project,
+            fetch_remote: true,
         });
     }
 
@@ -77,6 +87,7 @@ impl ProjectActivityCoordinator {
         }
         self.git_jobs.submit(GitJob::Refresh {
             project: TrackedProject::from(project.clone()),
+            fetch_remote: false,
         });
         if should_refresh_sidecars {
             self.git_jobs.submit(GitJob::Worktree {
@@ -125,7 +136,16 @@ impl ProjectActivityCoordinator {
                 );
             }
             for project in due_projects {
-                self.git_jobs.submit(GitJob::Refresh { project });
+                let now = Instant::now();
+                if let Ok(mut guard) = self.projects.lock() {
+                    if let Some(tracked) = guard.get_mut(&project.id) {
+                        tracked.last_remote_git_refresh = Some(now);
+                    }
+                }
+                self.git_jobs.submit(GitJob::Refresh {
+                    project,
+                    fetch_remote: true,
+                });
             }
         }
 

@@ -12,7 +12,7 @@ impl CoduxApp {
         let tab_number = self.bottom_terminals().count() + 1;
         let title = format!("Tab {tab_number}");
         let pane_plan = TerminalPanePlan {
-            source_id: Some(bottom_slot_id(owner_id, tab_number.saturating_sub(1))),
+            source_id: Some(unique_bottom_slot_id(owner_id)),
             terminal_id: Some(bottom_terminal_id(owner_id, tab_number.saturating_sub(1))),
             title: title.clone(),
             restored_output_bytes: 0,
@@ -31,8 +31,8 @@ impl CoduxApp {
                 self.terminals.push(TerminalTab {
                     id,
                     label: title.clone(),
-                    source_id: pane_plan.source_id.clone(),
-                    terminal_id: pane_plan.terminal_id.clone(),
+                    source_id: Some(bottom_slot_id(owner_id, tab_number.saturating_sub(1))),
+                    terminal_id: None,
                     panes: vec![TerminalPaneSlot {
                         title: title.clone(),
                         launch_context: pane_context,
@@ -47,7 +47,7 @@ impl CoduxApp {
                     view.read(cx).focus_handle().focus(window, cx);
                 }
                 self.status_message = format!("terminal tab added: {title}");
-                self.sync_terminal_state_for_background_persist(cx);
+                self.sync_terminal_state_after_layout_change(cx);
                 self.invalidate_terminal_workspace(cx);
             }
             Err(error) => eprintln!("failed to create terminal tab: {error}"),
@@ -66,14 +66,14 @@ impl CoduxApp {
             return;
         }
         let tab_id = active_tab.id;
-        let pane_index = active_tab.panes.len();
         let owner_id = launch_context
             .as_ref()
             .map(|context| context.project_id.as_str())
             .unwrap_or("unscoped");
+        let pane_index = active_tab.panes.len();
         let title = self
             .text("terminal.split.default_format", "Split %d")
-            .replace("%d", &(pane_index + 1).to_string());
+            .replace("%d", &(active_tab.panes.len() + 1).to_string());
         let pane_plan = TerminalPanePlan {
             source_id: Some(top_slot_id(owner_id, pane_index)),
             terminal_id: Some(top_terminal_id(owner_id, pane_index)),
@@ -101,7 +101,7 @@ impl CoduxApp {
                     });
                 }
                 self.status_message = "terminal split added".to_string();
-                self.sync_terminal_state_for_background_persist(cx);
+                self.sync_terminal_state_after_layout_change(cx);
                 self.invalidate_terminal_workspace(cx);
             }
             Err(error) => eprintln!("failed to split terminal: {error}"),
@@ -164,7 +164,7 @@ impl CoduxApp {
             }
         }
         self.status_message = format!("terminal pane floated: {title}");
-        self.sync_terminal_state_for_background_persist(cx);
+        self.sync_terminal_state_after_layout_change(cx);
 
         let project_id = self
             .state
@@ -253,7 +253,7 @@ impl CoduxApp {
         let insert_index = pane_index.min(self.terminals[tab_index].panes.len());
         self.terminals[tab_index].panes.insert(insert_index, slot);
         self.status_message = format!("terminal pane restored: {title}");
-        self.sync_terminal_state_for_background_persist(cx);
+        self.sync_terminal_state_after_layout_change(cx);
         self.invalidate_terminal_workspace(cx);
     }
 
@@ -297,7 +297,16 @@ impl CoduxApp {
                     pane_index + 1
                 )
             });
-        let kill_result = self.kill_terminal_session_if_present(&terminal_id);
+        let still_referenced = self.terminals.iter().any(|tab| {
+            tab.panes.iter().enumerate().any(|(index, slot)| {
+                Self::terminal_slot_terminal_id(tab, index, slot) == terminal_id
+            })
+        });
+        let kill_result = if still_referenced {
+            Ok(())
+        } else {
+            self.kill_terminal_session_if_present(&terminal_id)
+        };
         if let Some(view) = self
             .main_terminal()
             .and_then(|tab| tab.panes.last())
@@ -306,7 +315,7 @@ impl CoduxApp {
         {
             view.read(cx).focus_handle().focus(window, cx);
         }
-        self.sync_terminal_state_for_background_persist(cx);
+        self.sync_terminal_state_after_layout_change(cx);
         if let Err(error) = kill_result {
             self.status_message = format!("terminal split closed; PTY cleanup failed: {error}");
         } else {
@@ -344,7 +353,7 @@ impl CoduxApp {
             Ok(()) => {
                 let tab_label = self.terminals[tab_index].label.clone();
                 self.status_message = format!("sent command to {tab_label}");
-                self.sync_terminal_state_for_background_persist(cx);
+                self.sync_terminal_state_after_layout_change(cx);
             }
             Err(error) => {
                 self.status_message = format!("failed to send terminal command: {error}");
@@ -374,11 +383,11 @@ impl CoduxApp {
         }
 
         let tab_id = active_tab.id;
-        let pane_index = active_tab.panes.len();
         let owner_id = launch_context
             .as_ref()
             .map(|context| context.project_id.as_str())
             .unwrap_or("unscoped");
+        let pane_index = active_tab.panes.len();
         let pane_plan = TerminalPanePlan {
             source_id: Some(top_slot_id(owner_id, pane_index)),
             terminal_id: Some(top_terminal_id(owner_id, pane_index)),
@@ -412,7 +421,7 @@ impl CoduxApp {
                 } else {
                     self.status_message = "AI session restored in main split".to_string();
                 }
-                self.sync_terminal_state_for_background_persist(cx);
+                self.sync_terminal_state_after_layout_change(cx);
                 self.invalidate_terminal_workspace(cx);
             }
             Err(error) => {
@@ -454,7 +463,7 @@ impl CoduxApp {
         if let Some(view) = self.active_bottom_terminal_view() {
             view.read(cx).focus_handle().focus(window, cx);
         }
-        self.sync_terminal_state_for_background_persist(cx);
+        self.sync_terminal_state_after_layout_change(cx);
         if let Err(error) = mount_result {
             self.status_message = format!("terminal tab closed; mount failed: {error}");
         } else if let Some(error) = kill_errors.first() {
@@ -482,7 +491,7 @@ impl CoduxApp {
             view.read(cx).focus_handle().focus(window, cx);
         }
         self.detach_inactive_terminal_views();
-        self.sync_terminal_state_for_background_persist(cx);
+        self.sync_terminal_state_after_layout_change(cx);
         self.invalidate_terminal_workspace(cx);
     }
 }

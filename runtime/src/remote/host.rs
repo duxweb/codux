@@ -12,7 +12,6 @@ use crate::remote_p2p::{RemoteP2PHostTransport, RemoteP2PLane, RemoteP2PSignal};
 use crate::terminal_pty::{
     TerminalEvent, TerminalManager, TerminalPtyConfig, TerminalSessionSnapshot,
 };
-use crate::terminal_runtime::{TerminalRuntimeService, TerminalRuntimeSessionSummary};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::{
@@ -697,57 +696,16 @@ impl RemoteHostRuntime {
     }
 
     fn handle_terminal_create(self: &Arc<Self>, envelope: &RemoteEnvelope) {
-        let project_id = envelope
-            .payload
-            .get("projectId")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        let command = envelope
-            .payload
-            .get("command")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .unwrap_or_default();
-        let project_store = ProjectStore::new(self.support_dir.clone());
-        let project = project_id
-            .as_deref()
-            .and_then(|id| {
-                project_store
-                    .projects_snapshot()
-                    .into_iter()
-                    .find(|project| project.id == id)
-            })
-            .or_else(|| project_store.projects_snapshot().into_iter().next());
-        let Some(project) = project else {
-            self.send_error(envelope, "Unable to create terminal.");
-            return;
-        };
-        let title = if command.trim().is_empty() {
-            "Terminal".to_string()
-        } else {
-            command.clone()
-        };
         let runtime = Arc::clone(self);
         let emit = move |event| {
             runtime.handle_terminal_event(event);
         };
-        let config = TerminalPtyConfig {
-            cwd: Some(project.path.clone()),
-            command: (!command.trim().is_empty()).then_some(command),
-            cols: envelope
-                .payload
-                .get("cols")
-                .and_then(Value::as_u64)
-                .map(|value| value as u16),
-            rows: envelope
-                .payload
-                .get("rows")
-                .and_then(Value::as_u64)
-                .map(|value| value as u16),
-            project_id: Some(project.id.clone()),
-            project_name: Some(project.name.clone()),
-            title: Some(title),
-            ..Default::default()
+        let config = match self.remote_terminal_config_from_envelope(envelope, None) {
+            Ok(config) => config,
+            Err(error) => {
+                self.send_error(envelope, &error);
+                return;
+            }
         };
         match self.terminals.create(config, emit) {
             Ok(session_id) => {
@@ -1440,32 +1398,85 @@ impl RemoteHostRuntime {
     }
 
     fn remote_terminals(&self) -> Vec<Value> {
-        let runtime_sessions = TerminalRuntimeService::new(self.support_dir.clone())
-            .summary()
-            .sessions
-            .into_iter()
-            .filter(|terminal| terminal.is_running)
-            .collect::<Vec<_>>();
-        let sort_order = remote_terminal_sort_order(&runtime_sessions);
-        let running = self
+        let mut terminals = self
             .terminals
             .list()
             .into_iter()
-            .map(|terminal| remote_terminal_snapshot_payload(terminal, &sort_order))
+            .enumerate()
+            .map(|(index, terminal)| remote_terminal_snapshot_payload(terminal, index))
             .collect::<Vec<_>>();
-        let mut known = running
-            .iter()
-            .filter_map(|value| value.get("id").and_then(Value::as_str).map(str::to_string))
-            .collect::<HashSet<_>>();
-        let mut terminals = running;
-        terminals.extend(
-            runtime_sessions
-                .into_iter()
-                .filter(|terminal| known.insert(terminal.terminal_id.clone()))
-                .map(|terminal| remote_terminal_runtime_payload(terminal, &sort_order)),
-        );
         terminals.sort_by_key(remote_terminal_order_key);
         terminals
+    }
+
+    fn remote_terminal_config_from_envelope(
+        &self,
+        envelope: &RemoteEnvelope,
+        terminal_id: Option<&str>,
+    ) -> Result<TerminalPtyConfig, String> {
+        let project_id = envelope
+            .payload
+            .get("projectId")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let project_store = ProjectStore::new(self.support_dir.clone());
+        let project = project_id
+            .as_deref()
+            .and_then(|id| {
+                project_store
+                    .projects_snapshot()
+                    .into_iter()
+                    .find(|project| project.id == id)
+            })
+            .or_else(|| project_store.projects_snapshot().into_iter().next())
+            .ok_or_else(|| "Unable to create terminal.".to_string())?;
+        let command = envelope
+            .payload
+            .get("command")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|value| !value.trim().is_empty());
+        let title = envelope
+            .payload
+            .get("title")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| command.clone())
+            .unwrap_or_else(|| "Terminal".to_string());
+        let cwd = envelope
+            .payload
+            .get("cwd")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| project.path.clone());
+        let slot_id = envelope
+            .payload
+            .get("slotId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|value| !value.trim().is_empty());
+        Ok(TerminalPtyConfig {
+            cwd: Some(cwd),
+            command,
+            cols: envelope
+                .payload
+                .get("cols")
+                .and_then(Value::as_u64)
+                .map(|value| value as u16),
+            rows: envelope
+                .payload
+                .get("rows")
+                .and_then(Value::as_u64)
+                .map(|value| value as u16),
+            project_id: Some(project.id.clone()),
+            project_name: Some(project.name.clone()),
+            terminal_id: terminal_id.map(str::to_string),
+            slot_id,
+            title: Some(title),
+            ..Default::default()
+        })
     }
 
     fn ensure_remote_terminal_started(
@@ -1477,42 +1488,13 @@ impl RemoteHostRuntime {
             self.ensure_terminal_event_subscription(session_id);
             return Ok(());
         }
-        let Some(runtime_session) = TerminalRuntimeService::new(self.support_dir.clone())
-            .summary()
-            .sessions
-            .into_iter()
-            .find(|terminal| terminal.terminal_id == session_id)
-        else {
-            return Ok(());
-        };
-        if !runtime_session.is_running {
-            return Ok(());
-        }
         let runtime = Arc::clone(self);
         let emit = move |event| {
             runtime.handle_terminal_event(event);
         };
         self.terminals
             .create(
-                TerminalPtyConfig {
-                    cwd: Some(runtime_session.cwd),
-                    cols: envelope
-                        .payload
-                        .get("cols")
-                        .and_then(Value::as_u64)
-                        .map(|value| value as u16),
-                    rows: envelope
-                        .payload
-                        .get("rows")
-                        .and_then(Value::as_u64)
-                        .map(|value| value as u16),
-                    project_id: Some(runtime_session.project_id),
-                    project_name: Some(runtime_session.project_name),
-                    terminal_id: Some(runtime_session.terminal_id),
-                    slot_id: Some(runtime_session.slot_id),
-                    title: Some(runtime_session.title),
-                    ..Default::default()
-                },
+                self.remote_terminal_config_from_envelope(envelope, Some(session_id))?,
                 emit,
             )
             .map_err(|error| error.to_string())?;
@@ -1953,16 +1935,6 @@ pub(crate) fn remote_ai_stats_payload(
     Ok(payload)
 }
 
-fn remote_terminal_sort_order(
-    terminals: &[TerminalRuntimeSessionSummary],
-) -> HashMap<String, usize> {
-    terminals
-        .iter()
-        .enumerate()
-        .map(|(index, terminal)| (terminal.terminal_id.clone(), index))
-        .collect()
-}
-
 pub(crate) fn remote_terminal_order_key(value: &Value) -> (usize, usize, String) {
     let order = value
         .get("sortOrder")
@@ -1987,9 +1959,8 @@ fn remote_terminal_pane_index_from_slot(slot_id: &str) -> Option<usize> {
 
 pub(crate) fn remote_terminal_snapshot_payload(
     terminal: TerminalSessionSnapshot,
-    sort_order: &HashMap<String, usize>,
+    sort_order: usize,
 ) -> Value {
-    let sort_order = sort_order.get(&terminal.id).copied().unwrap_or(usize::MAX);
     let pane_index = remote_terminal_pane_index_from_slot(&terminal.slot_id);
     json!({
         "id": terminal.id,
@@ -2021,50 +1992,6 @@ pub(crate) fn remote_terminal_snapshot_payload(
         "isRunning": terminal.is_running,
         "createdAt": terminal.created_at,
         "lastActiveAt": terminal.last_active_at,
-        "bufferCharacters": terminal.buffer_characters,
-        "hasBuffer": terminal.has_buffer,
-    })
-}
-
-fn remote_terminal_runtime_payload(
-    terminal: TerminalRuntimeSessionSummary,
-    sort_order: &HashMap<String, usize>,
-) -> Value {
-    let sort_order = sort_order
-        .get(&terminal.terminal_id)
-        .copied()
-        .unwrap_or(usize::MAX);
-    json!({
-        "id": terminal.terminal_id,
-        "title": terminal.title,
-        "displayTitle": if terminal.project_name.trim().is_empty() {
-            terminal.title.clone()
-        } else {
-            format!("{} · {}", terminal.project_name, terminal.title)
-        },
-        "projectId": terminal.project_id,
-        "projectName": terminal.project_name,
-        "projectPath": terminal.cwd,
-        "cwd": terminal.cwd,
-        "slotId": terminal.slot_id,
-        "paneIndex": terminal.pane_index,
-        "sortOrder": sort_order,
-        "shell": "login shell",
-        "command": "",
-        "kind": "desktop-shared",
-        "ownerKind": std::env::consts::OS,
-        "ownerDeviceId": "",
-        "ownerDeviceName": remote_host_name(),
-        "resizeOwner": std::env::consts::OS,
-        "cols": 0,
-        "rows": 0,
-        "gridSource": std::env::consts::OS,
-        "status": terminal.status,
-        "isRunning": terminal.is_running,
-        "lastActivity": terminal.last_active_at,
-        "createdAt": terminal.created_at,
-        "lastActiveAt": terminal.last_active_at,
-        "bufferLength": terminal.buffer_characters,
         "bufferCharacters": terminal.buffer_characters,
         "hasBuffer": terminal.has_buffer,
     })

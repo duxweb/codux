@@ -47,7 +47,7 @@ impl CoduxApp {
         let (terminal_layout, terminal_runtime) = normalize_terminal_restore_state(
             super::ai_runtime_status::terminal_layout_owner_id(&state).as_deref(),
             state.terminal_layout.clone(),
-            state.terminal_runtime.clone(),
+            TerminalRuntimeSummary::default(),
         );
         state.terminal_layout = terminal_layout;
         state.terminal_runtime = terminal_runtime;
@@ -139,7 +139,6 @@ impl CoduxApp {
         let ai_history_active_index_count = runtime_service.active_ai_history_index_count();
         let project_view_store = initial_project_view_store(&state);
         let worktree_view_store = initial_worktree_view_store(&state, &project_view_store);
-        let terminal_view_store = initial_terminal_view_store(&state);
 
         let app = Self {
             window_mode: AppWindowMode::Main,
@@ -360,7 +359,6 @@ impl CoduxApp {
             file_sidebar_view: None,
             project_view_store,
             worktree_view_store,
-            terminal_view_store,
             project_open_applications,
             project_editor_project_id: None,
             project_editor_name: String::new(),
@@ -383,20 +381,6 @@ impl CoduxApp {
             ui_performance_counts: HashMap::new(),
             ui_performance_last_report_at: 0.0,
         };
-        let support_dir = app.state.support_dir.clone();
-        let (active_terminal_id, active_slot_id, sessions) = app.terminal_runtime_snapshot();
-        codux_runtime::async_runtime::spawn_blocking(move || {
-            if let Err(error) = TerminalRuntimeService::new(support_dir).save_from_gpui(
-                active_terminal_id,
-                active_slot_id,
-                sessions,
-            ) {
-                codux_runtime::runtime_trace::runtime_trace(
-                    "terminal-runtime",
-                    &format!("failed to persist startup terminal runtime: {error}"),
-                );
-            }
-        });
         Ok(app)
     }
 
@@ -513,19 +497,11 @@ impl CoduxApp {
     fn shutdown_runtime_state(&mut self) {
         codux_runtime::config::flush_all_config_writes();
 
-        let support_dir = self.state.support_dir.clone();
-        let terminal_snapshot = self.terminal_runtime_snapshot();
         let terminal_manager = self.terminal_manager.clone();
         let runtime_service = self.runtime_service.clone();
         let _ = std::thread::Builder::new()
             .name("codux-runtime-shutdown".to_string())
             .spawn(move || {
-                let (active_terminal_id, active_slot_id, sessions) = terminal_snapshot;
-                let _ = TerminalRuntimeService::new(support_dir).save_from_gpui(
-                    active_terminal_id,
-                    active_slot_id,
-                    sessions,
-                );
                 for terminal in terminal_manager.list() {
                     let _ = terminal_manager.kill(&terminal.id);
                 }

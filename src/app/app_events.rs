@@ -14,6 +14,7 @@ pub(in crate::app) struct PetUpdateEvent {
 #[derive(Clone, Debug, Default)]
 pub(in crate::app) struct SettingsUpdateEvent {
     pub(in crate::app) revision: u64,
+    pub(in crate::app) statistics_revision: u64,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -110,6 +111,15 @@ pub(in crate::app) fn publish_settings_update() -> u64 {
         return 0;
     };
     event.revision = event.revision.saturating_add(1);
+    event.revision
+}
+
+pub(in crate::app) fn publish_statistics_settings_update() -> u64 {
+    let Ok(mut event) = settings_update_event().lock() else {
+        return 0;
+    };
+    event.revision = event.revision.saturating_add(1);
+    event.statistics_revision = event.revision;
     event.revision
 }
 

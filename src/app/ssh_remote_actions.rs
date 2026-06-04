@@ -1249,7 +1249,7 @@ impl CoduxApp {
                 } else {
                     translate(&locale, "ai.notification.task_completed", "Task completed")
                 };
-                let body = format!("{} · {}", completion.project_name, completion.tool);
+                let body = completion.project_name.clone();
                 let group = "codux-task";
                 if let Err(error) = service.show_native_notification(&title, &body, group) {
                     service.runtime_trace_frontend(
