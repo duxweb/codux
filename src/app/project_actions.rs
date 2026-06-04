@@ -816,17 +816,7 @@ impl CoduxApp {
             .worktree_view_store
             .get(&load.store_key)
             .map(|state| state.files.clone())
-            .unwrap_or_else(|| super::app_state::FileWorktreeViewState {
-                files: Vec::new(),
-                file_directory: String::new(),
-                selected_file_entry: None,
-                selected_file_entries: HashSet::new(),
-                file_selection_anchor: None,
-                file_tree_expanded_dirs: HashSet::new(),
-                file_tree_children: HashMap::new(),
-                file_editor_tabs: Vec::new(),
-                active_file_editor_tab: None,
-            });
+            .unwrap_or_else(super::app_state::empty_file_worktree_view_state);
         file_state.files = load.files.clone();
         if file_state.file_directory.trim().is_empty() {
             file_state.file_directory.clear();
@@ -855,21 +845,20 @@ impl CoduxApp {
             git_diff_preview: "select a changed file to preview its diff".to_string(),
             git_review_content: None,
         };
+        let existing_view_state = self.worktree_view_store.get(&load.store_key).cloned();
         self.worktree_view_store.insert(
             load.store_key.clone(),
             super::app_state::WorktreeViewState {
-                ai_history: self
-                    .worktree_view_store
-                    .get(&load.store_key)
+                ai_history: existing_view_state
+                    .as_ref()
                     .map(|state| state.ai_history.clone())
-                    .unwrap_or_else(|| self.state.ai_history.clone()),
+                    .unwrap_or_default(),
                 files: file_state.clone(),
                 git: git_state.clone(),
-                terminal: self
-                    .worktree_view_store
-                    .get(&load.store_key)
+                terminal: existing_view_state
+                    .as_ref()
                     .map(|state| state.terminal.clone())
-                    .unwrap_or_else(|| self.terminal_view_state()),
+                    .unwrap_or_else(super::app_state::empty_terminal_view_state),
             },
         );
         let current_key = worktree_view_store_key(&self.state);
@@ -951,15 +940,9 @@ impl CoduxApp {
             );
             return;
         }
-        self.worktree_view_store.insert(
-            key.clone(),
-            super::app_state::WorktreeViewState {
-                ai_history: self.state.ai_history.clone(),
-                files: self.file_worktree_view_state(),
-                git: self.git_worktree_view_state(),
-                terminal,
-            },
-        );
+        let mut view_state = super::app_state::empty_worktree_view_state();
+        view_state.terminal = terminal;
+        self.worktree_view_store.insert(key.clone(), view_state);
         self.trace_workspace_state(
             "upsert_terminal_created",
             &key.worktree_id,
@@ -975,39 +958,9 @@ impl CoduxApp {
         if let Some(view_state) = self.worktree_view_store.get_mut(&key) {
             return merge_ai_history_summary(&mut view_state.ai_history, ai_history);
         }
-        self.worktree_view_store.insert(
-            key,
-            super::app_state::WorktreeViewState {
-                ai_history,
-                files: super::app_state::FileWorktreeViewState {
-                    files: Vec::new(),
-                    file_directory: String::new(),
-                    selected_file_entry: None,
-                    selected_file_entries: HashSet::new(),
-                    file_selection_anchor: None,
-                    file_tree_expanded_dirs: HashSet::new(),
-                    file_tree_children: HashMap::new(),
-                    file_editor_tabs: Vec::new(),
-                    active_file_editor_tab: None,
-                },
-                git: super::app_state::GitWorktreeViewState {
-                    git: GitSummary::default(),
-                    git_review: GitReviewSummary::default(),
-                    selected_git_file: None,
-                    selected_git_files: HashSet::new(),
-                    selected_git_branch: None,
-                    git_expanded_sections: HashSet::new(),
-                    git_expanded_dirs: HashSet::new(),
-                    git_tree_children: HashMap::new(),
-                    git_diff_preview: "select a changed file to preview its diff".to_string(),
-                    git_review_content: None,
-                },
-                terminal: TerminalViewState {
-                    terminal_layout: TerminalLayoutSummary::default(),
-                    terminal_runtime: TerminalRuntimeSummary::default(),
-                },
-            },
-        );
+        let mut view_state = super::app_state::empty_worktree_view_state();
+        view_state.ai_history = ai_history;
+        self.worktree_view_store.insert(key, view_state);
         true
     }
 
@@ -1481,19 +1434,19 @@ impl CoduxApp {
                 ai_history: existing
                     .as_ref()
                     .map(|state| state.ai_history.clone())
-                    .unwrap_or_else(|| self.state.ai_history.clone()),
+                    .unwrap_or_default(),
                 ai_global_history: existing
                     .as_ref()
                     .map(|state| state.ai_global_history.clone())
-                    .unwrap_or_else(|| self.state.ai_global_history.clone()),
+                    .unwrap_or_default(),
                 memory: existing
                     .as_ref()
                     .map(|state| state.memory.clone())
-                    .unwrap_or_else(|| self.state.memory.clone()),
+                    .unwrap_or_default(),
                 memory_manager: existing
                     .as_ref()
                     .map(|state| state.memory_manager.clone())
-                    .unwrap_or_else(|| self.state.memory_manager.clone()),
+                    .unwrap_or_default(),
                 worktrees: load.worktrees.clone(),
             },
         );
@@ -1547,19 +1500,19 @@ impl CoduxApp {
                 ai_global_history: existing
                     .as_ref()
                     .map(|state| state.ai_global_history.clone())
-                    .unwrap_or_else(|| self.state.ai_global_history.clone()),
+                    .unwrap_or_default(),
                 memory: existing
                     .as_ref()
                     .map(|state| state.memory.clone())
-                    .unwrap_or_else(|| self.state.memory.clone()),
+                    .unwrap_or_default(),
                 memory_manager: existing
                     .as_ref()
                     .map(|state| state.memory_manager.clone())
-                    .unwrap_or_else(|| self.state.memory_manager.clone()),
+                    .unwrap_or_default(),
                 worktrees: existing
                     .as_ref()
                     .map(|state| state.worktrees.clone())
-                    .unwrap_or_else(|| self.state.worktrees.clone()),
+                    .unwrap_or_default(),
             },
         );
         self.upsert_worktree_ai_history_state(load.store_key.clone(), load.ai_history.clone());
@@ -1614,13 +1567,7 @@ impl CoduxApp {
         let entry = self
             .project_view_store
             .entry(load.project_id.clone())
-            .or_insert_with(|| ProjectViewState {
-                ai_history: self.state.ai_history.clone(),
-                ai_global_history: self.state.ai_global_history.clone(),
-                memory: self.state.memory.clone(),
-                memory_manager: self.state.memory_manager.clone(),
-                worktrees: self.state.worktrees.clone(),
-            });
+            .or_insert_with(super::app_state::empty_project_view_state);
         entry.ai_global_history = load.ai_global_history.clone();
         entry.memory = load.memory.clone();
         entry.memory_manager = load.memory_manager.clone();

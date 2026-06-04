@@ -7,8 +7,9 @@ mod tests {
                 file_search_status_message, generated_git_commit_message, git_remote_action_label,
                 project_badge_text_from_name, ssh_connect_command,
             },
-            app_state::initial_project_view_store,
-            app_state::initial_worktree_view_store,
+            app_state::{
+                empty_worktree_view_state, initial_project_view_store, initial_worktree_view_store,
+            },
             shortcuts::{normalized_shortcut_text, shortcut_matches},
             terminal_state::{
                 normalize_terminal_restore_state, structural_terminal_layout,
@@ -219,6 +220,23 @@ mod tests {
         assert!(task_b.ai_history.sessions.is_empty());
 
         fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn empty_worktree_view_state_does_not_copy_current_ui_state() {
+        let state = empty_worktree_view_state();
+
+        assert!(state.ai_history.sessions.is_empty());
+        assert!(state.files.files.is_empty());
+        assert!(state.files.file_editor_tabs.is_empty());
+        assert!(state.git.git.changed_files.is_empty());
+        assert_eq!(state.git.git.staged, 0);
+        assert_eq!(state.git.git.unstaged, 0);
+        assert_eq!(state.git.git.untracked, 0);
+        assert!(state.git.git_review.files.is_empty());
+        assert!(state.terminal.terminal_layout.top_panes.is_empty());
+        assert!(state.terminal.terminal_layout.tabs.is_empty());
+        assert!(state.terminal.terminal_runtime.sessions.is_empty());
     }
 
     #[test]

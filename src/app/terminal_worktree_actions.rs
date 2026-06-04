@@ -1495,6 +1495,21 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.upsert_worktree_ai_history_state(load.store_key.clone(), load.ai_history.clone());
+        let existing_terminal = self
+            .worktree_view_store
+            .get(&load.store_key)
+            .map(|state| state.terminal.clone());
+        let restore_from_memory = existing_terminal.is_some();
+        let terminal_view_state = existing_terminal.unwrap_or(TerminalViewState {
+            terminal_layout: load.terminal_layout.clone(),
+            terminal_runtime: load.terminal_runtime.clone(),
+        });
+        self.upsert_worktree_terminal_view_state(
+            load.store_key.clone(),
+            terminal_view_state.clone(),
+        );
+
         if self
             .state
             .selected_project
@@ -1528,20 +1543,9 @@ impl CoduxApp {
             ),
         );
         self.state.worktrees = load.worktrees;
-        self.upsert_worktree_ai_history_state(load.store_key.clone(), load.ai_history.clone());
         self.apply_saved_worktree_view_state(cx);
         self.ensure_active_file_editor_state(window, cx);
         self.spawn_worktree_sidebar_load(load.generation, cx);
-        let memory_terminal = self
-            .worktree_view_store
-            .get(&load.store_key)
-            .map(|state| state.terminal.clone());
-        let restore_from_memory = memory_terminal.is_some();
-        let view_state = memory_terminal.unwrap_or(TerminalViewState {
-            terminal_layout: load.terminal_layout,
-            terminal_runtime: load.terminal_runtime,
-        });
-        self.upsert_worktree_terminal_view_state(load.store_key.clone(), view_state.clone());
         if restore_from_memory {
             self.trace_workspace_state(
                 "load_skip_terminal_restore",
@@ -1550,8 +1554,8 @@ impl CoduxApp {
             );
         } else {
             self.schedule_terminal_layout_restore(
-                view_state.terminal_layout,
-                view_state.terminal_runtime,
+                terminal_view_state.terminal_layout,
+                terminal_view_state.terminal_runtime,
                 load.generation,
                 window,
                 cx,

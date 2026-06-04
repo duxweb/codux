@@ -438,6 +438,61 @@ pub(in crate::app) struct WorktreeViewStoreKey {
     pub(in crate::app) worktree_id: String,
 }
 
+pub(in crate::app) fn empty_project_view_state() -> ProjectViewState {
+    ProjectViewState {
+        ai_history: AIHistorySummary::default(),
+        ai_global_history: AIGlobalHistorySummary::default(),
+        memory: MemorySummary::default(),
+        memory_manager: MemoryManagerSnapshot::default(),
+        worktrees: WorktreeSummary::default(),
+    }
+}
+
+pub(in crate::app) fn empty_worktree_view_state() -> WorktreeViewState {
+    WorktreeViewState {
+        ai_history: AIHistorySummary::default(),
+        files: empty_file_worktree_view_state(),
+        git: empty_git_worktree_view_state(),
+        terminal: empty_terminal_view_state(),
+    }
+}
+
+pub(in crate::app) fn empty_file_worktree_view_state() -> FileWorktreeViewState {
+    FileWorktreeViewState {
+        files: Vec::new(),
+        file_directory: String::new(),
+        selected_file_entry: None,
+        selected_file_entries: HashSet::new(),
+        file_selection_anchor: None,
+        file_tree_expanded_dirs: HashSet::new(),
+        file_tree_children: HashMap::new(),
+        file_editor_tabs: Vec::new(),
+        active_file_editor_tab: None,
+    }
+}
+
+pub(in crate::app) fn empty_git_worktree_view_state() -> GitWorktreeViewState {
+    GitWorktreeViewState {
+        git: GitSummary::default(),
+        git_review: GitReviewSummary::default(),
+        selected_git_file: None,
+        selected_git_files: HashSet::new(),
+        selected_git_branch: None,
+        git_expanded_sections: HashSet::new(),
+        git_expanded_dirs: HashSet::new(),
+        git_tree_children: HashMap::new(),
+        git_diff_preview: "select a changed file to preview its diff".to_string(),
+        git_review_content: None,
+    }
+}
+
+pub(in crate::app) fn empty_terminal_view_state() -> TerminalViewState {
+    TerminalViewState {
+        terminal_layout: TerminalLayoutSummary::default(),
+        terminal_runtime: TerminalRuntimeSummary::default(),
+    }
+}
+
 pub(in crate::app) fn initial_project_view_store(
     state: &RuntimeState,
 ) -> HashMap<String, ProjectViewState> {
