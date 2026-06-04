@@ -1363,6 +1363,7 @@ impl CoduxApp {
                 has_selected_terminal_view
             ),
         );
+        let mut should_refresh_terminal_workspace = false;
         if !is_selected_terminal_owner {
             self.runtime_trace(
                 "project-switch",
@@ -1380,6 +1381,7 @@ impl CoduxApp {
                 ),
             );
         } else {
+            should_refresh_terminal_workspace = true;
             self.schedule_terminal_layout_restore(
                 view_state.terminal_layout,
                 view_state.terminal_runtime,
@@ -1388,8 +1390,9 @@ impl CoduxApp {
                 cx,
             );
         }
-        self.save_current_project_view_state_in_memory();
-        self.invalidate_terminal_workspace(cx);
+        if should_refresh_terminal_workspace {
+            self.invalidate_terminal_workspace(cx);
+        }
     }
 
     pub(super) fn apply_project_switch_task_load(
@@ -1445,7 +1448,6 @@ impl CoduxApp {
                 self.state.worktrees.tasks.len()
             ),
         );
-        self.save_current_project_view_state_in_memory();
         self.invalidate_worktree_context(cx);
     }
 
@@ -1509,6 +1511,9 @@ impl CoduxApp {
             self.state.ai_history.detail = load.ai_history.detail;
             self.state.ai_history.error = load.ai_history.error;
         }
+        if let Some(entry) = self.project_view_store.get_mut(&load.project_id) {
+            entry.ai_history = self.state.ai_history.clone();
+        }
         self.runtime_trace(
             "project-switch",
             &format!(
@@ -1520,14 +1525,11 @@ impl CoduxApp {
                 self.state.ai_history.sessions.len()
             ),
         );
-        self.refresh_ai_history_after_project_switch(cx);
-        self.save_current_project_view_state_in_memory();
+        self.normalize_selected_ai_session();
         self.invalidate_ui(
             cx,
             [
                 UiRegion::TaskColumn,
-                UiRegion::WorkspaceChrome,
-                UiRegion::WorkspaceAssistant,
                 UiRegion::AIStatsSidebar,
                 UiRegion::StatusBar,
             ],
@@ -1575,11 +1577,9 @@ impl CoduxApp {
                 self.state.worktrees.tasks.len()
             ),
         );
-        self.save_current_project_view_state_in_memory();
         self.invalidate_ui(
             cx,
             [
-                UiRegion::WorkspaceChrome,
                 UiRegion::WorkspaceAssistant,
                 UiRegion::AIStatsSidebar,
                 UiRegion::StatusBar,
