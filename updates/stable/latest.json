@@ -1,0 +1,31 @@
+{
+  "version": "1.5.0",
+  "notes": "## 中文\n\n## [1.5.0] - 2026-06-04\n\n### 调整\n\n- 将 Codux Desktop 重构为 Rust 原生 GPUI 应用，替换原有 Tauri/WebView 桌面壳，同时保持现有产品范围和用户侧工作流作为本次基线版本。\n- 主窗口、终端工作区、项目与 worktree 导航、文件浏览、Git 评审、AI runtime 状态、设置、更新弹窗和桌面宠物界面切换到原生 GPUI 渲染链路。\n- 围绕 Rust runtime 和本地缓存存储统一运行时状态、项目 / worktree UI 状态、终端布局、文件编辑器布局、Git 评审状态和桌面宠物基线处理。\n- 更新 Rust 原生桌面端的发布与自动更新链路，包括 GitHub Releases 元数据、Windows 安装包、macOS 应用包，以及独立公证的 macOS formal 包。\n\n### 说明\n\n- 这是 Codux 的首个 1.5.0 GPUI 稳定基线版本，重点是从 Tauri 切换到 Rust + GPUI 的桌面架构迁移，不作为现有 Codux 工作流之外的新增功能版本。\n- 包含 1.5.0-beta.1 测试周期中的验证和修复，覆盖 GPUI 终端恢复、项目 / worktree 状态恢复、AI runtime 状态、桌面宠物、远程移动端终端兼容，以及兼容 Tauri 更新链路的发布产物格式。\n\n---\n\n## English\n\n## [1.5.0] - 2026-06-04\n\n### Changed\n\n- Rebuilt Codux Desktop as a Rust-native GPUI application, replacing the previous Tauri/WebView desktop shell while keeping the existing product scope and user-facing workflows as the release baseline.\n- Moved the main window, terminal workspace, project and worktree navigation, file browser, Git review, AI runtime status, settings, update dialogs, and desktop pet surfaces onto the native GPUI rendering path.\n- Consolidated runtime state, project/worktree UI state, terminal layout, file editor layout, Git review state, and desktop pet baseline handling around the Rust runtime and local cache stores.\n- Updated the release and updater pipeline for the Rust-native desktop build, including GitHub Releases metadata, Windows installer packaging, macOS app packaging, and the separate notarized macOS formal package.\n\n### Notes\n\n- This is the first stable 1.5.0 GPUI baseline for Codux. It focuses on the desktop architecture migration from Tauri to Rust + GPUI and does not introduce a separate feature expansion over the existing Codux workflows.\n- Includes the 1.5.0-beta.1 validation cycle and fixes for GPUI terminal restore, project/worktree state recovery, AI runtime status, desktop pet behavior, remote mobile terminal compatibility, and the Tauri-compatible updater artifact format.",
+  "pub_date": "2026-06-04T08:14:48.019Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXV1Nk5iZzJsNTcxbDlqTndremZhelRQZWF0WkgvOXJkN1NiaVBtQjRGZ3l1UytiVmdvbkROT2N6QzJ4ZGR6RW1RSUtRSlpLcm1rVnRPRkdCVkM4d0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTYwODMxCWZpbGU6Y29kdXgtMS41LjAtbWFjb3MtdW5pdmVyc2FsLWFkaG9jLXVwZGF0ZXIuYXBwLnRhci5negpZQXlmUy82WjJySzNOZWZJdVludllFT0kwRi9BczEwR0VsU2cwTTNlQzF1aVptYU1EU3pySklkcGNnOEhZN2tWVU12eXA3czlxamJYMTIvMTJaZzNDZz09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.5.0/codux-1.5.0-macos-universal-adhoc-updater.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXV1Nk5iZzJsNTcxbDlqTndremZhelRQZWF0WkgvOXJkN1NiaVBtQjRGZ3l1UytiVmdvbkROT2N6QzJ4ZGR6RW1RSUtRSlpLcm1rVnRPRkdCVkM4d0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTYwODMxCWZpbGU6Y29kdXgtMS41LjAtbWFjb3MtdW5pdmVyc2FsLWFkaG9jLXVwZGF0ZXIuYXBwLnRhci5negpZQXlmUy82WjJySzNOZWZJdVludllFT0kwRi9BczEwR0VsU2cwTTNlQzF1aVptYU1EU3pySklkcGNnOEhZN2tWVU12eXA3czlxamJYMTIvMTJaZzNDZz09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.5.0/codux-1.5.0-macos-universal-adhoc-updater.app.tar.gz"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXV1Nk5iZzJsNTcxbDlqTndremZhelRQZWF0WkgvOXJkN1NiaVBtQjRGZ3l1UytiVmdvbkROT2N6QzJ4ZGR6RW1RSUtRSlpLcm1rVnRPRkdCVkM4d0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTYwODMxCWZpbGU6Y29kdXgtMS41LjAtbWFjb3MtdW5pdmVyc2FsLWFkaG9jLXVwZGF0ZXIuYXBwLnRhci5negpZQXlmUy82WjJySzNOZWZJdVludllFT0kwRi9BczEwR0VsU2cwTTNlQzF1aVptYU1EU3pySklkcGNnOEhZN2tWVU12eXA3czlxamJYMTIvMTJaZzNDZz09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.5.0/codux-1.5.0-macos-universal-adhoc-updater.app.tar.gz"
+    },
+    "darwin-x86_64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXV1Nk5iZzJsNTcxbDlqTndremZhelRQZWF0WkgvOXJkN1NiaVBtQjRGZ3l1UytiVmdvbkROT2N6QzJ4ZGR6RW1RSUtRSlpLcm1rVnRPRkdCVkM4d0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTYwODMxCWZpbGU6Y29kdXgtMS41LjAtbWFjb3MtdW5pdmVyc2FsLWFkaG9jLXVwZGF0ZXIuYXBwLnRhci5negpZQXlmUy82WjJySzNOZWZJdVludllFT0kwRi9BczEwR0VsU2cwTTNlQzF1aVptYU1EU3pySklkcGNnOEhZN2tWVU12eXA3czlxamJYMTIvMTJaZzNDZz09Cg==",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.5.0/codux-1.5.0-macos-universal-adhoc-updater.app.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXBKeC9LaERkSzB5OFgvY3dnV2lQcVZ6VWtBOHA4c0VBMHZMZ1ZTTmh2VmhNczNsVHExUWV5K3JMM0xLNmVoYXZhTllQQ2NtM2tBMDJ4QnpiUG44Y3djPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTYwODUzCWZpbGU6Y29kdXgtMS41LjAtd2luZG93cy14ODZfNjQtc2V0dXAuZXhlCk1yaTh6Y1BSUFl5WDZXSUNUWE5zWDQ0cmdlRnhJdjBPeEVjRWZWQTlUQktLWVBRVm00b2RJbjBCUmxWZkw4aTJ0TzdBS0lXR2IxYmt1Q3MvdTIrREFBPT0K",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.5.0/codux-1.5.0-windows-x86_64-setup.exe"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQXBKeC9LaERkSzB5OFgvY3dnV2lQcVZ6VWtBOHA4c0VBMHZMZ1ZTTmh2VmhNczNsVHExUWV5K3JMM0xLNmVoYXZhTllQQ2NtM2tBMDJ4QnpiUG44Y3djPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTYwODUzCWZpbGU6Y29kdXgtMS41LjAtd2luZG93cy14ODZfNjQtc2V0dXAuZXhlCk1yaTh6Y1BSUFl5WDZXSUNUWE5zWDQ0cmdlRnhJdjBPeEVjRWZWQTlUQktLWVBRVm00b2RJbjBCUmxWZkw4aTJ0TzdBS0lXR2IxYmt1Q3MvdTIrREFBPT0K",
+      "url": "https://github.com/duxweb/codux/releases/download/v1.5.0/codux-1.5.0-windows-x86_64-setup.exe"
+    }
+  }
+}
