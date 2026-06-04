@@ -33,16 +33,32 @@ impl UpdateService {
 
     pub fn summary(&self) -> UpdateSummary {
         let settings = self.settings();
+        self.summary_for_update_settings(&settings, true)
+    }
+
+    pub fn settings_summary(&self) -> UpdateSummary {
+        let settings = self.settings();
+        self.summary_for_update_settings(&settings, false)
+    }
+
+    fn summary_for_update_settings(
+        &self,
+        settings: &AppUpdateSettings,
+        load_manifest: bool,
+    ) -> UpdateSummary {
         let mut summary = UpdateSummary {
             enabled: settings.enabled,
             channel: if settings.channel.is_empty() {
                 "stable".to_string()
             } else {
-                settings.channel
+                settings.channel.clone()
             },
-            endpoint: settings.endpoint,
+            endpoint: settings.endpoint.clone(),
             ..Default::default()
         };
+        if !load_manifest {
+            return summary;
+        }
         match self.load_latest_manifest(&summary) {
             Ok(value) => {
                 summary.latest_version = value
@@ -423,6 +439,40 @@ mod tests {
         );
         assert_eq!(status.download_checksum, None);
         assert_eq!(status.installation_mode, "manualManifest");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn settings_summary_does_not_load_manifest() {
+        let dir = std::env::temp_dir().join(format!(
+            "codux-runtime-update-settings-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let support_dir = dir.join("support");
+        fs::create_dir_all(&support_dir).unwrap();
+        let endpoint = dir.join("missing-latest.json").display().to_string();
+        fs::write(
+            support_dir.join("settings.json"),
+            serde_json::json!({
+                "update": {
+                    "enabled": true,
+                    "channel": "beta",
+                    "endpoint": endpoint,
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let service = UpdateService::new(support_dir, PathBuf::new());
+        let summary = service.settings_summary();
+
+        assert!(summary.enabled);
+        assert_eq!(summary.channel, "beta");
+        assert_eq!(summary.error, None);
+        assert_eq!(summary.latest_version, None);
 
         let _ = fs::remove_dir_all(dir);
     }

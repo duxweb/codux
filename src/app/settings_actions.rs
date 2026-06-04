@@ -278,7 +278,7 @@ impl CoduxApp {
                 self.apply_settings_summary(settings);
                 self.state.update = self
                     .runtime_service
-                    .reload_update(std::env::current_dir().unwrap_or_default());
+                    .reload_update_settings(std::env::current_dir().unwrap_or_default());
                 self.status_message = format!(
                     "update setting saved: {}",
                     if self.state.settings.update_enabled {
@@ -756,7 +756,7 @@ impl CoduxApp {
                 self.apply_settings_summary(settings);
                 self.state.update = self
                     .runtime_service
-                    .reload_update(std::env::current_dir().unwrap_or_default());
+                    .reload_update_settings(std::env::current_dir().unwrap_or_default());
                 self.status_message = format!(
                     "update channel saved: {}",
                     self.state.settings.update_channel

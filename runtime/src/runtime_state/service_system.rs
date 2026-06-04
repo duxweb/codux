@@ -3,6 +3,10 @@ impl RuntimeService {
         load_update(&self.support_dir, repo_root)
     }
 
+    pub fn reload_update_settings(&self, repo_root: PathBuf) -> UpdateSummary {
+        UpdateService::new(self.support_dir.clone(), repo_root).settings_summary()
+    }
+
     pub fn update_status(&self, repo_root: PathBuf, current_version: &str) -> UpdateStatus {
         UpdateService::new(self.support_dir.clone(), repo_root).status(current_version)
     }
