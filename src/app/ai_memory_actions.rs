@@ -9,60 +9,6 @@ impl CoduxApp {
         self.invalidate_memory_panel(cx);
     }
 
-    pub(super) fn refresh_ai_history_after_project_switch(&mut self, cx: &mut Context<Self>) {
-        let Some(project) = self.state.selected_project.clone() else {
-            return;
-        };
-        let scope_key =
-            current_worktree_scope_key(&self.state).unwrap_or_else(|| WorktreeScopeKey {
-                project_id: project.id.clone(),
-                worktree_id: project.id.clone(),
-            });
-        let refresh_key = ai_history_refresh_key(&scope_key);
-
-        if self.ai_history_refresh_keys.insert(refresh_key) {
-            self.start_ai_history_refresh(true, cx);
-            return;
-        }
-
-        let worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
-        let request = ai_history_worktree_request(&project, worktree.as_ref());
-        match self
-            .runtime_service
-            .indexed_project_ai_history_state(request)
-        {
-            Ok(state) => {
-                let summary =
-                    ai_history_summary_from_state_or_status(&self.state.ai_history, &state);
-                self.merge_worktree_ai_history_if_current(scope_key.clone(), summary.clone());
-                if current_worktree_scope_key(&self.state).as_ref() != Some(&scope_key) {
-                    return;
-                }
-                if ai_history_should_replace(&self.state.ai_history, &summary) {
-                    self.state.ai_history = summary;
-                } else if !summary.indexed {
-                    apply_ai_history_project_state(&mut self.state.ai_history, &state);
-                }
-                self.ai_history_active_index_count =
-                    self.runtime_service.active_ai_history_index_count();
-                self.refresh_ai_global_history_summary();
-                self.normalize_selected_ai_session();
-                self.invalidate_ui(
-                    cx,
-                    [
-                        UiRegion::WorkspaceAssistant,
-                        UiRegion::AIStatsSidebar,
-                        UiRegion::StatusBar,
-                    ],
-                );
-            }
-            Err(error) => {
-                self.state.ai_history.error = Some(error.clone());
-                self.status_message = format!("failed to load AI history state: {error}");
-            }
-        }
-    }
-
     pub(super) fn schedule_ai_index_progress_expiry(
         &self,
         generation: u64,
@@ -124,14 +70,20 @@ impl CoduxApp {
                         let running = status.running_count.max(0);
                         let active = pending > 0 || running > 0;
                         let _ = this.update(cx, |app, cx| {
-                            app.state.memory_manager.extraction.queued = pending;
-                            app.state.memory_manager.extraction.running = running;
-                            app.state.memory_manager.extraction.last_error =
-                                status.last_error.clone();
+                            let extraction = &mut app.state.memory_manager.extraction;
+                            let changed = extraction.queued != pending
+                                || extraction.running != running
+                                || extraction.last_error != status.last_error
+                                || app.memory_processing != active;
+                            extraction.queued = pending;
+                            extraction.running = running;
+                            extraction.last_error = status.last_error.clone();
                             app.memory_processing = active;
                             app.memory_extraction_status_refreshing = active;
-                            app.invalidate_status_bar(cx);
-                            app.invalidate_memory_panel(cx);
+                            if changed {
+                                app.invalidate_status_bar(cx);
+                                app.invalidate_memory_panel(cx);
+                            }
                         });
                         active
                     }
@@ -1220,8 +1172,4 @@ impl CoduxApp {
         }
         self.invalidate_memory_panel(cx);
     }
-}
-
-fn ai_history_refresh_key(key: &WorktreeScopeKey) -> String {
-    format!("{}:{}", key.project_id, key.worktree_id)
 }

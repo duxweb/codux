@@ -2,11 +2,6 @@ use super::*;
 use crate::app::app_events::{ChildWindowUpdateKind, publish_child_window_update};
 use crate::app::window_actions::{AuxiliaryWindowSlot, AuxiliaryWindowSpec};
 
-const PROJECT_TASK_LOAD_RECENT_SECONDS: f64 = 3.0;
-const PROJECT_TASK_LOAD_START_DEBOUNCE_SECONDS: f64 = 1.0;
-const WORKTREE_SIDEBAR_LOAD_RECENT_SECONDS: f64 = 3.0;
-const WORKTREE_SIDEBAR_LOAD_START_DEBOUNCE_SECONDS: f64 = 1.0;
-
 impl CoduxApp {
     pub(super) fn refresh_task_column_async(&mut self, cx: &mut Context<Self>) {
         let Some(project) = self.state.selected_project.clone() else {
@@ -139,7 +134,7 @@ impl CoduxApp {
                 }
                 app.state.git = git;
                 app.git_review = git_review;
-                let worktree_git_changed = app.sync_current_worktree_git_summary_from_panel();
+                let worktree_git_changed = app.sync_current_worktree_git_summary_from_current_git();
                 app.git_review_refreshing = false;
                 app.normalize_selected_git_file();
                 app.normalize_selected_git_branch();
@@ -306,8 +301,6 @@ impl CoduxApp {
         };
 
         self.state.selected_project = Some(project.clone());
-        self.state.git = GitSummary::default();
-        self.git_review = GitReviewSummary::default();
         self.state.files.clear();
         self.selected_ai_session_id = None;
         self.state.ai_history = AIHistorySummary {
@@ -333,9 +326,7 @@ impl CoduxApp {
             .runtime_service
             .reload_terminal_layout(Some(&terminal_storage_key));
         self.state.terminal_runtime = TerminalRuntimeSummary::default();
-        self.state.git = GitSummary::default();
-        self.git_review = GitReviewSummary::default();
-        self.clear_current_worktree_ui_state();
+        self.reset_current_worktree_ui_state(cx);
         self.ensure_active_file_editor_state(window, cx);
         self.runtime_trace(
             "project-switch",
@@ -401,7 +392,7 @@ impl CoduxApp {
         self.state.git = state.git;
         self.git_review = state.git_review;
         super::git_actions::merge_git_review_status_files(&mut self.git_review, &self.state.git);
-        let worktree_git_changed = self.sync_current_worktree_git_summary_from_panel();
+        let worktree_git_changed = self.sync_current_worktree_git_summary_from_current_git();
         self.selected_git_file = state.selected_git_file;
         self.selected_git_files = state.selected_git_files;
         self.selected_git_branch = state.selected_git_branch;
@@ -419,7 +410,7 @@ impl CoduxApp {
         worktree_git_changed
     }
 
-    pub(super) fn sync_current_worktree_git_summary_from_panel(&mut self) -> bool {
+    pub(super) fn sync_current_worktree_git_summary_from_current_git(&mut self) -> bool {
         let Some(scope_key) = current_worktree_scope_key(&self.state) else {
             return false;
         };
@@ -471,14 +462,23 @@ impl CoduxApp {
         self.record_ui_state_clear("git_tree");
         self.git_diff_preview = "select a changed file to preview its diff".to_string();
         self.clear_git_review_derived_content();
-        self.state.git = GitSummary::default();
-        self.git_review = GitReviewSummary::default();
         self.normalize_selected_git_branch();
     }
 
     pub(super) fn reset_current_worktree_ui_state(&mut self, cx: &mut Context<Self>) {
+        self.state.git = self.current_worktree_initial_git();
+        self.git_review = GitReviewSummary::default();
         self.clear_current_worktree_ui_state();
         self.load_current_file_editor_layout_async(cx);
+    }
+
+    fn current_worktree_initial_git(&self) -> GitSummary {
+        if self.state.worktrees.active_git.is_repository
+            || self.state.worktrees.active_git.error.is_some()
+        {
+            return self.state.worktrees.active_git.clone();
+        }
+        GitSummary::default()
     }
 
     pub(super) fn spawn_worktree_sidebar_load(&mut self, generation: u64, cx: &mut Context<Self>) {
@@ -488,24 +488,7 @@ impl CoduxApp {
         let Some(worktree_path) = self.selected_worktree_path() else {
             return;
         };
-        if self.worktree_sidebar_load_busy_or_recent(&scope_key) {
-            self.record_ui_scheduler_event(
-                "skip_busy",
-                &worktree_sidebar_load_scheduler_key(&scope_key),
-            );
-            return;
-        }
-        if !self.begin_scheduled_work(
-            worktree_sidebar_load_scheduler_key(&scope_key),
-            ScheduledWorkPolicy::new(
-                WORKTREE_SIDEBAR_LOAD_RECENT_SECONDS,
-                WORKTREE_SIDEBAR_LOAD_START_DEBOUNCE_SECONDS,
-            ),
-        ) {
-            return;
-        }
         let runtime_service = self.runtime_service.clone();
-        let cleanup_scope_key = scope_key.clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let load = codux_runtime::async_runtime::run_limited_blocking_with_priority(
                 codux_runtime::async_runtime::BLOCKING_PRIORITY_FOREGROUND + generation,
@@ -513,9 +496,8 @@ impl CoduxApp {
                     let files = runtime_service.reload_project_files(&worktree_path, None);
                     let file_editor_layout =
                         runtime_service.reload_file_editor_layout(Some(&scope_key.worktree_id));
-                    let git = runtime_service.reload_project_git(&worktree_path);
-                    let mut git_review =
-                        runtime_service.reload_project_git_review(&worktree_path, None);
+                    let (git, mut git_review) =
+                        runtime_service.stored_project_git_state(&worktree_path, None);
                     super::git_actions::merge_git_review_status_files(&mut git_review, &git);
                     WorktreeSidebarLoad {
                         generation,
@@ -532,8 +514,6 @@ impl CoduxApp {
             let _ = this.update_in(cx, |app, window, cx| {
                 if let Some(load) = load {
                     app.apply_worktree_sidebar_load(load, window, cx);
-                } else {
-                    app.finish_worktree_sidebar_load(&cleanup_scope_key);
                 }
             });
         })
@@ -546,7 +526,6 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.finish_worktree_sidebar_load(&load.scope_key);
         let current_key = current_worktree_scope_key(&self.state);
         if self.project_switch_generation != load.generation
             || current_key.as_ref() != Some(&load.scope_key)
@@ -593,6 +572,7 @@ impl CoduxApp {
         }
         self.invalidate_file_panel(cx);
         self.invalidate_git_panel(cx);
+        self.invalidate_status_bar(cx);
         if worktree_git_changed {
             self.invalidate_task_column(cx);
         }
@@ -630,71 +610,6 @@ impl CoduxApp {
                 project_id, worktree_id, self.project_switch_generation
             ),
         );
-    }
-
-    pub(super) fn should_skip_scheduled_project_activity_tick(&self) -> bool {
-        let project_busy = self
-            .state
-            .selected_project
-            .as_ref()
-            .is_some_and(|project| self.project_task_load_busy_or_recent(&project.id));
-        let worktree_busy = current_worktree_scope_key(&self.state)
-            .as_ref()
-            .is_some_and(|key| self.worktree_sidebar_load_busy_or_recent(key));
-        project_busy || worktree_busy
-    }
-
-    fn project_task_load_busy_or_recent(&self, project_id: &str) -> bool {
-        let scheduler_key = project_task_load_scheduler_key(project_id);
-        self.scheduled_work_busy_or_recent(
-            &scheduler_key,
-            ScheduledWorkPolicy::new(
-                PROJECT_TASK_LOAD_RECENT_SECONDS,
-                PROJECT_TASK_LOAD_START_DEBOUNCE_SECONDS,
-            ),
-        )
-    }
-
-    fn begin_project_task_load(&mut self, project_id: &str) -> bool {
-        if self.project_task_load_busy_or_recent(project_id) {
-            self.record_ui_scheduler_event(
-                "skip_busy",
-                &project_task_load_scheduler_key(project_id),
-            );
-            return false;
-        }
-        if !self.begin_scheduled_work(
-            project_task_load_scheduler_key(project_id),
-            ScheduledWorkPolicy::new(
-                PROJECT_TASK_LOAD_RECENT_SECONDS,
-                PROJECT_TASK_LOAD_START_DEBOUNCE_SECONDS,
-            ),
-        ) {
-            return false;
-        }
-        true
-    }
-
-    fn finish_project_task_load(&mut self, project_id: &str) {
-        self.finish_scheduled_work(&project_task_load_scheduler_key(project_id));
-    }
-
-    fn worktree_sidebar_load_busy_or_recent(
-        &self,
-        key: &super::app_state::WorktreeScopeKey,
-    ) -> bool {
-        let scheduler_key = worktree_sidebar_load_scheduler_key(key);
-        self.scheduled_work_busy_or_recent(
-            &scheduler_key,
-            ScheduledWorkPolicy::new(
-                WORKTREE_SIDEBAR_LOAD_RECENT_SECONDS,
-                WORKTREE_SIDEBAR_LOAD_START_DEBOUNCE_SECONDS,
-            ),
-        )
-    }
-
-    fn finish_worktree_sidebar_load(&mut self, key: &super::app_state::WorktreeScopeKey) {
-        self.finish_scheduled_work(&worktree_sidebar_load_scheduler_key(key));
     }
 
     pub(super) fn spawn_persist_terminal_layout_snapshot(
@@ -759,12 +674,11 @@ impl CoduxApp {
         };
         let stats_runtime_service = runtime_service.clone();
         let stats_project = project.clone();
-        let should_load_tasks = self.begin_project_task_load(&project_id);
         self.runtime_trace(
             "project-switch",
             &format!(
-                "spawn_loads project={} generation={} should_load_tasks={}",
-                project_id, generation, should_load_tasks
+                "spawn_loads project={} generation={}",
+                project_id, generation
             ),
         );
 
@@ -832,55 +746,52 @@ impl CoduxApp {
         })
         .detach();
 
-        if should_load_tasks {
-            let task_project_id = task_project.id.clone();
-            let task_project_path = task_project.path.clone();
-            let cleanup_project_id = task_project_id.clone();
-            let task_queued_at = Instant::now();
-            cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-                let task_load = codux_runtime::async_runtime::run_limited_blocking_with_priority(
-                    codux_runtime::async_runtime::BLOCKING_PRIORITY_FOREGROUND + generation,
-                    move || {
-                        let worker_started_at = Instant::now();
-                        codux_runtime::runtime_trace::runtime_trace(
-                            "project-switch",
-                            &format!(
-                                "task_load worker_start project={} generation={} queue_wait_ms={}",
-                                task_project_id,
-                                generation,
-                                task_queued_at.elapsed().as_millis()
-                            ),
-                        );
-                        let worktrees = task_runtime_service
-                            .reload_worktrees(Some(&task_project_id), Some(&task_project_path));
-                        codux_runtime::runtime_trace::runtime_trace(
-                            "project-switch",
-                            &format!(
-                                "task_load worker_done project={} generation={} elapsed_ms={}",
-                                task_project_id,
-                                generation,
-                                worker_started_at.elapsed().as_millis()
-                            ),
-                        );
-                        ProjectSwitchTaskLoad {
-                            project_id: task_project_id,
+        let task_project_id = task_project.id.clone();
+        let task_project_path = task_project.path.clone();
+        let task_queued_at = Instant::now();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let task_load = codux_runtime::async_runtime::run_limited_blocking_with_priority(
+                codux_runtime::async_runtime::BLOCKING_PRIORITY_FOREGROUND + generation,
+                move || {
+                    let worker_started_at = Instant::now();
+                    codux_runtime::runtime_trace::runtime_trace(
+                        "project-switch",
+                        &format!(
+                            "task_load worker_start project={} generation={} queue_wait_ms={}",
+                            task_project_id,
                             generation,
-                            worktrees,
-                        }
-                    },
-                )
-                .await
-                .ok();
-                let _ = this.update(cx, |app, cx| {
-                    if let Some(task_load) = task_load {
-                        app.apply_project_switch_task_load(task_load, cx);
-                    } else {
-                        app.finish_project_task_load(&cleanup_project_id);
+                            task_queued_at.elapsed().as_millis()
+                        ),
+                    );
+                    let worktrees = task_runtime_service.reload_worktrees_from_state(
+                        Some(&task_project_id),
+                        Some(&task_project_path),
+                    );
+                    codux_runtime::runtime_trace::runtime_trace(
+                        "project-switch",
+                        &format!(
+                            "task_load worker_done project={} generation={} elapsed_ms={}",
+                            task_project_id,
+                            generation,
+                            worker_started_at.elapsed().as_millis()
+                        ),
+                    );
+                    ProjectSwitchTaskLoad {
+                        project_id: task_project_id,
+                        generation,
+                        worktrees,
                     }
-                });
-            })
-            .detach();
-        }
+                },
+            )
+            .await
+            .ok();
+            let _ = this.update(cx, |app, cx| {
+                if let Some(task_load) = task_load {
+                    app.apply_project_switch_task_load(task_load, cx);
+                }
+            });
+        })
+        .detach();
 
         let primary_queued_at = Instant::now();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
@@ -1047,7 +958,6 @@ impl CoduxApp {
         load: ProjectSwitchTaskLoad,
         cx: &mut Context<Self>,
     ) {
-        self.finish_project_task_load(&load.project_id);
         if self
             .state
             .selected_project
@@ -2072,14 +1982,6 @@ impl CoduxApp {
         }
         self.invalidate_project_management(cx);
     }
-}
-
-fn project_task_load_scheduler_key(project_id: &str) -> String {
-    format!("project_task:{project_id}")
-}
-
-fn worktree_sidebar_load_scheduler_key(key: &super::app_state::WorktreeScopeKey) -> String {
-    format!("worktree_sidebar:{}:{}", key.project_id, key.worktree_id)
 }
 
 fn clean_dialog_path(path: &str) -> String {

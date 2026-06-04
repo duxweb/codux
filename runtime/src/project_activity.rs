@@ -54,6 +54,7 @@ impl fmt::Debug for ProjectActivityCoordinator {
 impl ProjectActivityCoordinator {
     pub fn new(support_dir: std::path::PathBuf, ai_history: AIHistoryIndexer) -> Self {
         let events = Arc::new(Mutex::new(VecDeque::new()));
+        let git_jobs = GitJobQueue::new(support_dir.clone(), events.clone());
         Self {
             support_dir,
             ai_history,
@@ -64,7 +65,7 @@ impl ProjectActivityCoordinator {
             main_window_focused: AtomicBool::new(false),
             activated_git_projects: Mutex::new(HashSet::new()),
             activated_ai_projects: Mutex::new(HashSet::new()),
-            git_jobs: GitJobQueue::new(events),
+            git_jobs,
         }
     }
 }

@@ -546,19 +546,16 @@ pub(in crate::app) fn desktop_pet_bubble(
                 .pr(px(text_pad_right))
                 .flex()
                 .items_center()
-                .justify_center()
+                .justify_start()
                 .overflow_hidden()
-                .w(px(DESKTOP_PET_BUBBLE_WIDTH
-                    - text_pad_left
-                    - text_pad_right))
+                .w_full()
                 .font_family("SF Mono")
                 .text_size(rems(0.875))
                 .line_height(rems(1.0625))
                 .font_weight(FontWeight::BOLD)
-                .text_center()
+                .text_left()
                 .text_color(color(text))
-                .line_clamp(3)
-                .child(div().w_full().overflow_hidden().child(line)),
+                .child(div().w_full().line_clamp(3).child(line)),
         )
         .into_any_element()
 }

@@ -108,13 +108,20 @@ impl WorktreeService {
         );
 
         let tasks = task_rows_for_worktrees(&state.worktree_tasks, &worktrees);
+        let active_git = selected_worktree_id
+            .as_ref()
+            .and_then(|id| worktrees.iter().find(|worktree| &worktree.id == id))
+            .and_then(|worktree| {
+                crate::runtime_cache::cached_git_summary(&self.support_dir, &worktree.path)
+            })
+            .unwrap_or_default();
 
         WorktreeSummary {
             available: true,
             selected_worktree_id,
             worktrees,
             tasks,
-            active_git: crate::git::GitSummary::default(),
+            active_git,
             error: None,
         }
     }

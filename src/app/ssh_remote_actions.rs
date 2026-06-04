@@ -946,13 +946,12 @@ impl CoduxApp {
             self.sync_desktop_pet_window(false, cx);
         }
         self.status_message = format!(
-            "runtime activity reloaded · project events {} · file events {} · pet catalog {} · pet updates {} · AI history {} · AI events {} · memory queued {} · badge {}",
+            "runtime activity reloaded · project events {} · file events {} · pet catalog {} · pet updates {} · AI history {} · memory queued {} · badge {}",
             result.project_events,
             result.file_events,
             result.pet_events,
             result.pet_update_events,
             result.ai_history_events,
-            result.ai_events,
             result.memory_events,
             result
                 .dock_badge_count
@@ -966,13 +965,12 @@ impl CoduxApp {
         self.runtime_trace(
             "runtime-activity",
             &format!(
-                "manual_reload project_events={} file_events={} pet_catalog={} pet_updates={} ai_history={} ai_events={} memory_events={} badge={}",
+                "manual_reload project_events={} file_events={} pet_catalog={} pet_updates={} ai_history={} memory_events={} badge={}",
                 result.project_events,
                 result.file_events,
                 result.pet_events,
                 result.pet_update_events,
                 result.ai_history_events,
-                result.ai_events,
                 result.memory_events,
                 result
                     .dock_badge_count
@@ -1002,7 +1000,7 @@ impl CoduxApp {
                 .mark_main_window_state(visible, focused);
             None
         };
-        if include_scheduled_tick && !self.should_skip_scheduled_project_activity_tick() {
+        if include_scheduled_tick {
             self.runtime_service.tick_project_activity();
         }
         let applied_settings_events = usize::from(self.apply_settings_update_event(cx));
@@ -1083,13 +1081,12 @@ impl CoduxApp {
             || applied_settings_events > 0
             || child_window_events > 0
             || !remote_events.is_empty()
-            || !drained.events.is_empty()
             || ai_activity_changed
             || !drained.memory.is_empty()
             || memory_update_event
             || has_scheduled_refresh;
         if changed {
-            if !drained.events.is_empty() || ai_activity_changed {
+            if ai_activity_changed {
                 self.sync_project_activity_state(cx);
                 self.invalidate_task_column(cx);
             }
@@ -1119,7 +1116,6 @@ impl CoduxApp {
             ai_history_events: applied_ai_history_events,
             pet_events: applied_pet_events,
             pet_update_events: applied_pet_update_events,
-            ai_events: drained.events.len(),
             ai_activity_changed,
             memory_events: drained.memory.len(),
             dock_badge_count,
@@ -1135,16 +1131,6 @@ impl CoduxApp {
         let drained = self
             .runtime_service
             .drain_ai_runtime_events_and_enqueue_memory();
-        let ai_state_events = drained
-            .events
-            .iter()
-            .filter(|event| {
-                matches!(
-                    event,
-                    codux_runtime::ai_runtime::AIRuntimeSupervisorEvent::State { .. }
-                )
-            })
-            .count();
         let memory_event = current_memory_update_event();
         let memory_update_event = memory_event.revision > self.memory_seen_revision;
         if memory_update_event {
@@ -1181,23 +1167,28 @@ impl CoduxApp {
             }
         }
 
-        self.sync_project_activity_state(cx);
-        self.invalidate_task_column(cx);
-        self.runtime_trace(
-            "runtime-activity",
-            &format!(
-                "ai_fast_tick ai_events={} memory={} ai_state_error={}",
-                drained.events.len(),
-                drained.memory.len() + usize::from(memory_update_event),
-                "none"
-            ),
-        );
+        if ai_activity_changed {
+            self.sync_project_activity_state(cx);
+            self.invalidate_task_column(cx);
+        }
+        let memory_events = drained.memory.len() + usize::from(memory_update_event);
+        let changed = ai_activity_changed || memory_events > 0;
+        if changed {
+            self.runtime_trace(
+                "runtime-activity",
+                &format!(
+                    "ai_fast_tick ai_events={} memory={} ai_state_error={}",
+                    drained.events.len(),
+                    memory_events,
+                    "none"
+                ),
+            );
+        }
 
         RuntimeActivityTickResult {
-            ai_events: drained.events.len(),
-            ai_activity_changed: ai_activity_changed || ai_state_events > 0,
-            memory_events: drained.memory.len() + usize::from(memory_update_event),
-            changed: true,
+            ai_activity_changed,
+            memory_events,
+            changed,
             ai_state_error: None,
             ..RuntimeActivityTickResult::default()
         }
@@ -1398,6 +1389,10 @@ impl CoduxApp {
             .map(|project| project.path.as_str());
         let selected_id = selected_project.as_ref().map(|project| project.id.as_str());
         let selected_worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
+        let selected_git_path = selected_worktree
+            .as_ref()
+            .map(|worktree| worktree.path.as_str())
+            .or(selected_path);
         let selected_history_id = selected_worktree
             .as_ref()
             .map(|worktree| worktree.id.as_str())
@@ -1415,8 +1410,11 @@ impl CoduxApp {
                     project_path,
                     snapshot,
                     ..
-                } if selected_path == Some(project_path.as_str()) => {
+                } if selected_git_path == Some(project_path.as_str())
+                    || selected_path == Some(project_path.as_str()) =>
+                {
                     self.state.git = snapshot;
+                    self.sync_current_worktree_git_summary_from_current_git();
                     self.normalize_selected_git_file();
                     self.normalize_selected_git_branch();
                     applied += 1;
@@ -1425,8 +1423,11 @@ impl CoduxApp {
                     project_path,
                     snapshot,
                     ..
-                } if selected_path == Some(project_path.as_str()) => {
+                } if selected_git_path == Some(project_path.as_str())
+                    || selected_path == Some(project_path.as_str()) =>
+                {
                     self.git_review = snapshot;
+                    self.sync_current_worktree_git_summary_from_current_git();
                     self.normalize_selected_git_file();
                     applied += 1;
                 }

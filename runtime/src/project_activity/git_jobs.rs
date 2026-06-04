@@ -6,6 +6,7 @@ use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use crate::worktree::WorktreeService;
 use std::collections::VecDeque;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -15,10 +16,13 @@ pub(super) struct GitJobQueue {
 }
 
 impl GitJobQueue {
-    pub(super) fn new(events: Arc<Mutex<VecDeque<ProjectActivityEvent>>>) -> Self {
+    pub(super) fn new(
+        support_dir: PathBuf,
+        events: Arc<Mutex<VecDeque<ProjectActivityEvent>>>,
+    ) -> Self {
         Self {
             queue: SerialJobQueue::new("codux-git-job-worker", move |job| {
-                run_git_job(job, Arc::clone(&events))
+                run_git_job(job, &support_dir, Arc::clone(&events))
             }),
         }
     }
@@ -62,13 +66,17 @@ impl SerialJob for GitJob {
     }
 }
 
-fn run_git_job(job: GitJob, events: Arc<Mutex<VecDeque<ProjectActivityEvent>>>) {
+fn run_git_job(
+    job: GitJob,
+    support_dir: &Path,
+    events: Arc<Mutex<VecDeque<ProjectActivityEvent>>>,
+) {
     match job {
         GitJob::Refresh {
             project,
             fetch_remote,
-        } => run_git_refresh_job(&events, project, fetch_remote),
-        GitJob::Review { project } => run_git_review_job(&events, project),
+        } => run_git_refresh_job(&events, support_dir, project, fetch_remote),
+        GitJob::Review { project } => run_git_review_job(&events, support_dir, project),
         GitJob::Worktree {
             support_dir,
             project,
@@ -78,6 +86,7 @@ fn run_git_job(job: GitJob, events: Arc<Mutex<VecDeque<ProjectActivityEvent>>>) 
 
 fn run_git_refresh_job(
     events: &Arc<Mutex<VecDeque<ProjectActivityEvent>>>,
+    support_dir: &Path,
     project: TrackedProject,
     fetch_remote: bool,
 ) {
@@ -112,6 +121,7 @@ fn run_git_refresh_job(
     let unstaged_count = snapshot.unstaged;
     let untracked_count = snapshot.untracked;
     if snapshot.is_repository || snapshot.error.is_none() || Path::new(&project_path).exists() {
+        crate::runtime_cache::save_git_summary(support_dir, &project_path, &snapshot);
         push_event(
             events,
             ProjectActivityEvent::GitStatus {
@@ -143,6 +153,7 @@ fn run_git_refresh_job(
 
 fn run_git_review_job(
     events: &Arc<Mutex<VecDeque<ProjectActivityEvent>>>,
+    support_dir: &Path,
     project: TrackedProject,
 ) {
     let started_at = Instant::now();
@@ -150,6 +161,7 @@ fn run_git_review_job(
     let project_path = project.path.clone();
     let review = GitService::review(&project.path, None);
     if review.is_repository || review.error.is_none() || Path::new(&project.path).exists() {
+        crate::runtime_cache::save_git_review(support_dir, &project_path, None, &review);
         push_event(
             events,
             ProjectActivityEvent::GitReview {

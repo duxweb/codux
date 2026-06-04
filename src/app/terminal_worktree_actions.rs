@@ -591,7 +591,6 @@ impl CoduxApp {
                             .unwrap_or_else(|| project_path.clone());
                         Some(TerminalRuntimeSessionSummary {
                             terminal_id,
-                            pane_index,
                             title: slot.title.clone(),
                             project_id,
                             project_name,
@@ -618,7 +617,6 @@ impl CoduxApp {
                             output_tail: existing
                                 .map(|session| session.output_tail.clone())
                                 .unwrap_or_else(|| slot.restored_output_tail.clone()),
-                            source: "gpui".to_string(),
                         })
                     })
             })
@@ -709,7 +707,6 @@ impl CoduxApp {
                             });
                         Some(TerminalRuntimeSessionInput {
                             terminal_id,
-                            pane_index,
                             title: slot.title.clone(),
                             project_id,
                             project_name,
@@ -1367,14 +1364,6 @@ impl CoduxApp {
         self.state.worktrees.selected_worktree_id = Some(worktree_id.clone());
         self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
         let generation = self.project_switch_generation;
-        self.state.ai_history = AIHistorySummary {
-            is_loading: true,
-            detail: "loading".to_string(),
-            ..AIHistorySummary::default()
-        };
-        self.state.ai_session_detail = None;
-        self.selected_ai_session_id = None;
-        self.refresh_ai_history_after_project_switch(cx);
         self.terminal_layout_loading = true;
         self.status_message = format!("selected worktree: {worktree_id}");
         if let Some(key) = current_worktree_scope_key(&self.state) {
@@ -1661,7 +1650,6 @@ fn terminal_runtime_summary_from_inputs(
                 .copied()
                 .unwrap_or(now),
             terminal_id: session.terminal_id,
-            pane_index: session.pane_index,
             title: session.title,
             project_id: session.project_id,
             project_name: session.project_name,
@@ -1677,7 +1665,6 @@ fn terminal_runtime_summary_from_inputs(
             input_history: session.input_history,
             output_bytes: session.output_bytes,
             output_tail: session.output_tail,
-            source: "gpui".to_string(),
         })
         .collect::<Vec<_>>();
     let open_count = sessions.len();

@@ -14,7 +14,7 @@ pub fn cached_git_summary(support_dir: &Path, project_path: &str) -> Option<git:
 
 pub fn save_git_summary(support_dir: &Path, project_path: &str, summary: &git::GitSummary) {
     if let Ok(cache) = cache(support_dir) {
-        let _ = cache.put_json_debounced(GIT_SUMMARY_NAMESPACE, project_path, summary);
+        let _ = cache.put_json(GIT_SUMMARY_NAMESPACE, project_path, summary);
     }
 }
 
@@ -39,7 +39,7 @@ pub fn save_git_review(
 ) {
     let key = git_review_key(project_path, base_branch);
     if let Ok(cache) = cache(support_dir) {
-        let _ = cache.put_json_debounced(GIT_REVIEW_NAMESPACE, &key, review);
+        let _ = cache.put_json(GIT_REVIEW_NAMESPACE, &key, review);
     }
 }
 

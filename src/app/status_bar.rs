@@ -281,7 +281,6 @@ fn status_sync_action_button(
     on_click: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> impl IntoElement {
     let count = count.max(0);
-    let label_color = if count > 0 { accent } else { theme::TEXT };
     let count_bg = if theme_is_light { 0xFFFFFF } else { 0x000000 };
     let count_text = if theme_is_light { 0x111111 } else { 0xA8ADB8 };
 
@@ -291,7 +290,7 @@ fn status_sync_action_button(
         .px(px(6.0))
         .flex()
         .items_center()
-        .gap_1()
+        .gap(px(5.0))
         .rounded_sm()
         .text_size(rems(0.75))
         .text_color(color(theme::TEXT_MUTED))
@@ -317,24 +316,19 @@ fn status_sync_action_button(
         .when(count > 0, |this| {
             this.child(
                 div()
-                    .size(px(12.0))
+                    .size(px(15.0))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded_full()
                     .bg(theme::fixed_color(count_bg))
-                    .text_size(rems(0.5625))
+                    .text_size(rems(0.625))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(theme::fixed_color(count_text))
                     .child(count.min(99).to_string()),
             )
         })
-        .child(
-            div()
-                .mt(px(1.0))
-                .text_color(color(label_color))
-                .child(label),
-        )
+        .child(div().text_color(color(theme::TEXT)).child(label))
 }
 
 fn status_metric(id: &'static str, label: &'static str, value: String) -> impl IntoElement {

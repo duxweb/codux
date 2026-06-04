@@ -15,7 +15,6 @@ pub struct TerminalRuntimeSummary {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalRuntimeSessionSummary {
     pub terminal_id: String,
-    pub pane_index: usize,
     pub title: String,
     pub project_id: String,
     pub project_name: String,
@@ -37,7 +36,6 @@ pub struct TerminalRuntimeSessionSummary {
     pub output_bytes: usize,
     #[serde(default)]
     pub output_tail: String,
-    pub source: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -51,7 +49,6 @@ pub struct TerminalInputSummary {
 #[derive(Clone, Debug)]
 pub struct TerminalRuntimeSessionInput {
     pub terminal_id: String,
-    pub pane_index: usize,
     pub title: String,
     pub project_id: String,
     pub project_name: String,

@@ -267,6 +267,19 @@ impl RuntimeService {
         refresh_git_summary(&self.support_dir, project_path)
     }
 
+    pub fn stored_project_git_state(
+        &self,
+        project_path: &str,
+        base_branch: Option<&str>,
+    ) -> (git::GitSummary, git::GitReviewSummary) {
+        (
+            crate::runtime_cache::cached_git_summary(&self.support_dir, project_path)
+                .unwrap_or_default(),
+            crate::runtime_cache::cached_git_review(&self.support_dir, project_path, base_branch)
+                .unwrap_or_default(),
+        )
+    }
+
     pub fn reload_project_git_review(
         &self,
         project_path: &str,

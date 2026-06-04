@@ -156,7 +156,7 @@ use self::{
     ai_history_mapping::{
         ai_history_project_requests, ai_history_should_replace,
         ai_history_summary_from_project_state, ai_history_summary_from_state_or_status,
-        ai_history_worktree_request, ai_session_restore_command, apply_ai_history_project_state,
+        ai_history_worktree_request, ai_session_restore_command,
         normalized_ai_history_snapshot_to_summary,
         normalized_global_ai_history_snapshot_to_summary,
     },

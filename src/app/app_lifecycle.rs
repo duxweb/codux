@@ -139,21 +139,6 @@ impl CoduxApp {
         let pet_custom_pets = pet_catalog.custom_pets.clone();
         let pet_sprite_paths =
             pet_sprite_path_cache(&runtime.source_root, &state.support_dir, &pet_catalog);
-        let ai_history_refresh_keys = state
-            .selected_project
-            .as_ref()
-            .map(|project| {
-                HashSet::from([format!(
-                    "{}:{}",
-                    project.id,
-                    state
-                        .worktrees
-                        .selected_worktree_id
-                        .clone()
-                        .unwrap_or_else(|| project.id.clone())
-                )])
-            })
-            .unwrap_or_default();
         let ai_history_active_index_count = runtime_service.active_ai_history_index_count();
         let mut app = Self {
             window_mode: AppWindowMode::Main,
@@ -310,7 +295,6 @@ impl CoduxApp {
             ai_index_progress_visible_until: 0.0,
             ai_index_progress_generation: 0,
             ai_history_active_index_count,
-            ai_history_refresh_keys,
             project_switch_generation: 0,
             scheduled_work_in_flight: HashSet::new(),
             scheduled_work_last_started_at: HashMap::new(),

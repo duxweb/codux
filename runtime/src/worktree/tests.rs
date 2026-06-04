@@ -77,6 +77,47 @@ fn state_summary_falls_back_to_project_worktree_when_state_is_malformed() {
 }
 
 #[test]
+fn state_summary_reads_active_git_from_runtime_state() {
+    let support_dir = temp_dir("worktree-state-active-git");
+    let project_dir = temp_dir("worktree-state-active-git-project");
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::create_dir_all(&project_dir).unwrap();
+    let project_path = project_dir.to_str().expect("project path");
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "worktrees": [
+                {"id": "w1", "projectId": "p1", "name": "main", "branch": "main", "path": project_path, "status": "todo", "isDefault": true}
+            ],
+            "selectedWorktreeIdByProject": {"p1": "w1"}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    crate::runtime_cache::save_git_summary(
+        &support_dir,
+        project_path,
+        &crate::git::GitSummary {
+            branch: "main".to_string(),
+            ahead: 2,
+            behind: 1,
+            is_repository: true,
+            ..Default::default()
+        },
+    );
+
+    let summary = WorktreeService::new(support_dir.clone()).state_summary(Some("p1"), Some(project_path));
+
+    assert!(summary.active_git.is_repository);
+    assert_eq!(summary.active_git.branch, "main");
+    assert_eq!(summary.active_git.ahead, 2);
+    assert_eq!(summary.active_git.behind, 1);
+
+    fs::remove_dir_all(support_dir).ok();
+    fs::remove_dir_all(project_dir).ok();
+}
+
+#[test]
 fn summary_includes_per_worktree_git_stats() {
     let support_dir = temp_dir("worktree-summary-git");
     let repo = temp_dir("worktree-summary-git-repo");

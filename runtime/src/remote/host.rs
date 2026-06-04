@@ -9,6 +9,9 @@ use crate::ai_history_indexer::{AIHistoryIndexer, AIHistoryProjectState};
 use crate::ai_history_normalized::AIHistoryProjectRequest;
 use crate::project_store::{ProjectCreateRequest, ProjectStore, ProjectUpdateRequest};
 use crate::remote_p2p::{RemoteP2PHostTransport, RemoteP2PLane, RemoteP2PSignal};
+use crate::terminal_layout::{
+    TerminalLayoutService, TerminalPaneSummary, terminal_layout_storage_key,
+};
 use crate::terminal_pty::{
     TerminalEvent, TerminalManager, TerminalPtyConfig, TerminalSessionSnapshot,
 };
@@ -30,11 +33,26 @@ use tokio_tungstenite::tungstenite::Message as WebSocketMessage;
 
 pub const REMOTE_PROTOCOL_VERSION: &str = "v1.0";
 
+struct RemoteProjectScope {
+    project_id: String,
+    project_name: String,
+    project_path: String,
+    worktree_id: String,
+    layout_key: String,
+}
+
+struct RemoteTerminalPlan {
+    config: TerminalPtyConfig,
+    scope: RemoteProjectScope,
+    title: String,
+}
+
 pub struct RemoteHostRuntime {
     support_dir: PathBuf,
     ai_history: AIHistoryIndexer,
     terminals: Arc<TerminalManager>,
     terminal_viewers_by_session: Mutex<HashMap<String, HashSet<String>>>,
+    remote_project_scope_by_device: Mutex<HashMap<String, String>>,
     terminal_event_subscriptions: Mutex<HashSet<String>>,
     terminal_upload_sessions: Mutex<HashMap<String, RemoteTerminalUploadSession>>,
     p2p: Mutex<Option<Arc<RemoteP2PHostTransport>>>,
@@ -70,6 +88,7 @@ impl RemoteHostRuntime {
             ai_history,
             terminals,
             terminal_viewers_by_session: Mutex::new(HashMap::new()),
+            remote_project_scope_by_device: Mutex::new(HashMap::new()),
             terminal_event_subscriptions: Mutex::new(HashSet::new()),
             terminal_upload_sessions: Mutex::new(HashMap::new()),
             p2p: Mutex::new(None),
@@ -359,10 +378,12 @@ impl RemoteHostRuntime {
             }
             "device.disconnected" => {
                 self.update_device_online(envelope.device_id.as_deref(), false);
+                self.clear_remote_project_scope(envelope.device_id.as_deref());
                 self.remove_terminal_viewer(envelope.device_id.as_deref());
                 self.close_p2p(envelope.device_id.as_deref());
             }
             "project.list" => self.send_project_list(envelope.device_id.as_deref()),
+            "project.select" => self.handle_project_select(&envelope),
             "terminal.list" => self.send_terminal_list(envelope.device_id.as_deref()),
             "terminal.create" => self.handle_terminal_create(&envelope),
             "terminal.buffer" => self.handle_terminal_buffer(&envelope),
@@ -653,11 +674,32 @@ impl RemoteHostRuntime {
         };
         match ProjectStore::new(self.support_dir.clone()).close_project(project_id) {
             Ok(_) => {
+                self.clear_remote_project_scope_for_project(project_id);
                 self.send(
                     "project.updated",
                     envelope.device_id.as_deref(),
                     None,
                     json!({ "action": "remove", "projectId": project_id }),
+                );
+                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+            }
+            Err(error) => self.send_error(envelope, &error),
+        }
+    }
+
+    fn handle_project_select(&self, envelope: &RemoteEnvelope) {
+        let Some(project_id) = envelope.payload.get("projectId").and_then(Value::as_str) else {
+            self.send_error(envelope, "Project id is required.");
+            return;
+        };
+        match self.remote_project_scope(project_id) {
+            Ok(scope) => {
+                self.set_remote_project_scope(envelope.device_id.as_deref(), &scope.project_id);
+                self.send(
+                    "project.selected",
+                    envelope.device_id.as_deref(),
+                    None,
+                    json!({ "projectId": scope.project_id, "worktreeId": scope.worktree_id }),
                 );
                 self.send_project_and_terminal_lists(envelope.device_id.as_deref());
             }
@@ -700,15 +742,17 @@ impl RemoteHostRuntime {
         let emit = move |event| {
             runtime.handle_terminal_event(event);
         };
-        let config = match self.remote_terminal_config_from_envelope(envelope, None) {
-            Ok(config) => config,
+        let plan = match self.remote_terminal_plan_from_envelope(envelope, None) {
+            Ok(plan) => plan,
             Err(error) => {
                 self.send_error(envelope, &error);
                 return;
             }
         };
-        match self.terminals.create(config, emit) {
+        self.set_remote_project_scope(envelope.device_id.as_deref(), &plan.scope.project_id);
+        match self.terminals.create(plan.config, emit) {
             Ok(session_id) => {
+                self.persist_remote_terminal_layout(&plan.scope.layout_key, &session_id, &plan.title);
                 self.mark_terminal_event_subscription(&session_id);
                 self.register_terminal_viewer(&session_id, envelope.device_id.as_deref());
                 self.send_terminal_data(
@@ -1402,34 +1446,23 @@ impl RemoteHostRuntime {
             .terminals
             .list()
             .into_iter()
-            .enumerate()
-            .map(|(index, terminal)| remote_terminal_snapshot_payload(terminal, index))
+            .map(remote_terminal_snapshot_payload)
             .collect::<Vec<_>>();
         terminals.sort_by_key(remote_terminal_order_key);
         terminals
     }
 
-    fn remote_terminal_config_from_envelope(
+    fn remote_terminal_plan_from_envelope(
         &self,
         envelope: &RemoteEnvelope,
         terminal_id: Option<&str>,
-    ) -> Result<TerminalPtyConfig, String> {
+    ) -> Result<RemoteTerminalPlan, String> {
         let project_id = envelope
             .payload
             .get("projectId")
             .and_then(Value::as_str)
-            .map(str::to_string);
-        let project_store = ProjectStore::new(self.support_dir.clone());
-        let project = project_id
-            .as_deref()
-            .and_then(|id| {
-                project_store
-                    .projects_snapshot()
-                    .into_iter()
-                    .find(|project| project.id == id)
-            })
-            .or_else(|| project_store.projects_snapshot().into_iter().next())
-            .ok_or_else(|| "Unable to create terminal.".to_string())?;
+            .filter(|value| !value.trim().is_empty());
+        let scope = self.remote_project_scope_for_envelope(envelope, project_id)?;
         let command = envelope
             .payload
             .get("command")
@@ -1450,14 +1483,11 @@ impl RemoteHostRuntime {
             .and_then(Value::as_str)
             .map(str::to_string)
             .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| project.path.clone());
-        let slot_id = envelope
-            .payload
-            .get("slotId")
-            .and_then(Value::as_str)
+            .unwrap_or_else(|| scope.project_path.clone());
+        let terminal_id = terminal_id
             .map(str::to_string)
-            .filter(|value| !value.trim().is_empty());
-        Ok(TerminalPtyConfig {
+            .or_else(|| self.saved_remote_terminal_id(&scope.layout_key));
+        let config = TerminalPtyConfig {
             cwd: Some(cwd),
             command,
             cols: envelope
@@ -1470,12 +1500,16 @@ impl RemoteHostRuntime {
                 .get("rows")
                 .and_then(Value::as_u64)
                 .map(|value| value as u16),
-            project_id: Some(project.id.clone()),
-            project_name: Some(project.name.clone()),
-            terminal_id: terminal_id.map(str::to_string),
-            slot_id,
-            title: Some(title),
+            project_id: Some(scope.project_id.clone()),
+            project_name: Some(scope.project_name.clone()),
+            terminal_id,
+            title: Some(title.clone()),
             ..Default::default()
+        };
+        Ok(RemoteTerminalPlan {
+            config,
+            scope,
+            title,
         })
     }
 
@@ -1492,15 +1526,131 @@ impl RemoteHostRuntime {
         let emit = move |event| {
             runtime.handle_terminal_event(event);
         };
+        let plan = self.remote_terminal_plan_from_envelope(envelope, Some(session_id))?;
+        self.set_remote_project_scope(envelope.device_id.as_deref(), &plan.scope.project_id);
         self.terminals
-            .create(
-                self.remote_terminal_config_from_envelope(envelope, Some(session_id))?,
-                emit,
-            )
+            .create(plan.config, emit)
             .map_err(|error| error.to_string())?;
+        self.persist_remote_terminal_layout(&plan.scope.layout_key, session_id, &plan.title);
         self.mark_terminal_event_subscription(session_id);
         self.send_terminal_list(envelope.device_id.as_deref());
         Ok(())
+    }
+
+    fn saved_remote_terminal_id(&self, layout_key: &str) -> Option<String> {
+        let layout = TerminalLayoutService::new(self.support_dir.clone()).load(Some(layout_key));
+        let active = layout.active_terminal_id.trim();
+        if !active.is_empty()
+            && (layout.top_panes.iter().any(|pane| pane.terminal_id == active)
+                || layout.tabs.iter().any(|tab| tab.terminal_id == active))
+        {
+            return Some(active.to_string());
+        }
+        layout
+            .top_panes
+            .first()
+            .map(|pane| pane.terminal_id.clone())
+            .or_else(|| layout.tabs.first().map(|tab| tab.terminal_id.clone()))
+            .filter(|id| !id.trim().is_empty())
+    }
+
+    fn persist_remote_terminal_layout(
+        &self,
+        layout_key: &str,
+        terminal_id: &str,
+        title: &str,
+    ) {
+        if layout_key.trim().is_empty() {
+            return;
+        }
+        let service = TerminalLayoutService::new(self.support_dir.clone());
+        let layout = service.load(Some(layout_key));
+        if layout.top_panes.iter().any(|pane| pane.terminal_id == terminal_id)
+            || layout.tabs.iter().any(|tab| tab.terminal_id == terminal_id)
+        {
+            return;
+        }
+        let title = if title.trim().is_empty() {
+            "Terminal"
+        } else {
+            title.trim()
+        };
+        let _ = service.save_from_gpui(
+            layout_key,
+            Vec::new(),
+            terminal_id.to_string(),
+            vec![TerminalPaneSummary {
+                title: title.to_string(),
+                terminal_id: terminal_id.to_string(),
+            }],
+        );
+    }
+
+    fn remote_project_scope(&self, project_id: &str) -> Result<RemoteProjectScope, String> {
+        let snapshot = ProjectStore::new(self.support_dir.clone()).snapshot();
+        let project = snapshot
+            .projects
+            .iter()
+            .find(|project| project.id == project_id)
+            .ok_or_else(|| "Project not found.".to_string())?;
+        let worktree_id = snapshot
+            .selected_worktree_id_by_project
+            .get(&project.id)
+            .cloned()
+            .unwrap_or_else(|| project.id.clone());
+        Ok(RemoteProjectScope {
+            project_id: project.id.clone(),
+            project_name: project.name.clone(),
+            project_path: project.path.clone(),
+            worktree_id: worktree_id.clone(),
+            layout_key: terminal_layout_storage_key(&project.id, &worktree_id),
+        })
+    }
+
+    fn remote_project_scope_for_envelope(
+        &self,
+        envelope: &RemoteEnvelope,
+        project_id: Option<&str>,
+    ) -> Result<RemoteProjectScope, String> {
+        let Some(scoped_project_id) = project_id
+            .map(str::to_string)
+            .or_else(|| self.remote_project_scope_id(envelope.device_id.as_deref()))
+        else {
+            return Err("Project id is required.".to_string());
+        };
+        self.remote_project_scope(&scoped_project_id)
+    }
+
+    fn set_remote_project_scope(&self, device_id: Option<&str>, project_id: &str) {
+        let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
+            return;
+        };
+        if let Ok(mut scopes) = self.remote_project_scope_by_device.lock() {
+            scopes.insert(device_id.to_string(), project_id.to_string());
+        }
+    }
+
+    fn remote_project_scope_id(&self, device_id: Option<&str>) -> Option<String> {
+        let device_id = device_id.filter(|value| !value.trim().is_empty())?;
+        self.remote_project_scope_by_device
+            .lock()
+            .ok()
+            .and_then(|scopes| scopes.get(device_id).cloned())
+    }
+
+    fn clear_remote_project_scope(&self, device_id: Option<&str>) {
+        let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
+            return;
+        };
+        if let Ok(mut scopes) = self.remote_project_scope_by_device.lock() {
+            scopes.remove(device_id);
+        }
+    }
+
+    fn clear_remote_project_scope_for_project(&self, project_id: &str) {
+        if let Ok(mut scopes) = self.remote_project_scope_by_device.lock() {
+            scopes.retain(|_, scoped_project_id| scoped_project_id != project_id);
+        }
     }
 
     fn ensure_terminal_event_subscription(self: &Arc<Self>, session_id: &str) {
@@ -1935,33 +2085,21 @@ pub(crate) fn remote_ai_stats_payload(
     Ok(payload)
 }
 
-pub(crate) fn remote_terminal_order_key(value: &Value) -> (usize, usize, String) {
-    let order = value
-        .get("sortOrder")
-        .and_then(Value::as_u64)
-        .unwrap_or(u64::MAX) as usize;
-    let pane_index = value
-        .get("paneIndex")
-        .and_then(Value::as_u64)
-        .unwrap_or(u64::MAX) as usize;
+pub(crate) fn remote_terminal_order_key(value: &Value) -> (String, String) {
+    let created_at = value
+        .get("createdAt")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     let id = value
         .get("id")
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    (order, pane_index, id)
+    (created_at, id)
 }
 
-fn remote_terminal_pane_index_from_slot(slot_id: &str) -> Option<usize> {
-    let (_, value) = slot_id.rsplit_once('-')?;
-    value.parse::<usize>().ok()?.checked_sub(1)
-}
-
-pub(crate) fn remote_terminal_snapshot_payload(
-    terminal: TerminalSessionSnapshot,
-    sort_order: usize,
-) -> Value {
-    let pane_index = remote_terminal_pane_index_from_slot(&terminal.slot_id);
+pub(crate) fn remote_terminal_snapshot_payload(terminal: TerminalSessionSnapshot) -> Value {
     json!({
         "id": terminal.id,
         "title": terminal.title,
@@ -1974,20 +2112,10 @@ pub(crate) fn remote_terminal_snapshot_payload(
         "projectName": terminal.project_name,
         "projectPath": terminal.cwd,
         "cwd": terminal.cwd,
-        "slotId": terminal.slot_id,
-        "sessionKey": terminal.session_key,
-        "paneIndex": pane_index,
-        "sortOrder": sort_order,
         "shell": terminal.shell,
         "command": terminal.command,
-        "kind": "desktop-shared",
-        "ownerKind": std::env::consts::OS,
-        "ownerDeviceId": "",
-        "ownerDeviceName": remote_host_name(),
-        "resizeOwner": std::env::consts::OS,
         "cols": terminal.cols,
         "rows": terminal.rows,
-        "gridSource": std::env::consts::OS,
         "status": terminal.status,
         "isRunning": terminal.is_running,
         "createdAt": terminal.created_at,
@@ -1995,4 +2123,134 @@ pub(crate) fn remote_terminal_snapshot_payload(
         "bufferCharacters": terminal.buffer_characters,
         "hasBuffer": terminal.has_buffer,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::terminal_layout::TerminalPaneSummary;
+
+    fn temp_support_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("{name}-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("create temp support dir");
+        dir
+    }
+
+    fn write_two_project_state(support_dir: &Path) -> (PathBuf, PathBuf) {
+        let project_a = support_dir.join("project-a");
+        let project_b = support_dir.join("project-b");
+        fs::create_dir_all(&project_a).expect("create project a");
+        fs::create_dir_all(&project_b).expect("create project b");
+        fs::write(
+            support_dir.join("state.json"),
+            serde_json::to_string_pretty(&json!({
+                "projects": [
+                    {"id": "project-a", "name": "Project A", "path": project_a.to_string_lossy()},
+                    {"id": "project-b", "name": "Project B", "path": project_b.to_string_lossy()}
+                ],
+                "worktrees": [
+                    {
+                        "id": "worktree-b",
+                        "projectId": "project-b",
+                        "name": "Task B",
+                        "branch": "task-b",
+                        "path": project_b.to_string_lossy(),
+                        "status": "active",
+                        "isDefault": true,
+                        "createdAt": 1,
+                        "updatedAt": 1
+                    }
+                ],
+                "selectedProjectId": "project-a",
+                "selectedWorktreeIdByProject": {
+                    "project-b": "worktree-b"
+                }
+            }))
+            .expect("serialize state"),
+        )
+        .expect("write state");
+        (project_a, project_b)
+    }
+
+    #[test]
+    fn remote_project_select_keeps_desktop_selected_project() {
+        let support_dir = temp_support_dir("codux-remote-scope-select");
+        write_two_project_state(&support_dir);
+        let runtime = RemoteHostRuntime::new(support_dir.clone());
+
+        runtime.handle_project_select(&RemoteEnvelope {
+            kind: "project.select".to_string(),
+            device_id: Some("device-1".to_string()),
+            session_id: None,
+            seq: None,
+            payload: json!({ "projectId": "project-b" }),
+        });
+
+        let state = fs::read_to_string(support_dir.join("state.json")).expect("read state");
+        let state: Value = serde_json::from_str(&state).expect("parse state");
+        assert_eq!(state["selectedProjectId"], "project-a");
+        assert_eq!(
+            runtime.remote_project_scope_id(Some("device-1")).as_deref(),
+            Some("project-b")
+        );
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn remote_terminal_plan_uses_device_project_scope_without_desktop_ui_selection() {
+        let support_dir = temp_support_dir("codux-remote-scope-terminal");
+        write_two_project_state(&support_dir);
+        let runtime = RemoteHostRuntime::new(support_dir.clone());
+        runtime.set_remote_project_scope(Some("device-1"), "project-b");
+        let layout_key = terminal_layout_storage_key("project-b", "worktree-b");
+        TerminalLayoutService::new(support_dir.clone())
+            .save_from_gpui(
+                &layout_key,
+                Vec::new(),
+                "terminal-b".to_string(),
+                vec![TerminalPaneSummary {
+                    title: "Mobile".to_string(),
+                    terminal_id: "terminal-b".to_string(),
+                }],
+            )
+            .expect("save layout");
+
+        let plan = runtime
+            .remote_terminal_plan_from_envelope(
+                &RemoteEnvelope {
+                    kind: "terminal.buffer".to_string(),
+                    device_id: Some("device-1".to_string()),
+                    session_id: Some("terminal-b".to_string()),
+                    seq: None,
+                    payload: json!({}),
+                },
+                None,
+            )
+            .expect("terminal plan");
+
+        assert_eq!(plan.scope.project_id, "project-b");
+        assert_eq!(plan.scope.worktree_id, "worktree-b");
+        assert_eq!(plan.config.project_id.as_deref(), Some("project-b"));
+        assert_eq!(plan.config.terminal_id.as_deref(), Some("terminal-b"));
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn remote_terminal_layout_is_persisted_to_project_worktree_scope() {
+        let support_dir = temp_support_dir("codux-remote-layout-persist");
+        write_two_project_state(&support_dir);
+        let runtime = RemoteHostRuntime::new(support_dir.clone());
+        let layout_key = terminal_layout_storage_key("project-b", "worktree-b");
+
+        runtime.persist_remote_terminal_layout(&layout_key, "terminal-mobile-b", "Mobile");
+
+        let layout = TerminalLayoutService::new(support_dir.clone()).load(Some(&layout_key));
+        assert_eq!(layout.active_terminal_id, "terminal-mobile-b");
+        assert_eq!(layout.top_panes.len(), 1);
+        assert_eq!(layout.top_panes[0].terminal_id, "terminal-mobile-b");
+
+        fs::remove_dir_all(support_dir).ok();
+    }
 }

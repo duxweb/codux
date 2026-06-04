@@ -58,7 +58,6 @@ mod tests {
         let runtime = TerminalRuntimeSummary {
             sessions: vec![TerminalRuntimeSessionSummary {
                 terminal_id: "term-a".to_string(),
-                pane_index: 0,
                 title: "分屏 1".to_string(),
                 project_id: "project-1".to_string(),
                 project_name: "Codux".to_string(),
@@ -75,7 +74,6 @@ mod tests {
                 input_history: Vec::new(),
                 output_bytes: 10,
                 output_tail: "restored top output".to_string(),
-                source: "gpui".to_string(),
             }],
             ..Default::default()
         };
@@ -122,7 +120,6 @@ mod tests {
             active_terminal_id: "gpui-term-worktree-1-top-1".to_string(),
             sessions: vec![TerminalRuntimeSessionSummary {
                 terminal_id: "gpui-term-worktree-1-top-1".to_string(),
-                pane_index: 0,
                 title: "分屏 1".to_string(),
                 project_id: "worktree-1".to_string(),
                 project_name: "Codux".to_string(),
@@ -139,7 +136,6 @@ mod tests {
                 input_history: Vec::new(),
                 output_bytes: 12,
                 output_tail: "worktree top output".to_string(),
-                source: "gpui".to_string(),
             }],
             ..Default::default()
         };
