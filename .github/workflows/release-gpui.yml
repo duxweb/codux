@@ -78,7 +78,7 @@ jobs:
       matrix:
         include:
           - id: macos-universal
-            os: macos-15
+            os: macos-26
             target: universal-apple-darwin
             targets: aarch64-apple-darwin,x86_64-apple-darwin
             artifact_suffix: -adhoc
@@ -163,7 +163,7 @@ jobs:
       matrix:
         include:
           - id: macos-universal
-            os: macos-15
+            os: macos-26
             target: universal-apple-darwin
             artifact_suffix: -adhoc
           - id: windows-x86_64

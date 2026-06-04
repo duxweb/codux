@@ -76,7 +76,7 @@ jobs:
 
   build:
     needs: metadata
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       CARGO_BUILD_TARGET: universal-apple-darwin
       RELEASE_BUILD_ID: macos-universal-formal

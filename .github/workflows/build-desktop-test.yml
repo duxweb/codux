@@ -18,7 +18,7 @@ jobs:
       matrix:
         include:
           - id: macos-aarch64
-            os: macos-15
+            os: macos-26
             target: aarch64-apple-darwin
           - id: windows-x86_64
             os: windows-latest

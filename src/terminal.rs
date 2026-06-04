@@ -1171,9 +1171,10 @@ impl Render for TerminalView {
 
         self.renderer.measure_cell(window);
         self.ensure_focus_report_subscriptions(window, cx);
+        let terminal_focused = self.focus_handle.is_focused(window);
         let cursor_visible = self.marked_text.is_none()
-            && self.blink_manager.read(cx).visible()
-            && self.focus_handle.is_focused(window);
+            && window.is_window_active()
+            && (!terminal_focused || self.blink_manager.read(cx).visible());
         let element = TerminalElement {
             model: self.model.clone(),
             renderer: self.renderer.clone(),
@@ -1185,6 +1186,7 @@ impl Render for TerminalView {
             padding: self.config.padding,
             marked_text: self.marked_text.clone(),
             cursor_visible,
+            cursor_focused: terminal_focused,
         };
 
         div()
@@ -1817,6 +1819,7 @@ struct TerminalElement {
     padding: Edges<Pixels>,
     marked_text: Option<String>,
     cursor_visible: bool,
+    cursor_focused: bool,
 }
 
 impl IntoElement for TerminalElement {
@@ -1897,6 +1900,7 @@ impl Element for TerminalElement {
             &snapshot,
             selection,
             self.cursor_visible,
+            self.cursor_focused,
             window,
         )
     }
@@ -2604,8 +2608,6 @@ fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u8>> 
             Some("\x1bOD")
         }
         ("left", TerminalKeyModifiers::None) => Some("\x1b[D"),
-        ("right", TerminalKeyModifiers::Alt) => Some("\x1bf"),
-        ("left", TerminalKeyModifiers::Alt) => Some("\x1bb"),
         ("right", TerminalKeyModifiers::Platform) => Some("\x05"),
         ("left", TerminalKeyModifiers::Platform) => Some("\x01"),
         ("end", TerminalKeyModifiers::Platform) => Some("\x05"),
@@ -3077,6 +3079,7 @@ impl TerminalRenderer {
         content: &TerminalContent,
         selection: Option<SelectionRange>,
         cursor_visible: bool,
+        cursor_focused: bool,
         window: &mut Window,
     ) -> TerminalPaintState {
         let colors = &content.colors;
@@ -3151,6 +3154,11 @@ impl TerminalRenderer {
             && content.mode.contains(TermMode::SHOW_CURSOR)
             && content.cursor.shape != CursorShape::Hidden)
             .then(|| {
+                let shape = if cursor_focused {
+                    content.cursor.shape
+                } else {
+                    CursorShape::HollowBlock
+                };
                 let row = content.cursor.point.line.0;
                 let col = content.cursor.point.column.0;
                 if row >= 0
@@ -3161,7 +3169,8 @@ impl TerminalRenderer {
                     let cursor_width = self.cursor_width(cursor_cell, default_bg, window);
                     let text_run = cursor_cell
                         .filter(|cell| {
-                            content.cursor.shape == CursorShape::Block
+                            cursor_focused
+                                && content.cursor.shape == CursorShape::Block
                                 && cell.c != '\0'
                                 && !cell.flags.contains(Flags::WIDE_CHAR_SPACER)
                         })
@@ -3192,7 +3201,7 @@ impl TerminalRenderer {
 
                     TerminalCursorPaint {
                         point: content.cursor.point,
-                        shape: content.cursor.shape,
+                        shape,
                         color: self
                             .palette
                             .resolve(Color::Named(NamedColor::Cursor), colors),
@@ -3202,7 +3211,7 @@ impl TerminalRenderer {
                 } else {
                     TerminalCursorPaint {
                         point: content.cursor.point,
-                        shape: content.cursor.shape,
+                        shape,
                         color: self
                             .palette
                             .resolve(Color::Named(NamedColor::Cursor), colors),
@@ -4344,14 +4353,14 @@ mod tests {
                 modified_key("left", false, true, false, false),
                 TermMode::NONE
             ),
-            b"\x1bb"
+            b"\x1b[1;3D"
         );
         assert_eq!(
             bytes(
                 modified_key("right", false, true, false, false),
                 TermMode::NONE
             ),
-            b"\x1bf"
+            b"\x1b[1;3C"
         );
         assert_eq!(
             bytes(
@@ -4386,14 +4395,14 @@ mod tests {
                 modified_key_with_function("left", false, true, false, false, true),
                 TermMode::NONE
             ),
-            b"\x1bb"
+            b"\x1b[1;3D"
         );
         assert_eq!(
             bytes(
                 modified_key_with_function("right", false, true, false, false, true),
                 TermMode::NONE
             ),
-            b"\x1bf"
+            b"\x1b[1;3C"
         );
         assert_eq!(
             bytes(
