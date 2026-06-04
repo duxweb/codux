@@ -2,7 +2,7 @@ use super::*;
 use crate::app::app_state::UpdateDialogPhase;
 use crate::app::window_actions::{AuxiliaryWindowSlot, AuxiliaryWindowSpec};
 use codux_runtime::{
-    app_info::{DiagnosticsExportRequest, UpdateInstallProgressEvent, UpdateInstallResult},
+    app_info::{DiagnosticsExportRequest, UpdateInstallProgressEvent},
     dialog::{DialogFilter, LocalizedAlertDialogRequest, LocalizedSaveDialogRequest},
     update::UpdateStatus,
 };
@@ -11,10 +11,10 @@ const CODUX_WEBSITE_URL: &str = "https://codux.dux.cn";
 const CODUX_GITHUB_URL: &str = "https://github.com/duxweb/codux";
 const CODUX_IDENTIFIER: &str = "com.duxweb.codux";
 const UPDATE_DIALOG_WIDTH: f32 = 440.0;
-const UPDATE_DIALOG_DEFAULT_HEIGHT: f32 = 300.0;
+const UPDATE_DIALOG_DEFAULT_HEIGHT: f32 = 200.0;
 const UPDATE_DIALOG_AVAILABLE_HEIGHT: f32 = 340.0;
 const UPDATE_DIALOG_PROGRESS_HEIGHT: f32 = 320.0;
-const UPDATE_DIALOG_MIN_HEIGHT: f32 = 260.0;
+const UPDATE_DIALOG_MIN_HEIGHT: f32 = 200.0;
 
 impl CoduxApp {
     pub(in crate::app) fn about_workspace(
@@ -131,7 +131,7 @@ impl CoduxApp {
             AuxiliaryWindowSpec {
                 slot: AuxiliaryWindowSlot::UpdateDialog,
                 title: SharedString::from("Check for Updates"),
-                size: size(px(UPDATE_DIALOG_WIDTH), px(UPDATE_DIALOG_AVAILABLE_HEIGHT)),
+                size: size(px(UPDATE_DIALOG_WIDTH), px(UPDATE_DIALOG_DEFAULT_HEIGHT)),
                 min_size: size(px(400.0), px(UPDATE_DIALOG_MIN_HEIGHT)),
                 already_open_message: "update window already opened",
                 opened_message: "update window opened",
@@ -518,85 +518,6 @@ impl CoduxApp {
         })
         .detach();
     }
-
-    fn show_update_test_available(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.update_dialog_phase = UpdateDialogPhase::Available;
-        resize_update_dialog_window(window, self.update_dialog_phase);
-        self.update_dialog_status = Some(UpdateStatus {
-            configured: true,
-            checking: false,
-            available: true,
-            automatic_install_supported: true,
-            signed_updater_configured: true,
-            manifest_endpoint_configured: true,
-            current_version: env!("CARGO_PKG_VERSION").to_string(),
-            latest_version: Some("1.5.0".to_string()),
-            download_url: Some("https://example.com/Codux.dmg".to_string()),
-            download_checksum: None,
-            download_signature: None,
-            notes: Some("优化更新窗口布局\n修复检查更新入口\n提升安装进度显示稳定性".to_string()),
-            channel: Some("stable".to_string()),
-            installation_mode: "automatic".to_string(),
-            message: "test update available".to_string(),
-        });
-        self.update_dialog_progress = None;
-        self.update_dialog_result = None;
-        self.update_dialog_error = None;
-        cx.notify();
-    }
-
-    fn show_update_test_downloading(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.update_dialog_phase = UpdateDialogPhase::Downloading;
-        resize_update_dialog_window(window, self.update_dialog_phase);
-        self.update_dialog_status = Some(UpdateStatus {
-            configured: true,
-            checking: false,
-            available: true,
-            automatic_install_supported: true,
-            signed_updater_configured: true,
-            manifest_endpoint_configured: true,
-            current_version: env!("CARGO_PKG_VERSION").to_string(),
-            latest_version: Some("1.5.0".to_string()),
-            download_url: Some("https://example.com/Codux.dmg".to_string()),
-            download_checksum: None,
-            download_signature: None,
-            notes: None,
-            channel: Some("stable".to_string()),
-            installation_mode: "automatic".to_string(),
-            message: "test download progress".to_string(),
-        });
-        self.update_dialog_progress = Some(UpdateInstallProgressEvent {
-            phase: "downloading".to_string(),
-            version: Some("1.5.0".to_string()),
-            downloaded_bytes: 38 * 1024 * 1024,
-            total_bytes: Some(120 * 1024 * 1024),
-        });
-        self.update_dialog_result = None;
-        self.update_dialog_error = None;
-        cx.notify();
-    }
-
-    fn show_update_test_finished(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.update_dialog_phase = UpdateDialogPhase::Finished;
-        resize_update_dialog_window(window, self.update_dialog_phase);
-        self.update_dialog_status = None;
-        self.update_dialog_progress = Some(UpdateInstallProgressEvent {
-            phase: "finished".to_string(),
-            version: Some("1.5.0".to_string()),
-            downloaded_bytes: 120 * 1024 * 1024,
-            total_bytes: Some(120 * 1024 * 1024),
-        });
-        self.update_dialog_result = Some(UpdateInstallResult {
-            installed: true,
-            restart_to_install: true,
-            version: Some("1.5.0".to_string()),
-            downloaded_bytes: 120 * 1024 * 1024,
-            total_bytes: Some(120 * 1024 * 1024),
-            message: "更新已下载完成，重启 Codux 后生效。".to_string(),
-        });
-        self.update_dialog_error = None;
-        cx.notify();
-    }
 }
 
 fn about_icon_mark() -> impl IntoElement {
@@ -972,10 +893,6 @@ fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxAp
         | UpdateDialogPhase::Checking
         | UpdateDialogPhase::Downloading => {}
     }
-    update_dialog_footer_bar(update_dialog_test_controls(cx), footer).into_any_element()
-}
-
-fn update_dialog_footer_bar(left: impl IntoElement, right: impl IntoElement) -> impl IntoElement {
     div()
         .h(px(54.0))
         .flex_shrink_0()
@@ -984,38 +901,10 @@ fn update_dialog_footer_bar(left: impl IntoElement, right: impl IntoElement) -> 
         .px(px(16.0))
         .flex()
         .items_center()
-        .justify_between()
+        .justify_end()
         .gap(px(10.0))
-        .child(left)
-        .child(right)
-}
-
-fn update_dialog_test_controls(cx: &mut Context<CoduxApp>) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .child(update_dialog_button(
-            "update-test-available",
-            "测试新版本".to_string(),
-            false,
-            cx,
-            |app, _event, window, cx| app.show_update_test_available(window, cx),
-        ))
-        .child(update_dialog_button(
-            "update-test-downloading",
-            "测试进度".to_string(),
-            false,
-            cx,
-            |app, _event, window, cx| app.show_update_test_downloading(window, cx),
-        ))
-        .child(update_dialog_button(
-            "update-test-finished",
-            "测试完成".to_string(),
-            false,
-            cx,
-            |app, _event, window, cx| app.show_update_test_finished(window, cx),
-        ))
+        .child(footer)
+        .into_any_element()
 }
 
 fn resize_update_dialog_window(window: &mut Window, phase: UpdateDialogPhase) {
