@@ -79,7 +79,11 @@ impl CoduxApp {
     pub(in crate::app) fn status_bar_snapshot(&self) -> StatusBarSnapshot {
         StatusBarSnapshot {
             language: self.state.settings.language.clone(),
-            theme_is_light: theme::terminal_theme_palette(&self.state.settings.theme).is_light,
+            theme_is_light: theme::terminal_theme_palette_for_appearance(
+                &self.state.settings.theme,
+                self.window_appearance,
+            )
+            .is_light,
             developer_hud: self.state.settings.developer_hud,
             cpu_label: self.state.performance.cpu_label.clone(),
             memory_label: self.state.performance.memory_label.clone(),
@@ -87,7 +91,9 @@ impl CoduxApp {
             ai_error: self.state.ai_global_history.error.clone(),
             memory_queued: self.state.memory_manager.extraction.queued,
             memory_running: self.state.memory_manager.extraction.running,
-            memory_failed: self.state.memory_manager.extraction.failed,
+            memory_failed: (self.state.memory_manager.extraction.failed
+                - self.memory_status_seen_failed_count)
+                .max(0),
             memory_error: self.state.memory_manager.extraction.last_error.clone(),
             remote_status: self.state.remote.status.clone(),
             remote_devices: self.state.remote.devices,

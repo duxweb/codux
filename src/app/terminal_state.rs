@@ -20,7 +20,7 @@ use codux_runtime::{
     tool_permissions::ToolPermissionsSummary,
     worktree::WorktreeInfo,
 };
-use gpui::px;
+use gpui::{WindowAppearance, px};
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use uuid::Uuid;
@@ -566,7 +566,10 @@ fn worktree_row_context_name(worktree: &WorktreeInfo) -> String {
     }
 }
 
-pub(in crate::app) fn terminal_config_for_settings(settings: &SettingsSummary) -> TerminalConfig {
+pub(in crate::app) fn terminal_config_for_settings(
+    settings: &SettingsSummary,
+    appearance: WindowAppearance,
+) -> TerminalConfig {
     let mut config = terminal_config_with_font_family(&settings.terminal_font_family);
     let font_size = settings
         .terminal_font_size
@@ -579,12 +582,16 @@ pub(in crate::app) fn terminal_config_for_settings(settings: &SettingsSummary) -
         .parse::<usize>()
         .unwrap_or(config.scrollback)
         .clamp(200, 10_000);
-    config.colors = terminal_color_palette(&settings.theme, &settings.theme_color);
+    config.colors = terminal_color_palette(&settings.theme, &settings.theme_color, appearance);
     config
 }
 
-fn terminal_color_palette(theme_name: &str, theme_color: &str) -> ColorPalette {
-    let palette = theme::terminal_theme_palette(theme_name);
+fn terminal_color_palette(
+    theme_name: &str,
+    theme_color: &str,
+    appearance: WindowAppearance,
+) -> ColorPalette {
+    let palette = theme::terminal_theme_palette_for_appearance(theme_name, appearance);
     let accent = theme::theme_color_value(theme_color);
     let rgb = |hex: u32| -> (u8, u8, u8) {
         (

@@ -18,13 +18,19 @@ use crate::{
     settings::{AIMemorySettings, AISettings},
 };
 use rusqlite::{OptionalExtension, params};
+use std::time::Duration;
+
+const MEMORY_EXTRACTION_TASK_INTERVAL: Duration = Duration::from_secs(1);
 
 mod db;
 mod prompt_context;
 mod schema;
 mod types;
 
-use db::{latest_failed_error, memory_task_from_row, queue_count};
+use db::{
+    failed_extraction_tasks as db_failed_extraction_tasks, latest_failed_error,
+    memory_task_from_row, queue_count,
+};
 use prompt_context::prompt_entries;
 pub use types::{
     MemoryEnqueueResult, MemoryExtractionStatus, MemoryExtractionStatusSnapshot,

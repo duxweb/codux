@@ -121,9 +121,15 @@ impl CoduxApp {
             runtime,
             state,
             runtime_service,
+            window_appearance: WindowAppearance::Dark,
+            _observe_window_appearance: None,
             is_exiting: false,
             main_window_close_handler_registered: false,
+            last_quit_request_at: None,
+            pending_terminal_close: None,
             status_message: "settings window ready".to_string(),
+            toast_message: None,
+            toast_revision: 0,
             desktop_pet_window: None,
             settings_window: None,
             about_window: None,
@@ -270,6 +276,7 @@ impl CoduxApp {
             memory_manager_project_id,
             memory_processing: false,
             memory_extraction_status_refreshing: false,
+            memory_status_seen_failed_count: 0,
             selected_runtime_terminal_id,
             selected_ssh_profile_id: None,
             ssh_draft_open: false,
@@ -358,6 +365,7 @@ impl CoduxApp {
         let state = self.state.clone();
         let runtime = self.runtime.clone();
         let runtime_service = self.runtime_service.clone();
+        let window_appearance = self.window_appearance;
         let bounds = Bounds::centered(None, spec.size, cx);
         let result = cx.open_window(
             WindowOptions {
@@ -370,10 +378,12 @@ impl CoduxApp {
             },
             move |window, cx| {
                 macos_window::configure_child_window_controls(window);
-                let app = build(state, runtime, runtime_service, window, cx);
-                theme::apply_component_theme(
+                let mut app = build(state, runtime, runtime_service, window, cx);
+                app.window_appearance = window_appearance;
+                theme::apply_component_theme_for_appearance(
                     &app.state.settings.theme,
                     &app.state.settings.theme_color,
+                    window_appearance,
                     Some(window),
                     cx,
                 );
@@ -1020,25 +1030,13 @@ impl CoduxApp {
     ) {
         match self.workspace_view {
             WorkspaceView::Terminal => {
-                let Some(tab_index) = self
-                    .terminals
-                    .iter()
-                    .position(|tab| tab.id == self.active_terminal_id)
-                else {
-                    self.status_message = "no active terminal".to_string();
-                    self.invalidate_terminal_workspace(cx);
-                    return;
-                };
-                let pane_count = self.terminals[tab_index].panes.len();
-                if pane_count > 1 {
-                    self.close_terminal_pane(pane_count - 1, window, cx);
-                } else {
-                    self.status_message = "keep at least one terminal split".to_string();
-                    self.invalidate_terminal_workspace(cx);
-                }
+                self.confirm_or_close_active_terminal_target(window, cx);
             }
             WorkspaceView::Files => {
-                if self.selected_file_entry.take().is_some() {
+                if let Some(relative_path) = self.active_file_editor_tab.clone() {
+                    self.close_file_editor_tab(relative_path, window, cx);
+                    self.status_message = "file tab closed".to_string();
+                } else if self.selected_file_entry.take().is_some() {
                     self.file_preview = "select a file to preview it".to_string();
                     self.file_editable = false;
                     self.file_dirty = false;
@@ -1247,6 +1245,14 @@ impl CoduxApp {
             native_menu::ShowAll,
             |_app: &mut CoduxApp, _window: &mut Window, cx: &mut Context<CoduxApp>| {
                 cx.unhide_other_apps()
+            }
+        );
+        register!(
+            native_menu::QuitCodux,
+            |app: &mut CoduxApp, _window: &mut Window, cx: &mut Context<CoduxApp>| {
+                if app.window_mode == AppWindowMode::Main {
+                    app.request_quit(cx);
+                }
             }
         );
         register!(

@@ -123,6 +123,16 @@ impl MemoryService {
         self.extraction_status_snapshot()
     }
 
+    pub fn failed_extraction_tasks(
+        &self,
+        project_id: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<MemoryExtractionTask>, String> {
+        self.ensure_queue_schema()?;
+        let conn = self.open_connection()?;
+        db_failed_extraction_tasks(&conn, project_id, limit)
+    }
+
     pub(super) fn enqueue_extraction_if_needed(
         &self,
         project_id: &str,

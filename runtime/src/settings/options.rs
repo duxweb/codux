@@ -9,35 +9,48 @@ fn sanitize_statistics_mode(value: &str) -> String {
 
 fn sanitize_terminal_theme(value: &str) -> String {
     let normalized = normalize_appearance_name(value);
-    [
+    terminal_theme_options()
+        .iter()
+        .copied()
+        .find(|theme| normalize_appearance_name(theme) == normalized)
+        .unwrap_or("Auto")
+        .to_string()
+}
+
+fn terminal_theme_options() -> &'static [&'static str] {
+    &[
         "Auto",
-        "Tokyo Night Storm",
-        "Tokyo Night Night",
-        "Catppuccin Mocha",
-        "Rose Pine Moon",
-        "Kanagawa Wave",
-        "Material Ocean",
-        "Ayu Mirage",
-        "Dracula",
-        "Dracula+",
+        "2017 Dark",
         "GitHub Dark",
-        "Gruvbox Dark",
-        "Gruvbox Material Dark",
-        "Nord",
-        "Tokyo Night Day",
+        "One Dark Pro",
+        "Dracula",
+        "Atom One Dark",
+        "Material Theme",
+        "Ayu Dark",
+        "Monokai Pro",
+        "Winter is Coming Dark Blue",
+        "Night Owl",
+        "One Monokai",
+        "Tokyo Night",
+        "Palenight",
+        "SynthWave '84",
+        "Shades of Purple",
+        "2017 Light",
+        "PowerShell ISE",
         "GitHub Light",
-        "Catppuccin Latte",
-        "Flexoki Light",
-        "Flexoki Dark",
-        "Gruvbox Light",
-        "Gruvbox Material Light",
-        "Nord Light",
+        "Material Theme Lighter",
+        "Ayu Light",
+        "Monokai Pro Light",
+        "Winter is Coming Light",
+        "Night Owl Light",
+        "Tokyo Night Light",
         "Atom One Light",
+        "Noctis Hibernus",
+        "Catppuccin Latte",
+        "Gruvbox Light Medium",
+        "Eva Light",
+        "Spinel Light",
     ]
-    .into_iter()
-    .find(|theme| normalize_appearance_name(theme) == normalized)
-    .unwrap_or("Auto")
-    .to_string()
 }
 
 fn sanitize_terminal_font_family(value: &str) -> String {

@@ -44,7 +44,7 @@ impl CoduxApp {
     }
 
     pub(super) fn terminal_config_from_settings(&self) -> TerminalConfig {
-        terminal_config_for_settings(&self.state.settings)
+        terminal_config_for_settings(&self.state.settings, self.window_appearance)
     }
 
     pub(super) fn apply_terminal_text_settings(&self, cx: &mut Context<Self>) {

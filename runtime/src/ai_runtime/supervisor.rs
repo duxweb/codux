@@ -336,6 +336,36 @@ mod tests {
     }
 
     #[test]
+    fn supervisor_drains_claude_hook_event_files() {
+        let supervisor = AIRuntimeSupervisor::new();
+        let registry = Arc::new(AIRuntimeRegistry::default());
+        let dir = std::env::temp_dir().join(format!(
+            "codux-supervisor-claude-events-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let updated_at = now_seconds();
+        std::fs::write(
+            dir.join("100-claude-prompt.json"),
+            format!(
+                r#"{{"kind":"ai-hook","payload":{{"kind":"promptSubmitted","terminalID":"term-claude","terminalInstanceID":"instance-claude","projectID":"project-1","projectName":"Codux","projectPath":"/tmp/project","sessionTitle":"Claude","tool":"claude","aiSessionID":"external-claude","model":"sonnet","updatedAt":{updated_at},"metadata":{{"source":"user-input"}}}}}}"#
+            ),
+        )
+        .unwrap();
+
+        supervisor.start(registry, dir.clone()).unwrap();
+        wait_for(|| supervisor.state_snapshot().running_count == 1);
+
+        let snapshot = supervisor.state_snapshot();
+        assert_eq!(snapshot.running_count, 1);
+        assert_eq!(snapshot.sessions[0].tool, "claude");
+        assert_eq!(snapshot.sessions[0].terminal_id, "term-claude");
+        assert_eq!(snapshot.sessions[0].state, "responding");
+        assert!(!dir.join("100-claude-prompt.json").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn supervisor_uses_terminal_registry_to_keep_running_session_live() {
         let supervisor = AIRuntimeSupervisor::new();
         let registry = AIRuntimeRegistry::shared();
@@ -454,5 +484,15 @@ mod tests {
         assert_eq!(snapshot.running_count, 0);
         assert!(snapshot.sessions.is_empty());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn wait_for(condition: impl Fn() -> bool) {
+        let started = std::time::Instant::now();
+        while started.elapsed() < std::time::Duration::from_secs(5) {
+            if condition() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
 }

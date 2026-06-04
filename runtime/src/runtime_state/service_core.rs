@@ -314,6 +314,12 @@ impl RuntimeService {
         }
     }
 
+    pub fn ai_runtime_dock_badge_count(&self) -> Option<i64> {
+        let settings = SettingsService::new(self.support_dir.clone()).summary();
+        let ai_runtime_state = self.ai_runtime.runtime_state_snapshot();
+        runtime_dock_badge_count(settings.shows_dock_badge, &ai_runtime_state)
+    }
+
     pub fn mark_project_active(&self, project_id: &str) -> Result<ProjectActivitySnapshot, String> {
         let project = ProjectStore::new(self.support_dir.clone())
             .project_summaries()

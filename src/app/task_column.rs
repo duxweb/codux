@@ -86,8 +86,6 @@ struct TaskColumnLabels {
     open_folder: String,
     merge: String,
     delete: String,
-    cancel: String,
-    delete_confirm_format: String,
 }
 
 fn task_column_labels(language: &str) -> TaskColumnLabels {
@@ -105,8 +103,6 @@ fn task_column_labels(language: &str) -> TaskColumnLabels {
         open_folder: tr("worktree.menu.open_folder", "Open Folder"),
         merge: tr("worktree.menu.merge", "Merge to Mainline"),
         delete: tr("common.delete", "Delete"),
-        cancel: tr("common.cancel", "Cancel"),
-        delete_confirm_format: tr("ai.sessions.delete_confirm_format", "Delete %@?"),
     }
 }
 
@@ -196,7 +192,6 @@ impl Render for TaskWorktreeListView {
 pub(in crate::app) struct TaskSessionListSnapshot {
     labels: TaskColumnLabels,
     sessions: Vec<TaskSessionRow>,
-    delete_confirm_session: Option<TaskSessionRow>,
 }
 
 pub(in crate::app) struct TaskSessionListView {
@@ -219,7 +214,6 @@ impl Render for TaskSessionListView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         recent_session_area(
             self.snapshot.sessions.clone(),
-            self.snapshot.delete_confirm_session.clone(),
             self.snapshot.labels.clone(),
             self.scroll_handle.clone(),
             self.app_entity.clone(),
@@ -343,16 +337,8 @@ impl CoduxApp {
             .iter()
             .map(task_session_row)
             .collect::<Vec<_>>();
-        let delete_confirm_session = self
-            .ai_session_delete_confirm_id
-            .as_deref()
-            .and_then(|id| sessions.iter().find(|session| session.id == id).cloned());
 
-        TaskSessionListSnapshot {
-            labels,
-            sessions,
-            delete_confirm_session,
-        }
+        TaskSessionListSnapshot { labels, sessions }
     }
 }
 
@@ -528,7 +514,6 @@ fn task_list_area(
 
 fn recent_session_area(
     sessions: Vec<TaskSessionRow>,
-    delete_confirm_session: Option<TaskSessionRow>,
     labels: TaskColumnLabels,
     scroll_handle: UniformListScrollHandle,
     app_entity: gpui::Entity<CoduxApp>,
@@ -537,7 +522,6 @@ fn recent_session_area(
     let session_count = sessions.len();
     let sessions = Rc::new(sessions);
     let row_labels = labels.clone();
-    let overlay_labels = labels.clone();
     let row_app_entity = app_entity.clone();
 
     div()
@@ -578,14 +562,6 @@ fn recent_session_area(
                     },
                 )),
         )
-        .when_some(delete_confirm_session, |this, session| {
-            this.child(ai_session_delete_confirm_overlay(
-                session,
-                overlay_labels,
-                app_entity,
-                cx,
-            ))
-        })
 }
 
 fn session_section_heading(
@@ -952,94 +928,4 @@ fn ai_session_compact_row(
                     }),
             )
         })
-}
-
-fn ai_session_delete_confirm_overlay(
-    session: TaskSessionRow,
-    labels: TaskColumnLabels,
-    app_entity: gpui::Entity<CoduxApp>,
-    cx: &mut Context<TaskSessionListView>,
-) -> impl IntoElement {
-    let cancel_entity = app_entity.clone();
-    let confirm_entity = app_entity;
-    div()
-        .absolute()
-        .top(px(0.0))
-        .right(px(0.0))
-        .bottom(px(0.0))
-        .left(px(0.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .bg(cx.theme().overlay)
-        .p(px(16.0))
-        .child(
-            div()
-                .w(px(250.0))
-                .rounded(px(10.0))
-                .border_1()
-                .border_color(color(theme::BORDER_SOFT))
-                .bg(color(theme::BG_PANEL))
-                .p(px(14.0))
-                .shadow_lg()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            Icon::new(HeroIconName::Trash)
-                                .size_4()
-                                .text_color(color(theme::ORANGE)),
-                        )
-                        .child(
-                            div()
-                                .min_w_0()
-                                .flex_1()
-                                .text_size(rems(0.875))
-                                .line_height(rems(1.125))
-                                .truncate()
-                                .child(labels.delete.clone()),
-                        ),
-                )
-                .child(
-                    div()
-                        .mt(px(10.0))
-                        .text_size(rems(0.75))
-                        .line_height(rems(1.125))
-                        .text_color(color(theme::TEXT_MUTED))
-                        .child(labels.delete_confirm_format.replace("%@", &session.title)),
-                )
-                .child(
-                    div()
-                        .mt(px(14.0))
-                        .flex()
-                        .justify_end()
-                        .gap_2()
-                        .child(
-                            Button::new("ai-session-delete-cancel")
-                                .compact()
-                                .ghost()
-                                .text_color(cx.theme().secondary_foreground)
-                                .label(labels.cancel)
-                                .on_click(move |_, _window, cx| {
-                                    cx.update_entity(&cancel_entity, |app, cx| {
-                                        app.cancel_remove_ai_session(cx);
-                                    });
-                                }),
-                        )
-                        .child(
-                            Button::new("ai-session-delete-confirm")
-                                .compact()
-                                .primary()
-                                .text_color(cx.theme().primary_foreground)
-                                .label(labels.delete)
-                                .on_click(move |_, window, cx| {
-                                    cx.update_entity(&confirm_entity, |app, cx| {
-                                        app.confirm_remove_ai_session(window, cx);
-                                    });
-                                }),
-                        ),
-                ),
-        )
 }

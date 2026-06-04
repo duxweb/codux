@@ -3,6 +3,8 @@ use crate::app::app_events::{
     ChildWindowUpdateKind, publish_child_window_update, publish_memory_update,
 };
 
+const MAX_AUTOMATIC_MEMORY_PROCESS_TASKS: usize = 10;
+
 impl CoduxApp {
     pub(super) fn reload_ai_history(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.start_ai_history_refresh(true, cx);
@@ -107,6 +109,119 @@ impl CoduxApp {
         .detach();
     }
 
+    pub(super) fn process_queued_memory_extraction_async(&mut self, cx: &mut Context<Self>) {
+        if self.memory_processing {
+            return;
+        }
+        let pending = self.state.memory_manager.extraction.queued.max(0);
+        let running = self.state.memory_manager.extraction.running.max(0);
+        if pending == 0 && running == 0 {
+            return;
+        }
+
+        self.memory_processing = true;
+        self.state.memory_manager.extraction.last_error = None;
+        self.runtime_trace(
+            "memory",
+            &format!("auto_process start pending={pending} running={running}"),
+        );
+        publish_memory_update();
+        publish_child_window_update(ChildWindowUpdateKind::Memory);
+        self.start_memory_extraction_status_refresh(cx);
+        self.invalidate_status_bar(cx);
+        self.invalidate_memory_panel(cx);
+
+        let service = self.runtime_service.clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let process_result = codux_runtime::async_runtime::spawn(async move {
+                service
+                    .process_memory_extraction_queue_limited(MAX_AUTOMATIC_MEMORY_PROCESS_TASKS)
+                    .await
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result);
+            let _ = this.update(cx, |app, cx| {
+                app.apply_memory_processing_result(process_result, cx);
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn enqueue_automatic_memory_extraction_async(&mut self, cx: &mut Context<Self>) {
+        let pending = self.state.memory_manager.extraction.queued.max(0);
+        let running = self.state.memory_manager.extraction.running.max(0);
+        if pending > 0 || running > 0 || self.memory_processing {
+            self.process_queued_memory_extraction_async(cx);
+            return;
+        }
+
+        let scheduler_key = "memory_auto_extract";
+        let interval = self.memory_automatic_extraction_interval_seconds();
+        let policy = ScheduledWorkPolicy::new(interval, interval);
+        if !self.begin_scheduled_work(scheduler_key, policy) {
+            return;
+        }
+
+        let service = self.runtime_service.clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                service.enqueue_automatic_memory_extraction_candidates()
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result);
+
+            let _ = this.update(cx, |app, cx| {
+                app.finish_scheduled_work(scheduler_key);
+                match result {
+                    Ok(enqueue_result) => {
+                        app.state.memory_manager.extraction.queued =
+                            enqueue_result.status.pending_count.max(0);
+                        app.state.memory_manager.extraction.running =
+                            enqueue_result.status.running_count.max(0);
+                        app.state.memory_manager.extraction.last_error =
+                            enqueue_result.status.last_error.clone();
+                        if enqueue_result.checked_count > 0 || enqueue_result.enqueued_count > 0 {
+                            app.runtime_trace(
+                                "memory",
+                                &format!(
+                                    "auto_enqueue checked={} enqueued={} pending={} running={}",
+                                    enqueue_result.checked_count,
+                                    enqueue_result.enqueued_count,
+                                    enqueue_result.status.pending_count,
+                                    enqueue_result.status.running_count
+                                ),
+                            );
+                            app.reload_memory_manager_snapshot();
+                            publish_memory_update();
+                            publish_child_window_update(ChildWindowUpdateKind::Memory);
+                            app.invalidate_status_bar(cx);
+                            app.invalidate_memory_panel(cx);
+                        }
+                        app.process_queued_memory_extraction_async(cx);
+                    }
+                    Err(error) => {
+                        app.state.memory_manager.extraction.last_error = Some(error.clone());
+                        app.runtime_trace("memory", &format!("auto_enqueue failed error={error}"));
+                        app.invalidate_status_bar(cx);
+                        app.invalidate_memory_panel(cx);
+                    }
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn memory_automatic_extraction_interval_seconds(&self) -> f64 {
+        self.state
+            .settings
+            .memory_extraction_idle_delay_seconds
+            .parse::<f64>()
+            .unwrap_or(120.0)
+            .max(1.0)
+    }
+
     pub(super) fn select_ai_session(
         &mut self,
         session_id: String,
@@ -199,6 +314,15 @@ impl CoduxApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let Some(session_id) = self.selected_ai_session_id.clone() else {
+            self.status_message = "no AI session to remove".to_string();
+            self.invalidate_memory_panel(cx);
+            return;
+        };
+        self.remove_ai_session_confirmed(session_id, cx);
+    }
+
+    fn remove_ai_session_confirmed(&mut self, session_id: String, cx: &mut Context<Self>) {
         let Some(project) = &self.state.selected_project else {
             self.status_message = "no selected project for AI session removal".to_string();
             self.invalidate_memory_panel(cx);
@@ -206,14 +330,20 @@ impl CoduxApp {
         };
         let worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
         let project_request = ai_history_worktree_request(project, worktree.as_ref());
-        let Some(session) = self.selected_ai_session().cloned() else {
+        if !self
+            .state
+            .ai_history
+            .sessions
+            .iter()
+            .any(|session| session.id == session_id)
+        {
             self.status_message = "no AI session to remove".to_string();
             self.invalidate_memory_panel(cx);
             return;
-        };
+        }
         match self
             .runtime_service
-            .remove_indexed_ai_session(project_request, session.id.clone())
+            .remove_indexed_ai_session(project_request, session_id.clone())
         {
             Ok(state) => {
                 if let Some(summary) = ai_history_summary_from_project_state(&state) {
@@ -254,30 +384,49 @@ impl CoduxApp {
             return;
         };
         self.selected_ai_session_id = Some(session_id.clone());
-        self.ai_session_delete_confirm_id = Some(session_id);
+        self.ai_session_delete_confirm_id = Some(session_id.clone());
         self.reload_selected_ai_session_detail();
-        self.status_message = format!("confirm AI session removal: {session_title}");
+        self.status_message = "waiting for AI session removal confirmation".to_string();
         self.invalidate_memory_panel(cx);
+        let title = self.text("ai.sessions.delete_title", "Delete Session");
+        let message = self
+            .text("ai.sessions.delete_confirm_format", "Delete %@?")
+            .replace("%@", &session_title);
+        let confirm_label = self.text("common.delete", "Delete");
+        let cancel_label = self.text("common.cancel", "Cancel");
+        let service = self.runtime_service.clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let remove_session_id = session_id.clone();
+            let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                service.localized_confirm_dialog(LocalizedConfirmDialogRequest {
+                    title,
+                    message,
+                    confirm_label,
+                    cancel_label,
+                })
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result);
+
+            let _ = this.update(cx, |app, cx| match result {
+                Ok(true) => app.remove_ai_session_confirmed(remove_session_id, cx),
+                Ok(false) => app.cancel_remove_ai_session(cx),
+                Err(error) => {
+                    app.ai_session_delete_confirm_id = None;
+                    app.status_message =
+                        format!("failed to show AI session removal confirmation: {error}");
+                    app.invalidate_memory_panel(cx);
+                }
+            });
+        })
+        .detach();
     }
 
     pub(super) fn cancel_remove_ai_session(&mut self, cx: &mut Context<Self>) {
         self.ai_session_delete_confirm_id = None;
         self.status_message = "AI session removal cancelled".to_string();
         self.invalidate_memory_panel(cx);
-    }
-
-    pub(super) fn confirm_remove_ai_session(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(session_id) = self.ai_session_delete_confirm_id.clone() else {
-            self.status_message = "no AI session removal to confirm".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        self.selected_ai_session_id = Some(session_id);
-        self.remove_selected_ai_session(window, cx);
     }
 
     pub(super) fn rename_selected_ai_session_to(
@@ -376,12 +525,10 @@ impl CoduxApp {
             return;
         }
 
-        let _ = self.runtime_service.clear_memory_extraction_failures();
         self.memory_processing = true;
         self.state.memory_manager.extraction.running =
             self.state.memory_manager.extraction.running.max(1);
         self.state.memory_manager.extraction.last_error = None;
-        self.state.memory_manager.extraction.failed = 0;
         self.show_memory_progress_for_at_least(3.0, cx);
         self.status_message = "memory processing started".to_string();
         self.runtime_trace("memory", "manual_process start");
@@ -390,79 +537,15 @@ impl CoduxApp {
         self.invalidate_status_bar(cx);
         let service = self.runtime_service.clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            let result = codux_runtime::async_runtime::spawn_blocking({
-                let service = service.clone();
-                move || {
-                    let enqueue_result = service.enqueue_memory_extraction_candidates()?;
-                    Ok::<_, String>(enqueue_result)
-                }
+            let process_result = codux_runtime::async_runtime::spawn(async move {
+                service.process_memory_sessions_now().await
             })
             .await
             .map_err(|error| error.to_string())
             .and_then(|result| result);
-
-            match result {
-                Ok(enqueue_result) => {
-                    let _ = this.update(cx, |app, cx| {
-                        let active = enqueue_result.status.pending_count > 0
-                            || enqueue_result.status.running_count > 0;
-                        app.memory_processing = active;
-                        app.state.memory_manager.extraction.queued =
-                            enqueue_result.status.pending_count.max(0);
-                        app.state.memory_manager.extraction.running =
-                            enqueue_result.status.running_count.max(0);
-                        app.state.memory_manager.extraction.last_error =
-                            enqueue_result.status.last_error.clone();
-                        app.reload_memory_manager_snapshot();
-                        app.status_message = format!(
-                            "memory processing started · checked {} · enqueued {}",
-                            enqueue_result.checked_count, enqueue_result.enqueued_count
-                        );
-                        app.runtime_trace(
-                            "memory",
-                            &format!(
-                                "manual_process enqueued checked={} enqueued={} pending={} running={}",
-                                enqueue_result.checked_count,
-                                enqueue_result.enqueued_count,
-                                enqueue_result.status.pending_count,
-                                enqueue_result.status.running_count
-                            ),
-                        );
-                        publish_memory_update();
-                        publish_child_window_update(ChildWindowUpdateKind::Memory);
-                        if active {
-                            app.start_memory_extraction_status_refresh(cx);
-                        }
-                        app.invalidate_status_bar(cx);
-                        app.invalidate_memory_panel(cx);
-                    });
-                    let process_result = codux_runtime::async_runtime::spawn(async move {
-                        service.process_memory_extraction_queue().await
-                    })
-                    .await
-                    .map_err(|error| error.to_string())
-                    .and_then(|result| result);
-                    let _ = this.update(cx, |app, cx| {
-                        app.apply_memory_processing_result(process_result, cx);
-                    });
-                }
-                Err(error) => {
-                    let _ = this.update(cx, |app, cx| {
-                        app.memory_processing = false;
-                        app.state.memory_manager.extraction.running = 0;
-                        app.reload_memory_manager_snapshot();
-                        app.status_message = format!("failed to start memory processing: {error}");
-                        app.runtime_trace(
-                            "memory",
-                            &format!("manual_process enqueue_failed error={error}"),
-                        );
-                        publish_memory_update();
-                        publish_child_window_update(ChildWindowUpdateKind::Memory);
-                        app.invalidate_status_bar(cx);
-                        app.invalidate_memory_panel(cx);
-                    });
-                }
-            }
+            let _ = this.update(cx, |app, cx| {
+                app.apply_memory_processing_result(process_result, cx);
+            });
         })
         .detach();
         self.invalidate_memory_panel(cx);
@@ -552,6 +635,34 @@ impl CoduxApp {
             Err(error) => {
                 self.runtime_trace("memory", &format!("cancel_queue failed error={error}"));
                 self.status_message = format!("failed to cancel memory queue: {error}");
+            }
+        }
+        self.invalidate_memory_panel(cx);
+    }
+
+    pub(super) fn retry_failed_memory_extraction(
+        &mut self,
+        task_id: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match self
+            .runtime_service
+            .retry_failed_memory_extraction(&task_id)
+        {
+            Ok(status) => {
+                self.state.memory_manager.extraction.queued = status.pending_count.max(0);
+                self.state.memory_manager.extraction.running = status.running_count.max(0);
+                self.state.memory_manager.extraction.last_error = status.last_error.clone();
+                self.reload_memory_manager_snapshot();
+                publish_memory_update();
+                publish_child_window_update(ChildWindowUpdateKind::Memory);
+                self.start_memory_extraction_status_refresh(cx);
+                self.process_queued_memory_extraction_async(cx);
+            }
+            Err(error) => {
+                self.state.memory_manager.extraction.last_error = Some(error.clone());
+                self.runtime_trace("memory", &format!("retry_failed failed error={error}"));
             }
         }
         self.invalidate_memory_panel(cx);
@@ -1035,6 +1146,7 @@ impl CoduxApp {
             self.memory_manager_project_id.as_deref(),
             self.memory_manager_tab.as_str(),
         );
+        self.normalize_memory_status_seen_failures();
     }
 
     pub(super) fn reload_memory_manager_snapshot_async(&mut self, cx: &mut Context<Self>) {
@@ -1062,6 +1174,7 @@ impl CoduxApp {
                 match snapshot {
                     Ok(snapshot) => {
                         app.state.memory_manager = snapshot;
+                        app.normalize_memory_status_seen_failures();
                         app.normalize_selected_memory_entry();
                         app.normalize_selected_memory_summary();
                         let active = app.state.memory_manager.extraction.queued > 0
@@ -1081,6 +1194,13 @@ impl CoduxApp {
         })
         .detach();
         self.invalidate_memory_panel(cx);
+    }
+
+    fn normalize_memory_status_seen_failures(&mut self) {
+        let failed = self.state.memory_manager.extraction.failed.max(0);
+        if self.memory_status_seen_failed_count > failed {
+            self.memory_status_seen_failed_count = failed;
+        }
     }
 
     pub(super) fn selected_runtime_session(&self) -> Option<&RuntimeSessionSummary> {

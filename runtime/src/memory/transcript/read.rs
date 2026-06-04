@@ -3,15 +3,22 @@ pub(super) fn read_transcript_file(
     line_limit: i32,
     token_limit: i32,
 ) -> Option<String> {
-    let text = fs::read_to_string(path).ok()?;
-    let mut lines = text
-        .lines()
-        .rev()
-        .take(line_limit.max(1) as usize)
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    lines.reverse();
-    let mut text = lines.join("\n");
+    let file = fs::File::open(path).ok()?;
+    let line_limit = line_limit.max(1) as usize;
+    let mut lines = std::collections::VecDeque::with_capacity(line_limit);
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if lines.len() == line_limit {
+            lines.pop_front();
+        }
+        lines.push_back(line);
+    }
+    let mut text = String::new();
+    for (index, line) in lines.iter().enumerate() {
+        if index > 0 {
+            text.push('\n');
+        }
+        text.push_str(line);
+    }
     let max_chars = (token_limit.max(1) as usize).saturating_mul(4);
     if text.chars().count() > max_chars {
         text = tail_chars(&text, max_chars);

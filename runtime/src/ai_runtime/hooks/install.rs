@@ -8,7 +8,14 @@ use serde_json::{Map, Value, json};
 use std::path::Path;
 
 pub fn install_managed_hook_configs(managed_hook_script: &Path) -> Result<(), String> {
-    let codex_hooks_path = home_dir().join(".codex").join("hooks.json");
+    install_managed_hook_configs_in(&home_dir(), managed_hook_script)
+}
+
+pub fn install_managed_hook_configs_in(
+    home_dir: &Path,
+    managed_hook_script: &Path,
+) -> Result<(), String> {
+    let codex_hooks_path = home_dir.join(".codex").join("hooks.json");
     install_tool_hooks(
         &codex_hooks_path,
         "codex",
@@ -22,7 +29,7 @@ pub fn install_managed_hook_configs(managed_hook_script: &Path) -> Result<(), St
     )?;
     ensure_codex_config_installed(&codex_hooks_path)?;
     install_tool_hooks(
-        &home_dir().join(".claude").join("settings.json"),
+        &home_dir.join(".claude").join("settings.json"),
         "claude",
         &[
             ("SessionStart", "session-start", 10, false),
@@ -40,7 +47,7 @@ pub fn install_managed_hook_configs(managed_hook_script: &Path) -> Result<(), St
         managed_hook_script,
     )?;
     install_tool_hooks(
-        &home_dir().join(".gemini").join("settings.json"),
+        &home_dir.join(".gemini").join("settings.json"),
         "gemini",
         &[
             ("SessionStart", "session-start", 5000, false),
@@ -52,7 +59,7 @@ pub fn install_managed_hook_configs(managed_hook_script: &Path) -> Result<(), St
         managed_hook_script,
     )?;
     install_tool_hooks(
-        &home_dir()
+        &home_dir
             .join(".gemini")
             .join("antigravity-cli")
             .join("settings.json"),
@@ -67,7 +74,7 @@ pub fn install_managed_hook_configs(managed_hook_script: &Path) -> Result<(), St
         managed_hook_script,
     )?;
     install_tool_hooks(
-        &home_dir()
+        &home_dir
             .join(".kiro")
             .join("agents")
             .join("codux-managed.json"),

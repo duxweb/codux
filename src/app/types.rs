@@ -80,6 +80,7 @@ pub(in crate::app) enum FileNameDraftKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::app) enum MemoryManagerTab {
     Active,
+    Failed,
     History,
     Summary,
 }
@@ -88,6 +89,7 @@ impl MemoryManagerTab {
     pub(in crate::app) fn as_str(self) -> &'static str {
         match self {
             Self::Active => "active",
+            Self::Failed => "failed",
             Self::History => "history",
             Self::Summary => "summary",
         }

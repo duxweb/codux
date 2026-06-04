@@ -76,6 +76,14 @@ fn create_memory_db(support_dir: &std::path::Path) {
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
             );
+            CREATE TABLE memory_decision_logs (
+                id TEXT PRIMARY KEY,
+                decision TEXT NOT NULL,
+                entry_id TEXT,
+                target_entry_id TEXT,
+                reason TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
             "#,
     )
     .unwrap();
@@ -569,6 +577,67 @@ fn extraction_queue_status_and_task_lifecycle() {
     let task = service.next_pending_extraction_task().unwrap().unwrap();
     service.mark_extraction_task_done(&task.id).unwrap();
     assert!(!service.has_pending_extraction_task().unwrap());
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn manager_snapshot_lists_failed_extractions_and_retry_requeues_task() {
+    let support_dir = temp_support_dir();
+    create_memory_db(&support_dir);
+    let service = MemoryService::new(support_dir.clone());
+    let conn = Connection::open(support_dir.join("memory.sqlite3")).unwrap();
+    conn.execute(
+        r#"
+        INSERT INTO memory_extraction_queue (
+            id, project_id, tool, session_id, transcript_path, source_fingerprint,
+            status, attempts, error, enqueued_at, workspace_path
+        )
+        VALUES (
+            'failed-task-a', 'project-a', 'claude', 'session-failed',
+            '/tmp/session-failed.jsonl', 'failed-fingerprint-a',
+            'failed', 1, 'provider returned malformed memory JSON', 99, '/workspace/project-a'
+        );
+        "#,
+        [],
+    )
+    .unwrap();
+    let projects = vec![ProjectInfo {
+        id: "project-a".to_string(),
+        name: "Project A".to_string(),
+        path: "/workspace/project-a".to_string(),
+        exists: true,
+        badge: "PA".to_string(),
+        badge_symbol: None,
+        badge_color_hex: None,
+        git_default_push_remote_name: None,
+    }];
+
+    let failed = service.manager_snapshot(&projects, "project", Some("project-a"), "failed", 50);
+    assert_eq!(failed.failed_extractions.len(), 1);
+    assert_eq!(failed.failed_extractions[0].id, "failed-task-a");
+    assert_eq!(
+        failed.failed_extractions[0].error.as_deref(),
+        Some("provider returned malformed memory JSON")
+    );
+
+    let status = service
+        .retry_failed_extraction_task("failed-task-a")
+        .unwrap();
+    assert_eq!(status.status, MemoryExtractionStatus::Queued);
+    assert_eq!(status.pending_count, 1);
+    assert_eq!(status.last_error, None);
+
+    let retried = service
+        .next_pending_extraction_task()
+        .unwrap()
+        .expect("retried failed task should be pending");
+    assert_eq!(retried.id, "failed-task-a");
+    assert_eq!(retried.status, "pending");
+    assert_eq!(retried.error, None);
+
+    let failed = service.manager_snapshot(&projects, "project", Some("project-a"), "failed", 50);
+    assert!(failed.failed_extractions.is_empty());
 
     fs::remove_dir_all(support_dir).unwrap();
 }

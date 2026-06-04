@@ -311,7 +311,7 @@ fn workspace_assistant_button(
                     Icon::new(match panel {
                         AssistantPanel::AIStats => HeroIconName::Sparkles,
                         AssistantPanel::SSH => HeroIconName::CommandLine,
-                        AssistantPanel::FileManager => HeroIconName::Document,
+                        AssistantPanel::FileManager => HeroIconName::Folder,
                         AssistantPanel::Git => HeroIconName::ArrowPathRoundedSquare,
                     })
                     .size_3p5()

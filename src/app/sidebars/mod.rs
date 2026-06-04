@@ -651,10 +651,7 @@ impl FileSidebarView {
         cx: &mut Context<Self>,
         update: impl FnOnce(&mut CoduxApp, &mut Window, &mut Context<CoduxApp>) + 'static,
     ) {
-        let app_entity = self.app_entity.clone();
-        window.defer(cx, move |window, cx| {
-            app_entity.update(cx, |app, cx| update(app, window, cx));
-        });
+        defer_codux_app_update(self.app_entity.clone(), window, cx, update);
     }
 }
 

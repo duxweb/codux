@@ -97,6 +97,9 @@ impl CoduxApp {
                         } else {
                             app.apply_ai_runtime_activity_tick(cx)
                         };
+                        if include_slow_tick {
+                            app.enqueue_automatic_memory_extraction_async(cx);
+                        }
                         if result.pet_update_events > 0 {
                             app.sync_desktop_pet_window(false, cx);
                         }

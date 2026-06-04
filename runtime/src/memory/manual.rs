@@ -1,6 +1,7 @@
 use super::{
     MemoryService,
     extraction::ensure_memory_provider_available,
+    now_seconds,
     queue::MemoryExtractionStatusSnapshot,
     transcript::{MemoryProjectContext, resolve_transcript_source, session_identifier},
 };
@@ -15,9 +16,11 @@ use crate::{
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
+const MAX_AUTOMATIC_EXTRACTION_ENQUEUE: usize = 10;
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MemoryManualEnqueueResult {
+pub struct MemoryExtractionEnqueueResult {
     pub checked_count: i64,
     pub enqueued_count: i64,
     pub status: MemoryExtractionStatusSnapshot,
@@ -30,9 +33,9 @@ impl MemoryService {
         projects: &[ProjectWorkspaceRecord],
         runtime_sessions: &[AISessionSnapshot],
         history_sessions: &[AISessionSummary],
-    ) -> Result<MemoryManualEnqueueResult, String> {
+    ) -> Result<MemoryExtractionEnqueueResult, String> {
         if !memory_settings.enabled {
-            return Ok(MemoryManualEnqueueResult {
+            return Ok(MemoryExtractionEnqueueResult {
                 checked_count: 0,
                 enqueued_count: 0,
                 status: self.extraction_status_snapshot()?,
@@ -48,23 +51,35 @@ impl MemoryService {
             history_sessions,
         ));
         let sessions = deduplicate_manual_candidates(sessions);
-        let checked_count = sessions.len() as i64;
-        let mut enqueued_count = 0_i64;
+        self.enqueue_extraction_candidates(projects, &sessions)
+    }
 
-        for session in &sessions {
-            if self.enqueue_session_for_manual_extraction(projects, session)? {
-                enqueued_count += 1;
-            }
+    pub fn enqueue_automatic_extraction_candidates(
+        &self,
+        memory_settings: &AIMemorySettings,
+        projects: &[ProjectWorkspaceRecord],
+        runtime_sessions: &[AISessionSnapshot],
+        history_sessions: &[AISessionSummary],
+    ) -> Result<MemoryExtractionEnqueueResult, String> {
+        if !memory_settings.enabled || !memory_settings.automatic_extraction_enabled {
+            return Ok(MemoryExtractionEnqueueResult {
+                checked_count: 0,
+                enqueued_count: 0,
+                status: self.extraction_status_snapshot()?,
+            });
         }
 
-        let mut status = self.extraction_status_snapshot()?;
-        status.checked_count = checked_count;
-        status.enqueued_count = enqueued_count;
-        Ok(MemoryManualEnqueueResult {
-            checked_count,
-            enqueued_count,
-            status,
-        })
+        self.ensure_queue_schema()?;
+        let mut sessions =
+            automatic_extraction_candidates(memory_settings, projects, runtime_sessions);
+        sessions.extend(automatic_extraction_candidates_from_history(
+            memory_settings,
+            projects,
+            history_sessions,
+        ));
+        let mut sessions = deduplicate_manual_candidates(sessions);
+        sessions.truncate(MAX_AUTOMATIC_EXTRACTION_ENQUEUE);
+        self.enqueue_extraction_candidates(projects, &sessions)
     }
 
     pub async fn process_memory_sessions_now(
@@ -92,7 +107,31 @@ impl MemoryService {
         Ok(status)
     }
 
-    fn enqueue_session_for_manual_extraction(
+    fn enqueue_extraction_candidates(
+        &self,
+        projects: &[ProjectWorkspaceRecord],
+        sessions: &[AISessionSnapshot],
+    ) -> Result<MemoryExtractionEnqueueResult, String> {
+        let checked_count = sessions.len() as i64;
+        let mut enqueued_count = 0_i64;
+
+        for session in sessions {
+            if self.enqueue_session_for_extraction(projects, session)? {
+                enqueued_count += 1;
+            }
+        }
+
+        let mut status = self.extraction_status_snapshot()?;
+        status.checked_count = checked_count;
+        status.enqueued_count = enqueued_count;
+        Ok(MemoryExtractionEnqueueResult {
+            checked_count,
+            enqueued_count,
+            status,
+        })
+    }
+
+    fn enqueue_session_for_extraction(
         &self,
         projects: &[ProjectWorkspaceRecord],
         session: &AISessionSnapshot,
@@ -103,6 +142,11 @@ impl MemoryService {
         let Some(project) = memory_project_context(projects, session) else {
             return Ok(false);
         };
+        let session_id = session_identifier(session);
+        if self.has_active_extraction_for_session(&project.project_id, &session.tool, &session_id)?
+        {
+            return Ok(false);
+        }
         let Some(source) = resolve_transcript_source(session, &project) else {
             return Ok(false);
         };
@@ -110,11 +154,35 @@ impl MemoryService {
             &project.project_id,
             &project.workspace_path,
             &session.tool,
-            &session_identifier(session),
+            &session_id,
             &source.location,
             &source.fingerprint,
             false,
         )
+    }
+
+    fn has_active_extraction_for_session(
+        &self,
+        project_id: &str,
+        tool: &str,
+        session_id: &str,
+    ) -> Result<bool, String> {
+        let conn = self.open_or_create_connection()?;
+        let count: i64 = conn
+            .query_row(
+                r#"
+                SELECT COUNT(*)
+                FROM memory_extraction_queue
+                WHERE project_id = ?1
+                  AND tool = ?2
+                  AND session_id = ?3
+                  AND status IN ('pending', 'running');
+                "#,
+                rusqlite::params![project_id, tool, session_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(count > 0)
     }
 }
 
@@ -174,6 +242,33 @@ fn manual_extraction_candidates_from_history(
     newest_limited_by_project(by_project, limit)
 }
 
+fn automatic_extraction_candidates(
+    memory_settings: &AIMemorySettings,
+    projects: &[ProjectWorkspaceRecord],
+    sessions: &[AISessionSnapshot],
+) -> Vec<AISessionSnapshot> {
+    let idle_delay = f64::from(memory_settings.extraction_idle_delay_seconds.max(0));
+    let now = now_seconds();
+    manual_extraction_candidates(memory_settings, projects, sessions)
+        .into_iter()
+        .filter(|session| !session.was_interrupted)
+        .filter(|session| idle_delay == 0.0 || now - session.updated_at >= idle_delay)
+        .collect()
+}
+
+fn automatic_extraction_candidates_from_history(
+    memory_settings: &AIMemorySettings,
+    projects: &[ProjectWorkspaceRecord],
+    sessions: &[AISessionSummary],
+) -> Vec<AISessionSnapshot> {
+    let idle_delay = f64::from(memory_settings.extraction_idle_delay_seconds.max(0));
+    let now = now_seconds();
+    manual_extraction_candidates_from_history(memory_settings, projects, sessions)
+        .into_iter()
+        .filter(|session| idle_delay == 0.0 || now - session.updated_at >= idle_delay)
+        .collect()
+}
+
 fn newest_limited_by_project(
     mut by_project: HashMap<String, Vec<AISessionSnapshot>>,
     limit: usize,
@@ -219,7 +314,9 @@ fn memory_project_context(
 ) -> Option<MemoryProjectContext> {
     projects
         .iter()
-        .find(|project| project.id == session.project_id || project.root_project_id == session.project_id)
+        .find(|project| {
+            project.id == session.project_id || project.root_project_id == session.project_id
+        })
         .or_else(|| {
             session.project_path.as_ref().and_then(|path| {
                 projects.iter().find(|project| {

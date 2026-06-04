@@ -251,6 +251,7 @@ impl Render for CoduxApp {
             .text_color(color(theme::TEXT))
             .bg(cx.theme().background)
             .track_focus(&focus_handle)
+            .key_context("CoduxMainWindow")
             .on_key_down(cx.listener(Self::on_key_down))
             .child(
                 div()
@@ -339,6 +340,31 @@ impl Render for CoduxApp {
                         .h(px(28.0)),
                 ),
             )
+            .when_some(self.toast_message.clone(), |this, message| {
+                this.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .top(px(64.0))
+                        .flex()
+                        .justify_center()
+                        .child(
+                            div()
+                                .max_w(px(520.0))
+                                .rounded_md()
+                                .border_1()
+                                .border_color(color(theme::BORDER_SOFT))
+                                .bg(cx.theme().background)
+                                .px_4()
+                                .py_2()
+                                .shadow_lg()
+                                .text_size(px(16.0))
+                                .text_color(color(theme::TEXT))
+                                .child(message),
+                        ),
+                )
+            })
             .child(self.codux_tooltip_layer(cx));
 
         self.register_native_menu_actions(root, cx)

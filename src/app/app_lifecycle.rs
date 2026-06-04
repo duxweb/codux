@@ -25,7 +25,6 @@ impl CoduxApp {
         let runtime = RuntimeInventory::load();
         let runtime_service = RuntimeService::new(state.support_dir.clone());
         let _ = runtime_service.recover_interrupted_memory_extraction_queue();
-        let _ = runtime_service.clear_memory_extraction_failures();
         let power_sync_error = runtime_service.start_power_settings_sync().err();
         state.power = runtime_service.power_summary(&state.settings.sleep_mode);
         if let Some(error) = power_sync_error {
@@ -63,7 +62,7 @@ impl CoduxApp {
             .as_ref()
             .map(TerminalLaunchContext::to_config)
             .unwrap_or_default();
-        let terminal_config = terminal_config_for_settings(&state.settings);
+        let terminal_config = terminal_config_for_settings(&state.settings, window.appearance());
         let terminal_manager = runtime_service.terminal_manager();
         let terminal_pane_registry = HashMap::new();
         let (terminals, active_terminal_id, next_terminal_index) = spawn_terminal_tabs(
@@ -152,8 +151,12 @@ impl CoduxApp {
             runtime,
             state,
             runtime_service,
+            window_appearance: window.appearance(),
+            _observe_window_appearance: None,
             is_exiting: false,
             main_window_close_handler_registered: false,
+            last_quit_request_at: None,
+            pending_terminal_close: None,
             status_message: format!(
                 "runtime ready · {} project{} · restored {} terminal tab{} · {}",
                 ready_snapshot.projects.projects.len(),
@@ -170,6 +173,8 @@ impl CoduxApp {
                 },
                 ai_runtime_status
             ),
+            toast_message: None,
+            toast_revision: 0,
             desktop_pet_window: None,
             settings_window: None,
             about_window: None,
@@ -316,6 +321,7 @@ impl CoduxApp {
             memory_manager_project_id,
             memory_processing: false,
             memory_extraction_status_refreshing: false,
+            memory_status_seen_failed_count: 0,
             selected_runtime_terminal_id,
             selected_ssh_profile_id,
             ssh_draft_open: false,
@@ -381,6 +387,27 @@ impl CoduxApp {
         };
         app.register_terminal_panes();
         Ok(app)
+    }
+
+    pub(crate) fn observe_main_window_appearance(
+        &mut self,
+        app_entity: gpui::Entity<CoduxApp>,
+        window: &mut Window,
+    ) {
+        self._observe_window_appearance =
+            Some(window.observe_window_appearance(move |window, cx| {
+                let _ = app_entity.update(cx, |app, cx| {
+                    app.window_appearance = window.appearance();
+                    theme::apply_component_theme(
+                        &app.state.settings.theme,
+                        &app.state.settings.theme_color,
+                        Some(window),
+                        cx,
+                    );
+                    app.apply_terminal_text_settings(cx);
+                    app.invalidate_ui_region(cx, UiRegion::Root);
+                });
+            }));
     }
 
     pub(super) fn spawn_runtime_scheduled_refresh(&mut self, cx: &mut Context<Self>) {
@@ -491,6 +518,52 @@ impl CoduxApp {
         self.close_desktop_pet_window(cx);
         self.close_auxiliary_windows(cx);
         self.shutdown_runtime_state();
+    }
+
+    pub(super) fn request_quit(&mut self, cx: &mut Context<Self>) {
+        const QUIT_CONFIRM_WINDOW: Duration = Duration::from_secs(2);
+
+        let now = Instant::now();
+        if self
+            .last_quit_request_at
+            .is_some_and(|last| now.duration_since(last) <= QUIT_CONFIRM_WINDOW)
+        {
+            self.is_exiting = true;
+            codux_runtime::config::flush_all_config_writes();
+            cx.quit();
+            return;
+        }
+
+        self.last_quit_request_at = Some(now);
+        let shortcut = if cfg!(target_os = "macos") {
+            "Cmd+Q"
+        } else {
+            "Ctrl+Q"
+        };
+        self.show_toast(
+            self.text("app.quit.confirm", "Press %@ again to quit")
+                .replace("%@", shortcut),
+            cx,
+        );
+    }
+
+    pub(super) fn show_toast(&mut self, message: String, cx: &mut Context<Self>) {
+        let revision = self.toast_revision.wrapping_add(1);
+        self.toast_revision = revision;
+        self.toast_message = Some(message);
+        cx.notify();
+
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            cx.background_executor().timer(Duration::from_secs(2)).await;
+            this.update(cx, |app, cx| {
+                if app.toast_revision == revision {
+                    app.toast_message = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn shutdown_runtime_state(&mut self) {

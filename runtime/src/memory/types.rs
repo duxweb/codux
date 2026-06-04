@@ -62,6 +62,7 @@ pub struct MemoryManagerSnapshot {
     pub project_profile: Option<MemoryProjectProfileSummary>,
     pub entries: Vec<MemoryEntrySummary>,
     pub summaries: Vec<MemorySummaryRow>,
+    pub failed_extractions: Vec<crate::memory::queue::MemoryExtractionTask>,
     pub extraction: MemoryExtractionSummary,
     pub error: Option<String>,
 }

@@ -7,9 +7,13 @@ use serde_json::{Map, Value};
 use std::path::Path;
 
 pub fn hook_config_status(opencode_config_dir: &Path) -> AIRuntimeHookConfigStatus {
+    hook_config_status_in(&home_dir(), opencode_config_dir)
+}
+
+pub fn hook_config_status_in(home_dir: &Path, opencode_config_dir: &Path) -> AIRuntimeHookConfigStatus {
     AIRuntimeHookConfigStatus {
         codex: tool_hook_config_status(
-            &home_dir().join(".codex").join("hooks.json"),
+            &home_dir.join(".codex").join("hooks.json"),
             "codex",
             &[
                 ("SessionStart", "codex-session-start"),
@@ -19,7 +23,7 @@ pub fn hook_config_status(opencode_config_dir: &Path) -> AIRuntimeHookConfigStat
             ],
         ),
         claude: tool_hook_config_status(
-            &home_dir().join(".claude").join("settings.json"),
+            &home_dir.join(".claude").join("settings.json"),
             "claude",
             &[
                 ("SessionStart", "session-start"),
@@ -36,7 +40,7 @@ pub fn hook_config_status(opencode_config_dir: &Path) -> AIRuntimeHookConfigStat
             ],
         ),
         gemini: tool_hook_config_status(
-            &home_dir().join(".gemini").join("settings.json"),
+            &home_dir.join(".gemini").join("settings.json"),
             "gemini",
             &[
                 ("SessionStart", "session-start"),
@@ -48,7 +52,7 @@ pub fn hook_config_status(opencode_config_dir: &Path) -> AIRuntimeHookConfigStat
         ),
         opencode: opencode_hook_config_status(opencode_config_dir),
         kiro: tool_hook_config_status(
-            &home_dir()
+            &home_dir
                 .join(".kiro")
                 .join("agents")
                 .join("codux-managed.json"),
@@ -210,6 +214,40 @@ mod tests {
 
         assert!(!status.configured);
         assert_eq!(status.missing, vec!["Stop:stop"]);
+        fs::remove_file(root).unwrap();
+    }
+
+    #[test]
+    fn tool_hook_config_status_accepts_kiro_flat_hooks() {
+        let root = std::env::temp_dir().join(format!("codux-kiro-hooks-{}.json", Uuid::new_v4()));
+        fs::write(
+            &root,
+            serde_json::json!({
+                "hooks": {
+                    "agentSpawn": [{
+                        "command": format!("'/tmp/dmux-ai-state.sh' 'session-start' '{}' 'kiro'", app_slug()),
+                        "timeout_ms": 5000,
+                        "matcher": ""
+                    }],
+                    "stop": [{
+                        "command": format!("'/tmp/dmux-ai-state.sh' 'session-end' '{}' 'kiro'", app_slug()),
+                        "timeout_ms": 5000,
+                        "matcher": ""
+                    }]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let status = tool_hook_config_status(
+            &root,
+            "kiro",
+            &[("agentSpawn", "session-start"), ("stop", "session-end")],
+        );
+
+        assert!(status.configured);
+        assert!(status.missing.is_empty());
         fs::remove_file(root).unwrap();
     }
 }

@@ -20,7 +20,9 @@
       "terminal.tab.close": "Tab schließen",
       "terminal.main": "Main Terminal",
       "terminal.tab.default_format": "Terminal %d",
-      "terminal.split.default_format": "Split %d"
+      "terminal.split.default_format": "Split %d",
+      "terminal.close.confirm_split": "Zum Schliessen der aktuellen Teilung erneut %@ drucken",
+      "terminal.close.confirm_tab": "Zum Schliessen des aktuellen Tabs erneut %@ drucken"
     },
     "en": {
       "terminal.closed": "Closed terminal.",
@@ -42,7 +44,9 @@
       "terminal.tab.close": "Close Tab",
       "terminal.main": "Main Terminal",
       "terminal.tab.default_format": "Terminal %d",
-      "terminal.split.default_format": "Split %d"
+      "terminal.split.default_format": "Split %d",
+      "terminal.close.confirm_split": "Press %@ again to close the current split",
+      "terminal.close.confirm_tab": "Press %@ again to close the current tab"
     },
     "es": {
       "terminal.closed": "Closed terminal.",
@@ -64,7 +68,9 @@
       "terminal.tab.close": "Cerrar pestaña",
       "terminal.main": "Main Terminal",
       "terminal.tab.default_format": "Terminal %d",
-      "terminal.split.default_format": "Split %d"
+      "terminal.split.default_format": "Split %d",
+      "terminal.close.confirm_split": "Pulsa %@ de nuevo para cerrar la división actual",
+      "terminal.close.confirm_tab": "Pulsa %@ de nuevo para cerrar la pestaña actual"
     },
     "fr": {
       "terminal.closed": "Closed terminal.",
@@ -86,7 +92,9 @@
       "terminal.tab.close": "Fermer l’onglet",
       "terminal.main": "Main Terminal",
       "terminal.tab.default_format": "Terminal %d",
-      "terminal.split.default_format": "Split %d"
+      "terminal.split.default_format": "Split %d",
+      "terminal.close.confirm_split": "Appuyez de nouveau sur %@ pour fermer la division actuelle",
+      "terminal.close.confirm_tab": "Appuyez de nouveau sur %@ pour fermer l’onglet actuel"
     },
     "ja": {
       "terminal.closed": "Closed terminal.",
@@ -108,7 +116,9 @@
       "terminal.tab.close": "タブを閉じる",
       "terminal.main": "Main Terminal",
       "terminal.tab.default_format": "Terminal %d",
-      "terminal.split.default_format": "Split %d"
+      "terminal.split.default_format": "Split %d",
+      "terminal.close.confirm_split": "現在の分割を閉じるには %@ をもう一度押してください",
+      "terminal.close.confirm_tab": "現在のタブを閉じるには %@ をもう一度押してください"
     },
     "ko": {
       "terminal.closed": "Closed terminal.",
@@ -130,7 +140,9 @@
       "terminal.tab.close": "탭 닫기",
       "terminal.main": "Main Terminal",
       "terminal.tab.default_format": "Terminal %d",
-      "terminal.split.default_format": "Split %d"
+      "terminal.split.default_format": "Split %d",
+      "terminal.close.confirm_split": "현재 분할을 닫으려면 %@를 한 번 더 누르세요",
+      "terminal.close.confirm_tab": "현재 탭을 닫으려면 %@를 한 번 더 누르세요"
     },
     "pt-BR": {
       "terminal.closed": "Closed terminal.",
@@ -152,7 +164,9 @@
       "terminal.tab.close": "Fechar aba",
       "terminal.main": "Main Terminal",
       "terminal.tab.default_format": "Terminal %d",
-      "terminal.split.default_format": "Split %d"
+      "terminal.split.default_format": "Split %d",
+      "terminal.close.confirm_split": "Pressione %@ novamente para fechar a divisão atual",
+      "terminal.close.confirm_tab": "Pressione %@ novamente para fechar a aba atual"
     },
     "ru": {
       "terminal.closed": "Closed terminal.",
@@ -174,7 +188,9 @@
       "terminal.tab.close": "Закрыть вкладку",
       "terminal.main": "Main Terminal",
       "terminal.tab.default_format": "Terminal %d",
-      "terminal.split.default_format": "Split %d"
+      "terminal.split.default_format": "Split %d",
+      "terminal.close.confirm_split": "Нажмите %@ еще раз, чтобы закрыть текущее разделение",
+      "terminal.close.confirm_tab": "Нажмите %@ еще раз, чтобы закрыть текущую вкладку"
     },
     "zh-Hans": {
       "terminal.closed": "已关闭终端。",
@@ -196,7 +212,9 @@
       "terminal.tab.close": "关闭标签页",
       "terminal.main": "主终端",
       "terminal.tab.default_format": "终端 %d",
-      "terminal.split.default_format": "分屏 %d"
+      "terminal.split.default_format": "分屏 %d",
+      "terminal.close.confirm_split": "再次按 %@ 关闭当前分屏",
+      "terminal.close.confirm_tab": "再次按 %@ 关闭当前标签页"
     },
     "zh-Hant": {
       "terminal.closed": "已關閉終端機。",
@@ -218,7 +236,9 @@
       "terminal.tab.close": "關閉分頁",
       "terminal.main": "主終端",
       "terminal.tab.default_format": "終端 %d",
-      "terminal.split.default_format": "分屏 %d"
+      "terminal.split.default_format": "分屏 %d",
+      "terminal.close.confirm_split": "再次按 %@ 關閉目前分割",
+      "terminal.close.confirm_tab": "再次按 %@ 關閉目前分頁"
     }
   }
 }

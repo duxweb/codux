@@ -314,6 +314,118 @@ fn prompt_submitted_uses_wrapper_project_even_when_hook_cwd_differs() {
 }
 
 #[test]
+fn multiple_same_tool_sessions_are_isolated_by_terminal_id() {
+    let store = AIRuntimeStateStore::default();
+    assert!(
+        store
+            .apply_hook(test_hook_for("codex", "codex-term-1", "codex-session-1", 1000.0))
+            .did_change
+    );
+    assert!(
+        store
+            .apply_hook(test_hook_for("codex", "codex-term-2", "codex-session-2", 1001.0))
+            .did_change
+    );
+
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.running_count, 1);
+    assert_eq!(snapshot.global_totals.running, 2);
+    assert!(
+        snapshot
+            .sessions
+            .iter()
+            .any(|session| session.terminal_id == "codex-term-1"
+                && session.ai_session_id.as_deref() == Some("codex-session-1")
+                && session.state == "responding")
+    );
+    assert!(
+        snapshot
+            .sessions
+            .iter()
+            .any(|session| session.terminal_id == "codex-term-2"
+                && session.ai_session_id.as_deref() == Some("codex-session-2")
+                && session.state == "responding")
+    );
+
+    assert!(
+        store
+            .apply_hook(AIHookEventPayload {
+                kind: "turnCompleted".to_string(),
+                updated_at: 1010.0,
+                metadata: Some(AIHookEventMetadata {
+                    has_completed_turn: Some(true),
+                    ..empty_metadata()
+                }),
+                ..test_hook_for("codex", "codex-term-1", "codex-session-1", 1010.0)
+            })
+            .did_change
+    );
+
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.running_count, 1);
+    assert_eq!(snapshot.global_totals.running, 1);
+    assert!(
+        snapshot
+            .sessions
+            .iter()
+            .any(|session| session.terminal_id == "codex-term-1" && session.state == "idle")
+    );
+    assert!(
+        snapshot
+            .sessions
+            .iter()
+            .any(|session| session.terminal_id == "codex-term-2"
+                && session.ai_session_id.as_deref() == Some("codex-session-2")
+                && session.state == "responding")
+    );
+}
+
+#[test]
+fn multiple_claude_sessions_are_isolated_by_terminal_id_and_external_session_id() {
+    let store = AIRuntimeStateStore::default();
+    assert!(
+        store
+            .apply_hook(test_hook_for(
+                "claude",
+                "claude-term-1",
+                "claude-external-1",
+                1000.0
+            ))
+            .did_change
+    );
+    assert!(
+        store
+            .apply_hook(test_hook_for(
+                "claude",
+                "claude-term-2",
+                "claude-external-2",
+                1001.0
+            ))
+            .did_change
+    );
+
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.running_count, 1);
+    assert_eq!(snapshot.global_totals.running, 2);
+    assert!(
+        snapshot
+            .sessions
+            .iter()
+            .any(|session| session.terminal_id == "claude-term-1"
+                && session.tool == "claude"
+                && session.ai_session_id.as_deref() == Some("claude-external-1"))
+    );
+    assert!(
+        snapshot
+            .sessions
+            .iter()
+            .any(|session| session.terminal_id == "claude-term-2"
+                && session.tool == "claude"
+                && session.ai_session_id.as_deref() == Some("claude-external-2"))
+    );
+}
+
+#[test]
 fn stale_runtime_completion_snapshot_after_prompt_stays_running() {
     let store = AIRuntimeStateStore::default();
     assert!(store.apply_hook(test_hook("sessionStarted", 1000.0)).did_change);
@@ -415,6 +527,23 @@ fn test_hook(kind: &str, updated_at: f64) -> AIHookEventPayload {
         total_tokens: None,
         updated_at,
         metadata: None,
+    }
+}
+
+fn test_hook_for(
+    tool: &str,
+    terminal_id: &str,
+    ai_session_id: &str,
+    updated_at: f64,
+) -> AIHookEventPayload {
+    AIHookEventPayload {
+        tool: tool.to_string(),
+        terminal_id: terminal_id.to_string(),
+        terminal_instance_id: Some(format!("{terminal_id}-instance")),
+        ai_session_id: Some(ai_session_id.to_string()),
+        session_title: format!("{tool} session"),
+        updated_at,
+        ..test_hook("promptSubmitted", updated_at)
     }
 }
 

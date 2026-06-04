@@ -63,8 +63,8 @@ impl RuntimeActivityService {
             }
         }
 
-        let runtime_log = crate::runtime_paths::runtime_log_path();
-        let live_log = crate::runtime_paths::live_log_path();
+        let runtime_log = crate::runtime_paths::runtime_log_path_in(&self.support_dir);
+        let live_log = crate::runtime_paths::live_log_path_in(&self.runtime_temp_dir);
         let runtime_root = self.runtime_temp_dir.join(crate::runtime_paths::RUNTIME_ROOT_DIR_NAME);
         let runtime_support = self
             .support_dir

@@ -136,6 +136,72 @@ fn update_project_preserves_unknown_fields_and_updates_default_worktree() {
     fs::remove_dir_all(dir).ok();
 }
 
+#[test]
+fn close_non_selected_project_keeps_current_selection() {
+    let dir = temp_dir("project-store-close-non-selected");
+    fs::create_dir_all(&dir).unwrap();
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "projects": [
+                {"id": "p1", "name": "One", "path": "/tmp/one"},
+                {"id": "p2", "name": "Two", "path": "/tmp/two"},
+                {"id": "p3", "name": "Three", "path": "/tmp/three"}
+            ],
+            "selectedProjectId": "p2"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let next = ProjectStore::new(support_dir.clone())
+        .close_project("p1")
+        .unwrap();
+
+    let state = state_value(&support_dir);
+    assert_eq!(next.as_deref(), Some("p2"));
+    assert_eq!(state["selectedProjectId"], "p2");
+    assert_eq!(state["projects"][0]["id"], "p2");
+    assert_eq!(state["projects"][1]["id"], "p3");
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn close_selected_project_moves_selection_to_neighbor() {
+    let dir = temp_dir("project-store-close-selected");
+    fs::create_dir_all(&dir).unwrap();
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "projects": [
+                {"id": "p1", "name": "One", "path": "/tmp/one"},
+                {"id": "p2", "name": "Two", "path": "/tmp/two"},
+                {"id": "p3", "name": "Three", "path": "/tmp/three"}
+            ],
+            "selectedProjectId": "p2"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let next = ProjectStore::new(support_dir.clone())
+        .close_project("p2")
+        .unwrap();
+
+    let state = state_value(&support_dir);
+    assert_eq!(next.as_deref(), Some("p3"));
+    assert_eq!(state["selectedProjectId"], "p3");
+    assert_eq!(state["projects"][0]["id"], "p1");
+    assert_eq!(state["projects"][1]["id"], "p3");
+
+    fs::remove_dir_all(dir).ok();
+}
+
 fn temp_dir(label: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -1,5 +1,6 @@
 use super::*;
 use crate::project_store::ProjectWorkspaceRecord;
+use rusqlite::Connection;
 use std::fs;
 use uuid::Uuid;
 
@@ -130,6 +131,201 @@ fn manual_enqueue_limits_candidates_by_project() {
     assert_eq!(result.status.pending_count, 1);
     let task = service.next_pending_extraction_task().unwrap().unwrap();
     assert_eq!(task.session_id, "session-new");
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn automatic_enqueue_respects_idle_delay_and_enabled_flag() {
+    let support_dir = temp_support_dir();
+    let transcript_dir = support_dir.join("project-a");
+    fs::create_dir_all(&transcript_dir).unwrap();
+    let recent = transcript_dir.join("recent.jsonl");
+    let ready = transcript_dir.join("ready.jsonl");
+    fs::write(&recent, "user recent\nassistant recent\n").unwrap();
+    fs::write(&ready, "user ready\nassistant ready\n").unwrap();
+
+    let service = MemoryService::new(support_dir.clone());
+    let project = project(&transcript_dir.display().to_string());
+    let settings = AIMemorySettings {
+        enabled: true,
+        automatic_extraction_enabled: true,
+        extraction_idle_delay_seconds: 60,
+        max_index_sessions: 10,
+        ..Default::default()
+    };
+    let now = now_seconds();
+    let sessions = vec![
+        runtime_session(
+            "term-recent",
+            "session-recent",
+            &recent.display().to_string(),
+            now - 10.0,
+        ),
+        runtime_session(
+            "term-ready",
+            "session-ready",
+            &ready.display().to_string(),
+            now - 120.0,
+        ),
+    ];
+
+    let result = service
+        .enqueue_automatic_extraction_candidates(&settings, std::slice::from_ref(&project), &sessions, &[])
+        .unwrap();
+
+    assert_eq!(result.checked_count, 1);
+    assert_eq!(result.enqueued_count, 1);
+    assert_eq!(result.status.pending_count, 1);
+    let task = service.next_pending_extraction_task().unwrap().unwrap();
+    assert_eq!(task.session_id, "session-ready");
+
+    let disabled = AIMemorySettings {
+        automatic_extraction_enabled: false,
+        ..settings
+    };
+    let result = service
+        .enqueue_automatic_extraction_candidates(&disabled, &[project], &sessions, &[])
+        .unwrap();
+    assert_eq!(result.checked_count, 0);
+    assert_eq!(result.enqueued_count, 0);
+    assert_eq!(result.status.pending_count, 1);
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn automatic_enqueue_skips_session_with_active_pending_task() {
+    let support_dir = temp_support_dir();
+    let transcript_dir = support_dir.join("project-a");
+    fs::create_dir_all(&transcript_dir).unwrap();
+    let first = transcript_dir.join("first.jsonl");
+    let updated = transcript_dir.join("updated.jsonl");
+    fs::write(&first, "user first\nassistant first\n").unwrap();
+    fs::write(&updated, "user first\nassistant first\nuser again\n").unwrap();
+
+    let service = MemoryService::new(support_dir.clone());
+    let project = project(&transcript_dir.display().to_string());
+    let settings = AIMemorySettings {
+        enabled: true,
+        automatic_extraction_enabled: true,
+        extraction_idle_delay_seconds: 0,
+        max_index_sessions: 10,
+        ..Default::default()
+    };
+    let first_session = runtime_session(
+        "term-a",
+        "same-session",
+        &first.display().to_string(),
+        10.0,
+    );
+    let updated_session = runtime_session(
+        "term-a",
+        "same-session",
+        &updated.display().to_string(),
+        20.0,
+    );
+
+    let first_result = service
+        .enqueue_automatic_extraction_candidates(
+            &settings,
+            std::slice::from_ref(&project),
+            &[first_session],
+            &[],
+        )
+        .unwrap();
+    assert_eq!(first_result.checked_count, 1);
+    assert_eq!(first_result.enqueued_count, 1);
+    assert_eq!(first_result.status.pending_count, 1);
+
+    let updated_result = service
+        .enqueue_automatic_extraction_candidates(&settings, &[project], &[updated_session], &[])
+        .unwrap();
+    assert_eq!(updated_result.checked_count, 1);
+    assert_eq!(updated_result.enqueued_count, 0);
+    assert_eq!(updated_result.status.pending_count, 1);
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn automatic_enqueue_limits_batch_and_stores_only_task_metadata() {
+    let support_dir = temp_support_dir();
+    let transcript_dir = support_dir.join("project-a");
+    fs::create_dir_all(&transcript_dir).unwrap();
+
+    let service = MemoryService::new(support_dir.clone());
+    let project = project(&transcript_dir.display().to_string());
+    let settings = AIMemorySettings {
+        enabled: true,
+        automatic_extraction_enabled: true,
+        extraction_idle_delay_seconds: 0,
+        max_index_sessions: 40,
+        ..Default::default()
+    };
+    let sessions = (0..12)
+        .map(|index| {
+            let transcript = transcript_dir.join(format!("session-{index}.jsonl"));
+            fs::write(
+                &transcript,
+                format!("user large content {index}\nassistant large content {index}\n"),
+            )
+            .unwrap();
+            runtime_session(
+                &format!("term-{index}"),
+                &format!("session-{index}"),
+                &transcript.display().to_string(),
+                index as f64,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let result = service
+        .enqueue_automatic_extraction_candidates(&settings, &[project], &sessions, &[])
+        .unwrap();
+
+    assert_eq!(result.checked_count, 10);
+    assert_eq!(result.enqueued_count, 10);
+    assert_eq!(result.status.pending_count, 10);
+
+    let conn = Connection::open(support_dir.join("memory.sqlite3")).unwrap();
+    let schema = conn
+        .prepare("SELECT * FROM memory_extraction_queue LIMIT 1;")
+        .unwrap()
+        .column_names()
+        .iter()
+        .map(|name| name.to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        schema,
+        vec![
+            "id",
+            "project_id",
+            "tool",
+            "session_id",
+            "transcript_path",
+            "workspace_path",
+            "source_fingerprint",
+            "status",
+            "attempts",
+            "error",
+            "enqueued_at"
+        ]
+    );
+
+    let stored_paths = {
+        let mut statement = conn
+            .prepare("SELECT transcript_path FROM memory_extraction_queue;")
+            .unwrap();
+        statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    assert_eq!(stored_paths.len(), 10);
+    assert!(stored_paths.iter().all(|path| path.ends_with(".jsonl")));
+    assert!(stored_paths.iter().all(|path| !path.contains("large content")));
 
     fs::remove_dir_all(support_dir).unwrap();
 }

@@ -811,7 +811,7 @@ impl CoduxApp {
                     let request =
                         ai_history_worktree_request(&primary_project, primary_worktree.as_ref());
                     let ai_history = primary_runtime_service
-                        .indexed_project_ai_history_state(request)
+                        .indexed_project_ai_history_summary(request)
                         .ok()
                         .map(|state| {
                             ai_history_summary_from_state_or_status(

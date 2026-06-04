@@ -1,6 +1,6 @@
 [package]
 name = "codux-runtime"
-version = "1.5.0"
+version = "1.5.1"
 edition = "2024"
 
 [dependencies]
@@ -47,7 +47,7 @@ rfd = { version = "0.17.2", default-features = false, features = ["common-contro
 core-foundation-sys = "0.8"
 dispatch2 = "0.3"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSButton", "NSControl", "NSDockTile", "NSImage", "NSPanel", "NSResponder", "NSSavePanel", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSButton", "NSControl", "NSDockTile", "NSImage", "NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSView", "NSWindow"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSProcessInfo", "NSString", "NSURL"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]

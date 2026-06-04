@@ -1240,7 +1240,5 @@ fn defer_terminal_workspace_app_update(
     cx: &mut Context<TerminalWorkspaceView>,
     update: impl FnOnce(&mut CoduxApp, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) {
-    window.defer(cx, move |window, cx| {
-        app_entity.update(cx, |app, app_cx| update(app, window, app_cx));
-    });
+    defer_codux_app_update(app_entity, window, cx, update);
 }

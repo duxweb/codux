@@ -13,6 +13,7 @@ use super::host::{
 use super::pairing::remote_summary_show_pending_pairing;
 use super::types::{RemoteDeviceSettings, RemoteOutgoingEnvelope, RemotePairingInfo, RemoteSettings};
 use crate::ai_history_indexer::AIHistoryProjectState;
+use crate::config::flush_all_config_writes;
 use crate::remote_p2p::RemoteP2PLane;
 use crate::terminal_pty::{TerminalManager, TerminalSessionSnapshot};
 use super::{RemoteHostRuntime, RemoteService, remote_summary_from_settings};
@@ -941,6 +942,7 @@ fn toggles_remote_host_and_revokes_cached_device_preserving_secrets() {
     assert!(request.contains("\"deviceId\":\"device-1\""));
     let refresh_request = request_rx.recv().expect("refresh request");
     assert!(refresh_request.contains("GET /api/hosts/host-1/devices?token=secret-token"));
+    flush_all_config_writes();
     let raw = fs::read_to_string(dir.join("settings.json")).expect("settings");
     assert!(raw.contains("secret-token"));
     assert!(!raw.contains("\"id\": \"device-1\""));
@@ -988,6 +990,7 @@ fn refresh_devices_registers_host_first_when_missing_host_identity() {
     assert!(register_request.contains("POST /api/hosts/register"));
     let devices_request = request_rx.recv().expect("devices request");
     assert!(devices_request.contains("GET /api/hosts/registered-host/devices?token=registered-token"));
+    flush_all_config_writes();
     let raw = fs::read_to_string(dir.join("settings.json")).expect("settings");
     assert!(raw.contains("registered-host"));
     assert!(raw.contains("registered-token"));

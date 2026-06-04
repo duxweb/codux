@@ -38,7 +38,7 @@ use crate::{
     memory::{
         MemoryEnqueueResult, MemoryExtractionStatusSnapshot, MemoryManagementRequest,
         MemoryManagementSnapshot, MemoryManagerSnapshot, MemoryManagerSnapshotRequest,
-        MemoryManualEnqueueResult, MemoryProjectMigrationRequest, MemoryProjectProfile,
+        MemoryExtractionEnqueueResult, MemoryProjectMigrationRequest, MemoryProjectProfile,
         MemoryProjectProfileRefreshResult, MemoryService, MemorySummary, MemorySummaryRow,
         MemorySummaryUpdateRequest,
     },

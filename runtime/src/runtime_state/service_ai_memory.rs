@@ -80,15 +80,35 @@ impl RuntimeService {
         MemoryService::new(self.support_dir.clone()).clear_extraction_failures()
     }
 
-    pub fn enqueue_memory_extraction_candidates(
+    pub fn retry_failed_memory_extraction(
         &self,
-    ) -> Result<MemoryManualEnqueueResult, String> {
+        task_id: &str,
+    ) -> Result<MemoryExtractionStatusSnapshot, String> {
+        MemoryService::new(self.support_dir.clone()).retry_failed_extraction_task(task_id)
+    }
+
+    pub fn enqueue_automatic_memory_extraction_candidates(
+        &self,
+    ) -> Result<MemoryExtractionEnqueueResult, String> {
         let settings = SettingsService::new(self.support_dir.clone()).ai_settings();
+        let memory_service = MemoryService::new(self.support_dir.clone());
+        let status = memory_service.extraction_status_snapshot()?;
+        if status.pending_count > 0 || status.running_count > 0 {
+            return Ok(MemoryExtractionEnqueueResult {
+                checked_count: 0,
+                enqueued_count: 0,
+                status,
+            });
+        }
+
         let projects = self.memory_project_workspaces();
         let _ = self.ai_runtime.poll_runtime_state();
         let runtime_state = self.ai_runtime.runtime_state_snapshot();
-        let history_sessions = indexed_sessions_since(None).map_err(|error| error.to_string())?;
-        MemoryService::new(self.support_dir.clone()).enqueue_manual_extraction_candidates(
+        let history_sessions = indexed_sessions_since(Some(memory_history_cutoff_seconds(
+            &settings.memory,
+        )))
+        .map_err(|error| error.to_string())?;
+        memory_service.enqueue_automatic_extraction_candidates(
             &settings.memory,
             &projects,
             &runtime_state.sessions,
@@ -141,6 +161,17 @@ impl RuntimeService {
         let projects = self.memory_project_workspaces();
         MemoryService::new(self.support_dir.clone())
             .process_memory_extraction_queue(&settings, &projects)
+            .await
+    }
+
+    pub async fn process_memory_extraction_queue_limited(
+        &self,
+        limit: usize,
+    ) -> Result<MemoryExtractionStatusSnapshot, String> {
+        let settings = SettingsService::new(self.support_dir.clone()).ai_settings();
+        let projects = self.memory_project_workspaces();
+        MemoryService::new(self.support_dir.clone())
+            .process_memory_extraction_queue_limited(&settings, &projects, limit)
             .await
     }
 
@@ -311,4 +342,12 @@ impl RuntimeService {
             .await
             .ok_or_else(|| "Unable to refresh project profile.".to_string())
     }
+}
+
+fn memory_history_cutoff_seconds(settings: &crate::settings::AIMemorySettings) -> f64 {
+    let window = settings
+        .session_extraction_cooldown_seconds
+        .max(settings.extraction_idle_delay_seconds)
+        .max(900) as f64;
+    crate::memory::now_seconds() - window
 }

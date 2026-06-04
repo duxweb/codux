@@ -1,6 +1,23 @@
 use crate::ai_runtime::{constants::RUNTIME_EVENT_FILE_MAX_AGE_SECONDS, log::runtime_log_line};
 use std::{fs, path::Path};
 
+pub fn clear_runtime_event_dir(dir: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for path in entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+    {
+        if fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 pub fn drain_runtime_event_dir(dir: &Path, now: f64) -> Vec<Vec<u8>> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
@@ -62,6 +79,23 @@ mod tests {
         assert_eq!(frames, vec![br#"{"kind":"ai-hook"}"#.to_vec()]);
         assert!(!dir.join("one.json").exists());
         assert!(dir.join("skip.tmp").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn clears_runtime_event_files_without_touching_other_files() {
+        let dir = std::env::temp_dir().join(format!("codux-event-clear-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("one.json"), br#"{"kind":"ai-hook"}"#).unwrap();
+        fs::write(dir.join("two.json"), br#"{"kind":"ai-hook"}"#).unwrap();
+        fs::write(dir.join("keep.tmp"), b"ignored").unwrap();
+
+        let removed = clear_runtime_event_dir(&dir);
+
+        assert_eq!(removed, 2);
+        assert!(!dir.join("one.json").exists());
+        assert!(!dir.join("two.json").exists());
+        assert!(dir.join("keep.tmp").exists());
         fs::remove_dir_all(dir).unwrap();
     }
 

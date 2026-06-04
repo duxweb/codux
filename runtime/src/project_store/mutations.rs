@@ -279,13 +279,22 @@ impl ProjectStore {
 
     pub fn close_project(&self, project_id: &str) -> Result<Option<String>, String> {
         let mut raw = self.raw_snapshot();
+        let selected_project_id = raw
+            .get("selectedProjectId")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         let next_project_id = {
             let projects = ensure_array(&mut raw, "projects")?;
             let Some(index) = project_index(projects, project_id) else {
                 return Err("Project not found.".to_string());
             };
             projects.remove(index);
-            select_project_after_removal(projects, index)
+            if selected_project_id.as_deref() == Some(project_id) {
+                select_project_after_removal(projects, index)
+            } else {
+                selected_project_id
+                    .filter(|selected| project_index(projects, selected).is_some())
+            }
         };
         prune_project_state(&mut raw, project_id);
         if let Some(next_project_id) = &next_project_id {

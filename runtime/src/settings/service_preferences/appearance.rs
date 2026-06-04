@@ -14,13 +14,7 @@ impl SettingsService {
 
     pub fn cycle_theme(&self) -> Result<SettingsSummary, String> {
         let current = self.summary().theme;
-        let next = match current.as_str() {
-            "Dracula" => "Auto",
-            "Auto" => "Light",
-            "Light" => "Dark",
-            "Dark" => "Dracula",
-            _ => "Dracula",
-        };
+        let next = next_string_option(&current, terminal_theme_options(), "Auto");
         self.update_string("theme", next.to_string())
     }
 

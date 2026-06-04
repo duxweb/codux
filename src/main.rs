@@ -47,10 +47,6 @@ fn main() -> Result<()> {
         app::macos_window::install_dock_reopen_handler();
         gpui_component::init(cx);
         disable_root_tab_focus_bindings(cx);
-        cx.on_action(|_: &crate::app::native_menu::QuitCodux, cx| {
-            codux_runtime::config::flush_all_config_writes();
-            cx.quit();
-        });
         let initial_state = codux_runtime::runtime_state::RuntimeState::load();
         let _ = codux_runtime::app_icon::apply_app_icon(&initial_state.settings.icon_style);
         app::set_active_settings_snapshot(initial_state.settings.clone());
@@ -99,6 +95,9 @@ fn open_main_window(
             app::macos_window::configure_main_window_controls(window);
             let app = CoduxApp::new(window, cx).expect("failed to create Codux app");
             let view = cx.new(|_| app);
+            view.update(cx, |app, _| {
+                app.observe_main_window_appearance(view.clone(), window);
+            });
             view.update(cx, |app, cx| app.start_runtime_event_loop(cx));
             cx.new(|cx| Root::new(view, window, cx))
         },
@@ -168,8 +167,16 @@ fn disable_root_tab_focus_bindings(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("tab", Unbind("root::Tab".into()), Some("Root")),
         KeyBinding::new("shift-tab", Unbind("root::TabPrev".into()), Some("Root")),
-        KeyBinding::new("cmd-w", crate::app::native_menu::CloseWindow, None),
-        KeyBinding::new("ctrl-w", crate::app::native_menu::CloseWindow, None),
+        KeyBinding::new(
+            "cmd-w",
+            crate::app::native_menu::CloseActive,
+            Some("CoduxMainWindow"),
+        ),
+        KeyBinding::new(
+            "ctrl-w",
+            crate::app::native_menu::CloseActive,
+            Some("CoduxMainWindow"),
+        ),
         KeyBinding::new("cmd-n", crate::app::native_menu::NewProject, None),
         KeyBinding::new("ctrl-n", crate::app::native_menu::NewProject, None),
         KeyBinding::new("cmd-o", crate::app::native_menu::OpenProjectFolder, None),
@@ -198,8 +205,8 @@ fn disable_root_tab_focus_bindings(cx: &mut App) {
         KeyBinding::new("ctrl-shift-a", crate::app::native_menu::OpenAiPanel, None),
         KeyBinding::new("cmd-shift-s", crate::app::native_menu::OpenSshPanel, None),
         KeyBinding::new("ctrl-shift-s", crate::app::native_menu::OpenSshPanel, None),
-        KeyBinding::new("cmd-shift-\\", crate::app::native_menu::CreateSplit, None),
-        KeyBinding::new("ctrl-shift-\\", crate::app::native_menu::CreateSplit, None),
+        KeyBinding::new("cmd-t", crate::app::native_menu::CreateSplit, None),
+        KeyBinding::new("ctrl-t", crate::app::native_menu::CreateSplit, None),
         KeyBinding::new("cmd-shift-t", crate::app::native_menu::CreateTab, None),
         KeyBinding::new("ctrl-shift-t", crate::app::native_menu::CreateTab, None),
         KeyBinding::new("cmd-shift-n", crate::app::native_menu::CreateTask, None),

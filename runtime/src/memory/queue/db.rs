@@ -26,6 +26,31 @@ pub(super) fn latest_failed_error(conn: &rusqlite::Connection) -> Result<Option<
     .map_err(|error| error.to_string())
 }
 
+pub(super) fn failed_extraction_tasks(
+    conn: &rusqlite::Connection,
+    project_id: Option<&str>,
+    limit: i64,
+) -> Result<Vec<MemoryExtractionTask>, String> {
+    let limit = limit.clamp(1, 1000);
+    let mut statement = conn
+        .prepare(
+            r#"
+            SELECT id, project_id, tool, session_id, transcript_path, workspace_path, source_fingerprint, status, attempts, error, enqueued_at
+            FROM memory_extraction_queue
+            WHERE status = 'failed'
+              AND (?1 IS NULL OR project_id = ?1)
+            ORDER BY enqueued_at DESC
+            LIMIT ?2;
+            "#,
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![project_id, limit], memory_task_from_row)
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
 pub(super) fn memory_task_from_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<MemoryExtractionTask> {

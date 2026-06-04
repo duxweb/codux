@@ -53,7 +53,7 @@ pub(in crate::app) fn workspace_pet_button(
     if !pet.claimed {
         return trigger
             .on_click(cx.listener(|app, _event, window, cx| {
-                app.open_pet_claim_window(window, cx);
+                app.defer_open_pet_claim_window(window, cx);
             }))
             .into_any_element();
     }
@@ -93,7 +93,7 @@ fn workspace_pet_dex_button(
                 .icon(Icon::new(HeroIconName::BookOpen).size_3p5())
                 .on_click(move |_, window, cx| {
                     cx.update_entity(&app_entity, |app, cx| {
-                        app.open_pet_dex_window(window, cx);
+                        app.defer_open_pet_dex_window(window, cx);
                     });
                 }),
         )

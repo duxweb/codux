@@ -33,9 +33,15 @@ pub struct CoduxApp {
     pub(in crate::app) runtime: RuntimeInventory,
     pub(in crate::app) state: RuntimeState,
     pub(in crate::app) runtime_service: RuntimeService,
+    pub(in crate::app) window_appearance: WindowAppearance,
+    pub(in crate::app) _observe_window_appearance: Option<Subscription>,
     pub(in crate::app) is_exiting: bool,
     pub(in crate::app) main_window_close_handler_registered: bool,
+    pub(in crate::app) last_quit_request_at: Option<Instant>,
+    pub(in crate::app) pending_terminal_close: Option<PendingTerminalClose>,
     pub(in crate::app) status_message: String,
+    pub(in crate::app) toast_message: Option<String>,
+    pub(in crate::app) toast_revision: u64,
     pub(in crate::app) desktop_pet_window: Option<AnyWindowHandle>,
     pub(in crate::app) settings_window: Option<AnyWindowHandle>,
     pub(in crate::app) about_window: Option<AnyWindowHandle>,
@@ -177,6 +183,7 @@ pub struct CoduxApp {
     pub(in crate::app) memory_manager_project_id: Option<String>,
     pub(in crate::app) memory_processing: bool,
     pub(in crate::app) memory_extraction_status_refreshing: bool,
+    pub(in crate::app) memory_status_seen_failed_count: i64,
     pub(in crate::app) selected_runtime_terminal_id: Option<String>,
     pub(in crate::app) selected_ssh_profile_id: Option<String>,
     pub(in crate::app) ssh_draft_open: bool,
@@ -282,6 +289,18 @@ pub(in crate::app) struct GitOperationCompletion {
     pub(in crate::app) diff_file_to_reload: Option<String>,
     pub(in crate::app) clear_selected_branch: bool,
     pub(in crate::app) selected_branch: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::app) struct PendingTerminalClose {
+    pub(in crate::app) target: TerminalCloseTarget,
+    pub(in crate::app) requested_at: Instant,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::app) enum TerminalCloseTarget {
+    Split { pane_index: usize },
+    Tab { terminal_id: usize },
 }
 
 #[derive(Clone, Debug, Default)]

@@ -18,25 +18,10 @@ pub fn decode_extraction_response(raw: &str) -> Result<MemoryExtractionResponse,
 pub fn should_stop_memory_queue_after_error(error: &str) -> bool {
     let message = error.to_lowercase();
     [
-        "provider returned http",
-        "quota",
-        "rate limit",
-        "rate_limit",
-        "too many requests",
-        "429",
-        "401",
-        "403",
         "api key",
-        "empty response",
-        "malformed memory json",
-        "response body could not be decoded",
-        "transport",
-        "compression",
-        "gateway error",
-        "context window",
-        "maximum context",
-        "timeout",
-        "timed out",
+        "no available ai provider",
+        "no enabled ai provider",
+        "no provider",
     ]
     .iter()
     .any(|needle| message.contains(needle))

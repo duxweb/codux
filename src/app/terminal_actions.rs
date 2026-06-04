@@ -1,6 +1,101 @@
 use super::*;
 
 impl CoduxApp {
+    pub(in crate::app) fn confirm_or_close_active_terminal_target(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        const CLOSE_CONFIRM_WINDOW: Duration = Duration::from_secs(2);
+
+        let Some(target) = self.active_terminal_close_target(window, cx) else {
+            self.pending_terminal_close = None;
+            self.status_message = "no terminal split or tab to close".to_string();
+            self.invalidate_terminal_workspace(cx);
+            return;
+        };
+
+        let now = Instant::now();
+        if self.pending_terminal_close.is_some_and(|pending| {
+            pending.target == target
+                && now.duration_since(pending.requested_at) <= CLOSE_CONFIRM_WINDOW
+        }) {
+            self.pending_terminal_close = None;
+            match target {
+                TerminalCloseTarget::Split { pane_index } => {
+                    self.close_terminal_pane(pane_index, window, cx);
+                }
+                TerminalCloseTarget::Tab { terminal_id } => {
+                    self.close_terminal_tab(terminal_id, window, cx);
+                }
+            }
+            return;
+        }
+
+        self.pending_terminal_close = Some(PendingTerminalClose {
+            target,
+            requested_at: now,
+        });
+        let shortcut = if cfg!(target_os = "macos") {
+            "Cmd+W"
+        } else {
+            "Ctrl+W"
+        };
+        self.status_message = match target {
+            TerminalCloseTarget::Split { .. } => self
+                .text(
+                    "terminal.close.confirm_split",
+                    "Press %@ again to close the current split",
+                )
+                .replace("%@", shortcut),
+            TerminalCloseTarget::Tab { .. } => self
+                .text(
+                    "terminal.close.confirm_tab",
+                    "Press %@ again to close the current tab",
+                )
+                .replace("%@", shortcut),
+        };
+        self.invalidate_terminal_workspace(cx);
+    }
+
+    fn active_terminal_close_target(
+        &self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<TerminalCloseTarget> {
+        if let Some(focused) = self.focused_terminal_view(window, cx) {
+            for tab in &self.terminals {
+                for (pane_index, slot) in tab.panes.iter().enumerate() {
+                    let Some(pane) = slot.pane.as_ref() else {
+                        continue;
+                    };
+                    if pane.view != focused {
+                        continue;
+                    }
+                    return match tab.placement {
+                        TerminalTabPlacement::Bottom => Some(TerminalCloseTarget::Tab {
+                            terminal_id: tab.id,
+                        }),
+                        TerminalTabPlacement::Top => (tab.panes.len() > 1)
+                            .then_some(TerminalCloseTarget::Split { pane_index }),
+                    };
+                }
+            }
+        }
+
+        if self.terminals.iter().any(|tab| {
+            tab.placement == TerminalTabPlacement::Bottom && tab.id == self.active_terminal_id
+        }) {
+            return Some(TerminalCloseTarget::Tab {
+                terminal_id: self.active_terminal_id,
+            });
+        }
+
+        let tab = self.main_terminal()?;
+        let pane_index = tab.panes.len().checked_sub(1)?;
+        (tab.panes.len() > 1).then_some(TerminalCloseTarget::Split { pane_index })
+    }
+
     pub(in crate::app) fn add_terminal_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         prepare_memory_launch_artifacts(&self.state);
         let launch_context = self.current_terminal_launch_context();
@@ -346,8 +441,6 @@ impl CoduxApp {
         self.sync_terminal_state_after_layout_change(cx);
         if let Err(error) = kill_result {
             self.status_message = format!("terminal split closed; PTY cleanup failed: {error}");
-        } else {
-            self.status_message = "terminal split closed".to_string();
         }
         self.invalidate_terminal_workspace(cx);
     }
@@ -510,8 +603,6 @@ impl CoduxApp {
             self.status_message = format!("terminal tab closed; mount failed: {error}");
         } else if let Some(error) = kill_errors.first() {
             self.status_message = format!("terminal tab closed; PTY cleanup failed: {error}");
-        } else {
-            self.status_message = "terminal tab closed".to_string();
         }
         self.invalidate_terminal_workspace(cx);
     }

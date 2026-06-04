@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-06-04
+
+### Fixed
+
+- Fixed settings and child-window theming so auxiliary windows consistently inherit the current light or dark appearance.
+- Improved terminal rendering, project/worktree switching, split restoration, keyboard shortcuts, and long-session redraw stability.
+- Fixed AI runtime status ingestion for Codex and Claude sessions, including startup cleanup and completion notifications.
+- Reduced memory extraction queue pressure and memory growth by limiting automatic batches and reading transcript content only while processing.
+- Refined desktop pet rendering, claim dialogs, notifications, and project baseline filtering.
+- Improved remote mobile terminal synchronization, protocol compatibility checks, and split ordering.
+
 ## [1.5.0] - 2026-06-04
 
 ### Changed

@@ -108,20 +108,24 @@ fn transcript_source_if_readable(
 }
 
 fn claude_log_contains_session(path: &Path, session_id: &str, project_path: &str) -> bool {
-    let Ok(text) = fs::read_to_string(path) else {
+    let Ok(file) = fs::File::open(path) else {
         return false;
     };
-    text.lines().take(40).any(|line| {
-        line.contains(session_id)
-            && (line.contains(project_path)
-                || serde_json::from_str::<serde_json::Value>(line)
-                    .ok()
-                    .and_then(|value| {
-                        value
-                            .get("cwd")
-                            .and_then(|value| value.as_str())
-                            .map(|cwd| paths_equivalent(Some(cwd), project_path))
-                    })
-                    .unwrap_or(false))
-    })
+    BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .take(40)
+        .any(|line| {
+            line.contains(session_id)
+                && (line.contains(project_path)
+                    || serde_json::from_str::<serde_json::Value>(&line)
+                        .ok()
+                        .and_then(|value| {
+                            value
+                                .get("cwd")
+                                .and_then(|value| value.as_str())
+                                .map(|cwd| paths_equivalent(Some(cwd), project_path))
+                        })
+                        .unwrap_or(false))
+        })
 }

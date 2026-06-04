@@ -25,7 +25,7 @@ use gpui::{
 };
 use parking_lot::Mutex;
 use std::{
-    collections::{VecDeque, hash_map::DefaultHasher},
+    collections::{HashMap, VecDeque, hash_map::DefaultHasher},
     env,
     hash::{Hash, Hasher},
     io::Write,
@@ -490,6 +490,7 @@ const DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER: f32 = 1.45;
 const TERMINAL_SCROLL_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const TERMINAL_OUTPUT_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const TERMINAL_INITIAL_LAYOUT_WAIT: Duration = Duration::from_millis(120);
+const TERMINAL_ROW_CACHE_LIMIT: usize = 4096;
 static TERMINAL_TRACE_ENABLED: OnceLock<bool> = OnceLock::new();
 
 pub struct TerminalView {
@@ -575,6 +576,8 @@ impl TerminalView {
         self.renderer.font_size = config.font_size;
         self.renderer.line_height_multiplier = config.line_height_multiplier;
         self.renderer.palette = config.colors.clone();
+        self.renderer.fonts = TerminalFonts::new(&config.font_family);
+        self.renderer.clear_cache();
         self.config = config;
         cx.notify();
     }
@@ -1210,6 +1213,7 @@ struct TerminalModel {
     events: VecDeque<TerminalInternalEvent>,
     pending_output_bytes: Vec<u8>,
     output_flush_pending: bool,
+    snapshot_dirty: bool,
     sync_output_depth: usize,
     sync_output_pending_notify: bool,
     sync_output_scan_tail: Vec<u8>,
@@ -1279,6 +1283,7 @@ impl TerminalModel {
             events: VecDeque::new(),
             pending_output_bytes: Vec::new(),
             output_flush_pending: false,
+            snapshot_dirty: false,
             sync_output_depth: 0,
             sync_output_pending_notify: false,
             sync_output_scan_tail: Vec::new(),
@@ -1445,21 +1450,26 @@ impl TerminalModel {
     fn process_bytes(&mut self, bytes: &[u8]) {
         let mut term = self.handle.term.lock();
         self.parser.advance(&mut *term, bytes);
+        self.snapshot_dirty = true;
     }
 
     fn sync(&mut self, cx: &mut Context<Self>) -> TerminalContent {
         self.process_pending_events(cx);
+        let mut snapshot_dirty = self.snapshot_dirty;
         while let Some(event) = self.events.pop_front() {
             match event {
                 TerminalInternalEvent::Resize { cols, rows } => {
-                    self.handle.resize(cols, rows);
+                    snapshot_dirty |= self.handle.resize(cols, rows);
                 }
                 TerminalInternalEvent::Scroll { lines } => {
-                    self.handle.scroll_display(lines);
+                    snapshot_dirty |= self.handle.scroll_display(lines);
                 }
             }
         }
-        self.handle.publish_snapshot();
+        if snapshot_dirty {
+            self.handle.publish_snapshot();
+            self.snapshot_dirty = false;
+        }
         self.handle.snapshot()
     }
 
@@ -1566,6 +1576,7 @@ impl TerminalModel {
             events: VecDeque::new(),
             pending_output_bytes: Vec::new(),
             output_flush_pending: false,
+            snapshot_dirty: false,
             sync_output_depth: 0,
             sync_output_pending_notify: false,
             sync_output_scan_tail: Vec::new(),
@@ -1678,6 +1689,7 @@ impl TerminalStateHandle {
 struct TerminalContent {
     cells: Vec<TerminalIndexedCell>,
     colors: Colors,
+    colors_hash: u64,
     cursor: RenderableCursor,
     mode: TermMode,
     display_offset: usize,
@@ -1696,6 +1708,7 @@ impl TerminalContent {
         Self {
             cells,
             colors: *content.colors,
+            colors_hash: terminal_colors_hash(content.colors),
             cursor: content.cursor,
             mode: content.mode,
             display_offset: content.display_offset,
@@ -1709,6 +1722,80 @@ impl TerminalContent {
 struct TerminalIndexedCell {
     point: TerminalPoint,
     cell: Cell,
+}
+
+fn terminal_colors_hash(colors: &Colors) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for index in 0..alacritty_terminal::term::color::COUNT {
+        terminal_optional_rgb_hash(colors[index], &mut hasher);
+    }
+    hasher.finish()
+}
+
+fn terminal_optional_rgb_hash(rgb: Option<Rgb>, hasher: &mut DefaultHasher) {
+    match rgb {
+        Some(rgb) => {
+            1u8.hash(hasher);
+            rgb.r.hash(hasher);
+            rgb.g.hash(hasher);
+            rgb.b.hash(hasher);
+        }
+        None => 0u8.hash(hasher),
+    }
+}
+
+fn terminal_color_hash(color: Color, hasher: &mut DefaultHasher) {
+    match color {
+        Color::Named(named) => {
+            0u8.hash(hasher);
+            (named as usize).hash(hasher);
+        }
+        Color::Spec(rgb) => {
+            1u8.hash(hasher);
+            rgb.r.hash(hasher);
+            rgb.g.hash(hasher);
+            rgb.b.hash(hasher);
+        }
+        Color::Indexed(index) => {
+            2u8.hash(hasher);
+            index.hash(hasher);
+        }
+    }
+}
+
+fn terminal_optional_color_hash(color: Option<Color>, hasher: &mut DefaultHasher) {
+    match color {
+        Some(color) => {
+            1u8.hash(hasher);
+            terminal_color_hash(color, hasher);
+        }
+        None => 0u8.hash(hasher),
+    }
+}
+
+fn terminal_cell_hash(cell: &Cell, hasher: &mut DefaultHasher) {
+    cell.c.hash(hasher);
+    terminal_color_hash(cell.fg, hasher);
+    terminal_color_hash(cell.bg, hasher);
+    cell.flags.hash(hasher);
+    if let Some(zerowidth) = cell.zerowidth() {
+        zerowidth.hash(hasher);
+    }
+    terminal_optional_color_hash(cell.underline_color(), hasher);
+    if let Some(hyperlink) = cell.hyperlink() {
+        hyperlink.id().hash(hasher);
+        hyperlink.uri().hash(hasher);
+    }
+}
+
+fn terminal_row_hash(cells: &[TerminalIndexedCell], colors_hash: u64) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    colors_hash.hash(&mut hasher);
+    for indexed in cells {
+        indexed.point.column.0.hash(&mut hasher);
+        terminal_cell_hash(&indexed.cell, &mut hasher);
+    }
+    hasher.finish()
 }
 
 impl std::ops::Deref for TerminalIndexedCell {
@@ -1770,7 +1857,7 @@ impl Element for TerminalElement {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
         let available_width =
@@ -1810,7 +1897,7 @@ impl Element for TerminalElement {
             &snapshot,
             selection,
             self.cursor_visible,
-            _window,
+            window,
         )
     }
 
@@ -1853,6 +1940,44 @@ struct TerminalPaintState {
     ime_cursor_bounds: Option<Bounds<Pixels>>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+struct TerminalRowCacheKey {
+    row_hash: u64,
+    font_key: TerminalRendererCacheKey,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+struct TerminalRendererCacheKey {
+    font_size_bits: u32,
+    cell_width_bits: u32,
+    cell_height_bits: u32,
+}
+
+#[derive(Clone, Default)]
+struct TerminalRenderCache {
+    rows: HashMap<TerminalRowCacheKey, TerminalPreparedRow>,
+}
+
+#[derive(Clone)]
+struct TerminalPreparedRow {
+    background_rects: Vec<TerminalBackgroundRect>,
+    text_runs: Vec<TerminalTextRun>,
+}
+
+impl TerminalPreparedRow {
+    fn for_display_row(&self, row: usize) -> Self {
+        let mut prepared = self.clone();
+        for rect in &mut prepared.background_rects {
+            rect.row = row;
+        }
+        for text_run in &mut prepared.text_runs {
+            text_run.row = row;
+        }
+        prepared
+    }
+}
+
+#[derive(Clone)]
 struct TerminalBackgroundRect {
     row: usize,
     start_col: usize,
@@ -2826,10 +2951,49 @@ struct TerminalRenderer {
     font_family: String,
     font_size: Pixels,
     line_height_multiplier: f32,
+    fonts: TerminalFonts,
     cell_width: Pixels,
     cell_height: Pixels,
     palette: ColorPalette,
     measured_key: Option<TerminalCellMeasurementKey>,
+    cache: Arc<Mutex<TerminalRenderCache>>,
+}
+
+#[derive(Clone)]
+struct TerminalFonts {
+    normal: Font,
+    bold: Font,
+    italic: Font,
+    bold_italic: Font,
+}
+
+impl TerminalFonts {
+    fn new(font_family: &str) -> Self {
+        let family: SharedString = font_family.to_string().into();
+        let features = FontFeatures::disable_ligatures();
+        let font = |weight, style| Font {
+            family: family.clone(),
+            features: features.clone(),
+            fallbacks: None,
+            weight,
+            style,
+        };
+        Self {
+            normal: font(FontWeight::NORMAL, FontStyle::Normal),
+            bold: font(FontWeight::SEMIBOLD, FontStyle::Normal),
+            italic: font(FontWeight::NORMAL, FontStyle::Italic),
+            bold_italic: font(FontWeight::SEMIBOLD, FontStyle::Italic),
+        }
+    }
+
+    fn get(&self, bold: bool, italic: bool) -> Font {
+        match (bold, italic) {
+            (true, true) => self.bold_italic.clone(),
+            (true, false) => self.bold.clone(),
+            (false, true) => self.italic.clone(),
+            (false, false) => self.normal.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2857,6 +3021,7 @@ impl TerminalRenderer {
         palette: ColorPalette,
     ) -> Self {
         Self {
+            fonts: TerminalFonts::new(&font_family),
             font_family,
             font_size,
             line_height_multiplier,
@@ -2864,6 +3029,19 @@ impl TerminalRenderer {
             cell_height: font_size * line_height_multiplier,
             palette,
             measured_key: None,
+            cache: Arc::new(Mutex::new(TerminalRenderCache::default())),
+        }
+    }
+
+    fn clear_cache(&self) {
+        self.cache.lock().rows.clear();
+    }
+
+    fn cache_key(&self) -> TerminalRendererCacheKey {
+        TerminalRendererCacheKey {
+            font_size_bits: f32::from(self.font_size).to_bits(),
+            cell_width_bits: f32::from(self.cell_width).to_bits(),
+            cell_height_bits: f32::from(self.cell_height).to_bits(),
         }
     }
 
@@ -2876,7 +3054,7 @@ impl TerminalRenderer {
         if self.measured_key.as_ref() == Some(&key) {
             return;
         }
-        let font = self.font(FontWeight::NORMAL, FontStyle::Normal);
+        let font = self.font(false, false);
         let text_system = window.text_system();
         let font_id = text_system.resolve_font(&font);
         self.cell_width = text_system
@@ -2885,16 +3063,11 @@ impl TerminalRenderer {
             .unwrap_or(self.font_size * 0.6);
         self.cell_height = self.font_size * self.line_height_multiplier;
         self.measured_key = Some(key);
+        self.clear_cache();
     }
 
-    fn font(&self, weight: FontWeight, style: FontStyle) -> Font {
-        Font {
-            family: self.font_family.clone().into(),
-            features: FontFeatures::disable_ligatures(),
-            fallbacks: None,
-            weight,
-            style,
-        }
+    fn font(&self, bold: bool, italic: bool) -> Font {
+        self.fonts.get(bold, italic)
     }
 
     fn prepare_paint(
@@ -2916,31 +3089,61 @@ impl TerminalRenderer {
         };
         let content_right = bounds.origin.x + bounds.size.width - padding.right;
         let display_offset = content.display_offset as i32;
-        let mut rows = vec![vec![None; content.columns]; content.screen_lines];
-        for indexed in &content.cells {
-            let row = indexed.point.line.0 + display_offset;
-            let col = indexed.point.column.0;
-            if row >= 0 && (row as usize) < content.screen_lines && col < content.columns {
-                rows[row as usize][col] = Some(&indexed.cell);
-            }
-        }
+        let visible_rows = self.visible_row_range(bounds, padding, content, window);
 
         let mut background_rects = Vec::new();
         let mut text_runs = Vec::new();
-        for (row, cells) in rows.iter().enumerate() {
-            let line = Line(row as i32 - display_offset);
-            self.prepare_row_backgrounds(
-                line,
+        let mut cursor_cell = None;
+        let cursor_row = content.cursor.point.line.0;
+        let cursor_col = content.cursor.point.column.0;
+        let cache_key = self.cache_key();
+        let mut index = 0usize;
+        while index < content.cells.len() {
+            let line = content.cells[index].point.line;
+            let row = line.0 + display_offset;
+            let start = index;
+            while index < content.cells.len() && content.cells[index].point.line == line {
+                index += 1;
+            }
+            if row < 0 {
+                continue;
+            }
+            let row = row as usize;
+            if row < visible_rows.start || row >= visible_rows.end {
+                continue;
+            }
+            let cells = &content.cells[start..index];
+            let prepared = self.prepare_cached_row(
                 row,
                 cells,
                 colors,
+                content.colors_hash,
                 default_bg,
-                selection,
-                content_right,
-                origin,
-                &mut background_rects,
+                cache_key,
             );
-            self.prepare_row_text(row, cells, colors, &mut text_runs);
+            background_rects.extend(prepared.background_rects);
+            text_runs.extend(prepared.text_runs);
+            if display_offset == 0 && cursor_row == row as i32 {
+                cursor_cell = cells
+                    .iter()
+                    .find(|indexed| indexed.point.column.0 == cursor_col)
+                    .map(|indexed| &indexed.cell);
+            }
+        }
+
+        if let Some(selection) = selection {
+            for row in visible_rows.clone() {
+                let line = Line(row as i32 - display_offset);
+                self.prepare_selection(
+                    line,
+                    row,
+                    origin,
+                    content.columns,
+                    content_right,
+                    selection,
+                    &mut background_rects,
+                );
+            }
         }
 
         let cursor = (content.display_offset == 0
@@ -2950,8 +3153,11 @@ impl TerminalRenderer {
             .then(|| {
                 let row = content.cursor.point.line.0;
                 let col = content.cursor.point.column.0;
-                if row >= 0 && (row as usize) < content.screen_lines && col < content.columns {
-                    let cursor_cell = rows[row as usize][col];
+                if row >= 0
+                    && (row as usize) < content.screen_lines
+                    && col < content.columns
+                    && (visible_rows.start..visible_rows.end).contains(&(row as usize))
+                {
                     let cursor_width = self.cursor_width(cursor_cell, default_bg, window);
                     let text_run = cursor_cell
                         .filter(|cell| {
@@ -2961,16 +3167,8 @@ impl TerminalRenderer {
                         })
                         .map(|cell| {
                             let font = self.font(
-                                if cell.flags.contains(Flags::BOLD) {
-                                    FontWeight::SEMIBOLD
-                                } else {
-                                    FontWeight::NORMAL
-                                },
-                                if cell.flags.contains(Flags::ITALIC) {
-                                    FontStyle::Italic
-                                } else {
-                                    FontStyle::Normal
-                                },
+                                cell.flags.contains(Flags::BOLD),
+                                cell.flags.contains(Flags::ITALIC),
                             );
                             TerminalTextRun::new(
                                 row as usize,
@@ -3018,11 +3216,7 @@ impl TerminalRenderer {
                 && (content.cursor.point.line.0 as usize) < content.screen_lines
                 && content.cursor.point.column.0 < content.columns
             {
-                self.cursor_width(
-                    rows[content.cursor.point.line.0 as usize][content.cursor.point.column.0],
-                    default_bg,
-                    window,
-                )
+                self.cursor_width(cursor_cell, default_bg, window)
             } else {
                 self.cell_width
             };
@@ -3049,6 +3243,43 @@ impl TerminalRenderer {
         }
     }
 
+    fn visible_row_range(
+        &self,
+        bounds: Bounds<Pixels>,
+        padding: Edges<Pixels>,
+        content: &TerminalContent,
+        window: &mut Window,
+    ) -> Range<usize> {
+        if content.screen_lines == 0 {
+            return 0..0;
+        }
+        let content_bounds = Bounds {
+            origin: Point {
+                x: bounds.origin.x + padding.left,
+                y: bounds.origin.y + padding.top,
+            },
+            size: Size {
+                width: self.cell_width * content.columns.max(1) as f32,
+                height: self.cell_height * content.screen_lines as f32,
+            },
+        };
+        let intersection = window.content_mask().bounds.intersect(&content_bounds);
+        if intersection.size.width <= px(0.0) || intersection.size.height <= px(0.0) {
+            return 0..0;
+        }
+
+        let cell_height = f32::from(self.cell_height).max(1.0);
+        let top_delta = f32::from((intersection.origin.y - content_bounds.origin.y).max(px(0.0)));
+        let start = (top_delta / cell_height).floor().max(0.0) as usize;
+        let count = (f32::from(intersection.size.height) / cell_height)
+            .ceil()
+            .max(1.0) as usize
+            + 1;
+        let start = start.min(content.screen_lines);
+        let end = start.saturating_add(count).min(content.screen_lines);
+        start..end
+    }
+
     fn cursor_width(
         &self,
         cursor_cell: Option<&Cell>,
@@ -3064,16 +3295,8 @@ impl TerminalRenderer {
         }
 
         let font = self.font(
-            if cell.flags.contains(Flags::BOLD) {
-                FontWeight::SEMIBOLD
-            } else {
-                FontWeight::NORMAL
-            },
-            if cell.flags.contains(Flags::ITALIC) {
-                FontStyle::Italic
-            } else {
-                FontStyle::Normal
-            },
+            cell.flags.contains(Flags::BOLD),
+            cell.flags.contains(Flags::ITALIC),
         );
         let text = cell.c.to_string();
         let shaped = window.text_system().shape_line(
@@ -3093,99 +3316,125 @@ impl TerminalRenderer {
         shaped.width.max(self.cell_width)
     }
 
-    fn prepare_row_backgrounds(
+    fn prepare_cached_row(
         &self,
-        line: Line,
         row: usize,
-        cells: &[Option<&Cell>],
+        cells: &[TerminalIndexedCell],
         colors: &Colors,
+        colors_hash: u64,
         default_bg: Hsla,
-        selection: Option<SelectionRange>,
-        content_right: Pixels,
-        origin: Point<Pixels>,
-        background_rects: &mut Vec<TerminalBackgroundRect>,
-    ) {
-        let columns = cells.len();
-        let mut start_col = 0;
-        let mut current = self
-            .palette
-            .resolve(Color::Named(NamedColor::Background), colors);
-
-        for col in 0..=columns {
-            let bg = if col < columns {
-                cells[col]
-                    .map(|cell| self.cell_render_colors(cell, colors).1)
-                    .unwrap_or(default_bg)
-            } else {
-                Hsla::default()
-            };
-            if col == 0 {
-                current = bg;
-            }
-            if col == columns || bg != current {
-                if col > start_col && current != default_bg {
-                    background_rects.push(TerminalBackgroundRect {
-                        row,
-                        start_col,
-                        width_cols: col - start_col,
-                        color: current,
-                    });
-                }
-                start_col = col;
-                current = bg;
-            }
+        font_key: TerminalRendererCacheKey,
+    ) -> TerminalPreparedRow {
+        let row_hash = terminal_row_hash(cells, colors_hash);
+        let key = TerminalRowCacheKey { row_hash, font_key };
+        if let Some(prepared) = self.cache.lock().rows.get(&key).cloned() {
+            return prepared.for_display_row(row);
         }
 
-        if let Some(selection) = selection {
-            self.prepare_selection(
-                line,
-                row,
-                origin,
-                columns,
-                content_right,
-                selection,
-                background_rects,
-            );
+        let mut background_rects = Vec::new();
+        let mut text_runs = Vec::new();
+        self.prepare_row_backgrounds(0, cells, colors, default_bg, &mut background_rects);
+        self.prepare_row_text(0, cells, colors, &mut text_runs);
+        let prepared = TerminalPreparedRow {
+            background_rects,
+            text_runs,
+        };
+        let mut cache = self.cache.lock();
+        if cache.rows.len() > TERMINAL_ROW_CACHE_LIMIT {
+            cache.rows.clear();
+        }
+        cache.rows.insert(key, prepared.clone());
+        prepared.for_display_row(row)
+    }
+
+    fn prepare_row_backgrounds(
+        &self,
+        row: usize,
+        cells: &[TerminalIndexedCell],
+        colors: &Colors,
+        default_bg: Hsla,
+        background_rects: &mut Vec<TerminalBackgroundRect>,
+    ) {
+        let mut current: Option<TerminalBackgroundRect> = None;
+        for indexed in cells {
+            let col = indexed.point.column.0;
+            let bg = self.cell_render_colors(&indexed.cell, colors).1;
+            let width_cols = if indexed.cell.flags.contains(Flags::WIDE_CHAR) {
+                2
+            } else {
+                1
+            };
+            if bg == default_bg {
+                if let Some(rect) = current.take() {
+                    background_rects.push(rect);
+                }
+                continue;
+            }
+            match current.as_mut() {
+                Some(rect)
+                    if rect.color == bg
+                        && rect.start_col.saturating_add(rect.width_cols) == col =>
+                {
+                    rect.width_cols += width_cols;
+                }
+                Some(_) => {
+                    if let Some(rect) = current.replace(TerminalBackgroundRect {
+                        row,
+                        start_col: col,
+                        width_cols,
+                        color: bg,
+                    }) {
+                        background_rects.push(rect);
+                    }
+                }
+                None => {
+                    current = Some(TerminalBackgroundRect {
+                        row,
+                        start_col: col,
+                        width_cols,
+                        color: bg,
+                    });
+                }
+            }
+        }
+        if let Some(rect) = current {
+            background_rects.push(rect);
         }
     }
 
     fn prepare_row_text(
         &self,
         row: usize,
-        cells: &[Option<&Cell>],
+        cells: &[TerminalIndexedCell],
         colors: &Colors,
         text_runs: &mut Vec<TerminalTextRun>,
     ) {
         let mut current_run: Option<TerminalTextRun> = None;
         let mut pending_spaces = 0usize;
-        for (col, cell) in cells.iter().enumerate() {
-            let Some(cell) = cell else {
+        let mut next_col = 0usize;
+        for indexed in cells {
+            let col = indexed.point.column.0;
+            let cell = &indexed.cell;
+            if col > next_col {
                 pending_spaces = 0;
-                continue;
-            };
+            }
             if cell.flags.contains(Flags::WIDE_CHAR_SPACER) || cell.c == '\0' {
                 pending_spaces = 0;
+                next_col = col.saturating_add(1);
                 continue;
             }
             if cell.c == ' ' {
                 if current_run.is_some() {
                     pending_spaces += 1;
                 }
+                next_col = col.saturating_add(1);
                 continue;
             }
 
             let (fg, _) = self.cell_render_colors(cell, colors);
             let font = self.font(
-                if cell.flags.contains(Flags::BOLD) {
-                    FontWeight::SEMIBOLD
-                } else {
-                    FontWeight::NORMAL
-                },
-                if cell.flags.contains(Flags::ITALIC) {
-                    FontStyle::Italic
-                } else {
-                    FontStyle::Normal
-                },
+                cell.flags.contains(Flags::BOLD),
+                cell.flags.contains(Flags::ITALIC),
             );
             let text = cell.c.to_string();
             let run = TextRun {
@@ -3222,6 +3471,7 @@ impl TerminalRenderer {
                 current_run = Some(TerminalTextRun::new(row, col, cell.c, cell_width, run));
             }
             pending_spaces = 0;
+            next_col = col.saturating_add(cell_width);
         }
 
         if let Some(current) = current_run {
@@ -3336,7 +3586,7 @@ impl TerminalRenderer {
         let bg = self.palette.background;
         let run = TextRun {
             len: marked_text.len(),
-            font: self.font(FontWeight::NORMAL, FontStyle::Normal),
+            font: self.font(false, false),
             color: fg,
             background_color: None,
             underline: Some(UnderlineStyle {
@@ -3383,8 +3633,6 @@ struct TerminalTextRun {
 impl TerminalTextRun {
     fn new(row: usize, start_col: usize, c: char, width_cols: usize, style: TextRun) -> Self {
         let mut hasher = DefaultHasher::new();
-        row.hash(&mut hasher);
-        start_col.hash(&mut hasher);
         c.hash(&mut hasher);
         Self {
             row,

@@ -681,7 +681,7 @@ fn project_row(
                         .child(
                             div()
                                 .relative()
-                                .child(project_icon(&project, active))
+                                .child(project_icon(&project, active, true))
                                 .when(activity_state.is_active(), |this| {
                                     this.child(project_activity_badge(activity_state, cx))
                                 }),
@@ -737,7 +737,7 @@ fn project_row(
                 .child(
                     div()
                         .relative()
-                        .child(project_icon(&project, active))
+                        .child(project_icon(&project, active, false))
                         .when(activity_state.is_active(), |this| {
                             this.child(project_activity_badge(activity_state, cx))
                         }),
@@ -871,7 +871,7 @@ fn project_activity_badge(
     }
 }
 
-fn project_icon(project: &ProjectInfo, active: bool) -> impl IntoElement {
+fn project_icon(project: &ProjectInfo, active: bool, collapsed: bool) -> impl IntoElement {
     let (background, _accent, text) = match project
         .badge_color_hex
         .as_deref()
@@ -885,10 +885,11 @@ fn project_icon(project: &ProjectInfo, active: bool) -> impl IntoElement {
         .as_deref()
         .and_then(project_badge_symbol_icon);
     let badge = project_badge_label(project);
+    let size = if collapsed { 36.0 } else { 38.0 };
 
     div()
-        .w(px(36.0))
-        .h(px(36.0))
+        .w(px(size))
+        .h(px(size))
         .rounded(px(8.0))
         .flex()
         .items_center()
@@ -904,8 +905,57 @@ fn project_icon(project: &ProjectInfo, active: bool) -> impl IntoElement {
                 .size_4()
                 .text_color(color(text))
                 .into_any_element(),
-            None => div().child(badge).into_any_element(),
+            None => project_badge_text_element(&badge, text),
         })
+}
+
+fn project_badge_text_element(badge: &str, text_color: u32) -> AnyElement {
+    let chars = badge.chars().take(4).collect::<Vec<_>>();
+    let len = chars.len();
+    let text_size = match len {
+        0 | 1 => rems(0.875),
+        2 => rems(0.6875),
+        _ => rems(0.5625),
+    };
+
+    let content = if len <= 2 {
+        div()
+            .text_size(text_size)
+            .line_height(rems(1.0))
+            .child(chars.into_iter().collect::<String>())
+            .into_any_element()
+    } else {
+        let first_line_len = if len == 3 { 1 } else { 2 };
+        let first = chars
+            .iter()
+            .take(first_line_len)
+            .copied()
+            .collect::<String>();
+        let second = chars
+            .iter()
+            .skip(first_line_len)
+            .copied()
+            .collect::<String>();
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .text_size(text_size)
+            .line_height(rems(0.625))
+            .child(div().child(first))
+            .child(div().child(second))
+            .into_any_element()
+    };
+
+    div()
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_color(color(text_color))
+        .font_weight(FontWeight::BOLD)
+        .child(content)
+        .into_any_element()
 }
 
 fn project_icon_palette(key: &str, active: bool) -> (u32, u32, u32) {
@@ -990,7 +1040,7 @@ fn project_badge_label(project: &ProjectInfo) -> String {
     if badge.is_empty() {
         return project_initial(&project.name);
     }
-    badge.chars().take(2).collect::<String>().to_uppercase()
+    badge.chars().take(4).collect::<String>().to_uppercase()
 }
 
 fn project_initial(name: &str) -> String {
@@ -1020,7 +1070,13 @@ mod tests {
     #[test]
     fn project_badge_label_prefers_runtime_badge() {
         assert_eq!(project_badge_label(&project_with_badge("cd")), "CD");
+        assert_eq!(project_badge_label(&project_with_badge("abcd")), "ABCD");
+        assert_eq!(project_badge_label(&project_with_badge("abcde")), "ABCD");
         assert_eq!(project_badge_label(&project_with_badge("项目")), "项目");
+        assert_eq!(
+            project_badge_label(&project_with_badge("用户中心")),
+            "用户中心"
+        );
         assert_eq!(project_badge_label(&project_with_badge(" ")), "P");
     }
 

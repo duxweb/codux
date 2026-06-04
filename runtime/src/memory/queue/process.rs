@@ -90,6 +90,38 @@ impl MemoryService {
         }
     }
 
+    pub async fn process_memory_extraction_queue_limited(
+        &self,
+        settings: &AISettings,
+        projects: &[ProjectWorkspaceRecord],
+        limit: usize,
+    ) -> Result<MemoryExtractionStatusSnapshot, String> {
+        let limit = limit.max(1);
+        let mut processed = 0_usize;
+        loop {
+            match self
+                .process_next_memory_extraction_task(settings, projects)
+                .await
+            {
+                Ok(status) => {
+                    processed += 1;
+                    if status.pending_count > 0 && processed < limit {
+                        tokio::time::sleep(MEMORY_EXTRACTION_TASK_INTERVAL).await;
+                        continue;
+                    }
+                    return Ok(status);
+                }
+                Err(error) if should_stop_memory_queue_after_error(&error) => return Err(error),
+                Err(_) if self.has_pending_extraction_task()? && processed + 1 < limit => {
+                    processed += 1;
+                    tokio::time::sleep(MEMORY_EXTRACTION_TASK_INTERVAL).await;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
     async fn process_extraction_task(
         &self,
         settings: &AISettings,
@@ -101,31 +133,33 @@ impl MemoryService {
         let provider = select_memory_provider(settings, Some(&task.tool))
             .cloned()
             .ok_or_else(|| "No available AI provider is configured.".to_string())?;
-        let transcript = resolve_transcript_for_task(&task, &project)?;
-        let (user_summary, user_memories, project_memories) =
-            self.extraction_prompt_context(&settings.memory, &task.project_id, &transcript)?;
-        let prompt = make_extraction_prompt(
-            &transcript,
-            user_summary.as_ref(),
-            &user_memories,
-            &project_memories,
-            &project.project_name,
-            &settings.memory,
-        );
-        let response_text = llm::complete_with_provider_options(
-            &provider,
-            &prompt,
-            Some(extraction_system_prompt()),
-            llm::LLMProviderCompletionOptions {
-                max_tokens: 4096,
-                temperature: 0.1,
-                preserve_formatting: true,
-                json_response: true,
-                timeout_seconds: 120,
-            },
-        )
-        .await
-        .map_err(|error| format!("{} failed: {}", provider_summary(&provider), error))?;
+        let response_text = {
+            let transcript = resolve_transcript_for_task(&task, &project)?;
+            let (user_summary, user_memories, project_memories) =
+                self.extraction_prompt_context(&settings.memory, &task.project_id, &transcript)?;
+            let prompt = make_extraction_prompt(
+                &transcript,
+                user_summary.as_ref(),
+                &user_memories,
+                &project_memories,
+                &project.project_name,
+                &settings.memory,
+            );
+            llm::complete_with_provider_options(
+                &provider,
+                &prompt,
+                Some(extraction_system_prompt()),
+                llm::LLMProviderCompletionOptions {
+                    max_tokens: 4096,
+                    temperature: 0.1,
+                    preserve_formatting: true,
+                    json_response: true,
+                    timeout_seconds: 120,
+                },
+            )
+            .await
+            .map_err(|error| format!("{} failed: {}", provider_summary(&provider), error))?
+        };
         let response = decode_extraction_response(&response_text)?;
         let project_info = ProjectInfo {
             id: project.project_id.clone(),

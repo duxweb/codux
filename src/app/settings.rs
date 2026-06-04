@@ -197,7 +197,7 @@ impl CoduxApp {
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .bg(cx.theme().tab_bar)
+                    .bg(color(theme::BG_COLUMN))
                     .child(
                         div()
                             .h(px(68.0))
@@ -1155,7 +1155,11 @@ fn theme_preview_button(
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
     let preview = terminal_theme_preview(value);
-    let label = settings_text(language, terminal_theme_label_key(value), label);
+    let label = if value == "Auto" {
+        settings_text(language, "settings.theme.system", label)
+    } else {
+        label.to_string()
+    };
     let tile_id = format!("settings-theme-preview-{value}");
     settings_selectable_tile(
         tile_id,
@@ -1223,9 +1227,9 @@ fn theme_color_grid(selected: &str, cx: &mut Context<CoduxApp>) -> AnyElement {
                 value,
                 div()
                     .relative()
-                    .size(px(20.0))
+                    .size(px(28.0))
                     .rounded_full()
-                    .border_2()
+                    .border(px(3.0))
                     .border_color(color(if selected {
                         0xFFFFFF
                     } else {
@@ -2797,7 +2801,7 @@ fn shortcut_definitions() -> Vec<ShortcutDefinition> {
         ShortcutDefinition {
             id: "close.active",
             label_key: "shortcut.close.active",
-            fallback: "Close Current Project",
+            fallback: "Close Current Split",
             default_value: primary_static(primary, "W"),
         },
         ShortcutDefinition {
@@ -2840,7 +2844,7 @@ fn shortcut_definitions() -> Vec<ShortcutDefinition> {
             id: "terminal.split.create",
             label_key: "settings.shortcut.create_split",
             fallback: "Create Split",
-            default_value: primary_static(primary, "Shift+Backslash"),
+            default_value: primary_static(primary, "T"),
         },
         ShortcutDefinition {
             id: "terminal.tab.create",
@@ -2862,6 +2866,7 @@ fn primary_static(primary: &str, key: &str) -> &'static str {
         ("⌘", ",") => "⌘,",
         ("⌘", "S") => "⌘S",
         ("⌘", "F") => "⌘F",
+        ("⌘", "T") => "⌘T",
         ("⌘", "W") => "⌘W",
         ("⌘", "Alt+P") => "⌘⌥P",
         ("⌘", "Alt+T") => "⌘⌥T",
@@ -2880,6 +2885,7 @@ fn primary_static(primary: &str, key: &str) -> &'static str {
         (_, ",") => "Ctrl+,",
         (_, "S") => "Ctrl+S",
         (_, "F") => "Ctrl+F",
+        (_, "T") => "Ctrl+T",
         (_, "W") => "Ctrl+W",
         (_, "Alt+P") => "Ctrl+Alt+P",
         (_, "Alt+T") => "Ctrl+Alt+T",
@@ -3729,33 +3735,41 @@ fn system_theme_options() -> Vec<(&'static str, &'static str)> {
 
 fn dark_theme_options() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("Tokyo Night Storm", "Tokyo Storm"),
-        ("Tokyo Night Night", "Tokyo Night"),
-        ("Catppuccin Mocha", "Mocha"),
-        ("Rose Pine Moon", "Rose Pine"),
-        ("Kanagawa Wave", "Kanagawa"),
-        ("Material Ocean", "Ocean"),
-        ("Ayu Mirage", "Ayu"),
-        ("Dracula", "Dracula"),
-        ("Dracula+", "Dracula+"),
+        ("2017 Dark", "2017 Dark"),
         ("GitHub Dark", "GitHub Dark"),
-        ("Gruvbox Dark", "Gruvbox"),
-        ("Gruvbox Material Dark", "Gruvbox Material"),
-        ("Nord", "Nord"),
-        ("Flexoki Dark", "Flexoki Dark"),
+        ("One Dark Pro", "One Dark Pro"),
+        ("Dracula", "Dracula"),
+        ("Atom One Dark", "Atom One Dark"),
+        ("Material Theme", "Material Theme"),
+        ("Ayu Dark", "Ayu Dark"),
+        ("Monokai Pro", "Monokai Pro"),
+        ("Winter is Coming Dark Blue", "Winter is Coming Dark Blue"),
+        ("Night Owl", "Night Owl"),
+        ("One Monokai", "One Monokai"),
+        ("Tokyo Night", "Tokyo Night"),
+        ("Palenight", "Palenight"),
+        ("SynthWave '84", "SynthWave '84"),
+        ("Shades of Purple", "Shades of Purple"),
     ]
 }
 
 fn light_theme_options() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("Tokyo Night Day", "Tokyo Day"),
+        ("2017 Light", "2017 Light"),
+        ("PowerShell ISE", "PowerShell ISE"),
         ("GitHub Light", "GitHub Light"),
-        ("Catppuccin Latte", "Latte"),
-        ("Flexoki Light", "Flexoki Light"),
-        ("Gruvbox Light", "Gruvbox Light"),
-        ("Gruvbox Material Light", "Gruvbox Material"),
-        ("Nord Light", "Nord Light"),
-        ("Atom One Light", "Atom One"),
+        ("Material Theme Lighter", "Material Theme Lighter"),
+        ("Ayu Light", "Ayu Light"),
+        ("Monokai Pro Light", "Monokai Pro Light"),
+        ("Winter is Coming Light", "Winter is Coming Light"),
+        ("Night Owl Light", "Night Owl Light"),
+        ("Tokyo Night Light", "Tokyo Night Light"),
+        ("Atom One Light", "Atom One Light"),
+        ("Noctis Hibernus", "Noctis Hibernus"),
+        ("Catppuccin Latte", "Catppuccin Latte"),
+        ("Gruvbox Light Medium", "Gruvbox Light Medium"),
+        ("Eva Light", "Eva Light"),
+        ("Spinel Light", "Spinel Light"),
     ]
 }
 
@@ -3766,35 +3780,6 @@ fn terminal_theme_preview(value: &str) -> TerminalThemePreview {
         foreground: palette.foreground,
         muted_foreground: palette.muted_foreground,
         selection: palette.selection,
-    }
-}
-
-fn terminal_theme_label_key(value: &str) -> &'static str {
-    match value {
-        "Auto" => "settings.theme.system",
-        "Atom One Light" => "settings.terminal_theme.preset.atom_one_light",
-        "Ayu Mirage" => "settings.terminal_theme.preset.ayu_mirage",
-        "Catppuccin Latte" => "settings.terminal_theme.preset.catppuccin_latte",
-        "Catppuccin Mocha" => "settings.terminal_theme.preset.catppuccin_mocha",
-        "Dracula" => "settings.terminal_theme.preset.dracula",
-        "Dracula+" => "settings.terminal_theme.preset.dracula_plus",
-        "Flexoki Dark" => "settings.terminal_theme.preset.flexoki_dark",
-        "Flexoki Light" => "settings.terminal_theme.preset.flexoki_light",
-        "GitHub Dark" => "settings.terminal_theme.preset.github_dark",
-        "GitHub Light" => "settings.terminal_theme.preset.github_light",
-        "Gruvbox Dark" => "settings.terminal_theme.preset.gruvbox_dark",
-        "Gruvbox Light" => "settings.terminal_theme.preset.gruvbox_light",
-        "Gruvbox Material Dark" => "settings.terminal_theme.preset.gruvbox_material_dark",
-        "Gruvbox Material Light" => "settings.terminal_theme.preset.gruvbox_material_light",
-        "Kanagawa Wave" => "settings.terminal_theme.preset.kanagawa_wave",
-        "Material Ocean" => "settings.terminal_theme.preset.material_ocean",
-        "Nord" => "settings.terminal_theme.preset.nord",
-        "Nord Light" => "settings.terminal_theme.preset.nord_light",
-        "Rose Pine Moon" => "settings.terminal_theme.preset.rose_pine_moon",
-        "Tokyo Night Day" => "settings.terminal_theme.preset.tokyonight_day",
-        "Tokyo Night Night" => "settings.terminal_theme.preset.tokyonight_night",
-        "Tokyo Night Storm" => "settings.terminal_theme.preset.tokyonight_storm",
-        _ => "settings.terminal_theme",
     }
 }
 

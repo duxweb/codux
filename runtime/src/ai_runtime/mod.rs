@@ -28,8 +28,8 @@ pub use constants::{
 };
 pub use frame::{opencode_runtime_to_hook, runtime_frame_to_hook};
 pub use hooks::{
-    hook_config_status, install_managed_hook_configs, opencode_hook_config_status,
-    tool_hook_config_status,
+    hook_config_status, hook_config_status_in, install_managed_hook_configs,
+    install_managed_hook_configs_in, opencode_hook_config_status, tool_hook_config_status,
 };
 pub use log::{reset_runtime_live_log, runtime_log_line};
 pub use paths::{runtime_event_dir, runtime_live_log_path, runtime_root_dir};

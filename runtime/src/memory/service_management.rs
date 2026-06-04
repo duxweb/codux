@@ -1,4 +1,33 @@
 impl MemoryService {
+    pub fn retry_failed_extraction_task(
+        &self,
+        task_id: &str,
+    ) -> Result<MemoryExtractionStatusSnapshot, String> {
+        let task_id = task_id.trim();
+        if task_id.is_empty() {
+            return Err("Memory extraction task id is empty.".to_string());
+        }
+        self.ensure_queue_schema()?;
+        let conn = self.open_connection()?;
+        let changed = conn
+            .execute(
+                r#"
+                UPDATE memory_extraction_queue
+                SET status = 'pending',
+                    error = NULL,
+                    enqueued_at = ?2
+                WHERE id = ?1
+                  AND status = 'failed';
+                "#,
+                params![task_id, now_seconds()],
+            )
+            .map_err(|error| error.to_string())?;
+        if changed == 0 {
+            return Err("Failed memory extraction task not found.".to_string());
+        }
+        self.extraction_status_snapshot()
+    }
+
     pub fn set_entry_status(
         &self,
         project_id: Option<&str>,
@@ -160,10 +189,16 @@ impl MemoryService {
         let target_rows = manager_target_rows(conn, projects)?;
         let selected_target_title = selected_memory_target_title(&target_rows, scope, project_id);
         let current_overview = memory_scope_overview(conn, scope, project_id)?;
-        let (entries, summaries) = match tab {
+        let (entries, summaries, failed_extractions) = match tab {
             "summary" => (
                 Vec::new(),
                 list_summaries_for_management(conn, scope, project_id)?,
+                Vec::new(),
+            ),
+            "failed" => (
+                Vec::new(),
+                Vec::new(),
+                self.failed_extraction_tasks(project_id, limit)?,
             ),
             "history" => (
                 list_entries_for_management(
@@ -175,9 +210,11 @@ impl MemoryService {
                     limit,
                 )?,
                 Vec::new(),
+                Vec::new(),
             ),
             _ => (
                 list_entries_for_management(conn, scope, project_id, None, Some("active"), limit)?,
+                Vec::new(),
                 Vec::new(),
             ),
         };
@@ -194,6 +231,7 @@ impl MemoryService {
             project_profile,
             entries,
             summaries,
+            failed_extractions,
             extraction: MemoryExtractionSummary {
                 queued: count_queue(conn, &["queued", "pending"])?,
                 running: count_queue(conn, &["running"])?,

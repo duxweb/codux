@@ -378,14 +378,30 @@ mod tests {
     }
 
     #[test]
-    fn project_badge_text_uses_first_two_non_space_chars() {
+    fn project_badge_text_uses_up_to_four_project_name_chars() {
         assert_eq!(
             project_badge_text_from_name(" Codux GPUI "),
-            Some("CO".to_string())
+            Some("CG".to_string())
+        );
+        assert_eq!(
+            project_badge_text_from_name("getUserInfo"),
+            Some("GUI".to_string())
+        );
+        assert_eq!(
+            project_badge_text_from_name("wx-pay-api"),
+            Some("WPA".to_string())
+        );
+        assert_eq!(
+            project_badge_text_from_name("codux"),
+            Some("CODU".to_string())
         );
         assert_eq!(
             project_badge_text_from_name("项目"),
             Some("项目".to_string())
+        );
+        assert_eq!(
+            project_badge_text_from_name("用户中心"),
+            Some("用户中心".to_string())
         );
         assert_eq!(project_badge_text_from_name("  "), None);
     }
@@ -470,9 +486,9 @@ mod tests {
         ));
         assert!(shortcut_matches(&shortcuts, "panel.git", default_git_panel));
         let default_terminal_split = if cfg!(target_os = "macos") {
-            "⌘⇧\\"
+            "⌘T"
         } else {
-            "Ctrl+Shift+\\"
+            "Ctrl+T"
         };
         assert!(shortcut_matches(
             &shortcuts,

@@ -7,16 +7,56 @@ use gpui_component::{
     dialog::DialogFooter,
     input::{Input, InputState},
 };
-use std::{ops::Range, rc::Rc};
+use std::{ops::Range, rc::Rc, time::Duration};
 
 use crate::app::workspace_pet_widgets::workspace_pet_install_form;
 
 impl CoduxApp {
-    pub(in crate::app) fn open_pet_claim_window(
-        &mut self,
+    fn defer_open_pet_window(
         _window: &mut Window,
         cx: &mut Context<Self>,
+        open: impl FnOnce(&mut CoduxApp, &mut Context<CoduxApp>) + 'static,
     ) {
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(16))
+                .await;
+            this.update(cx, |app, cx| open(app, cx)).ok();
+        })
+        .detach();
+    }
+
+    pub(in crate::app) fn defer_open_pet_claim_window(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        Self::defer_open_pet_window(window, cx, |app, cx| {
+            app.open_pet_claim_window(cx);
+        });
+    }
+
+    pub(in crate::app) fn defer_open_pet_custom_install_window(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        Self::defer_open_pet_window(window, cx, |app, cx| {
+            app.open_pet_custom_install_window(cx);
+        });
+    }
+
+    pub(in crate::app) fn defer_open_pet_dex_window(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        Self::defer_open_pet_window(window, cx, |app, cx| {
+            app.open_pet_dex_window(cx);
+        });
+    }
+
+    pub(in crate::app) fn open_pet_claim_window(&mut self, cx: &mut Context<Self>) {
         self.open_pet_window(
             AppWindowMode::PetClaim,
             "Claim Pet",
@@ -26,11 +66,7 @@ impl CoduxApp {
         );
     }
 
-    pub(in crate::app) fn open_pet_custom_install_window(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(in crate::app) fn open_pet_custom_install_window(&mut self, cx: &mut Context<Self>) {
         self.open_pet_window(
             AppWindowMode::PetCustomInstall,
             "Add Custom Pet",
@@ -43,11 +79,7 @@ impl CoduxApp {
         );
     }
 
-    pub(in crate::app) fn open_pet_dex_window(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(in crate::app) fn open_pet_dex_window(&mut self, cx: &mut Context<Self>) {
         self.open_pet_window(
             AppWindowMode::PetDex,
             "Petdex",
@@ -252,6 +284,7 @@ impl CoduxApp {
             .iter()
             .find(|item| item.species == selected_species)
             .cloned();
+        let preview_sprite_frame = self.visible_pet_sprite_frame(PET_IDLE_FRAME_COUNT);
 
         child_window_shell(
             pet_catalog_text(&language, "pet.claim.window.title", "Claim Pet"),
@@ -332,6 +365,7 @@ impl CoduxApp {
                             &self.pet_custom_pets,
                             selected_catalog_item.as_ref(),
                             &language,
+                            preview_sprite_frame,
                             cx,
                         )))
                         .child(div().px(px(20.0)).pb(px(16.0)).child(
@@ -340,15 +374,6 @@ impl CoduxApp {
                 ),
         )
         .child(pet_footer_bar(pet_dialog_footer(vec![
-            pet_footer_button(
-                "pet-claim-open-custom-install",
-                pet_catalog_text(&language, "pet.custom.install.action", "Add Custom Pet"),
-                HeroIconName::Plus,
-                false,
-                cx,
-                |app, _event, window, cx| app.open_pet_custom_install_window(window, cx),
-            )
-            .into_any_element(),
             pet_cancel_button("pet-claim-cancel", &language, cx).into_any_element(),
             pet_footer_button(
                 "pet-claim-confirm",
@@ -501,7 +526,7 @@ impl CoduxApp {
                 HeroIconName::Heart,
                 true,
                 cx,
-                |app, _event, window, cx| app.open_pet_claim_window(window, cx),
+                |app, _event, window, cx| app.defer_open_pet_claim_window(window, cx),
             )
             .into_any_element()
         };
@@ -511,7 +536,7 @@ impl CoduxApp {
             HeroIconName::Plus,
             true,
             cx,
-            |app, _event, window, cx| app.open_pet_custom_install_window(window, cx),
+            |app, _event, window, cx| app.defer_open_pet_custom_install_window(window, cx),
         )
         .into_any_element();
 
@@ -1433,6 +1458,7 @@ fn pet_select_row(
         .child(
             div()
                 .min_w_0()
+                .flex_1()
                 .child(
                     div()
                         .text_size(rems(0.8125))
@@ -1512,6 +1538,7 @@ fn pet_claim_preview(
     custom_pets: &[PetCustomPet],
     catalog_item: Option<&PetCatalogItem>,
     language: &str,
+    sprite_frame: usize,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let sprite_path = pet_sprite_path(runtime_asset_root, support_dir, pet, custom_pets);
@@ -1569,15 +1596,7 @@ fn pet_claim_preview(
                         .text_color(cx.theme().primary)
                         .into_any_element()
                 } else {
-                    pet_sprite_element(
-                        sprite_path,
-                        92.0,
-                        cx.entity()
-                            .read(cx)
-                            .visible_pet_sprite_frame(PET_IDLE_FRAME_COUNT),
-                        0,
-                        cx.theme().primary,
-                    )
+                    pet_sprite_element(sprite_path, 92.0, sprite_frame, 0, cx.theme().primary)
                 }),
         )
         .child(
@@ -2221,7 +2240,10 @@ fn pet_dex_archive_confirm_overlay(language: &str, cx: &mut Context<CoduxApp>) -
                                 .compact()
                                 .ghost()
                                 .text_color(cx.theme().secondary_foreground)
-                                .label(pet_catalog_text(&language, "common.cancel", "Cancel"))
+                                .child(pet_button_label(
+                                    pet_catalog_text(&language, "common.cancel", "Cancel"),
+                                    cx.theme().secondary_foreground,
+                                ))
                                 .on_click(cx.listener(|app, _event, _window, cx| {
                                     app.close_pet_dex_spotlight(cx)
                                 })),
@@ -2231,10 +2253,13 @@ fn pet_dex_archive_confirm_overlay(language: &str, cx: &mut Context<CoduxApp>) -
                                 .compact()
                                 .primary()
                                 .text_color(cx.theme().primary_foreground)
-                                .label(pet_catalog_text(
-                                    &language,
-                                    "pet.archive.confirm",
-                                    "Confirm Archive",
+                                .child(pet_button_label(
+                                    pet_catalog_text(
+                                        &language,
+                                        "pet.archive.confirm",
+                                        "Confirm Archive",
+                                    ),
+                                    cx.theme().primary_foreground,
                                 ))
                                 .on_click(cx.listener(|app, _event, window, cx| {
                                     app.archive_current_pet_confirmed(window, cx)

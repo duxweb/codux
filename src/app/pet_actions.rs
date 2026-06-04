@@ -1,5 +1,9 @@
 use super::*;
 
+fn defer_remove_current_window(window: &mut Window, cx: &mut Context<CoduxApp>) {
+    window.defer(cx, |window, _cx| window.remove_window());
+}
+
 impl CoduxApp {
     pub(super) fn new_desktop_pet_window_from_state(
         state: RuntimeState,
@@ -808,7 +812,7 @@ impl CoduxApp {
                         }
                         self.status_message =
                             format!("custom pet claimed: {}", custom_pet.display_name);
-                        window.remove_window();
+                        defer_remove_current_window(window, cx);
                     }
                     Err(error) => {
                         self.status_message = format!("failed to claim custom pet: {error}");
@@ -847,7 +851,7 @@ impl CoduxApp {
                     self.sync_desktop_pet_window(false, cx);
                 }
                 self.status_message = "pet claimed".to_string();
-                window.remove_window();
+                defer_remove_current_window(window, cx);
             }
             Err(error) => self.status_message = format!("failed to claim pet: {error}"),
         }

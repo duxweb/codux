@@ -144,10 +144,10 @@ fn configure_native_window_buttons(window: &mut Window, close_only: bool) {
 
         set_button_hidden(min_button, close_only);
         set_button_hidden(zoom_button, close_only);
-        compact_window_button(close_button);
+        compact_window_button(close_button, close_only);
         if !close_only {
-            compact_window_button(min_button);
-            compact_window_button(zoom_button);
+            compact_window_button(min_button, close_only);
+            compact_window_button(zoom_button, close_only);
         }
     }
 }
@@ -165,7 +165,7 @@ unsafe fn set_button_hidden(button: id, hidden: bool) {
 
 #[cfg(target_os = "macos")]
 #[allow(unexpected_cfgs)]
-unsafe fn compact_window_button(button: id) {
+unsafe fn compact_window_button(button: id, child_window: bool) {
     if button.is_null() {
         return;
     }
@@ -174,7 +174,7 @@ unsafe fn compact_window_button(button: id) {
         let target_size = 10.0;
         frame.origin.x += (frame.size.width - target_size) / 2.0;
         frame.origin.y += (frame.size.height - target_size) / 2.0;
-        frame.origin.y += 5.0;
+        frame.origin.y += if child_window { -4.0 } else { 5.0 };
         frame.size = NSSize::new(target_size, target_size);
         let _: () = msg_send![button, setFrame: frame];
     }

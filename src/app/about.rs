@@ -100,8 +100,8 @@ impl CoduxApp {
             AuxiliaryWindowSpec {
                 slot: AuxiliaryWindowSlot::About,
                 title: SharedString::from("About Codux"),
-                size: size(px(360.0), px(320.0)),
-                min_size: size(px(340.0), px(300.0)),
+                size: size(px(380.0), px(380.0)),
+                min_size: size(px(360.0), px(360.0)),
                 already_open_message: "about window already opened",
                 opened_message: "about window opened",
                 failed_prefix: "failed to open about window",
@@ -161,6 +161,7 @@ impl CoduxApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.memory_status_seen_failed_count = self.state.memory_manager.extraction.failed.max(0);
         self.open_auxiliary_window(
             AuxiliaryWindowSpec {
                 slot: AuxiliaryWindowSlot::MemoryManager,
@@ -444,69 +445,78 @@ impl CoduxApp {
 
     pub(in crate::app) fn export_diagnostics(&mut self, cx: &mut Context<Self>) {
         self.runtime_trace("help", "export_diagnostics choose_destination");
-        let destination =
-            match self
-                .runtime_service
-                .localized_save_dialog(LocalizedSaveDialogRequest {
-                    title: self.text("about.diagnostics.export", "Export Diagnostics"),
-                    message: self.text(
-                        "about.diagnostics.export.message",
-                        "Choose where to save the diagnostics report.",
-                    ),
-                    prompt: self.text("common.save", "Save"),
-                    default_path: Some(format!("codux-diagnostics-{}.json", timestamp_slug())),
-                    filters: vec![DialogFilter {
-                        _name: "JSON".to_string(),
-                        extensions: vec!["json".to_string()],
-                    }],
-                    can_create_directories: Some(true),
-                }) {
-                Ok(Some(path)) => path,
-                Ok(None) => {
-                    self.status_message = "diagnostics export canceled".to_string();
-                    self.invalidate_status_bar(cx);
-                    return;
-                }
-                Err(error) => {
-                    self.status_message = format!("failed to choose diagnostics path: {error}");
-                    self.invalidate_status_bar(cx);
-                    return;
-                }
-            };
-
-        let about = self
-            .runtime_service
-            .about_metadata(env!("CARGO_PKG_VERSION"), CODUX_IDENTIFIER);
-        let update = self.runtime_service.update_status(
-            std::env::current_dir().unwrap_or_default(),
-            env!("CARGO_PKG_VERSION"),
-        );
-        match self.runtime_service.export_diagnostics(
-            DiagnosticsExportRequest {
-                destination_path: destination,
-            },
-            about,
-            update,
-        ) {
-            Ok(result) => {
-                self.runtime_trace(
-                    "help",
-                    &format!(
-                        "export_diagnostics success path={} bytes={}",
-                        result.path, result.bytes
-                    ),
-                );
-                self.status_message = format!(
-                    "diagnostics exported: {} ({} bytes)",
-                    result.path, result.bytes
-                );
-            }
-            Err(error) => {
-                self.runtime_trace("help", &format!("export_diagnostics failed error={error}"));
-                self.status_message = format!("failed to export diagnostics: {error}");
-            }
-        }
+        self.status_message = "choosing diagnostics destination".to_string();
         self.invalidate_status_bar(cx);
+
+        let service = self.runtime_service.clone();
+        let save_request = LocalizedSaveDialogRequest {
+            title: self.text("about.diagnostics.export", "Export Diagnostics"),
+            message: self.text(
+                "about.diagnostics.export.message",
+                "Choose where to save the diagnostics report.",
+            ),
+            prompt: self.text("common.save", "Save"),
+            default_path: Some(format!("codux-diagnostics-{}.json", timestamp_slug())),
+            filters: vec![DialogFilter {
+                _name: "JSON".to_string(),
+                extensions: vec!["json".to_string()],
+            }],
+            can_create_directories: Some(true),
+        };
+        let about = service.about_metadata(env!("CARGO_PKG_VERSION"), CODUX_IDENTIFIER);
+        let current_version = env!("CARGO_PKG_VERSION").to_string();
+        let repo_root = std::env::current_dir().unwrap_or_default();
+
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                let Some(destination) = service.localized_save_dialog(save_request)? else {
+                    return Ok(None);
+                };
+                let update = service.update_status(repo_root, &current_version);
+                service
+                    .export_diagnostics(
+                        DiagnosticsExportRequest {
+                            destination_path: destination,
+                        },
+                        about,
+                        update,
+                    )
+                    .map(Some)
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result);
+
+            let _ = this.update(cx, |app, cx| {
+                match result {
+                    Ok(Some(result)) => {
+                        app.runtime_trace(
+                            "help",
+                            &format!(
+                                "export_diagnostics success path={} bytes={}",
+                                result.path, result.bytes
+                            ),
+                        );
+                        app.status_message = format!(
+                            "diagnostics exported: {} ({} bytes)",
+                            result.path, result.bytes
+                        );
+                    }
+                    Ok(None) => {
+                        app.status_message = "diagnostics export canceled".to_string();
+                    }
+                    Err(error) => {
+                        app.runtime_trace(
+                            "help",
+                            &format!("export_diagnostics failed error={error}"),
+                        );
+                        app.status_message = format!("failed to export diagnostics: {error}");
+                    }
+                }
+                app.invalidate_status_bar(cx);
+            });
+        })
+        .detach();
     }
 
     fn show_update_test_available(&mut self, window: &mut Window, cx: &mut Context<Self>) {

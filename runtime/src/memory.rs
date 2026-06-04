@@ -19,7 +19,7 @@ pub use apply::{
 pub use extraction::{MemoryKind, MemoryScope, MemoryTier};
 pub use launch::launch_artifact_paths;
 use launch::{render_launch_memory_index, render_recent_memory};
-pub use manual::MemoryManualEnqueueResult;
+pub use manual::MemoryExtractionEnqueueResult;
 use queries::*;
 pub use queue::{
     MemoryEnqueueResult, MemoryExtractionStatus, MemoryExtractionStatusSnapshot,

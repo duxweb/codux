@@ -525,6 +525,7 @@ pub(in crate::app) fn memory_manager_window_workspace(
     let summary_tab = ai_sidebar_text(language, "memory.manager.tab.summary", "Summary");
     let memories_tab = ai_sidebar_text(language, "memory.manager.tab.active", "Memories");
     let history_tab = ai_sidebar_text(language, "memory.manager.tab.history", "History");
+    let failed_tab = ai_sidebar_text(language, "memory.manager.tab.failed", "Failed");
     let empty_entries = ai_sidebar_text(
         language,
         "memory.manager.empty.entries",
@@ -534,6 +535,11 @@ pub(in crate::app) fn memory_manager_window_workspace(
         language,
         "memory.manager.empty.summary",
         "No summary memory",
+    );
+    let empty_failed = ai_sidebar_text(
+        language,
+        "memory.manager.empty.failed",
+        "No failed memory tasks",
     );
     let selected_target_title = if selected_scope == "user" {
         ai_sidebar_text(language, "memory.manager.user_memory", "User Memory")
@@ -566,6 +572,7 @@ pub(in crate::app) fn memory_manager_window_workspace(
         project_profile_refreshing,
         empty_entries,
         empty_summary,
+        empty_failed,
         language,
         window,
         cx,
@@ -762,6 +769,12 @@ pub(in crate::app) fn memory_manager_window_workspace(
                                             MemoryManagerTab::History,
                                             active_tab,
                                             cx,
+                                        ))
+                                        .child(ai_memory_manager_tab_button(
+                                            failed_tab,
+                                            MemoryManagerTab::Failed,
+                                            active_tab,
+                                            cx,
                                         )),
                                 ),
                         )
@@ -864,6 +877,7 @@ fn ai_memory_manager_window_content(
     project_profile_refreshing: bool,
     empty_entries: String,
     empty_summary: String,
+    empty_failed: String,
     language: &str,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
@@ -907,6 +921,21 @@ fn ai_memory_manager_window_content(
                 )
                 .into_any_element()
             }))
+            .into_any_element();
+    }
+
+    if active_tab == MemoryManagerTab::Failed {
+        if manager.failed_extractions.is_empty() {
+            return content
+                .child(ai_memory_manager_empty_row(empty_failed, cx))
+                .into_any_element();
+        }
+        return content
+            .children(
+                manager.failed_extractions.iter().cloned().map(|task| {
+                    ai_memory_failed_extraction_row(task, language, cx).into_any_element()
+                }),
+            )
             .into_any_element();
     }
 
@@ -1615,6 +1644,97 @@ fn ai_memory_manager_entry_row(
         .when_some(entry.last_decision.clone(), |this, decision| {
             this.child(ai_memory_decision_row(decision, language))
         })
+}
+
+fn ai_memory_failed_extraction_row(
+    task: codux_runtime::memory::MemoryExtractionTask,
+    language: &str,
+    cx: &mut Context<CoduxApp>,
+) -> impl IntoElement {
+    let retry_id = task.id.clone();
+    let title = if task.session_id.trim().is_empty() {
+        task.tool.clone()
+    } else {
+        format!("{} · {}", task.tool, task.session_id)
+    };
+    let subtitle = task
+        .workspace_path
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| task.project_id.clone());
+    let error = task
+        .error
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| {
+            ai_sidebar_text(language, "memory.manager.failed.unknown", "Unknown error")
+        });
+
+    div()
+        .id(SharedString::from(format!(
+            "ai-memory-manager-failed-{}",
+            task.id
+        )))
+        .mb(px(10.0))
+        .rounded(px(8.0))
+        .px(px(14.0))
+        .py(px(12.0))
+        .bg(ai_stats_surface(cx))
+        .child(
+            div()
+                .flex()
+                .items_start()
+                .justify_between()
+                .gap_3()
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .child(
+                            div()
+                                .truncate()
+                                .text_size(rems(0.875))
+                                .line_height(rems(1.125))
+                                .text_color(color(theme::TEXT))
+                                .child(title),
+                        )
+                        .child(
+                            div()
+                                .mt(px(4.0))
+                                .truncate()
+                                .text_size(rems(0.75))
+                                .line_height(rems(1.0))
+                                .text_color(color(theme::TEXT_MUTED))
+                                .child(subtitle),
+                        ),
+                )
+                .child(ai_memory_row_icon_button(
+                    format!("ai-memory-manager-retry-{retry_id}"),
+                    HeroIconName::ArrowPath,
+                    ai_sidebar_text(language, "memory.manager.failed.retry", "Retry"),
+                    cx,
+                    move |app, _event, window, cx| {
+                        app.retry_failed_memory_extraction(retry_id.clone(), window, cx)
+                    },
+                )),
+        )
+        .child(
+            div()
+                .mt(px(10.0))
+                .w_full()
+                .text_size(rems(0.75))
+                .line_height(rems(1.125))
+                .text_color(color(0xF47C7C))
+                .child(error),
+        )
+        .child(
+            div()
+                .mt(px(7.0))
+                .text_size(rems(0.75))
+                .line_height(rems(1.0))
+                .text_color(color(theme::TEXT_DIM))
+                .child(memory_date_label(task.enqueued_at)),
+        )
 }
 
 fn ai_memory_decision_row(

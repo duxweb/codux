@@ -1034,6 +1034,7 @@ impl CoduxApp {
             .runtime_service
             .drain_ai_runtime_events_and_enqueue_memory();
         self.dispatch_ai_completion_notifications(&drained.events);
+        self.refresh_dock_badge_for_ai_runtime_events(&drained.events, cx);
         self.ai_runtime_state_save_tick = self.ai_runtime_state_save_tick.wrapping_add(1);
         let should_refresh_ai_state = include_scheduled_tick
             || !drained.events.is_empty()
@@ -1070,7 +1071,7 @@ impl CoduxApp {
             if self.state.memory_manager.extraction.queued > 0
                 || self.state.memory_manager.extraction.running > 0
             {
-                self.start_memory_extraction_status_refresh(cx);
+                self.process_queued_memory_extraction_async(cx);
             }
         }
         let changed = applied_project_events > 0
@@ -1141,6 +1142,7 @@ impl CoduxApp {
         }
 
         self.dispatch_ai_completion_notifications(&drained.events);
+        self.refresh_dock_badge_for_ai_runtime_events(&drained.events, cx);
         let previous_project_states = self.state.ai_runtime_state.project_states.clone();
         let live_ai_snapshot = self.runtime_service.ai_runtime_state_snapshot();
         self.state.ai_runtime_state = self
@@ -1163,7 +1165,7 @@ impl CoduxApp {
             if self.state.memory_manager.extraction.queued > 0
                 || self.state.memory_manager.extraction.running > 0
             {
-                self.start_memory_extraction_status_refresh(cx);
+                self.process_queued_memory_extraction_async(cx);
             }
         }
 
@@ -1239,9 +1241,15 @@ impl CoduxApp {
                 } else {
                     translate(&locale, "ai.notification.task_completed", "Task completed")
                 };
+                let project_name = completion.project_name.trim();
+                let native_title = if project_name.is_empty() {
+                    "Codux".to_string()
+                } else {
+                    project_name.to_string()
+                };
                 let body = completion.project_name.clone();
                 let group = "codux-task";
-                if let Err(error) = service.show_native_notification(&title, &body, group) {
+                if let Err(error) = service.show_native_notification(&native_title, &title, group) {
                     service.runtime_trace_frontend(
                         "notification",
                         &format!("native notification failed error={error}"),
@@ -1257,6 +1265,22 @@ impl CoduxApp {
                 }
             });
         }
+    }
+
+    fn refresh_dock_badge_for_ai_runtime_events(
+        &mut self,
+        events: &[codux_runtime::ai_runtime::AIRuntimeSupervisorEvent],
+        cx: &mut Context<Self>,
+    ) {
+        if !events.iter().any(|event| {
+            matches!(
+                event,
+                codux_runtime::ai_runtime::AIRuntimeSupervisorEvent::Completion { .. }
+            )
+        }) {
+            return;
+        }
+        self.refresh_dock_badge_now(cx);
     }
 
     pub(super) fn refresh_global_today_ai_tokens(&mut self) -> bool {
@@ -1593,10 +1617,10 @@ impl CoduxApp {
     }
 
     fn refresh_dock_badge_now(&mut self, cx: &mut Context<Self>) {
-        let window_state = self.runtime_service.app_window_state(true, true);
+        #[cfg(target_os = "macos")]
         let _ = self
             .runtime_service
-            .set_dock_badge_count(window_state.dock_badge_count);
+            .set_dock_badge_count(self.runtime_service.ai_runtime_dock_badge_count());
         self.invalidate_status_bar(cx);
     }
 }

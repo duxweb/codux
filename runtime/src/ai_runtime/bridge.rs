@@ -1,6 +1,8 @@
 use super::{
     assets::{stage_runtime_asset, stage_runtime_dir},
-    hooks::{hook_config_status, install_managed_hook_configs},
+    hooks::{hook_config_status_in, install_managed_hook_configs_in},
+    event_file::clear_runtime_event_dir,
+    log::runtime_log_line,
     paths::runtime_root_dir,
     registry::{AIRuntimeRegistry, AIRuntimeTerminalState},
     supervisor::{AIRuntimeSupervisor, AIRuntimeSupervisorEvent},
@@ -14,9 +16,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-        Mutex,
     },
 };
 
@@ -59,6 +60,7 @@ pub struct AIRuntimeBridge {
     supervisor: Arc<AIRuntimeSupervisor>,
     started: AtomicBool,
     start_lock: Mutex<()>,
+    hook_config_lock: Mutex<()>,
 }
 
 impl AIRuntimeBridge {
@@ -83,16 +85,28 @@ impl AIRuntimeBridge {
             supervisor: Arc::new(AIRuntimeSupervisor::new()),
             started: AtomicBool::new(false),
             start_lock: Mutex::new(()),
+            hook_config_lock: Mutex::new(()),
         }
     }
 
     pub fn prepare(&self) -> Result<(), String> {
         self.stage_assets()?;
-        install_managed_hook_configs(&self.managed_hook_script)
+        self.ensure_hook_configs_installed("prepare")
+    }
+
+    fn ensure_hook_configs_installed(&self, phase: &str) -> Result<(), String> {
+        let _guard = self
+            .hook_config_lock
+            .lock()
+            .map_err(|_| "AI runtime hook config lock poisoned.".to_string())?;
+        install_managed_hook_configs_in(&self.home_dir, &self.managed_hook_script)?;
+        self.log_hook_config_status(phase);
+        Ok(())
     }
 
     pub fn start_event_processing_background(&self) -> Result<(), String> {
         if self.started.load(Ordering::Acquire) {
+            self.ensure_hook_configs_installed("ensure-started")?;
             return Ok(());
         }
         let _guard = self
@@ -100,9 +114,15 @@ impl AIRuntimeBridge {
             .lock()
             .map_err(|_| "AI runtime startup lock poisoned.".to_string())?;
         if self.started.load(Ordering::Acquire) {
+            self.ensure_hook_configs_installed("ensure-started")?;
             return Ok(());
         }
         self.prepare()?;
+        let removed = clear_runtime_event_dir(&self.runtime_event_dir);
+        runtime_log_line(
+            "runtime-startup",
+            &format!("cleared stale runtime event files count={removed}"),
+        );
         self.supervisor
             .start(Arc::clone(&self.registry), self.runtime_event_dir.clone())?;
         self.started.store(true, Ordering::Release);
@@ -280,7 +300,8 @@ impl AIRuntimeBridge {
             runtime_event_dir: self.runtime_event_dir.display().to_string(),
             wrapper_bin_path: self.wrapper_bin_dir.display().to_string(),
             managed_hook_script_path: self.managed_hook_script.display().to_string(),
-            hook_config: hook_config_status(
+            hook_config: hook_config_status_in(
+                &self.home_dir,
                 &self
                     .root_dir
                     .join("scripts")
@@ -289,6 +310,29 @@ impl AIRuntimeBridge {
             ),
             terminals: self.registry.snapshot(),
         }
+    }
+
+    fn log_hook_config_status(&self, phase: &str) {
+        let status = hook_config_status_in(
+            &self.home_dir,
+            &self
+                .root_dir
+                .join("scripts")
+                .join("wrappers")
+                .join("opencode-config"),
+        );
+        super::runtime_log_line(
+            "runtime-hooks",
+            &format!(
+                "{phase} codex={} claude={} gemini={} opencode={} kiro={} claude_missing={}",
+                status.codex.configured,
+                status.claude.configured,
+                status.gemini.configured,
+                status.opencode.configured,
+                status.kiro.configured,
+                status.claude.missing.join("|")
+            ),
+        );
     }
 }
 
@@ -324,6 +368,62 @@ mod tests {
                 .join("scripts/wrappers/opencode-config/package.json")
                 .is_file()
         );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn bridge_prepare_installs_claude_hooks_and_preserves_settings() {
+        let dir = std::env::temp_dir().join(format!("codux-ai-bridge-{}", Uuid::new_v4()));
+        let home = dir.join("home");
+        let claude_settings = home.join(".claude").join("settings.json");
+        fs::create_dir_all(claude_settings.parent().unwrap()).unwrap();
+        fs::write(
+            &claude_settings,
+            serde_json::json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721"
+                },
+                "includeCoAuthoredBy": false,
+                "skipDangerousModePermissionPrompt": true,
+                "hooks": {
+                    "UserPromptSubmit": [{
+                        "matcher": "",
+                        "hooks": [{
+                            "type": "command",
+                            "command": "'/old/dmux-ai-state.sh' 'prompt-submit' 'codux' 'claude'"
+                        }]
+                    }]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), home);
+
+        bridge.prepare().unwrap();
+
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(&claude_settings).unwrap()).unwrap();
+        assert_eq!(
+            settings["env"]["ANTHROPIC_AUTH_TOKEN"].as_str(),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(settings["includeCoAuthoredBy"].as_bool(), Some(false));
+        let command = settings["hooks"]["UserPromptSubmit"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()["hooks"]
+            .as_array()
+            .unwrap()[0]["command"]
+            .as_str()
+            .unwrap();
+        assert!(command.contains("dmux-ai-state.sh"));
+        assert!(command.contains("'prompt-submit'"));
+        assert!(command.contains("'claude'"));
+        assert!(!settings.to_string().contains("/old/dmux-ai-state.sh"));
+        assert!(settings["hooks"]["Stop"].as_array().is_some());
         fs::remove_dir_all(dir).unwrap();
     }
 }
