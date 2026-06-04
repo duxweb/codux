@@ -1092,7 +1092,7 @@ impl CoduxApp {
         let timer = cx.background_executor().clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             timer.timer(Duration::from_millis(16)).await;
-            let _ = this.update(cx, |app, cx| {
+            let _ = this.update_in(cx, |app, window, cx| {
                 app.runtime_trace(
                     "terminal-restore",
                     &format!(
@@ -1108,6 +1108,7 @@ impl CoduxApp {
                     terminal_layout,
                     terminal_runtime,
                     generation,
+                    window,
                     cx,
                 );
             });
@@ -1120,6 +1121,7 @@ impl CoduxApp {
         terminal_layout: TerminalLayoutSummary,
         terminal_runtime: TerminalRuntimeSummary,
         generation: u64,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let restore_started_at = Instant::now();
@@ -1170,6 +1172,7 @@ impl CoduxApp {
         self.terminals = terminals;
         self.active_terminal_id = active_terminal_id;
         self.next_terminal_index = next_terminal_index;
+        self.activate_first_terminal();
         let pending_terminals =
             self.mount_visible_terminal_views_for_restore(&restore_plan, &base_pty_config, cx);
         self.status_message = format!(
@@ -1187,6 +1190,13 @@ impl CoduxApp {
             ),
         );
         self.invalidate_terminal_workspace(cx);
+        if self.workspace_view == WorkspaceView::Terminal {
+            let focused = self.focus_active_terminal(window, cx);
+            self.runtime_trace(
+                "terminal-restore",
+                &format!("focus_after_skeleton focused={focused} generation={generation}"),
+            );
+        }
         self.spawn_attach_pending_terminals(generation, pending_terminals, cx);
     }
 
@@ -1205,8 +1215,8 @@ impl CoduxApp {
                 continue;
             };
             let mount_tab = tab_index == restore_plan.active_index
-                || (tab_plan.placement == TerminalTabPlacement::Top
-                    && tab_plan.terminal_id.is_none());
+                || tab.id == self.active_terminal_id
+                || tab_plan.placement == TerminalTabPlacement::Top;
             if !mount_tab {
                 continue;
             }

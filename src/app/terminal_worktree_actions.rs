@@ -1,6 +1,5 @@
 use super::*;
 use crate::app::app_events::{ChildWindowUpdateKind, publish_child_window_update};
-use crate::app::project_actions::merge_ai_history_summary;
 use crate::app::window_actions::{AuxiliaryWindowSlot, AuxiliaryWindowSpec};
 
 impl CoduxApp {
@@ -390,11 +389,21 @@ impl CoduxApp {
             .or_else(|| self.bottom_terminals().next())
     }
 
-    pub(super) fn active_bottom_terminal_view(&self) -> Option<gpui::Entity<TerminalView>> {
-        self.active_bottom_terminal()
-            .and_then(|tab| tab.panes.first())
-            .and_then(|slot| slot.pane.as_ref())
-            .map(|pane| pane.view.clone())
+    pub(super) fn normalize_active_bottom_terminal_id(&mut self) {
+        let active_is_bottom = self.terminals.iter().any(|tab| {
+            tab.placement == TerminalTabPlacement::Bottom && tab.id == self.active_terminal_id
+        });
+        if active_is_bottom {
+            return;
+        }
+        let bottom_id = self
+            .terminals
+            .iter()
+            .find(|tab| tab.placement == TerminalTabPlacement::Bottom)
+            .map(|tab| tab.id);
+        if let Some(bottom_id) = bottom_id {
+            self.active_terminal_id = bottom_id;
+        }
     }
 
     pub(super) fn terminal_slot_terminal_id(
@@ -428,6 +437,7 @@ impl CoduxApp {
     }
 
     pub(super) fn register_terminal_panes(&mut self) {
+        let mut registrations = Vec::new();
         for tab in &self.terminals {
             let tab_terminal_id = tab.terminal_id.clone();
             for slot in &tab.panes {
@@ -442,9 +452,11 @@ impl CoduxApp {
                 else {
                     continue;
                 };
-                self.terminal_pane_registry
-                    .insert(terminal_id, pane.clone());
+                registrations.push((terminal_id, pane.clone()));
             }
+        }
+        for (terminal_id, pane) in registrations {
+            self.register_terminal_pane(Some(&terminal_id), &pane);
         }
     }
 
@@ -538,15 +550,7 @@ impl CoduxApp {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs_f64())
             .unwrap_or_default();
-        let active = self.active_terminal();
-        let active_terminal_id = active
-            .and_then(|tab| {
-                tab.panes
-                    .last()
-                    .and_then(|slot| slot.terminal_id.clone())
-                    .or_else(|| tab.terminal_id.clone())
-            })
-            .unwrap_or_default();
+        let active_terminal_id = self.active_terminal_runtime_id();
         let base_pty_config = self.current_terminal_base_pty_config();
         let existing_by_key = self
             .state
@@ -632,15 +636,7 @@ impl CoduxApp {
     }
 
     pub(super) fn terminal_runtime_snapshot(&self) -> (String, Vec<TerminalRuntimeSessionInput>) {
-        let active = self.active_terminal();
-        let active_terminal_id = active
-            .and_then(|tab| {
-                tab.panes
-                    .last()
-                    .and_then(|slot| slot.terminal_id.clone())
-                    .or_else(|| tab.terminal_id.clone())
-            })
-            .unwrap_or_default();
+        let active_terminal_id = self.active_terminal_runtime_id();
         let base_pty_config = self.current_terminal_base_pty_config();
         let sessions = self
             .terminals
@@ -741,15 +737,7 @@ impl CoduxApp {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let active_terminal_id = self
-            .active_terminal()
-            .and_then(|tab| {
-                tab.panes
-                    .last()
-                    .and_then(|slot| slot.terminal_id.clone())
-                    .or_else(|| tab.terminal_id.clone())
-            })
-            .unwrap_or_default();
+        let active_terminal_id = self.active_terminal_runtime_id();
         (tabs, active_terminal_id, top_panes)
     }
 
@@ -759,9 +747,8 @@ impl CoduxApp {
         );
         let terminal_runtime = TerminalRuntimeSummary::default();
         self.apply_terminal_layout_from_summary(terminal_layout, terminal_runtime, cx);
-        if let Some(view) = self.active_terminal_view() {
-            view.read(cx).focus_handle().focus(window, cx);
-        }
+        self.activate_first_terminal();
+        self.focus_active_terminal_view(window, cx);
     }
 
     pub(super) fn apply_terminal_layout_from_summary(
@@ -828,6 +815,7 @@ impl CoduxApp {
                 self.terminals = terminals;
                 self.active_terminal_id = active_terminal_id;
                 self.next_terminal_index = next_terminal_index;
+                self.activate_first_terminal();
                 self.register_terminal_panes();
                 self.status_message = format!(
                     "terminal layout reloaded · {} tab{}",
@@ -1362,6 +1350,13 @@ impl CoduxApp {
         );
         self.sync_terminal_state_for_project_switch();
         self.state.worktrees.selected_worktree_id = Some(worktree_id.clone());
+        self.selected_ai_session_id = None;
+        self.state.ai_history = AIHistorySummary {
+            is_loading: true,
+            detail: "loading".to_string(),
+            ..AIHistorySummary::default()
+        };
+        self.state.ai_session_detail = None;
         self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
         let generation = self.project_switch_generation;
         self.terminal_layout_loading = true;
@@ -1490,10 +1485,8 @@ impl CoduxApp {
                 load.terminal_layout.tabs.len()
             ),
         );
-        if merge_ai_history_summary(&mut self.state.ai_history, load.ai_history) {
-            self.selected_ai_session_id = None;
-            self.state.ai_session_detail = None;
-        }
+        self.state.ai_history = load.ai_history;
+        self.normalize_selected_ai_session();
         self.spawn_worktree_sidebar_load(load.generation, cx);
         self.schedule_terminal_layout_restore(
             load.terminal_layout,
@@ -1577,20 +1570,99 @@ impl CoduxApp {
             .or_else(|| self.terminals.first())
     }
 
-    pub(super) fn active_terminal_mut(&mut self) -> Option<&mut TerminalTab> {
-        let active_id = self.active_terminal_id;
-        if let Some(index) = self.terminals.iter().position(|tab| tab.id == active_id) {
-            self.terminals.get_mut(index)
-        } else {
-            self.terminals.first_mut()
-        }
+    pub(super) fn active_terminal_runtime_id(&self) -> String {
+        self.active_terminal_slot()
+            .and_then(|(_, slot)| slot.terminal_id.clone())
+            .or_else(|| {
+                self.active_terminal()
+                    .and_then(|tab| tab.terminal_id.clone())
+            })
+            .unwrap_or_default()
+    }
+
+    pub(super) fn set_active_terminal_runtime_id(&mut self, terminal_id: Option<&str>) -> bool {
+        let Some(terminal_id) = terminal_id
+            .map(str::trim)
+            .filter(|terminal_id| !terminal_id.is_empty())
+        else {
+            return false;
+        };
+        let changed = self.state.terminal_layout.active_terminal_id != terminal_id;
+        self.state.terminal_layout.active_terminal_id = terminal_id.to_string();
+        changed
+    }
+
+    pub(super) fn activate_first_terminal(&mut self) {
+        self.normalize_active_bottom_terminal_id();
+        let Some(terminal_id) = self
+            .terminals
+            .iter()
+            .find(|tab| tab.placement == TerminalTabPlacement::Top)
+            .and_then(|tab| tab.panes.first().and_then(|slot| slot.terminal_id.clone()))
+            .or_else(|| {
+                self.active_bottom_terminal()
+                    .and_then(|tab| tab.panes.first())
+                    .and_then(|slot| slot.terminal_id.clone())
+            })
+            .or_else(|| {
+                self.terminals
+                    .first()
+                    .and_then(|tab| tab.panes.first())
+                    .and_then(|slot| slot.terminal_id.clone())
+            })
+        else {
+            return;
+        };
+        self.set_active_terminal_runtime_id(Some(&terminal_id));
+    }
+
+    pub(super) fn active_terminal_slot(&self) -> Option<(&TerminalTab, &TerminalPaneSlot)> {
+        let (tab_index, slot_index) = active_terminal_slot_indices(
+            &self.terminals,
+            &self.state.terminal_layout.active_terminal_id,
+            self.active_terminal_id,
+        )?;
+        self.terminals
+            .get(tab_index)
+            .and_then(|tab| tab.panes.get(slot_index).map(|slot| (tab, slot)))
+    }
+
+    pub(super) fn active_terminal_slot_mut(&mut self) -> Option<(&mut TerminalTab, usize)> {
+        let (tab_index, slot_index) = active_terminal_slot_indices(
+            &self.terminals,
+            &self.state.terminal_layout.active_terminal_id,
+            self.active_terminal_id,
+        )?;
+        self.terminals
+            .get_mut(tab_index)
+            .map(|tab| (tab, slot_index))
     }
 
     pub(super) fn active_terminal_view(&self) -> Option<gpui::Entity<TerminalView>> {
-        self.active_terminal()
-            .and_then(|tab| tab.panes.last())
+        self.active_terminal_slot()
+            .map(|(_, slot)| slot)
             .and_then(|slot| slot.pane.as_ref())
             .map(|pane| pane.view.clone())
+    }
+
+    pub(super) fn focus_active_terminal_view(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(view) = self.active_terminal_view() else {
+            return false;
+        };
+        view.read(cx).focus_handle().focus(window, cx);
+        true
+    }
+
+    pub(super) fn focus_active_terminal(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.focus_active_terminal_view(window, cx)
     }
 
     pub(super) fn focused_terminal_view(
@@ -1610,6 +1682,31 @@ impl CoduxApp {
                 }
             })
     }
+}
+
+pub(in crate::app) fn active_terminal_slot_indices(
+    terminals: &[TerminalTab],
+    active_terminal_id: &str,
+    active_tab_id: usize,
+) -> Option<(usize, usize)> {
+    let active_terminal_id = active_terminal_id.trim();
+    if !active_terminal_id.is_empty() {
+        for (tab_index, tab) in terminals.iter().enumerate() {
+            if let Some(slot_index) = tab
+                .panes
+                .iter()
+                .position(|slot| slot.terminal_id.as_deref() == Some(active_terminal_id))
+            {
+                return Some((tab_index, slot_index));
+            }
+        }
+    }
+
+    let tab_index = terminals
+        .iter()
+        .position(|tab| tab.id == active_tab_id)
+        .or_else(|| (!terminals.is_empty()).then_some(0))?;
+    (!terminals[tab_index].panes.is_empty()).then_some((tab_index, 0))
 }
 
 fn worktree_confirm_display_name(worktree: &WorktreeInfo) -> String {

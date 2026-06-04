@@ -1,4 +1,5 @@
 use super::{AIRuntimeStateCore, helpers::now_seconds};
+use crate::ai_runtime::log::runtime_log_line;
 use crate::ai_runtime::snapshot::{
     AILatestCompletion, AIProjectPhase, AIProjectStateSnapshot, AIProjectTotals,
     AIRuntimeCompletionEvent, AIRuntimeStateSnapshot, AISessionSnapshot,
@@ -175,16 +176,6 @@ pub(super) fn next_completion_event_unlocked(
     core: &mut AIRuntimeStateCore,
 ) -> Option<AIRuntimeCompletionEvent> {
     let latest = latest_completion_unlocked(core)?;
-    let notified_at = core
-        .notified_completion_at
-        .get(&latest.project_id)
-        .copied()
-        .unwrap_or(0.0);
-    if latest.updated_at <= notified_at {
-        return None;
-    }
-    core.notified_completion_at
-        .insert(latest.project_id.clone(), latest.updated_at);
     let session = core
         .sessions
         .values()
@@ -193,13 +184,62 @@ pub(super) fn next_completion_event_unlocked(
         .filter(|session| session.has_completed_turn || session.was_interrupted)
         .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
         .cloned();
+    let Some(session) = session else {
+        runtime_log_line(
+            "runtime-state",
+            &format!(
+                "completion skipped reason=session-missing project={} updated_at={:.3}",
+                latest.project_id, latest.updated_at
+            ),
+        );
+        return None;
+    };
+    let completion_key = completion_event_key(&session);
+    if !core.notified_completion_keys.insert(completion_key.clone()) {
+        runtime_log_line(
+            "runtime-state",
+            &format!(
+                "completion dedupe key={} project={} updated_at={:.3}",
+                completion_key, latest.project_id, latest.updated_at
+            ),
+        );
+        return None;
+    }
+    runtime_log_line(
+        "runtime-state",
+        &format!(
+            "completion emit key={} project={} terminal={} session={} updated_at={:.3}",
+            completion_key,
+            latest.project_id,
+            session.terminal_id,
+            session.ai_session_id.as_deref().unwrap_or("none"),
+            latest.updated_at
+        ),
+    );
     Some(AIRuntimeCompletionEvent {
-        id: latest.id,
+        id: completion_key,
         project_name: latest.project_name,
         tool: latest.tool,
         was_interrupted: latest.was_interrupted,
-        session,
+        session: Some(session),
     })
+}
+
+fn completion_event_key(session: &AISessionSnapshot) -> String {
+    let session_identity = session
+        .ai_session_id
+        .as_deref()
+        .unwrap_or(session.terminal_id.as_str());
+    let turn_identity = session
+        .completed_turn_started_at
+        .or(session.active_turn_started_at)
+        .or(session.runtime_turn_started_at)
+        .or(session.started_at)
+        .unwrap_or(session.updated_at);
+    format!(
+        "{}:{}:{}:{:.3}",
+        session.project_id, session.tool, session_identity, turn_identity
+    )
 }
 
 fn sorted_project_sessions<'a>(

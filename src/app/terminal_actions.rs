@@ -92,7 +92,15 @@ impl CoduxApp {
         }
 
         let tab = self.main_terminal()?;
-        let pane_index = tab.panes.len().checked_sub(1)?;
+        let active_runtime_id = self.active_terminal_runtime_id();
+        let pane_index = tab
+            .panes
+            .iter()
+            .position(|slot| {
+                !active_runtime_id.is_empty()
+                    && slot.terminal_id.as_deref() == Some(active_runtime_id.as_str())
+            })
+            .unwrap_or(0);
         (tab.panes.len() > 1).then_some(TerminalCloseTarget::Split { pane_index })
     }
 
@@ -136,6 +144,7 @@ impl CoduxApp {
                 self.refresh_terminal_slot_snapshots();
                 self.register_terminal_pane(pane_terminal_id.as_deref(), &pane);
                 self.next_terminal_index += 1;
+                let active_runtime_id = pane_terminal_id.clone();
                 self.terminals.push(TerminalTab {
                     id,
                     label: title.clone(),
@@ -150,10 +159,9 @@ impl CoduxApp {
                     }],
                 });
                 self.active_terminal_id = id;
+                self.set_active_terminal_runtime_id(active_runtime_id.as_deref());
                 self.detach_inactive_terminal_views();
-                if let Some(view) = self.active_bottom_terminal_view() {
-                    view.read(cx).focus_handle().focus(window, cx);
-                }
+                self.focus_active_terminal(window, cx);
                 self.status_message = format!("terminal tab added: {title}");
                 self.sync_terminal_state_after_layout_change(cx);
                 self.invalidate_terminal_workspace(cx);
@@ -209,6 +217,7 @@ impl CoduxApp {
         ) {
             Ok(terminal) => {
                 self.register_terminal_pane(pane_terminal_id.as_deref(), &terminal);
+                let active_runtime_id = pane_terminal_id.clone();
                 terminal.view.read(cx).focus_handle().focus(window, cx);
                 if let Some(tab) = self.main_terminal_mut() {
                     tab.panes.push(TerminalPaneSlot {
@@ -219,6 +228,8 @@ impl CoduxApp {
                         restored_output_tail: String::new(),
                     });
                 }
+                self.set_active_terminal_runtime_id(active_runtime_id.as_deref());
+                self.focus_active_terminal(window, cx);
                 self.status_message = "terminal split added".to_string();
                 self.sync_terminal_state_after_layout_change(cx);
                 self.invalidate_terminal_workspace(cx);
@@ -430,14 +441,13 @@ impl CoduxApp {
         } else {
             self.kill_terminal_session_if_present(&terminal_id)
         };
-        if let Some(view) = self
-            .main_terminal()
-            .and_then(|tab| tab.panes.last())
-            .and_then(|slot| slot.pane.as_ref())
-            .map(|pane| pane.view.clone())
-        {
-            view.read(cx).focus_handle().focus(window, cx);
-        }
+        let next_active_terminal_id = self.terminals[tab_index]
+            .panes
+            .get(pane_index.saturating_sub(1))
+            .or_else(|| self.terminals[tab_index].panes.first())
+            .and_then(|slot| slot.terminal_id.clone());
+        self.set_active_terminal_runtime_id(next_active_terminal_id.as_deref());
+        self.focus_active_terminal(window, cx);
         self.sync_terminal_state_after_layout_change(cx);
         if let Err(error) = kill_result {
             self.status_message = format!("terminal split closed; PTY cleanup failed: {error}");
@@ -451,28 +461,21 @@ impl CoduxApp {
             self.invalidate_terminal_workspace(cx);
             return;
         }
-        let Some(tab_index) = self
-            .terminals
-            .iter()
-            .position(|tab| tab.id == self.active_terminal_id)
-        else {
-            self.status_message = "no active terminal".to_string();
-            self.invalidate_terminal_workspace(cx);
-            return;
+        let (result, tab_label) = {
+            let Some((tab, slot_index)) = self.active_terminal_slot_mut() else {
+                self.status_message = "active terminal has no pane".to_string();
+                self.invalidate_terminal_workspace(cx);
+                return;
+            };
+            let result = tab.panes[slot_index]
+                .pane
+                .as_ref()
+                .expect("active terminal pane should be mounted")
+                .send_text(text);
+            (result, tab.label.clone())
         };
-        let Some(slot_index) = self.terminals[tab_index].panes.len().checked_sub(1) else {
-            self.status_message = "active terminal has no pane".to_string();
-            self.invalidate_terminal_workspace(cx);
-            return;
-        };
-        let result = self.terminals[tab_index].panes[slot_index]
-            .pane
-            .as_ref()
-            .expect("active terminal pane should be mounted")
-            .send_text(text);
         match result {
             Ok(()) => {
-                let tab_label = self.terminals[tab_index].label.clone();
                 self.status_message = format!("sent command to {tab_label}");
                 self.sync_terminal_state_after_layout_change(cx);
             }
@@ -536,6 +539,7 @@ impl CoduxApp {
         ) {
             Ok(terminal) => {
                 self.register_terminal_pane(pane_terminal_id.as_deref(), &terminal);
+                let active_runtime_id = pane_terminal_id.clone();
                 let send_result = terminal.send_text(&format!("{command}\n"));
                 terminal.view.read(cx).focus_handle().focus(window, cx);
                 if let Some(tab) = self.main_terminal_mut() {
@@ -547,6 +551,8 @@ impl CoduxApp {
                         restored_output_tail: String::new(),
                     });
                 }
+                self.set_active_terminal_runtime_id(active_runtime_id.as_deref());
+                self.focus_active_terminal(window, cx);
                 if let Err(error) = send_result {
                     self.status_message =
                         format!("AI session split created; restore send failed: {error}");
@@ -593,11 +599,19 @@ impl CoduxApp {
             .or_else(|| self.bottom_terminals().next())
             .map(|tab| tab.id)
             .unwrap_or(0);
+        let active_runtime_id = self
+            .active_bottom_terminal()
+            .and_then(|tab| tab.panes.first())
+            .and_then(|slot| slot.terminal_id.clone())
+            .or_else(|| {
+                self.main_terminal()
+                    .and_then(|tab| tab.panes.first())
+                    .and_then(|slot| slot.terminal_id.clone())
+            });
+        self.set_active_terminal_runtime_id(active_runtime_id.as_deref());
         let mount_result = self.ensure_active_terminal_mounted(cx);
         self.detach_inactive_terminal_views();
-        if let Some(view) = self.active_bottom_terminal_view() {
-            view.read(cx).focus_handle().focus(window, cx);
-        }
+        self.focus_active_terminal(window, cx);
         self.sync_terminal_state_after_layout_change(cx);
         if let Err(error) = mount_result {
             self.status_message = format!("terminal tab closed; mount failed: {error}");
@@ -615,14 +629,19 @@ impl CoduxApp {
     ) {
         self.refresh_terminal_slot_snapshots();
         self.active_terminal_id = terminal_id;
+        let active_runtime_id = self
+            .terminals
+            .iter()
+            .find(|tab| tab.id == terminal_id)
+            .and_then(|tab| tab.panes.first())
+            .and_then(|slot| slot.terminal_id.clone());
+        self.set_active_terminal_runtime_id(active_runtime_id.as_deref());
         if let Err(error) = self.ensure_active_terminal_mounted(cx) {
             self.status_message = format!("failed to select terminal: {error}");
             self.invalidate_terminal_workspace(cx);
             return;
         }
-        if let Some(view) = self.active_bottom_terminal_view() {
-            view.read(cx).focus_handle().focus(window, cx);
-        }
+        self.focus_active_terminal(window, cx);
         self.detach_inactive_terminal_views();
         self.sync_terminal_state_after_layout_change(cx);
         self.invalidate_terminal_workspace(cx);

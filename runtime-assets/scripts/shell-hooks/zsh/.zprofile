@@ -1,15 +1,13 @@
 if [[ -z "${DMUX_ORIGINAL_ZPROFILE_SOURCED:-}" ]]; then
   export DMUX_ORIGINAL_ZPROFILE_SOURCED=1
-  if [[ -f "${HOME}/.zprofile" ]]; then
-    export DMUX_HOOK_ORIGINAL_ZDOTDIR="${ZDOTDIR:-}"
-    export ZDOTDIR="${HOME}"
-    source "${HOME}/.zprofile"
-    if [[ -n "${DMUX_HOOK_ORIGINAL_ZDOTDIR:-}" ]]; then
-      export ZDOTDIR="${DMUX_HOOK_ORIGINAL_ZDOTDIR}"
-    else
-      unset ZDOTDIR
-    fi
+  dmux_user_zdotdir="${DMUX_USER_ZDOTDIR:-${HOME}}"
+  dmux_runtime_zdotdir="${ZDOTDIR:-}"
+  if [[ -f "${dmux_user_zdotdir}/.zprofile" ]]; then
+    export ZDOTDIR="${dmux_user_zdotdir}"
+    source "${dmux_user_zdotdir}/.zprofile"
+    export ZDOTDIR="${dmux_runtime_zdotdir}"
   fi
+  unset dmux_user_zdotdir dmux_runtime_zdotdir
 fi
 
 if [[ -n "${DMUX_WRAPPER_BIN:-}" && -d "${DMUX_WRAPPER_BIN}" ]]; then

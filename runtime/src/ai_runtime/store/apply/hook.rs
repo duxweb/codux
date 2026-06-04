@@ -153,6 +153,19 @@ pub(in crate::ai_runtime::store) fn apply_hook_unlocked(
     } else {
         None
     };
+    let completed_turn_started_at = if state == "responding"
+        || state == "needsInput"
+        || event.kind == "sessionStarted"
+    {
+        None
+    } else if event.kind == "turnCompleted" || event.kind == "sessionEnded" {
+        base.and_then(|session| session.active_turn_started_at)
+            .or_else(|| base.and_then(|session| session.runtime_turn_started_at))
+            .or_else(|| base.and_then(|session| session.started_at))
+            .or(Some(now))
+    } else {
+        base.and_then(|session| session.completed_turn_started_at)
+    };
     if let Some(started_at) = active_turn_started_at {
         note_latest_active_started_at(core, &event.project_id, started_at);
     }
@@ -206,6 +219,7 @@ pub(in crate::ai_runtime::store) fn apply_hook_unlocked(
         } else {
             None
         },
+        completed_turn_started_at,
         has_completed_turn,
         was_interrupted,
         transcript_path: event

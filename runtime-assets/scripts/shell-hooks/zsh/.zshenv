@@ -1,13 +1,11 @@
 if [[ -z "${DMUX_ORIGINAL_ZSHENV_SOURCED:-}" ]]; then
   export DMUX_ORIGINAL_ZSHENV_SOURCED=1
-  if [[ -f "${HOME}/.zshenv" ]]; then
-    export DMUX_HOOK_ORIGINAL_ZDOTDIR="${ZDOTDIR:-}"
-    export ZDOTDIR="${HOME}"
-    source "${HOME}/.zshenv"
-    if [[ -n "${DMUX_HOOK_ORIGINAL_ZDOTDIR:-}" ]]; then
-      export ZDOTDIR="${DMUX_HOOK_ORIGINAL_ZDOTDIR}"
-    else
-      unset ZDOTDIR
-    fi
+  dmux_user_zdotdir="${DMUX_USER_ZDOTDIR:-${HOME}}"
+  dmux_runtime_zdotdir="${ZDOTDIR:-}"
+  if [[ -f "${dmux_user_zdotdir}/.zshenv" ]]; then
+    export ZDOTDIR="${dmux_user_zdotdir}"
+    source "${dmux_user_zdotdir}/.zshenv"
+    export ZDOTDIR="${dmux_runtime_zdotdir}"
   fi
+  unset dmux_user_zdotdir dmux_runtime_zdotdir
 fi

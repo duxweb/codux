@@ -1123,6 +1123,28 @@ pub fn terminal_environment(
         let wrapper_bin = runtime_root.join("scripts/wrappers/bin").display().to_string();
         path = prepend_path_component(&wrapper_bin, &path);
         values.insert("DMUX_WRAPPER_BIN".to_string(), wrapper_bin);
+        if matches!(shell_name(shell).as_deref(), Some("zsh")) {
+            let user_zdotdir = values
+                .get("ZDOTDIR")
+                .cloned()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| home_text.clone());
+            values.insert("DMUX_USER_ZDOTDIR".to_string(), user_zdotdir);
+            values.insert(
+                "ZDOTDIR".to_string(),
+                runtime_root
+                    .join("scripts/shell-hooks/zsh")
+                    .display()
+                    .to_string(),
+            );
+            values.insert(
+                "DMUX_ZSH_HOOK_SCRIPT".to_string(),
+                runtime_root
+                    .join("scripts/shell-hooks/dmux-ai-hook.zsh")
+                    .display()
+                    .to_string(),
+            );
+        }
     }
     if let Some(support_dir) = config
         .support_dir
@@ -2094,8 +2116,18 @@ mod tests {
             env.get("DMUX_WRAPPER_BIN").map(String::as_str),
             Some("/runtime-assets/scripts/wrappers/bin")
         );
-        assert!(!env.contains_key("ZDOTDIR"));
-        assert!(!env.contains_key("DMUX_ZSH_HOOK_SCRIPT"));
+        assert_eq!(
+            env.get("DMUX_USER_ZDOTDIR").map(String::as_str),
+            env.get("HOME").map(String::as_str)
+        );
+        assert_eq!(
+            env.get("ZDOTDIR").map(String::as_str),
+            Some("/runtime-assets/scripts/shell-hooks/zsh")
+        );
+        assert_eq!(
+            env.get("DMUX_ZSH_HOOK_SCRIPT").map(String::as_str),
+            Some("/runtime-assets/scripts/shell-hooks/dmux-ai-hook.zsh")
+        );
     }
 
     #[test]

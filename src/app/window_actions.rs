@@ -1056,7 +1056,7 @@ impl CoduxApp {
     pub(super) fn set_workspace_view(
         &mut self,
         view: WorkspaceView,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.workspace_view = view;
@@ -1070,7 +1070,14 @@ impl CoduxApp {
                 self.refresh_git_panel_state_async(cx);
                 self.ensure_selected_git_review_file_loaded_async(cx);
             }
-            WorkspaceView::Terminal => {}
+            WorkspaceView::Terminal => {
+                self.activate_first_terminal();
+                if let Err(error) = self.ensure_active_terminal_mounted(cx) {
+                    self.status_message = format!("failed to focus terminal: {error}");
+                } else {
+                    self.focus_active_terminal(window, cx);
+                }
+            }
         }
         self.invalidate_workspace(cx);
         self.invalidate_status_bar(cx);

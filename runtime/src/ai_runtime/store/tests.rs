@@ -509,6 +509,89 @@ fn same_second_completion_snapshot_after_prompt_completes() {
     assert!(snapshot.sessions[0].has_completed_turn);
 }
 
+#[test]
+fn later_probe_for_same_completed_turn_does_not_notify_twice() {
+    let store = AIRuntimeStateStore::default();
+    assert!(store.apply_hook(test_hook("sessionStarted", 1000.0)).did_change);
+    assert!(store.apply_hook(test_hook("promptSubmitted", 1020.0)).did_change);
+
+    let complete = store.apply_hook(AIHookEventPayload {
+        kind: "turnCompleted".to_string(),
+        updated_at: 1030.0,
+        metadata: Some(AIHookEventMetadata {
+            has_completed_turn: Some(true),
+            ..empty_metadata()
+        }),
+        ..test_hook("turnCompleted", 1030.0)
+    });
+    assert!(complete.did_change);
+    assert!(complete.completion.is_some());
+
+    let probe = store.apply_runtime_snapshot(
+        "terminal-1",
+        AIRuntimeContextSnapshot {
+            tool: "codex".to_string(),
+            external_session_id: Some("session-1".to_string()),
+            transcript_path: Some("/tmp/codex.jsonl".to_string()),
+            model: Some("gpt-5.4".to_string()),
+            assistant_preview: Some("done".to_string()),
+            input_tokens: 0,
+            output_tokens: 0,
+            cached_input_tokens: 0,
+            total_tokens: 200,
+            updated_at: 1036.0,
+            started_at: Some(1020.0),
+            completed_at: Some(1030.0),
+            response_state: Some("idle".to_string()),
+            was_interrupted: false,
+            has_completed_turn: true,
+            session_origin: "live".to_string(),
+            source: "probe".to_string(),
+        },
+    );
+
+    assert!(probe.did_change);
+    assert!(probe.completion.is_none());
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.completion_count, 1);
+    assert_eq!(snapshot.sessions[0].total_tokens, 200);
+}
+
+#[test]
+fn same_session_next_prompt_completion_notifies_again() {
+    let store = AIRuntimeStateStore::default();
+    assert!(store.apply_hook(test_hook("sessionStarted", 1000.0)).did_change);
+    assert!(store.apply_hook(test_hook("promptSubmitted", 1020.0)).did_change);
+    assert!(
+        store
+            .apply_hook(AIHookEventPayload {
+                kind: "turnCompleted".to_string(),
+                updated_at: 1030.0,
+                metadata: Some(AIHookEventMetadata {
+                    has_completed_turn: Some(true),
+                    ..empty_metadata()
+                }),
+                ..test_hook("turnCompleted", 1030.0)
+            })
+            .completion
+            .is_some()
+    );
+
+    assert!(store.apply_hook(test_hook("promptSubmitted", 1040.0)).did_change);
+    let second = store.apply_hook(AIHookEventPayload {
+        kind: "turnCompleted".to_string(),
+        updated_at: 1050.0,
+        metadata: Some(AIHookEventMetadata {
+            has_completed_turn: Some(true),
+            ..empty_metadata()
+        }),
+        ..test_hook("turnCompleted", 1050.0)
+    });
+
+    assert!(second.did_change);
+    assert!(second.completion.is_some());
+}
+
 fn test_hook(kind: &str, updated_at: f64) -> AIHookEventPayload {
     AIHookEventPayload {
         kind: kind.to_string(),

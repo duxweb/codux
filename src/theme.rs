@@ -586,7 +586,12 @@ fn configure_component_theme(cx: &mut App, terminal: TerminalThemePalette, accen
 
     set_dynamic_color(&DYNAMIC_BG, rgba_to_u32(background));
     set_dynamic_color(&DYNAMIC_BG_ELEVATED, rgba_to_u32(popover));
-    set_dynamic_color(&DYNAMIC_BG_PANEL, rgba_to_u32(muted));
+    let panel_surface = if is_dark {
+        mix_towards(terminal_background, raw_color(0xFFFFFF), 0.055)
+    } else {
+        mix_towards(terminal_background, raw_color(0x000000), 0.035)
+    };
+    set_dynamic_color(&DYNAMIC_BG_PANEL, rgba_to_u32(panel_surface));
     set_dynamic_color(&DYNAMIC_BG_TERMINAL, terminal.background);
     set_dynamic_color(&DYNAMIC_BG_COLUMN, rgba_to_u32(task_column));
     set_dynamic_color(&DYNAMIC_BG_HEADER, rgba_to_u32(header));

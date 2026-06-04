@@ -34,6 +34,8 @@ pub struct AISessionSnapshot {
     pub active_turn_started_at: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_turn_started_at: Option<f64>,
+    #[serde(skip_serializing)]
+    pub completed_turn_started_at: Option<f64>,
     pub has_completed_turn: bool,
     pub was_interrupted: bool,
     #[serde(skip_serializing_if = "Option::is_none")]

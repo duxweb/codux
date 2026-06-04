@@ -379,6 +379,7 @@ fn historical_session_snapshot(
         updated_at: session.last_seen_at,
         active_turn_started_at: None,
         runtime_turn_started_at: None,
+        completed_turn_started_at: None,
         has_completed_turn: true,
         was_interrupted: false,
         transcript_path: None,

@@ -26,6 +26,7 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
     let mut has_completed_turn = session.has_completed_turn;
     let mut active_turn_started_at = session.active_turn_started_at;
     let mut runtime_turn_started_at = session.runtime_turn_started_at;
+    let mut completed_turn_started_at = session.completed_turn_started_at;
     let snapshot_is_newer = snapshot.updated_at > session.updated_at;
     let prompt_turn_started_at = session
         .active_turn_started_at
@@ -42,6 +43,7 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
             state = "responding".to_string();
             was_interrupted = false;
             has_completed_turn = false;
+            completed_turn_started_at = None;
             let started = runtime_turn_started_at_for_responding_snapshot(
                 &snapshot,
                 prompt_turn_started_at,
@@ -79,6 +81,19 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
             runtime_turn_started_at = None;
             was_interrupted = snapshot.was_interrupted;
             has_completed_turn = snapshot.has_completed_turn || !was_interrupted;
+            completed_turn_started_at = session
+                .completed_turn_started_at
+                .or(session.active_turn_started_at)
+                .or(session.runtime_turn_started_at)
+                .or(session.started_at)
+                .or(turn_completed_at);
+        } else if session.has_completed_turn || session.was_interrupted {
+            completed_turn_started_at = session
+                .completed_turn_started_at
+                .or(session.active_turn_started_at)
+                .or(session.runtime_turn_started_at)
+                .or(session.started_at)
+                .or(turn_completed_at);
         }
     }
 
@@ -129,6 +144,7 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
         updated_at: snapshot_updated_at,
         active_turn_started_at,
         runtime_turn_started_at,
+        completed_turn_started_at,
         was_interrupted,
         has_completed_turn,
         latest_assistant_preview: normalized_string(snapshot.assistant_preview.as_deref())

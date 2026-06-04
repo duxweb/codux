@@ -148,8 +148,9 @@ impl CoduxApp {
                 app.update_dialog_error = None;
                 app
             },
-            |view, _window, cx| {
-                view.update(cx, |app, cx| app.check_update_in_dialog(cx));
+            |view, window, cx| {
+                let window_handle = window.window_handle();
+                view.update(cx, |app, cx| app.check_update_in_dialog(window_handle, cx));
             },
         );
         self.invalidate_status_bar(cx);
@@ -235,7 +236,11 @@ impl CoduxApp {
         self.invalidate_status_bar(cx);
     }
 
-    pub(in crate::app) fn check_update_in_dialog(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::app) fn check_update_in_dialog(
+        &mut self,
+        window_handle: AnyWindowHandle,
+        cx: &mut Context<Self>,
+    ) {
         self.update_dialog_phase = UpdateDialogPhase::Checking;
         self.update_dialog_error = None;
         self.update_dialog_result = None;
@@ -268,6 +273,7 @@ impl CoduxApp {
                         app.status_message = format!("update check failed: {error}");
                     }
                 }
+                resize_update_dialog_window_handle(window_handle, app.update_dialog_phase, cx);
                 cx.notify();
             });
         })
@@ -676,8 +682,8 @@ fn update_dialog_body(app: &CoduxApp, language: &str, _cx: &mut Context<CoduxApp
             )
             .child(
                 div()
-                    .flex_1()
-                    .min_h(px(170.0))
+                    .h(px(164.0))
+                    .flex_none()
                     .overflow_y_scrollbar()
                     .rounded(px(6.0))
                     .border_1()
@@ -840,7 +846,7 @@ fn update_dialog_footer(app: &CoduxApp, language: &str, cx: &mut Context<CoduxAp
                 cx,
                 |app, _event, window, cx| {
                     resize_update_dialog_window(window, UpdateDialogPhase::Checking);
-                    app.check_update_in_dialog(cx);
+                    app.check_update_in_dialog(window.window_handle(), cx);
                 },
             ));
         }
@@ -871,6 +877,16 @@ fn resize_update_dialog_window(window: &mut Window, phase: UpdateDialogPhase) {
         _ => UPDATE_DIALOG_DEFAULT_HEIGHT,
     };
     window.resize(size(px(UPDATE_DIALOG_WIDTH), px(height)));
+}
+
+fn resize_update_dialog_window_handle(
+    handle: AnyWindowHandle,
+    phase: UpdateDialogPhase,
+    cx: &mut Context<CoduxApp>,
+) {
+    let _ = handle.update(cx, |_view, window, _cx| {
+        resize_update_dialog_window(window, phase);
+    });
 }
 
 fn update_dialog_button_label(

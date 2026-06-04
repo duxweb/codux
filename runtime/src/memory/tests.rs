@@ -498,6 +498,7 @@ fn enqueue_completed_session_creates_pending_memory_task() {
         updated_at: now_seconds() - 10.0,
         active_turn_started_at: None,
         runtime_turn_started_at: None,
+        completed_turn_started_at: None,
         has_completed_turn: true,
         was_interrupted: false,
         transcript_path: Some(transcript.display().to_string()),

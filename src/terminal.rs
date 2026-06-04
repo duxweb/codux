@@ -20,8 +20,8 @@ use gpui::{
     InspectorElementId, InteractiveElement, IntoElement, KeyDownEvent, Keystroke, LayoutId,
     Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection,
     ParentElement, Pixels, Point, Render, ScrollWheelEvent, SharedString, Size, Style, Styled,
-    Subscription, Task, TextAlign, TextRun, UTF16Selection, UnderlineStyle, WeakEntity, Window,
-    div, px, quad, rgb, transparent_black,
+    Subscription, Task, TextAlign, TextRun, TouchPhase, UTF16Selection, UnderlineStyle, WeakEntity,
+    Window, div, px, quad, rgb, transparent_black,
 };
 use parking_lot::Mutex;
 use std::{
@@ -503,14 +503,49 @@ pub struct TerminalView {
     layout: Arc<Mutex<TerminalLayoutMetrics>>,
     selection: Arc<Mutex<SelectionState>>,
     marked_text: Option<String>,
-    pending_scroll_lines: i32,
-    pending_scroll_pixels: f32,
-    scroll_frame_pending: bool,
+    scroll_input: TerminalScrollInputState,
     focus_in_subscription: Option<Subscription>,
     focus_out_subscription: Option<Subscription>,
     selection_autoscroll: Option<SelectionAutoScroll>,
     _observe_model: Subscription,
     _observe_blink_manager: Subscription,
+}
+
+#[derive(Default)]
+struct TerminalScrollInputState {
+    pending_lines: i32,
+    pending_pixels: f32,
+    frame_pending: bool,
+    suppress_residual_precise_scroll: bool,
+}
+
+impl TerminalScrollInputState {
+    fn prepare_for_keyboard_input(&mut self) {
+        self.pending_lines = 0;
+        self.pending_pixels = 0.0;
+        self.suppress_residual_precise_scroll = true;
+    }
+
+    fn should_suppress_residual_scroll(&mut self, event: &ScrollWheelEvent) -> bool {
+        match event.touch_phase {
+            TouchPhase::Started => {
+                self.suppress_residual_precise_scroll = false;
+                false
+            }
+            TouchPhase::Ended => {
+                self.suppress_residual_precise_scroll = false;
+                false
+            }
+            TouchPhase::Moved => {
+                if self.suppress_residual_precise_scroll && event.delta.precise() {
+                    self.pending_pixels = 0.0;
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
 }
 
 impl TerminalView {
@@ -548,9 +583,7 @@ impl TerminalView {
             layout: Arc::new(Mutex::new(TerminalLayoutMetrics::default())),
             selection: Arc::new(Mutex::new(SelectionState::default())),
             marked_text: None,
-            pending_scroll_lines: 0,
-            pending_scroll_pixels: 0.0,
-            scroll_frame_pending: false,
+            scroll_input: TerminalScrollInputState::default(),
             focus_in_subscription: None,
             focus_out_subscription: None,
             selection_autoscroll: None,
@@ -616,7 +649,11 @@ impl TerminalView {
         };
         self.blink_manager
             .update(cx, TerminalBlinkManager::pause_blinking);
-        self.write_bytes(&bytes, cx);
+        self.clear_pending_view_scroll();
+        self.model.update(cx, |model, cx| {
+            model.prepare_input_viewport(cx);
+            model.write_bytes(&bytes);
+        });
         true
     }
 
@@ -739,11 +776,16 @@ impl TerminalView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.scroll_input.should_suppress_residual_scroll(event) {
+            cx.stop_propagation();
+            return;
+        }
+
         let pixels: f32 = event.delta.pixel_delta(px(20.0)).y.into();
-        self.pending_scroll_pixels += pixels;
-        let lines = (self.pending_scroll_pixels / 20.0) as i32;
+        self.scroll_input.pending_pixels += pixels;
+        let lines = (self.scroll_input.pending_pixels / 20.0) as i32;
         if lines != 0 {
-            self.pending_scroll_pixels -= lines as f32 * 20.0;
+            self.scroll_input.pending_pixels -= lines as f32 * 20.0;
             if let Some(point) = self.layout.lock().cell_at(event.position)
                 && self.should_report_mouse(event.modifiers.shift, cx)
             {
@@ -777,24 +819,24 @@ impl TerminalView {
     }
 
     fn queue_display_scroll(&mut self, lines: i32, cx: &mut Context<Self>) {
-        self.pending_scroll_lines = self.pending_scroll_lines.saturating_add(lines);
+        self.scroll_input.pending_lines = self.scroll_input.pending_lines.saturating_add(lines);
         self.schedule_scroll_flush(cx);
     }
 
     fn schedule_scroll_flush(&mut self, cx: &mut Context<Self>) {
-        if self.scroll_frame_pending {
+        if self.scroll_input.frame_pending {
             return;
         }
 
-        self.scroll_frame_pending = true;
+        self.scroll_input.frame_pending = true;
         let timer = cx.background_executor().clone();
         cx.spawn(async move |terminal: WeakEntity<Self>, cx| {
             timer.timer(TERMINAL_SCROLL_FRAME_INTERVAL).await;
             let _ = terminal.update(cx, |terminal, cx| {
                 if let Some(flush) = terminal.flush_pending_scroll(cx) {
                     if let Some(lines) = flush.next_lines {
-                        terminal.pending_scroll_lines =
-                            terminal.pending_scroll_lines.saturating_add(lines);
+                        terminal.scroll_input.pending_lines =
+                            terminal.scroll_input.pending_lines.saturating_add(lines);
                         terminal.schedule_scroll_flush(cx);
                     }
                     if flush.did_scroll {
@@ -807,8 +849,8 @@ impl TerminalView {
     }
 
     fn flush_pending_scroll(&mut self, cx: &mut Context<Self>) -> Option<ScrollFlushResult> {
-        self.scroll_frame_pending = false;
-        let lines = std::mem::take(&mut self.pending_scroll_lines);
+        self.scroll_input.frame_pending = false;
+        let lines = std::mem::take(&mut self.scroll_input.pending_lines);
         if lines == 0 {
             return None;
         }
@@ -873,7 +915,16 @@ impl TerminalView {
     fn paste_text(&mut self, text: &str, cx: &mut Context<Self>) {
         self.blink_manager
             .update(cx, TerminalBlinkManager::pause_blinking);
-        self.model.update(cx, |model, _| model.paste_text(text));
+        self.clear_pending_view_scroll();
+        self.model.update(cx, |model, cx| {
+            model.prepare_input_viewport(cx);
+            model.paste_text(text);
+        });
+    }
+
+    fn clear_pending_view_scroll(&mut self) {
+        self.scroll_input.prepare_for_keyboard_input();
+        self.selection_autoscroll = None;
     }
 
     fn should_report_mouse(&self, shift_pressed: bool, cx: &App) -> bool {
@@ -1238,6 +1289,7 @@ struct TerminalStateHandle {
 enum TerminalInternalEvent {
     Resize { cols: usize, rows: usize },
     Scroll { lines: i32 },
+    ScrollToBottom,
 }
 
 impl TerminalModel {
@@ -1457,6 +1509,10 @@ impl TerminalModel {
 
     fn sync(&mut self, cx: &mut Context<Self>) -> TerminalContent {
         self.process_pending_events(cx);
+        self.sync_model_events()
+    }
+
+    fn sync_model_events(&mut self) -> TerminalContent {
         let mut snapshot_dirty = self.snapshot_dirty;
         while let Some(event) = self.events.pop_front() {
             match event {
@@ -1466,6 +1522,9 @@ impl TerminalModel {
                 TerminalInternalEvent::Scroll { lines } => {
                     snapshot_dirty |= self.handle.scroll_display(lines);
                 }
+                TerminalInternalEvent::ScrollToBottom => {
+                    snapshot_dirty |= self.handle.scroll_to_bottom();
+                }
             }
         }
         if snapshot_dirty {
@@ -1473,6 +1532,41 @@ impl TerminalModel {
             self.snapshot_dirty = false;
         }
         self.handle.snapshot()
+    }
+
+    fn prepare_input_viewport(&mut self, cx: &mut Context<Self>) {
+        if self.prepare_input_viewport_snapshot() {
+            self.handle.publish_snapshot();
+            self.snapshot_dirty = false;
+            cx.notify();
+        }
+    }
+
+    #[cfg(test)]
+    fn prepare_input_viewport_for_test(&mut self) {
+        if self.prepare_input_viewport_snapshot() {
+            self.handle.publish_snapshot();
+            self.snapshot_dirty = false;
+        }
+    }
+
+    fn prepare_input_viewport_snapshot(&mut self) -> bool {
+        let mut snapshot_dirty = self.snapshot_dirty;
+        let events = std::mem::take(&mut self.events);
+        for event in events {
+            match event {
+                TerminalInternalEvent::Resize { cols, rows } => {
+                    snapshot_dirty |= self.handle.resize(cols, rows);
+                }
+                TerminalInternalEvent::Scroll { .. } | TerminalInternalEvent::ScrollToBottom => {}
+            }
+        }
+        snapshot_dirty | self.handle.scroll_to_bottom()
+    }
+
+    #[cfg(test)]
+    fn sync_for_test(&mut self) -> TerminalContent {
+        self.sync_model_events()
     }
 
     fn live_snapshot(&self) -> TerminalContent {
@@ -1489,6 +1583,11 @@ impl TerminalModel {
         self.handle.display_offset()
     }
 
+    fn current_ime_cursor_bounds(&self, layout: &TerminalLayoutMetrics) -> Option<Bounds<Pixels>> {
+        let content = self.handle.snapshot();
+        ime_cursor_bounds_from_content(&content, layout)
+    }
+
     fn dimensions(&self) -> (usize, usize) {
         self.handle.dimensions()
     }
@@ -1501,6 +1600,10 @@ impl TerminalModel {
         self.events
             .push_back(TerminalInternalEvent::Scroll { lines });
         true
+    }
+
+    fn scroll_to_bottom(&mut self) {
+        self.events.push_back(TerminalInternalEvent::ScrollToBottom);
     }
 
     fn selected_text(&self, selection: SelectionRange) -> String {
@@ -1641,6 +1744,15 @@ impl TerminalStateHandle {
         did_scroll
     }
 
+    fn scroll_to_bottom(&self) -> bool {
+        use alacritty_terminal::grid::Scroll;
+
+        let mut term = self.term.lock();
+        let before = term.grid().display_offset();
+        term.scroll_display(Scroll::Bottom);
+        term.grid().display_offset() != before
+    }
+
     fn selected_text(&self, selection: SelectionRange) -> String {
         let term = self.term.lock();
         let grid = term.grid();
@@ -1693,10 +1805,12 @@ struct TerminalContent {
     colors: Colors,
     colors_hash: u64,
     cursor: RenderableCursor,
+    cursor_char: char,
     mode: TermMode,
     display_offset: usize,
     columns: usize,
     screen_lines: usize,
+    scrolled_to_bottom: bool,
 }
 
 impl TerminalContent {
@@ -1712,10 +1826,12 @@ impl TerminalContent {
             colors: *content.colors,
             colors_hash: terminal_colors_hash(content.colors),
             cursor: content.cursor,
+            cursor_char: term.grid()[content.cursor.point].c,
             mode: content.mode,
             display_offset: content.display_offset,
             columns: term.columns(),
             screen_lines: term.screen_lines(),
+            scrolled_to_bottom: content.display_offset == 0,
         }
     }
 }
@@ -1724,6 +1840,21 @@ impl TerminalContent {
 struct TerminalIndexedCell {
     point: TerminalPoint,
     cell: Cell,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DisplayCursor {
+    row: i32,
+    col: usize,
+}
+
+impl DisplayCursor {
+    fn from(cursor_point: TerminalPoint, display_offset: usize) -> Self {
+        Self {
+            row: cursor_point.line.0 + display_offset as i32,
+            col: cursor_point.column.0,
+        }
+    }
 }
 
 fn terminal_colors_hash(colors: &Colors) -> u64 {
@@ -1926,7 +2057,7 @@ impl Element for TerminalElement {
                 model: self.model.clone(),
                 layout: self.layout.clone(),
                 terminal_view: self.terminal_view.clone(),
-                cursor_bounds: paint_state.ime_cursor_bounds,
+                fallback_cursor_bounds: paint_state.ime_cursor_bounds,
             },
             cx,
         );
@@ -1991,6 +2122,7 @@ struct TerminalBackgroundRect {
 
 struct TerminalCursorPaint {
     point: TerminalPoint,
+    display_row: usize,
     shape: CursorShape,
     color: Hsla,
     width: Pixels,
@@ -2031,7 +2163,7 @@ impl TerminalCursorPaint {
         cx: &mut App,
     ) {
         let x = origin.x + renderer.cell_width * self.point.column.0 as f32;
-        let y = origin.y + renderer.cell_height * self.point.line.0 as f32;
+        let y = origin.y + renderer.cell_height * self.display_row as f32;
         let bounds = Bounds {
             origin: Point {
                 x: px(f32::from(x).floor()),
@@ -2301,19 +2433,6 @@ impl TerminalLayoutMetrics {
         ))
     }
 
-    fn input_bounds(&self) -> Bounds<Pixels> {
-        Bounds {
-            origin: Point {
-                x: self.bounds.origin.x + self.padding.left,
-                y: self.bounds.origin.y + self.padding.top,
-            },
-            size: Size {
-                width: self.cell_width,
-                height: self.cell_height,
-            },
-        }
-    }
-
     fn window_size(&self) -> WindowSize {
         WindowSize {
             num_lines: self.rows as u16,
@@ -2329,11 +2448,11 @@ struct TerminalInputHandler {
     model: Entity<TerminalModel>,
     layout: Arc<Mutex<TerminalLayoutMetrics>>,
     terminal_view: WeakEntity<TerminalView>,
-    cursor_bounds: Option<Bounds<Pixels>>,
+    fallback_cursor_bounds: Option<Bounds<Pixels>>,
 }
 
 impl TerminalInputHandler {
-    fn send_filtered_input(&self, text: &str, cx: &mut App) {
+    fn send_filtered_input(&self, text: &str, window: &mut Window, cx: &mut App) {
         if text.is_empty() {
             return;
         }
@@ -2356,7 +2475,11 @@ impl TerminalInputHandler {
                 }
             }
         }
-        self.model.update(cx, |model, _| model.write_bytes(&bytes));
+        self.model.update(cx, |model, cx| {
+            model.prepare_input_viewport(cx);
+            model.write_bytes(&bytes);
+        });
+        window.invalidate_character_coordinates();
     }
 }
 
@@ -2394,15 +2517,16 @@ impl InputHandler for TerminalInputHandler {
         &mut self,
         _replacement_range: Option<Range<usize>>,
         text: &str,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) {
         let _ = self.terminal_view.update(cx, |view, cx| {
             view.blink_manager
                 .update(cx, TerminalBlinkManager::pause_blinking);
+            view.clear_pending_view_scroll();
             view.clear_marked_text(cx);
         });
-        self.send_filtered_input(text, cx);
+        self.send_filtered_input(text, window, cx);
     }
 
     fn replace_and_mark_text_in_range(
@@ -2410,12 +2534,16 @@ impl InputHandler for TerminalInputHandler {
         _range_utf16: Option<Range<usize>>,
         new_text: &str,
         _new_selected_range: Option<Range<usize>>,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) {
+        self.model
+            .update(cx, |model, cx| model.prepare_input_viewport(cx));
         let _ = self.terminal_view.update(cx, |view, cx| {
+            view.clear_pending_view_scroll();
             view.set_marked_text(new_text.to_string(), cx)
         });
+        window.invalidate_character_coordinates();
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut App) {
@@ -2428,12 +2556,15 @@ impl InputHandler for TerminalInputHandler {
         &mut self,
         range_utf16: Range<usize>,
         _window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> Option<Bounds<Pixels>> {
         let layout = self.layout.lock();
-        let mut bounds = self.cursor_bounds.unwrap_or_else(|| layout.input_bounds());
-        bounds.origin.x += layout.cell_width * range_utf16.start as f32;
-        Some(bounds)
+        let cursor_bounds = self
+            .model
+            .read(cx)
+            .current_ime_cursor_bounds(&layout)
+            .or(self.fallback_cursor_bounds);
+        ime_bounds_for_range(cursor_bounds, &layout, range_utf16)
     }
 
     fn character_index_for_point(
@@ -2452,6 +2583,50 @@ impl InputHandler for TerminalInputHandler {
     fn prefers_ime_for_printable_keys(&mut self, _window: &mut Window, _cx: &mut App) -> bool {
         true
     }
+}
+
+fn ime_bounds_for_range(
+    cursor_bounds: Option<Bounds<Pixels>>,
+    layout: &TerminalLayoutMetrics,
+    range_utf16: Range<usize>,
+) -> Option<Bounds<Pixels>> {
+    let mut bounds = cursor_bounds?;
+    bounds.origin.x += layout.cell_width * range_utf16.start as f32;
+    Some(bounds)
+}
+
+fn ime_cursor_bounds_from_content(
+    content: &TerminalContent,
+    layout: &TerminalLayoutMetrics,
+) -> Option<Bounds<Pixels>> {
+    if content.screen_lines == 0 || content.columns == 0 || layout.rows == 0 || layout.cols == 0 {
+        return None;
+    }
+    let display_cursor = DisplayCursor::from(content.cursor.point, content.display_offset);
+    if display_cursor.row < 0
+        || display_cursor.row as usize >= content.screen_lines
+        || display_cursor.col >= content.columns
+    {
+        return None;
+    }
+    let row = display_cursor.row as usize;
+    if row >= layout.rows {
+        return None;
+    }
+    let origin = Point {
+        x: layout.bounds.origin.x + layout.padding.left,
+        y: layout.bounds.origin.y + layout.padding.top,
+    };
+    Some(Bounds {
+        origin: Point {
+            x: origin.x + layout.cell_width * display_cursor.col as f32,
+            y: origin.y + layout.cell_height * row as f32,
+        },
+        size: Size {
+            width: layout.cell_width,
+            height: layout.cell_height,
+        },
+    })
 }
 
 struct TermSize {
@@ -2608,6 +2783,8 @@ fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u8>> 
             Some("\x1bOD")
         }
         ("left", TerminalKeyModifiers::None) => Some("\x1b[D"),
+        ("right", TerminalKeyModifiers::Alt) => Some("\x1bf"),
+        ("left", TerminalKeyModifiers::Alt) => Some("\x1bb"),
         ("right", TerminalKeyModifiers::Platform) => Some("\x05"),
         ("left", TerminalKeyModifiers::Platform) => Some("\x01"),
         ("end", TerminalKeyModifiers::Platform) => Some("\x05"),
@@ -3126,7 +3303,7 @@ impl TerminalRenderer {
             );
             background_rects.extend(prepared.background_rects);
             text_runs.extend(prepared.text_runs);
-            if display_offset == 0 && cursor_row == row as i32 {
+            if cursor_row + display_offset == row as i32 {
                 cursor_cell = cells
                     .iter()
                     .find(|indexed| indexed.point.column.0 == cursor_col)
@@ -3149,88 +3326,71 @@ impl TerminalRenderer {
             }
         }
 
-        let cursor = (content.display_offset == 0
-            && cursor_visible
+        let display_cursor = DisplayCursor::from(content.cursor.point, content.display_offset);
+        let cursor_on_visible_row = display_cursor.row >= 0
+            && (display_cursor.row as usize) < content.screen_lines
+            && display_cursor.col < content.columns
+            && (visible_rows.start..visible_rows.end).contains(&(display_cursor.row as usize));
+        let cursor = (cursor_visible
             && content.mode.contains(TermMode::SHOW_CURSOR)
-            && content.cursor.shape != CursorShape::Hidden)
+            && content.cursor.shape != CursorShape::Hidden
+            && cursor_on_visible_row)
             .then(|| {
                 let shape = if cursor_focused {
                     content.cursor.shape
                 } else {
                     CursorShape::HollowBlock
                 };
-                let row = content.cursor.point.line.0;
-                let col = content.cursor.point.column.0;
-                if row >= 0
-                    && (row as usize) < content.screen_lines
-                    && col < content.columns
-                    && (visible_rows.start..visible_rows.end).contains(&(row as usize))
-                {
-                    let cursor_width = self.cursor_width(cursor_cell, default_bg, window);
-                    let text_run = cursor_cell
-                        .filter(|cell| {
-                            cursor_focused
-                                && content.cursor.shape == CursorShape::Block
-                                && cell.c != '\0'
-                                && !cell.flags.contains(Flags::WIDE_CHAR_SPACER)
-                        })
-                        .map(|cell| {
-                            let font = self.font(
-                                cell.flags.contains(Flags::BOLD),
-                                cell.flags.contains(Flags::ITALIC),
-                            );
-                            TerminalTextRun::new(
-                                row as usize,
-                                col,
-                                cell.c,
-                                if cell.flags.contains(Flags::WIDE_CHAR) {
-                                    2
-                                } else {
-                                    1
-                                },
-                                TextRun {
-                                    len: cell.c.len_utf8(),
-                                    font,
-                                    color: default_bg,
-                                    background_color: None,
-                                    underline: None,
-                                    strikethrough: None,
-                                },
-                            )
-                        });
+                let row = display_cursor.row as usize;
+                let col = display_cursor.col;
+                let cursor_width = self.cursor_width(cursor_cell, default_bg, window);
+                let text_run = cursor_cell
+                    .filter(|cell| {
+                        cursor_focused
+                            && content.cursor.shape == CursorShape::Block
+                            && content.cursor_char != '\0'
+                            && !cell.flags.contains(Flags::WIDE_CHAR_SPACER)
+                    })
+                    .map(|cell| {
+                        let font = self.font(
+                            cell.flags.contains(Flags::BOLD),
+                            cell.flags.contains(Flags::ITALIC),
+                        );
+                        TerminalTextRun::new(
+                            row,
+                            col,
+                            content.cursor_char,
+                            if cell.flags.contains(Flags::WIDE_CHAR) {
+                                2
+                            } else {
+                                1
+                            },
+                            TextRun {
+                                len: cell.c.len_utf8(),
+                                font,
+                                color: default_bg,
+                                background_color: None,
+                                underline: None,
+                                strikethrough: None,
+                            },
+                        )
+                    });
 
-                    TerminalCursorPaint {
-                        point: content.cursor.point,
-                        shape,
-                        color: self
-                            .palette
-                            .resolve(Color::Named(NamedColor::Cursor), colors),
-                        width: cursor_width,
-                        text_run,
-                    }
-                } else {
-                    TerminalCursorPaint {
-                        point: content.cursor.point,
-                        shape,
-                        color: self
-                            .palette
-                            .resolve(Color::Named(NamedColor::Cursor), colors),
-                        width: self.cell_width,
-                        text_run: None,
-                    }
+                TerminalCursorPaint {
+                    point: content.cursor.point,
+                    display_row: row,
+                    shape,
+                    color: self
+                        .palette
+                        .resolve(Color::Named(NamedColor::Cursor), colors),
+                    width: cursor_width,
+                    text_run,
                 }
             });
-        let ime_cursor_bounds = (content.display_offset == 0).then(|| {
-            let width = if content.cursor.point.line.0 >= 0
-                && (content.cursor.point.line.0 as usize) < content.screen_lines
-                && content.cursor.point.column.0 < content.columns
-            {
-                self.cursor_width(cursor_cell, default_bg, window)
-            } else {
-                self.cell_width
-            };
-            let x = origin.x + self.cell_width * content.cursor.point.column.0 as f32;
-            let y = origin.y + self.cell_height * content.cursor.point.line.0 as f32;
+        let ime_cursor_bounds = cursor_on_visible_row.then(|| {
+            let width = self.cursor_width(cursor_cell, default_bg, window);
+            let x = origin.x + self.cell_width * display_cursor.col as f32;
+            let y = origin.y + self.cell_height * display_cursor.row as f32;
             Bounds {
                 origin: Point { x, y },
                 size: Size {
@@ -3247,7 +3407,10 @@ impl TerminalRenderer {
             background_rects,
             text_runs,
             cursor,
-            marked_text_cursor: (content.display_offset == 0).then_some(content.cursor.point),
+            marked_text_cursor: cursor_on_visible_row.then_some(TerminalPoint::new(
+                Line(display_cursor.row),
+                Column(display_cursor.col),
+            )),
             ime_cursor_bounds,
         }
     }
@@ -4353,14 +4516,14 @@ mod tests {
                 modified_key("left", false, true, false, false),
                 TermMode::NONE
             ),
-            b"\x1b[1;3D"
+            b"\x1bb"
         );
         assert_eq!(
             bytes(
                 modified_key("right", false, true, false, false),
                 TermMode::NONE
             ),
-            b"\x1b[1;3C"
+            b"\x1bf"
         );
         assert_eq!(
             bytes(
@@ -4395,14 +4558,14 @@ mod tests {
                 modified_key_with_function("left", false, true, false, false, true),
                 TermMode::NONE
             ),
-            b"\x1b[1;3D"
+            b"\x1bb"
         );
         assert_eq!(
             bytes(
                 modified_key_with_function("right", false, true, false, false, true),
                 TermMode::NONE
             ),
-            b"\x1b[1;3C"
+            b"\x1bf"
         );
         assert_eq!(
             bytes(
@@ -4647,6 +4810,227 @@ mod tests {
         assert_eq!(snapshot.columns, 20);
         assert_eq!(snapshot.screen_lines, 8);
         assert!(!handle.resize(20, 8));
+    }
+
+    #[test]
+    fn display_cursor_tracks_scroll_offset_like_zed() {
+        let mut state = TerminalModel::new_for_test(10, 4, 100);
+        state.process_bytes(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\nseven");
+        state.handle.publish_snapshot();
+        assert!(state.scroll_display(2));
+        let snapshot = state.sync_for_test();
+
+        let display_cursor = DisplayCursor::from(snapshot.cursor.point, snapshot.display_offset);
+
+        assert_eq!(snapshot.display_offset, 2);
+        assert_eq!(
+            display_cursor,
+            DisplayCursor {
+                row: snapshot.cursor.point.line.0 + 2,
+                col: snapshot.cursor.point.column.0,
+            }
+        );
+    }
+
+    #[test]
+    fn scroll_to_bottom_restores_input_viewport() {
+        let mut state = TerminalModel::new_for_test(10, 4, 100);
+        state.process_bytes(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\nseven");
+        state.handle.publish_snapshot();
+        assert!(state.scroll_display(2));
+        let scrolled = state.sync_for_test();
+        assert_eq!(scrolled.display_offset, 2);
+        assert!(!scrolled.scrolled_to_bottom);
+
+        state.scroll_to_bottom();
+        let bottom = state.sync_for_test();
+
+        assert_eq!(bottom.display_offset, 0);
+        assert!(bottom.scrolled_to_bottom);
+    }
+
+    #[test]
+    fn input_viewport_preparation_discards_pending_history_scroll() {
+        let mut state = TerminalModel::new_for_test(10, 4, 100);
+        state.process_bytes(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\nseven");
+        state.handle.publish_snapshot();
+        assert!(state.scroll_display(2));
+        assert_eq!(state.sync_for_test().display_offset, 2);
+
+        assert!(state.scroll_display(1));
+        state.prepare_input_viewport_for_test();
+        let snapshot = state.sync_for_test();
+
+        assert_eq!(snapshot.display_offset, 0);
+        assert!(snapshot.scrolled_to_bottom);
+    }
+
+    #[test]
+    fn input_viewport_preparation_keeps_bottom_stable_across_drift_events() {
+        let mut state = TerminalModel::new_for_test(10, 4, 100);
+        state.process_bytes(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\nseven\r\neight");
+        state.handle.publish_snapshot();
+
+        for lines in [2, -1, 3, 1] {
+            assert!(state.scroll_display(lines));
+        }
+        state.prepare_input_viewport_for_test();
+        let snapshot = state.sync_for_test();
+
+        assert_eq!(snapshot.display_offset, 0);
+        assert!(snapshot.scrolled_to_bottom);
+    }
+
+    #[test]
+    fn keyboard_input_suppresses_residual_precise_scroll_from_same_gesture() {
+        let mut state = TerminalScrollInputState {
+            pending_lines: 3,
+            pending_pixels: 12.0,
+            frame_pending: false,
+            suppress_residual_precise_scroll: false,
+        };
+        state.prepare_for_keyboard_input();
+
+        assert_eq!(state.pending_lines, 0);
+        assert_eq!(state.pending_pixels, 0.0);
+        assert!(state.should_suppress_residual_scroll(&ScrollWheelEvent {
+            delta: gpui::ScrollDelta::Pixels(Point {
+                x: px(0.0),
+                y: px(8.0),
+            }),
+            touch_phase: TouchPhase::Moved,
+            ..Default::default()
+        }));
+        assert_eq!(state.pending_pixels, 0.0);
+    }
+
+    #[test]
+    fn new_scroll_gesture_after_keyboard_input_is_not_suppressed() {
+        let mut state = TerminalScrollInputState::default();
+        state.prepare_for_keyboard_input();
+
+        assert!(!state.should_suppress_residual_scroll(&ScrollWheelEvent {
+            delta: gpui::ScrollDelta::Pixels(Point {
+                x: px(0.0),
+                y: px(8.0),
+            }),
+            touch_phase: TouchPhase::Started,
+            ..Default::default()
+        }));
+        assert!(!state.should_suppress_residual_scroll(&ScrollWheelEvent {
+            delta: gpui::ScrollDelta::Pixels(Point {
+                x: px(0.0),
+                y: px(8.0),
+            }),
+            touch_phase: TouchPhase::Moved,
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn keyboard_input_does_not_suppress_line_wheel_scroll() {
+        let mut state = TerminalScrollInputState::default();
+        state.prepare_for_keyboard_input();
+
+        assert!(!state.should_suppress_residual_scroll(&ScrollWheelEvent {
+            delta: gpui::ScrollDelta::Lines(Point { x: 0.0, y: 1.0 }),
+            touch_phase: TouchPhase::Moved,
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn ime_cursor_bounds_follow_current_viewport_after_history_scroll() {
+        let mut layout = TerminalLayoutMetrics::default();
+        layout.update(
+            Bounds {
+                origin: Point {
+                    x: px(10.0),
+                    y: px(20.0),
+                },
+                size: Size {
+                    width: px(100.0),
+                    height: px(80.0),
+                },
+            },
+            Edges {
+                top: px(2.0),
+                right: px(3.0),
+                bottom: px(4.0),
+                left: px(5.0),
+            },
+            px(10.0),
+            px(20.0),
+            10,
+            4,
+        );
+
+        let mut state = TerminalModel::new_for_test(10, 4, 100);
+        state.process_bytes(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\nseven");
+        state.handle.publish_snapshot();
+
+        assert!(state.scroll_display(2));
+        let scrolled = state.sync_for_test();
+        assert_eq!(scrolled.display_offset, 2);
+        assert!(state.current_ime_cursor_bounds(&layout).is_none());
+
+        state.prepare_input_viewport_for_test();
+        let bottom = state.sync_for_test();
+        let bounds = state.current_ime_cursor_bounds(&layout).unwrap();
+        let row = DisplayCursor::from(bottom.cursor.point, bottom.display_offset).row;
+
+        assert_eq!(bottom.display_offset, 0);
+        assert!(bottom.scrolled_to_bottom);
+        assert!(row >= 0);
+        assert_eq!(
+            bounds.origin.x,
+            px(15.0) + px(10.0) * bottom.cursor.point.column.0 as f32
+        );
+        assert_eq!(bounds.origin.y, px(22.0) + px(20.0) * row as f32);
+        assert_eq!(bounds.size.width, px(10.0));
+        assert_eq!(bounds.size.height, px(20.0));
+    }
+
+    #[test]
+    fn ime_bounds_for_range_offsets_from_current_cursor_cell() {
+        let mut layout = TerminalLayoutMetrics::default();
+        layout.update(
+            Bounds {
+                origin: Point {
+                    x: px(10.0),
+                    y: px(20.0),
+                },
+                size: Size {
+                    width: px(100.0),
+                    height: px(80.0),
+                },
+            },
+            Edges {
+                top: px(2.0),
+                right: px(0.0),
+                bottom: px(0.0),
+                left: px(5.0),
+            },
+            px(10.0),
+            px(20.0),
+            10,
+            4,
+        );
+        let cursor = Bounds {
+            origin: Point {
+                x: px(25.0),
+                y: px(42.0),
+            },
+            size: Size {
+                width: px(10.0),
+                height: px(20.0),
+            },
+        };
+
+        let bounds = ime_bounds_for_range(Some(cursor), &layout, 2..4).unwrap();
+
+        assert_eq!(bounds.origin.x, px(45.0));
+        assert_eq!(bounds.origin.y, px(42.0));
     }
 
     #[test]

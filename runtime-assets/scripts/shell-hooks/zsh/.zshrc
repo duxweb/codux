@@ -1,16 +1,21 @@
 if [[ -z "${DMUX_ORIGINAL_ZSHRC_SOURCED:-}" ]]; then
   export DMUX_ORIGINAL_ZSHRC_SOURCED=1
-  if [[ -f "${HOME}/.zshrc" ]]; then
-    export DMUX_HOOK_ORIGINAL_ZDOTDIR="${ZDOTDIR:-}"
-    export ZDOTDIR="${HOME}"
-    source "${HOME}/.zshrc"
-    if [[ -n "${DMUX_HOOK_ORIGINAL_ZDOTDIR:-}" ]]; then
-      export ZDOTDIR="${DMUX_HOOK_ORIGINAL_ZDOTDIR}"
-    else
-      unset ZDOTDIR
-    fi
+  dmux_user_zdotdir="${DMUX_USER_ZDOTDIR:-${HOME}}"
+  dmux_runtime_zdotdir="${ZDOTDIR:-}"
+  if [[ -f "${dmux_user_zdotdir}/.zshrc" ]]; then
+    export ZDOTDIR="${dmux_user_zdotdir}"
+    source "${dmux_user_zdotdir}/.zshrc"
+    export ZDOTDIR="${dmux_runtime_zdotdir}"
   fi
+  unset dmux_user_zdotdir dmux_runtime_zdotdir
 fi
+
+dmux_user_zdotdir="${DMUX_USER_ZDOTDIR:-${HOME}}"
+dmux_runtime_zdotdir="${ZDOTDIR:-}"
+if [[ -z "${HISTFILE:-}" || "${HISTFILE}" == "${dmux_runtime_zdotdir}/.zsh_history" ]]; then
+  export HISTFILE="${dmux_user_zdotdir}/.zsh_history"
+fi
+unset dmux_user_zdotdir dmux_runtime_zdotdir
 
 if [[ -n "${DMUX_WRAPPER_BIN:-}" && -d "${DMUX_WRAPPER_BIN}" ]]; then
   typeset -gaU path

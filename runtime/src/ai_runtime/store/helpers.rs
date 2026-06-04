@@ -23,6 +23,10 @@ pub fn probe_request_for_session(session: &AISessionSnapshot) -> AIRuntimeProbeR
 }
 
 pub(super) fn mark_interrupted(session: AISessionSnapshot, updated_at: f64) -> AISessionSnapshot {
+    let completed_turn_started_at = session
+        .active_turn_started_at
+        .or(session.runtime_turn_started_at)
+        .or(session.started_at);
     AISessionSnapshot {
         state: "idle".to_string(),
         status: "idle".to_string(),
@@ -31,6 +35,7 @@ pub(super) fn mark_interrupted(session: AISessionSnapshot, updated_at: f64) -> A
         has_completed_turn: false,
         active_turn_started_at: None,
         runtime_turn_started_at: None,
+        completed_turn_started_at,
         updated_at,
         ..session
     }
@@ -78,6 +83,7 @@ pub(super) fn bridge_terminal_session(
         updated_at: now,
         active_turn_started_at: Some(now),
         runtime_turn_started_at: None,
+        completed_turn_started_at: None,
         has_completed_turn: false,
         was_interrupted: false,
         transcript_path: None,

@@ -74,15 +74,6 @@ impl CoduxApp {
             &terminal_pane_registry,
             cx,
         )?;
-        if let Some(view) = terminals
-            .get(restore_plan.active_index)
-            .or_else(|| terminals.first())
-            .and_then(|tab| tab.panes.last())
-            .and_then(|slot| slot.pane.as_ref())
-            .map(|pane| pane.view.clone())
-        {
-            view.read(cx).focus_handle().focus(window, cx);
-        }
         let selected_ai_provider_id = state
             .settings
             .ai_providers
@@ -408,6 +399,14 @@ impl CoduxApp {
                     app.invalidate_ui_region(cx, UiRegion::Root);
                 });
             }));
+    }
+
+    pub(crate) fn initialize_main_window_focus(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.focus_active_terminal(window, cx);
     }
 
     pub(super) fn spawn_runtime_scheduled_refresh(&mut self, cx: &mut Context<Self>) {

@@ -9,10 +9,11 @@ mod tests {
             },
             shortcuts::{normalized_shortcut_text, shortcut_matches},
             terminal_state::{
-                normalize_terminal_restore_state, structural_terminal_layout,
-                terminal_pane_terminal_id, terminal_restore_plan,
+                normalize_terminal_restore_state, restore_terminal_tabs_skeleton,
+                structural_terminal_layout, terminal_pane_terminal_id, terminal_restore_plan,
             },
-            types::{TerminalPanePlan, TerminalTabPlacement, TerminalTabPlan},
+            terminal_worktree_actions::active_terminal_slot_indices,
+            types::{TerminalPanePlan, TerminalRestorePlan, TerminalTabPlacement, TerminalTabPlan},
             ui_helpers::restored_terminal_preview_lines,
         },
         terminal::TerminalLaunchContext,
@@ -295,6 +296,109 @@ mod tests {
         assert_eq!(layout.top_panes[0].title, "kept");
         assert!(layout.tabs.is_empty());
         assert_eq!(layout.active_terminal_id, "term-2");
+    }
+
+    #[test]
+    fn active_terminal_slot_indices_use_layout_terminal_id_not_last_pane() {
+        let terminals = vec![
+            crate::app::types::TerminalTab {
+                id: 1,
+                label: "Main".to_string(),
+                placement: TerminalTabPlacement::Top,
+                terminal_id: None,
+                panes: vec![
+                    crate::app::types::TerminalPaneSlot {
+                        title: "Split 1".to_string(),
+                        terminal_id: Some("top-1".to_string()),
+                        pane: None,
+                        restored_output_bytes: 0,
+                        restored_output_tail: String::new(),
+                    },
+                    crate::app::types::TerminalPaneSlot {
+                        title: "Split 2".to_string(),
+                        terminal_id: Some("top-2".to_string()),
+                        pane: None,
+                        restored_output_bytes: 0,
+                        restored_output_tail: String::new(),
+                    },
+                ],
+            },
+            crate::app::types::TerminalTab {
+                id: 2,
+                label: "Tab 1".to_string(),
+                placement: TerminalTabPlacement::Bottom,
+                terminal_id: Some("bottom-1".to_string()),
+                panes: vec![crate::app::types::TerminalPaneSlot {
+                    title: "Tab 1".to_string(),
+                    terminal_id: Some("bottom-1".to_string()),
+                    pane: None,
+                    restored_output_bytes: 0,
+                    restored_output_tail: String::new(),
+                }],
+            },
+        ];
+
+        assert_eq!(
+            active_terminal_slot_indices(&terminals, "top-1", 1),
+            Some((0, 0))
+        );
+        assert_eq!(
+            active_terminal_slot_indices(&terminals, "top-2", 1),
+            Some((0, 1))
+        );
+        assert_eq!(
+            active_terminal_slot_indices(&terminals, "bottom-1", 1),
+            Some((1, 0))
+        );
+        assert_eq!(
+            active_terminal_slot_indices(&terminals, "", 1),
+            Some((0, 0))
+        );
+        assert_eq!(
+            active_terminal_slot_indices(&terminals, "top-1", 2),
+            Some((0, 0)),
+            "terminal focus may point at a top pane while the bottom tab UI keeps its own active id"
+        );
+    }
+
+    #[test]
+    fn restored_terminal_ui_active_id_stays_on_bottom_tab_when_runtime_active_is_top() {
+        let plan = TerminalRestorePlan {
+            active_index: 0,
+            tabs: vec![
+                TerminalTabPlan {
+                    placement: TerminalTabPlacement::Top,
+                    terminal_id: None,
+                    label: "Main".to_string(),
+                    panes: vec![TerminalPanePlan {
+                        terminal_id: Some("top-1".to_string()),
+                        title: "Split 1".to_string(),
+                        restored_output_bytes: 0,
+                        restored_output_tail: String::new(),
+                    }],
+                },
+                TerminalTabPlan {
+                    placement: TerminalTabPlacement::Bottom,
+                    terminal_id: Some("bottom-1".to_string()),
+                    label: "Tab 1".to_string(),
+                    panes: vec![TerminalPanePlan {
+                        terminal_id: Some("bottom-1".to_string()),
+                        title: "Tab 1".to_string(),
+                        restored_output_bytes: 0,
+                        restored_output_tail: String::new(),
+                    }],
+                },
+            ],
+        };
+
+        let (tabs, active_tab_id, _) = restore_terminal_tabs_skeleton(&plan, None);
+
+        assert_eq!(tabs[0].placement, TerminalTabPlacement::Top);
+        assert_eq!(tabs[1].placement, TerminalTabPlacement::Bottom);
+        assert_eq!(
+            active_tab_id, tabs[1].id,
+            "bottom tab UI active id must not be replaced by a top pane runtime focus id"
+        );
     }
 
     #[test]

@@ -37,7 +37,7 @@ struct AIRuntimeStateCore {
     logical_cached_baselines: HashMap<String, i64>,
     dismissed_completed_at: HashMap<String, f64>,
     latest_active_started_at_by_project: HashMap<String, f64>,
-    notified_completion_at: HashMap<String, f64>,
+    notified_completion_keys: HashSet<String>,
 }
 
 #[derive(Default)]

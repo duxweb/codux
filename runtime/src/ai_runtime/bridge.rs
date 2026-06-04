@@ -418,6 +418,190 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn zsh_runtime_hook_keeps_wrapper_bin_first_after_user_startup_files() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        let dir = std::env::temp_dir().join(format!("codux-zsh-wrapper-path-{}", Uuid::new_v4()));
+        let bridge =
+            AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+        bridge.stage_assets().unwrap();
+
+        let real_bin = dir.join("real-bin");
+        fs::create_dir_all(&real_bin).unwrap();
+        let fake_codex = real_bin.join("codex");
+        fs::write(&fake_codex, "#!/bin/sh\nexit 0\n").unwrap();
+        let mut permissions = fs::metadata(&fake_codex).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_codex, permissions).unwrap();
+
+        let home = dir.join("home");
+        fs::write(
+            home.join(".zshrc"),
+            format!(
+                "if [[ \"${{ZDOTDIR:-}}\" != \"{}\" ]]; then exit 61; fi\nexport PATH=\"{}:$PATH\"\n",
+                home.display(),
+                real_bin.display()
+            ),
+        )
+        .unwrap();
+        let output = Command::new("zsh")
+            .args([
+                "-l",
+                "-i",
+                "-c",
+                "command -v codex; printf 'HISTFILE=%s\\n' \"${HISTFILE:-}\"",
+            ])
+            .env("HOME", &home)
+            .env("USER", "codux")
+            .env("LOGNAME", "codux")
+            .env(
+                "PATH",
+                format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display()),
+            )
+            .env("DMUX_WRAPPER_BIN", bridge.wrapper_bin_dir())
+            .env("DMUX_USER_ZDOTDIR", &home)
+            .env("ZDOTDIR", bridge.zsh_hook_dir())
+            .env("DMUX_ZSH_HOOK_SCRIPT", bridge.zsh_hook_script())
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "zsh should resolve codex, stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines = stdout.lines().collect::<Vec<_>>();
+        assert_eq!(
+            lines.first().copied(),
+            Some(bridge.wrapper_bin_dir().join("codex").display().to_string().as_str())
+        );
+        let expected_histfile = format!("HISTFILE={}", home.join(".zsh_history").display());
+        assert_eq!(
+            lines.get(1).copied(),
+            Some(expected_histfile.as_str())
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn zsh_runtime_hook_preserves_user_configured_histfile() {
+        use std::process::Command;
+
+        let dir = std::env::temp_dir().join(format!("codux-zsh-histfile-{}", Uuid::new_v4()));
+        let bridge =
+            AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+        bridge.stage_assets().unwrap();
+
+        let home = dir.join("home");
+        fs::write(
+            home.join(".zshrc"),
+            "export HISTFILE=\"$HOME/.custom_zsh_history\"\n",
+        )
+        .unwrap();
+        let output = Command::new("zsh")
+            .args(["-l", "-i", "-c", "printf 'HISTFILE=%s\\n' \"$HISTFILE\""])
+            .env("HOME", &home)
+            .env("USER", "codux")
+            .env("LOGNAME", "codux")
+            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+            .env("DMUX_WRAPPER_BIN", bridge.wrapper_bin_dir())
+            .env("DMUX_USER_ZDOTDIR", &home)
+            .env("ZDOTDIR", bridge.zsh_hook_dir())
+            .env("DMUX_ZSH_HOOK_SCRIPT", bridge.zsh_hook_script())
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "zsh should preserve user HISTFILE, stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            format!("HISTFILE={}", home.join(".custom_zsh_history").display())
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn codex_wrapper_applies_tool_permissions_and_memory_injection() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        let dir =
+            std::env::temp_dir().join(format!("codux-codex-wrapper-perms-{}", Uuid::new_v4()));
+        let bridge =
+            AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+        bridge.stage_assets().unwrap();
+
+        let real_bin = dir.join("real-bin");
+        fs::create_dir_all(&real_bin).unwrap();
+        let fake_codex = real_bin.join("codex");
+        fs::write(&fake_codex, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+        let mut permissions = fs::metadata(&fake_codex).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_codex, permissions).unwrap();
+
+        let permissions_file = dir.join("tool-permissions.json");
+        fs::write(
+            &permissions_file,
+            serde_json::json!({
+                "codex": "fullAccess",
+                "claudeCode": "default",
+                "gemini": "default",
+                "opencode": "default",
+                "kiro": "default",
+                "codexModel": "gpt-5.1",
+                "codexEffort": "high"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let memory_root = dir.join("memory");
+        let project_root = dir.join("project");
+        fs::create_dir_all(&memory_root).unwrap();
+        fs::create_dir_all(&project_root).unwrap();
+        fs::write(memory_root.join("AGENTS.md"), "Use project memory.").unwrap();
+
+        let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+        let output = Command::new(bridge.wrapper_bin_dir().join("codex"))
+            .env("PATH", &search_path)
+            .env("DMUX_ORIGINAL_PATH", &search_path)
+            .env("DMUX_SESSION_ID", "terminal-1")
+            .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+            .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+            .env("DMUX_AI_MEMORY_WORKSPACE_ROOT", &memory_root)
+            .env("DMUX_PROJECT_PATH", &project_root)
+            .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "wrapper should execute fake codex, stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let args = String::from_utf8_lossy(&output.stdout);
+        assert!(args.lines().any(|arg| arg == "--enable"));
+        assert!(args.lines().any(|arg| arg == "hooks"));
+        assert!(
+            args.lines()
+                .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox")
+        );
+        assert!(args.lines().any(|arg| arg == "--model=gpt-5.1"));
+        assert!(args.lines().any(|arg| arg == "model_reasoning_effort=\"high\""));
+        assert!(args.lines().any(|arg| arg == "--add-dir"));
+        assert!(args.lines().any(|arg| arg == memory_root.display().to_string()));
+        assert!(args.lines().any(|arg| arg.starts_with("developer_instructions=")));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn bridge_prepare_installs_claude_hooks_and_preserves_settings() {
         let dir = std::env::temp_dir().join(format!("codux-ai-bridge-{}", Uuid::new_v4()));

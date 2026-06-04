@@ -363,7 +363,10 @@ where
         restore_terminal_tabs_skeleton(plan, launch_context);
     for (tab_plan_index, tab_plan) in plan.tabs.iter().enumerate() {
         let mount_tab = tab_plan_index == plan.active_index
-            || (tab_plan.placement == TerminalTabPlacement::Top && tab_plan.terminal_id.is_none());
+            || tabs
+                .get(tab_plan_index)
+                .is_some_and(|tab| tab.id == active_terminal_id)
+            || tab_plan.placement == TerminalTabPlacement::Top;
         if mount_tab && let Some(tab) = tabs.get_mut(tab_plan_index) {
             mount_terminal_tab_panes(
                 tab,
@@ -490,6 +493,12 @@ pub(in crate::app) fn restore_terminal_tabs_skeleton(
     }
     let active_terminal_id = tabs
         .get(plan.active_index)
+        .filter(|tab| tab.placement == TerminalTabPlacement::Bottom)
+        .or_else(|| {
+            tabs.iter()
+                .find(|tab| tab.placement == TerminalTabPlacement::Bottom)
+        })
+        .or_else(|| tabs.get(plan.active_index))
         .or_else(|| tabs.first())
         .map(|tab| tab.id)
         .unwrap_or(1);
