@@ -111,6 +111,7 @@ impl CoduxApp {
             return;
         }
 
+        self.refresh_pet_cache();
         let state = self.state.clone();
         let runtime = self.runtime.clone();
         let runtime_service = self.runtime_service.clone();

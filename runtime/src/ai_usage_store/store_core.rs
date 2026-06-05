@@ -61,18 +61,23 @@ impl AIUsageStore {
         let mut statement = conn.prepare(
             r#"
             SELECT
-                session.project_id,
-                COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_start >= ?2 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens
-            FROM ai_history_file_session_link AS session
-            LEFT JOIN ai_history_file_usage_bucket AS bucket
-              ON bucket.source = session.source
-             AND bucket.file_path = session.file_path
-             AND bucket.project_path = session.project_path
-             AND bucket.session_key = session.session_key
-            WHERE (?3 IS NULL OR session.last_seen_at >= ?4)
-            GROUP BY session.project_id
-            HAVING total_tokens > 0
-            ORDER BY session.project_id ASC;
+                project_id,
+                total_tokens
+            FROM (
+                SELECT
+                    session.project_id AS project_id,
+                    COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_start >= ?2 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens
+                FROM ai_history_file_session_link AS session
+                LEFT JOIN ai_history_file_usage_bucket AS bucket
+                  ON bucket.source = session.source
+                 AND bucket.file_path = session.file_path
+                 AND bucket.project_path = session.project_path
+                 AND bucket.session_key = session.session_key
+                WHERE (?3 IS NULL OR session.last_seen_at >= ?4)
+                GROUP BY session.project_id
+            )
+            WHERE total_tokens > 0
+            ORDER BY project_id ASC;
             "#,
         )?;
         let rows = statement
@@ -96,46 +101,67 @@ impl AIUsageStore {
         let mut statement = conn.prepare(
             r#"
             SELECT
-                session.source,
-                session.session_key,
-                session.external_session_id,
-                session.project_id,
-                session.project_name,
-                session.project_path,
-                session.session_title,
-                session.first_seen_at,
-                session.last_seen_at,
-                session.last_model,
-                session.active_duration_seconds,
-                COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_start >= ?2 THEN bucket.request_count ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_start >= ?4 THEN bucket.input_tokens ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_start >= ?6 THEN bucket.output_tokens ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN ?7 IS NULL OR bucket.bucket_start >= ?8 THEN bucket.total_tokens ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN ?9 IS NULL OR bucket.bucket_start >= ?10 THEN bucket.cached_input_tokens ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN bucket.bucket_end > ?11 AND bucket.bucket_start < ?12 THEN bucket.total_tokens ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN bucket.bucket_end > ?13 AND bucket.bucket_start < ?14 THEN bucket.cached_input_tokens ELSE 0 END), 0)
-            FROM ai_history_file_session_link AS session
-            LEFT JOIN ai_history_file_usage_bucket AS bucket
-              ON bucket.source = session.source
-             AND bucket.file_path = session.file_path
-             AND bucket.project_path = session.project_path
-             AND bucket.session_key = session.session_key
-            WHERE (?15 IS NULL OR session.last_seen_at >= ?16)
-            GROUP BY
-                session.source,
-                session.file_path,
-                session.project_path,
-                session.session_key,
-                session.external_session_id,
-                session.project_id,
-                session.project_name,
-                session.session_title,
-                session.first_seen_at,
-                session.last_seen_at,
-                session.last_model,
-                session.active_duration_seconds
-            HAVING total_tokens > 0 OR cached_input_tokens > 0 OR request_count > 0
-            ORDER BY session.last_seen_at DESC;
+                source,
+                session_key,
+                external_session_id,
+                project_id,
+                project_name,
+                project_path,
+                session_title,
+                first_seen_at,
+                last_seen_at,
+                last_model,
+                active_duration_seconds,
+                request_count,
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                cached_input_tokens,
+                today_tokens,
+                today_cached_input_tokens
+            FROM (
+                SELECT
+                    session.source AS source,
+                    session.session_key AS session_key,
+                    session.external_session_id AS external_session_id,
+                    session.project_id AS project_id,
+                    session.project_name AS project_name,
+                    session.project_path AS project_path,
+                    session.session_title AS session_title,
+                    session.first_seen_at AS first_seen_at,
+                    session.last_seen_at AS last_seen_at,
+                    session.last_model AS last_model,
+                    session.active_duration_seconds AS active_duration_seconds,
+                    COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_start >= ?2 THEN bucket.request_count ELSE 0 END), 0) AS request_count,
+                    COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_start >= ?4 THEN bucket.input_tokens ELSE 0 END), 0) AS input_tokens,
+                    COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_start >= ?6 THEN bucket.output_tokens ELSE 0 END), 0) AS output_tokens,
+                    COALESCE(SUM(CASE WHEN ?7 IS NULL OR bucket.bucket_start >= ?8 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens,
+                    COALESCE(SUM(CASE WHEN ?9 IS NULL OR bucket.bucket_start >= ?10 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
+                    COALESCE(SUM(CASE WHEN bucket.bucket_end > ?11 AND bucket.bucket_start < ?12 THEN bucket.total_tokens ELSE 0 END), 0) AS today_tokens,
+                    COALESCE(SUM(CASE WHEN bucket.bucket_end > ?13 AND bucket.bucket_start < ?14 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS today_cached_input_tokens
+                FROM ai_history_file_session_link AS session
+                LEFT JOIN ai_history_file_usage_bucket AS bucket
+                  ON bucket.source = session.source
+                 AND bucket.file_path = session.file_path
+                 AND bucket.project_path = session.project_path
+                 AND bucket.session_key = session.session_key
+                WHERE (?15 IS NULL OR session.last_seen_at >= ?16)
+                GROUP BY
+                    session.source,
+                    session.file_path,
+                    session.project_path,
+                    session.session_key,
+                    session.external_session_id,
+                    session.project_id,
+                    session.project_name,
+                    session.session_title,
+                    session.first_seen_at,
+                    session.last_seen_at,
+                    session.last_model,
+                    session.active_duration_seconds
+            )
+            WHERE total_tokens > 0 OR cached_input_tokens > 0 OR request_count > 0
+            ORDER BY last_seen_at DESC;
             "#,
         )?;
         let rows = statement

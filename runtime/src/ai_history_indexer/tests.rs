@@ -1,6 +1,7 @@
 use super::state::{
     mark_project_completed, mark_project_progress, mark_project_queued, mark_project_running,
-    project_source_fingerprint_unchanged, set_project_source_fingerprint,
+    project_source_fingerprint_unchanged, seed_or_queue_project_state,
+    set_project_source_fingerprint,
 };
 use super::types::AIHistoryIndexerState;
 use crate::ai_history_normalized::{
@@ -90,6 +91,27 @@ fn project_source_fingerprint_tracks_changes_per_project() {
         "project-1",
         &changed
     ));
+}
+
+#[test]
+fn cache_miss_project_state_is_queued_for_indexing() {
+    let state = Arc::new(Mutex::new(AIHistoryIndexerState::default()));
+    let project = test_project();
+
+    let (queued, should_enqueue) = seed_or_queue_project_state(&state, &project, None).unwrap();
+
+    assert!(should_enqueue);
+    assert!(queued.is_loading);
+    assert!(queued.queued);
+    assert_eq!(queued.progress, Some(0.0));
+    assert!(queued.snapshot.is_none());
+    assert!(
+        state
+            .lock()
+            .unwrap()
+            .queued_or_running_projects
+            .contains(&project.id)
+    );
 }
 
 fn test_project() -> AIHistoryProjectRequest {

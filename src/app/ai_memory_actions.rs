@@ -355,6 +355,7 @@ impl CoduxApp {
             Ok(state) => {
                 if let Some(summary) = ai_history_summary_from_project_state(&state) {
                     self.state.ai_history = summary;
+                    self.state.refresh_ai_history_stats();
                 }
                 self.refresh_ai_global_history_summary();
                 self.selected_ai_session_id = None;
@@ -468,6 +469,7 @@ impl CoduxApp {
             Ok(state) => {
                 if let Some(summary) = ai_history_summary_from_project_state(&state) {
                     self.state.ai_history = summary;
+                    self.state.refresh_ai_history_stats();
                 }
                 self.refresh_ai_global_history_summary();
                 self.selected_ai_session_id = Some(session.id);

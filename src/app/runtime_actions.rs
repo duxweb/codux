@@ -175,6 +175,7 @@ impl CoduxApp {
                     Ok(Ok((tool_permissions, snapshot, summary))) => {
                         app.state.tool_permissions = tool_permissions;
                         app.state.ai_runtime_state = summary;
+                        app.state.refresh_ai_history_stats();
                         app.status_message = format!(
                             "runtime ready · {} session{}",
                             snapshot.sessions.len(),
@@ -228,6 +229,7 @@ impl CoduxApp {
         self.state.ai_runtime_state = self
             .runtime_service
             .summarize_ai_runtime_state_snapshot(&ai_snapshot);
+        self.state.refresh_ai_history_stats();
         self.normalize_selected_runtime_session();
     }
 
@@ -238,12 +240,14 @@ impl CoduxApp {
         };
 
         if show_progress {
+            self.ai_history_refreshing = true;
             self.ai_index_progress_generation = self.ai_index_progress_generation.wrapping_add(1);
             self.ai_index_progress_visible_until = app_now_seconds() + 3.0;
             self.state.ai_history.is_loading = true;
             self.state.ai_history.queued = true;
             self.state.ai_history.progress = Some(0.0);
             self.state.ai_history.detail = "queued".to_string();
+            self.state.refresh_ai_history_stats();
             self.invalidate_ui(
                 cx,
                 [
@@ -267,11 +271,13 @@ impl CoduxApp {
                 self.status_message = format!("AI history indexing queued for {}", project.name);
             }
             Err(error) => {
+                self.ai_history_refreshing = false;
                 self.state.ai_history.is_loading = false;
                 self.state.ai_history.queued = false;
                 self.ai_history_active_index_count =
                     self.runtime_service.active_ai_history_index_count();
                 self.state.ai_history.error = Some(error.clone());
+                self.state.refresh_ai_history_stats();
                 self.status_message = format!("failed to queue AI history indexing: {error}");
             }
         }

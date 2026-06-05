@@ -131,9 +131,11 @@ impl RuntimeService {
         let projects = self.memory_project_workspaces();
         let _ = self.ai_runtime.poll_runtime_state();
         let runtime_state = self.ai_runtime.runtime_state_snapshot();
-        let history_sessions =
-            indexed_sessions_since(Some(memory_history_cutoff_seconds(&settings.memory)))
-                .map_err(|error| error.to_string())?;
+        let history_sessions = indexed_sessions_since_at(
+            self.ai_usage_database_path(),
+            Some(memory_history_cutoff_seconds(&settings.memory)),
+        )
+        .map_err(|error| error.to_string())?;
         memory_service.enqueue_automatic_extraction_candidates(
             &settings.memory,
             &projects,
@@ -160,7 +162,8 @@ impl RuntimeService {
         let _ = self.ai_history_indexer.global_summary(root_projects);
         let _ = self.ai_runtime.poll_runtime_state();
         let runtime_state = self.ai_runtime.runtime_state_snapshot();
-        let history_sessions = indexed_sessions_since(None).map_err(|error| error.to_string())?;
+        let history_sessions = indexed_sessions_since_at(self.ai_usage_database_path(), None)
+            .map_err(|error| error.to_string())?;
         MemoryService::new(self.support_dir.clone())
             .process_memory_sessions_now(
                 &settings,

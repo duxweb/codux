@@ -31,11 +31,9 @@ pub(super) enum AssistantPanel {
 
 #[derive(Clone, PartialEq)]
 pub(in crate::app) struct AIStatsSidebarSnapshot {
-    selected_project_id: Option<String>,
-    statistics_mode: String,
     language: String,
-    history_fingerprint: u64,
-    runtime_fingerprint: u64,
+    stats_fingerprint: u64,
+    refreshing: bool,
 }
 
 pub(in crate::app) struct AIStatsSidebarView {
@@ -58,14 +56,9 @@ impl Render for AIStatsSidebarView {
         let app_entity = self.app_entity.clone();
         app_entity.update(cx, |app, cx| {
             ai_stats_sidebar(
-                &app.state.ai_history,
-                app.state
-                    .selected_project
-                    .as_ref()
-                    .map(|project| project.id.as_str()),
-                &app.state.settings.statistics_mode,
-                &app.state.ai_runtime_state,
+                &app.state.ai_history_stats,
                 &app.state.settings.language,
+                app.ai_history_refreshing,
                 cx,
             )
             .into_any_element()
@@ -94,15 +87,9 @@ impl CoduxApp {
 
     fn ai_stats_sidebar_snapshot(&self) -> AIStatsSidebarSnapshot {
         AIStatsSidebarSnapshot {
-            selected_project_id: self
-                .state
-                .selected_project
-                .as_ref()
-                .map(|project| project.id.clone()),
-            statistics_mode: self.state.settings.statistics_mode.clone(),
             language: self.state.settings.language.clone(),
-            history_fingerprint: ai_history_fingerprint(&self.state.ai_history),
-            runtime_fingerprint: ai_runtime_state_fingerprint(&self.state.ai_runtime_state),
+            stats_fingerprint: ai_history_stats_fingerprint(&self.state.ai_history_stats),
+            refreshing: self.ai_history_refreshing,
         }
     }
 }
@@ -267,142 +254,65 @@ fn f64_bits(value: f64) -> u64 {
     value.to_bits()
 }
 
-fn option_f64_bits(value: Option<f64>) -> Option<u64> {
-    value.map(f64_bits)
-}
-
-fn ai_session_fingerprints(
-    sessions: &[AISessionSummary],
-) -> Vec<(String, String, u64, i64, i64, i64)> {
-    sessions
-        .iter()
-        .map(|session| {
-            (
-                session.id.clone(),
-                session.title.clone(),
-                f64_bits(session.last_seen_at),
-                session.total_tokens,
-                session.cached_input_tokens,
-                session.request_count,
-            )
-        })
-        .collect()
-}
-
-fn ai_history_fingerprint(history: &AIHistorySummary) -> u64 {
+fn ai_history_stats_fingerprint(stats: &codux_runtime::ai_history::AIHistoryStatsView) -> u64 {
     combine_sidebar_hashes(&[
-        hash_sidebar_value(&(
-            history.indexed,
-            option_f64_bits(history.indexed_at),
-            history.is_loading,
-            history.queued,
-            option_f64_bits(history.progress),
-            history.detail.clone(),
-        )),
-        hash_sidebar_value(&(
-            history.project_total_tokens,
-            history.project_cached_input_tokens,
-            history.today_total_tokens,
-            history.today_cached_input_tokens,
-            history.session_count,
-        )),
-        hash_sidebar_value(&ai_session_fingerprints(&history.sessions)),
+        hash_sidebar_value(&(stats.project_total_tokens, stats.today_total_tokens)),
         hash_sidebar_value(
-            &history
-                .heatmap
+            &stats
+                .current_sessions
                 .iter()
-                .map(|day| {
+                .map(|session| {
                     (
-                        f64_bits(day.day),
-                        day.total_tokens,
-                        day.cached_input_tokens,
-                        day.request_count,
+                        session.tool.clone(),
+                        session.model.clone(),
+                        session.total_tokens,
                     )
                 })
                 .collect::<Vec<_>>(),
         ),
         hash_sidebar_value(
-            &history
-                .today_time_buckets
+            &stats
+                .today_buckets
                 .iter()
                 .map(|bucket| {
                     (
                         f64_bits(bucket.start),
                         f64_bits(bucket.end),
-                        bucket.total_tokens,
-                        bucket.cached_input_tokens,
+                        bucket.value,
                         bucket.request_count,
+                        bucket.ratio.to_bits(),
+                        bucket.opacity.to_bits(),
                     )
                 })
                 .collect::<Vec<_>>(),
         ),
-        hash_sidebar_value(&usage_breakdown_fingerprints(&history.tool_breakdown)),
-        hash_sidebar_value(&usage_breakdown_fingerprints(&history.model_breakdown)),
-        hash_sidebar_value(&history.error),
+        hash_sidebar_value(
+            &stats
+                .heatmap
+                .iter()
+                .map(|cell| {
+                    (
+                        f64_bits(cell.day),
+                        cell.value,
+                        cell.request_count,
+                        cell.is_known,
+                        cell.opacity.to_bits(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        ),
+        hash_sidebar_value(&rank_row_fingerprints(&stats.tool_rows)),
+        hash_sidebar_value(&rank_row_fingerprints(&stats.model_rows)),
     ])
 }
 
-fn usage_breakdown_fingerprints(
-    items: &[codux_runtime::ai_history_normalized::AIUsageBreakdownItem],
-) -> Vec<(String, i64, i64, i64)> {
+fn rank_row_fingerprints(
+    items: &[codux_runtime::ai_history::AIHistoryRankRow],
+) -> Vec<(String, i64, u32)> {
     items
         .iter()
-        .map(|item| {
-            (
-                item.key.clone(),
-                item.total_tokens,
-                item.cached_input_tokens,
-                item.request_count,
-            )
-        })
+        .map(|item| (item.label.clone(), item.value, item.percent.to_bits()))
         .collect()
-}
-
-fn ai_runtime_state_fingerprint(
-    runtime_state: &codux_runtime::ai_runtime_state::AIRuntimeStateSummary,
-) -> u64 {
-    hash_sidebar_value(&(
-        runtime_state.path.clone(),
-        f64_bits(runtime_state.updated_at),
-        runtime_state.running_count,
-        runtime_state.needs_input_count,
-        runtime_state.completed_count,
-        runtime_state.session_count,
-        runtime_state.global_total_tokens,
-        runtime_state.global_cached_input_tokens,
-        runtime_state
-            .project_totals
-            .iter()
-            .map(|project| {
-                (
-                    project.project_id.clone(),
-                    project.total_tokens,
-                    project.cached_input_tokens,
-                    project.running,
-                    project.needs_input,
-                    project.completed,
-                )
-            })
-            .collect::<Vec<_>>(),
-        runtime_state
-            .sessions
-            .iter()
-            .map(|session| {
-                (
-                    session.terminal_id.clone(),
-                    session.project_id.clone(),
-                    session.state.clone(),
-                    f64_bits(session.updated_at),
-                    session.event_count,
-                    session.total_tokens,
-                    session.cached_input_tokens,
-                    session.has_completed_turn,
-                    session.was_interrupted,
-                )
-            })
-            .collect::<Vec<_>>(),
-        runtime_state.error.clone(),
-    ))
 }
 
 fn ssh_fingerprint(ssh: &SSHSummary) -> u64 {
@@ -757,13 +667,4 @@ fn ai_stats_surface(cx: &mut Context<CoduxApp>) -> gpui::Hsla {
 
 fn ai_stats_track_surface(cx: &mut Context<CoduxApp>) -> gpui::Hsla {
     cx.theme().secondary_hover
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn ai_display_tokens_respects_cache_mode() {
-        assert_eq!(super::ai::ai_display_tokens(100, 40, false), 100);
-        assert_eq!(super::ai::ai_display_tokens(100, 40, true), 140);
-    }
 }

@@ -8,7 +8,9 @@ pub struct RuntimeState {
     pub git_review: git::GitReviewSummary,
     pub files: Vec<FileEntry>,
     pub ai_global_history: AIGlobalHistorySummary,
+    pub daily_level: AIHistoryDailyLevelView,
     pub ai_history: AIHistorySummary,
+    pub ai_history_stats: AIHistoryStatsView,
     pub ai_session_detail: Option<AISessionDetail>,
     pub memory: MemorySummary,
     pub memory_manager: MemoryManagerSnapshot,
@@ -87,6 +89,14 @@ impl RuntimeService {
 pub struct AIRuntimeDrainResult {
     pub events: Vec<AIRuntimeSupervisorEvent>,
     pub memory: Vec<MemoryEnqueueResult>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct AIHistoryDrainResult {
+    pub events: Vec<AIHistoryEvent>,
+    pub pet: Option<PetSummary>,
+    pub pet_snapshot: Option<PetSnapshot>,
+    pub pet_error: Option<String>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

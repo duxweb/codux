@@ -1,5 +1,9 @@
+if [[ "${(t)DMUX_ORIGINAL_ZLOGIN_SOURCED:-}" == *export* ]]; then
+  unset DMUX_ORIGINAL_ZLOGIN_SOURCED
+fi
+
 if [[ -z "${DMUX_ORIGINAL_ZLOGIN_SOURCED:-}" ]]; then
-  export DMUX_ORIGINAL_ZLOGIN_SOURCED=1
+  typeset -g DMUX_ORIGINAL_ZLOGIN_SOURCED=1
   dmux_user_zdotdir="${DMUX_USER_ZDOTDIR:-${HOME}}"
   dmux_runtime_zdotdir="${ZDOTDIR:-}"
   if [[ -f "${dmux_user_zdotdir}/.zlogin" ]]; then

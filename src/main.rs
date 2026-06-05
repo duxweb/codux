@@ -98,6 +98,7 @@ fn open_main_window(
             view.update(cx, |app, _| {
                 app.observe_main_window_appearance(view.clone(), window);
             });
+            view.update(cx, |app, cx| app.observe_main_window_bounds(window, cx));
             view.update(cx, |app, cx| {
                 app.initialize_main_window_focus(window, cx);
             });

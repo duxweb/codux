@@ -39,6 +39,18 @@ pub(super) fn seed_project_state(
     Ok(next)
 }
 
+pub(super) fn seed_or_queue_project_state(
+    state: &Arc<Mutex<AIHistoryIndexerState>>,
+    project: &AIHistoryProjectRequest,
+    snapshot: Option<AIHistorySnapshot>,
+) -> Result<(AIHistoryProjectState, bool), String> {
+    if snapshot.is_some() || project.path.trim().is_empty() {
+        seed_project_state(state, project, snapshot).map(|state| (state, false))
+    } else {
+        mark_project_queued(state, project, None)
+    }
+}
+
 pub(super) fn mark_project_queued(
     state: &Arc<Mutex<AIHistoryIndexerState>>,
     project: &AIHistoryProjectRequest,

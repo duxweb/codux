@@ -1,4 +1,4 @@
-pub(super) const STATE_VERSION: u32 = 8;
+pub(super) const STATE_VERSION: u32 = 9;
 pub(super) const STATS_MODEL_VERSION: u32 = 3;
 pub(super) const STATS_REFRESH_INTERVAL_SECONDS: i64 = 3600;
 pub(super) const PET_STATE_CRYPTO_NAMESPACE: &str = "codux";

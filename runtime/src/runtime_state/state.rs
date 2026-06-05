@@ -19,6 +19,7 @@ impl RuntimeState {
             .map(|path| load_file_entries(path, None))
             .unwrap_or_default();
         let ai_global_history = load_global_ai_history(&support_dir);
+        let daily_level = build_daily_level(&ai_global_history);
         let ai_history = selected_path
             .map(|path| load_ai_history(&support_dir, path))
             .unwrap_or_default();
@@ -60,6 +61,12 @@ impl RuntimeState {
         let runtime_activity = load_runtime_activity(&support_dir);
         let runtime_events = load_runtime_events();
         let ai_runtime_state = load_ai_runtime_state(&support_dir, &runtime_events);
+        let ai_history_stats = build_ai_history_stats(
+            &ai_history,
+            &ai_runtime_state,
+            selected_project.as_ref().map(|project| project.id.as_str()),
+            &settings.statistics_mode,
+        );
         let remote = load_remote(&support_dir);
         let pet = load_pet(&support_dir);
         let power = PowerService::new().summary(&settings.sleep_mode);
@@ -75,7 +82,9 @@ impl RuntimeState {
             git_review,
             files,
             ai_global_history,
+            daily_level,
             ai_history,
+            ai_history_stats,
             ai_session_detail,
             memory,
             memory_manager,
@@ -106,10 +115,12 @@ impl RuntimeState {
             return;
         };
 
+        self.selected_project = Some(project.clone());
         self.git = load_git_summary(&self.support_dir, &project.path);
         self.git_review = load_git_review(&self.support_dir, &project.path, None);
         self.files = load_file_entries(&project.path, None);
         self.ai_global_history = load_global_ai_history(&self.support_dir);
+        self.refresh_daily_level();
         self.ai_history = load_ai_history(&self.support_dir, &project.path);
         self.ai_session_detail =
             self.ai_history.sessions.first().map(|session| {
@@ -138,10 +149,42 @@ impl RuntimeState {
         self.runtime_activity = load_runtime_activity(&self.support_dir);
         self.runtime_events = load_runtime_events();
         self.ai_runtime_state = load_ai_runtime_state(&self.support_dir, &self.runtime_events);
+        self.refresh_ai_history_stats();
         self.pet = load_pet(&self.support_dir);
         self.power = PowerService::new().summary(&self.settings.sleep_mode);
         self.performance = load_performance();
         self.tool_permissions = load_tool_permissions(&self.support_dir);
-        self.selected_project = Some(project);
     }
+
+    pub fn refresh_ai_history_stats(&mut self) {
+        self.ai_history_stats = build_ai_history_stats(
+            &self.ai_history,
+            &self.ai_runtime_state,
+            self.selected_project.as_ref().map(|project| project.id.as_str()),
+            &self.settings.statistics_mode,
+        );
+    }
+
+    pub fn refresh_daily_level(&mut self) {
+        self.daily_level = build_daily_level(&self.ai_global_history);
+    }
+}
+
+fn build_daily_level(global_history: &AIGlobalHistorySummary) -> AIHistoryDailyLevelView {
+    crate::ai_history::daily_level_view(global_history.today_total_tokens)
+}
+
+fn build_ai_history_stats(
+    history: &AIHistorySummary,
+    ai_runtime_state: &AIRuntimeStateSummary,
+    selected_project_id: Option<&str>,
+    statistics_mode: &str,
+) -> AIHistoryStatsView {
+    crate::ai_history::stats_view(
+        history,
+        ai_runtime_state,
+        selected_project_id,
+        statistics_mode,
+        crate::ai_history_normalized::now_seconds(),
+    )
 }

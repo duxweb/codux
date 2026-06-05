@@ -116,14 +116,7 @@ impl RuntimeService {
 
     pub fn select_project(&self, project_id: &str) -> Result<(), String> {
         ProjectStore::new(self.support_dir.clone()).select_project(project_id)?;
-        let project = ProjectStore::new(self.support_dir.clone())
-            .project_summaries()
-            .into_iter()
-            .find(|project| project.id == project_id)
-            .ok_or_else(|| "Project not found.".to_string())?;
-        self.project_activity.mark_project_active(project.clone());
-        self.watch_project_background(project.path);
-        Ok(())
+        self.mark_project_active_with_watch(project_id).map(|_| ())
     }
 
     pub fn create_or_select_project(&self, name: &str, path: &str) -> Result<String, String> {

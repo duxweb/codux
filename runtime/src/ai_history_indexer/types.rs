@@ -3,18 +3,22 @@ use crate::ai_history_normalized::{
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::mpsc::SyncSender;
 
 pub(super) enum AIHistoryJob {
     Global {
         projects: Vec<AIHistoryProjectRequest>,
+        database_path: PathBuf,
         reply: SyncSender<Result<AIGlobalHistorySnapshot, String>>,
     },
     RefreshProject {
         project: AIHistoryProjectRequest,
+        database_path: PathBuf,
     },
     RefreshGlobal {
         projects: Vec<AIHistoryProjectRequest>,
+        database_path: PathBuf,
     },
 }
 

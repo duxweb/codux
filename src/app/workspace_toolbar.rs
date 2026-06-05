@@ -1,7 +1,7 @@
 use super::*;
 use crate::app::{
     ui_helpers::{titlebar_drag_area, with_codux_tooltip},
-    workspace_daily_level::{workspace_level_button, workspace_today_level_tokens},
+    workspace_daily_level::workspace_level_button,
     workspace_pet_widgets::workspace_pet_button,
     workspace_shared::{
         workspace_header_badge_button_content, workspace_header_button, workspace_i18n,
@@ -22,7 +22,6 @@ impl CoduxApp {
             WorkspaceView::Review => 2,
         };
         let pet_snapshot = self.pet_snapshot.clone();
-        let today_level_tokens = workspace_today_level_tokens(&self.state);
         let has_project_context = self.state.selected_project.is_some();
         let pet_sprite_frame = self.visible_pet_sprite_frame(PET_IDLE_FRAME_COUNT);
         let pet_button = if self.state.settings.pet_enabled {
@@ -53,7 +52,7 @@ impl CoduxApp {
             gpui::Empty.into_any_element()
         };
         let level_button = if has_project_context {
-            workspace_level_button(today_level_tokens, &self.state.settings.language, cx)
+            workspace_level_button(&self.state.daily_level, &self.state.settings.language, cx)
                 .into_any_element()
         } else {
             disabled_level_button(&self.state.settings.language, cx).into_any_element()

@@ -606,7 +606,11 @@ fn workspace_toolbar_fingerprint(app: &CoduxApp) -> u64 {
             })
             .collect::<Vec<_>>(),
         workspace_pet_fingerprint(app),
-        super::workspace_daily_level::workspace_today_level_tokens(&app.state),
+        workspace_view_hash(&(
+            app.state.daily_level.tokens,
+            app.state.daily_level.current_tier.id.clone(),
+            app.state.daily_level.current_tier.min,
+        )),
     ))
 }
 

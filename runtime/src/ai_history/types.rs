@@ -93,6 +93,73 @@ pub struct AISessionFileSummary {
     pub request_count: i64,
 }
 
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIHistoryStatsView {
+    pub project_total_tokens: i64,
+    pub today_total_tokens: i64,
+    pub current_sessions: Vec<AIHistoryCurrentSessionView>,
+    pub today_buckets: Vec<AIHistoryUsageBucketView>,
+    pub heatmap: Vec<AIHistoryHeatmapCellView>,
+    pub tool_rows: Vec<AIHistoryRankRow>,
+    pub model_rows: Vec<AIHistoryRankRow>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIHistoryCurrentSessionView {
+    pub tool: String,
+    pub model: Option<String>,
+    pub total_tokens: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIHistoryUsageBucketView {
+    pub start: f64,
+    pub end: f64,
+    pub value: i64,
+    pub request_count: i64,
+    pub ratio: f32,
+    pub opacity: f32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIHistoryHeatmapCellView {
+    pub day: f64,
+    pub value: i64,
+    pub request_count: i64,
+    pub is_known: bool,
+    pub opacity: f32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIHistoryRankRow {
+    pub label: String,
+    pub value: i64,
+    pub percent: f32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIHistoryDailyLevelView {
+    pub tokens: i64,
+    pub current_tier: AIHistoryDailyLevelTierView,
+    pub tiers: Vec<AIHistoryDailyLevelTierView>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIHistoryDailyLevelTierView {
+    pub id: String,
+    pub title: String,
+    pub min: i64,
+    pub color: u32,
+    pub icon: String,
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct SessionLink {
     pub(super) source: String,

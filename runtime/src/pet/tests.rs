@@ -104,6 +104,29 @@ fn summary_resets_daily_xp_after_local_day_changes() {
 }
 
 #[test]
+fn state_version_upgrade_rebuilds_pet_baseline_without_resetting_xp() {
+    let mut snapshot = PetSnapshot {
+        state_version: STATE_VERSION - 1,
+        claimed_at: Some(10),
+        current_experience_tokens: 42_000,
+        daily_experience_tokens: 120,
+        global_normalized_total_watermark: Some(99_000),
+        ..PetSnapshot::default()
+    };
+    snapshot
+        .project_normalized_token_watermarks
+        .insert("project-a".to_string(), 99_000);
+
+    let sanitized = sanitize_state(snapshot);
+
+    assert_eq!(sanitized.state_version, STATE_VERSION);
+    assert_eq!(sanitized.current_experience_tokens, 42_000);
+    assert_eq!(sanitized.daily_experience_tokens, 120);
+    assert_eq!(sanitized.global_normalized_total_watermark, None);
+    assert!(sanitized.project_normalized_token_watermarks.is_empty());
+}
+
+#[test]
 fn falls_back_to_plain_json_pet_state() {
     let support_dir = temp_support_dir();
     let snapshot = PetSnapshot {
@@ -325,6 +348,50 @@ fn adding_or_removing_projects_does_not_backfill_pet_xp() {
         .unwrap();
     assert_eq!(with_removed_project.current_experience_tokens, 30);
     assert_eq!(with_removed_project.daily_experience_tokens, 30);
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn refresh_uses_all_time_project_watermarks_after_claim() {
+    let support_dir = temp_support_dir();
+    let store = PetStore {
+        state: Mutex::new(PetSnapshot::default()),
+        state_file: support_dir.join("pet-state.dat"),
+    };
+
+    store
+        .claim(PetClaimInput {
+            species: "dragon".to_string(),
+            custom_name: String::new(),
+            custom_pet: None,
+            project_totals: vec![PetProjectTokenTotal {
+                project_id: "project-a".to_string(),
+                total_tokens: 100,
+            }],
+            fallback_total_tokens: 100,
+        })
+        .unwrap();
+
+    let refreshed = store
+        .refresh(PetRefreshInput {
+            project_totals: vec![PetProjectTokenTotal {
+                project_id: "project-a".to_string(),
+                total_tokens: 130,
+            }],
+            fallback_total_tokens: 130,
+            computed_stats: PetStats::default(),
+        })
+        .unwrap();
+
+    assert_eq!(refreshed.current_experience_tokens, 30);
+    assert_eq!(refreshed.daily_experience_tokens, 30);
+    assert_eq!(
+        refreshed
+            .project_normalized_token_watermarks
+            .get("project-a"),
+        Some(&130)
+    );
 
     fs::remove_dir_all(support_dir).unwrap();
 }

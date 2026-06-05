@@ -348,6 +348,22 @@ pub(in crate::app) fn header_icon_button(
         .on_click(cx.listener(on_click))
 }
 
+pub(in crate::app) fn header_icon_button_loading(
+    id: &'static str,
+    icon: HeroIconName,
+    loading: bool,
+    cx: &mut Context<CoduxApp>,
+    on_click: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
+) -> impl IntoElement {
+    Button::new(id)
+        .ghost()
+        .loading(loading)
+        .disabled(loading)
+        .text_color(cx.theme().secondary_foreground)
+        .icon(Icon::new(icon).text_color(cx.theme().secondary_foreground))
+        .on_click(cx.listener(on_click))
+}
+
 pub(in crate::app) fn assistant_header_icon_button(
     id: &'static str,
     icon: HeroIconName,

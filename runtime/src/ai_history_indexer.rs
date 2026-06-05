@@ -8,7 +8,7 @@ mod worker;
 
 use crate::ai_history_normalized::{
     AIGlobalHistorySnapshot, AIHistoryProjectRequest, project_history_source_fingerprint,
-    remove_indexed_history_session, rename_indexed_history_session,
+    remove_indexed_history_session_at, rename_indexed_history_session_at,
 };
 use crate::runtime_trace::{runtime_trace, runtime_trace_elapsed};
 use cache::{indexed_global_snapshot, indexed_project_snapshot, receive_reply};
@@ -16,6 +16,7 @@ use events::push_history_event;
 use state::*;
 use std::collections::VecDeque;
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::mpsc::{SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -29,6 +30,7 @@ pub struct AIHistoryIndexer {
     tx: SyncSender<AIHistoryJob>,
     state: Arc<Mutex<AIHistoryIndexerState>>,
     events: Arc<Mutex<VecDeque<AIHistoryEvent>>>,
+    database_path: PathBuf,
 }
 
 impl fmt::Debug for AIHistoryIndexer {
@@ -58,17 +60,32 @@ impl fmt::Debug for AIHistoryIndexer {
 
 impl AIHistoryIndexer {
     pub fn new() -> Self {
+        Self::with_database_path(crate::runtime_paths::app_support_dir().join("ai-usage.sqlite3"))
+    }
+
+    pub fn with_database_path(database_path: PathBuf) -> Self {
         let (tx, rx) = sync_channel(16);
         let state = Arc::new(Mutex::new(AIHistoryIndexerState::default()));
         let events = Arc::new(Mutex::new(VecDeque::new()));
-        runtime_trace("ai-history", "indexer started queue_capacity=16");
+        runtime_trace(
+            "ai-history",
+            &format!(
+                "indexer started queue_capacity=16 database={}",
+                database_path.display()
+            ),
+        );
         let worker_state = Arc::clone(&state);
         let worker_events = Arc::clone(&events);
         thread::Builder::new()
             .name("codux-ai-history-indexer".to_string())
             .spawn(move || history_indexer_loop(rx, worker_events, worker_state))
             .expect("failed to spawn AI history indexer worker");
-        Self { tx, state, events }
+        Self {
+            tx,
+            state,
+            events,
+            database_path,
+        }
     }
 
     pub fn active_project_count(&self) -> usize {
@@ -86,7 +103,7 @@ impl AIHistoryIndexer {
     }
 
     pub fn refresh_project(&self, project: AIHistoryProjectRequest) -> Result<(), String> {
-        let cached_snapshot = indexed_project_snapshot(project.clone())?;
+        let cached_snapshot = indexed_project_snapshot(&self.database_path, project.clone())?;
         let fingerprint = project_history_source_fingerprint(&project);
         if cached_snapshot.is_some()
             && project_source_fingerprint_unchanged(&self.state, &project.id, &fingerprint)
@@ -112,7 +129,10 @@ impl AIHistoryIndexer {
         if should_enqueue
             && self
                 .tx
-                .send(AIHistoryJob::RefreshProject { project })
+                .send(AIHistoryJob::RefreshProject {
+                    project,
+                    database_path: self.database_path.clone(),
+                })
                 .is_err()
         {
             return Err("AI history indexer stopped.".to_string());
@@ -143,8 +163,34 @@ impl AIHistoryIndexer {
             );
             return Ok(state);
         }
-        let cached_snapshot = indexed_project_snapshot(project.clone())?;
-        let project_state = seed_project_state(&self.state, &project, cached_snapshot)?;
+        let cached_snapshot = indexed_project_snapshot(&self.database_path, project.clone())?;
+        let (project_state, should_enqueue) =
+            seed_or_queue_project_state(&self.state, &project, cached_snapshot)?;
+        if should_enqueue {
+            push_history_event(
+                &self.events,
+                AIHistoryEvent::ProjectState {
+                    state: project_state.clone(),
+                },
+            );
+            if self
+                .tx
+                .send(AIHistoryJob::RefreshProject {
+                    project: project.clone(),
+                    database_path: self.database_path.clone(),
+                })
+                .is_err()
+            {
+                return Err("AI history indexer stopped.".to_string());
+            }
+            runtime_trace_elapsed(
+                "ai-history",
+                "project_state cache_miss_queued",
+                started_at,
+                &format!("project={}", project.id),
+            );
+            return Ok(project_state);
+        }
         runtime_trace_elapsed(
             "ai-history",
             "project_state sqlite_cache",
@@ -166,13 +212,17 @@ impl AIHistoryIndexer {
         &self,
         projects: Vec<AIHistoryProjectRequest>,
     ) -> Result<AIGlobalHistorySnapshot, String> {
-        if let Some(snapshot) = indexed_global_snapshot(projects.clone())? {
+        if let Some(snapshot) = indexed_global_snapshot(&self.database_path, projects.clone())? {
             return Ok(snapshot);
         }
 
         let (reply, result) = sync_channel(1);
         self.tx
-            .send(AIHistoryJob::Global { projects, reply })
+            .send(AIHistoryJob::Global {
+                projects,
+                database_path: self.database_path.clone(),
+                reply,
+            })
             .map_err(|_| "AI history indexer stopped.".to_string())?;
         receive_reply(result)
     }
@@ -181,12 +231,15 @@ impl AIHistoryIndexer {
         &self,
         projects: Vec<AIHistoryProjectRequest>,
     ) -> Result<Option<AIGlobalHistorySnapshot>, String> {
-        indexed_global_snapshot(projects)
+        indexed_global_snapshot(&self.database_path, projects)
     }
 
     pub fn refresh_global(&self, projects: Vec<AIHistoryProjectRequest>) -> Result<(), String> {
         self.tx
-            .send(AIHistoryJob::RefreshGlobal { projects })
+            .send(AIHistoryJob::RefreshGlobal {
+                projects,
+                database_path: self.database_path.clone(),
+            })
             .map_err(|_| "AI history indexer stopped.".to_string())
     }
 
@@ -196,9 +249,14 @@ impl AIHistoryIndexer {
         session_id: String,
         title: String,
     ) -> Result<AIHistoryProjectState, String> {
-        let snapshot = rename_indexed_history_session(project.clone(), session_id, title)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| "Matching session record was not found.".to_string())?;
+        let snapshot = rename_indexed_history_session_at(
+            self.database_path.clone(),
+            project.clone(),
+            session_id,
+            title,
+        )
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Matching session record was not found.".to_string())?;
         let next_state = mark_project_completed(&self.state, &project, snapshot)?;
         push_history_event(
             &self.events,
@@ -214,9 +272,13 @@ impl AIHistoryIndexer {
         project: AIHistoryProjectRequest,
         session_id: String,
     ) -> Result<AIHistoryProjectState, String> {
-        let snapshot = remove_indexed_history_session(project.clone(), session_id)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| "Matching session record was not found.".to_string())?;
+        let snapshot = remove_indexed_history_session_at(
+            self.database_path.clone(),
+            project.clone(),
+            session_id,
+        )
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Matching session record was not found.".to_string())?;
         let next_state = mark_project_completed(&self.state, &project, snapshot)?;
         push_history_event(
             &self.events,

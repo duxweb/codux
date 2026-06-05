@@ -102,8 +102,8 @@ impl CoduxApp {
             .map(|branch| branch.name.clone());
         let git_review = app_git_review(&state);
         let project_open_applications = Vec::new();
-        let pet_catalog = runtime_service.pet_catalog_without_custom_data();
-        let pet_snapshot = PetSnapshot::default();
+        let pet_catalog = runtime_service.pet_catalog();
+        let pet_snapshot = runtime_service.pet_snapshot().unwrap_or_default();
         let pet_custom_pets = pet_catalog.custom_pets.clone();
         let pet_sprite_paths =
             pet_sprite_path_cache(&runtime.source_root, &state.support_dir, &pet_catalog);
@@ -122,6 +122,7 @@ impl CoduxApp {
             state,
             runtime_service,
             window_appearance: WindowAppearance::Dark,
+            main_window_fullscreen: false,
             _observe_window_appearance: None,
             is_exiting: false,
             main_window_close_handler_registered: false,
@@ -147,6 +148,7 @@ impl CoduxApp {
             parent_main_window: None,
             desktop_pet_line: desktop_pet_fallback_line().to_string(),
             desktop_pet_tone: DesktopPetActivityTone::Normal,
+            desktop_pet_main_window_fullscreen: false,
             desktop_pet_active_llm_key: String::new(),
             desktop_pet_requested_llm_key: String::new(),
             desktop_pet_last_llm_requested_at: 0.0,
@@ -262,6 +264,7 @@ impl CoduxApp {
             ai_index_progress_visible_until: 0.0,
             ai_index_progress_generation: 0,
             ai_history_active_index_count: 0,
+            ai_history_refreshing: false,
             project_switch_generation: 0,
             scheduled_work_in_flight: HashSet::new(),
             scheduled_work_last_started_at: HashMap::new(),
@@ -1487,12 +1490,13 @@ impl CoduxApp {
                 window.zoom_window()
             }
         );
-        register!(native_menu::ToggleFullscreen, |_app: &mut CoduxApp,
+        register!(native_menu::ToggleFullscreen, |app: &mut CoduxApp,
                                                   window: &mut Window,
                                                   _cx: &mut Context<
             CoduxApp,
         >| {
-            window.toggle_fullscreen()
+            window.toggle_fullscreen();
+            app.main_window_fullscreen = window.is_fullscreen();
         });
         root
     }

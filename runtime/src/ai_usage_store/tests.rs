@@ -130,6 +130,36 @@ mod tests {
     }
 
     #[test]
+    fn project_totals_include_groups_with_zero_token_buckets() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        let today_start = local_day_start_seconds(now_seconds());
+
+        insert_usage_bucket(&conn, "/tmp/project-a", "zero-session", today_start, 0);
+        insert_usage_bucket(
+            &conn,
+            "/tmp/project-a",
+            "active-session",
+            today_start + 1_800.0,
+            15_241,
+        );
+
+        let totals = store.normalized_project_totals_since(&conn, None).unwrap();
+        assert_eq!(totals.len(), 1);
+        assert_eq!(totals[0].project_id, "project-a");
+        assert_eq!(totals[0].total_tokens, 15_241);
+
+        let sessions = store.indexed_sessions_since(&conn, None).unwrap();
+        assert_eq!(sessions.len(), 2);
+        assert!(sessions.iter().any(|session| {
+            session.session_title == "active-session" && session.total_tokens == 15_241
+        }));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn jsonl_append_indexes_only_new_bytes() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -353,6 +383,35 @@ mod tests {
         bucket_start: f64,
         total_tokens: i64,
     ) {
+        conn.execute(
+            r#"
+            INSERT INTO ai_history_file_session_link (
+                source, file_path, project_path, session_key, external_session_id, project_id,
+                project_name, session_title, first_seen_at, last_seen_at, last_model,
+                active_duration_seconds
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            ON CONFLICT(source, file_path, project_path, session_key) DO UPDATE SET
+                session_title = excluded.session_title,
+                last_seen_at = excluded.last_seen_at,
+                last_model = excluded.last_model
+            "#,
+            params![
+                "codex",
+                "session.jsonl",
+                project_path,
+                session_key,
+                session_key,
+                "project-a",
+                "Project A",
+                session_key,
+                bucket_start,
+                bucket_start + 1_800.0,
+                "gpt-5",
+                1_800
+            ],
+        )
+        .unwrap();
         conn.execute(
             r#"
             INSERT INTO ai_history_file_usage_bucket (

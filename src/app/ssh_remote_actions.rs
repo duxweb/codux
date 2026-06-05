@@ -1,5 +1,7 @@
 use super::*;
-use crate::app::app_events::{ChildWindowUpdateEvent, current_memory_update_event};
+use crate::app::app_events::{
+    ChildWindowUpdateEvent, current_memory_update_event, publish_pet_update,
+};
 
 impl CoduxApp {
     pub(super) fn apply_child_window_update_event(
@@ -977,8 +979,10 @@ impl CoduxApp {
         let applied_pet_events =
             usize::from(self.sync_pet_custom_install_event_for_activity_tick());
         let applied_pet_update_events = usize::from(self.sync_pet_update_event_for_activity_tick());
-        let ai_history_events = self.runtime_service.drain_ai_history_events();
-        let applied_ai_history_events = self.apply_ai_history_events(ai_history_events, cx);
+        let ai_history_result = self.runtime_service.drain_ai_history_events();
+        let applied_runtime_pet_update =
+            self.apply_runtime_pet_refresh_result(&ai_history_result, cx);
+        let applied_ai_history_events = self.apply_ai_history_events(ai_history_result.events, cx);
         let file_events = self.runtime_service.drain_file_change_events();
         let applied_file_events = self.apply_file_change_events(file_events);
         let remote_events = self.runtime_service.drain_remote_events();
@@ -1012,10 +1016,15 @@ impl CoduxApp {
             self.state.ai_runtime_state = self
                 .runtime_service
                 .summarize_ai_runtime_state_snapshot(&live_ai_snapshot);
+            self.state.refresh_ai_history_stats();
             ai_activity_changed = super::ai_runtime_status::ai_activity_project_states_changed(
                 &previous_project_states,
                 &self.state.ai_runtime_state.project_states,
             );
+            self.state.pet = self.runtime_service.reload_pet();
+            if let Ok(snapshot) = self.runtime_service.pet_snapshot() {
+                self.pet_snapshot = snapshot;
+            }
         }
         if include_scheduled_tick {
             self.refresh_global_today_ai_tokens();
@@ -1045,6 +1054,7 @@ impl CoduxApp {
             || applied_ai_history_events > 0
             || applied_pet_events > 0
             || applied_pet_update_events > 0
+            || applied_runtime_pet_update
             || applied_settings_events > 0
             || child_window_events > 0
             || !remote_events.is_empty()
@@ -1060,7 +1070,7 @@ impl CoduxApp {
             self.runtime_trace(
                 "runtime-activity",
                 &format!(
-                    "tick scheduled={} settings={} child_windows={} project={} files={} pet_catalog={} pet_updates={} ai_history={} ai_events={} memory={} remote={} scheduled_refresh={} ai_state_error={}",
+                    "tick scheduled={} settings={} child_windows={} project={} files={} pet_catalog={} pet_updates={} runtime_pet={} ai_history={} ai_events={} memory={} remote={} scheduled_refresh={} ai_state_error={}",
                     include_scheduled_tick,
                     applied_settings_events,
                     child_window_events,
@@ -1068,6 +1078,7 @@ impl CoduxApp {
                     applied_file_events,
                     applied_pet_events,
                     applied_pet_update_events,
+                    applied_runtime_pet_update,
                     applied_ai_history_events,
                     drained.events.len(),
                     drained.memory.len(),
@@ -1082,7 +1093,7 @@ impl CoduxApp {
             file_events: applied_file_events,
             ai_history_events: applied_ai_history_events,
             pet_events: applied_pet_events,
-            pet_update_events: applied_pet_update_events,
+            pet_update_events: applied_pet_update_events + usize::from(applied_runtime_pet_update),
             ai_activity_changed,
             memory_events: drained.memory.len(),
             dock_badge_count,
@@ -1114,10 +1125,15 @@ impl CoduxApp {
         self.state.ai_runtime_state = self
             .runtime_service
             .summarize_ai_runtime_state_snapshot(&live_ai_snapshot);
+        self.state.refresh_ai_history_stats();
         let ai_activity_changed = super::ai_runtime_status::ai_activity_project_states_changed(
             &previous_project_states,
             &self.state.ai_runtime_state.project_states,
         );
+        self.state.pet = self.runtime_service.reload_pet();
+        if let Ok(snapshot) = self.runtime_service.pet_snapshot() {
+            self.pet_snapshot = snapshot;
+        }
 
         if !drained.memory.is_empty() || memory_update_event {
             self.state.memory = self.runtime_service.reload_memory(
@@ -1258,6 +1274,7 @@ impl CoduxApp {
             return false;
         }
         self.state.ai_global_history.today_total_tokens = tokens;
+        self.state.refresh_daily_level();
         true
     }
 
@@ -1269,6 +1286,31 @@ impl CoduxApp {
         }
         self.today_level_day_start = day_start;
         self.refresh_global_today_ai_tokens();
+        true
+    }
+
+    fn apply_runtime_pet_refresh_result(
+        &mut self,
+        result: &codux_runtime::runtime_state::AIHistoryDrainResult,
+        _cx: &mut Context<Self>,
+    ) -> bool {
+        if let Some(error) = result.pet_error.as_deref() {
+            self.runtime_trace(
+                "pet",
+                &format!("indexed_history_refresh failed error={error}"),
+            );
+        }
+        let Some(pet) = result.pet.clone() else {
+            return false;
+        };
+        self.state.pet = pet;
+        if let Some(snapshot) = result.pet_snapshot.clone() {
+            self.pet_snapshot = snapshot;
+        }
+        let revision = publish_pet_update();
+        if revision > 0 {
+            self.pet_update_seen_revision = revision;
+        }
         true
     }
 
@@ -1312,6 +1354,10 @@ impl CoduxApp {
                     }
                     if ai_history_should_replace(&self.state.ai_history, &summary) {
                         self.state.ai_history = summary;
+                        self.state.refresh_ai_history_stats();
+                    }
+                    if !is_loading {
+                        self.ai_history_refreshing = false;
                     }
                     if is_loading {
                         self.ai_index_progress_visible_until = self
@@ -1336,7 +1382,9 @@ impl CoduxApp {
                     }
                     if ai_history_should_replace(&self.state.ai_history, &summary) {
                         self.state.ai_history = summary;
+                        self.state.refresh_ai_history_stats();
                         self.normalize_selected_ai_session();
+                        self.ai_history_refreshing = false;
                         applied += 1;
                     }
                 }
@@ -1451,6 +1499,7 @@ impl CoduxApp {
                     }
                     if ai_history_should_replace(&self.state.ai_history, &summary) {
                         self.state.ai_history = summary;
+                        self.state.refresh_ai_history_stats();
                         self.normalize_selected_ai_session();
                         applied += 1;
                     }
@@ -1492,6 +1541,7 @@ impl CoduxApp {
                 self.state.ai_runtime_state = self
                     .runtime_service
                     .summarize_ai_runtime_state_snapshot(&snapshot);
+                self.state.refresh_ai_history_stats();
                 self.status_message = format!(
                     "AI runtime polled · running {} · waiting {} · completed {}",
                     self.state.ai_runtime_state.running_count,
@@ -1528,15 +1578,18 @@ impl CoduxApp {
             self.invalidate_remote_panel(cx);
             return;
         };
+        let project_id = project.id.clone();
+        let project_name = project.name.clone();
         let snapshot = self
             .runtime_service
-            .dismiss_ai_runtime_completion(&project.id);
+            .dismiss_ai_runtime_completion(&project_id);
         self.state.ai_runtime_state = self
             .runtime_service
             .summarize_ai_runtime_state_snapshot(&snapshot);
+        self.state.refresh_ai_history_stats();
         self.dismissed_worktree_ai_completion_at
-            .insert(project.id.clone(), app_now_seconds());
-        self.status_message = format!("AI completion dismissed for {}", project.name);
+            .insert(project_id, app_now_seconds());
+        self.status_message = format!("AI completion dismissed for {project_name}");
         self.refresh_dock_badge_now(cx);
         self.sync_project_activity_state(cx);
         self.invalidate_task_column(cx);
@@ -1576,6 +1629,7 @@ impl CoduxApp {
         self.state.ai_runtime_state = self
             .runtime_service
             .summarize_ai_runtime_state_snapshot(&snapshot);
+        self.state.refresh_ai_history_stats();
         self.refresh_dock_badge_now(cx);
         self.sync_project_activity_state(cx);
         self.invalidate_task_column(cx);

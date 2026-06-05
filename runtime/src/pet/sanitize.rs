@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) fn sanitize_state(mut state: PetSnapshot) -> PetSnapshot {
+    let previous_state_version = state.state_version;
     state.state_version = STATE_VERSION;
     state.stats_model_version = STATS_MODEL_VERSION;
     state.current_experience_tokens = state.current_experience_tokens.max(0);
@@ -13,6 +14,10 @@ pub(super) fn sanitize_state(mut state: PetSnapshot) -> PetSnapshot {
     state
         .project_normalized_token_watermarks
         .retain(|project_id, total| !project_id.trim().is_empty() && *total >= 0);
+    if previous_state_version < STATE_VERSION {
+        state.project_normalized_token_watermarks.clear();
+        state.global_normalized_total_watermark = None;
+    }
     state.legacy = state
         .legacy
         .into_iter()

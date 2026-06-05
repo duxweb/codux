@@ -4,14 +4,14 @@ use gpui::Anchor;
 use gpui_component::popover::Popover;
 
 pub(in crate::app) fn workspace_level_button(
-    tokens: i64,
+    daily_level: &codux_runtime::ai_history::AIHistoryDailyLevelView,
     language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let tokens = tokens.max(0);
-    let tier = daily_level_tier(tokens);
     let language = language.to_string();
-    let button_label = daily_level_title(&tier, &language);
+    let current_tier = daily_level.current_tier.clone();
+    let button_label = daily_level_title(&current_tier, &language);
+    let daily_level = daily_level.clone();
 
     Popover::new("workspace-level-popover")
         .anchor(Anchor::TopRight)
@@ -21,7 +21,7 @@ pub(in crate::app) fn workspace_level_button(
                 .secondary()
                 .text_color(cx.theme().foreground)
                 .child(workspace_daily_level_button_content(
-                    tier.clone(),
+                    current_tier.clone(),
                     button_label,
                     cx,
                 )),
@@ -29,8 +29,7 @@ pub(in crate::app) fn workspace_level_button(
         .content(move |_, _, cx| {
             let theme = cx.theme();
             workspace_level_popover_content(
-                tokens,
-                tier.clone(),
+                daily_level.clone(),
                 language.clone(),
                 theme.secondary_hover,
                 theme.transparent,
@@ -38,98 +37,15 @@ pub(in crate::app) fn workspace_level_button(
         })
 }
 
-pub(in crate::app) fn workspace_today_level_tokens(state: &RuntimeState) -> i64 {
-    state.ai_global_history.today_total_tokens.max(0)
-}
-#[derive(Clone)]
-struct DailyLevelTier {
-    id: &'static str,
-    title: &'static str,
-    min: i64,
-    color: u32,
-    icon: DailyLevelIcon,
-}
-
-#[derive(Clone)]
-enum DailyLevelIcon {
-    Component(HeroIconName),
-    Asset(&'static str),
-}
-
-const DAILY_LEVEL_TIERS: [DailyLevelTier; 8] = [
-    DailyLevelTier {
-        id: "iron",
-        title: "Iron",
-        min: 0,
-        color: 0x5B616D,
-        icon: DailyLevelIcon::Component(HeroIconName::Minus),
-    },
-    DailyLevelTier {
-        id: "bronze",
-        title: "Bronze",
-        min: 1_000_000,
-        color: 0xC98663,
-        icon: DailyLevelIcon::Asset("rank-icons/zap.svg"),
-    },
-    DailyLevelTier {
-        id: "silver",
-        title: "Silver",
-        min: 3_000_000,
-        color: 0xC8D1E3,
-        icon: DailyLevelIcon::Asset("rank-icons/shield-check.svg"),
-    },
-    DailyLevelTier {
-        id: "gold",
-        title: "Gold",
-        min: 6_000_000,
-        color: 0xE8AA34,
-        icon: DailyLevelIcon::Component(HeroIconName::Star),
-    },
-    DailyLevelTier {
-        id: "platinum",
-        title: "Platinum",
-        min: 10_000_000,
-        color: 0x7ED6D8,
-        icon: DailyLevelIcon::Component(HeroIconName::Star),
-    },
-    DailyLevelTier {
-        id: "diamond",
-        title: "Diamond",
-        min: 18_000_000,
-        color: 0x59A7FF,
-        icon: DailyLevelIcon::Asset("rank-icons/sparkles.svg"),
-    },
-    DailyLevelTier {
-        id: "master",
-        title: "Master",
-        min: 30_000_000,
-        color: 0x9A72FF,
-        icon: DailyLevelIcon::Asset("rank-icons/trophy.svg"),
-    },
-    DailyLevelTier {
-        id: "grandmaster",
-        title: "Grandmaster",
-        min: 50_000_000,
-        color: 0xFF5E8E,
-        icon: DailyLevelIcon::Asset("rank-icons/flame.svg"),
-    },
-];
-
-fn daily_level_tier(tokens: i64) -> DailyLevelTier {
-    DAILY_LEVEL_TIERS
-        .iter()
-        .rev()
-        .find(|tier| tokens >= tier.min)
-        .cloned()
-        .unwrap_or_else(|| DAILY_LEVEL_TIERS[0].clone())
-}
-
-fn daily_level_title(tier: &DailyLevelTier, language: &str) -> String {
-    workspace_i18n(language, &format!("rank.{}", tier.id), tier.title)
+fn daily_level_title(
+    tier: &codux_runtime::ai_history::AIHistoryDailyLevelTierView,
+    language: &str,
+) -> String {
+    workspace_i18n(language, &format!("rank.{}", tier.id), &tier.title)
 }
 
 fn workspace_daily_level_button_content(
-    tier: DailyLevelTier,
+    tier: codux_runtime::ai_history::AIHistoryDailyLevelTierView,
     label: String,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
@@ -149,13 +65,13 @@ fn workspace_daily_level_button_content(
 }
 
 fn workspace_level_popover_content(
-    tokens: i64,
-    current_tier: DailyLevelTier,
+    daily_level: codux_runtime::ai_history::AIHistoryDailyLevelView,
     language: String,
     hover_surface: gpui::Hsla,
     transparent: gpui::Hsla,
 ) -> impl IntoElement {
-    let tokens = tokens.max(0);
+    let tokens = daily_level.tokens.max(0);
+    let current_tier = daily_level.current_tier.clone();
     let current_title = daily_level_title(&current_tier, &language);
     let today_level_label = workspace_i18n(&language, "ai.today_level", "Today's Level");
     let today_tokens_label = workspace_i18n(&language, "ai.today_tokens", "Today's Tokens");
@@ -215,7 +131,7 @@ fn workspace_level_popover_content(
                 ),
         )
         .child(div().mt(px(12.0)).flex().flex_col().gap_1().children(
-            DAILY_LEVEL_TIERS.into_iter().map(|tier| {
+            daily_level.tiers.into_iter().map(|tier| {
                 let current = tier.id == current_tier.id;
                 let title = daily_level_title(&tier, &language);
                 let need = need_template.replace("%@", &compact_number(tier.min));
@@ -273,7 +189,11 @@ fn workspace_level_popover_content(
         ))
 }
 
-fn daily_level_badge(tier: &DailyLevelTier, box_size: f32, icon_size: f32) -> impl IntoElement {
+fn daily_level_badge(
+    tier: &codux_runtime::ai_history::AIHistoryDailyLevelTierView,
+    box_size: f32,
+    icon_size: f32,
+) -> impl IntoElement {
     div()
         .size(px(box_size))
         .rounded_full()
@@ -286,13 +206,19 @@ fn daily_level_badge(tier: &DailyLevelTier, box_size: f32, icon_size: f32) -> im
             linear_color_stop(color(tier.color).opacity(0.72), 1.0),
         ))
         .text_color(color(0xFFFFFF))
-        .child(daily_level_icon(tier.icon.clone(), icon_size))
+        .child(daily_level_icon(&tier.icon, icon_size))
 }
 
-fn daily_level_icon(icon: DailyLevelIcon, icon_size: f32) -> impl IntoElement {
+fn daily_level_icon(icon: &str, icon_size: f32) -> impl IntoElement {
     let icon = match icon {
-        DailyLevelIcon::Component(name) => Icon::new(name),
-        DailyLevelIcon::Asset(path) => Icon::empty().path(path),
+        "minus" => Icon::new(HeroIconName::Minus),
+        "star" => Icon::new(HeroIconName::Star),
+        "zap" => Icon::empty().path("rank-icons/zap.svg"),
+        "shield-check" => Icon::empty().path("rank-icons/shield-check.svg"),
+        "sparkles" => Icon::empty().path("rank-icons/sparkles.svg"),
+        "trophy" => Icon::empty().path("rank-icons/trophy.svg"),
+        "flame" => Icon::empty().path("rank-icons/flame.svg"),
+        _ => Icon::new(HeroIconName::Minus),
     };
     icon.with_size(px(icon_size)).text_color(color(0xFFFFFF))
 }

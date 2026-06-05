@@ -142,10 +142,12 @@ impl CoduxApp {
         self.state.power = self
             .runtime_service
             .power_summary(&self.state.settings.sleep_mode);
+        self.state.refresh_ai_history_stats();
     }
 
     pub(super) fn apply_settings_summary_local(&mut self, settings: SettingsSummary) {
         self.state.settings = settings_with_active_restart_locked_values(&settings);
+        self.state.refresh_ai_history_stats();
     }
 
     pub(super) fn apply_settings_summary(&mut self, settings: SettingsSummary) {

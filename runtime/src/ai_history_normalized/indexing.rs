@@ -5,7 +5,18 @@ pub fn index_project_history_fresh_with_progress<F>(
 where
     F: FnMut(f64, &'static str),
 {
-    load_project_history_with_home(project, &home_dir(), &mut on_progress)
+    index_project_history_fresh_at(project, AIUsageStore::default(), &mut on_progress)
+}
+
+pub(crate) fn index_project_history_fresh_at<F>(
+    project: AIHistoryProjectRequest,
+    store: AIUsageStore,
+    mut on_progress: F,
+) -> AIHistorySnapshot
+where
+    F: FnMut(f64, &'static str),
+{
+    load_project_history_with_store_or_fallback(project, &home_dir(), &store, &mut on_progress)
 }
 
 pub fn project_history_source_fingerprint(
@@ -71,12 +82,40 @@ pub fn load_indexed_project_history(
     store.indexed_project_snapshot(&conn, project)
 }
 
+pub fn load_indexed_project_history_at(
+    database_path: PathBuf,
+    project: AIHistoryProjectRequest,
+) -> Result<Option<AIHistorySnapshot>> {
+    let store = AIUsageStore::at_path(database_path);
+    let conn = store.connect()?;
+    store.indexed_project_snapshot(&conn, project)
+}
+
 pub fn rename_indexed_history_session(
     project: AIHistoryProjectRequest,
     session_id: String,
     title: String,
 ) -> Result<Option<AIHistorySnapshot>> {
     let store = AIUsageStore::default();
+    rename_indexed_history_session_with_store(store, project, session_id, title)
+}
+
+pub fn rename_indexed_history_session_at(
+    database_path: PathBuf,
+    project: AIHistoryProjectRequest,
+    session_id: String,
+    title: String,
+) -> Result<Option<AIHistorySnapshot>> {
+    let store = AIUsageStore::at_path(database_path);
+    rename_indexed_history_session_with_store(store, project, session_id, title)
+}
+
+fn rename_indexed_history_session_with_store(
+    store: AIUsageStore,
+    project: AIHistoryProjectRequest,
+    session_id: String,
+    title: String,
+) -> Result<Option<AIHistorySnapshot>> {
     let conn = store.connect()?;
     if !store.rename_project_session(&conn, &project.path, &session_id, &title)? {
         return Ok(None);
@@ -89,6 +128,23 @@ pub fn remove_indexed_history_session(
     session_id: String,
 ) -> Result<Option<AIHistorySnapshot>> {
     let store = AIUsageStore::default();
+    remove_indexed_history_session_with_store(store, project, session_id)
+}
+
+pub fn remove_indexed_history_session_at(
+    database_path: PathBuf,
+    project: AIHistoryProjectRequest,
+    session_id: String,
+) -> Result<Option<AIHistorySnapshot>> {
+    let store = AIUsageStore::at_path(database_path);
+    remove_indexed_history_session_with_store(store, project, session_id)
+}
+
+fn remove_indexed_history_session_with_store(
+    store: AIUsageStore,
+    project: AIHistoryProjectRequest,
+    session_id: String,
+) -> Result<Option<AIHistorySnapshot>> {
     let conn = store.connect()?;
     if !store.remove_project_session(&conn, &project.path, &session_id)? {
         return Ok(None);
@@ -99,18 +155,26 @@ pub fn remove_indexed_history_session(
 pub fn index_global_history_fresh(
     projects: Vec<AIHistoryProjectRequest>,
 ) -> AIGlobalHistorySnapshot {
-    let home = home_dir();
+    index_global_history_fresh_at(projects, AIUsageStore::default())
+}
+
+pub(crate) fn index_global_history_fresh_at(
+    projects: Vec<AIHistoryProjectRequest>,
+    store: AIUsageStore,
+) -> AIGlobalHistorySnapshot {
     let mut total_tokens = 0;
     let mut cached_input_tokens = 0;
     let mut today_total_tokens = 0;
     let mut today_cached_input_tokens = 0;
     let mut project_count = 0;
+    let home = home_dir();
 
     for project in projects {
         if project.path.trim().is_empty() {
             continue;
         }
-        let snapshot = load_project_history_with_home(project, &home, &mut |_, _| {});
+        let snapshot =
+            load_project_history_with_store_or_fallback(project, &home, &store, &mut |_, _| {});
         total_tokens += snapshot.project_summary.project_total_tokens;
         cached_input_tokens += snapshot.project_summary.project_cached_input_tokens;
         today_total_tokens += snapshot.project_summary.today_total_tokens;
@@ -133,6 +197,21 @@ pub fn load_indexed_global_history(
     projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<Option<AIGlobalHistorySnapshot>> {
     let store = AIUsageStore::default();
+    load_indexed_global_history_with_store(projects, &store)
+}
+
+pub fn load_indexed_global_history_at(
+    database_path: PathBuf,
+    projects: Vec<AIHistoryProjectRequest>,
+) -> Result<Option<AIGlobalHistorySnapshot>> {
+    let store = AIUsageStore::at_path(database_path);
+    load_indexed_global_history_with_store(projects, &store)
+}
+
+fn load_indexed_global_history_with_store(
+    projects: Vec<AIHistoryProjectRequest>,
+    store: &AIUsageStore,
+) -> Result<Option<AIGlobalHistorySnapshot>> {
     let conn = store.connect()?;
     let now = now_seconds();
     let mut total_tokens = 0;
@@ -191,8 +270,23 @@ pub fn global_all_time_normalized_tokens() -> Result<i64> {
     store.global_all_time_normalized_tokens(&conn)
 }
 
+pub fn global_all_time_normalized_tokens_at(database_path: PathBuf) -> Result<i64> {
+    let store = AIUsageStore::at_path(database_path);
+    let conn = store.connect()?;
+    store.global_all_time_normalized_tokens(&conn)
+}
+
 pub fn indexed_sessions_since(cutoff: Option<f64>) -> Result<Vec<AISessionSummary>> {
     let store = AIUsageStore::default();
+    let conn = store.connect()?;
+    store.indexed_sessions_since(&conn, cutoff)
+}
+
+pub fn indexed_sessions_since_at(
+    database_path: PathBuf,
+    cutoff: Option<f64>,
+) -> Result<Vec<AISessionSummary>> {
+    let store = AIUsageStore::at_path(database_path);
     let conn = store.connect()?;
     store.indexed_sessions_since(&conn, cutoff)
 }
@@ -205,9 +299,19 @@ pub fn normalized_project_totals_since(
     store.normalized_project_totals_since(&conn, cutoff)
 }
 
-fn load_project_history_with_home(
+pub fn normalized_project_totals_since_at(
+    database_path: PathBuf,
+    cutoff: Option<f64>,
+) -> Result<Vec<crate::ai_usage_store::AIUsageProjectTotal>> {
+    let store = AIUsageStore::at_path(database_path);
+    let conn = store.connect()?;
+    store.normalized_project_totals_since(&conn, cutoff)
+}
+
+fn load_project_history_with_store_or_fallback(
     project: AIHistoryProjectRequest,
     home: &Path,
+    store: &AIUsageStore,
     on_progress: &mut impl FnMut(f64, &'static str),
 ) -> AIHistorySnapshot {
     if project.path.trim().is_empty() {
@@ -215,12 +319,8 @@ fn load_project_history_with_home(
     }
 
     on_progress(0.12, "readingSources");
-    if let Ok(snapshot) = load_project_history_with_store(
-        project.clone(),
-        home,
-        &AIUsageStore::default(),
-        on_progress,
-    ) {
+    if let Ok(snapshot) = load_project_history_with_store(project.clone(), home, store, on_progress)
+    {
         return snapshot;
     }
 

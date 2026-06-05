@@ -302,10 +302,6 @@ impl RuntimeService {
         PetService::new(self.support_dir.clone()).catalog()
     }
 
-    pub fn pet_catalog_without_custom_data(&self) -> PetCatalog {
-        PetService::new(self.support_dir.clone()).bundled_catalog()
-    }
-
     pub fn hydrate_custom_pet_data_url(&self, pet: PetCustomPet) -> PetCustomPet {
         PetService::new(self.support_dir.clone()).hydrate_custom_pet_data_url(pet)
     }
@@ -344,14 +340,15 @@ impl RuntimeService {
         let store = PetStore::load_or_seed(self.support_dir.clone());
         let current = store.snapshot()?;
         let claimed_at = current.claimed_at;
-        let cutoff = claimed_at.map(|value| value as f64);
         let active_project_ids = self.active_project_workspace_ids();
-        let project_totals = self.active_indexed_project_totals(cutoff, &active_project_ids)?;
+        let project_totals = self.active_indexed_project_totals(&active_project_ids)?;
         let all_time_total_tokens = project_totals
             .iter()
             .map(|project| project.total_tokens)
             .sum();
-        let mut sessions = indexed_sessions_since(cutoff).map_err(|error| error.to_string())?;
+        let cutoff = claimed_at.map(|value| value as f64);
+        let mut sessions = indexed_sessions_since_at(self.ai_usage_database_path(), cutoff)
+            .map_err(|error| error.to_string())?;
         sessions.retain(|session| active_project_ids.contains(&session.project_id));
         let input = refresh_input_from_indexed_history(
             claimed_at,
@@ -384,7 +381,7 @@ impl RuntimeService {
         request: crate::pet::PetClaimRequest,
     ) -> Result<PetSnapshot, String> {
         let active_project_ids = self.active_project_workspace_ids();
-        let project_totals = self.active_indexed_project_totals(None, &active_project_ids)?;
+        let project_totals = self.active_indexed_project_totals(&active_project_ids)?;
         let all_time_total_tokens = project_totals
             .iter()
             .map(|project| project.total_tokens)
@@ -415,15 +412,18 @@ impl RuntimeService {
 
     fn active_indexed_project_totals(
         &self,
-        cutoff: Option<f64>,
         active_project_ids: &HashSet<String>,
     ) -> Result<Vec<crate::ai_usage_store::AIUsageProjectTotal>, String> {
-        let project_totals =
-            normalized_project_totals_since(cutoff).map_err(|error| error.to_string())?;
+        let project_totals = normalized_project_totals_since_at(self.ai_usage_database_path(), None)
+            .map_err(|error| error.to_string())?;
         Ok(filter_active_indexed_project_totals(
             project_totals,
             active_project_ids,
         ))
+    }
+
+    fn ai_usage_database_path(&self) -> PathBuf {
+        self.support_dir.join("ai-usage.sqlite3")
     }
 
     pub fn rename_pet(&self, request: PetRenameRequest) -> Result<PetSnapshot, String> {

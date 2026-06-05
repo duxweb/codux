@@ -1,6 +1,6 @@
 use super::{
     CUSTOM_SPECIES_PREFIX, PET_STATE_DECODE_NAMESPACES, PetCustomPet, PetLegacyRecord,
-    PetProgressInfo, PetSnapshot, PetStats, STATE_VERSION, STATS_MODEL_VERSION,
+    PetProgressInfo, PetSnapshot, PetStats, STATS_MODEL_VERSION,
     catalog::{custom_pet_from_dir, custom_pets_dir, load_custom_pets},
     day_index, decode_pet_state_data, default_persona_id, sanitize_claim_species,
     sanitize_custom_name, sanitize_custom_pet, sanitize_species,
@@ -229,7 +229,7 @@ fn mac_state_to_snapshot(state: MacPersistedPetState) -> PetSnapshot {
         .filter_map(mac_legacy_record_to_snapshot_record)
         .collect();
     PetSnapshot {
-        state_version: STATE_VERSION,
+        state_version: state.state_version.unwrap_or(0),
         stats_model_version: STATS_MODEL_VERSION,
         claimed_at,
         species,
@@ -323,7 +323,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mac_state_migrates_to_current_snapshot() {
+    fn mac_state_migrates_to_current_snapshot_and_rebuilds_baseline() {
         let mac_json = r#"{
           "stateVersion": 8,
           "statsModelVersion": 3,
@@ -343,11 +343,7 @@ mod tests {
         assert_eq!(snapshot.custom_name, "Spark");
         assert_eq!(snapshot.current_experience_tokens, 1200);
         assert_eq!(snapshot.current_stats.chaos, 2);
-        assert_eq!(
-            snapshot
-                .project_normalized_token_watermarks
-                .get("project-a"),
-            Some(&5000)
-        );
+        assert_eq!(snapshot.global_normalized_total_watermark, None);
+        assert!(snapshot.project_normalized_token_watermarks.is_empty());
     }
 }

@@ -308,6 +308,7 @@ impl CoduxApp {
             detail: "loading".to_string(),
             ..AIHistorySummary::default()
         };
+        self.state.refresh_ai_history_stats();
         self.state.ai_session_detail = None;
         self.state.memory = MemorySummary::default();
         self.state.memory_manager = MemoryManagerSnapshot::default();
@@ -1003,6 +1004,7 @@ impl CoduxApp {
         if merge_ai_history_summary(&mut self.state.ai_history, load.ai_history) {
             self.selected_ai_session_id = None;
             self.state.ai_session_detail = None;
+            self.state.refresh_ai_history_stats();
         }
         self.runtime_trace(
             "project-switch",

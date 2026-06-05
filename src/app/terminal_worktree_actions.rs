@@ -1356,6 +1356,7 @@ impl CoduxApp {
             detail: "loading".to_string(),
             ..AIHistorySummary::default()
         };
+        self.state.refresh_ai_history_stats();
         self.state.ai_session_detail = None;
         self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
         let generation = self.project_switch_generation;
@@ -1486,6 +1487,7 @@ impl CoduxApp {
             ),
         );
         self.state.ai_history = load.ai_history;
+        self.state.refresh_ai_history_stats();
         self.normalize_selected_ai_session();
         self.spawn_worktree_sidebar_load(load.generation, cx);
         self.schedule_terminal_layout_restore(

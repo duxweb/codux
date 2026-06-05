@@ -106,6 +106,11 @@ pub(in crate::app) struct DesktopPetLlmContext {
     pub(in crate::app) updated_at: f64,
 }
 
+pub(in crate::app) struct DesktopPetSpeechPolicy {
+    pub(in crate::app) allowed: bool,
+    pub(in crate::app) cooldown_seconds: f64,
+}
+
 fn replace_first_placeholder(template: String, value: &str) -> String {
     template.replacen("%@", value, 1)
 }
@@ -398,6 +403,37 @@ pub(in crate::app) fn desktop_pet_llm_cooldown_seconds(value: &str) -> f64 {
     }
 }
 
+pub(in crate::app) fn desktop_pet_speech_policy(
+    settings: &SettingsSummary,
+    event: &str,
+    main_window_fullscreen: bool,
+    hour: u32,
+) -> DesktopPetSpeechPolicy {
+    if !settings.pet_speech_llm_enabled
+        || settings.pet_speech_mode == "off"
+        || settings.pet_speech_temporary_muted
+        || (settings.pet_speech_mute_on_fullscreen && main_window_fullscreen)
+    {
+        return DesktopPetSpeechPolicy {
+            allowed: false,
+            cooldown_seconds: 0.0,
+        };
+    }
+
+    let mut cooldown = desktop_pet_llm_cooldown_seconds(&settings.pet_speech_frequency);
+    if settings.pet_speech_quiet_during_work && event == "running" {
+        cooldown *= 3.0;
+    }
+    if settings.pet_speech_louder_at_night && ((22..=23).contains(&hour) || hour <= 5) {
+        cooldown = (cooldown * 0.5).max(30.0);
+    }
+
+    DesktopPetSpeechPolicy {
+        allowed: true,
+        cooldown_seconds: cooldown,
+    }
+}
+
 pub(in crate::app) fn desktop_pet_reminder_line(
     settings: &SettingsSummary,
     pet: &PetSnapshot,
@@ -671,8 +707,9 @@ pub(in crate::app) fn desktop_pet_bubble(
         DesktopPetActivityTone::Success => (0x144D29, 0x8CF275, 0xE1FFD1),
         DesktopPetActivityTone::Warning => (0x610D12, 0xFF6B5C, 0xFFE8E1),
     };
-    let text_pad_left = if left_tail { 21.0 } else { 13.0 };
-    let text_pad_right = if left_tail { 13.0 } else { 21.0 };
+    let text_pad_left = if left_tail { 24.0 } else { 17.0 };
+    let text_pad_right = if left_tail { 17.0 } else { 24.0 };
+    let text_width = DESKTOP_PET_BUBBLE_WIDTH - text_pad_left - text_pad_right;
 
     div()
         .absolute()
@@ -701,7 +738,14 @@ pub(in crate::app) fn desktop_pet_bubble(
                 .font_weight(FontWeight::BOLD)
                 .text_left()
                 .text_color(color(text))
-                .child(div().w_full().line_clamp(3).child(line)),
+                .child(
+                    div()
+                        .w(px(text_width))
+                        .min_w_0()
+                        .whitespace_normal()
+                        .line_clamp(3)
+                        .child(line),
+                ),
         )
         .into_any_element()
 }
@@ -993,5 +1037,35 @@ mod tests {
 
         assert!(line.text.contains("codex"));
         assert_eq!(line.tone, DesktopPetActivityTone::Warning);
+    }
+
+    #[test]
+    fn speech_policy_applies_work_night_and_fullscreen_settings() {
+        let mut settings = SettingsSummary {
+            pet_speech_llm_enabled: true,
+            pet_speech_mode: "mixed".to_string(),
+            pet_speech_frequency: "normal".to_string(),
+            pet_speech_quiet_during_work: true,
+            pet_speech_louder_at_night: true,
+            pet_speech_mute_on_fullscreen: true,
+            ..SettingsSummary::default()
+        };
+
+        let base = desktop_pet_llm_cooldown_seconds("normal");
+        let running = desktop_pet_speech_policy(&settings, "running", false, 14);
+        assert!(running.allowed);
+        assert_eq!(running.cooldown_seconds, base * 3.0);
+
+        let night = desktop_pet_speech_policy(&settings, "idle.monologue", false, 23);
+        assert!(night.allowed);
+        assert_eq!(night.cooldown_seconds, (base * 0.5).max(30.0));
+
+        let fullscreen = desktop_pet_speech_policy(&settings, "idle.monologue", true, 14);
+        assert!(!fullscreen.allowed);
+        assert_eq!(fullscreen.cooldown_seconds, 0.0);
+
+        settings.pet_speech_mute_on_fullscreen = false;
+        let allowed_fullscreen = desktop_pet_speech_policy(&settings, "idle.monologue", true, 14);
+        assert!(allowed_fullscreen.allowed);
     }
 }

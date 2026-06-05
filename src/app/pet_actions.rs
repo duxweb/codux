@@ -1,4 +1,5 @@
 use super::*;
+use chrono::Timelike as _;
 
 fn desktop_pet_action_status(action_id: &str) -> &'static str {
     match action_id {
@@ -48,6 +49,7 @@ impl CoduxApp {
         }
 
         self.refresh_desktop_pet_live_runtime_state();
+        self.refresh_desktop_pet_main_window_fullscreen(cx);
         self.refresh_desktop_pet_activity_line(cx);
         self.start_pet_sprite_animation_loop(cx);
         let timer = cx.background_executor().clone();
@@ -59,6 +61,7 @@ impl CoduxApp {
                     .update(cx, |app, cx| {
                         app.state.runtime_events = app.runtime_service.reload_runtime_events();
                         app.refresh_desktop_pet_live_runtime_state();
+                        app.refresh_desktop_pet_main_window_fullscreen(cx);
                         app.refresh_desktop_pet_activity_line(cx);
                     })
                     .is_err()
@@ -75,6 +78,7 @@ impl CoduxApp {
         self.state.ai_runtime_state = self
             .runtime_service
             .summarize_ai_runtime_state_snapshot(&snapshot);
+        self.state.refresh_ai_history_stats();
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -241,6 +245,7 @@ impl CoduxApp {
         }
         self.runtime_service
             .desktop_pet_set_bubble_visible(!self.desktop_pet_line.trim().is_empty());
+        let parent_main_window = cx.entity().downgrade();
 
         let display = cx.primary_display();
         let display_id = display.as_ref().map(|display| display.id());
@@ -300,6 +305,7 @@ impl CoduxApp {
                 let window_handle = window.window_handle().downcast::<CoduxApp>();
                 let view = cx.new(|_| app);
                 view.update(cx, |app, cx| {
+                    app.parent_main_window = Some(parent_main_window);
                     app.start_desktop_pet_speech_loop(cx);
                     #[cfg(any(target_os = "macos", target_os = "windows"))]
                     if let Some(window_handle) = window_handle {
@@ -430,15 +436,18 @@ impl CoduxApp {
     }
 
     pub(super) fn request_desktop_pet_idle_llm_line(&mut self, now: f64, cx: &mut Context<Self>) {
-        if !self.state.settings.pet_speech_llm_enabled
-            || self.state.settings.pet_speech_mode == "off"
-            || self.state.settings.pet_speech_temporary_muted
-        {
+        let policy = desktop_pet_speech_policy(
+            &self.state.settings,
+            "idle.monologue",
+            self.desktop_pet_main_window_fullscreen,
+            chrono::Local::now().hour(),
+        );
+        if !policy.allowed {
             self.desktop_pet_active_llm_key.clear();
             self.desktop_pet_next_idle_llm_at = 0.0;
             return;
         }
-        let cooldown = desktop_pet_llm_cooldown_seconds(&self.state.settings.pet_speech_frequency);
+        let cooldown = policy.cooldown_seconds;
         if self.desktop_pet_next_idle_llm_at <= 0.0 {
             self.desktop_pet_next_idle_llm_at = now + cooldown;
             return;
@@ -465,10 +474,13 @@ impl CoduxApp {
         context: DesktopPetLlmContext,
         cx: &mut Context<Self>,
     ) {
-        if !self.state.settings.pet_speech_llm_enabled
-            || self.state.settings.pet_speech_mode == "off"
-            || self.state.settings.pet_speech_temporary_muted
-        {
+        let policy = desktop_pet_speech_policy(
+            &self.state.settings,
+            context.event,
+            self.desktop_pet_main_window_fullscreen,
+            chrono::Local::now().hour(),
+        );
+        if !policy.allowed {
             self.desktop_pet_active_llm_key.clear();
             return;
         }
@@ -486,7 +498,7 @@ impl CoduxApp {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs_f64())
             .unwrap_or(0.0);
-        let cooldown = desktop_pet_llm_cooldown_seconds(&self.state.settings.pet_speech_frequency);
+        let cooldown = policy.cooldown_seconds;
         if now - self.desktop_pet_last_llm_requested_at < cooldown {
             return;
         }
@@ -511,6 +523,16 @@ impl CoduxApp {
             });
         })
         .detach();
+    }
+
+    pub(super) fn refresh_desktop_pet_main_window_fullscreen(&mut self, cx: &mut Context<Self>) {
+        let Some(parent) = self.parent_main_window.clone() else {
+            self.desktop_pet_main_window_fullscreen = false;
+            return;
+        };
+        self.desktop_pet_main_window_fullscreen = parent
+            .read_with(cx, |app, _cx| app.main_window_fullscreen)
+            .unwrap_or(false);
     }
 
     pub(super) fn apply_desktop_pet_llm_line(

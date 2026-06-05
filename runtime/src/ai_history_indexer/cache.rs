@@ -1,17 +1,19 @@
 use crate::ai_history_normalized::{
     AIGlobalHistorySnapshot, AIHistoryProjectRequest, AIHistorySnapshot,
-    load_indexed_global_history, load_indexed_project_history,
+    load_indexed_global_history_at, load_indexed_project_history_at,
 };
 use crate::runtime_trace::runtime_trace_elapsed;
+use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 pub(super) fn indexed_project_snapshot(
+    database_path: &Path,
     project: AIHistoryProjectRequest,
 ) -> Result<Option<AIHistorySnapshot>, String> {
     let started_at = Instant::now();
     let project_id = project.id.clone();
-    load_indexed_project_history(project)
+    load_indexed_project_history_at(database_path.to_path_buf(), project)
         .map_err(|error| error.to_string())
         .map(|snapshot| {
             runtime_trace_elapsed(
@@ -33,11 +35,12 @@ pub(super) fn indexed_project_snapshot(
 }
 
 pub(super) fn indexed_global_snapshot(
+    database_path: &Path,
     projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<Option<AIGlobalHistorySnapshot>, String> {
     let started_at = Instant::now();
     let project_count = projects.len();
-    load_indexed_global_history(projects)
+    load_indexed_global_history_at(database_path.to_path_buf(), projects)
         .map_err(|error| error.to_string())
         .map(|snapshot| {
             runtime_trace_elapsed(

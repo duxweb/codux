@@ -1,15 +1,9 @@
 static POWER_MANAGER: OnceLock<Arc<PowerManager>> = OnceLock::new();
-static AI_HISTORY_INDEXER: OnceLock<AIHistoryIndexer> = OnceLock::new();
 static AI_RUNTIME_BRIDGE: OnceLock<Arc<AIRuntimeBridge>> = OnceLock::new();
 static TERMINAL_MANAGER: OnceLock<Arc<TerminalManager>> = OnceLock::new();
-static REMOTE_HOST_RUNTIME: OnceLock<Arc<RemoteHostRuntime>> = OnceLock::new();
 
 fn shared_power_manager() -> Arc<PowerManager> {
     Arc::clone(POWER_MANAGER.get_or_init(|| Arc::new(PowerManager::default())))
-}
-
-fn shared_ai_history_indexer() -> AIHistoryIndexer {
-    AI_HISTORY_INDEXER.get_or_init(AIHistoryIndexer::new).clone()
 }
 
 fn shared_ai_runtime_bridge() -> Arc<AIRuntimeBridge> {
@@ -22,23 +16,22 @@ fn shared_terminal_manager(ai_runtime: Arc<AIRuntimeBridge>) -> Arc<TerminalMana
     )
 }
 
-fn shared_remote_host_runtime(
+fn new_remote_host_runtime(
     support_dir: PathBuf,
     ai_history: AIHistoryIndexer,
     terminals: Arc<TerminalManager>,
 ) -> Arc<RemoteHostRuntime> {
-    Arc::clone(REMOTE_HOST_RUNTIME.get_or_init(|| {
-        Arc::new(RemoteHostRuntime::new_with_ai_history_and_terminals(
-            support_dir,
-            ai_history,
-            terminals,
-        ))
-    }))
+    Arc::new(RemoteHostRuntime::new_with_ai_history_and_terminals(
+        support_dir,
+        ai_history,
+        terminals,
+    ))
 }
 
 impl RuntimeService {
     pub fn new(support_dir: PathBuf) -> Self {
-        let ai_history_indexer = shared_ai_history_indexer();
+        let ai_history_indexer =
+            AIHistoryIndexer::with_database_path(support_dir.join("ai-usage.sqlite3"));
         let ai_runtime = shared_ai_runtime_bridge();
         let terminal_manager = shared_terminal_manager(Arc::clone(&ai_runtime));
         let project_activity = Arc::new(ProjectActivityCoordinator::new(
@@ -47,7 +40,7 @@ impl RuntimeService {
         ));
         project_activity.seed_projects(ProjectStore::new(support_dir.clone()).projects_snapshot());
         let remote_ai_history_indexer = ai_history_indexer.clone();
-        let remote_host = shared_remote_host_runtime(
+        let remote_host = new_remote_host_runtime(
             support_dir.clone(),
             remote_ai_history_indexer,
             terminal_manager,
@@ -118,6 +111,7 @@ impl RuntimeService {
             self.project_activity.mark_project_active(project.clone());
             let _ = self.mark_active_project_file_path(&project.path);
             self.watch_project_background(project.path);
+            self.refresh_active_ai_history_background();
         }
 
         let ai_runtime_state = self.ai_runtime.runtime_state_snapshot();
@@ -355,8 +349,53 @@ impl RuntimeService {
         let _ = self.mark_active_project_file_path(&project.path);
 
         self.watch_project_background(project.path);
+        self.refresh_active_ai_history_background();
 
         Ok(self.project_activity.snapshot())
+    }
+
+    fn refresh_active_ai_history_background(&self) {
+        let Some(request) = self.active_ai_history_project_request() else {
+            return;
+        };
+        let ai_history = self.ai_history_indexer.clone();
+        let _ = std::thread::Builder::new()
+            .name("codux-ai-history-activation".to_string())
+            .spawn(move || {
+                let _ = ai_history.project_state(request);
+            });
+    }
+
+    fn active_ai_history_project_request(&self) -> Option<AIHistoryProjectRequest> {
+        let store = ProjectStore::new(self.support_dir.clone());
+        let snapshot = store.snapshot();
+        let project = snapshot
+            .selected_project_id
+            .as_ref()
+            .and_then(|id| snapshot.projects.iter().find(|project| &project.id == id))
+            .or_else(|| snapshot.projects.first())?;
+        let selected_worktree_id = snapshot
+            .selected_worktree_id_by_project
+            .get(&project.id)
+            .map(String::as_str)
+            .unwrap_or(project.id.as_str());
+        if selected_worktree_id != project.id
+            && let Some(worktree) = snapshot
+                .worktrees
+                .iter()
+                .find(|worktree| worktree.id == selected_worktree_id)
+        {
+            return Some(AIHistoryProjectRequest {
+                id: worktree.id.clone(),
+                name: worktree.name.clone(),
+                path: worktree.path.clone(),
+            });
+        }
+        Some(AIHistoryProjectRequest {
+            id: project.id.clone(),
+            name: project.name.clone(),
+            path: project.path.clone(),
+        })
     }
 
     pub fn watch_project_background(&self, project_path: String) {
@@ -448,8 +487,46 @@ impl RuntimeService {
         self.ai_history_indexer.remove_session(project, session_id)
     }
 
-    pub fn drain_ai_history_events(&self) -> Vec<AIHistoryEvent> {
-        self.ai_history_indexer.drain_events()
+    pub fn drain_ai_history_events(&self) -> AIHistoryDrainResult {
+        let events = self.ai_history_indexer.drain_events();
+        let should_refresh_pet = events.iter().any(|event| {
+            matches!(
+                event,
+                AIHistoryEvent::Project { .. }
+                    | AIHistoryEvent::ProjectState {
+                        state: AIHistoryProjectState {
+                            is_loading: false,
+                            queued: false,
+                            error: None,
+                            snapshot: Some(_),
+                            ..
+                        },
+                    }
+            )
+        });
+        if !should_refresh_pet {
+            return AIHistoryDrainResult {
+                events,
+                ..Default::default()
+            };
+        }
+        match self.refresh_pet_from_indexed_history() {
+            Ok(pet) => {
+                let pet_snapshot = self.pet_snapshot().ok();
+                AIHistoryDrainResult {
+                    events,
+                    pet: Some(pet),
+                    pet_snapshot,
+                    pet_error: None,
+                }
+            }
+            Err(error) => AIHistoryDrainResult {
+                events,
+                pet: None,
+                pet_snapshot: None,
+                pet_error: Some(error),
+            },
+        }
     }
 
     pub fn prepare_ai_runtime_bridge(&self) -> Result<AIRuntimeBridgeSnapshot, String> {
@@ -528,9 +605,10 @@ fn runtime_dock_badge_count(
 #[cfg(test)]
 mod app_runtime_ready_tests {
     use super::*;
-    use crate::terminal_layout::TerminalPaneSummary;
+    use crate::terminal_layout::{TerminalPaneSummary, TerminalTabSummary, terminal_layout_storage_key};
+    use crate::terminal_pty::TerminalLaunchContext;
     use serde_json::json;
-    use std::{fs, path::PathBuf, thread, time::Duration};
+    use std::{fs, path::PathBuf, sync::Arc, thread, time::{Duration, Instant}};
 
     fn wait_for_active_watch_path(service: &RuntimeService, expected: &str) {
         for _ in 0..50 {
@@ -552,6 +630,83 @@ mod app_runtime_ready_tests {
                 .as_deref(),
             Some(expected)
         );
+    }
+
+    fn wait_for_ai_history_loading_event(
+        service: &RuntimeService,
+        project_id: &str,
+        project_path: &str,
+    ) {
+        for _ in 0..80 {
+            let result = service.drain_ai_history_events();
+            if result.events.iter().any(|event| {
+                matches!(
+                    event,
+                    AIHistoryEvent::ProjectState { state }
+                        if state.project_id == project_id
+                            && state.project_path == project_path
+                            && state.is_loading
+                )
+            }) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        let result = service.drain_ai_history_events();
+        assert!(
+            result.events.iter().any(|event| {
+                matches!(
+                    event,
+                    AIHistoryEvent::ProjectState { state }
+                        if state.project_id == project_id
+                            && state.project_path == project_path
+                            && state.is_loading
+                )
+            }),
+            "expected AI history loading event for {project_id} at {project_path}, got {:?}",
+            result.events
+        );
+    }
+
+    fn assert_tracked_project_has_git_refresh(service: &RuntimeService, project_id: &str) {
+        let activity = service.project_activity_snapshot();
+        let tracked = activity
+            .tracked_projects
+            .iter()
+            .find(|project| project.id == project_id)
+            .unwrap_or_else(|| panic!("missing tracked project {project_id}: {activity:?}"));
+        assert!(
+            tracked.has_git_refresh,
+            "expected git refresh marker for {project_id}: {activity:?}"
+        );
+        assert!(
+            activity.activated_git_count > 0,
+            "expected activated git count after project activation: {activity:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    fn recv_until_contains(
+        rx: &flume::Receiver<Vec<u8>>,
+        needle: &str,
+        timeout: Duration,
+    ) -> String {
+        let deadline = Instant::now() + timeout;
+        let mut output = String::new();
+        while Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(remaining.min(Duration::from_millis(50))) {
+                Ok(bytes) => {
+                    output.push_str(&String::from_utf8_lossy(&bytes));
+                    if output.contains(needle) {
+                        return output;
+                    }
+                }
+                Err(flume::RecvTimeoutError::Timeout) => {}
+                Err(flume::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        output
     }
 
     #[test]
@@ -868,6 +1023,245 @@ mod app_runtime_ready_tests {
         let _ = fs::remove_dir_all(support_dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn project_and_worktree_switch_runs_runtime_activation_layout_pty_ai_and_git_flow() {
+        let support_dir = std::env::temp_dir().join(format!(
+            "codux-runtime-switch-full-flow-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let project_a_dir = support_dir.join("project-a");
+        let project_b_dir = support_dir.join("project-b");
+        let worktree_a_dir = support_dir.join("worktree-a");
+        let worktree_b_dir = support_dir.join("worktree-b");
+        fs::create_dir_all(&project_a_dir).expect("create project a dir");
+        fs::create_dir_all(&project_b_dir).expect("create project b dir");
+        fs::create_dir_all(&worktree_a_dir).expect("create worktree a dir");
+        fs::create_dir_all(&worktree_b_dir).expect("create worktree b dir");
+        fs::write(
+            support_dir.join("state.json"),
+            json!({
+                "projects": [
+                    {
+                        "id": "project-a",
+                        "name": "Project A",
+                        "path": project_a_dir.to_string_lossy()
+                    },
+                    {
+                        "id": "project-b",
+                        "name": "Project B",
+                        "path": project_b_dir.to_string_lossy()
+                    }
+                ],
+                "worktrees": [
+                    {
+                        "id": "worktree-a",
+                        "projectId": "project-a",
+                        "name": "Task A",
+                        "branch": "task-a",
+                        "path": worktree_a_dir.to_string_lossy(),
+                        "status": "active",
+                        "isDefault": false,
+                        "createdAt": 1,
+                        "updatedAt": 1
+                    },
+                    {
+                        "id": "worktree-b",
+                        "projectId": "project-a",
+                        "name": "Task B",
+                        "branch": "task-b",
+                        "path": worktree_b_dir.to_string_lossy(),
+                        "status": "active",
+                        "isDefault": false,
+                        "createdAt": 1,
+                        "updatedAt": 1
+                    }
+                ],
+                "worktreeTasks": [
+                    {
+                        "worktreeId": "worktree-a",
+                        "title": "Task A",
+                        "baseBranch": "main",
+                        "baseCommit": null,
+                        "status": "active",
+                        "createdAt": 1,
+                        "updatedAt": 1,
+                        "startedAt": null,
+                        "completedAt": null
+                    },
+                    {
+                        "worktreeId": "worktree-b",
+                        "title": "Task B",
+                        "baseBranch": "main",
+                        "baseCommit": null,
+                        "status": "active",
+                        "createdAt": 1,
+                        "updatedAt": 1,
+                        "startedAt": null,
+                        "completedAt": null
+                    }
+                ],
+                "selectedProjectId": "project-a",
+                "selectedWorktreeIdByProject": {
+                    "project-a": "worktree-a"
+                }
+            })
+            .to_string(),
+        )
+        .expect("write state");
+
+        let service = RuntimeService::new(PathBuf::from(&support_dir));
+        let layout_a_key = terminal_layout_storage_key("project-a", "worktree-a");
+        let layout_b_key = terminal_layout_storage_key("project-a", "worktree-b");
+        let terminal_a_top = format!("terminal-a-top-{}", uuid::Uuid::new_v4());
+        let terminal_a_tab = format!("terminal-a-tab-{}", uuid::Uuid::new_v4());
+        let terminal_b_top = format!("terminal-b-top-{}", uuid::Uuid::new_v4());
+        let terminal_project_b = format!("terminal-project-b-{}", uuid::Uuid::new_v4());
+        service
+            .save_terminal_layout(
+                &layout_a_key,
+                vec![TerminalTabSummary {
+                    label: "Task A Tab".to_string(),
+                    terminal_id: terminal_a_tab.clone(),
+                }],
+                terminal_a_top.clone(),
+                vec![TerminalPaneSummary {
+                    title: "Task A Top".to_string(),
+                    terminal_id: terminal_a_top.clone(),
+                }],
+            )
+            .expect("save task a layout");
+        service
+            .save_terminal_layout(
+                &layout_b_key,
+                Vec::new(),
+                terminal_b_top.clone(),
+                vec![TerminalPaneSummary {
+                    title: "Task B Top".to_string(),
+                    terminal_id: terminal_b_top.clone(),
+                }],
+            )
+            .expect("save task b layout");
+        service
+            .save_terminal_layout(
+                &terminal_layout_storage_key("project-b", "project-b"),
+                Vec::new(),
+                terminal_project_b.clone(),
+                vec![TerminalPaneSummary {
+                    title: "Project B".to_string(),
+                    terminal_id: terminal_project_b.clone(),
+                }],
+            )
+            .expect("save project b layout");
+
+        let ready = service.app_runtime_ready(true, true);
+        assert_eq!(
+            ready.projects.selected_project_id.as_deref(),
+            Some("project-a")
+        );
+        assert_eq!(
+            ready
+                .projects
+                .selected_worktree_id_by_project
+                .get("project-a")
+                .map(String::as_str),
+            Some("worktree-a")
+        );
+        assert_tracked_project_has_git_refresh(&service, "project-a");
+        wait_for_ai_history_loading_event(
+            &service,
+            "worktree-a",
+            &worktree_a_dir.to_string_lossy(),
+        );
+        let layout = service.reload_terminal_layout(Some(&layout_a_key));
+        assert_eq!(layout.active_terminal_id, terminal_a_top);
+        assert_eq!(layout.top_panes[0].terminal_id, terminal_a_top);
+        assert_eq!(layout.tabs[0].terminal_id, terminal_a_tab);
+
+        let terminal_manager = service.terminal_manager();
+        let launch_context = TerminalLaunchContext {
+            project_id: "worktree-a".to_string(),
+            project_name: "Task A".to_string(),
+            project_path: worktree_a_dir.clone(),
+            support_dir: support_dir.clone(),
+            runtime_root: support_dir.join("runtime-root"),
+            terminal_id: Some(layout.active_terminal_id.clone()),
+            slot_id: None,
+            session_key: None,
+            session_title: Some("Task A Top".to_string()),
+            session_cwd: Some(worktree_a_dir.clone()),
+            session_instance_id: None,
+            tool_permissions_file: None,
+            memory_workspace_root: None,
+            memory_prompt_file: None,
+            memory_index_file: None,
+        };
+        let mut config = launch_context.to_config();
+        config.shell = Some("/bin/cat".to_string());
+        config.cols = Some(80);
+        config.rows = Some(24);
+        let ensured = terminal_manager
+            .ensure_session_with_context(config.clone(), Some(&launch_context))
+            .expect("ensure task a terminal pty");
+        assert_eq!(ensured, terminal_a_top);
+        let (attached, rx) = terminal_manager
+            .attach_or_create_with_context(config, Some(&launch_context), Arc::new(|_| {}))
+            .expect("attach task a terminal pty");
+        assert_eq!(attached.id(), terminal_a_top);
+        attached
+            .write(b"task-a-shared-pty\n")
+            .expect("write task a terminal");
+        assert!(
+            recv_until_contains(&rx, "task-a-shared-pty", Duration::from_secs(2))
+                .contains("task-a-shared-pty")
+        );
+
+        service
+            .project_select_worktree(ProjectSelectWorktreeRequest {
+                project_id: "project-a".to_string(),
+                worktree_id: "worktree-b".to_string(),
+            })
+            .expect("select worktree b");
+        assert_eq!(
+            service
+                .project_list()
+                .selected_worktree_id_by_project
+                .get("project-a")
+                .map(String::as_str),
+            Some("worktree-b")
+        );
+        assert_tracked_project_has_git_refresh(&service, "project-a");
+        wait_for_ai_history_loading_event(
+            &service,
+            "worktree-b",
+            &worktree_b_dir.to_string_lossy(),
+        );
+        let layout = service.reload_terminal_layout(Some(&layout_b_key));
+        assert_eq!(layout.active_terminal_id, terminal_b_top);
+        assert_eq!(layout.top_panes[0].terminal_id, terminal_b_top);
+
+        service.select_project("project-b").expect("select project b");
+        assert_eq!(
+            service.project_list().selected_project_id.as_deref(),
+            Some("project-b")
+        );
+        assert_tracked_project_has_git_refresh(&service, "project-b");
+        wait_for_ai_history_loading_event(
+            &service,
+            "project-b",
+            &project_b_dir.to_string_lossy(),
+        );
+        let layout = service.reload_terminal_layout(Some(&terminal_layout_storage_key(
+            "project-b",
+            "project-b",
+        )));
+        assert_eq!(layout.active_terminal_id, terminal_project_b);
+        assert_eq!(layout.top_panes[0].terminal_id, terminal_project_b);
+
+        let _ = terminal_manager.kill(&terminal_a_top);
+        let _ = fs::remove_dir_all(support_dir);
+    }
+
     #[test]
     fn project_close_forgets_pet_baseline() {
         let support_dir = std::env::temp_dir().join(format!(
@@ -1119,6 +1513,142 @@ mod app_runtime_ready_tests {
     }
 
     #[test]
+    fn pet_refresh_uses_runtime_support_dir_history_store() {
+        let support_dir = std::env::temp_dir().join(format!(
+            "codux-pet-runtime-history-store-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let _ = fs::remove_dir_all(&support_dir);
+        let project_dir = support_dir.join("project");
+        fs::create_dir_all(&project_dir).expect("create project dir");
+        fs::write(
+            support_dir.join("state.json"),
+            json!({
+                "projects": [
+                    {
+                        "id": "project-1",
+                        "name": "Project",
+                        "path": project_dir.to_string_lossy()
+                    }
+                ],
+                "selectedProjectId": "project-1"
+            })
+            .to_string(),
+        )
+        .expect("write state");
+
+        let mut pet_snapshot = crate::pet::PetSnapshot {
+            claimed_at: Some(1),
+            species: "codux".to_string(),
+            global_normalized_total_watermark: Some(100),
+            total_normalized_tokens: 100,
+            ..crate::pet::PetSnapshot::default()
+        };
+        pet_snapshot
+            .project_normalized_token_watermarks
+            .insert("project-1".to_string(), 100);
+        fs::write(
+            support_dir.join("pet-state.json"),
+            serde_json::to_vec(&pet_snapshot).expect("encode pet state"),
+        )
+        .expect("write pet state");
+
+        let service = RuntimeService::new(PathBuf::from(&support_dir));
+        write_usage_bucket(
+            &support_dir,
+            &project_dir,
+            "project-1",
+            "Project",
+            "before-claim",
+            100,
+            1.0,
+        );
+        write_usage_bucket(
+            &support_dir,
+            &project_dir,
+            "project-1",
+            "Project",
+            "after-claim",
+            30,
+            10.0,
+        );
+
+        let summary = service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh pet from indexed history");
+        assert_eq!(summary.total_xp, 30);
+        assert_eq!(summary.daily_xp, 30);
+        let snapshot = service.pet_snapshot().expect("pet snapshot");
+        assert_eq!(
+            snapshot.project_normalized_token_watermarks.get("project-1"),
+            Some(&130)
+        );
+
+        let summary = service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh pet from indexed history again");
+        assert_eq!(summary.total_xp, 30);
+        assert_eq!(summary.daily_xp, 30);
+
+        let second_dir = support_dir.join("second");
+        fs::create_dir_all(&second_dir).expect("create second project dir");
+        fs::write(
+            support_dir.join("state.json"),
+            json!({
+                "projects": [
+                    {
+                        "id": "project-1",
+                        "name": "Project",
+                        "path": project_dir.to_string_lossy()
+                    },
+                    {
+                        "id": "project-2",
+                        "name": "Second",
+                        "path": second_dir.to_string_lossy()
+                    }
+                ],
+                "selectedProjectId": "project-1"
+            })
+            .to_string(),
+        )
+        .expect("write updated state");
+        write_usage_bucket(
+            &support_dir,
+            &second_dir,
+            "project-2",
+            "Second",
+            "existing-second",
+            10_000,
+            1.0,
+        );
+
+        let summary = service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh pet after adding project");
+        assert_eq!(summary.total_xp, 30);
+        assert_eq!(summary.daily_xp, 30);
+
+        service
+            .project_close(ProjectCloseRequest {
+                project_id: "project-1".to_string(),
+            })
+            .expect("close first project");
+        let summary = service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh pet after removing project");
+        assert_eq!(summary.total_xp, 30);
+        assert_eq!(summary.daily_xp, 30);
+        let snapshot = service.pet_snapshot().expect("pet snapshot after remove");
+        assert!(
+            !snapshot
+                .project_normalized_token_watermarks
+                .contains_key("project-1")
+        );
+
+        let _ = fs::remove_dir_all(support_dir);
+    }
+
+    #[test]
     fn file_watch_events_are_queued_and_drained_for_gpui() {
         let support_dir =
             std::env::temp_dir().join(format!("codux-file-watch-events-{}", uuid::Uuid::new_v4()));
@@ -1153,5 +1683,69 @@ mod app_runtime_ready_tests {
 
         assert_eq!(runtime_dock_badge_count(true, &snapshot), Some(5));
         assert_eq!(runtime_dock_badge_count(false, &snapshot), None);
+    }
+
+    fn write_usage_bucket(
+        support_dir: &Path,
+        project_dir: &Path,
+        project_id: &str,
+        project_name: &str,
+        session_key: &str,
+        total_tokens: i64,
+        bucket_start: f64,
+    ) {
+        let store =
+            crate::ai_usage_store::AIUsageStore::at_path(support_dir.join("ai-usage.sqlite3"));
+        let conn = store.connect().expect("connect ai usage store");
+        let project_path = project_dir.to_string_lossy().to_string();
+        conn.execute(
+            r#"
+            INSERT INTO ai_history_file_session_link (
+                source, file_path, project_path, session_key, external_session_id, project_id,
+                project_name, session_title, first_seen_at, last_seen_at, last_model,
+                active_duration_seconds
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            "#,
+            rusqlite::params![
+                "codex",
+                "session.jsonl",
+                project_path,
+                session_key,
+                session_key,
+                project_id,
+                project_name,
+                "Session",
+                bucket_start,
+                bucket_start + 1_800.0,
+                "gpt-5",
+                60_i64
+            ],
+        )
+        .expect("insert session link");
+        conn.execute(
+            r#"
+            INSERT INTO ai_history_file_usage_bucket (
+                source, file_path, project_path, session_key, model, bucket_start, bucket_end,
+                input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            "#,
+            rusqlite::params![
+                "codex",
+                "session.jsonl",
+                project_dir.to_string_lossy().to_string(),
+                session_key,
+                "gpt-5",
+                bucket_start,
+                bucket_start + 1_800.0,
+                total_tokens / 2,
+                total_tokens - (total_tokens / 2),
+                total_tokens,
+                0_i64,
+                1_i64
+            ],
+        )
+        .expect("insert usage bucket");
     }
 }
