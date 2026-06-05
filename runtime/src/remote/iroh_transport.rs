@@ -181,18 +181,20 @@ impl RemoteIrohHostTransport {
             .unwrap_or_default();
         let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let mut device_id: Option<String> = None;
+        let Ok((mut send, mut recv)) = connection.accept_bi().await else {
+            if !peer.is_empty() {
+                (self.on_state)(peer, "closed".to_string());
+            }
+            return;
+        };
         loop {
             tokio::select! {
-                inbound = connection.accept_bi() => {
-                    let Ok((mut send, mut recv)) = inbound else {
-                        break;
-                    };
-                    let Ok(data) = read_frame(&mut recv).await else {
+                inbound = read_frame(&mut recv) => {
+                    let Ok(data) = inbound else {
                         break;
                     };
                     let Ok(raw) = serde_json::from_slice::<RemoteEnvelope>(&data) else {
                         let _ = write_frame(&mut send, br#"{"type":"error","payload":{"message":"Invalid remote envelope."}}"#).await;
-                        let _ = send.finish();
                         continue;
                     };
                     if raw.kind == "pairing.request" {
@@ -222,22 +224,18 @@ impl RemoteIrohHostTransport {
                         (self.on_message)(id, data);
                     }
                     let _ = write_frame(&mut send, br#"{"ok":true}"#).await;
-                    let _ = send.finish();
                 }
                 outbound = rx.recv() => {
                     let Some(data) = outbound else {
                         break;
                     };
-                    let Ok((mut send, _)) = connection.open_bi().await else {
-                        break;
-                    };
                     if write_frame(&mut send, &data).await.is_err() {
                         break;
                     }
-                    let _ = send.finish();
                 }
             }
         }
+        let _ = send.finish();
         if let Some(id) = device_id {
             let mut remove = false;
             if let Ok(peers) = self.peers.lock() {
@@ -294,11 +292,11 @@ pub(crate) async fn iroh_client_send_with_hold(
         .await
         .map_err(|error| error.to_string())?;
     write_frame(&mut send, &message).await?;
-    send.finish().map_err(|error| error.to_string())?;
     let response = read_frame(&mut recv).await?;
     if let Some(hold) = hold {
         tokio::time::sleep(hold).await;
     }
+    send.finish().map_err(|error| error.to_string())?;
     connection.close(0_u32.into(), b"done");
     endpoint.close().await;
     Ok(response)
@@ -377,6 +375,138 @@ fn pairing_handshake_from_envelope(envelope: &RemoteEnvelope) -> Option<RemoteIr
             .and_then(Value::as_str)
             .map(str::to_string),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::sync::mpsc::UnboundedReceiver;
+
+    #[test]
+    fn iroh_long_stream_preserves_burst_frame_order() {
+        crate::async_runtime::block_on(async {
+            let received = Arc::new(Mutex::new(Vec::<usize>::new()));
+            let received_for_handler = Arc::clone(&received);
+            let (peer_tx, mut peer_rx) = mpsc::unbounded_channel::<String>();
+            let transport = RemoteIrohHostTransport::bind(
+                SecretKey::generate(rand::rngs::OsRng),
+                Arc::new(move |_device_id, data| {
+                    if let Ok(value) = serde_json::from_slice::<Value>(&data) {
+                        if let Some(index) = value
+                            .get("payload")
+                            .and_then(|payload| payload.get("index"))
+                            .and_then(Value::as_u64)
+                        {
+                            if let Ok(mut received) = received_for_handler.lock() {
+                                received.push(index as usize);
+                            }
+                        }
+                    }
+                }),
+                Arc::new(move |device_id, state| {
+                    if state == "connected" {
+                        let _ = peer_tx.send(device_id);
+                    }
+                }),
+                Arc::new(|_| {}),
+            )
+            .await
+            .expect("bind iroh host");
+            let addr = transport.node_addr().await.expect("node addr");
+            let outbound = run_burst_client(addr, 200, 5).await.expect("burst client");
+            let device_id = recv_with_timeout(&mut peer_rx)
+                .await
+                .expect("peer connected");
+
+            for index in 0..5 {
+                let data = serde_json::to_vec(&json!({
+                    "type": "terminal.output",
+                    "deviceId": device_id,
+                    "payload": { "index": index }
+                }))
+                .expect("outbound json");
+                assert!(transport.send(data, Some(&device_id)));
+            }
+
+            let echoed = outbound
+                .await
+                .expect("join burst client")
+                .expect("outbound");
+            assert_eq!(echoed, (0..5).collect::<Vec<_>>());
+
+            for _ in 0..40 {
+                let current = received
+                    .lock()
+                    .map(|received| received.clone())
+                    .unwrap_or_default();
+                if current.len() == 200 {
+                    assert_eq!(current, (0..200).collect::<Vec<_>>());
+                    transport.shutdown().await;
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            panic!("host did not receive ordered burst");
+        });
+    }
+
+    async fn recv_with_timeout(rx: &mut UnboundedReceiver<String>) -> Option<String> {
+        tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .ok()
+            .flatten()
+    }
+
+    async fn run_burst_client(
+        addr: RemoteIrohNodeAddr,
+        inbound_frames: usize,
+        outbound_frames: usize,
+    ) -> Result<tokio::task::JoinHandle<Result<Vec<usize>, String>>, String> {
+        let endpoint = Endpoint::builder()
+            .relay_mode(RelayMode::Default)
+            .bind()
+            .await
+            .map_err(|error| error.to_string())?;
+        let connection = endpoint
+            .connect(addr.to_node_addr()?, CODUX_REMOTE_ALPN)
+            .await
+            .map_err(|error| error.to_string())?;
+        let (mut send, mut recv) = connection
+            .open_bi()
+            .await
+            .map_err(|error| error.to_string())?;
+        for index in 0..inbound_frames {
+            let data = serde_json::to_vec(&json!({
+                "type": "host.info",
+                "deviceId": "burst-device",
+                "payload": { "index": index }
+            }))
+            .map_err(|error| error.to_string())?;
+            write_frame(&mut send, &data).await?;
+            let _ = read_frame(&mut recv).await?;
+        }
+        Ok(tokio::spawn(async move {
+            let mut received = Vec::new();
+            while received.len() < outbound_frames {
+                let data = read_frame(&mut recv).await?;
+                let value =
+                    serde_json::from_slice::<Value>(&data).map_err(|error| error.to_string())?;
+                let Some(index) = value
+                    .get("payload")
+                    .and_then(|payload| payload.get("index"))
+                    .and_then(Value::as_u64)
+                else {
+                    return Err("missing outbound index".to_string());
+                };
+                received.push(index as usize);
+            }
+            send.finish().map_err(|error| error.to_string())?;
+            connection.close(0_u32.into(), b"done");
+            endpoint.close().await;
+            Ok(received)
+        }))
+    }
 }
 
 #[cfg(test)]

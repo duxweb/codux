@@ -55,10 +55,13 @@ pub struct RemoteHostRuntime {
     ai_history: AIHistoryIndexer,
     terminals: Arc<TerminalManager>,
     terminal_viewers_by_session: Mutex<HashMap<String, HashSet<String>>>,
+    terminal_output_seq_by_session: Mutex<HashMap<String, i64>>,
     remote_project_scope_by_device: Mutex<HashMap<String, String>>,
     terminal_event_subscriptions: Mutex<HashSet<String>>,
     terminal_upload_sessions: Mutex<HashMap<String, RemoteTerminalUploadSession>>,
     transport: Mutex<Option<Arc<RemoteIrohHostTransport>>>,
+    iroh_start_lock: tokio::sync::Mutex<()>,
+    iroh_node_addr: Mutex<Option<RemoteIrohNodeAddr>>,
     active_pairing: Mutex<Option<RemotePairingInfo>>,
     pending_pairings: Mutex<HashMap<String, RemoteIrohHandshake>>,
     events: Mutex<VecDeque<RemoteSummary>>,
@@ -70,7 +73,8 @@ pub struct RemoteHostRuntime {
 
 impl RemoteHostRuntime {
     pub fn new(support_dir: PathBuf) -> Self {
-        Self::new_with_ai_history(support_dir, AIHistoryIndexer::new())
+        let ai_history = AIHistoryIndexer::with_database_path(support_dir.join("ai-usage.sqlite3"));
+        Self::new_with_ai_history(support_dir, ai_history)
     }
 
     pub fn new_with_ai_history(support_dir: PathBuf, ai_history: AIHistoryIndexer) -> Self {
@@ -92,10 +96,13 @@ impl RemoteHostRuntime {
             ai_history,
             terminals,
             terminal_viewers_by_session: Mutex::new(HashMap::new()),
+            terminal_output_seq_by_session: Mutex::new(HashMap::new()),
             remote_project_scope_by_device: Mutex::new(HashMap::new()),
             terminal_event_subscriptions: Mutex::new(HashSet::new()),
             terminal_upload_sessions: Mutex::new(HashMap::new()),
             transport: Mutex::new(None),
+            iroh_start_lock: tokio::sync::Mutex::new(()),
+            iroh_node_addr: Mutex::new(None),
             active_pairing: Mutex::new(None),
             pending_pairings: Mutex::new(HashMap::new()),
             events: Mutex::new(VecDeque::new()),
@@ -172,6 +179,9 @@ impl RemoteHostRuntime {
                 transport.shutdown().await;
             });
         }
+        if let Ok(mut addr) = self.iroh_node_addr.lock() {
+            *addr = None;
+        }
         let mut summary = self.service().summary();
         summary.status = "stopped".to_string();
         summary.message = message.to_string();
@@ -221,10 +231,9 @@ impl RemoteHostRuntime {
     }
 
     fn spawn_iroh_start(self: &Arc<Self>) {
-        let generation = self.connection_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let runtime = Arc::clone(self);
         crate::async_runtime::spawn(async move {
-            if let Err(error) = runtime.start_iroh_transport(generation).await {
+            if let Err(error) = runtime.ensure_iroh_transport_ready().await {
                 let mut status = runtime.service().summary();
                 status.status = "failed".to_string();
                 status.message = error;
@@ -234,7 +243,44 @@ impl RemoteHostRuntime {
         });
     }
 
-    async fn start_iroh_transport(self: &Arc<Self>, generation: u64) -> Result<(), String> {
+    async fn ensure_iroh_transport_ready(self: &Arc<Self>) -> Result<RemoteIrohNodeAddr, String> {
+        if let Some(node_addr) = self.ready_iroh_node_addr().await? {
+            return Ok(node_addr);
+        }
+
+        let _guard = self.iroh_start_lock.lock().await;
+        if let Some(node_addr) = self.ready_iroh_node_addr().await? {
+            return Ok(node_addr);
+        }
+
+        let mut summary = self.service().summary();
+        if !summary.enabled {
+            return Err("Remote Host is disabled.".to_string());
+        }
+        summary.status = "connecting".to_string();
+        summary.message = "Starting Iroh remote host...".to_string();
+        summary.pairing = self.snapshot().pairing;
+        self.update_snapshot(summary);
+
+        let generation = self.connection_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.start_iroh_transport(generation)
+            .await?
+            .ok_or_else(|| "Iroh Remote Host is not ready.".to_string())
+    }
+
+    async fn ready_iroh_node_addr(&self) -> Result<Option<RemoteIrohNodeAddr>, String> {
+        let transport = self.transport.lock().ok().and_then(|value| value.clone());
+        let Some(transport) = transport else {
+            return Ok(None);
+        };
+        let node_addr = self.refresh_iroh_node_addr(&transport).await?;
+        Ok(Some(node_addr))
+    }
+
+    async fn start_iroh_transport(
+        self: &Arc<Self>,
+        generation: u64,
+    ) -> Result<Option<RemoteIrohNodeAddr>, String> {
         crate::runtime_trace::runtime_trace(
             "remote",
             &format!("iroh_start generation={generation}"),
@@ -242,7 +288,7 @@ impl RemoteHostRuntime {
         let mut raw = self.service().raw_settings();
         let mut settings = self.service().register_host_in_raw_async(&mut raw).await?;
         if generation != self.connection_generation.load(Ordering::SeqCst) {
-            return Ok(());
+            return Ok(None);
         }
         let (secret_key, encoded_secret) = iroh_secret_key_from_settings(&settings.iroh_secret_key);
         settings.iroh_secret_key = encoded_secret;
@@ -284,11 +330,15 @@ impl RemoteHostRuntime {
         .await?;
         if generation != self.connection_generation.load(Ordering::SeqCst) {
             transport.shutdown().await;
-            return Ok(());
+            return Ok(None);
         }
-        let node_addr = match Self::wait_iroh_node_addr(&transport).await {
+        if let Ok(mut current) = self.transport.lock() {
+            *current = Some(transport.clone());
+        }
+        let node_addr = match self.refresh_iroh_node_addr(&transport).await {
             Ok(addr) => addr,
             Err(error) => {
+                self.clear_iroh_transport_if_current(&transport);
                 transport.shutdown().await;
                 return Err(error);
             }
@@ -303,18 +353,31 @@ impl RemoteHostRuntime {
             ),
         );
         if generation != self.connection_generation.load(Ordering::SeqCst) {
+            self.clear_iroh_transport_if_current(&transport);
             transport.shutdown().await;
-            return Ok(());
-        }
-        if let Ok(mut current) = self.transport.lock() {
-            *current = Some(transport.clone());
+            return Ok(None);
         }
         let mut connected = self.service().summary();
         connected.status = "connected".to_string();
         connected.message = "Iroh Remote Host connected.".to_string();
         connected.pairing = self.snapshot().pairing;
         self.update_snapshot(connected);
-        Ok(())
+        Ok(Some(node_addr))
+    }
+
+    fn clear_iroh_transport_if_current(&self, transport: &Arc<RemoteIrohHostTransport>) {
+        if let Ok(mut current) = self.transport.lock() {
+            if current
+                .as_ref()
+                .map(|value| Arc::ptr_eq(value, transport))
+                .unwrap_or(false)
+            {
+                *current = None;
+            }
+        }
+        if let Ok(mut current) = self.iroh_node_addr.lock() {
+            *current = None;
+        }
     }
 
     async fn wait_iroh_node_addr(
@@ -336,6 +399,17 @@ impl RemoteHostRuntime {
         Err(last_error)
     }
 
+    async fn refresh_iroh_node_addr(
+        &self,
+        transport: &Arc<RemoteIrohHostTransport>,
+    ) -> Result<RemoteIrohNodeAddr, String> {
+        let node_addr = Self::wait_iroh_node_addr(transport).await?;
+        if let Ok(mut current) = self.iroh_node_addr.lock() {
+            *current = Some(node_addr.clone());
+        }
+        Ok(node_addr)
+    }
+
     fn handle_transport_message(self: Arc<Self>, device_id: String, data: Vec<u8>) {
         let Ok(raw) = serde_json::from_slice::<RemoteEnvelope>(&data) else {
             return;
@@ -352,23 +426,13 @@ impl RemoteHostRuntime {
         let Some(envelope) = envelope else {
             return;
         };
+        self.update_device_online(envelope.device_id.as_deref(), true);
         self.handle_remote_envelope(envelope.with_device_id(device_id));
     }
 
     fn handle_remote_envelope(self: &Arc<Self>, envelope: RemoteEnvelope) {
         match envelope.kind.as_str() {
-            "host.info" => self.send(
-                "host.info",
-                envelope.device_id.as_deref(),
-                None,
-                json!({
-                    "hostId": self.snapshot().host_id,
-                    "name": remote_host_name(),
-                    "platform": std::env::consts::OS,
-                    "app": "Codux",
-                    "protocolVersion": REMOTE_PROTOCOL_VERSION,
-                }),
-            ),
+            "host.info" => self.send_host_info(envelope.device_id.as_deref()),
             "device.connected" => {
                 self.update_device_online(envelope.device_id.as_deref(), true);
                 self.send_project_and_terminal_lists(envelope.device_id.as_deref());
@@ -388,6 +452,7 @@ impl RemoteHostRuntime {
             "terminal.list" => self.send_terminal_list(envelope.device_id.as_deref()),
             "terminal.create" => self.handle_terminal_create(&envelope),
             "terminal.buffer" => self.handle_terminal_buffer(&envelope),
+            "terminal.output.ack" => {}
             "terminal.input" => self.handle_terminal_input(&envelope),
             "terminal.resize" => self.handle_terminal_resize(&envelope),
             "terminal.close" => self.handle_terminal_close(&envelope),
@@ -423,6 +488,40 @@ impl RemoteHostRuntime {
             ),
             _ => {}
         }
+    }
+
+    fn send_host_info(self: &Arc<Self>, device_id: Option<&str>) {
+        let device_id = device_id.map(str::to_string);
+        let runtime = Arc::clone(self);
+        crate::async_runtime::spawn(async move {
+            let iroh_addr = runtime.current_iroh_node_addr().await;
+            runtime.send(
+                "host.info",
+                device_id.as_deref(),
+                None,
+                json!({
+                    "hostId": runtime.snapshot().host_id,
+                    "name": remote_host_name(),
+                    "platform": std::env::consts::OS,
+                    "app": "Codux",
+                    "protocolVersion": REMOTE_PROTOCOL_VERSION,
+                    "iroh": iroh_addr,
+                }),
+            );
+        });
+    }
+
+    async fn current_iroh_node_addr(&self) -> Option<RemoteIrohNodeAddr> {
+        let transport = self.transport.lock().ok().and_then(|value| value.clone());
+        if let Some(transport) = transport {
+            if let Ok(addr) = self.refresh_iroh_node_addr(&transport).await {
+                return Some(addr);
+            }
+        }
+        self.iroh_node_addr
+            .lock()
+            .ok()
+            .and_then(|addr| addr.clone())
     }
 
     fn handle_iroh_pairing_request(&self, handshake: RemoteIrohHandshake) {
@@ -467,28 +566,7 @@ impl RemoteHostRuntime {
         if !self.snapshot().enabled {
             return Err("Remote Host is disabled.".to_string());
         }
-        let has_transport = self
-            .transport
-            .lock()
-            .ok()
-            .and_then(|value| value.clone())
-            .is_some();
-        let is_starting = self.snapshot().status == "connecting"
-            && self.connection_generation.load(Ordering::SeqCst) > 0;
-        if !has_transport && !is_starting {
-            self.spawn_iroh_start();
-        }
-        let mut transport = self.transport.lock().ok().and_then(|value| value.clone());
-        for _ in 0..50 {
-            if transport.is_some() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            transport = self.transport.lock().ok().and_then(|value| value.clone());
-        }
-        let Some(transport) = transport else {
-            return Err("Iroh Remote Host is not ready.".to_string());
-        };
+        let iroh_addr = self.ensure_iroh_transport_ready().await?;
         let raw = self.service().raw_settings();
         let settings = super::remote_settings_from_raw(&raw);
         if settings.host_public_key.trim().is_empty() {
@@ -504,7 +582,6 @@ impl RemoteHostRuntime {
             expires_at: (chrono::Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
             qr_payload: String::new(),
         };
-        let iroh_addr = Self::wait_iroh_node_addr(&transport).await?;
         pairing.qr_payload =
             super::crypto::remote_pairing_qr_payload(&settings, &pairing, iroh_addr);
         if let Ok(mut active) = self.active_pairing.lock() {
@@ -1159,6 +1236,7 @@ impl RemoteHostRuntime {
         };
         match self.terminals.kill(session_id) {
             Ok(()) => {
+                self.clear_terminal_output_seq(session_id);
                 self.send_terminal_data(
                     "terminal.closed",
                     envelope.device_id.as_deref(),
@@ -1754,6 +1832,7 @@ impl RemoteHostRuntime {
                 let total_characters = data.chars().count();
                 let clamped = offset.min(total_characters);
                 let chunk = data.chars().skip(clamped).collect::<String>();
+                let output_seq = self.current_terminal_output_seq(session_id);
                 self.send_terminal_data(
                     "terminal.output",
                     device_id,
@@ -1763,6 +1842,7 @@ impl RemoteHostRuntime {
                         "buffer": true,
                         "offset": clamped,
                         "bufferLength": total_characters,
+                        "outputSeq": output_seq,
                     }),
                 );
             }
@@ -2095,6 +2175,31 @@ impl RemoteHostRuntime {
             .unwrap_or(false)
     }
 
+    fn next_terminal_output_seq(&self, session_id: &str) -> i64 {
+        self.terminal_output_seq_by_session
+            .lock()
+            .map(|mut sequences| {
+                let next = sequences.get(session_id).copied().unwrap_or(0) + 1;
+                sequences.insert(session_id.to_string(), next);
+                next
+            })
+            .unwrap_or(0)
+    }
+
+    fn current_terminal_output_seq(&self, session_id: &str) -> i64 {
+        self.terminal_output_seq_by_session
+            .lock()
+            .ok()
+            .and_then(|sequences| sequences.get(session_id).copied())
+            .unwrap_or(0)
+    }
+
+    fn clear_terminal_output_seq(&self, session_id: &str) {
+        if let Ok(mut sequences) = self.terminal_output_seq_by_session.lock() {
+            sequences.remove(session_id);
+        }
+    }
+
     fn register_terminal_viewer(self: &Arc<Self>, session_id: &str, device_id: Option<&str>) {
         let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
             return;
@@ -2135,6 +2240,7 @@ impl RemoteHostRuntime {
                     return;
                 }
                 let buffer_length = self.terminals.buffer_characters(&session_id).unwrap_or(0);
+                let output_seq = self.next_terminal_output_seq(&session_id);
                 for device_id in viewers {
                     self.send_terminal_data(
                         "terminal.output",
@@ -2143,6 +2249,7 @@ impl RemoteHostRuntime {
                         json!({
                             "data": text,
                             "bufferLength": buffer_length,
+                            "outputSeq": output_seq,
                         }),
                     );
                 }
@@ -2154,6 +2261,7 @@ impl RemoteHostRuntime {
                 if let Ok(mut viewers) = self.terminal_viewers_by_session.lock() {
                     viewers.remove(&session_id);
                 }
+                self.clear_terminal_output_seq(&session_id);
                 self.send_terminal_data(
                     "terminal.closed",
                     None,
@@ -2647,6 +2755,25 @@ mod tests {
         assert_eq!(layout.active_terminal_id, "terminal-mobile-b");
         assert_eq!(layout.top_panes.len(), 1);
         assert_eq!(layout.top_panes[0].terminal_id, "terminal-mobile-b");
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn remote_terminal_output_sequence_is_session_scoped() {
+        let support_dir = temp_support_dir("codux-remote-terminal-output-seq");
+        let runtime = RemoteHostRuntime::new(support_dir.clone());
+
+        assert_eq!(runtime.current_terminal_output_seq("terminal-a"), 0);
+        assert_eq!(runtime.next_terminal_output_seq("terminal-a"), 1);
+        assert_eq!(runtime.next_terminal_output_seq("terminal-a"), 2);
+        assert_eq!(runtime.next_terminal_output_seq("terminal-b"), 1);
+        assert_eq!(runtime.current_terminal_output_seq("terminal-a"), 2);
+
+        runtime.clear_terminal_output_seq("terminal-a");
+
+        assert_eq!(runtime.current_terminal_output_seq("terminal-a"), 0);
+        assert_eq!(runtime.current_terminal_output_seq("terminal-b"), 1);
 
         fs::remove_dir_all(support_dir).ok();
     }
