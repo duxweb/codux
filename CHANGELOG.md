@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-06-06
+
+### Added
+
+- Added Iroh remote connection settings and Node ID pairing, with host info and direct addresses flowing through the runtime model protocol.
+- Added per-worktree terminal layout ratio persistence so project and worktree switches keep top/bottom split and bottom panel heights.
+- Wired pet voice, reminder, proactive speech, and LLM persona settings into the actual pet behavior path.
+
+### Changed
+
+- Reworked the remote connection path around Iroh discovery/relay and host info, removing the old HTTP relay implementation.
+- Improved startup readiness, status bar refreshes, system services, history scans, memory queues, and menu actions to reduce startup and interaction stalls.
+- Refined settings UI behavior, including shared selects, form alignment, separators, terminal font settings, mobile guidance, and localization copy.
+- Reworked memory management views for user memories, queued work, and failures, with queue clearing plus failure refresh and deletion actions.
+- Improved AI history indexing and pet experience calculations through runtime-owned daily usage, experience baselines, and project history refreshes.
+- Refined terminal focus, input stability, shortcuts, file-tab close behavior, and project/worktree restoration.
+- Improved Git worktree merge feedback with explicit success or failure dialogs after confirmation.
+- Reduced public GitHub Release assets to the macOS DMG, macOS updater bundle, Windows installer, and `latest.json`.
+
+### Fixed
+
+- Fixed the macOS DMG installer presentation so it uses the standard drag-to-Applications layout.
+- Fixed settings dropdowns closing unexpectedly, failing to scroll, and overflowing long option text.
+- Fixed crashes and blocking behavior in settings, child windows, update windows, and pet claiming flows.
+- Fixed daily rank, pet experience, project removal/re-addition baselines, and cached usage totals.
+- Fixed AI session history, Git state, terminal layout, and bottom panel height refresh issues after project or worktree switches.
+- Fixed edge cases in Claude/Codex runtime status, permission-wait states, completion notifications, and auto-compaction state detection.
+- Fixed update checking, download progress, completion window sizing, and release note display regressions.
+- Fixed release publishing so checksum files, signatures, zip files, and intermediate executables are no longer uploaded while updater signatures still feed `latest.json`.
+
 ## [1.6.0] - 2026-06-05
 
 ### Added

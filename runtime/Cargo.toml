@@ -1,6 +1,6 @@
 [package]
 name = "codux-runtime"
-version = "1.6.0"
+version = "1.6.1"
 edition = "2024"
 
 [dependencies]
@@ -32,7 +32,7 @@ genai = "0.6.1"
 git2 = { version = "0.21.0", features = ["cred", "https", "ssh", "vendored-openssl"] }
 hkdf = "0.12"
 image = "0.25.1"
-iroh = "0.35.0"
+iroh = "1.0.0-rc.1"
 libc = "0.2"
 llm-json-repair = "0.1"
 minisign-verify = "0.2.5"

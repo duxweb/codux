@@ -1,4 +1,3 @@
-use super::http::default_remote_server_url;
 use super::types::{RemoteDeviceSummary, RemoteSettings, RemoteSummary};
 use super::{RemoteService, remote_settings_from_raw};
 
@@ -11,9 +10,6 @@ impl RemoteService {
 
 pub(crate) fn remote_summary_from_settings(mut settings: RemoteSettings) -> RemoteSummary {
     settings.server_url = settings.server_url.trim().to_string();
-    if settings.server_url.is_empty() {
-        settings.server_url = default_remote_server_url();
-    }
     settings.cached_devices.retain(|device| {
         !device.id.trim().is_empty()
             && device
@@ -30,7 +26,7 @@ pub(crate) fn remote_summary_from_settings(mut settings: RemoteSettings) -> Remo
             .retain(|device| device.host_id.trim().is_empty() || device.host_id.trim() == host_id);
     }
 
-    let enabled = settings.is_enabled && !settings.server_url.trim().is_empty();
+    let enabled = settings.is_enabled;
     let device_list = settings
         .cached_devices
         .into_iter()

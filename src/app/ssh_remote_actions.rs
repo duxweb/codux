@@ -510,6 +510,27 @@ impl CoduxApp {
         self.invalidate_remote_panel(cx);
     }
 
+    pub(super) fn set_remote_server_url(
+        &mut self,
+        server_url: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match self.runtime_service.set_remote_server_url(&server_url) {
+            Ok((settings, remote)) => {
+                self.apply_settings_summary(settings);
+                self.state.remote = remote;
+                self.remote_reconnecting = self.state.remote.status == "connecting";
+                self.normalize_selected_remote_device();
+                self.status_message = "remote relay setting saved".to_string();
+            }
+            Err(error) => {
+                self.status_message = format!("failed to save remote relay setting: {error}");
+            }
+        }
+        self.invalidate_remote_panel(cx);
+    }
+
     pub(super) fn reconnect_remote(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if self.remote_reconnecting {
             return;

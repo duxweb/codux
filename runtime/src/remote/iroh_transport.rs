@@ -1,14 +1,16 @@
 use super::types::RemoteEnvelope;
-use iroh::{Endpoint, NodeAddr, RelayMode, SecretKey, endpoint::Connection};
+use iroh::{
+    Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey,
+    endpoint::{Connection, presets},
+};
 #[cfg(test)]
-use iroh::{NodeId, RelayUrl};
+use iroh::EndpointId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(test)]
 use serde_json::json;
 #[cfg(test)]
 use std::net::SocketAddr;
-#[cfg(test)]
 use std::str::FromStr;
 use std::{
     collections::HashMap,
@@ -17,6 +19,7 @@ use std::{
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::mpsc,
+    time::{Duration, timeout},
 };
 
 pub(crate) const CODUX_REMOTE_ALPN: &[u8] = b"codux/remote/iroh/v1";
@@ -32,21 +35,18 @@ pub(crate) struct RemoteIrohNodeAddr {
 }
 
 impl RemoteIrohNodeAddr {
-    pub(crate) fn from_node_addr(addr: NodeAddr) -> Self {
+    pub(crate) fn from_endpoint_addr(addr: EndpointAddr) -> Self {
         Self {
-            node_id: addr.node_id.to_string(),
-            relay_url: addr.relay_url.map(|url| url.to_string()),
-            direct_addresses: addr
-                .direct_addresses
-                .into_iter()
-                .map(|addr| addr.to_string())
-                .collect(),
+            node_id: addr.id.to_string(),
+            relay_url: addr.relay_urls().next().map(|url| url.to_string()),
+            direct_addresses: addr.ip_addrs().map(|addr| addr.to_string()).collect(),
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn to_node_addr(&self) -> Result<NodeAddr, String> {
-        let node_id = NodeId::from_str(self.node_id.trim()).map_err(|error| error.to_string())?;
+    pub(crate) fn to_endpoint_addr(&self) -> Result<EndpointAddr, String> {
+        let node_id =
+            EndpointId::from_str(self.node_id.trim()).map_err(|error| error.to_string())?;
         let relay_url = self
             .relay_url
             .as_deref()
@@ -54,13 +54,28 @@ impl RemoteIrohNodeAddr {
             .map(RelayUrl::from_str)
             .transpose()
             .map_err(|error| error.to_string())?;
-        let direct_addresses = self
+        let mut addr = EndpointAddr::new(node_id);
+        if let Some(relay_url) = relay_url {
+            addr = addr.with_relay_url(relay_url);
+        }
+        for direct in self
             .direct_addresses
             .iter()
             .filter_map(|value| SocketAddr::from_str(value.trim()).ok())
-            .collect::<Vec<_>>();
-        Ok(NodeAddr::from_parts(node_id, relay_url, direct_addresses))
+        {
+            addr = addr.with_ip_addr(direct);
+        }
+        Ok(addr)
     }
+}
+
+pub(crate) fn iroh_relay_mode_from_url(value: &str) -> Result<RelayMode, String> {
+    let value = value.trim();
+    if value.is_empty() || value == "iroh://default" {
+        return Ok(RelayMode::Default);
+    }
+    let relay_url = RelayUrl::from_str(value).map_err(|error| error.to_string())?;
+    Ok(RelayMode::custom([relay_url]))
 }
 
 #[derive(Clone, Debug)]
@@ -91,7 +106,7 @@ pub(crate) fn iroh_secret_key_from_settings(value: &str) -> (SecretKey, String) 
         .and_then(|bytes| <[u8; 32]>::try_from(bytes.as_slice()).ok());
     let secret_key = decoded
         .map(|bytes| SecretKey::from_bytes(&bytes))
-        .unwrap_or_else(|| SecretKey::generate(rand::rngs::OsRng));
+        .unwrap_or_else(SecretKey::generate);
     let encoded = super::crypto::remote_base64_url_encode(&secret_key.to_bytes());
     (secret_key, encoded)
 }
@@ -99,15 +114,16 @@ pub(crate) fn iroh_secret_key_from_settings(value: &str) -> (SecretKey, String) 
 impl RemoteIrohHostTransport {
     pub(crate) async fn bind(
         secret_key: SecretKey,
+        relay_url: &str,
         on_message: MessageHandler,
         on_state: StateHandler,
         on_pairing: PairingHandler,
     ) -> Result<Arc<Self>, String> {
-        let endpoint = Endpoint::builder()
+        let relay_mode = iroh_relay_mode_from_url(relay_url)?;
+        let endpoint = Endpoint::builder(presets::N0)
             .secret_key(secret_key)
             .alpns(vec![CODUX_REMOTE_ALPN.to_vec()])
-            .relay_mode(RelayMode::Default)
-            .discovery_n0()
+            .relay_mode(relay_mode)
             .bind()
             .await
             .map_err(|error| error.to_string())?;
@@ -123,11 +139,12 @@ impl RemoteIrohHostTransport {
     }
 
     pub(crate) async fn node_addr(&self) -> Result<RemoteIrohNodeAddr, String> {
-        self.endpoint
-            .node_addr()
-            .await
-            .map(RemoteIrohNodeAddr::from_node_addr)
-            .map_err(|error| error.to_string())
+        let _ = timeout(Duration::from_secs(3), self.endpoint.online()).await;
+        let addr = RemoteIrohNodeAddr::from_endpoint_addr(self.endpoint.addr());
+        if addr.relay_url.is_none() && addr.direct_addresses.is_empty() {
+            return Err("Iroh Remote Host address has no relay or direct addresses.".to_string());
+        }
+        Ok(addr)
     }
 
     pub(crate) async fn shutdown(&self) {
@@ -175,10 +192,7 @@ impl RemoteIrohHostTransport {
     }
 
     async fn handle_connection(self: Arc<Self>, connection: Connection) {
-        let peer = connection
-            .remote_node_id()
-            .map(|node| node.to_string())
-            .unwrap_or_default();
+        let peer = connection.remote_id().to_string();
         let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let mut device_id: Option<String> = None;
         let Ok((mut send, mut recv)) = connection.accept_bi().await else {
@@ -278,13 +292,13 @@ pub(crate) async fn iroh_client_send_with_hold(
     message: Vec<u8>,
     hold: Option<std::time::Duration>,
 ) -> Result<Vec<u8>, String> {
-    let endpoint = Endpoint::builder()
+    let endpoint = Endpoint::builder(presets::N0)
         .relay_mode(RelayMode::Default)
         .bind()
         .await
         .map_err(|error| error.to_string())?;
     let connection = endpoint
-        .connect(addr.to_node_addr()?, CODUX_REMOTE_ALPN)
+        .connect(addr.to_endpoint_addr()?, CODUX_REMOTE_ALPN)
         .await
         .map_err(|error| error.to_string())?;
     let (mut send, mut recv) = connection
@@ -390,7 +404,8 @@ mod tests {
             let received_for_handler = Arc::clone(&received);
             let (peer_tx, mut peer_rx) = mpsc::unbounded_channel::<String>();
             let transport = RemoteIrohHostTransport::bind(
-                SecretKey::generate(rand::rngs::OsRng),
+                SecretKey::generate(),
+                "iroh://default",
                 Arc::new(move |_device_id, data| {
                     if let Ok(value) = serde_json::from_slice::<Value>(&data) {
                         if let Some(index) = value
@@ -458,18 +473,34 @@ mod tests {
             .flatten()
     }
 
+    #[test]
+    fn iroh_relay_mode_accepts_default_and_custom_url() {
+        assert!(matches!(
+            iroh_relay_mode_from_url("").expect("empty relay"),
+            RelayMode::Default
+        ));
+        assert!(matches!(
+            iroh_relay_mode_from_url("iroh://default").expect("default relay"),
+            RelayMode::Default
+        ));
+        assert!(matches!(
+            iroh_relay_mode_from_url(" https://relay.example.com ").expect("custom relay"),
+            RelayMode::Custom(_)
+        ));
+    }
+
     async fn run_burst_client(
         addr: RemoteIrohNodeAddr,
         inbound_frames: usize,
         outbound_frames: usize,
     ) -> Result<tokio::task::JoinHandle<Result<Vec<usize>, String>>, String> {
-        let endpoint = Endpoint::builder()
+        let endpoint = Endpoint::builder(presets::N0)
             .relay_mode(RelayMode::Default)
             .bind()
             .await
             .map_err(|error| error.to_string())?;
         let connection = endpoint
-            .connect(addr.to_node_addr()?, CODUX_REMOTE_ALPN)
+            .connect(addr.to_endpoint_addr()?, CODUX_REMOTE_ALPN)
             .await
             .map_err(|error| error.to_string())?;
         let (mut send, mut recv) = connection

@@ -2,7 +2,7 @@ impl Default for RemoteSettings {
     fn default() -> Self {
         Self {
             is_enabled: false,
-            server_url: default_remote_server_url(),
+            server_url: String::new(),
             host_id: String::new(),
             host_token: String::new(),
             host_private_key: String::new(),

@@ -205,11 +205,12 @@ use self::{
     },
     terminal_float::terminal_float_window,
     terminal_state::{
-        bottom_terminal_id, normalize_terminal_restore_state, prepare_memory_launch_artifacts,
-        restore_terminal_tabs_skeleton, spawn_terminal_tabs, terminal_config_for_settings,
-        terminal_launch_context, terminal_pane_summary, terminal_pane_terminal_id,
-        terminal_pty_config_for_terminal_id, terminal_restore_plan_for_language,
-        terminal_tab_summary, top_terminal_id,
+        bottom_terminal_id, clamp_terminal_bottom_ratio, normalize_terminal_restore_state,
+        prepare_memory_launch_artifacts, restore_terminal_tabs_skeleton, spawn_terminal_tabs,
+        terminal_config_for_settings, terminal_launch_context, terminal_pane_summary,
+        terminal_pane_terminal_id, terminal_pty_config_for_terminal_id,
+        terminal_restore_plan_for_language, terminal_tab_summary, terminal_top_ratios_for_panes,
+        top_terminal_id,
     },
     types::*,
     ui_helpers::{

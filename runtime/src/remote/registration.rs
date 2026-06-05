@@ -1,5 +1,4 @@
 use super::crypto::{ensure_remote_host_identity, remote_random_token};
-use super::http::default_remote_server_url;
 use super::summary::remote_summary_from_settings;
 use super::types::{RemoteSettings, RemoteSummary};
 use super::{RemoteService, remote_settings_from_raw, remote_settings_mut};
@@ -12,12 +11,6 @@ impl RemoteService {
         let mut raw = self.raw_settings();
         let remote = remote_settings_mut(&mut raw)?;
         remote.insert("isEnabled".to_string(), Value::Bool(enabled));
-        if !remote.contains_key("serverURL") {
-            remote.insert(
-                "serverURL".to_string(),
-                Value::String(default_remote_server_url()),
-            );
-        }
         self.save_raw_settings(&raw)?;
         Ok(self.summary())
     }

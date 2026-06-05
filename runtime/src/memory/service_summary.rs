@@ -1,5 +1,13 @@
 impl MemoryService {
     pub fn summary(&self, project_id: Option<&str>) -> MemorySummary {
+        self.summary_with_user_recall(project_id, true)
+    }
+
+    pub fn summary_with_user_recall(
+        &self,
+        project_id: Option<&str>,
+        include_user_recall: bool,
+    ) -> MemorySummary {
         if !self.database_path.is_file() {
             return MemorySummary {
                 error: Some("memory.sqlite3 not found".to_string()),
@@ -17,7 +25,7 @@ impl MemoryService {
             }
         };
 
-        match self.summary_from_conn(&conn, project_id) {
+        match self.summary_from_conn(&conn, project_id, include_user_recall) {
             Ok(summary) => summary,
             Err(error) => MemorySummary {
                 available: true,
@@ -31,6 +39,7 @@ impl MemoryService {
         &self,
         conn: &Connection,
         project_id: Option<&str>,
+        include_user_recall: bool,
     ) -> Result<MemorySummary, String> {
         let active_entries = count_entries(conn, None, None, Some("active"))?;
         let core_entries = count_entries(conn, Some("core"), project_id, Some("active"))?;
@@ -51,7 +60,7 @@ impl MemoryService {
                 .flatten()
             })
             .unwrap_or(false);
-        let recent_entries = load_recent_entries(conn, project_id)?;
+        let recent_entries = load_recent_entries(conn, project_id, include_user_recall)?;
 
         Ok(MemorySummary {
             available: true,

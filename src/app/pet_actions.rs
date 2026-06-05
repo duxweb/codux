@@ -19,10 +19,12 @@ impl CoduxApp {
         state: RuntimeState,
         runtime: RuntimeInventory,
         runtime_service: RuntimeService,
+        main_window_fullscreen: bool,
     ) -> Self {
         let mut app = Self::new_settings_window_from_state(state, runtime, runtime_service);
         app.window_mode = AppWindowMode::DesktopPet;
         app.status_message = "desktop pet window ready".to_string();
+        app.desktop_pet_main_window_fullscreen = main_window_fullscreen;
         app
     }
 
@@ -44,12 +46,23 @@ impl CoduxApp {
     }
 
     pub(super) fn start_desktop_pet_speech_loop(&mut self, cx: &mut Context<Self>) {
+        self.start_desktop_pet_speech_loop_with_initial_fullscreen(
+            self.desktop_pet_main_window_fullscreen,
+            cx,
+        );
+    }
+
+    fn start_desktop_pet_speech_loop_with_initial_fullscreen(
+        &mut self,
+        main_window_fullscreen: bool,
+        cx: &mut Context<Self>,
+    ) {
         if self.window_mode != AppWindowMode::DesktopPet {
             return;
         }
 
         self.refresh_desktop_pet_live_runtime_state();
-        self.refresh_desktop_pet_main_window_fullscreen(cx);
+        self.desktop_pet_main_window_fullscreen = main_window_fullscreen;
         self.refresh_desktop_pet_activity_line(cx);
         self.start_pet_sprite_animation_loop(cx);
         let timer = cx.background_executor().clone();
@@ -261,6 +274,7 @@ impl CoduxApp {
             scale_factor: 1.0,
         };
         let origin = self.runtime_service.desktop_pet_initial_position(work_area);
+        let main_window_fullscreen = self.main_window_fullscreen;
         let bounds = Bounds::new(
             point(px(origin.x as f32), px(origin.y as f32)),
             size(
@@ -294,6 +308,7 @@ impl CoduxApp {
                     self.state.clone(),
                     self.runtime.clone(),
                     self.runtime_service.clone(),
+                    main_window_fullscreen,
                 );
                 theme::apply_component_theme(
                     &app.state.settings.theme,
@@ -306,7 +321,10 @@ impl CoduxApp {
                 let view = cx.new(|_| app);
                 view.update(cx, |app, cx| {
                     app.parent_main_window = Some(parent_main_window);
-                    app.start_desktop_pet_speech_loop(cx);
+                    app.start_desktop_pet_speech_loop_with_initial_fullscreen(
+                        main_window_fullscreen,
+                        cx,
+                    );
                     #[cfg(any(target_os = "macos", target_os = "windows"))]
                     if let Some(window_handle) = window_handle {
                         app.start_desktop_pet_mouse_passthrough_loop(window_handle, cx);

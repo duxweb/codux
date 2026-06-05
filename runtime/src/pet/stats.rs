@@ -78,16 +78,6 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
         .sum();
     let session_count = sessions.len().max(1);
 
-    if sessions.len() < 3 || total_requests < 5 || total_tokens < 20_000 {
-        return PetStats {
-            wisdom: 100,
-            chaos: 100,
-            night: 100,
-            stamina: 100,
-            empathy: 100,
-        };
-    }
-
     let avg_tok_per_req = if total_requests > 0 {
         total_tokens as f64 / total_requests as f64
     } else {

@@ -22,24 +22,12 @@ impl RemoteService {
         );
         self.save_raw_settings(&raw)?;
         let mut summary = self.summary();
-        summary.status = "connected".to_string();
         summary.message = "Device removed.".to_string();
         Ok(summary)
     }
 
     pub fn refresh_devices(&self) -> Result<RemoteSummary, String> {
-        let mut summary = self.summary();
-        summary.status = if summary.enabled {
-            "connected".to_string()
-        } else {
-            "stopped".to_string()
-        };
-        summary.message = if summary.enabled {
-            "Iroh Remote Host connected.".to_string()
-        } else {
-            "Remote Host stopped.".to_string()
-        };
-        Ok(summary)
+        Ok(self.summary())
     }
 
     pub async fn refresh_devices_async(&self) -> Result<RemoteSummary, String> {

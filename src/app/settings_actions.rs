@@ -1466,15 +1466,6 @@ impl CoduxApp {
         self.invalidate_ui_region(cx, UiRegion::Root);
     }
 
-    pub(super) fn set_agent_split_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.agent_split_enabled = enabled;
-        self.status_message = format!(
-            "agent split setting saved: {}",
-            if enabled { "on" } else { "off" }
-        );
-        self.invalidate_ui_region(cx, UiRegion::Root);
-    }
-
     pub(super) fn record_shortcut(
         &mut self,
         shortcut_id: &'static str,

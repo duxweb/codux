@@ -309,7 +309,6 @@ impl CoduxApp {
             remote_pairing_creating: false,
             remote_pairing_poll_generation: 0,
             recording_shortcut_id: None,
-            agent_split_enabled: false,
             workspace_view: WorkspaceView::Terminal,
             assistant_panel: None,
             project_column_collapsed: true,

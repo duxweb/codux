@@ -252,16 +252,6 @@ fn pet_store_claim_refresh_rename_archive_restore_and_persist() {
     assert_eq!(refreshed.daily_experience_tokens, 150);
     assert_eq!(refreshed.persona_id, "philosopher");
 
-    assert!(store.forget_project_baseline("project-a").unwrap());
-    let baseline_cleared = store.snapshot().unwrap();
-    assert!(
-        baseline_cleared
-            .project_normalized_token_watermarks
-            .get("project-a")
-            .is_none()
-    );
-    assert_eq!(baseline_cleared.global_normalized_total_watermark, None);
-
     let renamed = store
         .rename(PetRenameRequest {
             custom_name: " Ember ".to_string(),
@@ -348,8 +338,73 @@ fn adding_or_removing_projects_does_not_backfill_pet_xp() {
         .unwrap();
     assert_eq!(with_removed_project.current_experience_tokens, 30);
     assert_eq!(with_removed_project.daily_experience_tokens, 30);
+    assert_eq!(
+        with_removed_project
+            .project_normalized_token_watermarks
+            .get("project-a"),
+        Some(&120)
+    );
+
+    let with_restored_project = store
+        .refresh(PetRefreshInput {
+            project_totals: vec![
+                PetProjectTokenTotal {
+                    project_id: "project-a".to_string(),
+                    total_tokens: 125,
+                },
+                PetProjectTokenTotal {
+                    project_id: "project-b".to_string(),
+                    total_tokens: 10_015,
+                },
+            ],
+            fallback_total_tokens: 10_140,
+            computed_stats: PetStats::default(),
+        })
+        .unwrap();
+    assert_eq!(with_restored_project.current_experience_tokens, 40);
+    assert_eq!(with_restored_project.daily_experience_tokens, 40);
 
     fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn pet_stats_use_session_shape_without_flat_placeholder_values() {
+    let stats = pet_stats_from_sessions(&[crate::ai_history_normalized::AISessionSummary {
+        session_id: "session-1".to_string(),
+        external_session_id: None,
+        project_id: "project-a".to_string(),
+        project_name: "Project".to_string(),
+        project_path: "/tmp/project".to_string(),
+        session_title: "Short focused session".to_string(),
+        first_seen_at: 1_700_000_000.0,
+        last_seen_at: 1_700_000_900.0,
+        last_tool: Some("codex".to_string()),
+        last_model: Some("model".to_string()),
+        request_count: 3,
+        total_input_tokens: 2_400,
+        total_output_tokens: 900,
+        total_tokens: 3_300,
+        cached_input_tokens: 0,
+        active_duration_seconds: 900,
+        today_tokens: 3_300,
+        today_cached_input_tokens: 0,
+    }]);
+
+    let max_trait = [
+        stats.wisdom,
+        stats.chaos,
+        stats.night,
+        stats.stamina,
+        stats.empathy,
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(0);
+    assert!(max_trait > 0);
+    assert_ne!(
+        [stats.wisdom, stats.chaos, stats.night, stats.stamina, stats.empathy],
+        [100, 100, 100, 100, 100]
+    );
 }
 
 #[test]

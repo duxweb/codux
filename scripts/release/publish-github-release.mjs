@@ -21,13 +21,14 @@ const manifestPath = path.join(root, "updates", channel, "latest.json");
 const requireExistingRelease = process.env.RELEASE_REQUIRE_EXISTING === "true";
 const uploadLatest = process.env.RELEASE_UPLOAD_LATEST !== "false";
 const publishManifest = process.env.RELEASE_PUBLISH_MANIFEST !== "false";
-const uploadSigAssets = process.env.RELEASE_UPLOAD_SIG_ASSETS !== "false";
+const uploadSigAssets = process.env.RELEASE_UPLOAD_SIG_ASSETS === "true";
 const mergeExistingLatest = process.env.RELEASE_MERGE_EXISTING_LATEST === "true";
 
 const assets = collectAssets(artifactsDir);
 if (!assets.length) {
   throw new Error(`No release assets found in ${artifactsDir}`);
 }
+const uploadAssets = assets.filter((asset) => shouldUploadPublicAsset(asset) || (uploadSigAssets && asset.name.endsWith(".sig")));
 
 const latestJson = mergeExistingLatest ? mergeWithExistingLatest(buildLatestJson(assets)) : buildLatestJson(assets);
 const latestPath = path.join(artifactsDir, "latest.json");
@@ -35,8 +36,7 @@ fs.writeFileSync(latestPath, `${JSON.stringify(latestJson, null, 2)}\n`, "utf8")
 
 if (!dryRun) {
   upsertRelease();
-  for (const asset of assets) {
-    if (!uploadSigAssets && asset.name.endsWith(".sig")) continue;
+  for (const asset of uploadAssets) {
     run("gh", ["release", "upload", tagName, "--repo", repo, "--clobber", `${asset.path}#${asset.name}`]);
   }
   if (uploadLatest) {
@@ -81,7 +81,7 @@ function mergeWithExistingLatest(next) {
 }
 
 console.log(
-  `${dryRun ? "Prepared" : "Published"} ${assets.length} assets and update metadata to ${repo}@${tagName} (${channel})`,
+  `${dryRun ? "Prepared" : "Published"} ${uploadAssets.length} public assets and update metadata to ${repo}@${tagName} (${channel})`,
 );
 
 function requiredEnv(name) {
@@ -141,13 +141,10 @@ function artifactExt(file) {
 function shouldUpload(asset) {
   return [
     ".dmg",
-    ".app.zip",
-    ".zip",
     ".exe",
     ".msi",
     ".app.tar.gz",
     ".tar.gz",
-    ".sha256",
     ".app.tar.gz.sig",
     ".tar.gz.sig",
     ".nsis.zip.sig",
@@ -155,6 +152,14 @@ function shouldUpload(asset) {
     ".exe.sig",
     ".msi.sig",
   ].includes(asset.ext);
+}
+
+function shouldUploadPublicAsset(asset) {
+  const lower = asset.name.toLowerCase();
+  if (lower.endsWith(".sha256") || lower.endsWith(".sig")) return false;
+  if (lower.endsWith(".app.zip") || lower.endsWith(".zip")) return false;
+  if (asset.ext === ".exe" && !lower.endsWith("-setup.exe")) return false;
+  return [".dmg", ".app.tar.gz", ".exe", ".msi"].includes(asset.ext);
 }
 
 function buildLatestJson(assets) {

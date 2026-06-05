@@ -616,12 +616,18 @@ impl CoduxApp {
     pub(super) fn spawn_persist_terminal_layout_snapshot(
         &self,
         owner_id: Option<String>,
-        layout_snapshot: (Vec<TerminalTabSummary>, String, Vec<TerminalPaneSummary>),
+        layout_snapshot: (
+            Vec<TerminalTabSummary>,
+            String,
+            Vec<TerminalPaneSummary>,
+            Vec<f64>,
+            f64,
+        ),
     ) {
         let Some(owner_id) = owner_id else {
             return;
         };
-        let (tabs, active_terminal_id, top_panes) = layout_snapshot;
+        let (tabs, active_terminal_id, top_panes, top_ratios, bottom_ratio) = layout_snapshot;
         if tabs.is_empty() && top_panes.is_empty() {
             self.runtime_trace(
                 "terminal-layout",
@@ -631,9 +637,14 @@ impl CoduxApp {
         }
         let runtime_service = self.runtime_service.clone();
         codux_runtime::async_runtime::spawn_blocking(move || {
-            if let Err(error) =
-                runtime_service.save_terminal_layout(&owner_id, tabs, active_terminal_id, top_panes)
-            {
+            if let Err(error) = runtime_service.save_terminal_layout(
+                &owner_id,
+                tabs,
+                active_terminal_id,
+                top_panes,
+                top_ratios,
+                bottom_ratio,
+            ) {
                 codux_runtime::runtime_trace::runtime_trace(
                     "terminal-layout",
                     &format!("failed to persist terminal layout {owner_id}: {error}"),

@@ -228,10 +228,47 @@ pub(in crate::app) fn default_terminal_layout_for_owner(
         active_terminal_id: terminal_id.clone(),
         top_panes: vec![TerminalPaneSummary { title, terminal_id }],
         top_ratios: vec![1.0],
-        bottom_ratio: 0.32,
+        bottom_ratio: DEFAULT_TERMINAL_BOTTOM_RATIO,
         error: None,
         ..TerminalLayoutSummary::default()
     }
+}
+
+pub(in crate::app) const DEFAULT_TERMINAL_BOTTOM_RATIO: f64 = 0.24;
+
+pub(in crate::app) fn clamp_terminal_bottom_ratio(value: f64) -> f64 {
+    if !value.is_finite() {
+        return DEFAULT_TERMINAL_BOTTOM_RATIO;
+    }
+    value.clamp(0.16, 0.58)
+}
+
+pub(in crate::app) fn terminal_top_ratios_for_panes(
+    ratios: Vec<f64>,
+    pane_count: usize,
+) -> Vec<f64> {
+    if pane_count == 0 {
+        return Vec::new();
+    }
+    let mut values = ratios
+        .into_iter()
+        .take(pane_count)
+        .map(|value| {
+            if value.is_finite() {
+                value.max(0.0)
+            } else {
+                0.0
+            }
+        })
+        .collect::<Vec<_>>();
+    while values.len() < pane_count {
+        values.push(1.0 / pane_count as f64);
+    }
+    let total = values.iter().sum::<f64>();
+    if total <= 0.0 {
+        return vec![1.0 / pane_count as f64; pane_count];
+    }
+    values.into_iter().map(|value| value / total).collect()
 }
 
 fn layout_has_terminal(layout: &TerminalLayoutSummary, terminal_id: &str) -> bool {

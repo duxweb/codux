@@ -99,8 +99,8 @@ pub(crate) struct RemoteSettings {
     #[serde(default, rename = "isEnabled")]
     pub(crate) is_enabled: bool,
     #[serde(
-        default = "super::http::default_remote_server_url",
-        rename = "serverURL"
+        default,
+        rename = "irohRelayURL"
     )]
     pub(crate) server_url: String,
     #[serde(default, alias = "hostId", rename = "hostID")]

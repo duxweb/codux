@@ -507,6 +507,57 @@ mod tests {
         fs::remove_dir_all(support_dir).ok();
     }
 
+    #[test]
+    fn remote_server_url_summary_keeps_empty_value() {
+        let support_dir = temp_dir("settings-remote-empty-url");
+        fs::write(
+            support_dir.join("settings.json"),
+            r#"
+            {
+              "remote": {
+                "isEnabled": true,
+                "irohRelayURL": "   "
+              }
+            }
+            "#,
+        )
+        .expect("settings");
+
+        let service = SettingsService::new(support_dir.clone());
+        let summary = service.summary();
+        assert_eq!(summary.remote_server_url, "");
+
+        let (updated, remote) = crate::runtime_state::RuntimeService::new(support_dir.clone())
+            .set_remote_server_url("")
+            .expect("update remote server");
+        assert_eq!(updated.remote_server_url, "");
+        assert_eq!(remote.relay, "");
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn remote_server_url_summary_ignores_legacy_server_url() {
+        let support_dir = temp_dir("settings-remote-legacy-url");
+        fs::write(
+            support_dir.join("settings.json"),
+            r#"
+            {
+              "remote": {
+                "isEnabled": true,
+                "serverURL": "http://legacy-relay.example"
+              }
+            }
+            "#,
+        )
+        .expect("settings");
+
+        let summary = SettingsService::new(support_dir.clone()).summary();
+        assert_eq!(summary.remote_server_url, "");
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
     fn temp_dir(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)

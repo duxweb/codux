@@ -60,7 +60,7 @@ impl MemoryService {
         if changed == 0 {
             return Err("Memory entry not found.".to_string());
         }
-        self.summary_from_conn(&conn, project_id)
+        self.summary_from_conn(&conn, project_id, true)
     }
 
     pub fn manager_snapshot(
@@ -119,7 +119,7 @@ impl MemoryService {
         if changed == 0 {
             return Err("Memory entry not found.".to_string());
         }
-        self.summary_from_conn(&conn, project_id)
+        self.summary_from_conn(&conn, project_id, true)
     }
 
     pub fn delete_summary(
@@ -153,7 +153,7 @@ impl MemoryService {
             "UPDATE memory_entries SET merged_summary_id = NULL, updated_at = unixepoch('now') WHERE merged_summary_id = ?1",
             params![summary_id],
         );
-        self.summary_from_conn(&conn, project_id)
+        self.summary_from_conn(&conn, project_id, true)
     }
 
     pub fn delete_project_profile(&self, project_id: &str) -> Result<MemorySummary, String> {
@@ -171,7 +171,7 @@ impl MemoryService {
         if changed == 0 {
             return Err("Memory project profile not found.".to_string());
         }
-        self.summary_from_conn(&conn, Some(project_id))
+        self.summary_from_conn(&conn, Some(project_id), true)
     }
 
     fn manager_snapshot_from_conn(

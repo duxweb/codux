@@ -248,6 +248,22 @@ impl RuntimeService {
         }
     }
 
+    pub fn set_remote_server_url(
+        &self,
+        server_url: &str,
+    ) -> Result<(SettingsSummary, RemoteSummary), String> {
+        let app_settings = self.update_app_settings(|settings| {
+            settings.remote.server_url = server_url.trim().to_string();
+        })?;
+        let remote = if app_settings.remote.is_enabled {
+            self.remote_host.reconnect()
+        } else {
+            self.remote_host.reload_snapshot_from_settings()
+        };
+        let settings = self.reload_settings();
+        Ok((settings, remote))
+    }
+
     pub fn revoke_remote_device(&self, device_id: &str) -> Result<RemoteSummary, String> {
         let summary = RemoteService::new(self.support_dir.clone()).revoke_device(device_id)?;
         Ok(self.remote_host.apply_snapshot(summary))
@@ -436,14 +452,6 @@ impl RuntimeService {
 
     pub fn restore_archived_pet(&self, request: PetRestoreRequest) -> Result<PetSnapshot, String> {
         PetStore::load_or_seed(self.support_dir.clone()).restore_archived(request)
-    }
-
-    pub fn forget_pet_project_baseline(&self, project_id: &str) -> Result<bool, String> {
-        PetStore::load_or_seed(self.support_dir.clone()).forget_project_baseline(project_id)
-    }
-
-    pub fn forget_all_pet_project_baselines(&self) -> Result<(), String> {
-        PetStore::load_or_seed(self.support_dir.clone()).forget_all_project_baselines()
     }
 
     pub fn set_sleep_mode(&self, mode: &str) -> Result<(SettingsSummary, PowerSummary), String> {

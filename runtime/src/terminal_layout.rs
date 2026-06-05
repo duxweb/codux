@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const TERMINAL_LAYOUT_NAMESPACE: &str = "terminal-layout";
+const DEFAULT_BOTTOM_RATIO: f64 = 0.24;
 
 pub fn terminal_layout_storage_key(project_id: &str, worktree_id: &str) -> String {
     format!("{project_id}::{worktree_id}")
@@ -14,9 +15,9 @@ pub struct TerminalLayoutSummary {
     pub active_terminal_id: String,
     pub top_panes: Vec<TerminalPaneSummary>,
     pub tabs: Vec<TerminalTabSummary>,
-    #[serde(default, skip_serializing)]
+    #[serde(default)]
     pub top_ratios: Vec<f64>,
-    #[serde(default = "default_bottom_ratio", skip_serializing)]
+    #[serde(default = "default_bottom_ratio")]
     pub bottom_ratio: f64,
     pub error: Option<String>,
 }
@@ -52,10 +53,10 @@ impl TerminalLayoutService {
             };
         };
         if let Some(layout) = self.cache_layout(project_id) {
-            return layout;
+            return sanitize_terminal_layout(layout).unwrap_or_default();
         }
         TerminalLayoutSummary {
-            bottom_ratio: 0.32,
+            bottom_ratio: default_bottom_ratio(),
             error: Some("No terminal layout saved for selected project.".to_string()),
             ..Default::default()
         }
@@ -89,7 +90,7 @@ impl TerminalLayoutService {
                         .ok()
                         .flatten()
                 })?;
-                Some((project_id.to_string(), layout))
+                sanitize_terminal_layout(layout).map(|layout| (project_id.to_string(), layout))
             })
             .collect()
     }
@@ -100,23 +101,30 @@ impl TerminalLayoutService {
         tabs: Vec<TerminalTabSummary>,
         active_terminal_id: String,
         top_panes: Vec<TerminalPaneSummary>,
+        top_ratios: Vec<f64>,
+        bottom_ratio: f64,
     ) -> Result<TerminalLayoutSummary, String> {
         if tabs.is_empty() && top_panes.is_empty() {
             return Err("Terminal layout is empty.".to_string());
         }
-        let top_ratios = if top_panes.is_empty() {
-            Vec::new()
-        } else {
-            vec![1.0 / top_panes.len() as f64; top_panes.len()]
-        };
         let layout = TerminalLayoutSummary {
             tabs,
             active_terminal_id,
             top_panes,
             top_ratios,
-            bottom_ratio: 0.32,
+            bottom_ratio,
             error: None,
         };
+        self.save_summary(project_id, layout)
+    }
+
+    pub fn save_summary(
+        &self,
+        project_id: &str,
+        layout: TerminalLayoutSummary,
+    ) -> Result<TerminalLayoutSummary, String> {
+        let layout = sanitize_terminal_layout(layout)
+            .ok_or_else(|| "Terminal layout is empty.".to_string())?;
         crate::persistent_cache::PersistentCacheStore::for_support_dir(self.support_dir.clone())?
             .put_json(TERMINAL_LAYOUT_NAMESPACE, project_id, &layout)?;
         Ok(layout)
@@ -133,7 +141,47 @@ pub(crate) fn terminal_layout_cache_namespace() -> &'static str {
 }
 
 fn default_bottom_ratio() -> f64 {
-    0.32
+    DEFAULT_BOTTOM_RATIO
+}
+
+fn sanitize_terminal_layout(mut layout: TerminalLayoutSummary) -> Option<TerminalLayoutSummary> {
+    if layout.tabs.is_empty() && layout.top_panes.is_empty() {
+        return None;
+    }
+    layout.top_ratios = normalize_ratios(layout.top_ratios, layout.top_panes.len());
+    layout.bottom_ratio = clamp_ratio(
+        layout.bottom_ratio,
+        0.16,
+        0.58,
+        default_bottom_ratio(),
+    );
+    Some(layout)
+}
+
+fn normalize_ratios(ratios: Vec<f64>, count: usize) -> Vec<f64> {
+    if count == 0 {
+        return Vec::new();
+    }
+    let mut values = ratios
+        .into_iter()
+        .take(count)
+        .map(|value| if value.is_finite() { value.max(0.0) } else { 0.0 })
+        .collect::<Vec<_>>();
+    while values.len() < count {
+        values.push(1.0 / count as f64);
+    }
+    let total = values.iter().sum::<f64>();
+    if total <= 0.0 {
+        return vec![1.0 / count as f64; count];
+    }
+    values.into_iter().map(|value| value / total).collect()
+}
+
+fn clamp_ratio(value: f64, min: f64, max: f64, fallback: f64) -> f64 {
+    if !value.is_finite() {
+        return fallback;
+    }
+    value.clamp(min, max)
 }
 
 #[cfg(test)]
@@ -141,7 +189,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn terminal_layout_serialization_omits_resizable_dimensions() {
+    fn terminal_layout_serialization_keeps_resizable_dimensions() {
         let layout = TerminalLayoutSummary {
             active_terminal_id: "terminal-1".to_string(),
             top_panes: vec![TerminalPaneSummary {
@@ -155,8 +203,8 @@ mod tests {
         };
 
         let value = serde_json::to_value(&layout).expect("serialize layout");
-        assert!(value.get("topRatios").is_none());
-        assert!(value.get("bottomRatio").is_none());
+        assert_eq!(value["topRatios"][0].as_f64(), Some(1.0));
+        assert_eq!(value["bottomRatio"].as_f64(), Some(0.72));
     }
 
     #[test]
@@ -177,6 +225,8 @@ mod tests {
                     title: "Shell".to_string(),
                     terminal_id: "terminal-kept".to_string(),
                 }],
+                vec![1.0],
+                0.24,
             )
             .expect("save initial layout");
 
@@ -186,6 +236,8 @@ mod tests {
                 Vec::new(),
                 String::new(),
                 Vec::new(),
+                Vec::new(),
+                0.24,
             )
             .expect_err("empty layout should be rejected");
         assert_eq!(error, "Terminal layout is empty.");

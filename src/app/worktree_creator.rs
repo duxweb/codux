@@ -12,7 +12,6 @@ impl CoduxApp {
         let locale = locale_from_language_setting(language);
         let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
         let title = tr("worktree.create.title", "New Worktree");
-        let project_name = self.worktree_creator_project_name.clone();
         let can_submit = !self.worktree_creator_submitting
             && !self.worktree_creator_name.trim().is_empty()
             && !self.worktree_creator_base_branch.trim().is_empty();
@@ -26,14 +25,6 @@ impl CoduxApp {
                     .flex()
                     .flex_col()
                     .gap(px(14.0))
-                    .child(
-                        div()
-                            .text_size(rems(0.75))
-                            .line_height(rems(1.0))
-                            .text_color(color(theme::TEXT_DIM))
-                            .truncate()
-                            .child(project_name),
-                    )
                     .child(worktree_branch_select(
                         tr("worktree.task.base_branch", "Base Branch"),
                         &self.worktree_creator_base_branch,

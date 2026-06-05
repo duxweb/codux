@@ -513,7 +513,8 @@ impl CoduxApp {
         runtime: TerminalRuntimeSummary,
     ) {
         let layout_snapshot = self.terminal_layout_snapshot();
-        let (tabs, active_terminal_id, top_panes) = layout_snapshot.clone();
+        let (tabs, active_terminal_id, top_panes, top_ratios, bottom_ratio) =
+            layout_snapshot.clone();
         if tabs.is_empty() && top_panes.is_empty() {
             self.runtime_trace(
                 "terminal-layout",
@@ -521,17 +522,12 @@ impl CoduxApp {
             );
             return;
         }
-        let top_ratios = if top_panes.is_empty() {
-            Vec::new()
-        } else {
-            vec![1.0 / top_panes.len() as f64; top_panes.len()]
-        };
         let layout = TerminalLayoutSummary {
             active_terminal_id,
             top_panes,
             tabs,
             top_ratios,
-            bottom_ratio: 0.32,
+            bottom_ratio,
             error: None,
         };
         let (layout, runtime) = normalize_terminal_restore_state(
@@ -721,7 +717,13 @@ impl CoduxApp {
 
     pub(super) fn terminal_layout_snapshot(
         &self,
-    ) -> (Vec<TerminalTabSummary>, String, Vec<TerminalPaneSummary>) {
+    ) -> (
+        Vec<TerminalTabSummary>,
+        String,
+        Vec<TerminalPaneSummary>,
+        Vec<f64>,
+        f64,
+    ) {
         let tabs = self
             .terminals
             .iter()
@@ -738,7 +740,55 @@ impl CoduxApp {
             })
             .unwrap_or_default();
         let active_terminal_id = self.active_terminal_runtime_id();
-        (tabs, active_terminal_id, top_panes)
+        let top_ratios = terminal_top_ratios_for_panes(
+            self.state.terminal_layout.top_ratios.clone(),
+            top_panes.len(),
+        );
+        let bottom_ratio = clamp_terminal_bottom_ratio(self.state.terminal_layout.bottom_ratio);
+        (
+            tabs,
+            active_terminal_id,
+            top_panes,
+            top_ratios,
+            bottom_ratio,
+        )
+    }
+
+    pub(in crate::app) fn update_terminal_bottom_ratio(
+        &mut self,
+        layout_key: String,
+        bottom_ratio: f64,
+        cx: &mut Context<Self>,
+    ) {
+        if super::ai_runtime_status::current_terminal_layout_storage_key(&self.state).as_deref()
+            != Some(layout_key.as_str())
+        {
+            self.runtime_trace(
+                "terminal-layout",
+                &format!("skip stale bottom ratio layout={layout_key}"),
+            );
+            return;
+        }
+        let bottom_ratio = clamp_terminal_bottom_ratio(bottom_ratio);
+        if (clamp_terminal_bottom_ratio(self.state.terminal_layout.bottom_ratio) - bottom_ratio)
+            .abs()
+            < 0.001
+        {
+            return;
+        }
+        if self.terminal_layout_loading {
+            self.runtime_trace(
+                "terminal-layout",
+                &format!(
+                    "skip resize_bottom while loading layout={} next={}",
+                    layout_key, bottom_ratio
+                ),
+            );
+            return;
+        }
+        self.state.terminal_layout.bottom_ratio = bottom_ratio;
+        self.persist_current_terminal_layout();
+        self.invalidate_terminal_workspace(cx);
     }
 
     pub(super) fn reload_terminal_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1224,6 +1274,7 @@ impl CoduxApp {
         let confirm_label = self.text("worktree.menu.merge", "Merge to Mainline");
         let cancel_label = self.text("common.cancel", "Cancel");
         let ok_label = self.text("common.ok", "OK");
+        let success_label = self.text("worktree.merge.success", "Merged worktree.");
         let service = self.runtime_service.clone();
         let dialog_service = self.runtime_service.clone();
         self.status_message = "waiting for worktree merge confirmation".to_string();
@@ -1269,6 +1320,18 @@ impl CoduxApp {
                 return;
             }
 
+            let _ = this.update(cx, |app, cx| {
+                app.status_message = app.text("worktree.merge.running", "Merging worktree.");
+                app.runtime_trace(
+                    "worktree",
+                    &format!(
+                        "merge start project={} worktree={}",
+                        project_id, worktree_id
+                    ),
+                );
+                app.invalidate_worktree_context(cx);
+            });
+
             let result = codux_runtime::async_runtime::spawn_blocking({
                 let service = service.clone();
                 let project_id = project_id.clone();
@@ -1291,10 +1354,31 @@ impl CoduxApp {
                         if selected_matches {
                             app.state.worktrees = summary;
                         }
+                        app.runtime_trace(
+                            "worktree",
+                            &format!(
+                                "merge ok project={} worktree={}",
+                                project_id, worktree_id
+                            ),
+                        );
                         app.status_message = app.text("worktree.merge.success", "Merged worktree.");
                         app.refresh_git_panel_state_async(cx);
                         app.invalidate_worktree_context(cx);
                     });
+                    let _ = codux_runtime::async_runtime::spawn_blocking({
+                        let service = dialog_service.clone();
+                        let title = title.clone();
+                        let ok_label = ok_label.clone();
+                        let message = success_label.clone();
+                        move || {
+                            service.localized_alert_dialog(LocalizedAlertDialogRequest {
+                                title,
+                                message,
+                                button_label: ok_label,
+                            })
+                        }
+                    })
+                    .await;
                     return;
                 }
                 Err(error) => error,
@@ -1315,6 +1399,13 @@ impl CoduxApp {
             })
             .await;
             let _ = this.update(cx, |app, cx| {
+                app.runtime_trace(
+                    "worktree",
+                    &format!(
+                        "merge failed project={} worktree={} error={}",
+                        project_id, worktree_id, error
+                    ),
+                );
                 app.status_message = title.clone();
                 app.refresh_git_panel_state_async(cx);
                 app.invalidate_worktree_context(cx);
@@ -1363,6 +1454,22 @@ impl CoduxApp {
         self.terminal_layout_loading = true;
         self.status_message = format!("selected worktree: {worktree_id}");
         if let Some(key) = current_worktree_scope_key(&self.state) {
+            let storage_key = super::app_state::worktree_terminal_storage_key(&key);
+            let terminal_layout = self
+                .runtime_service
+                .reload_terminal_layout(Some(&storage_key));
+            self.runtime_trace(
+                "terminal-layout",
+                &format!(
+                    "select_sync_layout key={} bottom_ratio={} top={} tabs={}",
+                    storage_key,
+                    terminal_layout.bottom_ratio,
+                    terminal_layout.top_panes.len(),
+                    terminal_layout.tabs.len()
+                ),
+            );
+            self.state.terminal_layout = terminal_layout;
+            self.state.terminal_runtime = TerminalRuntimeSummary::default();
             let selected_worktree = self
                 .state
                 .worktrees

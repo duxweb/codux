@@ -1294,7 +1294,7 @@ mod tests {
             serde_json::to_string_pretty(&json!({
                 "remote": {
                     "isEnabled": false,
-                    "serverURL": "http://relay.example"
+                    "irohRelayURL": "http://relay.example"
                 }
             }))
             .expect("settings json"),

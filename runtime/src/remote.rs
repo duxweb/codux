@@ -2,7 +2,6 @@ mod crypto;
 mod devices;
 mod envelope;
 mod host;
-mod http;
 mod iroh_transport;
 mod pairing;
 mod registration;

@@ -5,7 +5,7 @@ use crate::{
         MemoryExtractionItem, MemoryExtractionResponse, MemoryKind, MemoryScope, MemoryTier,
     },
     project_store::ProjectWorkspaceRecord,
-    settings::{AIMemorySettings, AISettings},
+    settings::{AIMemorySettings, AISettings, app_settings::AISettings as AppAISettings},
 };
 use std::fs;
 use uuid::Uuid;
@@ -247,6 +247,32 @@ fn prepare_launch_artifacts_writes_memory_context_files() {
 }
 
 #[test]
+fn launch_request_respects_cross_project_user_memory_setting() {
+    let support_dir = temp_support_dir();
+    create_memory_db(&support_dir);
+    let service = MemoryService::new(support_dir.clone());
+    let mut settings = AppAISettings::default();
+    settings.memory.allow_cross_project_user_recall = false;
+
+    let artifacts = service
+        .prepare_launch_artifacts(MemoryLaunchRequest {
+            project_id: "project-a".to_string(),
+            project_name: "Project A".to_string(),
+            workspace_path: Some("/workspace/project-a".to_string()),
+            settings,
+            extra_context: None,
+        })
+        .unwrap();
+
+    let index = fs::read_to_string(&artifacts.index_file).unwrap();
+    assert!(index.contains("project active entry"));
+    assert!(!index.contains("user active entry"));
+
+    fs::remove_dir_all(support_dir).unwrap();
+    let _ = fs::remove_dir_all(artifacts.workspace_root);
+}
+
+#[test]
 fn launch_request_includes_global_prompt_even_when_memory_injection_is_disabled() {
     let support_dir = temp_support_dir();
     let service = MemoryService::new(support_dir.clone());
@@ -270,6 +296,30 @@ fn launch_request_includes_global_prompt_even_when_memory_injection_is_disabled(
 
     fs::remove_dir_all(support_dir).unwrap();
     let _ = fs::remove_dir_all(artifacts.workspace_root);
+}
+
+#[test]
+fn extraction_prompt_context_respects_cross_project_user_memory_setting() {
+    let support_dir = temp_support_dir();
+    create_memory_db(&support_dir);
+    let service = MemoryService::new(support_dir.clone());
+    let mut settings = AIMemorySettings::default();
+    settings.allow_cross_project_user_recall = false;
+    settings.max_injected_project_working_memories = 5;
+
+    let (user_summary, user_memories, project_memories) = service
+        .extraction_prompt_context(&settings, "project-a", "project active entry")
+        .unwrap();
+
+    assert!(user_summary.is_none());
+    assert!(user_memories.is_empty());
+    assert!(
+        project_memories
+            .iter()
+            .any(|entry| entry.content == "project active entry")
+    );
+
+    fs::remove_dir_all(support_dir).unwrap();
 }
 
 #[test]

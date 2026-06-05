@@ -1,5 +1,5 @@
 impl MemoryService {
-    fn extraction_prompt_context(
+    pub(crate) fn extraction_prompt_context(
         &self,
         memory_settings: &AIMemorySettings,
         project_id: &str,
@@ -14,9 +14,9 @@ impl MemoryService {
     > {
         self.ensure_queue_schema()?;
         let conn = self.open_connection()?;
-        let user_summary = conn
-            .query_row(
-                r#"
+        let user_summary = if memory_settings.allow_cross_project_user_recall {
+            conn.query_row(
+                    r#"
                 SELECT content, version
                 FROM memory_summaries
                 WHERE scope = 'user'
@@ -33,14 +33,21 @@ impl MemoryService {
                 },
             )
             .optional()
-            .map_err(|error| error.to_string())?;
-        let user_memories = prompt_entries(
-            &conn,
-            "user",
-            None,
-            i64::from(memory_settings.max_injected_user_working_memories.max(0)),
-            query,
-        )?;
+            .map_err(|error| error.to_string())?
+        } else {
+            None
+        };
+        let user_memories = if memory_settings.allow_cross_project_user_recall {
+            prompt_entries(
+                &conn,
+                "user",
+                None,
+                i64::from(memory_settings.max_injected_user_working_memories.max(0)),
+                query,
+            )?
+        } else {
+            Vec::new()
+        };
         let project_memories = prompt_entries(
             &conn,
             "project",

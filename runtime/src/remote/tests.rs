@@ -8,7 +8,6 @@ use super::host::{
     remote_terminal_upload_kind, sanitized_remote_upload_name, terminal_upload_path_input,
     unique_remote_upload_path,
 };
-use super::http::default_remote_server_url;
 use super::iroh_transport::{
     RemoteIrohNodeAddr, iroh_client_send, iroh_client_send_with_hold, iroh_pairing_request_payload,
 };
@@ -17,7 +16,7 @@ use super::summary::remote_summary_from_settings;
 use super::types::{
     RemoteDeviceSettings, RemoteOutgoingEnvelope, RemotePairingInfo, RemoteSettings,
 };
-use super::{RemoteHostRuntime, RemoteService};
+use super::{RemoteHostRuntime, RemoteService, remote_settings_from_raw};
 use crate::ai_history_indexer::AIHistoryProjectState;
 use crate::config::flush_all_config_writes;
 use crate::terminal_pty::{TerminalManager, TerminalSessionSnapshot};
@@ -70,7 +69,7 @@ fn summary_matches_tauri_remote_status_shape_from_settings() {
 }
 
 #[test]
-fn disabled_remote_uses_default_relay_and_disabled_encryption() {
+fn disabled_remote_keeps_empty_relay_and_disabled_encryption() {
     let summary = remote_summary_from_settings(RemoteSettings {
         is_enabled: false,
         server_url: String::new(),
@@ -78,9 +77,24 @@ fn disabled_remote_uses_default_relay_and_disabled_encryption() {
     });
 
     assert!(!summary.enabled);
-    assert_eq!(summary.relay, default_remote_server_url());
+    assert_eq!(summary.relay, "");
     assert_eq!(summary.status, "stopped");
     assert_eq!(summary.encryption, "disabled");
+}
+
+#[test]
+fn remote_settings_ignore_legacy_server_url() {
+    let settings = remote_settings_from_raw(&serde_json::json!({
+        "remote": {
+            "isEnabled": true,
+            "serverURL": "http://legacy-relay.example"
+        }
+    })
+    .as_object()
+    .expect("raw settings")
+    .clone());
+
+    assert_eq!(settings.server_url, "");
 }
 
 #[test]
@@ -178,7 +192,7 @@ fn iroh_host_runtime_pairs_and_serves_host_info() {
             serde_json::to_string_pretty(&json!({
                 "remote": {
                     "isEnabled": true,
-                    "serverURL": "iroh://default"
+                    "irohRelayURL": "iroh://default"
                 }
             }))
             .unwrap(),
@@ -428,7 +442,7 @@ fn remote_service_encrypts_and_decrypts_cached_device_payloads() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": true,
-                "serverURL": "http://relay.example",
+                "irohRelayURL": "http://relay.example",
                 "hostID": "host-1",
                 "hostPrivateKey": host_private_key,
                 "hostPublicKey": host_public_key,
@@ -480,7 +494,7 @@ fn remote_service_wraps_and_unwraps_secure_envelopes_with_sequence_guard() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": true,
-                "serverURL": "http://relay.example",
+                "irohRelayURL": "http://relay.example",
                 "hostID": "host-1",
                 "hostPrivateKey": host_private_key,
                 "hostPublicKey": host_public_key,
@@ -555,7 +569,7 @@ fn remote_host_runtime_stops_without_enabled_remote_settings() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": false,
-                "serverURL": "http://relay.example"
+                "irohRelayURL": "http://relay.example"
             }
         }))
         .unwrap(),
@@ -898,7 +912,7 @@ fn refresh_devices_disabled_remote_is_noop() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": false,
-                "serverURL": "http://relay.example",
+                "irohRelayURL": "http://relay.example",
                 "hostID": "",
                 "hostToken": "secret-token"
             }
@@ -927,7 +941,7 @@ fn register_host_disabled_is_noop() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": false,
-                "serverURL": "http://relay.example"
+                "irohRelayURL": "http://relay.example"
             }
         }))
         .unwrap(),
@@ -954,7 +968,7 @@ fn sync_settings_background_is_noop_when_disabled() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": false,
-                "serverURL": "http://relay.example",
+                "irohRelayURL": "http://relay.example",
                 "hostID": "host-1",
                 "hostToken": "secret-token"
             }
@@ -981,7 +995,7 @@ fn reads_settings_json_without_exposing_tokens() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": true,
-                "serverURL": "http://127.0.0.1:8088",
+                "irohRelayURL": "http://127.0.0.1:8088",
                 "hostID": "host-1",
                 "hostToken": "secret-token",
                 "hostPublicKey": "",
@@ -1016,7 +1030,7 @@ fn toggles_remote_host_and_revokes_cached_device_preserving_secrets() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": false,
-                "serverURL": "iroh://default",
+                "irohRelayURL": "iroh://default",
                 "hostID": "host-1",
                 "hostToken": "secret-token",
                 "cachedDevices": [
@@ -1037,7 +1051,7 @@ fn toggles_remote_host_and_revokes_cached_device_preserving_secrets() {
     let revoked = service
         .revoke_device("device-1")
         .expect("revoke cached device");
-    assert_eq!(revoked.status, "connected");
+    assert_eq!(revoked.status, "connecting");
     assert_eq!(revoked.message, "Device removed.");
     assert_eq!(revoked.devices, 1);
     assert_eq!(revoked.device_list[0].id, "device-2");
@@ -1051,7 +1065,7 @@ fn toggles_remote_host_and_revokes_cached_device_preserving_secrets() {
 }
 
 #[test]
-fn refresh_devices_returns_local_cached_devices_without_network_sync() {
+fn refresh_devices_returns_local_cached_devices_without_marking_host_connected() {
     let dir = std::env::temp_dir().join(format!(
         "codux-gpui-remote-refresh-test-{}",
         uuid::Uuid::new_v4()
@@ -1062,7 +1076,7 @@ fn refresh_devices_returns_local_cached_devices_without_network_sync() {
         serde_json::to_string_pretty(&serde_json::json!({
             "remote": {
                 "isEnabled": true,
-                "serverURL": "iroh://default",
+                "irohRelayURL": "iroh://default",
                 "hostID": "host-1",
                 "hostToken": "registered-token",
                 "cachedDevices": [
@@ -1079,6 +1093,7 @@ fn refresh_devices_returns_local_cached_devices_without_network_sync() {
         .expect("refresh devices");
 
     assert_eq!(summary.host_id, "host-1");
+    assert_eq!(summary.status, "connecting");
     assert_eq!(summary.devices, 1);
     assert_eq!(summary.device_list[0].id, "device-1");
     assert_eq!(summary.device_list[0].online, Some(true));

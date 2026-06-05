@@ -28,10 +28,6 @@ pub(super) fn refresh_state(state: &mut PetSnapshot, request: PetRefreshInput) {
         }
         delta
     } else {
-        let current_project_ids = project_totals.keys().cloned().collect::<Vec<_>>();
-        state
-            .project_normalized_token_watermarks
-            .retain(|project_id, _| current_project_ids.contains(project_id));
         let mut delta = 0;
         for (project_id, total) in &project_totals {
             let previous = state

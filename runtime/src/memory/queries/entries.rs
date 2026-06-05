@@ -1,10 +1,12 @@
 pub(super) fn load_recent_entries(
     conn: &Connection,
     project_id: Option<&str>,
+    include_user_recall: bool,
 ) -> Result<Vec<MemoryEntrySummary>, String> {
     let (sql, values) = if let Some(project_id) = project_id {
-        (
-            r#"
+        if include_user_recall {
+            (
+                r#"
             SELECT id, scope, project_id, tool_id, tier, kind, COALESCE(module_key, 'general'),
                    status, content, rationale, source_tool, source_session_id, merged_summary_id,
                    archived_at, access_count, created_at, updated_at
@@ -13,8 +15,22 @@ pub(super) fn load_recent_entries(
             ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, updated_at DESC
             LIMIT 10
             "#,
-            vec![project_id.to_string()],
-        )
+                vec![project_id.to_string()],
+            )
+        } else {
+            (
+                r#"
+            SELECT id, scope, project_id, tool_id, tier, kind, COALESCE(module_key, 'general'),
+                   status, content, rationale, source_tool, source_session_id, merged_summary_id,
+                   archived_at, access_count, created_at, updated_at
+            FROM memory_entries
+            WHERE status IN ('active', 'archived') AND project_id = ?1
+            ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, updated_at DESC
+            LIMIT 10
+            "#,
+                vec![project_id.to_string()],
+            )
+        }
     } else {
         (
             r#"

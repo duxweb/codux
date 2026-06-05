@@ -41,7 +41,6 @@ pub(super) enum SettingsPane {
     Notifications,
     Remote,
     Shortcuts,
-    Experiments,
     Developer,
 }
 
@@ -57,7 +56,6 @@ impl SettingsPane {
             Self::Notifications => "settings.tab.notifications",
             Self::Remote => "settings.tab.remote",
             Self::Shortcuts => "settings.tab.shortcuts",
-            Self::Experiments => "settings.tab.experiments",
             Self::Developer => "settings.tab.developer",
         };
         match self {
@@ -70,7 +68,6 @@ impl SettingsPane {
             Self::Notifications => settings_text(language, key, "Notifications"),
             Self::Remote => settings_text(language, key, "Remote"),
             Self::Shortcuts => settings_text(language, key, "Shortcuts"),
-            Self::Experiments => settings_text(language, key, "Experiments"),
             Self::Developer => settings_text(language, key, "Developer"),
         }
     }
@@ -86,13 +83,12 @@ impl SettingsPane {
             Self::Notifications => HeroIconName::Bell,
             Self::Remote => HeroIconName::GlobeAlt,
             Self::Shortcuts => HeroIconName::CommandLine,
-            Self::Experiments => HeroIconName::Beaker,
             Self::Developer => HeroIconName::WrenchScrewdriver,
         }
     }
 }
 
-const SETTINGS_PANES: [SettingsPane; 11] = [
+const SETTINGS_PANES: [SettingsPane; 10] = [
     SettingsPane::General,
     SettingsPane::Appearance,
     SettingsPane::Pet,
@@ -102,7 +98,6 @@ const SETTINGS_PANES: [SettingsPane; 11] = [
     SettingsPane::Notifications,
     SettingsPane::Remote,
     SettingsPane::Shortcuts,
-    SettingsPane::Experiments,
     SettingsPane::Developer,
 ];
 
@@ -349,6 +344,7 @@ fn settings_pane_body(
             cx,
         ),
         SettingsPane::Remote => settings_remote_pane(
+            &app.state.settings,
             &app.state.remote,
             app.selected_remote_device_id.as_deref(),
             app.state.settings.language.as_str(),
@@ -360,11 +356,6 @@ fn settings_pane_body(
         SettingsPane::Shortcuts => settings_shortcuts_pane(
             &app.state.settings,
             app.recording_shortcut_id.as_deref(),
-            cx,
-        ),
-        SettingsPane::Experiments => settings_experiments_pane(
-            app.agent_split_enabled,
-            app.state.settings.language.as_str(),
             cx,
         ),
         SettingsPane::Developer => settings_developer_pane(&app.state.settings, window, cx),
@@ -2638,6 +2629,7 @@ fn settings_notifications_pane(
 }
 
 fn settings_remote_pane(
+    settings: &SettingsSummary,
     remote: &RemoteSummary,
     _selected_device_id: Option<&str>,
     language: &str,
@@ -2769,6 +2761,24 @@ fn settings_remote_pane(
                             remote.enabled,
                             cx,
                             |app, window, cx| app.toggle_remote_host(window, cx),
+                        ),
+                    )
+                    .into_any_element(),
+                    settings_row(
+                        settings_text(language, "settings.remote.server_url", "Relay Server URL"),
+                        Some(settings_text(
+                            language,
+                            "settings.remote.server_url.help",
+                            "Leave empty to use the public network. Pair again after changing it",
+                        )),
+                        settings_text_input(
+                            "settings-remote-relay-url",
+                            settings.remote_server_url.as_str(),
+                            "",
+                            false,
+                            _window,
+                            cx,
+                            |app, value, window, cx| app.set_remote_server_url(value, window, cx),
                         ),
                     )
                     .into_any_element(),
@@ -3226,46 +3236,6 @@ fn shortcut_row(
             })
             .into_any_element(),
     )
-    .into_any_element()
-}
-
-fn settings_experiments_pane(
-    agent_split_enabled: bool,
-    language: &str,
-    cx: &mut Context<CoduxApp>,
-) -> AnyElement {
-    settings_form(vec![
-        settings_card(
-            Some(settings_text(
-                language,
-                "settings.experiments.section.split",
-                "Split Panes",
-            )),
-            None,
-            vec![
-                settings_row(
-                    settings_text(language, "settings.experiments.agent_split", "Agent Split"),
-                    Some(settings_text(
-                        language,
-                        "settings.experiments.agent_split.help",
-                        "When enabled, creating a split lets you choose Terminal or Agent.",
-                    )),
-                    settings_toggle(
-                        "settings-agent-split",
-                        agent_split_enabled,
-                        cx,
-                        |app, _window, cx| {
-                            let next = !app.agent_split_enabled;
-                            app.set_agent_split_enabled(next, cx)
-                        },
-                    ),
-                )
-                .into_any_element(),
-            ],
-            cx,
-        )
-        .into_any_element(),
-    ])
     .into_any_element()
 }
 

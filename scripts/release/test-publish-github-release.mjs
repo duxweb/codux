@@ -16,16 +16,23 @@ fs.mkdirSync(path.join(artifactsDir, "windows"), { recursive: true });
 fs.writeFileSync(notesPath, "Codux release notes", "utf8");
 writeAsset("macos/codux-1.5.0-macos-universal-updater.app.tar.gz", "mac");
 writeAsset("macos/codux-1.5.0-macos-universal-updater.app.tar.gz.sig", "mac-signature");
+writeAsset("macos/codux-1.5.0-macos-universal-updater.app.tar.gz.sha256", "mac-sha");
 writeAsset("macos/codux-1.5.0-macos-universal.dmg", "dmg");
+writeAsset("macos/codux-1.5.0-macos-universal.dmg.sha256", "dmg-sha");
+writeAsset("macos/codux-1.5.0-macos-universal.app.zip", "app-zip");
 writeAsset("windows/codux-1.5.0-windows-x86_64-setup.exe", "win");
 writeAsset("windows/codux-1.5.0-windows-x86_64-setup.exe.sig", "win-signature");
+writeAsset("windows/codux-1.5.0-windows-x86_64-setup.exe.sha256", "win-sha");
+writeAsset("windows/codux-1.5.0-windows-x86_64.zip", "win-zip");
+writeAsset("windows/Codux/Codux.exe", "raw-exe");
 
 const result = spawnSync(
   "node",
   ["scripts/release/publish-github-release.mjs", "--dry-run"],
   {
     cwd: root,
-    stdio: "inherit",
+    stdio: "pipe",
+    encoding: "utf8",
     env: {
       ...process.env,
       RELEASE_VERSION: "1.5.0",
@@ -38,8 +45,14 @@ const result = spawnSync(
 );
 
 if (result.status !== 0) {
+  process.stdout.write(result.stdout || "");
+  process.stderr.write(result.stderr || "");
   process.exit(result.status ?? 1);
 }
+assert(
+  result.stdout.includes("Prepared 3 public assets and update metadata"),
+  `unexpected dry-run output: ${result.stdout}`,
+);
 
 const manifest = JSON.parse(fs.readFileSync(path.join(artifactsDir, "latest.json"), "utf8"));
 assertEqual(manifest.version, "1.5.0");
@@ -62,7 +75,9 @@ fs.rmSync(tempDir, { recursive: true, force: true });
 console.log("release manifest test passed");
 
 function writeAsset(relativePath, content) {
-  fs.writeFileSync(path.join(artifactsDir, relativePath), content, "utf8");
+  const assetPath = path.join(artifactsDir, relativePath);
+  fs.mkdirSync(path.dirname(assetPath), { recursive: true });
+  fs.writeFileSync(assetPath, content, "utf8");
 }
 
 function assert(condition, message) {

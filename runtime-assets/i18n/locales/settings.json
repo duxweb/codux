@@ -334,7 +334,8 @@
       "settings.remote.mobile_download.action": "Mobile App laden",
       "settings.terminal_font_family": "Terminal-Schriftart",
       "settings.terminal_font_family.help": "Es werden nur Monospace-Schriftarten angezeigt, damit das Terminal-Layout korrekt bleibt.",
-      "settings.terminal_font_family.default": "Systemstandard"
+      "settings.terminal_font_family.default": "Systemstandard",
+      "settings.remote.server_url.help": "Leer lassen, um das öffentliche Netzwerk zu nutzen. Nach Änderungen erneut koppeln"
     },
     "en": {
       "settings.ai_auto_refresh": "AI Auto Refresh",
@@ -670,7 +671,8 @@
       "settings.remote.mobile_download.action": "Get Mobile App",
       "settings.terminal_font_family": "Terminal Font",
       "settings.terminal_font_family.help": "Only monospaced fonts are shown to keep terminal layout accurate.",
-      "settings.terminal_font_family.default": "System Default"
+      "settings.terminal_font_family.default": "System Default",
+      "settings.remote.server_url.help": "Leave empty to use the public network. Pair again after changing it"
     },
     "es": {
       "settings.ai_auto_refresh": "Actualización automática de IA",
@@ -1006,7 +1008,8 @@
       "settings.remote.mobile_download.action": "Obtener app móvil",
       "settings.terminal_font_family": "Fuente del terminal",
       "settings.terminal_font_family.help": "Solo se muestran fuentes monoespaciadas para mantener correcto el diseño del terminal.",
-      "settings.terminal_font_family.default": "Predeterminado del sistema"
+      "settings.terminal_font_family.default": "Predeterminado del sistema",
+      "settings.remote.server_url.help": "Déjalo vacío para usar la red pública. Vuelve a emparejar después de cambiarlo"
     },
     "fr": {
       "settings.ai_auto_refresh": "Actualisation auto IA",
@@ -1342,7 +1345,8 @@
       "settings.remote.mobile_download.action": "Obtenir l’app mobile",
       "settings.terminal_font_family": "Police du terminal",
       "settings.terminal_font_family.help": "Seules les polices à chasse fixe sont affichées afin de conserver une mise en page correcte du terminal.",
-      "settings.terminal_font_family.default": "Valeur système par défaut"
+      "settings.terminal_font_family.default": "Valeur système par défaut",
+      "settings.remote.server_url.help": "Laissez vide pour utiliser le réseau public. Associez à nouveau après modification"
     },
     "ja": {
       "settings.ai_auto_refresh": "AI 自動更新",
@@ -1678,7 +1682,8 @@
       "settings.remote.mobile_download.action": "モバイルアプリを入手",
       "settings.terminal_font_family": "ターミナルフォント",
       "settings.terminal_font_family.help": "ターミナルのレイアウトを正確に保つため、等幅フォントのみ表示します。",
-      "settings.terminal_font_family.default": "システム標準"
+      "settings.terminal_font_family.default": "システム標準",
+      "settings.remote.server_url.help": "空のままにすると公共ネットワークを使用します。変更後は再度ペアリングしてください"
     },
     "ko": {
       "settings.ai_auto_refresh": "AI 자동 새로고침",
@@ -2014,7 +2019,8 @@
       "settings.remote.mobile_download.action": "모바일 앱 받기",
       "settings.terminal_font_family": "터미널 글꼴",
       "settings.terminal_font_family.help": "터미널 레이아웃을 정확하게 유지하기 위해 고정폭 글꼴만 표시합니다.",
-      "settings.terminal_font_family.default": "시스템 기본값"
+      "settings.terminal_font_family.default": "시스템 기본값",
+      "settings.remote.server_url.help": "비워 두면 공용 네트워크를 사용합니다. 변경 후 다시 페어링하세요"
     },
     "pt-BR": {
       "settings.ai_auto_refresh": "Atualização automática de IA",
@@ -2350,7 +2356,8 @@
       "settings.remote.mobile_download.action": "Obter app móvel",
       "settings.terminal_font_family": "Fonte do terminal",
       "settings.terminal_font_family.help": "Apenas fontes monoespaçadas são mostradas para manter o layout do terminal correto.",
-      "settings.terminal_font_family.default": "Padrão do sistema"
+      "settings.terminal_font_family.default": "Padrão do sistema",
+      "settings.remote.server_url.help": "Deixe vazio para usar a rede pública. Emparelhe novamente após alterar"
     },
     "ru": {
       "settings.ai_auto_refresh": "Автообновление ИИ",
@@ -2686,7 +2693,8 @@
       "settings.remote.mobile_download.action": "Получить приложение",
       "settings.terminal_font_family": "Шрифт терминала",
       "settings.terminal_font_family.help": "Показываются только моноширинные шрифты, чтобы сохранить корректную разметку терминала.",
-      "settings.terminal_font_family.default": "Системный по умолчанию"
+      "settings.terminal_font_family.default": "Системный по умолчанию",
+      "settings.remote.server_url.help": "Оставьте пустым, чтобы использовать публичную сеть. После изменения выполните сопряжение заново"
     },
     "zh-Hans": {
       "settings.ai_auto_refresh": "AI 自动刷新",
@@ -3022,7 +3030,8 @@
       "settings.remote.mobile_download.action": "获取移动端",
       "settings.terminal_font_family": "终端字体",
       "settings.terminal_font_family.help": "仅显示等宽字体，避免终端布局错位",
-      "settings.terminal_font_family.default": "系统默认"
+      "settings.terminal_font_family.default": "系统默认",
+      "settings.remote.server_url.help": "留空使用公共网络，修改后需要重新配对"
     },
     "zh-Hant": {
       "settings.ai_auto_refresh": "AI 自動重新整理",
@@ -3358,7 +3367,8 @@
       "settings.remote.mobile_download.action": "取得行動端",
       "settings.terminal_font_family": "終端字體",
       "settings.terminal_font_family.help": "僅顯示等寬字體，避免終端版面錯位",
-      "settings.terminal_font_family.default": "系統預設"
+      "settings.terminal_font_family.default": "系統預設",
+      "settings.remote.server_url.help": "留空使用公共網路，修改後需要重新配對"
     }
   }
 }

@@ -45,7 +45,10 @@ impl MemoryService {
             })
             .flatten();
         let summary = if should_inject_memory {
-            self.summary(Some(&request.project_id))
+            self.summary_with_user_recall(
+                Some(&request.project_id),
+                request.settings.memory.allow_cross_project_user_recall,
+            )
         } else {
             Default::default()
         };

@@ -232,7 +232,7 @@ pub struct AIProviderSettings {
 pub struct RemoteSettings {
     #[serde(default, rename = "isEnabled")]
     pub is_enabled: bool,
-    #[serde(default = "default_remote_server_url", rename = "serverURL")]
+    #[serde(default, rename = "irohRelayURL")]
     pub server_url: String,
     #[serde(default, rename = "hostID")]
     pub host_id: String,

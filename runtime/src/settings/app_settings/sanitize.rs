@@ -42,11 +42,7 @@ pub(super) fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
         settings.icon_style = default_icon_style();
     }
     let remote_server_url = settings.remote.server_url.trim().to_string();
-    settings.remote.server_url = if !remote_server_url.is_empty() {
-        remote_server_url
-    } else {
-        default_remote_server_url()
-    };
+    settings.remote.server_url = remote_server_url;
     settings
         .remote
         .cached_devices

@@ -303,6 +303,7 @@ impl RemoteHostRuntime {
         let weak_for_pairing = Arc::downgrade(self);
         let transport = RemoteIrohHostTransport::bind(
             secret_key,
+            &settings.server_url,
             Arc::new(move |device_id, data| {
                 if let Some(runtime) = weak_for_message.upgrade() {
                     crate::async_runtime::spawn(async move {
@@ -2044,20 +2045,20 @@ impl RemoteHostRuntime {
         } else {
             title.trim()
         };
-        let mut tabs = layout.tabs;
-        let mut top_panes = layout.top_panes;
+        let mut layout = layout;
         if layout_kind == "tab" {
-            tabs.push(TerminalTabSummary {
+            layout.tabs.push(TerminalTabSummary {
                 label: title.to_string(),
                 terminal_id: terminal_id.to_string(),
             });
         } else {
-            top_panes.push(TerminalPaneSummary {
+            layout.top_panes.push(TerminalPaneSummary {
                 title: title.to_string(),
                 terminal_id: terminal_id.to_string(),
             });
         }
-        let _ = service.save_from_gpui(layout_key, tabs, terminal_id.to_string(), top_panes);
+        layout.active_terminal_id = terminal_id.to_string();
+        let _ = service.save_summary(layout_key, layout);
     }
 
     fn remote_project_scope(&self, project_id: &str) -> Result<RemoteProjectScope, String> {
@@ -2718,6 +2719,8 @@ mod tests {
                     title: "Mobile".to_string(),
                     terminal_id: "terminal-b".to_string(),
                 }],
+                vec![1.0],
+                0.24,
             )
             .expect("save layout");
 

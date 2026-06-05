@@ -146,10 +146,6 @@ pub(super) fn default_icon_style() -> String {
     "default".to_string()
 }
 
-pub(super) fn default_remote_server_url() -> String {
-    "iroh://default".to_string()
-}
-
 pub(super) fn default_developer_refresh() -> String {
     "3".to_string()
 }

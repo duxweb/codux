@@ -127,55 +127,6 @@ impl PetStore {
         })
     }
 
-    pub fn forget_project_baseline(&self, project_id: &str) -> Result<bool, String> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| "Pet store lock poisoned.".to_string())?;
-        if state
-            .project_normalized_token_watermarks
-            .remove(project_id)
-            .is_none()
-        {
-            return Ok(false);
-        }
-        state.global_normalized_total_watermark =
-            if state.project_normalized_token_watermarks.is_empty() {
-                None
-            } else {
-                Some(
-                    state
-                        .project_normalized_token_watermarks
-                        .values()
-                        .copied()
-                        .sum(),
-                )
-            };
-        state.updated_at = now_seconds();
-        let snapshot = state.clone();
-        drop(state);
-        self.save(&snapshot)?;
-        Ok(true)
-    }
-
-    pub fn forget_all_project_baselines(&self) -> Result<(), String> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| "Pet store lock poisoned.".to_string())?;
-        if state.project_normalized_token_watermarks.is_empty()
-            && state.global_normalized_total_watermark.is_none()
-        {
-            return Ok(());
-        }
-        state.project_normalized_token_watermarks.clear();
-        state.global_normalized_total_watermark = None;
-        state.updated_at = now_seconds();
-        let snapshot = state.clone();
-        drop(state);
-        self.save(&snapshot)
-    }
-
     pub fn snapshot(&self) -> Result<PetSnapshot, String> {
         self.state
             .lock()

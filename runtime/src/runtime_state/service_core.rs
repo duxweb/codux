@@ -970,6 +970,8 @@ mod app_runtime_ready_tests {
                     title: "Task A".to_string(),
                     terminal_id: "terminal-a".to_string(),
                 }],
+                vec![1.0],
+                0.18,
             )
             .expect("save worktree a terminal layout");
         service
@@ -981,6 +983,8 @@ mod app_runtime_ready_tests {
                     title: "Task B".to_string(),
                     terminal_id: "terminal-b".to_string(),
                 }],
+                vec![1.0],
+                0.52,
             )
             .expect("save worktree b terminal layout");
 
@@ -991,6 +995,7 @@ mod app_runtime_ready_tests {
         );
         assert_eq!(state.terminal_layout.active_terminal_id, "terminal-a");
         assert_eq!(state.terminal_layout.top_panes[0].terminal_id, "terminal-a");
+        assert_eq!(state.terminal_layout.bottom_ratio, 0.18);
 
         service
             .project_select_worktree(crate::project_store::ProjectSelectWorktreeRequest {
@@ -1005,6 +1010,7 @@ mod app_runtime_ready_tests {
         );
         assert_eq!(state.terminal_layout.active_terminal_id, "terminal-b");
         assert_eq!(state.terminal_layout.top_panes[0].terminal_id, "terminal-b");
+        assert_eq!(state.terminal_layout.bottom_ratio, 0.52);
 
         service
             .project_select_worktree(crate::project_store::ProjectSelectWorktreeRequest {
@@ -1019,6 +1025,7 @@ mod app_runtime_ready_tests {
         );
         assert_eq!(state.terminal_layout.active_terminal_id, "terminal-a");
         assert_eq!(state.terminal_layout.top_panes[0].terminal_id, "terminal-a");
+        assert_eq!(state.terminal_layout.bottom_ratio, 0.18);
 
         let _ = fs::remove_dir_all(support_dir);
     }
@@ -1129,6 +1136,8 @@ mod app_runtime_ready_tests {
                     title: "Task A Top".to_string(),
                     terminal_id: terminal_a_top.clone(),
                 }],
+                vec![1.0],
+                0.24,
             )
             .expect("save task a layout");
         service
@@ -1140,6 +1149,8 @@ mod app_runtime_ready_tests {
                     title: "Task B Top".to_string(),
                     terminal_id: terminal_b_top.clone(),
                 }],
+                vec![1.0],
+                0.24,
             )
             .expect("save task b layout");
         service
@@ -1151,6 +1162,8 @@ mod app_runtime_ready_tests {
                     title: "Project B".to_string(),
                     terminal_id: terminal_project_b.clone(),
                 }],
+                vec![1.0],
+                0.24,
             )
             .expect("save project b layout");
 
@@ -1263,7 +1276,7 @@ mod app_runtime_ready_tests {
     }
 
     #[test]
-    fn project_close_forgets_pet_baseline() {
+    fn project_close_keeps_pet_baseline() {
         let support_dir = std::env::temp_dir().join(format!(
             "codux-project-close-pet-baseline-{}",
             uuid::Uuid::new_v4()
@@ -1318,15 +1331,15 @@ mod app_runtime_ready_tests {
             })
             .expect("close first project");
         let pet = service.pet_snapshot().expect("pet snapshot after close");
-        assert!(
-            !pet.project_normalized_token_watermarks
-                .contains_key("project-1")
+        assert_eq!(
+            pet.project_normalized_token_watermarks.get("project-1"),
+            Some(&10)
         );
         assert_eq!(
             pet.project_normalized_token_watermarks.get("project-2"),
             Some(&20)
         );
-        assert_eq!(pet.global_normalized_total_watermark, Some(20));
+        assert_eq!(pet.global_normalized_total_watermark, Some(30));
 
         let _ = fs::remove_dir_all(support_dir);
     }
@@ -1393,6 +1406,8 @@ mod app_runtime_ready_tests {
                     title: "Shell".to_string(),
                     terminal_id: "terminal-1".to_string(),
                 }],
+                vec![1.0],
+                0.24,
             )
             .expect("save project terminal layout");
         service
@@ -1475,8 +1490,15 @@ mod app_runtime_ready_tests {
             None
         );
         let pet = service.pet_snapshot().expect("pet snapshot");
-        assert!(pet.project_normalized_token_watermarks.is_empty());
-        assert_eq!(pet.global_normalized_total_watermark, None);
+        assert_eq!(
+            pet.project_normalized_token_watermarks.get("project-1"),
+            Some(&10)
+        );
+        assert_eq!(
+            pet.project_normalized_token_watermarks.get("worktree-1"),
+            Some(&20)
+        );
+        assert_eq!(pet.global_normalized_total_watermark, Some(30));
 
         let _ = fs::remove_dir_all(support_dir);
     }
@@ -1639,10 +1661,9 @@ mod app_runtime_ready_tests {
         assert_eq!(summary.total_xp, 30);
         assert_eq!(summary.daily_xp, 30);
         let snapshot = service.pet_snapshot().expect("pet snapshot after remove");
-        assert!(
-            !snapshot
-                .project_normalized_token_watermarks
-                .contains_key("project-1")
+        assert_eq!(
+            snapshot.project_normalized_token_watermarks.get("project-1"),
+            Some(&130)
         );
 
         let _ = fs::remove_dir_all(support_dir);

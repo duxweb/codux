@@ -17,6 +17,7 @@ const profile = process.env.CARGO_PROFILE || "release";
 const stageRoot = process.env.RELEASE_STAGE_DIR || "release-artifacts";
 const artifactSuffix = process.env.RELEASE_ARTIFACT_SUFFIX?.trim() || "";
 const outputDir = path.join(root, stageRoot, buildId);
+const writeSha256Sidecars = process.env.RELEASE_WRITE_SHA256 === "true";
 
 fs.rmSync(outputDir, { recursive: true, force: true });
 fs.mkdirSync(outputDir, { recursive: true });
@@ -51,22 +52,44 @@ function packageMacos() {
 
   const dmgName = `${artifactBaseName("macos")}.dmg`;
   const dmgPath = path.join(outputDir, dmgName);
-  run("hdiutil", ["create", "-volname", appName, "-srcfolder", appDir, "-ov", "-format", "UDZO", dmgPath]);
+  createMacosDmg(appDir, dmgPath);
   if (signingIdentity && signingIdentity !== "-") {
     run("codesign", ["--force", "--timestamp", "--sign", signingIdentity, dmgPath]);
     notarizeMacosArtifact(dmgPath);
   }
   writeSha256(dmgPath);
 
-  const zipName = `${artifactBaseName("macos")}.app.zip`;
-  run("ditto", ["-c", "-k", "--keepParent", appDir, path.join(outputDir, zipName)]);
-  writeSha256(path.join(outputDir, zipName));
-
   const updaterName = `${artifactBaseName("macos")}-updater.app.tar.gz`;
   const updaterPath = path.join(outputDir, updaterName);
   run("tar", ["-czf", updaterPath, "-C", outputDir, `${appName}.app`]);
   writeSha256(updaterPath);
   signTauriUpdaterArtifact(updaterPath);
+  fs.rmSync(appDir, { recursive: true, force: true });
+}
+
+function createMacosDmg(appDir, dmgPath) {
+  withTempDir("codux-dmg-", (tempDir) => {
+    run("npx", [
+      "--yes",
+      "create-dmg@8.1.0",
+      appDir,
+      tempDir,
+      "--overwrite",
+      "--no-version-in-filename",
+      "--no-code-sign",
+      "--dmg-title",
+      appName,
+    ]);
+    const generatedDmg = fs
+      .readdirSync(tempDir)
+      .filter((name) => name.endsWith(".dmg"))
+      .map((name) => path.join(tempDir, name))[0];
+    if (!generatedDmg) {
+      throw new Error("create-dmg did not produce a DMG");
+    }
+    fs.copyFileSync(generatedDmg, dmgPath);
+    fs.rmSync(generatedDmg, { force: true });
+  });
 }
 
 function notarizeMacosApp(appDir) {
@@ -121,24 +144,19 @@ function appleNotaryConfigured() {
 
 function packageWindows() {
   const exePath = releaseBinaryPath(".exe");
-  const packageDir = path.join(outputDir, appName);
-  fs.mkdirSync(packageDir, { recursive: true });
-  fs.copyFileSync(exePath, path.join(packageDir, `${appName}.exe`));
-  fs.copyFileSync(path.join(root, "runtime-assets", "icons", "icon.ico"), path.join(packageDir, "icon.ico"));
-  const zipPath = path.join(outputDir, `${artifactBaseName("windows")}.zip`);
-  run("powershell", [
-    "-NoProfile",
-    "-Command",
-    `Compress-Archive -Path '${packageDir.replaceAll("'", "''")}\\*' -DestinationPath '${zipPath.replaceAll("'", "''")}' -Force`,
-  ]);
-  writeSha256(zipPath);
+  withTempDir("codux-windows-", (tempDir) => {
+    const packageDir = path.join(tempDir, appName);
+    fs.mkdirSync(packageDir, { recursive: true });
+    fs.copyFileSync(exePath, path.join(packageDir, `${appName}.exe`));
+    fs.copyFileSync(path.join(root, "runtime-assets", "icons", "icon.ico"), path.join(packageDir, "icon.ico"));
 
-  const installerScriptPath = path.join(outputDir, `${appName}.nsi`);
-  const installerPath = path.join(outputDir, `${artifactBaseName("windows")}-setup.exe`);
-  fs.writeFileSync(installerScriptPath, windowsNsisScript(packageDir, installerPath), "utf8");
-  run(windowsMakensisCommand(), [installerScriptPath]);
-  writeSha256(installerPath);
-  signTauriUpdaterArtifact(installerPath);
+    const installerScriptPath = path.join(tempDir, `${appName}.nsi`);
+    const installerPath = path.join(outputDir, `${artifactBaseName("windows")}-setup.exe`);
+    fs.writeFileSync(installerScriptPath, windowsNsisScript(packageDir, installerPath), "utf8");
+    run(windowsMakensisCommand(), [installerScriptPath]);
+    writeSha256(installerPath);
+    signTauriUpdaterArtifact(installerPath);
+  });
 }
 
 function packageGenericUnix() {
@@ -233,8 +251,19 @@ function escapeXml(value) {
 
 function writeSha256(filePath) {
   const hash = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-  fs.writeFileSync(`${filePath}.sha256`, `${hash}  ${path.basename(filePath)}\n`, "utf8");
+  if (writeSha256Sidecars) {
+    fs.writeFileSync(`${filePath}.sha256`, `${hash}  ${path.basename(filePath)}\n`, "utf8");
+  }
   console.log(`packaged ${path.basename(filePath)} sha256=${hash}`);
+}
+
+function withTempDir(prefix, callback) {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  try {
+    return callback(tempDir);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
 function signTauriUpdaterArtifact(filePath) {

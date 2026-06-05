@@ -216,7 +216,6 @@ pub struct CoduxApp {
     pub(in crate::app) remote_pairing_creating: bool,
     pub(in crate::app) remote_pairing_poll_generation: u64,
     pub(in crate::app) recording_shortcut_id: Option<String>,
-    pub(in crate::app) agent_split_enabled: bool,
     pub(in crate::app) workspace_view: WorkspaceView,
     pub(in crate::app) assistant_panel: Option<AssistantPanel>,
     pub(in crate::app) project_column_collapsed: bool,

@@ -150,12 +150,16 @@ impl RuntimeService {
         tabs: Vec<crate::terminal_layout::TerminalTabSummary>,
         active_terminal_id: String,
         top_panes: Vec<crate::terminal_layout::TerminalPaneSummary>,
+        top_ratios: Vec<f64>,
+        bottom_ratio: f64,
     ) -> Result<TerminalLayoutSummary, String> {
         TerminalLayoutService::new(self.support_dir.clone()).save_from_gpui(
             project_id,
             tabs,
             active_terminal_id,
             top_panes,
+            top_ratios,
+            bottom_ratio,
         )
     }
 

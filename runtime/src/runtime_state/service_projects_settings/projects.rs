@@ -190,7 +190,6 @@ impl RuntimeService {
                 .ok();
 
         for workspace_id in workspace_ids {
-            let _ = self.forget_pet_project_baseline(workspace_id);
             let _ = terminal_layout.delete(workspace_id);
             let _ = file_editor_layout.delete(workspace_id);
             if let Some(cache) = obsolete_cache.as_ref() {

@@ -128,6 +128,7 @@ impl Render for WorkspaceBodyView {
             if app.workspace_view == WorkspaceView::Terminal {
                 let snapshot = app.terminal_workspace_snapshot();
                 let terminal_view = if let Some(view) = &self.terminal_workspace_view {
+                    view.update(app_cx, |view, cx| view.set_snapshot(snapshot, cx));
                     view.clone()
                 } else {
                     let view =
@@ -689,6 +690,8 @@ fn workspace_pet_fingerprint(app: &CoduxApp) -> u64 {
 #[derive(Clone, PartialEq)]
 pub(in crate::app) struct TerminalWorkspaceSnapshot {
     loading: bool,
+    layout_key: String,
+    bottom_ratio: f64,
     main_panes: Vec<TerminalPaneViewSnapshot>,
     bottom_tabs: Vec<TerminalBottomTabViewSnapshot>,
     active_bottom: Option<TerminalPaneViewSnapshot>,
@@ -753,6 +756,13 @@ impl TerminalWorkspaceView {
 impl Render for TerminalWorkspaceView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let has_bottom_tabs = !self.snapshot.bottom_tabs.is_empty();
+        let bottom_ratio = clamp_terminal_bottom_ratio(self.snapshot.bottom_ratio);
+        let bottom_size = terminal_bottom_panel_size(bottom_ratio);
+        let main_size = (TERMINAL_SPLIT_BASE_SIZE - bottom_size).max(px(220.0));
+        let split_id = SharedString::from(format!(
+            "workspace-terminal-split-{}",
+            terminal_layout_key_for_element_id(&self.snapshot.layout_key)
+        ));
         let main = terminal_main_split_area(
             self.app_entity.clone(),
             self.snapshot.main_panes.clone(),
@@ -792,16 +802,35 @@ impl Render for TerminalWorkspaceView {
         }
 
         base.child(
-            v_resizable("workspace-terminal-split")
+            v_resizable(split_id)
+                .on_resize({
+                    let app_entity = self.app_entity.clone();
+                    let layout_key = self.snapshot.layout_key.clone();
+                    move |state, window, cx| {
+                        let sizes = state.read(cx).sizes().clone();
+                        let Some(ratio) = terminal_bottom_ratio_from_sizes(&sizes) else {
+                            return;
+                        };
+                        window.defer(cx, {
+                            let app_entity = app_entity.clone();
+                            let layout_key = layout_key.clone();
+                            move |_window, cx| {
+                                let _ = app_entity.update(cx, |app, cx| {
+                                    app.update_terminal_bottom_ratio(layout_key, ratio, cx);
+                                });
+                            }
+                        });
+                    }
+                })
                 .child(
                     resizable_panel()
-                        .size(px(420.0))
+                        .size(main_size)
                         .size_range(px(220.0)..px(900.0))
                         .child(main),
                 )
                 .child(
                     resizable_panel()
-                        .size(px(220.0))
+                        .size(bottom_size)
                         .size_range(px(44.0)..px(520.0))
                         .child(bottom),
                 ),
@@ -882,6 +911,9 @@ impl CoduxApp {
 
         TerminalWorkspaceSnapshot {
             loading: self.terminal_layout_loading,
+            layout_key: super::ai_runtime_status::current_terminal_layout_storage_key(&self.state)
+                .unwrap_or_default(),
+            bottom_ratio: clamp_terminal_bottom_ratio(self.state.terminal_layout.bottom_ratio),
             main_panes,
             bottom_tabs,
             active_bottom,
@@ -891,6 +923,37 @@ impl CoduxApp {
 
 fn active_terminal_bottom_tab_id(tabs: &[TerminalBottomTabViewSnapshot]) -> Option<usize> {
     tabs.iter().find(|tab| tab.active).map(|tab| tab.id)
+}
+
+const TERMINAL_SPLIT_BASE_SIZE: Pixels = px(640.0);
+
+fn terminal_bottom_panel_size(ratio: f64) -> Pixels {
+    px((TERMINAL_SPLIT_BASE_SIZE.as_f32() as f64 * ratio) as f32).clamp(px(96.0), px(360.0))
+}
+
+fn terminal_bottom_ratio_from_sizes(sizes: &[Pixels]) -> Option<f64> {
+    let [main, bottom, ..] = sizes else {
+        return None;
+    };
+    let total = main.as_f32() + bottom.as_f32();
+    if total <= 1.0 {
+        return None;
+    }
+    Some(clamp_terminal_bottom_ratio(
+        (bottom.as_f32() / total) as f64,
+    ))
+}
+
+fn terminal_layout_key_for_element_id(key: &str) -> String {
+    key.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 fn terminal_main_split_area(
