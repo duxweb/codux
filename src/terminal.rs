@@ -2148,7 +2148,7 @@ fn terminal_row_text(row_cells: &[&TerminalIndexedCell]) -> Vec<(usize, char)> {
 
 fn terminal_plain_url_at(row_text: &[(usize, char)], col: usize) -> Option<(String, Range<usize>)> {
     static STRICT_URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"(?i)https?://[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~\[\]`()<>]"#)
+        Regex::new(r#"(?i)(?:https?|file)://[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~\[\]`()<>]"#)
             .expect("valid terminal URL regex")
     });
 
@@ -2177,7 +2177,7 @@ fn terminal_plain_url_at(row_text: &[(usize, char)], col: usize) -> Option<(Stri
 
 fn is_openable_terminal_url(url: &str) -> bool {
     url::Url::parse(url)
-        .map(|url| matches!(url.scheme(), "http" | "https"))
+        .map(|url| matches!(url.scheme(), "http" | "https" | "file"))
         .unwrap_or(false)
 }
 
@@ -5666,6 +5666,19 @@ mod tests {
         assert_eq!(range, 1..26);
         assert!(terminal_plain_url_at(&row_text, 0).is_none());
         assert!(terminal_plain_url_at(&row_text, 26).is_none());
+    }
+
+    #[test]
+    fn plain_url_detection_supports_file_urls() {
+        let row_text: Vec<(usize, char)> = "open file:///tmp/codux-log.txt."
+            .chars()
+            .enumerate()
+            .collect();
+
+        let (url, range) = terminal_plain_url_at(&row_text, 12).expect("file url under cursor");
+
+        assert_eq!(url, "file:///tmp/codux-log.txt");
+        assert_eq!(range, 5..30);
     }
 
     #[test]

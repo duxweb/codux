@@ -284,7 +284,13 @@ pub fn open_url(url: &str) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|error| format!("Invalid URL: {error}"))?;
     match parsed.scheme() {
         "http" | "https" => open_target(parsed.as_str()),
-        _ => Err("Only http and https URLs can be opened.".to_string()),
+        "file" => {
+            let path = parsed
+                .to_file_path()
+                .map_err(|_| "Invalid file URL.".to_string())?;
+            open_path(&path)
+        }
+        _ => Err("Only http, https, and file URLs can be opened.".to_string()),
     }
 }
 
@@ -860,6 +866,13 @@ mod tests {
             path.extension().and_then(|value| value.to_str()),
             Some("json")
         );
+    }
+
+    #[test]
+    fn file_urls_parse_to_local_paths() {
+        let parsed = Url::parse("file:///tmp/codux-log.txt").unwrap();
+        let path = parsed.to_file_path().unwrap();
+        assert_eq!(path, PathBuf::from("/tmp/codux-log.txt"));
     }
 
     #[test]
