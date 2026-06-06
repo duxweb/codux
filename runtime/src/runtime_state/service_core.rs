@@ -678,6 +678,62 @@ mod app_runtime_ready_tests {
         );
     }
 
+    #[test]
+    fn memory_launch_artifacts_include_ssh_context_without_secrets() {
+        let support_dir = std::env::temp_dir().join(format!(
+            "codux-runtime-ssh-context-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&support_dir).unwrap();
+        fs::write(
+            support_dir.join("settings.json"),
+            serde_json::json!({
+                "ai": {
+                    "globalPrompt": "",
+                    "memory": {
+                        "enabled": false,
+                        "automaticInjectionEnabled": false
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        fs::write(
+            support_dir.join("ssh_profiles.json"),
+            serde_json::json!([{
+                "id": "profile-1",
+                "name": "Production",
+                "host": "example.com",
+                "port": 22,
+                "username": "root",
+                "credentialKind": "password",
+                "privateKeyPath": "",
+                "password": "secret-password",
+                "keyPassphrase": "secret-passphrase",
+                "updatedAt": 1
+            }])
+            .to_string(),
+        )
+        .unwrap();
+
+        let service = RuntimeService::new(support_dir.clone());
+        let artifacts = service
+            .prepare_memory_launch_artifacts("project-a", "Project A", "/workspace/project-a")
+            .expect("ssh launch context should create artifacts");
+        let agents = fs::read_to_string(artifacts.workspace_root.join("AGENTS.md")).unwrap();
+
+        assert!(agents.contains("codux-ssh list"));
+        assert!(agents.contains("codux-ssh <profile-id> -- '<remote-command>'"));
+        assert!(agents.contains("profile-1"));
+        assert!(agents.contains("root@example.com:22"));
+        assert!(!agents.contains("secret-password"));
+        assert!(!agents.contains("secret-passphrase"));
+
+        fs::remove_dir_all(support_dir).ok();
+        fs::remove_dir_all(artifacts.workspace_root).ok();
+    }
+
     fn assert_tracked_project_has_git_refresh(service: &RuntimeService, project_id: &str) {
         let activity = service.project_activity_snapshot();
         let tracked = activity

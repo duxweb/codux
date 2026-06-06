@@ -61,13 +61,15 @@ impl RuntimeService {
         workspace_path: &str,
     ) -> Option<crate::memory::MemoryLaunchArtifacts> {
         let settings = AppSettingsStore::from_support_dir(self.support_dir.clone()).snapshot();
+        let ssh_context =
+            render_ssh_launch_context_from_support_dir(self.support_dir.clone(), None);
         MemoryService::new(self.support_dir.clone()).prepare_launch_artifacts(
             crate::memory::MemoryLaunchRequest {
                 project_id: project_id.to_string(),
                 project_name: project_name.to_string(),
                 workspace_path: Some(workspace_path.to_string()),
                 settings: settings.ai,
-                extra_context: None,
+                extra_context: ssh_context,
             },
         )
     }

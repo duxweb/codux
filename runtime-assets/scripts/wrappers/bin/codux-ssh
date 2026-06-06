@@ -3,6 +3,14 @@ set -uo pipefail
 
 profile_id="${1:-}"
 list_profiles=false
+if [[ "${profile_id}" == "-h" || "${profile_id}" == "--help" || "${profile_id}" == "help" ]]; then
+  print -r -- "usage: codux-ssh list"
+  print -r -- "       codux-ssh <profile-id>"
+  print -r -- "       codux-ssh <profile-id> -- '<remote-command>'"
+  print -r -- ""
+  print -r -- "Use 'codux-ssh list' to read saved SSH profiles as JSON."
+  exit 0
+fi
 if [[ "${profile_id}" == "list" || "${profile_id}" == "--list" || "${profile_id}" == "profiles" ]]; then
   list_profiles=true
   shift

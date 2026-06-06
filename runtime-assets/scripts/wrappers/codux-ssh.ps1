@@ -2,6 +2,17 @@ $ErrorActionPreference = "Stop"
 
 $listProfiles = $false
 if ($args.Count -ge 1 -and (
+    [string]::Equals([string]$args[0], "-h", [StringComparison]::OrdinalIgnoreCase) -or
+    [string]::Equals([string]$args[0], "--help", [StringComparison]::OrdinalIgnoreCase) -or
+    [string]::Equals([string]$args[0], "help", [StringComparison]::OrdinalIgnoreCase))) {
+  Write-Output "usage: codux-ssh list"
+  Write-Output "       codux-ssh <profile-id>"
+  Write-Output "       codux-ssh <profile-id> -- '<remote-command>'"
+  Write-Output ""
+  Write-Output "Use 'codux-ssh list' to read saved SSH profiles as JSON."
+  exit 0
+}
+if ($args.Count -ge 1 -and (
     [string]::Equals([string]$args[0], "list", [StringComparison]::OrdinalIgnoreCase) -or
     [string]::Equals([string]$args[0], "--list", [StringComparison]::OrdinalIgnoreCase) -or
     [string]::Equals([string]$args[0], "profiles", [StringComparison]::OrdinalIgnoreCase))) {
