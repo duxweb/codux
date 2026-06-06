@@ -188,7 +188,7 @@ use self::{
     project_column::{ProjectColumnView, ProjectListState},
     scroll_compat::{ScrollableElement, codux_uniform_list},
     settings::SettingsPane,
-    shell_utils::shell_quote,
+    shell_utils::{shell_quote, terminal_command_text},
     shortcuts::{shortcut_display_from_keystroke, shortcut_matches},
     sidebars::{
         AssistantPanel, FileSidebarView, GitSidebarLabels, clipboard_external_paths,

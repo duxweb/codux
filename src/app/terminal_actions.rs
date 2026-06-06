@@ -594,7 +594,7 @@ impl CoduxApp {
             Ok(terminal) => {
                 self.register_terminal_pane(pane_terminal_id.as_deref(), &terminal);
                 let active_runtime_id = pane_terminal_id.clone();
-                let send_result = terminal.send_text(&format!("{command}\n"));
+                let send_result = terminal.send_text(&terminal_command_text(&command));
                 terminal.view.read(cx).focus_handle().focus(window, cx);
                 if let Some(tab) = self.main_terminal_mut() {
                     tab.panes.push(TerminalPaneSlot {

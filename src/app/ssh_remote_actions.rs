@@ -151,7 +151,7 @@ impl CoduxApp {
         };
         match self.runtime_service.ssh_launch_command(profile.id.clone()) {
             Ok(command) => {
-                self.send_to_active_terminal(&format!("{}\n", command.command), cx);
+                self.send_to_active_terminal(&terminal_command_text(&command.command), cx);
                 if let Some(view) = self.active_terminal_view() {
                     view.read(cx).focus_handle().focus(window, cx);
                 }
