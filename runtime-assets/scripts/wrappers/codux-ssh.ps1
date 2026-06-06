@@ -31,8 +31,12 @@ if (-not $listProfiles -and $args.Count -gt 1) {
 
 $profilesFile = $env:CODUX_SSH_PROFILES_FILE
 if ([string]::IsNullOrWhiteSpace($profilesFile)) {
-  [Console]::Error.WriteLine("codux-ssh: CODUX_SSH_PROFILES_FILE is not set")
-  exit 66
+  if (-not [string]::IsNullOrWhiteSpace($env:DMUX_APP_SUPPORT_ROOT)) {
+    $profilesFile = Join-Path $env:DMUX_APP_SUPPORT_ROOT "ssh_profiles.json"
+  }
+}
+if ([string]::IsNullOrWhiteSpace($profilesFile)) {
+  $profilesFile = Join-Path $env:APPDATA "Codux\ssh_profiles.json"
 }
 if (-not (Test-Path -LiteralPath $profilesFile)) {
   [Console]::Error.WriteLine("codux-ssh: unable to read SSH profile file")

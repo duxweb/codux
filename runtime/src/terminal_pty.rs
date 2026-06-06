@@ -1370,6 +1370,10 @@ pub fn terminal_environment(
         .or_else(|| context.map(|context| &context.support_dir))
     {
         values.insert(
+            "DMUX_APP_SUPPORT_ROOT".to_string(),
+            support_dir.display().to_string(),
+        );
+        values.insert(
             "CODUX_SSH_PROFILES_FILE".to_string(),
             support_dir.join("ssh_profiles.json").display().to_string(),
         );
@@ -2351,6 +2355,14 @@ mod tests {
         assert_eq!(
             env.get("DMUX_WRAPPER_BIN").map(String::as_str),
             Some("/runtime-assets/scripts/wrappers/bin")
+        );
+        assert_eq!(
+            env.get("DMUX_APP_SUPPORT_ROOT").map(String::as_str),
+            Some("/support/Codux")
+        );
+        assert_eq!(
+            env.get("CODUX_SSH_PROFILES_FILE").map(String::as_str),
+            Some("/support/Codux/ssh_profiles.json")
         );
         assert_eq!(
             env.get("DMUX_USER_ZDOTDIR").map(String::as_str),

@@ -15,8 +15,8 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
         path_segments: &[".kiro", "agents", "codux-managed.json"],
         format: AIRuntimeJsonHookFormat::Kiro,
         definitions: &[
-            hook("agentSpawn", "session-start", 5000, false),
-            hook("stop", "session-end", 5000, false),
+            hook("agentSpawn", "session-start", 5000, true),
+            hook("stop", "session-end", 5000, true),
         ],
     }),
     probe: Some(probe_kiro_runtime),

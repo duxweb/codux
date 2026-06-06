@@ -19,9 +19,9 @@ pub const AI_RUNTIME_TOOL_DRIVERS: &[AIRuntimeToolDriver] = &[
 ];
 
 pub(crate) const GEMINI_HOOKS: &[AIRuntimeHookDefinition] = &[
-    hook("SessionStart", "session-start", 5000, false),
-    hook("BeforeAgent", "before-agent", 5000, false),
-    hook("AfterAgent", "after-agent", 5000, false),
-    hook("Notification", "notification", 5000, false),
-    hook("SessionEnd", "session-end", 5000, false),
+    hook("SessionStart", "session-start", 5000, true),
+    hook("BeforeAgent", "before-agent", 5000, true),
+    hook("AfterAgent", "after-agent", 5000, true),
+    hook("Notification", "notification", 5000, true),
+    hook("SessionEnd", "session-end", 5000, true),
 ];
