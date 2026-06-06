@@ -50,22 +50,6 @@ impl CoduxApp {
         self.ensure_git_review_derived_rows();
     }
 
-    pub(super) fn reload_project_git(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project to refresh".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        };
-        let project_name = project.name.clone();
-        self.status_message = format!("refreshing git status for {project_name}");
-        self.runtime_trace(
-            "git",
-            &format!("manual_reload start project={project_name}"),
-        );
-        self.refresh_git_panel_state_async(cx);
-        self.invalidate_git_panel(cx);
-    }
-
     pub(super) fn init_project_git(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(project) = &self.state.selected_project else {
             self.status_message = "no selected project for Git init".to_string();
@@ -651,16 +635,6 @@ impl CoduxApp {
         self.invalidate_git_panel(cx);
     }
 
-    pub(super) fn select_git_file(
-        &mut self,
-        file_path: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.select_git_file_only(file_path.clone(), cx);
-        self.load_git_file_diff(file_path, cx);
-    }
-
     pub(super) fn select_git_file_only(&mut self, file_path: String, cx: &mut Context<Self>) {
         if !self
             .git_review
@@ -720,33 +694,6 @@ impl CoduxApp {
         } else {
             vec![fallback.to_string()]
         }
-    }
-
-    pub(super) fn load_git_file_diff(&mut self, file_path: String, cx: &mut Context<Self>) {
-        let Some(project_path) = self.selected_worktree_path() else {
-            self.status_message = "no selected project for Git diff".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        };
-        match self.runtime_service.read_project_git_review_diff(
-            &project_path,
-            &file_path,
-            self.git_review.base_branch.as_deref(),
-        ) {
-            Ok(diff) => {
-                let content = self.runtime_service.read_project_git_review_file_content(
-                    &project_path,
-                    &file_path,
-                    self.git_review.base_branch.as_deref(),
-                );
-                self.selected_git_file = Some(file_path.clone());
-                self.git_diff_preview = diff;
-                self.set_git_review_derived_content(content);
-                self.status_message = format!("diff loaded: {file_path}");
-            }
-            Err(error) => self.status_message = format!("failed to load diff: {error}"),
-        }
-        self.invalidate_git_panel(cx);
     }
 
     pub(super) fn load_git_file_diff_async(&mut self, file_path: String, cx: &mut Context<Self>) {
@@ -813,26 +760,6 @@ impl CoduxApp {
             });
         })
         .detach();
-    }
-
-    pub(super) fn ensure_selected_git_review_file_loaded(&mut self, cx: &mut Context<Self>) {
-        if self
-            .selected_git_file
-            .as_deref()
-            .is_some_and(|path| self.git_review.files.iter().any(|file| file.path == path))
-            && self.git_review_content.is_some()
-        {
-            return;
-        }
-        let Some(path) = self.git_review.files.first().map(|file| file.path.clone()) else {
-            self.selected_git_file = None;
-            self.selected_git_files.clear();
-            self.clear_git_review_derived_content();
-            return;
-        };
-        self.selected_git_files.clear();
-        self.selected_git_files.insert(path.clone());
-        self.load_git_file_diff(path, cx);
     }
 
     pub(super) fn ensure_selected_git_review_file_loaded_async(&mut self, _cx: &mut Context<Self>) {
@@ -1052,18 +979,6 @@ impl CoduxApp {
         self.invalidate_git_panel(cx);
     }
 
-    pub(super) fn stage_selected_git_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.update_selected_git_file_stage(true, cx);
-    }
-
-    pub(super) fn unstage_selected_git_file(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.update_selected_git_file_stage(false, cx);
-    }
-
     pub(super) fn stage_git_paths(
         &mut self,
         paths: Vec<String>,
@@ -1080,43 +995,6 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         self.update_git_paths_stage(paths, false, cx);
-    }
-
-    pub(super) fn discard_selected_git_file(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for Git discard".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        };
-        let project_id = project.id.clone();
-        let project_path = project.path.clone();
-        let Some(file_path) = self.selected_git_file.clone() else {
-            self.status_message = "no selected Git file to discard".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        };
-        let worker_file = file_path.clone();
-        self.start_project_git_operation(
-            project_id,
-            project_path,
-            GitRunningOperation {
-                label: format!("discard:{file_path}"),
-                cancellable: false,
-            },
-            move |service, path| service.discard_project_git_file(&path, &worker_file),
-            GitOperationCompletion {
-                success_message: format!("discarded Git file: {file_path}"),
-                failure_prefix: "failed to discard Git file".to_string(),
-                clear_git_diff_preview: true,
-                refresh_review: true,
-                ..Default::default()
-            },
-            cx,
-        );
     }
 
     pub(super) fn discard_git_paths(
@@ -1150,47 +1028,6 @@ impl CoduxApp {
             GitOperationCompletion {
                 success_message: format!("discarded {count} Git file paths"),
                 failure_prefix: "failed to discard Git file paths".to_string(),
-                clear_git_diff_preview: true,
-                clear_git_tree_state: true,
-                refresh_review: true,
-                ..Default::default()
-            },
-            cx,
-        );
-    }
-
-    pub(super) fn append_project_gitignore_path(
-        &mut self,
-        file_path: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for .gitignore".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        };
-        let normalized_path = file_path.trim().to_string();
-        if normalized_path.is_empty() {
-            self.status_message = "no Git path to ignore".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        }
-
-        let project_id = project.id.clone();
-        let project_path = project.path.clone();
-        let worker_path = normalized_path.clone();
-        self.start_project_git_operation(
-            project_id,
-            project_path,
-            GitRunningOperation {
-                label: format!("ignore:{normalized_path}"),
-                cancellable: false,
-            },
-            move |service, path| service.append_project_gitignore(&path, &[worker_path]),
-            GitOperationCompletion {
-                success_message: format!("added to .gitignore: {normalized_path}"),
-                failure_prefix: "failed to update .gitignore".to_string(),
                 clear_git_diff_preview: true,
                 clear_git_tree_state: true,
                 refresh_review: true,
@@ -1235,50 +1072,6 @@ impl CoduxApp {
                 clear_git_diff_preview: true,
                 clear_git_tree_state: true,
                 refresh_review: true,
-                ..Default::default()
-            },
-            cx,
-        );
-    }
-
-    pub(super) fn update_selected_git_file_stage(&mut self, stage: bool, cx: &mut Context<Self>) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for Git file operation".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        };
-        let project_path = project.path.clone();
-        let Some(file_path) = self.selected_git_file.clone() else {
-            self.status_message = "no selected Git file".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        };
-
-        let worker_file = file_path.clone();
-        self.start_project_git_operation(
-            project.id.clone(),
-            project_path,
-            GitRunningOperation {
-                label: format!("{}:{file_path}", if stage { "stage" } else { "unstage" }),
-                cancellable: false,
-            },
-            move |service, path| {
-                if stage {
-                    service.stage_project_git_file(&path, &worker_file)
-                } else {
-                    service.unstage_project_git_file(&path, &worker_file)
-                }
-            },
-            GitOperationCompletion {
-                success_message: format!(
-                    "{} Git file: {file_path}",
-                    if stage { "staged" } else { "unstaged" }
-                ),
-                failure_prefix: format!(
-                    "failed to {} Git file",
-                    if stage { "stage" } else { "unstage" }
-                ),
-                diff_file_to_reload: Some(file_path),
                 ..Default::default()
             },
             cx,
@@ -1542,10 +1335,6 @@ impl CoduxApp {
             return;
         }
         self.run_project_git_remote_action("push", cx);
-    }
-
-    pub(super) fn sync_project_git(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.run_project_git_remote_action("sync", cx);
     }
 
     pub(super) fn force_push_project_git(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -2344,50 +2133,6 @@ impl CoduxApp {
             GitOperationCompletion {
                 success_message: format!("created and checked out Git branch: {branch_name}"),
                 failure_prefix: "Git branch creation failed".to_string(),
-                clear_commit_message: false,
-                refresh_review: false,
-                clear_selected_branch: false,
-                selected_branch: Some(branch_name),
-                ..Default::default()
-            },
-            cx,
-        );
-    }
-
-    pub(super) fn create_git_branch_from(
-        &mut self,
-        from_branch: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for Git branch creation".to_string();
-            self.invalidate_git_panel(cx);
-            return;
-        };
-        let project_id = project.id.clone();
-        let project_path = project.path.clone();
-        let branch_name = generated_git_branch_name();
-        let worker_branch = branch_name.clone();
-        let worker_from_branch = from_branch.clone();
-        self.start_project_git_operation(
-            project_id,
-            project_path,
-            GitRunningOperation {
-                label: format!("create-branch:{branch_name}"),
-                cancellable: false,
-            },
-            move |service, path| {
-                service.create_project_git_branch_from(
-                    &path,
-                    &worker_branch,
-                    Some(&worker_from_branch),
-                    true,
-                )
-            },
-            GitOperationCompletion {
-                success_message: format!("created Git branch {branch_name} from {from_branch}"),
-                failure_prefix: format!("Git branch creation from {from_branch} failed"),
                 clear_commit_message: false,
                 refresh_review: false,
                 clear_selected_branch: false,

@@ -54,8 +54,16 @@ pub(crate) fn claude_project_log_paths(project_path: &str) -> Vec<PathBuf> {
 }
 
 pub(crate) fn gemini_session_paths(project_path: &str) -> Vec<PathBuf> {
+    gemini_session_paths_for_roots(project_path, &[home_dir().join(".gemini")])
+}
+
+pub(crate) fn agy_session_paths(project_path: &str) -> Vec<PathBuf> {
+    agy_session_paths_for_roots(project_path, &[home_dir().join(".gemini").join("antigravity-cli")])
+}
+
+fn gemini_session_paths_for_roots(project_path: &str, roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    for root_dir in gemini_data_roots() {
+    for root_dir in roots {
         let temp_dir = root_dir.join("tmp");
         let projects_path = root_dir.join("projects.json");
         if let Ok(data) = fs::read(&projects_path) {
@@ -101,6 +109,10 @@ pub(crate) fn gemini_session_paths(project_path: &str) -> Vec<PathBuf> {
     });
     files.sort_by_key(|path| std::cmp::Reverse(file_modified_millis(path).unwrap_or(0)));
     files
+}
+
+fn agy_session_paths_for_roots(project_path: &str, roots: &[PathBuf]) -> Vec<PathBuf> {
+    gemini_session_paths_for_roots(project_path, roots)
 }
 
 pub(super) fn find_kiro_session_path(
@@ -222,9 +234,4 @@ fn collect_recursive_files(dir: &Path, extension: &str, files: &mut Vec<PathBuf>
             files.push(path);
         }
     }
-}
-
-fn gemini_data_roots() -> Vec<PathBuf> {
-    let gemini_root = home_dir().join(".gemini");
-    vec![gemini_root.clone(), gemini_root.join("antigravity-cli")]
 }

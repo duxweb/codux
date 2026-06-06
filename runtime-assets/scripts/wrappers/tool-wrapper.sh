@@ -171,6 +171,9 @@ configured_permission_mode() {
     opencode)
       config_key="opencode"
       ;;
+    codewhale|codewhale-tui|deepseek|deepseek-tui)
+      config_key="codewhale"
+      ;;
     *)
       return 0
       ;;
@@ -216,6 +219,9 @@ configured_tool_model() {
       ;;
     opencode)
       config_key="opencodeModel"
+      ;;
+    codewhale|codewhale-tui|deepseek|deepseek-tui)
+      config_key="codewhaleModel"
       ;;
     *)
       return 0
@@ -286,7 +292,7 @@ apply_configured_model_arg() {
     codex)
       launch_args=("--model=${configured_model}" "${launch_args[@]}")
       ;;
-    claude|claude-code|gemini|agy|opencode)
+    claude|claude-code|gemini|agy|opencode|codewhale|codewhale-tui|deepseek|deepseek-tui)
       launch_args=(--model "${configured_model}" "${launch_args[@]}")
       ;;
   esac
@@ -654,6 +660,21 @@ if [[ "$tool_name" == "opencode" ]]; then
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
   opencode_config_dir="${wrapper_dir}/opencode-config"
   run_wrapped_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" OPENCODE_CONFIG_DIR="${opencode_config_dir}" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
+  exit $?
+fi
+
+if [[ "$tool_name" == "codewhale" || "$tool_name" == "codewhale-tui" || "$tool_name" == "deepseek" || "$tool_name" == "deepseek-tui" ]]; then
+  local_permission_mode="$(configured_permission_mode || true)"
+  launch_args=("$@")
+  apply_configured_model_arg
+  if [[ "${local_permission_mode}" == "fullAccess" ]] \
+    && ! has_exact_arg "--yolo" "${launch_args[@]}"; then
+    launch_args=(--yolo "${launch_args[@]}")
+  fi
+  launch_model="$(extract_model_target "${launch_args[@]}" || true)"
+  resume_target=""
+  resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
+  run_wrapped_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
 

@@ -7,8 +7,16 @@ fn claude_project_log_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
 }
 
 fn gemini_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
+    gemini_session_paths_for_roots(project_path, &[home.join(".gemini")])
+}
+
+fn agy_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
+    agy_session_paths_for_roots(project_path, &[home.join(".gemini").join("antigravity-cli")])
+}
+
+fn gemini_session_paths_for_roots(project_path: &str, roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    for root_dir in gemini_data_roots(home) {
+    for root_dir in roots {
         let temp_dir = root_dir.join("tmp");
         let projects_path = root_dir.join("projects.json");
         if let Ok(data) = fs::read(projects_path) {
@@ -53,9 +61,8 @@ fn gemini_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
     files
 }
 
-fn gemini_data_roots(home: &Path) -> Vec<PathBuf> {
-    let gemini_root = home.join(".gemini");
-    vec![gemini_root.clone(), gemini_root.join("antigravity-cli")]
+fn agy_session_paths_for_roots(project_path: &str, roots: &[PathBuf]) -> Vec<PathBuf> {
+    gemini_session_paths_for_roots(project_path, roots)
 }
 
 fn codex_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
@@ -153,6 +160,28 @@ fn kiro_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
         .collect::<Vec<_>>();
     matched.sort_by_key(|path| std::cmp::Reverse(file_modified_millis(path).unwrap_or(0)));
     matched
+}
+
+fn codewhale_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
+    let sessions_dir = home.join(".codewhale").join("sessions");
+    let mut matched = directory_files(&sessions_dir, "json")
+        .into_iter()
+        .filter(|path| codewhale_file_belongs_to_project(path, project_path))
+        .collect::<Vec<_>>();
+    matched.sort_by_key(|path| std::cmp::Reverse(file_modified_millis(path).unwrap_or(0)));
+    matched
+}
+
+fn codewhale_file_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
+    let Ok(data) = fs::read_to_string(file_path) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+        return false;
+    };
+    codewhale_project_path(&value)
+        .map(|path| paths_equivalent(Some(&path), project_path))
+        .unwrap_or(false)
 }
 
 fn kiro_file_belongs_to_project(file_path: &Path, project_path: &str) -> bool {

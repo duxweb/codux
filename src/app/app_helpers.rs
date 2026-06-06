@@ -50,6 +50,7 @@ pub(in crate::app) fn normalized_git_action_paths(paths: Vec<String>) -> Vec<Str
     normalized
 }
 
+#[cfg(test)]
 pub(in crate::app) fn file_search_status_message(index: usize, count: usize) -> String {
     if count == 0 {
         "file search has no matches".to_string()

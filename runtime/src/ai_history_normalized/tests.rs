@@ -204,4 +204,94 @@ mod tests {
         );
         let _ = fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn parses_codewhale_history_json() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let session_dir = root.join(".codewhale/sessions");
+        fs::create_dir_all(&session_dir).unwrap();
+        fs::write(
+            session_dir.join("session-abc.json"),
+            serde_json::json!({
+                "schema_version": 1,
+                "metadata": {
+                    "id": "session-abc",
+                    "title": "CodeWhale Session",
+                    "created_at": "2026-05-17T00:00:00Z",
+                    "updated_at": "2026-05-17T00:01:00Z",
+                    "total_tokens": 123,
+                    "model": "deepseek-v4-pro",
+                    "workspace": project_path,
+                    "mode": "agent"
+                },
+                "messages": [
+                    { "role": "user", "content": [{ "type": "text", "text": "hello" }] },
+                    { "role": "assistant", "content": [{ "type": "text", "text": "hello from codewhale" }] }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.project_summary.project_total_tokens, 123);
+        assert_eq!(snapshot.sessions.len(), 1);
+        assert_eq!(
+            snapshot.sessions[0].last_tool.as_deref(),
+            Some("codewhale")
+        );
+        assert_eq!(
+            snapshot.sessions[0].last_model.as_deref(),
+            Some("deepseek-v4-pro")
+        );
+        assert_eq!(snapshot.sessions[0].request_count, 1);
+        assert!(snapshot
+            .tool_breakdown
+            .iter()
+            .any(|item| item.key == "codewhale" && item.total_tokens == 123));
+        assert!(snapshot
+            .model_breakdown
+            .iter()
+            .any(|item| item.key == "deepseek-v4-pro" && item.total_tokens == 123));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn separates_gemini_and_agy_history_roots() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let gemini_chat_dir = root.join(".gemini/tmp/gemini-project/chats");
+        let agy_chat_dir = root.join(".gemini/antigravity-cli/tmp/agy-project/chats");
+        fs::create_dir_all(&gemini_chat_dir).unwrap();
+        fs::create_dir_all(&agy_chat_dir).unwrap();
+        fs::write(
+            root.join(".gemini/projects.json"),
+            serde_json::json!({ "projects": { project_path.clone(): "gemini-project" } })
+                .to_string(),
+        )
+        .unwrap();
+        fs::write(
+            root.join(".gemini/antigravity-cli/projects.json"),
+            serde_json::json!({ "projects": { project_path.clone(): "agy-project" } }).to_string(),
+        )
+        .unwrap();
+        let gemini_file = gemini_chat_dir.join("session-gemini.json");
+        let agy_file = agy_chat_dir.join("session-agy.json");
+        fs::write(&gemini_file, "{}").unwrap();
+        fs::write(&agy_file, "{}").unwrap();
+
+        assert_eq!(gemini_session_paths(&project_path, &root), vec![gemini_file]);
+        assert_eq!(agy_session_paths(&project_path, &root), vec![agy_file]);
+        let _ = fs::remove_dir_all(root);
+    }
 }

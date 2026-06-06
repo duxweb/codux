@@ -410,40 +410,6 @@ pub(in crate::app) fn centered_empty_state(
         )
 }
 
-pub(in crate::app) fn section(title: &'static str, rows: Vec<String>) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .mx_3()
-        .mt_3()
-        .rounded_sm()
-        .border_1()
-        .border_color(color(theme::BORDER))
-        .bg(color(theme::BG_ELEVATED))
-        .child(
-            div()
-                .h(px(30.0))
-                .px_2()
-                .flex()
-                .items_center()
-                .border_b_1()
-                .border_color(color(theme::BORDER_SOFT))
-                .text_size(rems(0.75))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(color(theme::TEXT_MUTED))
-                .child(title),
-        )
-        .children(rows.into_iter().map(|row| {
-            div()
-                .px_2()
-                .py_1()
-                .text_size(rems(0.75))
-                .text_color(color(theme::TEXT_DIM))
-                .child(row)
-                .into_any_element()
-        }))
-}
-
 #[cfg(test)]
 pub(in crate::app) fn restored_terminal_preview_lines(output_tail: &str) -> Vec<String> {
     output_tail

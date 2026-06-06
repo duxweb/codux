@@ -149,12 +149,7 @@ fn sanitize_terminal_layout(mut layout: TerminalLayoutSummary) -> Option<Termina
         return None;
     }
     layout.top_ratios = normalize_ratios(layout.top_ratios, layout.top_panes.len());
-    layout.bottom_ratio = clamp_ratio(
-        layout.bottom_ratio,
-        0.16,
-        0.58,
-        default_bottom_ratio(),
-    );
+    layout.bottom_ratio = clamp_ratio(layout.bottom_ratio, 0.16, 0.58, default_bottom_ratio());
     Some(layout)
 }
 
@@ -165,7 +160,13 @@ fn normalize_ratios(ratios: Vec<f64>, count: usize) -> Vec<f64> {
     let mut values = ratios
         .into_iter()
         .take(count)
-        .map(|value| if value.is_finite() { value.max(0.0) } else { 0.0 })
+        .map(|value| {
+            if value.is_finite() {
+                value.max(0.0)
+            } else {
+                0.0
+            }
+        })
         .collect::<Vec<_>>();
     while values.len() < count {
         values.push(1.0 / count as f64);

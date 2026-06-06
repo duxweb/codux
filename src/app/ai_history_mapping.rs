@@ -25,6 +25,8 @@ pub(in crate::app) fn ai_session_restore_command(session: &AISessionSummary) -> 
         format!("gemini resume {quoted_id}")
     } else if tool.contains("opencode") {
         format!("opencode run --session {quoted_id}")
+    } else if tool.contains("codewhale") || tool.contains("deepseek") {
+        format!("codewhale resume {quoted_id}")
     } else {
         format!("codex resume {quoted_id}")
     }

@@ -54,6 +54,24 @@ impl RuntimeService {
         load_memory(&self.support_dir, project_id)
     }
 
+    pub fn prepare_memory_launch_artifacts(
+        &self,
+        project_id: &str,
+        project_name: &str,
+        workspace_path: &str,
+    ) -> Option<crate::memory::MemoryLaunchArtifacts> {
+        let settings = AppSettingsStore::from_support_dir(self.support_dir.clone()).snapshot();
+        MemoryService::new(self.support_dir.clone()).prepare_launch_artifacts(
+            crate::memory::MemoryLaunchRequest {
+                project_id: project_id.to_string(),
+                project_name: project_name.to_string(),
+                workspace_path: Some(workspace_path.to_string()),
+                settings: settings.ai,
+                extra_context: None,
+            },
+        )
+    }
+
     pub fn enqueue_completed_session_memory(
         &self,
         session: &crate::ai_runtime::AISessionSnapshot,

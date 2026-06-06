@@ -531,21 +531,6 @@ impl CoduxApp {
         None
     }
 
-    pub(super) fn ensure_visible_file_editor_states(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let tabs = self.file_editor_tabs.clone();
-        for tab in tabs {
-            let key = self.file_editor_state_key(&tab.relative_path);
-            if self.file_editor_states.contains_key(&key) {
-                continue;
-            }
-            self.spawn_file_editor_state_load(key, tab.relative_path.clone(), cx);
-        }
-    }
-
     fn spawn_file_editor_state_load(
         &mut self,
         key: String,

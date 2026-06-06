@@ -14,6 +14,8 @@ pub mod snapshot;
 pub mod state;
 pub mod store;
 pub mod supervisor;
+pub mod tool_driver;
+pub mod tool_drivers;
 
 pub use assets::{runtime_asset_content, stage_runtime_asset, stage_runtime_dir};
 pub use bridge::{
@@ -46,3 +48,4 @@ pub use snapshot::{
 pub use state::{canonical_tool_name, runtime_state_for_hook_kind, status_for_runtime_state};
 pub use store::{AIRuntimeStateMutation, AIRuntimeStateStore};
 pub use supervisor::{AIRuntimeSupervisor, AIRuntimeSupervisorEvent};
+pub use tool_driver::{AIRuntimeToolDriver, ai_runtime_tool_drivers, is_supported_runtime_tool};

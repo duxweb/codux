@@ -1301,7 +1301,6 @@ struct TerminalStateHandle {
 enum TerminalInternalEvent {
     Resize { cols: usize, rows: usize },
     Scroll { lines: i32 },
-    ScrollToBottom,
 }
 
 impl TerminalModel {
@@ -1534,9 +1533,6 @@ impl TerminalModel {
                 TerminalInternalEvent::Scroll { lines } => {
                     snapshot_dirty |= self.handle.scroll_display(lines);
                 }
-                TerminalInternalEvent::ScrollToBottom => {
-                    snapshot_dirty |= self.handle.scroll_to_bottom();
-                }
             }
         }
         if snapshot_dirty {
@@ -1570,7 +1566,7 @@ impl TerminalModel {
                 TerminalInternalEvent::Resize { cols, rows } => {
                     snapshot_dirty |= self.handle.resize(cols, rows);
                 }
-                TerminalInternalEvent::Scroll { .. } | TerminalInternalEvent::ScrollToBottom => {}
+                TerminalInternalEvent::Scroll { .. } => {}
             }
         }
         snapshot_dirty | self.handle.scroll_to_bottom()
@@ -1612,10 +1608,6 @@ impl TerminalModel {
         self.events
             .push_back(TerminalInternalEvent::Scroll { lines });
         true
-    }
-
-    fn scroll_to_bottom(&mut self) {
-        self.events.push_back(TerminalInternalEvent::ScrollToBottom);
     }
 
     fn selected_text(&self, selection: SelectionRange) -> String {
@@ -1822,6 +1814,7 @@ struct TerminalContent {
     display_offset: usize,
     columns: usize,
     screen_lines: usize,
+    #[cfg(test)]
     scrolled_to_bottom: bool,
 }
 
@@ -1843,6 +1836,7 @@ impl TerminalContent {
             display_offset: content.display_offset,
             columns: term.columns(),
             screen_lines: term.screen_lines(),
+            #[cfg(test)]
             scrolled_to_bottom: content.display_offset == 0,
         }
     }
@@ -2015,7 +2009,7 @@ impl Element for TerminalElement {
         let cell_width: f32 = self.renderer.cell_width.into();
         let cell_height: f32 = self.renderer.cell_height.into();
         let cols = terminal_grid_dimension(available_width, cell_width, 20);
-        let rows = terminal_grid_dimension(available_height, cell_height, 8);
+        let rows = terminal_grid_dimension(available_height, cell_height, 1);
         self.layout.lock().update(
             bounds,
             self.padding,
@@ -2760,6 +2754,14 @@ impl TerminalKeyModifiers {
 }
 
 fn keystroke_to_bytes(keystroke: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
+    if keystroke.modifiers.control
+        && !keystroke.modifiers.alt
+        && !keystroke.modifiers.platform
+        && let Some(sequence) = control_key_char_sequence(keystroke)
+    {
+        return Some(sequence);
+    }
+
     let modifiers = TerminalKeyModifiers::new(keystroke);
     let key = normalize_terminal_key(&keystroke.key);
     let manual = match (key.as_str(), &modifiers) {
@@ -2912,6 +2914,19 @@ fn normalize_terminal_key(key: &str) -> String {
         _ => normalized.as_str(),
     }
     .to_string()
+}
+
+fn control_key_char_sequence(keystroke: &Keystroke) -> Option<Vec<u8>> {
+    let key_char = keystroke.key_char.as_deref()?;
+    let mut chars = key_char.chars();
+    let ch = chars.next()?;
+    if chars.next().is_some() {
+        return None;
+    }
+    if ch.is_control() {
+        return Some(vec![ch as u8]);
+    }
+    ctrl_sequence(&ch.to_string()).map(|sequence| sequence.as_bytes().to_vec())
 }
 
 fn ctrl_sequence(key: &str) -> Option<&'static str> {
@@ -4279,6 +4294,19 @@ mod tests {
         }
     }
 
+    fn modified_key_with_char(
+        key: &str,
+        key_char: &str,
+        shift: bool,
+        alt: bool,
+        control: bool,
+        platform: bool,
+    ) -> Keystroke {
+        let mut keystroke = modified_key(key, shift, alt, control, platform);
+        keystroke.key_char = Some(key_char.to_string());
+        keystroke
+    }
+
     fn bytes(keystroke: Keystroke, mode: TermMode) -> Vec<u8> {
         keystroke_to_bytes(&keystroke, mode).expect("keystroke should map to terminal bytes")
     }
@@ -4305,6 +4333,28 @@ mod tests {
         assert!(keystroke_to_bytes(&key_char("a", "a"), TermMode::NONE).is_none());
         assert!(keystroke_to_bytes(&key_char("a", "A"), TermMode::NONE).is_none());
         assert!(keystroke_to_bytes(&key_char("semicolon", ";"), TermMode::NONE).is_none());
+    }
+
+    #[test]
+    fn maps_terminal_interrupt_shortcut_to_etx() {
+        assert_eq!(
+            bytes(modified_key("c", false, false, true, false), TermMode::NONE),
+            b"\x03"
+        );
+        assert_eq!(
+            bytes(
+                modified_key_with_char("c", "c", false, false, true, false),
+                TermMode::NONE
+            ),
+            b"\x03"
+        );
+        assert_eq!(
+            bytes(
+                modified_key_with_char("c", "\x03", false, false, true, false),
+                TermMode::NONE
+            ),
+            b"\x03"
+        );
     }
 
     #[test]
@@ -4862,8 +4912,8 @@ mod tests {
         assert_eq!(scrolled.display_offset, 2);
         assert!(!scrolled.scrolled_to_bottom);
 
-        state.scroll_to_bottom();
-        let bottom = state.sync_for_test();
+        state.prepare_input_viewport_for_test();
+        let bottom = state.live_snapshot();
 
         assert_eq!(bottom.display_offset, 0);
         assert!(bottom.scrolled_to_bottom);
@@ -5092,6 +5142,7 @@ mod tests {
             }
         }
         assert_eq!(terminal_grid_dimension(1.0, 8.0, 20), 20);
+        assert_eq!(terminal_grid_dimension(1.0, 18.0, 1), 1);
     }
 
     #[test]

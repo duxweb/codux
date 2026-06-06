@@ -1,12 +1,7 @@
-use super::payload::AIHookEventMetadata;
+use super::{payload::AIHookEventMetadata, tool_driver};
 
 pub fn canonical_tool_name(tool: &str) -> Option<String> {
-    let normalized = normalized_string(Some(tool))?.to_lowercase();
-    match normalized.as_str() {
-        "claude-code" => Some("claude".to_string()),
-        "agy" => Some("gemini".to_string()),
-        _ => Some(normalized),
-    }
+    tool_driver::canonical_tool_name(tool).map(str::to_string)
 }
 
 pub fn runtime_state_for_hook_kind(
@@ -52,7 +47,15 @@ mod tests {
             canonical_tool_name("claude-code").as_deref(),
             Some("claude")
         );
-        assert_eq!(canonical_tool_name("agy").as_deref(), Some("gemini"));
+        assert_eq!(canonical_tool_name("agy").as_deref(), Some("agy"));
+        assert_eq!(
+            canonical_tool_name("codewhale-tui").as_deref(),
+            Some("codewhale")
+        );
+        assert_eq!(
+            canonical_tool_name("deepseek-tui").as_deref(),
+            Some("codewhale")
+        );
         assert_eq!(canonical_tool_name("codex").as_deref(), Some("codex"));
     }
 

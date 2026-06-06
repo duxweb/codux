@@ -5,6 +5,7 @@ use crate::ai_runtime::{
     registry::AIRuntimeTerminalState,
     snapshot::{AIRuntimeProbeRequest, AISessionSnapshot},
     state::{canonical_tool_name, normalized_string},
+    tool_driver::is_supported_runtime_tool,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -49,10 +50,7 @@ pub(super) fn bridge_terminal_session(
         return None;
     }
     let tool = canonical_tool_name(terminal.tool.as_deref()?)?;
-    if !matches!(
-        tool.as_str(),
-        "codex" | "claude" | "gemini" | "opencode" | "kiro"
-    ) {
+    if !is_supported_runtime_tool(&tool) {
         return None;
     }
     let session_key = normalized_string(terminal.session_key.as_deref())?;

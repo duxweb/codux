@@ -98,10 +98,7 @@ pub struct RemotePendingPairing {
 pub(crate) struct RemoteSettings {
     #[serde(default, rename = "isEnabled")]
     pub(crate) is_enabled: bool,
-    #[serde(
-        default,
-        rename = "irohRelayURL"
-    )]
+    #[serde(default, rename = "irohRelayURL")]
     pub(crate) server_url: String,
     #[serde(default, alias = "hostId", rename = "hostID")]
     pub(crate) host_id: String,

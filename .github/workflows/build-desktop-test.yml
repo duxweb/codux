@@ -65,6 +65,12 @@ jobs:
         shell: bash
         run: cargo check --target "${CARGO_BUILD_TARGET}"
 
+      - name: Test release scripts
+        shell: bash
+        run: |
+          node scripts/release/test-package-gpui.mjs
+          node scripts/release/test-publish-github-release.mjs
+
       - name: Build
         shell: bash
         run: cargo build --release --target "${CARGO_BUILD_TARGET}"

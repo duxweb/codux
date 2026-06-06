@@ -1,10 +1,6 @@
 use super::*;
 
 impl CoduxApp {
-    pub(super) fn reload_project_files(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.reload_project_files_async(cx);
-    }
-
     pub(super) fn reload_project_files_async(&mut self, cx: &mut Context<Self>) {
         let Some(project) = &self.state.selected_project else {
             self.status_message = "no selected project to refresh".to_string();
@@ -535,37 +531,6 @@ impl CoduxApp {
         self.invalidate_file_panel(cx);
     }
 
-    pub(super) fn open_parent_file_directory(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.file_directory.trim().is_empty() {
-            self.status_message = "already at project root".to_string();
-            self.invalidate_file_panel(cx);
-            return;
-        }
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project to open parent directory".to_string();
-            self.invalidate_file_panel(cx);
-            return;
-        };
-        let parent = parent_relative_directory(&self.file_directory);
-        self.state.files = self
-            .runtime_service
-            .reload_project_files(&project.path, file_directory_option(&parent));
-        self.file_directory = parent;
-        self.clear_file_selection();
-        self.file_preview = "select a file to preview it".to_string();
-        self.file_editable = false;
-        self.file_dirty = false;
-        self.status_message = format!(
-            "directory opened{}",
-            current_directory_suffix(&self.file_directory)
-        );
-        self.invalidate_file_panel(cx);
-    }
-
     pub(super) fn normalize_selected_file_entry(&mut self) {
         let selected_still_exists = self
             .selected_file_entry
@@ -620,59 +585,6 @@ impl CoduxApp {
         } else {
             format!("file search matches: {count}")
         };
-        self.invalidate_file_panel(cx);
-    }
-
-    pub(super) fn close_file_search(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.file_search_open = false;
-        self.status_message = "file search closed".to_string();
-        self.invalidate_file_panel(cx);
-    }
-
-    pub(super) fn set_file_search_query(
-        &mut self,
-        value: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.file_search_query = value;
-        self.file_search_match_index = 0;
-        let count = self.file_search_match_lines().len();
-        self.status_message = if self.file_search_query.trim().is_empty() {
-            "file search query cleared".to_string()
-        } else {
-            format!("file search matches: {count}")
-        };
-        self.invalidate_file_panel(cx);
-    }
-
-    pub(super) fn select_next_file_search_match(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let count = self.file_search_match_lines().len();
-        if count > 0 {
-            self.file_search_match_index = (self.file_search_match_index + 1) % count;
-        }
-        self.status_message = file_search_status_message(self.file_search_match_index, count);
-        self.invalidate_file_panel(cx);
-    }
-
-    pub(super) fn select_previous_file_search_match(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let count = self.file_search_match_lines().len();
-        if count > 0 {
-            self.file_search_match_index = if self.file_search_match_index == 0 {
-                count - 1
-            } else {
-                self.file_search_match_index - 1
-            };
-        }
-        self.status_message = file_search_status_message(self.file_search_match_index, count);
         self.invalidate_file_panel(cx);
     }
 
@@ -1443,88 +1355,6 @@ impl CoduxApp {
                 self.status_message = format!("copied file entry: {copied_path}");
             }
             Err(error) => self.status_message = format!("failed to copy file entry: {error}"),
-        }
-        self.invalidate_file_panel(cx);
-    }
-
-    pub(super) fn import_external_file_entries(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for file import".to_string();
-            self.invalidate_file_panel(cx);
-            return;
-        };
-        let locale = locale_from_language_setting(&self.state.settings.language);
-        let project_path = project.path.clone();
-        let directory = file_directory_option(&self.file_directory).map(str::to_string);
-        let selection =
-            match self
-                .runtime_service
-                .localized_open_dialog(LocalizedOpenDialogRequest {
-                    title: translate(
-                        &locale,
-                        "files.panel.import_dialog_title",
-                        "Choose files to import",
-                    ),
-                    message: translate(
-                        &locale,
-                        "files.panel.import_dialog_title",
-                        "Choose files to import",
-                    ),
-                    prompt: translate(&locale, "files.panel.import_here", "Import Files Here"),
-                    default_path: None,
-                    filters: Vec::new(),
-                    directory: false,
-                    multiple: true,
-                    can_create_directories: Some(false),
-                }) {
-                Ok(Some(paths)) if !paths.is_empty() => paths,
-                Ok(_) => {
-                    self.status_message = "file import canceled".to_string();
-                    self.invalidate_file_panel(cx);
-                    return;
-                }
-                Err(error) => {
-                    self.status_message = format!("failed to choose files: {error}");
-                    self.invalidate_file_panel(cx);
-                    return;
-                }
-            };
-
-        match self.runtime_service.import_external_project_files(
-            &project_path,
-            selection,
-            directory.as_deref(),
-        ) {
-            Ok((files, selected)) => {
-                self.state.files = files;
-                self.refresh_file_tree_state();
-                self.selected_file_entry = selected.clone();
-                if let Some(path) = selected {
-                    match self
-                        .runtime_service
-                        .read_project_file_edit_buffer(&project_path, &path)
-                    {
-                        Ok((content, editable)) => {
-                            self.file_preview = content;
-                            self.file_editable = editable;
-                        }
-                        Err(_) => {
-                            self.file_preview = "external file imported".to_string();
-                            self.file_editable = false;
-                        }
-                    }
-                }
-                self.file_dirty = false;
-                self.state.git = self.runtime_service.reload_project_git(&project_path);
-                self.normalize_selected_git_file();
-                self.normalize_selected_git_branch();
-                self.status_message = "external file imported".to_string();
-            }
-            Err(error) => self.status_message = format!("failed to import external file: {error}"),
         }
         self.invalidate_file_panel(cx);
     }

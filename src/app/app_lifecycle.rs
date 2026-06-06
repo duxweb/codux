@@ -46,7 +46,7 @@ impl CoduxApp {
             &state.terminal_runtime,
             &state.settings.language,
         );
-        prepare_memory_launch_artifacts(&state);
+        prepare_memory_launch_artifacts(&runtime_service, &state);
         let launch_context = terminal_launch_context(&state, &runtime, &tool_permissions);
         let base_pty_config = launch_context
             .as_ref()
@@ -206,7 +206,6 @@ impl CoduxApp {
             file_tree_expanded_dirs: HashSet::new(),
             file_tree_children: HashMap::new(),
             file_tree_scroll_handle: UniformListScrollHandle::new(),
-            file_preview_scroll_handle: UniformListScrollHandle::new(),
             file_panel_refreshing: false,
             selected_git_file: None,
             selected_git_branch,
@@ -258,7 +257,6 @@ impl CoduxApp {
             pet_custom_install_seen_revision: current_pet_custom_install_event().revision,
             pet_update_seen_revision: current_pet_update_event().revision,
             settings_seen_revision: current_settings_update_event().revision,
-            ssh_seen_revision: current_ssh_update_event().revision,
             memory_seen_revision: current_memory_update_event().revision,
             child_window_update_seen_revision: current_child_window_update_event().revision,
             child_window_settings_seen_revision: current_child_window_update_event()

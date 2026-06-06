@@ -209,9 +209,18 @@ fn parse_process_line(line: &str) -> Option<RuntimeProcessSummary> {
 
 fn is_ai_runtime_process(command: &str) -> bool {
     let lower = command.to_ascii_lowercase();
-    ["codex", "claude", "gemini", "opencode", "kiro", "agy"]
-        .iter()
-        .any(|needle| lower.contains(needle))
+    [
+        "codex",
+        "claude",
+        "gemini",
+        "opencode",
+        "kiro",
+        "agy",
+        "codewhale",
+        "deepseek",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
         && !is_codux_process(command)
 }
 
@@ -285,5 +294,7 @@ mod tests {
         assert!(is_ai_runtime_process(
             "/usr/bin/codex --project /Volumes/Web/codux-gpui"
         ));
+        assert!(is_ai_runtime_process("/usr/bin/codewhale-tui"));
+        assert!(is_ai_runtime_process("/usr/bin/deepseek resume session-1"));
     }
 }

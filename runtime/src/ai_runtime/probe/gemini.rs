@@ -1,21 +1,27 @@
 use crate::ai_runtime::{
     probe::{
         common::{json_i64, parse_iso8601_seconds},
-        paths::gemini_session_paths,
+        paths::{agy_session_paths, gemini_session_paths},
         preview::joined_preview_from_values,
     },
     snapshot::{AIRuntimeContextSnapshot, AIRuntimeProbeRequest},
-    state::normalized_string,
+    state::{canonical_tool_name, normalized_string},
 };
 use serde_json::Value;
 use std::{fs, path::Path};
 
-pub(super) fn probe_gemini_runtime(
+pub(crate) fn probe_gemini_runtime(
     request: &AIRuntimeProbeRequest,
 ) -> Option<AIRuntimeContextSnapshot> {
     let project_path = normalized_string(request.project_path.as_deref())?;
+    let tool = canonical_tool_name(&request.tool).unwrap_or_else(|| "gemini".to_string());
     let preferred_id = normalized_string(request.external_session_id.as_deref());
-    let states = gemini_session_paths(&project_path)
+    let session_paths = if tool == "agy" {
+        agy_session_paths(&project_path)
+    } else {
+        gemini_session_paths(&project_path)
+    };
+    let states = session_paths
         .into_iter()
         .take(16)
         .filter_map(|path| parse_gemini_runtime_state(&path))
@@ -78,7 +84,7 @@ pub(super) fn probe_gemini_runtime(
 
     let has_completed_turn = state.response_state.as_deref() == Some("idle");
     Some(AIRuntimeContextSnapshot {
-        tool: "gemini".to_string(),
+        tool,
         external_session_id: Some(state.external_session_id),
         transcript_path: None,
         model: state.model,

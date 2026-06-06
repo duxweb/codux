@@ -1,5 +1,7 @@
 use super::*;
 use crate::ai_runtime::{AIHookEventMetadata, AIProjectPhase};
+use std::fs;
+use uuid::Uuid;
 
 #[test]
 fn hook_lifecycle_tracks_running_and_completion() {
@@ -94,6 +96,110 @@ fn tool_activity_without_loading_is_ignored() {
 
     assert!(!mutation.did_change);
     assert!(store.snapshot().sessions.is_empty());
+}
+
+#[test]
+fn codewhale_hook_is_tracked_as_runtime_session() {
+    let store = AIRuntimeStateStore::default();
+    let mutation = store.apply_hook(test_hook_for(
+        "deepseek-tui",
+        "codewhale-term-1",
+        "codewhale-session-1",
+        1000.0,
+    ));
+
+    assert!(mutation.did_change);
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.running_count, 1);
+    assert_eq!(snapshot.sessions[0].tool, "codewhale");
+    assert_eq!(snapshot.sessions[0].terminal_id, "codewhale-term-1");
+    assert_eq!(
+        snapshot.sessions[0].ai_session_id.as_deref(),
+        Some("codewhale-session-1")
+    );
+}
+
+#[test]
+fn codewhale_terminal_bridge_is_not_filtered() {
+    let terminal = AIRuntimeTerminalState {
+        terminal_id: "codewhale-term-1".to_string(),
+        project_id: "project-1".to_string(),
+        slot_id: "slot-1".to_string(),
+        title: "CodeWhale".to_string(),
+        cwd: "/tmp/codewhale-project".to_string(),
+        tool: Some("codewhale-tui".to_string()),
+        is_active: true,
+        session_key: Some("codewhale-session-1".to_string()),
+        terminal_instance_id: Some("instance-1".to_string()),
+    };
+
+    let session = bridge_terminal_session(&terminal, 1000.0).expect("session");
+
+    assert_eq!(session.tool, "codewhale");
+    assert_eq!(session.terminal_id, "codewhale-term-1");
+    assert_eq!(
+        session.ai_session_id.as_deref(),
+        Some("codewhale-session-1")
+    );
+}
+
+#[test]
+fn codewhale_completion_merges_realtime_probe_snapshot() {
+    let root = std::env::temp_dir().join(format!("codux-codewhale-store-probe-{}", Uuid::new_v4()));
+    let project = root.join("project");
+    let session_dir = root.join(".codewhale").join("sessions");
+    fs::create_dir_all(&project).unwrap();
+    fs::create_dir_all(&session_dir).unwrap();
+    let session_file = session_dir.join("session-1.json");
+    fs::write(
+        &session_file,
+        format!(
+            r#"{{
+                "metadata": {{
+                    "id": "session-1",
+                    "workspace": "{}",
+                    "model": "deepseek-chat",
+                    "total_tokens": 789,
+                    "created_at": "2026-06-06T01:00:00Z",
+                    "updated_at": "2026-06-06T01:01:00Z"
+                }},
+                "messages": [
+                    {{ "role": "assistant", "content": "done" }}
+                ]
+            }}"#,
+            project.display()
+        ),
+    )
+    .unwrap();
+    let store = AIRuntimeStateStore::default();
+    let mut prompt = test_hook_for("codewhale", "codewhale-term-1", "session-1", 1000.0);
+    prompt.project_path = Some(project.display().to_string());
+    prompt.model = None;
+    assert!(store.apply_hook(prompt).did_change);
+
+    let mut complete = test_hook_for("deepseek-tui", "codewhale-term-1", "session-1", 1010.0);
+    complete.kind = "turnCompleted".to_string();
+    complete.project_path = Some(project.display().to_string());
+    complete.model = None;
+    complete.metadata = Some(AIHookEventMetadata {
+        transcript_path: Some(session_file.display().to_string()),
+        has_completed_turn: Some(true),
+        ..empty_metadata()
+    });
+    assert!(store.apply_hook(complete).did_change);
+
+    let snapshot = store.snapshot();
+    let session = snapshot
+        .sessions
+        .iter()
+        .find(|session| session.terminal_id == "codewhale-term-1")
+        .unwrap();
+    assert_eq!(session.tool, "codewhale");
+    assert_eq!(session.model.as_deref(), Some("deepseek-chat"));
+    assert_eq!(session.total_tokens, 789);
+    assert_eq!(session.state, "idle");
+
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

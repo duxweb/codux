@@ -45,13 +45,6 @@ impl CoduxApp {
         app
     }
 
-    pub(super) fn start_desktop_pet_speech_loop(&mut self, cx: &mut Context<Self>) {
-        self.start_desktop_pet_speech_loop_with_initial_fullscreen(
-            self.desktop_pet_main_window_fullscreen,
-            cx,
-        );
-    }
-
     fn start_desktop_pet_speech_loop_with_initial_fullscreen(
         &mut self,
         main_window_fullscreen: bool,
@@ -571,44 +564,6 @@ impl CoduxApp {
         }
     }
 
-    pub(super) fn refresh_pet(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let service = self.runtime_service.clone();
-        self.runtime_trace("pet", "refresh_pet queued");
-        self.status_message = "refreshing pet data".to_string();
-        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            let result = codux_runtime::async_runtime::run_limited_blocking(move || {
-                service.runtime_trace_frontend("pet", "refresh_pet start");
-                let result = service.refresh_pet_from_indexed_history();
-                match &result {
-                    Ok(_) => service.runtime_trace_frontend("pet", "refresh_pet ok"),
-                    Err(error) => service.runtime_trace_frontend(
-                        "pet",
-                        &format!("refresh_pet failed error={error}"),
-                    ),
-                }
-                result
-            })
-            .await
-            .unwrap_or_else(|error| Err(format!("failed to join pet refresh: {error}")));
-
-            let _ = this.update(cx, |app, cx| {
-                match result {
-                    Ok(_) => {
-                        app.refresh_pet_cache_async(cx);
-                        if app.window_mode == AppWindowMode::Main {
-                            app.sync_desktop_pet_window(false, cx);
-                        }
-                        app.status_message = "pet data refreshed".to_string();
-                    }
-                    Err(error) => app.status_message = format!("failed to refresh pet: {error}"),
-                }
-                app.invalidate_ui_region(cx, UiRegion::Root);
-            });
-        })
-        .detach();
-        self.invalidate_ui_region(cx, UiRegion::Root);
-    }
-
     pub(in crate::app) fn run_pet_change_async(
         &mut self,
         action: &'static str,
@@ -902,19 +857,6 @@ impl CoduxApp {
         self.invalidate_ui_region(cx, UiRegion::Root);
     }
 
-    pub(super) fn open_pet_source_url(
-        &mut self,
-        url: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match self.runtime_service.open_url(&url) {
-            Ok(_) => self.status_message = "pet source opened".to_string(),
-            Err(error) => self.status_message = format!("failed to open pet source: {error}"),
-        }
-        self.invalidate_ui_region(cx, UiRegion::Root);
-    }
-
     pub(super) fn install_custom_pet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.pet_install_previewing || self.pet_installing {
             self.status_message = "custom pet install task is already running".to_string();
@@ -1182,16 +1124,6 @@ impl CoduxApp {
             },
             cx,
         );
-        self.invalidate_ui_region(cx, UiRegion::Root);
-    }
-
-    pub(super) fn sync_tool_permissions(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.tool_permissions = self.runtime_service.sync_tool_permissions();
-        self.status_message = if let Some(error) = &self.state.tool_permissions.error {
-            format!("failed to sync tool permissions: {error}")
-        } else {
-            "tool permissions synced for runtime wrappers".to_string()
-        };
         self.invalidate_ui_region(cx, UiRegion::Root);
     }
 

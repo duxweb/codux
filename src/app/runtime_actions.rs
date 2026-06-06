@@ -210,29 +210,6 @@ impl CoduxApp {
         .detach();
     }
 
-    pub(super) fn refresh_runtime_activity_state(&mut self, poll_live_ai: bool) {
-        self.state.runtime_activity = self.runtime_service.reload_runtime_activity();
-        self.state.runtime_events = self.runtime_service.reload_runtime_events();
-        let ssh_event = current_ssh_update_event();
-        if ssh_event.revision > self.ssh_seen_revision {
-            self.ssh_seen_revision = ssh_event.revision;
-            self.state.ssh = self.runtime_service.reload_ssh(self.runtime.root.clone());
-            self.normalize_selected_ssh_profile();
-        }
-        let ai_snapshot = if poll_live_ai {
-            self.runtime_service
-                .poll_ai_runtime_state()
-                .unwrap_or_else(|_| self.runtime_service.ai_runtime_state_snapshot())
-        } else {
-            self.runtime_service.ai_runtime_state_snapshot()
-        };
-        self.state.ai_runtime_state = self
-            .runtime_service
-            .summarize_ai_runtime_state_snapshot(&ai_snapshot);
-        self.state.refresh_ai_history_stats();
-        self.normalize_selected_runtime_session();
-    }
-
     pub(crate) fn start_ai_history_refresh(&mut self, show_progress: bool, cx: &mut Context<Self>) {
         let Some(project) = self.state.selected_project.clone() else {
             self.status_message = "no selected project to refresh".to_string();

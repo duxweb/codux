@@ -176,6 +176,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
     settings.gemini = sanitize_tool_permission_mode(&settings.gemini);
     settings.opencode = sanitize_tool_permission_mode(&settings.opencode);
     settings.kiro = sanitize_tool_permission_mode(&settings.kiro);
+    settings.codewhale = sanitize_tool_permission_mode(&settings.codewhale);
     settings.codex_model = settings.codex_model.trim().chars().take(160).collect();
     settings.claude_code_model = settings
         .claude_code_model
@@ -186,6 +187,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
     settings.gemini_model = settings.gemini_model.trim().chars().take(160).collect();
     settings.opencode_model = settings.opencode_model.trim().chars().take(160).collect();
     settings.kiro_model = settings.kiro_model.trim().chars().take(160).collect();
+    settings.codewhale_model = settings.codewhale_model.trim().chars().take(160).collect();
     settings.codex_effort = match settings.codex_effort.trim() {
         "none" => "none".to_string(),
         "minimal" => "minimal".to_string(),

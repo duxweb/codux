@@ -439,6 +439,13 @@ mod tests {
             ai_session_restore_command(&session),
             "agy resume 'session key'"
         );
+
+        session.source = "codewhale".to_string();
+        session.external_session_id = Some("external-2".to_string());
+        assert_eq!(
+            ai_session_restore_command(&session),
+            "codewhale resume external-2"
+        );
     }
 
     #[test]

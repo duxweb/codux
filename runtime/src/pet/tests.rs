@@ -402,7 +402,13 @@ fn pet_stats_use_session_shape_without_flat_placeholder_values() {
     .unwrap_or(0);
     assert!(max_trait > 0);
     assert_ne!(
-        [stats.wisdom, stats.chaos, stats.night, stats.stamina, stats.empathy],
+        [
+            stats.wisdom,
+            stats.chaos,
+            stats.night,
+            stats.stamina,
+            stats.empathy
+        ],
         [100, 100, 100, 100, 100]
     );
 }

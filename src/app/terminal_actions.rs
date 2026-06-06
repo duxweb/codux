@@ -77,8 +77,9 @@ impl CoduxApp {
                         TerminalTabPlacement::Bottom => Some(TerminalCloseTarget::Tab {
                             terminal_id: tab.id,
                         }),
-                        TerminalTabPlacement::Top => (tab.panes.len() > 1)
-                            .then_some(TerminalCloseTarget::Split { pane_index }),
+                        TerminalTabPlacement::Top => {
+                            Some(TerminalCloseTarget::Split { pane_index })
+                        }
                     };
                 }
             }
@@ -102,11 +103,11 @@ impl CoduxApp {
                     && slot.terminal_id.as_deref() == Some(active_runtime_id.as_str())
             })
             .unwrap_or(0);
-        (tab.panes.len() > 1).then_some(TerminalCloseTarget::Split { pane_index })
+        Some(TerminalCloseTarget::Split { pane_index })
     }
 
     pub(in crate::app) fn add_terminal_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        prepare_memory_launch_artifacts(&self.state);
+        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
         let launch_context = self.current_terminal_launch_context();
         let base_pty_config = launch_context
             .as_ref()
@@ -172,7 +173,7 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn split_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        prepare_memory_launch_artifacts(&self.state);
+        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
         let launch_context = self.current_terminal_launch_context();
         let base_pty_config = launch_context
             .as_ref()
@@ -411,8 +412,7 @@ impl CoduxApp {
             return;
         };
         if self.terminals[tab_index].panes.len() <= 1 {
-            self.status_message = "keep at least one main split pane".to_string();
-            self.invalidate_terminal_workspace(cx);
+            self.reset_terminal_pane(pane_index, window, cx);
             return;
         }
         if pane_index >= self.terminals[tab_index].panes.len() {
@@ -456,6 +456,59 @@ impl CoduxApp {
         self.invalidate_terminal_workspace(cx);
     }
 
+    fn reset_terminal_pane(
+        &mut self,
+        pane_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab_index) = self
+            .terminals
+            .iter()
+            .position(|tab| tab.placement == TerminalTabPlacement::Top)
+            .or_else(|| {
+                self.terminals
+                    .iter()
+                    .position(|tab| tab.id == self.active_terminal_id)
+            })
+        else {
+            return;
+        };
+        if pane_index >= self.terminals[tab_index].panes.len() {
+            return;
+        }
+        self.refresh_terminal_slot_snapshots();
+        let terminal_id = self.terminals[tab_index].panes[pane_index]
+            .terminal_id
+            .clone()
+            .or_else(|| self.terminals[tab_index].terminal_id.clone())
+            .unwrap_or_default();
+        if terminal_id.trim().is_empty() {
+            self.status_message = "terminal split has no terminal id".to_string();
+            self.invalidate_terminal_workspace(cx);
+            return;
+        }
+        self.terminals[tab_index].panes[pane_index].pane = None;
+        self.terminals[tab_index].panes[pane_index].restored_output_bytes = 0;
+        self.terminals[tab_index].panes[pane_index]
+            .restored_output_tail
+            .clear();
+        let kill_result = self.kill_terminal_session_if_present(&terminal_id);
+        self.set_active_terminal_runtime_id(Some(&terminal_id));
+        let mount_result = self.ensure_active_terminal_mounted(cx);
+        self.detach_inactive_terminal_views();
+        self.focus_active_terminal(window, cx);
+        self.sync_terminal_state_after_layout_change(cx);
+        if let Err(error) = kill_result {
+            self.status_message = format!("terminal reset; PTY cleanup failed: {error}");
+        } else if let Err(error) = mount_result {
+            self.status_message = format!("terminal reset; mount failed: {error}");
+        } else {
+            self.status_message = "terminal reset".to_string();
+        }
+        self.invalidate_terminal_workspace(cx);
+    }
+
     pub(in crate::app) fn send_to_active_terminal(&mut self, text: &str, cx: &mut Context<Self>) {
         if let Err(error) = self.ensure_active_terminal_mounted(cx) {
             self.status_message = format!("failed to mount active terminal: {error}");
@@ -494,7 +547,7 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        prepare_memory_launch_artifacts(&self.state);
+        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
         let launch_context = self.current_terminal_launch_context();
         let base_pty_config = launch_context
             .as_ref()

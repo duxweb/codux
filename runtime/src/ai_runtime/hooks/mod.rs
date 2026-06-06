@@ -1,3 +1,4 @@
+mod codewhale;
 mod codex;
 mod command;
 mod install;

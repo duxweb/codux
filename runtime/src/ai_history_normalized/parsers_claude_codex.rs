@@ -1,15 +1,3 @@
-fn parse_claude_history(project: &AIHistoryProjectRequest, home: &Path) -> ParsedHistory {
-    let mut result = ParsedHistory::default();
-    for file_path in claude_project_log_paths(&project.path, home) {
-        result.merge(parse_claude_history_file(project, &file_path));
-    }
-    result
-}
-
-fn parse_claude_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -> ParsedHistory {
-    parse_claude_history_file_snapshot(project, file_path, 0, None).result
-}
-
 fn parse_claude_history_file_snapshot(
     project: &AIHistoryProjectRequest,
     file_path: &Path,
@@ -132,18 +120,6 @@ fn parse_claude_history_file_snapshot(
         last_processed_offset,
         payload_json: encode_checkpoint_payload(&payload),
     }
-}
-
-fn parse_codex_history(project: &AIHistoryProjectRequest, home: &Path) -> ParsedHistory {
-    let mut result = ParsedHistory::default();
-    for file_path in codex_session_paths(&project.path, home) {
-        result.merge(parse_codex_history_file(project, &file_path));
-    }
-    result
-}
-
-fn parse_codex_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -> ParsedHistory {
-    parse_codex_history_file_snapshot(project, file_path, 0, None).result
 }
 
 fn parse_codex_history_file_snapshot(

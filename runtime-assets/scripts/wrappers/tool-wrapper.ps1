@@ -101,6 +101,10 @@ function Tool-Config-Key([string]$Name) {
     "gemini" { "gemini" }
     "agy" { "gemini" }
     "opencode" { "opencode" }
+    "codewhale" { "codewhale" }
+    "codewhale-tui" { "codewhale" }
+    "deepseek" { "codewhale" }
+    "deepseek-tui" { "codewhale" }
     default { "" }
   }
 }
@@ -113,6 +117,10 @@ function Tool-Model-Key([string]$Name) {
     "gemini" { "geminiModel" }
     "agy" { "geminiModel" }
     "opencode" { "opencodeModel" }
+    "codewhale" { "codewhaleModel" }
+    "codewhale-tui" { "codewhaleModel" }
+    "deepseek" { "codewhaleModel" }
+    "deepseek-tui" { "codewhaleModel" }
     default { "" }
   }
 }
@@ -381,6 +389,10 @@ if ($permissionMode -eq "fullAccess") {
   } elseif ($Tool -eq "opencode") {
     if (-not (Has-Arg $launchArgs "--dangerously-skip-permissions")) {
       $launchArgs = @("--dangerously-skip-permissions") + $launchArgs
+    }
+  } elseif ($Tool -eq "codewhale" -or $Tool -eq "codewhale-tui" -or $Tool -eq "deepseek" -or $Tool -eq "deepseek-tui") {
+    if (-not (Has-Arg $launchArgs "--yolo")) {
+      $launchArgs = @("--yolo") + $launchArgs
     }
   }
 }

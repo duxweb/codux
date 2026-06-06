@@ -16,7 +16,7 @@ use std::{
     path::Path,
 };
 
-pub(super) fn probe_claude_runtime(
+pub(crate) fn probe_claude_runtime(
     request: &AIRuntimeProbeRequest,
 ) -> Option<AIRuntimeContextSnapshot> {
     let project_path = normalized_string(request.project_path.as_deref())?;

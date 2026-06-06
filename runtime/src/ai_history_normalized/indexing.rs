@@ -34,11 +34,9 @@ fn project_history_source_fingerprint_with_home(
         return AIHistorySourceFingerprint { files: Vec::new() };
     }
     let mut files = Vec::new();
-    collect_source_fingerprints("claude", claude_project_log_paths(&project.path, home), &mut files);
-    collect_source_fingerprints("codex", codex_session_paths(&project.path, home), &mut files);
-    collect_source_fingerprints("gemini", gemini_session_paths(&project.path, home), &mut files);
-    collect_source_fingerprints("kiro", kiro_session_paths(&project.path, home), &mut files);
-    collect_source_fingerprints("opencode", opencode_history_source_paths(home), &mut files);
+    for driver in history_sources::history_source_drivers() {
+        collect_source_fingerprints(driver.source, driver.paths(project, home), &mut files);
+    }
     files.sort_by(|left, right| {
         left.source
             .cmp(&right.source)
@@ -333,16 +331,10 @@ fn load_project_history_without_store(
     on_progress: &mut impl FnMut(f64, &'static str),
 ) -> AIHistorySnapshot {
     let mut parsed = ParsedHistory::default();
-    parsed.merge(parse_claude_history(&project, home));
-    on_progress(0.38, "readingSources");
-    parsed.merge(parse_codex_history(&project, home));
-    on_progress(0.58, "readingSources");
-    parsed.merge(parse_gemini_history(&project, home));
-    on_progress(0.74, "readingSources");
-    parsed.merge(parse_kiro_history(&project, home));
-    on_progress(0.82, "readingSources");
-    parsed.merge(parse_opencode_history(&project, home));
-    on_progress(0.88, "readingSources");
+    for driver in history_sources::history_source_drivers() {
+        parsed.merge(driver.parse_all(&project, home));
+        on_progress(history_sources::history_source_progress(driver.source), "readingSources");
+    }
     on_progress(0.96, "aggregating");
     build_snapshot(project, parsed)
 }
@@ -358,71 +350,10 @@ fn load_project_history_with_store(
     }
 
     let conn = store.connect()?;
-    for file_path in claude_project_log_paths(&project.path, home) {
-        let _ = store.load_or_index_jsonl_file(
-            &conn,
-            "claude",
-            &file_path,
-            &project,
-            |checkpoint| {
-                let seed = checkpoint.and_then(|checkpoint| {
-                    decode_checkpoint_payload(checkpoint.payload_json.as_deref())
-                });
-                parse_claude_history_file_snapshot(
-                    &project,
-                    &file_path,
-                    checkpoint.map(|item| item.last_offset).unwrap_or(0),
-                    seed.as_ref(),
-                )
-            },
-            || parse_claude_history_file_snapshot(&project, &file_path, 0, None),
-        )?;
+    for driver in history_sources::history_source_drivers() {
+        driver.load_or_index(store, &conn, &project, home)?;
+        on_progress(history_sources::history_source_progress(driver.source), "readingSources");
     }
-    on_progress(0.38, "readingSources");
-    for file_path in codex_session_paths(&project.path, home) {
-        let _ = store.load_or_index_jsonl_file(
-            &conn,
-            "codex",
-            &file_path,
-            &project,
-            |checkpoint| {
-                let seed = checkpoint.and_then(|checkpoint| {
-                    decode_checkpoint_payload(checkpoint.payload_json.as_deref())
-                });
-                parse_codex_history_file_snapshot(
-                    &project,
-                    &file_path,
-                    checkpoint.map(|item| item.last_offset).unwrap_or(0),
-                    seed.as_ref(),
-                )
-            },
-            || parse_codex_history_file_snapshot(&project, &file_path, 0, None),
-        )?;
-    }
-    on_progress(0.58, "readingSources");
-    for file_path in gemini_session_paths(&project.path, home) {
-        let _ = store.load_or_index_file(&conn, "gemini", &file_path, &project, || {
-            parse_gemini_history_file(&project, &file_path)
-        })?;
-    }
-    on_progress(0.74, "readingSources");
-    for file_path in kiro_session_paths(&project.path, home) {
-        let _ = store.load_or_index_file(&conn, "kiro", &file_path, &project, || {
-            parse_kiro_history_file(&project, &file_path)
-        })?;
-    }
-    on_progress(0.82, "readingSources");
-    for file_path in opencode_history_source_paths(home) {
-        let source = if file_path.extension().and_then(|value| value.to_str()) == Some("db") {
-            "opencode"
-        } else {
-            "opencode"
-        };
-        let _ = store.load_or_index_file(&conn, source, &file_path, &project, || {
-            parse_opencode_history_file(&project, &file_path)
-        })?;
-    }
-    on_progress(0.88, "readingSources");
     on_progress(0.96, "aggregating");
     let project_path = project.path.clone();
     let snapshot = store.project_snapshot(&conn, project)?;

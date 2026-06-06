@@ -43,10 +43,11 @@ impl Render for WorkspaceColumnView {
                 div()
                     .flex()
                     .flex_1()
+                    .flex_basis(px(0.0))
                     .w_full()
-                    .h_full()
                     .min_w_0()
                     .min_h_0()
+                    .overflow_hidden()
                     .child(gpui::AnyView::from(self.body_view.clone()))
                     .child(gpui::AnyView::from(self.assistant_view.clone())),
             )
@@ -798,7 +799,7 @@ impl Render for TerminalWorkspaceView {
                         .w_full()
                         .child(main),
                 )
-                .child(div().h(px(40.0)).child(bottom));
+                .child(div().h(TERMINAL_BOTTOM_TAB_BAR_HEIGHT).child(bottom));
         }
 
         base.child(
@@ -831,7 +832,7 @@ impl Render for TerminalWorkspaceView {
                 .child(
                     resizable_panel()
                         .size(bottom_size)
-                        .size_range(px(44.0)..px(520.0))
+                        .size_range(TERMINAL_BOTTOM_PANEL_MIN_SIZE..px(520.0))
                         .child(bottom),
                 ),
         )
@@ -926,9 +927,12 @@ fn active_terminal_bottom_tab_id(tabs: &[TerminalBottomTabViewSnapshot]) -> Opti
 }
 
 const TERMINAL_SPLIT_BASE_SIZE: Pixels = px(640.0);
+const TERMINAL_BOTTOM_TAB_BAR_HEIGHT: Pixels = px(40.0);
+const TERMINAL_BOTTOM_PANEL_MIN_SIZE: Pixels = px(128.0);
 
 fn terminal_bottom_panel_size(ratio: f64) -> Pixels {
-    px((TERMINAL_SPLIT_BASE_SIZE.as_f32() as f64 * ratio) as f32).clamp(px(96.0), px(360.0))
+    px((TERMINAL_SPLIT_BASE_SIZE.as_f32() as f64 * ratio) as f32)
+        .clamp(TERMINAL_BOTTOM_PANEL_MIN_SIZE, px(360.0))
 }
 
 fn terminal_bottom_ratio_from_sizes(sizes: &[Pixels]) -> Option<f64> {
@@ -1084,9 +1088,11 @@ fn terminal_bottom_tabs_area(
         .size_full()
         .min_w_0()
         .min_h_0()
+        .overflow_hidden()
         .child(
             div()
-                .h(px(40.0))
+                .h(TERMINAL_BOTTOM_TAB_BAR_HEIGHT)
+                .flex_none()
                 .flex()
                 .items_center()
                 .justify_between()
@@ -1131,7 +1137,14 @@ fn terminal_bottom_tabs_area(
                 .child(terminal_bottom_add_button(app_entity.clone(), cx)),
         )
         .when_some(active, |this, tab| {
-            this.child(div().flex_1().min_h_0().child(terminal_bottom_content(tab)))
+            this.child(
+                div()
+                    .flex_1()
+                    .flex_basis(px(0.0))
+                    .min_h_0()
+                    .overflow_hidden()
+                    .child(terminal_bottom_content(tab)),
+            )
         })
         .into_any_element()
 }
@@ -1140,6 +1153,7 @@ fn terminal_bottom_content(tab: TerminalPaneViewSnapshot) -> AnyElement {
     div()
         .size_full()
         .min_h_0()
+        .overflow_hidden()
         .child(match tab.view {
             Some(view) => gpui::AnyView::from(view).into_any_element(),
             None => div()

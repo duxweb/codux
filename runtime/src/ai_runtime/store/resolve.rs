@@ -16,8 +16,10 @@ pub(super) fn resolve_hook_event(
     match canonical_tool_name(&event.tool).as_deref() {
         Some("codex") => resolve_codex_hook_event(event, current_session),
         Some("claude") => resolve_claude_hook_event(event, current_session),
-        Some("gemini") => resolve_gemini_hook_event(event, current_session),
-        Some("kiro") => resolve_kiro_hook_event(event, current_session),
+        Some("gemini") => resolve_project_probe_hook_event(event, current_session, "gemini"),
+        Some("agy") => resolve_project_probe_hook_event(event, current_session, "agy"),
+        Some("kiro") => resolve_project_probe_hook_event(event, current_session, "kiro"),
+        Some("codewhale") => resolve_project_probe_hook_event(event, current_session, "codewhale"),
         _ => {
             let fallback = matching_fallback_session(&event, current_session);
             with_fallback(event, fallback)
@@ -106,9 +108,10 @@ fn resolve_claude_hook_event(
         .unwrap_or(resolved)
 }
 
-fn resolve_gemini_hook_event(
+fn resolve_project_probe_hook_event(
     event: AIHookEventPayload,
     current_session: Option<&AISessionSnapshot>,
+    tool: &str,
 ) -> AIHookEventPayload {
     let fallback = matching_fallback_session(&event, current_session);
     let resolved = with_fallback(event, fallback);
@@ -120,38 +123,13 @@ fn resolve_gemini_hook_event(
         terminal_instance_id: resolved.terminal_instance_id.clone(),
         project_id: resolved.project_id.clone(),
         project_path: resolved.project_path.clone(),
-        tool: "gemini".to_string(),
+        tool: tool.to_string(),
         external_session_id: normalized_string(resolved.ai_session_id.as_deref())
             .or_else(|| fallback.and_then(|session| session.ai_session_id.clone())),
-        transcript_path: None,
-        started_at: fallback
-            .and_then(|session| session.started_at)
-            .or(Some(resolved.updated_at)),
-        updated_at: resolved.updated_at,
-    };
-    probe_runtime(&request)
-        .map(|snapshot| merge_snapshot_into_hook(resolved.clone(), snapshot, fallback))
-        .unwrap_or(resolved)
-}
-
-fn resolve_kiro_hook_event(
-    event: AIHookEventPayload,
-    current_session: Option<&AISessionSnapshot>,
-) -> AIHookEventPayload {
-    let fallback = matching_fallback_session(&event, current_session);
-    let resolved = with_fallback(event, fallback);
-    if normalized_string(resolved.project_path.as_deref()).is_none() {
-        return resolved;
-    }
-    let request = AIRuntimeProbeRequest {
-        terminal_id: resolved.terminal_id.clone(),
-        terminal_instance_id: resolved.terminal_instance_id.clone(),
-        project_id: resolved.project_id.clone(),
-        project_path: resolved.project_path.clone(),
-        tool: "kiro".to_string(),
-        external_session_id: normalized_string(resolved.ai_session_id.as_deref())
-            .or_else(|| fallback.and_then(|session| session.ai_session_id.clone())),
-        transcript_path: None,
+        transcript_path: resolved
+            .metadata
+            .as_ref()
+            .and_then(|metadata| normalized_string(metadata.transcript_path.as_deref())),
         started_at: fallback
             .and_then(|session| session.started_at)
             .or(Some(resolved.updated_at)),

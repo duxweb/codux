@@ -189,6 +189,39 @@ fn stats_view_owns_display_token_mode_and_project_filtering() {
     assert_eq!(with_cache.model_rows[0].value, 100);
 }
 
+#[test]
+fn stats_view_filters_current_sessions_by_selected_worktree_scope() {
+    let runtime = AIRuntimeStateSummary {
+        sessions: vec![
+            AIRuntimeSessionSummary {
+                project_id: "worktree-a".to_string(),
+                tool: "codex".to_string(),
+                total_tokens: 10,
+                ..runtime_session("term-a")
+            },
+            AIRuntimeSessionSummary {
+                project_id: "worktree-b".to_string(),
+                tool: "codewhale".to_string(),
+                total_tokens: 20,
+                ..runtime_session("term-b")
+            },
+        ],
+        ..Default::default()
+    };
+
+    let stats = stats_view(
+        &AIHistorySummary::default(),
+        &runtime,
+        Some("worktree-b"),
+        "normalized",
+        2_000.0,
+    );
+
+    assert_eq!(stats.current_sessions.len(), 1);
+    assert_eq!(stats.current_sessions[0].tool, "codewhale");
+    assert_eq!(stats.current_sessions[0].total_tokens, 20);
+}
+
 fn temp_support_dir(label: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

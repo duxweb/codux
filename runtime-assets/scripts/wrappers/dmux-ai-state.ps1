@@ -3,7 +3,26 @@ $ErrorActionPreference = "SilentlyContinue"
 $Action = if ($args.Count -ge 1) { [string]$args[0] } else { "" }
 $Owner = if ($args.Count -ge 2) { [string]$args[1] } else { "" }
 $Tool = if ($args.Count -ge 3) { [string]$args[2] } else { [string]$env:DMUX_ACTIVE_AI_TOOL }
-$HookPayload = [Console]::In.ReadToEnd()
+
+function Read-HookPayload {
+  try {
+    if ([Console]::IsInputRedirected) {
+      $buffer = New-Object char[] 65536
+      $builder = [System.Text.StringBuilder]::new()
+      while ([Console]::In.Peek() -ge 0) {
+        $count = [Console]::In.Read($buffer, 0, $buffer.Length)
+        if ($count -le 0) { break }
+        [void]$builder.Append($buffer, 0, $count)
+        if ($builder.Length -ge 1048576) { break }
+      }
+      return $builder.ToString()
+    }
+  } catch {
+  }
+  return ""
+}
+
+$HookPayload = Read-HookPayload
 
 if (-not [string]::IsNullOrWhiteSpace($Owner) -and
     -not [string]::IsNullOrWhiteSpace($env:DMUX_RUNTIME_OWNER) -and
@@ -116,6 +135,24 @@ function Resolve-Model($Payload) {
   $model = Find-FirstString $Payload @("model", "model_name", "modelName")
   if (-not [string]::IsNullOrWhiteSpace($model)) { return $model }
   if (-not [string]::IsNullOrWhiteSpace($env:DMUX_ACTIVE_AI_MODEL)) { return $env:DMUX_ACTIVE_AI_MODEL }
+  if ($Tool -eq "codewhale" -or $Tool -eq "codewhale-tui" -or $Tool -eq "deepseek" -or $Tool -eq "deepseek-tui") {
+    return Get-CodeWhaleDefaultModel
+  }
+  return $null
+}
+
+function Get-CodeWhaleDefaultModel {
+  $settingsFile = Join-Path $HOME ".codewhale/settings.toml"
+  if (-not (Test-Path -LiteralPath $settingsFile)) { return $null }
+  try {
+    foreach ($line in (Get-Content -LiteralPath $settingsFile -Encoding UTF8)) {
+      if ($line -match '^\s*default_text_model\s*=\s*(.+?)\s*$') {
+        $value = $Matches[1].Trim().Trim('"')
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+      }
+    }
+  } catch {
+  }
   return $null
 }
 
@@ -182,8 +219,12 @@ function Get-EventKind([string]$Value) {
   switch ($Value) {
     "session-start" { return "sessionStarted" }
     "codex-session-start" { return "sessionStarted" }
+    "codewhale-session-start" { return "sessionStarted" }
     "prompt-submit" { return "promptSubmitted" }
     "codex-prompt-submit" { return "promptSubmitted" }
+    "codewhale-message-submit" { return "promptSubmitted" }
+    "codewhale-tool-call-before" { return "promptSubmitted" }
+    "codewhale-tool-call-after" { return "promptSubmitted" }
     "before-agent" { return "promptSubmitted" }
     "pre-compact" { return "memoryRefreshing" }
     "post-compact" { return "memoryRefreshing" }
@@ -201,10 +242,12 @@ function Get-EventKind([string]$Value) {
     "stop" { return "turnCompleted" }
     "stop-failure" { return "turnCompleted" }
     "codex-stop" { return "turnCompleted" }
+    "codewhale-error" { return "turnCompleted" }
     "idle" { return "turnCompleted" }
     "after-agent" { return "turnCompleted" }
     "session-end" { return "sessionEnded" }
     "codex-session-end" { return "sessionEnded" }
+    "codewhale-session-end" { return "sessionEnded" }
     default { return "" }
   }
 }
@@ -213,6 +256,9 @@ function Get-Source([string]$Value, $Payload) {
   switch ($Value) {
     "prompt-submit" { return "user-input" }
     "codex-prompt-submit" { return "user-input" }
+    "codewhale-message-submit" { return "user-input" }
+    "codewhale-tool-call-before" { return "tool-use" }
+    "codewhale-tool-call-after" { return "tool-use" }
     "elicitation-result" { return "user-input" }
     "before-agent" { return "user-input" }
     "permission-request" {

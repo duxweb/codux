@@ -354,21 +354,24 @@ fn task_column_content(
         .w_full()
         .min_w_0()
         .h_full()
+        .min_h_0()
         .bg(color(theme::BG_COLUMN))
         .child(gpui::AnyView::from(header_view))
         .child(
-            v_resizable("task-column-resizable")
-                .child(
-                    resizable_panel()
-                        .size(px(320.0))
-                        .size_range(px(180.0)..px(560.0))
-                        .child(gpui::AnyView::from(worktree_list_view)),
-                )
-                .child(
-                    resizable_panel()
-                        .size_range(px(180.0)..px(640.0))
-                        .child(gpui::AnyView::from(session_list_view)),
-                ),
+            div().flex_1().min_h_0().overflow_hidden().child(
+                v_resizable("task-column-resizable")
+                    .child(
+                        resizable_panel()
+                            .size(px(320.0))
+                            .size_range(px(96.0)..px(560.0))
+                            .child(gpui::AnyView::from(worktree_list_view)),
+                    )
+                    .child(
+                        resizable_panel()
+                            .size_range(px(96.0)..px(640.0))
+                            .child(gpui::AnyView::from(session_list_view)),
+                    ),
+            ),
         )
 }
 

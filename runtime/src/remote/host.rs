@@ -526,19 +526,61 @@ impl RemoteHostRuntime {
     }
 
     fn handle_iroh_pairing_request(&self, handshake: RemoteIrohHandshake) {
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!(
+                "iroh_pairing_request received device={} pair={} code_present={} secret_present={} public_key_present={}",
+                handshake.device_id,
+                handshake.pairing_id.as_deref().unwrap_or(""),
+                handshake
+                    .pairing_code
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty()),
+                handshake
+                    .pairing_secret
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty()),
+                !handshake.device_public_key.trim().is_empty()
+            ),
+        );
         let active_pairing = self
             .active_pairing
             .lock()
             .ok()
             .and_then(|value| value.clone());
         let Some(active_pairing) = active_pairing else {
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                "iroh_pairing_request reject reason=no_active_pairing",
+            );
             return;
         };
-        if handshake.pairing_id.as_deref() != Some(active_pairing.pairing_id.as_str())
-            || handshake.pairing_code.as_deref() != Some(active_pairing.code.as_str())
-            || handshake.pairing_secret.as_deref() != Some(active_pairing.secret.as_str())
-            || handshake.device_public_key.trim().is_empty()
-        {
+        if handshake.pairing_id.as_deref() != Some(active_pairing.pairing_id.as_str()) {
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                "iroh_pairing_request reject reason=pairing_id_mismatch",
+            );
+            return;
+        }
+        if handshake.pairing_code.as_deref() != Some(active_pairing.code.as_str()) {
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                "iroh_pairing_request reject reason=code_mismatch",
+            );
+            return;
+        }
+        if handshake.pairing_secret.as_deref() != Some(active_pairing.secret.as_str()) {
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                "iroh_pairing_request reject reason=secret_mismatch",
+            );
+            return;
+        }
+        if handshake.device_public_key.trim().is_empty() {
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                "iroh_pairing_request reject reason=missing_device_public_key",
+            );
             return;
         }
         if let Ok(mut pending) = self.pending_pairings.lock() {
@@ -553,6 +595,13 @@ impl RemoteHostRuntime {
             handshake.device_public_key,
             active_pairing.code.clone(),
             active_pairing.secret.clone(),
+        );
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!(
+                "iroh_pairing_request pending device={} pair={}",
+                handshake.device_id, active_pairing.pairing_id
+            ),
         );
         self.update_snapshot(summary);
     }
@@ -585,6 +634,30 @@ impl RemoteHostRuntime {
         };
         pairing.qr_payload =
             super::crypto::remote_pairing_qr_payload(&settings, &pairing, iroh_addr);
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!(
+                "iroh_pairing_qr node={} relay={} direct={}",
+                self.iroh_node_addr
+                    .lock()
+                    .ok()
+                    .and_then(|addr| addr.clone())
+                    .map(|addr| addr.node_id)
+                    .unwrap_or_default(),
+                self.iroh_node_addr
+                    .lock()
+                    .ok()
+                    .and_then(|addr| addr.clone())
+                    .and_then(|addr| addr.relay_url)
+                    .unwrap_or_default(),
+                self.iroh_node_addr
+                    .lock()
+                    .ok()
+                    .and_then(|addr| addr.clone())
+                    .map(|addr| addr.direct_addresses.len())
+                    .unwrap_or_default()
+            ),
+        );
         if let Ok(mut active) = self.active_pairing.lock() {
             *active = Some(pairing.clone());
         }
@@ -662,11 +735,33 @@ impl RemoteHostRuntime {
     }
 
     pub fn reject_pairing(&self, pairing_id: &str) -> Result<RemoteSummary, String> {
-        self.cancel_pairing(pairing_id).map(|mut summary| {
-            summary.message = "Pairing rejected.".to_string();
-            self.update_snapshot(summary.clone());
-            summary
-        })
+        let pairing_id = pairing_id.trim();
+        if pairing_id.is_empty() {
+            return Err("Missing pairing id.".to_string());
+        }
+        let handshake = self
+            .pending_pairings
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(pairing_id));
+        if let Some(handshake) = handshake.as_ref() {
+            self.send_plain(
+                "pairing.rejected",
+                Some(&handshake.device_id),
+                None,
+                json!({ "pairingId": pairing_id }),
+            );
+        }
+        if let Ok(mut active) = self.active_pairing.lock() {
+            if active.as_ref().map(|pairing| pairing.pairing_id.as_str()) == Some(pairing_id) {
+                *active = None;
+            }
+        }
+        let mut summary = self.service().summary();
+        summary.status = "connected".to_string();
+        summary.message = "Pairing rejected.".to_string();
+        self.update_snapshot(summary.clone());
+        Ok(summary)
     }
 
     pub fn confirm_pairing(&self, pairing_id: &str) -> Result<RemoteSummary, String> {

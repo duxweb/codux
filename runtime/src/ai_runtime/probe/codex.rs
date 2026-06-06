@@ -10,7 +10,7 @@ use crate::ai_runtime::{
 
 use self::parse::parse_codex_runtime_state;
 
-pub(super) fn probe_codex_runtime(
+pub(crate) fn probe_codex_runtime(
     request: &AIRuntimeProbeRequest,
 ) -> Option<AIRuntimeContextSnapshot> {
     let project_path = normalized_string(request.project_path.as_deref())?;

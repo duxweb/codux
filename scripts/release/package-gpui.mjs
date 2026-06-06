@@ -22,12 +22,14 @@ const writeSha256Sidecars = process.env.RELEASE_WRITE_SHA256 === "true";
 fs.rmSync(outputDir, { recursive: true, force: true });
 fs.mkdirSync(outputDir, { recursive: true });
 
-if (process.platform === "darwin") {
-  packageMacos();
-} else if (process.platform === "win32") {
-  packageWindows();
-} else {
-  packageGenericUnix();
+if (process.env.CODUX_PACKAGE_GPUI_TEST_MODE !== "true") {
+  if (process.platform === "darwin") {
+    packageMacos();
+  } else if (process.platform === "win32") {
+    packageWindows();
+  } else {
+    packageGenericUnix();
+  }
 }
 
 function packageMacos() {
@@ -294,19 +296,99 @@ function isReleaseBuild() {
 
 function windowsNsisScript(packageDir, installerPath) {
   return `Unicode true
+!include MUI2.nsh
+!include LogicLib.nsh
+!include nsDialogs.nsh
+
 Name "${escapeNsis(appName)}"
 OutFile "${escapeNsis(installerPath)}"
 InstallDir "$LOCALAPPDATA\\\\Programs\\\\${escapeNsis(appName)}"
 InstallDirRegKey HKCU "Software\\\\${escapeNsis(appName)}" "InstallDir"
 RequestExecutionLevel user
 SilentInstall normal
-ShowInstDetails nevershow
+ShowInstDetails show
+ShowUninstDetails show
+
+!define MUI_ABORTWARNING
+!define MUI_ICON "${escapeNsis(path.join(root, "runtime-assets", "icons", "icon.ico"))}"
+!define MUI_UNICON "${escapeNsis(path.join(root, "runtime-assets", "icons", "icon.ico"))}"
+
+Var CreateDesktopShortcut
+Var CreateStartMenuShortcut
+Var DesktopShortcutCheckbox
+Var StartMenuShortcutCheckbox
+
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+Page custom OptionsPageCreate OptionsPageLeave
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+
+!insertmacro MUI_LANGUAGE "English"
+
+Function .onInit
+  StrCpy $CreateDesktopShortcut 1
+  StrCpy $CreateStartMenuShortcut 1
+FunctionEnd
+
+Function OptionsPageCreate
+  nsDialogs::Create 1018
+  Pop $0
+  \${If} $0 == error
+    Abort
+  \${EndIf}
+
+  \${NSD_CreateLabel} 0 0 100% 24u "Choose which shortcuts Codux should create."
+  Pop $0
+  \${NSD_CreateCheckbox} 0 34u 100% 12u "Create Start Menu shortcut"
+  Pop $StartMenuShortcutCheckbox
+  \${If} $CreateStartMenuShortcut == 1
+    \${NSD_Check} $StartMenuShortcutCheckbox
+  \${EndIf}
+  \${NSD_CreateCheckbox} 0 56u 100% 12u "Create Desktop shortcut"
+  Pop $DesktopShortcutCheckbox
+  \${If} $CreateDesktopShortcut == 1
+    \${NSD_Check} $DesktopShortcutCheckbox
+  \${EndIf}
+
+  nsDialogs::Show
+FunctionEnd
+
+Function OptionsPageLeave
+  \${NSD_GetState} $StartMenuShortcutCheckbox $CreateStartMenuShortcut
+  \${NSD_GetState} $DesktopShortcutCheckbox $CreateDesktopShortcut
+FunctionEnd
+
+Function EnsureCoduxCanBeUpdated
+  IfFileExists "$INSTDIR\\\\${escapeNsis(appName)}.exe" 0 done
+  ClearErrors
+  FileOpen $0 "$INSTDIR\\\\${escapeNsis(appName)}.exe" a
+  IfErrors locked unlocked
+  unlocked:
+    FileClose $0
+    Goto done
+  locked:
+    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${escapeNsis(appName)} is still running or the executable is locked.$\\\\r$\\\\n$\\\\r$\\\\nClose ${escapeNsis(appName)} and click Retry to continue." IDRETRY retry
+    Abort
+  retry:
+    Call EnsureCoduxCanBeUpdated
+  done:
+FunctionEnd
 
 Section "Install"
+  Call EnsureCoduxCanBeUpdated
   SetOutPath "$INSTDIR"
   File /r "${escapeNsis(packageDir)}\\\\*"
-  CreateDirectory "$SMPROGRAMS\\\\${escapeNsis(appName)}"
-  CreateShortcut "$SMPROGRAMS\\\\${escapeNsis(appName)}\\\\${escapeNsis(appName)}.lnk" "$INSTDIR\\\\${escapeNsis(appName)}.exe"
+  \${If} $CreateStartMenuShortcut == 1
+    CreateDirectory "$SMPROGRAMS\\\\${escapeNsis(appName)}"
+    CreateShortcut "$SMPROGRAMS\\\\${escapeNsis(appName)}\\\\${escapeNsis(appName)}.lnk" "$INSTDIR\\\\${escapeNsis(appName)}.exe"
+  \${EndIf}
+  \${If} $CreateDesktopShortcut == 1
+    CreateShortcut "$DESKTOP\\\\${escapeNsis(appName)}.lnk" "$INSTDIR\\\\${escapeNsis(appName)}.exe"
+  \${EndIf}
   WriteRegStr HKCU "Software\\\\${escapeNsis(appName)}" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\\\\Uninstall.exe"
 SectionEnd
@@ -314,6 +396,7 @@ SectionEnd
 Section "Uninstall"
   Delete "$SMPROGRAMS\\\\${escapeNsis(appName)}\\\\${escapeNsis(appName)}.lnk"
   RMDir "$SMPROGRAMS\\\\${escapeNsis(appName)}"
+  Delete "$DESKTOP\\\\${escapeNsis(appName)}.lnk"
   Delete "$INSTDIR\\\\Uninstall.exe"
   Delete "$INSTDIR\\\\${escapeNsis(appName)}.exe"
   Delete "$INSTDIR\\\\icon.ico"
@@ -356,4 +439,8 @@ function run(command, args, options = {}) {
       .join(", ");
     throw new Error(`${command} ${args.join(" ")} failed with ${details}`);
   }
+}
+
+export function __testWindowsNsisScript(packageDir, installerPath) {
+  return windowsNsisScript(packageDir, installerPath);
 }

@@ -127,13 +127,6 @@ fn ssh_update_event() -> &'static Mutex<SshUpdateEvent> {
     SSH_UPDATE_EVENT.get_or_init(|| Mutex::new(SshUpdateEvent::default()))
 }
 
-pub(in crate::app) fn current_ssh_update_event() -> SshUpdateEvent {
-    ssh_update_event()
-        .lock()
-        .map(|event| event.clone())
-        .unwrap_or_default()
-}
-
 pub(in crate::app) fn publish_ssh_update() -> u64 {
     let Ok(mut event) = ssh_update_event().lock() else {
         return 0;

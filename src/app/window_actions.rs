@@ -180,7 +180,6 @@ impl CoduxApp {
             file_tree_expanded_dirs: HashSet::new(),
             file_tree_children: HashMap::new(),
             file_tree_scroll_handle: UniformListScrollHandle::new(),
-            file_preview_scroll_handle: UniformListScrollHandle::new(),
             file_panel_refreshing: false,
             selected_git_file: None,
             selected_git_branch,
@@ -232,7 +231,6 @@ impl CoduxApp {
             pet_custom_install_seen_revision: current_pet_custom_install_event().revision,
             pet_update_seen_revision: current_pet_update_event().revision,
             settings_seen_revision: current_settings_update_event().revision,
-            ssh_seen_revision: current_ssh_update_event().revision,
             memory_seen_revision: current_memory_update_event().revision,
             child_window_update_seen_revision: current_child_window_update_event().revision,
             child_window_settings_seen_revision: current_child_window_update_event()
@@ -715,7 +713,12 @@ impl CoduxApp {
         if self.window_mode != AppWindowMode::Main {
             return false;
         }
-        let Some(view) = self.focused_terminal_view(window, cx) else {
+        let view = self.focused_terminal_view(window, cx).or_else(|| {
+            (self.workspace_view == WorkspaceView::Terminal)
+                .then(|| self.active_terminal_view())
+                .flatten()
+        });
+        let Some(view) = view else {
             return false;
         };
         view.update(cx, |terminal, cx| {
@@ -1094,16 +1097,6 @@ impl CoduxApp {
         self.invalidate_remote_panel(cx);
     }
 
-    pub(super) fn close_ssh_profile_dialog(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.ssh_draft_open = false;
-        self.ssh_testing = false;
-        self.invalidate_remote_panel(cx);
-    }
-
     pub(super) fn toggle_project_column(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.project_column_collapsed = !self.project_column_collapsed;
         self.invalidate_project_shell(cx);
@@ -1235,36 +1228,6 @@ impl CoduxApp {
                 self.refresh_git_panel_state_async(cx);
             }
         }
-    }
-
-    pub(super) fn reload_update(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.update = self
-            .runtime_service
-            .reload_update(std::env::current_dir().unwrap_or_default());
-        self.status_message = if let Some(error) = &self.state.update.error {
-            format!("update check failed: {error}")
-        } else if let Some(version) = &self.state.update.latest_version {
-            format!("update checked: latest {version}")
-        } else {
-            "update checked: no latest version in manifest".to_string()
-        };
-        self.invalidate_ui_region(cx, UiRegion::Root);
-    }
-
-    pub(super) fn install_update(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        match self.runtime_service.install_update(
-            std::env::current_dir().unwrap_or_default(),
-            env!("CARGO_PKG_VERSION"),
-        ) {
-            Ok(result) => {
-                self.state.update = self
-                    .runtime_service
-                    .reload_update(std::env::current_dir().unwrap_or_default());
-                self.status_message = result.message;
-            }
-            Err(error) => self.status_message = format!("failed to install update: {error}"),
-        }
-        self.invalidate_ui_region(cx, UiRegion::Root);
     }
 
     pub(super) fn register_native_menu_actions(
@@ -1507,23 +1470,6 @@ impl CoduxApp {
     ) -> gpui::Div {
         let focus_handle = self.root_focus_handle(cx);
         self.register_native_menu_actions(root.track_focus(&focus_handle), cx)
-    }
-
-    pub(super) fn register_close_window_action(
-        &mut self,
-        root: gpui::Div,
-        cx: &mut Context<Self>,
-    ) -> gpui::Div {
-        let focus_handle = self.root_focus_handle(cx);
-        root.track_focus(&focus_handle).on_action(cx.listener(
-            |app, _action: &native_menu::CloseWindow, window, cx| {
-                if app.window_mode == AppWindowMode::Main {
-                    app.close_active_workspace_item(window, cx);
-                } else {
-                    window.remove_window();
-                }
-            },
-        ))
     }
 
     pub(super) fn root_focus_handle(&mut self, cx: &mut Context<Self>) -> FocusHandle {

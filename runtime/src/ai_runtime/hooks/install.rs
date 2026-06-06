@@ -1,9 +1,15 @@
 use super::{
+    codewhale::install_codewhale_hooks_in,
     codex::ensure_codex_config_installed,
     command::{hook_command, is_managed_hook, is_managed_hook_action},
     json::{load_json_object, write_json_object},
 };
-use crate::runtime_paths::{app_slug, home_dir};
+use crate::{
+    ai_runtime::tool_driver::{
+        AIRuntimeJsonHookFormat, AIRuntimeToolHookDriver, ai_runtime_tool_drivers,
+    },
+    runtime_paths::{app_slug, home_dir},
+};
 use serde_json::{Map, Value, json};
 use std::path::Path;
 
@@ -15,82 +21,43 @@ pub fn install_managed_hook_configs_in(
     home_dir: &Path,
     managed_hook_script: &Path,
 ) -> Result<(), String> {
-    let codex_hooks_path = home_dir.join(".codex").join("hooks.json");
-    install_tool_hooks(
-        &codex_hooks_path,
-        "codex",
-        &[
-            ("SessionStart", "codex-session-start", 1000, false),
-            ("UserPromptSubmit", "codex-prompt-submit", 1000, false),
-            ("PermissionRequest", "codex-permission-request", 1000, false),
-            ("Stop", "codex-stop", 1000, false),
-        ],
-        managed_hook_script,
-    )?;
-    ensure_codex_config_installed(&codex_hooks_path)?;
-    install_tool_hooks(
-        &home_dir.join(".claude").join("settings.json"),
-        "claude",
-        &[
-            ("SessionStart", "session-start", 10, false),
-            ("UserPromptSubmit", "prompt-submit", 10, false),
-            ("PreCompact", "pre-compact", 10, false),
-            ("PostCompact", "post-compact", 10, false),
-            ("Stop", "stop", 10, false),
-            ("StopFailure", "stop-failure", 10, false),
-            ("SessionEnd", "session-end", 1, false),
-            ("PermissionRequest", "permission-request", 5, true),
-            ("PermissionDenied", "permission-denied", 5, true),
-            ("Elicitation", "elicitation", 10, true),
-            ("ElicitationResult", "elicitation-result", 10, true),
-        ],
-        managed_hook_script,
-    )?;
-    install_tool_hooks(
-        &home_dir.join(".gemini").join("settings.json"),
-        "gemini",
-        &[
-            ("SessionStart", "session-start", 5000, false),
-            ("BeforeAgent", "before-agent", 5000, false),
-            ("AfterAgent", "after-agent", 5000, false),
-            ("Notification", "notification", 5000, false),
-            ("SessionEnd", "session-end", 5000, false),
-        ],
-        managed_hook_script,
-    )?;
-    install_tool_hooks(
-        &home_dir
-            .join(".gemini")
-            .join("antigravity-cli")
-            .join("settings.json"),
-        "agy",
-        &[
-            ("SessionStart", "session-start", 5000, false),
-            ("BeforeAgent", "before-agent", 5000, false),
-            ("AfterAgent", "after-agent", 5000, false),
-            ("Notification", "notification", 5000, false),
-            ("SessionEnd", "session-end", 5000, false),
-        ],
-        managed_hook_script,
-    )?;
-    install_tool_hooks(
-        &home_dir
-            .join(".kiro")
-            .join("agents")
-            .join("codux-managed.json"),
-        "kiro",
-        &[
-            ("agentSpawn", "session-start", 5000, false),
-            ("stop", "session-end", 5000, false),
-        ],
-        managed_hook_script,
-    )
+    for driver in ai_runtime_tool_drivers() {
+        match driver.hook {
+            AIRuntimeToolHookDriver::Json(hook) => {
+                let path = hook
+                    .path_segments
+                    .iter()
+                    .fold(home_dir.to_path_buf(), |path, segment| path.join(segment));
+                match hook.format {
+                    AIRuntimeJsonHookFormat::Standard => {
+                        install_tool_hooks(
+                            &path,
+                            hook.tool,
+                            hook.definitions,
+                            managed_hook_script,
+                        )?;
+                    }
+                    AIRuntimeJsonHookFormat::Kiro => {
+                        install_kiro_tool_hooks(&path, hook.definitions, managed_hook_script)?;
+                    }
+                }
+                if hook.tool == "codex" {
+                    ensure_codex_config_installed(&path)?;
+                }
+            }
+            AIRuntimeToolHookDriver::CodeWhaleToml => {
+                install_codewhale_hooks_in(home_dir, managed_hook_script)?;
+            }
+            AIRuntimeToolHookDriver::OpenCodePlugin | AIRuntimeToolHookDriver::None => {}
+        }
+    }
+    Ok(())
 }
 
 fn install_tool_hooks(
     path: &Path,
     tool: &str,
-    definitions: &[(&str, &str, i64, bool)],
+    definitions: &[crate::ai_runtime::tool_driver::AIRuntimeHookDefinition],
     managed_hook_script: &Path,
 ) -> Result<(), String> {
     let owner = app_slug();
@@ -117,24 +84,33 @@ fn install_tool_hooks(
         );
     }
 
-    for (event_key, action, timeout, is_async) in definitions {
-        strip_managed_action_from_hooks(&mut hooks, event_key, action, None, Some(tool));
+    for definition in definitions {
+        strip_managed_action_from_hooks(
+            &mut hooks,
+            definition.event_key,
+            definition.action,
+            None,
+            Some(tool),
+        );
 
-        let command = hook_command(managed_hook_script, action, owner, tool);
+        let command = hook_command(managed_hook_script, definition.action, owner, tool);
         let mut hook = Map::new();
         hook.insert("type".to_string(), Value::String("command".to_string()));
         hook.insert("command".to_string(), Value::String(command));
-        hook.insert("timeout".to_string(), Value::Number((*timeout).into()));
+        hook.insert(
+            "timeout".to_string(),
+            Value::Number(definition.timeout_ms.into()),
+        );
         hook.insert(
             "statusMessage".to_string(),
             Value::String(format!("codux {tool} live")),
         );
-        if *is_async {
+        if definition.is_async {
             hook.insert("async".to_string(), Value::Bool(true));
         }
 
         let groups = hooks
-            .remove(*event_key)
+            .remove(definition.event_key)
             .and_then(|value| value.as_array().cloned())
             .unwrap_or_default();
         let mut cleaned = Vec::new();
@@ -148,7 +124,7 @@ fn install_tool_hooks(
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|item| !is_managed_hook(item, action, owner, tool))
+                .filter(|item| !is_managed_hook(item, definition.action, owner, tool))
                 .collect::<Vec<_>>();
             if next_hooks.is_empty() {
                 continue;
@@ -162,7 +138,7 @@ fn install_tool_hooks(
             "matcher": "",
             "hooks": [Value::Object(hook)],
         }));
-        hooks.insert((*event_key).to_string(), Value::Array(cleaned));
+        hooks.insert(definition.event_key.to_string(), Value::Array(cleaned));
     }
 
     root.insert("hooks".to_string(), Value::Object(hooks));
@@ -174,7 +150,7 @@ fn install_tool_hooks(
 
 fn install_kiro_tool_hooks(
     path: &Path,
-    definitions: &[(&str, &str, i64, bool)],
+    definitions: &[crate::ai_runtime::tool_driver::AIRuntimeHookDefinition],
     managed_hook_script: &Path,
 ) -> Result<(), String> {
     let owner = app_slug();
@@ -185,31 +161,40 @@ fn install_kiro_tool_hooks(
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_default();
 
-    for (event_key, action, timeout, is_async) in definitions {
-        strip_managed_action_from_hooks(&mut hooks, event_key, action, None, Some("kiro"));
+    for definition in definitions {
+        strip_managed_action_from_hooks(
+            &mut hooks,
+            definition.event_key,
+            definition.action,
+            None,
+            Some("kiro"),
+        );
 
-        let command = hook_command(managed_hook_script, action, owner, "kiro");
+        let command = hook_command(managed_hook_script, definition.action, owner, "kiro");
         let mut hook = Map::new();
         hook.insert("command".to_string(), Value::String(command));
-        hook.insert("timeout_ms".to_string(), Value::Number((*timeout).into()));
+        hook.insert(
+            "timeout_ms".to_string(),
+            Value::Number(definition.timeout_ms.into()),
+        );
         hook.insert("matcher".to_string(), Value::String(String::new()));
-        if *is_async {
+        if definition.is_async {
             hook.insert("async".to_string(), Value::Bool(true));
         }
 
         let entries = hooks
-            .remove(*event_key)
+            .remove(definition.event_key)
             .and_then(|value| value.as_array().cloned())
             .unwrap_or_default();
         let mut cleaned = Vec::new();
         for entry in entries {
-            if is_managed_hook(&entry, action, owner, "kiro") {
+            if is_managed_hook(&entry, definition.action, owner, "kiro") {
                 continue;
             }
             cleaned.push(entry);
         }
         cleaned.push(Value::Object(hook));
-        hooks.insert((*event_key).to_string(), Value::Array(cleaned));
+        hooks.insert(definition.event_key.to_string(), Value::Array(cleaned));
     }
 
     root.insert("hooks".to_string(), Value::Object(hooks));

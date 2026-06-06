@@ -1165,7 +1165,7 @@ impl CoduxApp {
             ),
         );
         let artifacts_started_at = Instant::now();
-        prepare_memory_launch_artifacts(&self.state);
+        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
         self.runtime_trace(
             "terminal-restore",
             &format!(
@@ -1349,26 +1349,6 @@ impl CoduxApp {
         .detach();
     }
 
-    pub(super) fn reload_runtime_state(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state = self.runtime_service.reload_state();
-        self.project_open_applications = self.runtime_service.project_open_applications();
-        self.file_directory.clear();
-        self.reset_file_tree_state();
-        self.file_editable = false;
-        self.file_dirty = false;
-        self.clear_file_selection();
-        self.selected_git_file = None;
-        self.normalize_selected_git_branch();
-        self.git_diff_preview = "select a changed file to preview its diff".to_string();
-        self.clear_git_review_derived_content();
-        self.normalize_selected_ai_session();
-        self.normalize_selected_runtime_session();
-        self.normalize_selected_ssh_profile();
-        self.status_message = "state reloaded from Codux support files".to_string();
-        self.sync_project_list_state(cx);
-        self.invalidate_project_management(cx);
-    }
-
     pub(super) fn apply_project_list_state(&mut self, next: RuntimeState, cx: &mut Context<Self>) {
         let previous_selected_id = self
             .state
@@ -1387,16 +1367,6 @@ impl CoduxApp {
             })
             .or(next.selected_project);
         self.sync_project_list_state(cx);
-    }
-
-    pub(super) fn reload_project_open_applications(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.status_message = "refreshing project application list".to_string();
-        self.reload_project_open_applications_async(cx);
-        self.invalidate_project_management(cx);
     }
 
     pub(super) fn reload_project_open_applications_async(&mut self, cx: &mut Context<Self>) {
@@ -1734,10 +1704,6 @@ impl CoduxApp {
         .detach();
     }
 
-    pub(super) fn rename_selected_project(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.open_selected_project_editor_window(_window, cx);
-    }
-
     pub(super) fn edit_project_by_id(
         &mut self,
         project_id: String,
@@ -2024,92 +1990,6 @@ impl CoduxApp {
         .detach();
     }
 
-    pub(super) fn move_selected_project_up(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = self.state.selected_project.clone() else {
-            self.status_message = "no selected project to move".to_string();
-            self.invalidate_project_management(cx);
-            return;
-        };
-        self.move_project_async(project, true, cx);
-        self.invalidate_project_management(cx);
-    }
-
-    pub(super) fn move_selected_project_down(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = self.state.selected_project.clone() else {
-            self.status_message = "no selected project to move".to_string();
-            self.invalidate_project_management(cx);
-            return;
-        };
-        self.move_project_async(project, false, cx);
-        self.invalidate_project_management(cx);
-    }
-
-    fn move_project_async(&mut self, project: ProjectInfo, up: bool, cx: &mut Context<Self>) {
-        let runtime_service = self.runtime_service.clone();
-        let project_id = project.id.clone();
-        let direction = if up { "up" } else { "down" };
-        self.runtime_trace(
-            "project",
-            &format!("move_project queued project_id={project_id} direction={direction}"),
-        );
-        self.status_message = format!("moving project {direction}: {}", project.name);
-
-        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            let result = codux_runtime::async_runtime::run_limited_blocking(move || {
-                runtime_service.runtime_trace_frontend(
-                    "project",
-                    &format!("move_project start project_id={project_id} direction={direction}"),
-                );
-                let result = if up {
-                    runtime_service.move_project_up(&project_id)
-                } else {
-                    runtime_service.move_project_down(&project_id)
-                }
-                .map(|_| runtime_service.reload_state());
-                match &result {
-                    Ok(_) => runtime_service.runtime_trace_frontend(
-                        "project",
-                        &format!("move_project ok project_id={project_id} direction={direction}"),
-                    ),
-                    Err(error) => runtime_service.runtime_trace_frontend(
-                        "project",
-                        &format!(
-                            "move_project failed project_id={project_id} direction={direction} error={error}"
-                        ),
-                    ),
-                }
-                result
-            })
-            .await
-            .unwrap_or_else(|error| Err(format!("failed to join project move: {error}")));
-
-            let _ = this.update(cx, |app, cx| {
-                match result {
-                    Ok(state) => {
-                        app.state = state;
-                        app.normalize_selected_ai_session();
-                        app.normalize_selected_runtime_session();
-                        app.normalize_selected_ssh_profile();
-                        app.sync_project_list_state(cx);
-                        app.status_message = format!("moved project {direction}: {}", project.name);
-                    }
-                    Err(error) => {
-                        app.status_message = format!("failed to move project: {error}");
-                    }
-                }
-                app.invalidate_project_management(cx);
-            });
-        })
-        .detach();
-    }
 }
 
 fn clean_dialog_path(path: &str) -> String {

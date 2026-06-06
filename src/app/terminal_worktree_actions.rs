@@ -261,19 +261,11 @@ impl CoduxApp {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        let Some(tab_index) = self
-            .terminals
-            .iter()
-            .position(|tab| {
-                tab.placement == TerminalTabPlacement::Bottom && tab.id == self.active_terminal_id
-            })
-            .or_else(|| {
-                self.terminals
-                    .iter()
-                    .position(|tab| tab.placement == TerminalTabPlacement::Top)
-            })
-            .or_else(|| (!self.terminals.is_empty()).then_some(0))
-        else {
+        let Some((tab_index, _)) = active_terminal_slot_indices(
+            &self.terminals,
+            &self.state.terminal_layout.active_terminal_id,
+            self.active_terminal_id,
+        ) else {
             return Ok(());
         };
         let config = self.terminal_config_from_settings();
@@ -791,16 +783,6 @@ impl CoduxApp {
         self.invalidate_terminal_workspace(cx);
     }
 
-    pub(super) fn reload_terminal_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let terminal_layout = self.runtime_service.reload_terminal_layout(
-            super::ai_runtime_status::current_terminal_layout_storage_key(&self.state).as_deref(),
-        );
-        let terminal_runtime = TerminalRuntimeSummary::default();
-        self.apply_terminal_layout_from_summary(terminal_layout, terminal_runtime, cx);
-        self.activate_first_terminal();
-        self.focus_active_terminal_view(window, cx);
-    }
-
     pub(super) fn apply_terminal_layout_from_summary(
         &mut self,
         terminal_layout: TerminalLayoutSummary,
@@ -835,7 +817,7 @@ impl CoduxApp {
             ),
         );
         let artifacts_started_at = Instant::now();
-        prepare_memory_launch_artifacts(&self.state);
+        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
         self.runtime_trace(
             "terminal-restore",
             &format!(
@@ -904,170 +886,6 @@ impl CoduxApp {
             ),
         );
         self.invalidate_terminal_workspace(cx);
-    }
-
-    pub(super) fn reload_worktrees(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.worktrees = self.runtime_service.reload_worktrees(
-            self.state
-                .selected_project
-                .as_ref()
-                .map(|project| project.id.as_str()),
-            self.state
-                .selected_project
-                .as_ref()
-                .map(|project| project.path.as_str()),
-        );
-        self.status_message = "worktrees reloaded".to_string();
-        self.invalidate_worktree_context(cx);
-    }
-
-    pub(super) fn sync_worktrees_from_git(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project to sync worktrees".to_string();
-            self.invalidate_status_bar(cx);
-            return;
-        };
-        match self
-            .runtime_service
-            .sync_worktrees_from_git(&project.id, &project.path)
-        {
-            Ok(summary) => {
-                self.state.worktrees = summary;
-                self.status_message = "worktrees synced from Git".to_string();
-            }
-            Err(error) => self.status_message = format!("failed to sync worktrees: {error}"),
-        }
-        self.invalidate_worktree_context(cx);
-    }
-
-    pub(super) fn create_worktree(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project to create worktree".to_string();
-            self.invalidate_status_bar(cx);
-            return;
-        };
-        match self
-            .runtime_service
-            .create_worktree(&project.id, &project.path)
-        {
-            Ok(summary) => {
-                self.state.worktrees = summary;
-                self.status_message = "worktree created".to_string();
-            }
-            Err(error) => self.status_message = format!("failed to create worktree: {error}"),
-        }
-        self.invalidate_worktree_context(cx);
-    }
-
-    pub(super) fn create_worktree_from_draft(
-        &mut self,
-        branch_name: String,
-        base_branch: String,
-        cx: &mut Context<Self>,
-    ) -> Result<(), String> {
-        let Some(project) = &self.state.selected_project else {
-            return Err("No selected project.".to_string());
-        };
-        let branch_name = branch_name.trim().to_string();
-        let base_branch = base_branch.trim().to_string();
-        if branch_name.is_empty() {
-            return Err(self.text("worktree.branch.empty", "Branch name cannot be empty."));
-        }
-        if base_branch.is_empty() {
-            return Err(self.text(
-                "worktree.merge.base_missing",
-                "This worktree has no base branch.",
-            ));
-        }
-
-        match self.runtime_service.create_worktree_from_request(
-            codux_runtime::worktree::WorktreeCreateRequest {
-                project_id: project.id.clone(),
-                project_path: project.path.clone(),
-                base_branch: Some(base_branch),
-                branch_name: branch_name.clone(),
-                task_title: Some(branch_name.clone()),
-            },
-        ) {
-            Ok(snapshot) => {
-                self.state.worktrees = self
-                    .runtime_service
-                    .reload_worktrees(Some(&project.id), Some(&project.path));
-                if let Some(selected) = snapshot
-                    .worktrees
-                    .iter()
-                    .find(|worktree| worktree.branch == branch_name)
-                    .map(|worktree| worktree.id.clone())
-                    .or_else(|| Some(snapshot.selected_worktree_id.clone()))
-                {
-                    self.state.worktrees.selected_worktree_id = Some(selected);
-                }
-                self.status_message = self
-                    .text("worktree.create.success_format", "Created worktree %@.")
-                    .replace("%@", &branch_name);
-                self.invalidate_worktree_context(cx);
-                Ok(())
-            }
-            Err(error) => {
-                self.status_message = format!("failed to create worktree: {error}");
-                self.invalidate_status_bar(cx);
-                Err(error)
-            }
-        }
-    }
-
-    pub(super) fn remove_selected_worktree(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.remove_selected_worktree_with_options(false, cx);
-    }
-
-    pub(super) fn remove_selected_worktree_and_branch(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.remove_selected_worktree_with_options(true, cx);
-    }
-
-    pub(super) fn remove_selected_worktree_with_options(
-        &mut self,
-        remove_branch: bool,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project to remove worktree".to_string();
-            self.invalidate_status_bar(cx);
-            return;
-        };
-        let Some(worktree_id) = self.state.worktrees.selected_worktree_id.clone() else {
-            self.status_message = "no selected worktree to remove".to_string();
-            self.invalidate_status_bar(cx);
-            return;
-        };
-        match self.runtime_service.remove_worktree(
-            &project.id,
-            &project.path,
-            &worktree_id,
-            remove_branch,
-        ) {
-            Ok(summary) => {
-                self.state.worktrees = summary;
-                self.status_message = if remove_branch {
-                    format!("worktree and branch removed: {worktree_id}")
-                } else {
-                    format!("worktree removed: {worktree_id}")
-                };
-            }
-            Err(error) => {
-                let title = self.text("worktree.remove.title", "Remove Worktree");
-                self.status_message = title.clone();
-                self.show_system_error_alert(title, error, cx);
-            }
-        }
-        self.invalidate_worktree_context(cx);
     }
 
     pub(super) fn remove_worktree_by_id(
@@ -1196,20 +1014,6 @@ impl CoduxApp {
             });
         })
         .detach();
-    }
-
-    pub(super) fn merge_selected_worktree(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.selected_project.is_none() {
-            self.status_message = "no selected project to merge worktree".to_string();
-            self.invalidate_status_bar(cx);
-            return;
-        }
-        let Some(worktree_id) = self.state.worktrees.selected_worktree_id.clone() else {
-            self.status_message = "no selected worktree to merge".to_string();
-            self.invalidate_status_bar(cx);
-            return;
-        };
-        self.request_merge_worktree_by_id(worktree_id, cx);
     }
 
     pub(super) fn merge_worktree_by_id(&mut self, worktree_id: String, cx: &mut Context<Self>) {
@@ -1614,41 +1418,6 @@ impl CoduxApp {
             ),
         );
         self.invalidate_worktree_context(cx);
-    }
-
-    pub(super) fn preview_file(
-        &mut self,
-        relative_path: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project to preview".to_string();
-            self.invalidate_status_bar(cx);
-            return;
-        };
-
-        match self
-            .runtime_service
-            .read_project_file_edit_buffer(&project.path, &relative_path)
-        {
-            Ok((content, editable)) => {
-                self.file_preview = if content.trim().is_empty() && !editable {
-                    "(empty file)".to_string()
-                } else {
-                    content
-                };
-                self.file_editable = editable;
-                self.file_dirty = false;
-                self.normalize_file_search_index();
-                self.status_message = format!(
-                    "{} loaded: {relative_path}",
-                    if editable { "editor buffer" } else { "preview" }
-                );
-            }
-            Err(error) => self.status_message = format!("failed to preview file: {error}"),
-        }
-        self.invalidate_file_panel(cx);
     }
 
     pub(super) fn current_terminal_launch_context(&self) -> Option<TerminalLaunchContext> {

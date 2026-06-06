@@ -84,15 +84,17 @@ fn disabled_remote_keeps_empty_relay_and_disabled_encryption() {
 
 #[test]
 fn remote_settings_ignore_legacy_server_url() {
-    let settings = remote_settings_from_raw(&serde_json::json!({
-        "remote": {
-            "isEnabled": true,
-            "serverURL": "http://legacy-relay.example"
-        }
-    })
-    .as_object()
-    .expect("raw settings")
-    .clone());
+    let settings = remote_settings_from_raw(
+        &serde_json::json!({
+            "remote": {
+                "isEnabled": true,
+                "serverURL": "http://legacy-relay.example"
+            }
+        })
+        .as_object()
+        .expect("raw settings")
+        .clone(),
+    );
 
     assert_eq!(settings.server_url, "");
 }

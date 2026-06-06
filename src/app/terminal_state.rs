@@ -10,10 +10,10 @@ use crate::theme;
 use anyhow::Result;
 use codux_runtime::{
     i18n::translate,
-    memory::{MemoryLaunchRequest, MemoryService, launch_artifact_paths},
+    memory::launch_artifact_paths,
     runtime_bridge::RuntimeInventory,
-    runtime_state::RuntimeState,
-    settings::{AppSettingsStore, SettingsSummary, locale_from_language_setting},
+    runtime_state::{RuntimeService, RuntimeState},
+    settings::{SettingsSummary, locale_from_language_setting},
     terminal_layout::{TerminalLayoutSummary, TerminalPaneSummary, TerminalTabSummary},
     terminal_pty::{TerminalManager, TerminalPtyConfig},
     terminal_runtime::{TerminalRuntimeSessionSummary, TerminalRuntimeSummary},
@@ -719,23 +719,17 @@ fn project_terminal_id(project_id: &str, terminal_id: &str) -> String {
     }
 }
 
-pub(in crate::app) fn prepare_memory_launch_artifacts(state: &RuntimeState) {
+pub(in crate::app) fn prepare_memory_launch_artifacts(
+    service: &RuntimeService,
+    state: &RuntimeState,
+) {
     if !state.memory.available || !state.settings.memory_enabled {
         return;
     }
     let Some(project) = &state.selected_project else {
         return;
     };
-    let app_settings = AppSettingsStore::from_support_dir(state.support_dir.clone()).snapshot();
-    let _ = MemoryService::new(state.support_dir.clone()).prepare_launch_artifacts(
-        MemoryLaunchRequest {
-            project_id: project.id.clone(),
-            project_name: project.name.clone(),
-            workspace_path: Some(project.path.clone()),
-            settings: app_settings.ai,
-            extra_context: None,
-        },
-    );
+    let _ = service.prepare_memory_launch_artifacts(&project.id, &project.name, &project.path);
 }
 
 pub(in crate::app) fn terminal_tab_summary(tab: &TerminalTab) -> TerminalTabSummary {

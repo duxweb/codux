@@ -5,13 +5,15 @@ use super::{
     },
     trust::{CodexHookTrustState, managed_codex_hook_trust_states},
 };
-use crate::runtime_paths::home_dir;
 use std::{fs, path::Path};
 
 pub(in crate::ai_runtime::hooks) fn ensure_codex_config_installed(
     hooks_path: &Path,
 ) -> Result<(), String> {
-    let config_path = home_dir().join(".codex").join("config.toml");
+    let config_path = hooks_path
+        .parent()
+        .map(|parent| parent.join("config.toml"))
+        .ok_or_else(|| "Codex hooks path has no parent directory.".to_string())?;
     let existing = fs::read_to_string(&config_path).unwrap_or_default();
     let updated =
         updated_codex_config_text(&existing, &managed_codex_hook_trust_states(hooks_path)?);
@@ -56,11 +58,7 @@ fn updated_codex_config_text(existing_text: &str, states: &[CodexHookTrustState]
     ensure_codex_hooks_feature(&mut lines);
     let mut sorted_states = states.to_vec();
     sorted_states.sort_by(|left, right| left.key.cmp(&right.key));
-    let trust_keys = sorted_states
-        .iter()
-        .map(|state| state.key.as_str())
-        .collect::<Vec<_>>();
-    lines = remove_codex_hook_trust_blocks(lines, &trust_keys);
+    lines = remove_managed_codex_hook_trust_blocks(lines);
     append_codex_hook_trust_states(&mut lines, &sorted_states);
     format!("{}\n", lines.join("\n"))
 }
@@ -106,15 +104,12 @@ fn ensure_codex_hooks_feature(lines: &mut Vec<String>) {
     }
 }
 
-fn remove_codex_hook_trust_blocks(lines: Vec<String>, keys: &[&str]) -> Vec<String> {
-    if keys.is_empty() {
-        return lines;
-    }
+fn remove_managed_codex_hook_trust_blocks(lines: Vec<String>) -> Vec<String> {
     let mut result = Vec::new();
     let mut index = 0;
     while index < lines.len() {
         if let Some(key) = codex_hook_state_key(&lines[index]) {
-            if keys.contains(&key.as_str()) {
+            if is_managed_codex_hook_state_key(&key) {
                 index += 1;
                 while index < lines.len() && !is_toml_table_header(&lines[index]) {
                     index += 1;
@@ -126,6 +121,25 @@ fn remove_codex_hook_trust_blocks(lines: Vec<String>, keys: &[&str]) -> Vec<Stri
         index += 1;
     }
     result
+}
+
+fn is_managed_codex_hook_state_key(key: &str) -> bool {
+    let normalized = key.replace('\\', "/");
+    let Some((path, event, _, _)) = parse_codex_hook_state_key(&normalized) else {
+        return false;
+    };
+    path.ends_with("/.codex/hooks.json")
+        && matches!(
+            event,
+            "permission_request" | "session_start" | "stop" | "user_prompt_submit"
+        )
+}
+
+fn parse_codex_hook_state_key(key: &str) -> Option<(&str, &str, &str, &str)> {
+    let (head, handler) = key.rsplit_once(':')?;
+    let (head, group) = head.rsplit_once(':')?;
+    let (path, event) = head.rsplit_once(':')?;
+    Some((path, event, group, handler))
 }
 
 fn append_codex_hook_trust_states(lines: &mut Vec<String>, states: &[CodexHookTrustState]) {
@@ -165,7 +179,7 @@ mod tests {
 [features]
 codex_hooks = false
 
-[hooks.state."/tmp/hooks.json:stop:0:0"]
+[hooks.state."/tmp/home/.codex/hooks.json:stop:0:0"]
 trusted_hash = "sha256:old"
 
 [profiles.work]
@@ -174,7 +188,7 @@ model = "gpt-5.5"
         let updated = updated_codex_config_text(
             existing,
             &[CodexHookTrustState {
-                key: "/tmp/hooks.json:stop:0:0".to_string(),
+                key: "/tmp/home/.codex/hooks.json:stop:0:0".to_string(),
                 trusted_hash: "sha256:new".to_string(),
             }],
         );
@@ -183,7 +197,34 @@ model = "gpt-5.5"
         assert!(updated.contains("[features]\nhooks = true"));
         assert!(!updated.contains("codex_hooks"));
         assert!(!updated.contains("sha256:old"));
-        assert!(updated.contains("[hooks.state.\"/tmp/hooks.json:stop:0:0\"]"));
+        assert!(updated.contains("[hooks.state.\"/tmp/home/.codex/hooks.json:stop:0:0\"]"));
+        assert!(updated.contains("trusted_hash = \"sha256:new\""));
+        assert!(updated.contains("[profiles.work]\nmodel = \"gpt-5.5\""));
+    }
+
+    #[test]
+    fn codex_config_updater_removes_stale_managed_hook_states() {
+        let existing = r#"
+[hooks.state."/tmp/codux-test/home/.codex/hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:old"
+
+[hooks.state."/tmp/custom-hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:custom"
+
+[profiles.work]
+model = "gpt-5.5"
+"#;
+        let updated = updated_codex_config_text(
+            existing,
+            &[CodexHookTrustState {
+                key: "/Users/user/.codex/hooks.json:user_prompt_submit:0:0".to_string(),
+                trusted_hash: "sha256:new".to_string(),
+            }],
+        );
+
+        assert!(!updated.contains("/tmp/codux-test/home/.codex/hooks.json"));
+        assert!(updated.contains("/tmp/custom-hooks.json"));
+        assert!(updated.contains("/Users/user/.codex/hooks.json"));
         assert!(updated.contains("trusted_hash = \"sha256:new\""));
         assert!(updated.contains("[profiles.work]\nmodel = \"gpt-5.5\""));
     }

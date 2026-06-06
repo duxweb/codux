@@ -133,6 +133,8 @@ pub struct AIRuntimeToolSettings {
     pub opencode: String,
     #[serde(default = "default_ai_tool_permission_mode")]
     pub kiro: String,
+    #[serde(default = "default_ai_tool_permission_mode")]
+    pub codewhale: String,
     #[serde(default)]
     pub codex_model: String,
     #[serde(default)]
@@ -143,6 +145,8 @@ pub struct AIRuntimeToolSettings {
     pub opencode_model: String,
     #[serde(default)]
     pub kiro_model: String,
+    #[serde(default)]
+    pub codewhale_model: String,
     #[serde(default = "default_codex_effort")]
     pub codex_effort: String,
 }

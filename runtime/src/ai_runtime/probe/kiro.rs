@@ -6,7 +6,7 @@ use crate::ai_runtime::{
 use serde_json::Value;
 use std::{fs, path::Path};
 
-pub(super) fn probe_kiro_runtime(
+pub(crate) fn probe_kiro_runtime(
     request: &AIRuntimeProbeRequest,
 ) -> Option<AIRuntimeContextSnapshot> {
     let project_path = normalized_string(request.project_path.as_deref())?;

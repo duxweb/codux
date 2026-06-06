@@ -1,10 +1,10 @@
 use super::types::RemoteEnvelope;
+#[cfg(test)]
+use iroh::EndpointId;
 use iroh::{
     Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey,
     endpoint::{Connection, presets},
 };
-#[cfg(test)]
-use iroh::EndpointId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[cfg(test)]

@@ -67,11 +67,13 @@ impl Default for AIRuntimeToolSettings {
             gemini: default_ai_tool_permission_mode(),
             opencode: default_ai_tool_permission_mode(),
             kiro: default_ai_tool_permission_mode(),
+            codewhale: default_ai_tool_permission_mode(),
             codex_model: String::new(),
             claude_code_model: String::new(),
             gemini_model: String::new(),
             opencode_model: String::new(),
             kiro_model: String::new(),
+            codewhale_model: String::new(),
             codex_effort: default_codex_effort(),
         }
     }

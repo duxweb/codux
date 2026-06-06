@@ -57,12 +57,44 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codex.ps1"),
     ),
     (
+        "scripts/wrappers/bin/codewhale",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codewhale"),
+    ),
+    (
+        "scripts/wrappers/bin/codewhale-tui",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codewhale-tui"),
+    ),
+    (
+        "scripts/wrappers/bin/codewhale-tui.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codewhale-tui.ps1"),
+    ),
+    (
+        "scripts/wrappers/bin/codewhale.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codewhale.ps1"),
+    ),
+    (
         "scripts/wrappers/bin/codux-ssh",
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codux-ssh"),
     ),
     (
         "scripts/wrappers/bin/codux-ssh.ps1",
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/codux-ssh.ps1"),
+    ),
+    (
+        "scripts/wrappers/bin/deepseek",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/deepseek"),
+    ),
+    (
+        "scripts/wrappers/bin/deepseek-tui",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/deepseek-tui"),
+    ),
+    (
+        "scripts/wrappers/bin/deepseek-tui.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/deepseek-tui.ps1"),
+    ),
+    (
+        "scripts/wrappers/bin/deepseek.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/deepseek.ps1"),
     ),
     (
         "scripts/wrappers/bin/gemini",

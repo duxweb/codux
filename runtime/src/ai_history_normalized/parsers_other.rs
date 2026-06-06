@@ -1,19 +1,3 @@
-fn parse_gemini_history(project: &AIHistoryProjectRequest, home: &Path) -> ParsedHistory {
-    let mut result = ParsedHistory::default();
-    for file_path in gemini_session_paths(&project.path, home) {
-        result.merge(parse_gemini_history_file(project, &file_path));
-    }
-    result
-}
-
-fn parse_kiro_history(project: &AIHistoryProjectRequest, home: &Path) -> ParsedHistory {
-    let mut result = ParsedHistory::default();
-    for file_path in kiro_session_paths(&project.path, home) {
-        result.merge(parse_kiro_history_file(project, &file_path));
-    }
-    result
-}
-
 fn parse_kiro_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -> ParsedHistory {
     let Ok(data) = fs::read_to_string(file_path) else {
         return ParsedHistory::default();
@@ -71,6 +55,18 @@ fn parse_kiro_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
 }
 
 fn parse_gemini_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -> ParsedHistory {
+    parse_gemini_like_history_file("gemini", project, file_path)
+}
+
+fn parse_agy_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -> ParsedHistory {
+    parse_gemini_like_history_file("agy", project, file_path)
+}
+
+fn parse_gemini_like_history_file(
+    source: &str,
+    project: &AIHistoryProjectRequest,
+    file_path: &Path,
+) -> ParsedHistory {
     let mut result = ParsedHistory::default();
     let Ok(data) = fs::read(file_path) else {
         return result;
@@ -114,7 +110,7 @@ fn parse_gemini_history_file(project: &AIHistoryProjectRequest, file_path: &Path
             HistoryRole::Assistant
         };
         result.events.push(HistoryEvent {
-            source: "gemini".to_string(),
+            source: source.to_string(),
             session_id: session_id.clone(),
             timestamp,
             role,
@@ -142,7 +138,7 @@ fn parse_gemini_history_file(project: &AIHistoryProjectRequest, file_path: &Path
             continue;
         }
         result.entries.push(HistoryEntry {
-            source: "gemini".to_string(),
+            source: source.to_string(),
             session_id: session_id.clone(),
             external_session_id: Some(session_id.clone()),
             session_title: session_title.clone().or_else(|| Some(project.name.clone())),
@@ -153,14 +149,6 @@ fn parse_gemini_history_file(project: &AIHistoryProjectRequest, file_path: &Path
             cached_input_tokens: usage.cached_input_tokens,
             reasoning_output_tokens: usage.reasoning_output_tokens,
         });
-    }
-    result
-}
-
-fn parse_opencode_history(project: &AIHistoryProjectRequest, home: &Path) -> ParsedHistory {
-    let mut result = ParsedHistory::default();
-    for file_path in opencode_history_source_paths(home) {
-        result.merge(parse_opencode_history_file(project, &file_path));
     }
     result
 }

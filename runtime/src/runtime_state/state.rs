@@ -61,10 +61,12 @@ impl RuntimeState {
         let runtime_activity = load_runtime_activity(&support_dir);
         let runtime_events = load_runtime_events();
         let ai_runtime_state = load_ai_runtime_state(&support_dir, &runtime_events);
+        let ai_runtime_session_scope_id =
+            selected_ai_runtime_session_scope_id(selected_project.as_ref(), &worktrees);
         let ai_history_stats = build_ai_history_stats(
             &ai_history,
             &ai_runtime_state,
-            selected_project.as_ref().map(|project| project.id.as_str()),
+            ai_runtime_session_scope_id.as_deref(),
             &settings.statistics_mode,
         );
         let remote = load_remote(&support_dir);
@@ -157,10 +159,12 @@ impl RuntimeState {
     }
 
     pub fn refresh_ai_history_stats(&mut self) {
+        let ai_runtime_session_scope_id =
+            selected_ai_runtime_session_scope_id(self.selected_project.as_ref(), &self.worktrees);
         self.ai_history_stats = build_ai_history_stats(
             &self.ai_history,
             &self.ai_runtime_state,
-            self.selected_project.as_ref().map(|project| project.id.as_str()),
+            ai_runtime_session_scope_id.as_deref(),
             &self.settings.statistics_mode,
         );
     }
@@ -177,14 +181,72 @@ fn build_daily_level(global_history: &AIGlobalHistorySummary) -> AIHistoryDailyL
 fn build_ai_history_stats(
     history: &AIHistorySummary,
     ai_runtime_state: &AIRuntimeStateSummary,
-    selected_project_id: Option<&str>,
+    selected_scope_id: Option<&str>,
     statistics_mode: &str,
 ) -> AIHistoryStatsView {
     crate::ai_history::stats_view(
         history,
         ai_runtime_state,
-        selected_project_id,
+        selected_scope_id,
         statistics_mode,
         crate::ai_history_normalized::now_seconds(),
     )
+}
+
+fn selected_ai_runtime_session_scope_id(
+    selected_project: Option<&ProjectInfo>,
+    worktrees: &crate::worktree::WorktreeSummary,
+) -> Option<String> {
+    worktrees
+        .selected_worktree_id
+        .clone()
+        .or_else(|| selected_project.map(|project| project.id.clone()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ai_runtime_session_scope_prefers_selected_worktree() {
+        let project = ProjectInfo {
+            id: "project-a".to_string(),
+            name: "Project A".to_string(),
+            path: "/tmp/project-a".to_string(),
+            exists: true,
+            badge: "PA".to_string(),
+            badge_symbol: None,
+            badge_color_hex: None,
+            git_default_push_remote_name: None,
+        };
+        let worktrees = crate::worktree::WorktreeSummary {
+            selected_worktree_id: Some("worktree-b".to_string()),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            selected_ai_runtime_session_scope_id(Some(&project), &worktrees).as_deref(),
+            Some("worktree-b")
+        );
+    }
+
+    #[test]
+    fn ai_runtime_session_scope_falls_back_to_project() {
+        let project = ProjectInfo {
+            id: "project-a".to_string(),
+            name: "Project A".to_string(),
+            path: "/tmp/project-a".to_string(),
+            exists: true,
+            badge: "PA".to_string(),
+            badge_symbol: None,
+            badge_color_hex: None,
+            git_default_push_remote_name: None,
+        };
+        let worktrees = crate::worktree::WorktreeSummary::default();
+
+        assert_eq!(
+            selected_ai_runtime_session_scope_id(Some(&project), &worktrees).as_deref(),
+            Some("project-a")
+        );
+    }
 }

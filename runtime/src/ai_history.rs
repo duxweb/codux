@@ -23,7 +23,7 @@ pub fn display_tokens(total_tokens: i64, cached_input_tokens: i64, include_cache
 pub fn stats_view(
     history: &AIHistorySummary,
     runtime_state: &crate::ai_runtime_state::AIRuntimeStateSummary,
-    selected_project_id: Option<&str>,
+    selected_scope_id: Option<&str>,
     statistics_mode: &str,
     now: f64,
 ) -> AIHistoryStatsView {
@@ -39,11 +39,7 @@ pub fn stats_view(
             history.today_cached_input_tokens,
             include_cached,
         ),
-        current_sessions: stats_current_sessions(
-            runtime_state,
-            selected_project_id,
-            include_cached,
-        ),
+        current_sessions: stats_current_sessions(runtime_state, selected_scope_id, include_cached),
         today_buckets: stats_today_buckets(history, include_cached, now),
         heatmap: stats_heatmap(history, include_cached, now),
         tool_rows: rank_rows(history.tool_breakdown.iter().map(|item| {
@@ -63,15 +59,15 @@ pub fn stats_view(
 
 fn stats_current_sessions(
     runtime_state: &crate::ai_runtime_state::AIRuntimeStateSummary,
-    selected_project_id: Option<&str>,
+    selected_scope_id: Option<&str>,
     include_cached: bool,
 ) -> Vec<AIHistoryCurrentSessionView> {
     runtime_state
         .sessions
         .iter()
         .filter(|session| {
-            selected_project_id
-                .map(|project_id| session.project_id == project_id)
+            selected_scope_id
+                .map(|scope_id| session.project_id == scope_id)
                 .unwrap_or(true)
         })
         .map(|session| AIHistoryCurrentSessionView {

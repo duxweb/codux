@@ -12,7 +12,12 @@ else
   tool_name="${2:-${DMUX_ACTIVE_AI_TOOL:-}}"
 fi
 
-hook_payload="$(cat)"
+read_hook_payload() {
+  [[ ! -t 0 ]] || return 0
+  cat
+}
+
+hook_payload="$(read_hook_payload)"
 notification_type=""
 should_emit_claude_memory_context=false
 
@@ -58,7 +63,7 @@ if value:
 PY
 )"
     ;;
-  session-start|prompt-submit|before-agent|permission-request|permission-denied|elicitation|elicitation-result|pre-compact|post-compact|stop|stop-failure|session-end|idle|after-agent|codex-session-start|codex-prompt-submit|codex-pre-tool-use|codex-post-tool-use|codex-permission-request|codex-stop|codex-session-end)
+  session-start|prompt-submit|before-agent|permission-request|permission-denied|elicitation|elicitation-result|pre-compact|post-compact|stop|stop-failure|session-end|idle|after-agent|codex-session-start|codex-prompt-submit|codex-pre-tool-use|codex-post-tool-use|codex-permission-request|codex-stop|codex-session-end|codewhale-session-start|codewhale-message-submit|codewhale-tool-call-before|codewhale-tool-call-after|codewhale-error|codewhale-session-end)
     ;;
   *)
     exit 0
@@ -337,7 +342,31 @@ resolved_hook_model() {
 
   if [[ -n "${DMUX_ACTIVE_AI_MODEL:-}" ]]; then
     print -r -- "${DMUX_ACTIVE_AI_MODEL}"
+    return 0
   fi
+
+  case "${tool_name}" in
+    codewhale|codewhale-tui|deepseek|deepseek-tui)
+      codewhale_default_model
+      ;;
+  esac
+}
+
+codewhale_default_model() {
+  local settings_file="${HOME}/.codewhale/settings.toml"
+  [[ -f "${settings_file}" ]] || return 0
+  awk -F '=' '
+    /^[[:space:]]*default_text_model[[:space:]]*=/ {
+      value=$2
+      sub(/^[[:space:]]*/, "", value)
+      sub(/[[:space:]]*$/, "", value)
+      gsub(/^"|"$/, "", value)
+      if (value != "") {
+        print value
+        exit
+      }
+    }
+  ' "${settings_file}" 2>/dev/null
 }
 
 configured_permission_mode() {
@@ -827,6 +856,79 @@ if [[ "${tool_name}" == "gemini" || "${tool_name}" == "agy" ]]; then
         "" \
         "$(extract_first_hook_field reason)"
       log_line "gemini hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+  esac
+fi
+
+if [[ "${tool_name}" == "codewhale" || "${tool_name}" == "codewhale-tui" || "${tool_name}" == "deepseek" || "${tool_name}" == "deepseek-tui" ]]; then
+  case "${action}" in
+    codewhale-session-start)
+      write_ai_hook_event \
+        "sessionStarted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
+        "" \
+        "" \
+        "$(extract_first_hook_field event source)" \
+        "" \
+        "$(extract_first_hook_field workspace cwd current_working_directory working_directory)"
+      log_line "codewhale hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    codewhale-message-submit)
+      codewhale_prompt_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
+      [[ -z "${codewhale_prompt_tokens}" ]] && codewhale_prompt_tokens="null"
+      write_ai_hook_event \
+        "promptSubmitted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${codewhale_prompt_tokens}" \
+        "" \
+        "" \
+        "user-input" \
+        "" \
+        "$(extract_first_hook_field workspace cwd current_working_directory working_directory)"
+      log_line "codewhale hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    codewhale-tool-call-before|codewhale-tool-call-after)
+      write_ai_hook_event \
+        "promptSubmitted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
+        "" \
+        "" \
+        "tool-use" \
+        "" \
+        "$(extract_first_hook_field workspace cwd current_working_directory working_directory)" \
+        "$(extract_first_hook_field tool_name toolName tool name)"
+      log_line "codewhale hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    codewhale-error)
+      write_ai_hook_event \
+        "turnCompleted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
+        "" \
+        "" \
+        "" \
+        "$(extract_first_hook_field reason error message)" \
+        "$(extract_first_hook_field workspace cwd current_working_directory working_directory)"
+      log_line "codewhale hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    codewhale-session-end)
+      write_ai_hook_event \
+        "sessionEnded" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "$(extract_hook_number_field total_tokens totalTokenCount totalTokens)" \
+        "" \
+        "" \
+        "" \
+        "$(extract_first_hook_field reason stop_reason)" \
+        "$(extract_first_hook_field workspace cwd current_working_directory working_directory)"
+      log_line "codewhale hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
       ;;
   esac
 fi

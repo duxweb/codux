@@ -81,13 +81,6 @@ impl CoduxApp {
         applied
     }
 
-    pub(super) fn reload_ssh(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.ssh = self.runtime_service.reload_ssh(self.runtime.root.clone());
-        self.normalize_selected_ssh_profile();
-        self.status_message = "SSH profiles reloaded".to_string();
-        self.invalidate_remote_panel(cx);
-    }
-
     pub(super) fn selected_ssh_profile(&self) -> Option<&SSHProfileSummary> {
         self.selected_ssh_profile_id
             .as_deref()
@@ -170,55 +163,6 @@ impl CoduxApp {
         }
         self.sync_project_activity_state(cx);
         self.invalidate_task_column(cx);
-        self.invalidate_remote_panel(cx);
-    }
-
-    pub(super) fn new_ssh_profile_draft(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.ssh_draft_open = true;
-        self.ssh_draft_id = None;
-        self.ssh_draft_name.clear();
-        self.ssh_draft_host.clear();
-        self.ssh_draft_port = "22".to_string();
-        self.ssh_draft_username.clear();
-        self.ssh_draft_credential_kind = "none".to_string();
-        self.ssh_draft_private_key_path.clear();
-        self.ssh_draft_password.clear();
-        self.ssh_draft_key_passphrase.clear();
-        self.status_message = "new SSH profile draft".to_string();
-        self.invalidate_remote_panel(cx);
-    }
-
-    pub(super) fn load_selected_ssh_profile_draft(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let selected_id = self.selected_ssh_profile_id.clone().or_else(|| {
-            self.state
-                .ssh
-                .profiles
-                .first()
-                .map(|profile| profile.id.clone())
-        });
-        let Some(profile_id) = selected_id else {
-            self.status_message = "no SSH profile selected".to_string();
-            self.invalidate_remote_panel(cx);
-            return;
-        };
-        let snapshot = self.runtime_service.ssh_profiles();
-        let Some(profile) = snapshot
-            .profiles
-            .into_iter()
-            .find(|profile| profile.id == profile_id)
-        else {
-            self.status_message = "SSH profile is no longer available".to_string();
-            self.normalize_selected_ssh_profile();
-            self.invalidate_remote_panel(cx);
-            return;
-        };
-        self.apply_ssh_draft(profile);
-        self.ssh_draft_open = true;
-        self.status_message = "SSH profile loaded into editor".to_string();
         self.invalidate_remote_panel(cx);
     }
 
@@ -929,47 +873,6 @@ impl CoduxApp {
         self.invalidate_remote_panel(cx);
     }
 
-    pub(super) fn reload_runtime_activity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let result = self.apply_runtime_activity_tick(true, window.is_window_active(), true, cx);
-        if result.pet_update_events > 0 {
-            self.sync_desktop_pet_window(false, cx);
-        }
-        self.status_message = format!(
-            "runtime activity reloaded · project events {} · file events {} · pet catalog {} · pet updates {} · AI history {} · memory queued {} · badge {}",
-            result.project_events,
-            result.file_events,
-            result.pet_events,
-            result.pet_update_events,
-            result.ai_history_events,
-            result.memory_events,
-            result
-                .dock_badge_count
-                .map(|count| count.to_string())
-                .unwrap_or_else(|| "off".to_string())
-        );
-        if let Some(error) = result.ai_state_error {
-            self.status_message
-                .push_str(&format!(" · AI state save failed: {error}"));
-        }
-        self.runtime_trace(
-            "runtime-activity",
-            &format!(
-                "manual_reload project_events={} file_events={} pet_catalog={} pet_updates={} ai_history={} memory_events={} badge={}",
-                result.project_events,
-                result.file_events,
-                result.pet_events,
-                result.pet_update_events,
-                result.ai_history_events,
-                result.memory_events,
-                result
-                    .dock_badge_count
-                    .map(|count| count.to_string())
-                    .unwrap_or_else(|| "off".to_string())
-            ),
-        );
-        self.invalidate_remote_panel(cx);
-    }
-
     pub(super) fn apply_runtime_activity_tick(
         &mut self,
         visible: bool,
@@ -1554,67 +1457,6 @@ impl CoduxApp {
         }
 
         applied
-    }
-
-    pub(super) fn poll_ai_runtime_state(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        match self.runtime_service.poll_ai_runtime_state() {
-            Ok(snapshot) => {
-                self.state.ai_runtime_state = self
-                    .runtime_service
-                    .summarize_ai_runtime_state_snapshot(&snapshot);
-                self.state.refresh_ai_history_stats();
-                self.status_message = format!(
-                    "AI runtime polled · running {} · waiting {} · completed {}",
-                    self.state.ai_runtime_state.running_count,
-                    self.state.ai_runtime_state.needs_input_count,
-                    self.state.ai_runtime_state.completed_count
-                );
-                self.runtime_trace(
-                    "ai-runtime",
-                    &format!(
-                        "poll ok running={} waiting={} completed={}",
-                        self.state.ai_runtime_state.running_count,
-                        self.state.ai_runtime_state.needs_input_count,
-                        self.state.ai_runtime_state.completed_count
-                    ),
-                );
-            }
-            Err(error) => {
-                self.runtime_trace("ai-runtime", &format!("poll failed error={error}"));
-                self.status_message = format!("failed to poll AI runtime: {error}");
-            }
-        }
-        self.sync_project_activity_state(cx);
-        self.invalidate_task_column(cx);
-        self.invalidate_remote_panel(cx);
-    }
-
-    pub(super) fn dismiss_selected_project_ai_completion(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(project) = self.state.selected_project.as_ref() else {
-            self.status_message = "no selected project for AI completion dismiss".to_string();
-            self.invalidate_remote_panel(cx);
-            return;
-        };
-        let project_id = project.id.clone();
-        let project_name = project.name.clone();
-        let snapshot = self
-            .runtime_service
-            .dismiss_ai_runtime_completion(&project_id);
-        self.state.ai_runtime_state = self
-            .runtime_service
-            .summarize_ai_runtime_state_snapshot(&snapshot);
-        self.state.refresh_ai_history_stats();
-        self.dismissed_worktree_ai_completion_at
-            .insert(project_id, app_now_seconds());
-        self.status_message = format!("AI completion dismissed for {project_name}");
-        self.refresh_dock_badge_now(cx);
-        self.sync_project_activity_state(cx);
-        self.invalidate_task_column(cx);
-        self.invalidate_remote_panel(cx);
     }
 
     pub(super) fn dismiss_worktree_ai_completion(

@@ -12,7 +12,7 @@ use crate::{
 };
 use serde_json::Value;
 
-pub(super) fn probe_opencode_runtime(
+pub(crate) fn probe_opencode_runtime(
     request: &AIRuntimeProbeRequest,
 ) -> Option<AIRuntimeContextSnapshot> {
     let project_path = normalized_string(request.project_path.as_deref())?;

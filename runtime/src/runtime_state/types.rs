@@ -70,6 +70,7 @@ pub struct RuntimeService {
     git_watch_manager: Arc<git::GitWatchManager>,
     file_watch_events: Arc<Mutex<VecDeque<FileChangeEvent>>>,
     active_file_watch_path: Arc<Mutex<Option<String>>>,
+    ai_history_activation_keys: Arc<Mutex<HashSet<String>>>,
     git_cancels: Arc<Mutex<HashMap<String, git::GitCancelToken>>>,
     power_manager: Arc<PowerManager>,
     remote_host: Arc<RemoteHostRuntime>,

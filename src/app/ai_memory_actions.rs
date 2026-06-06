@@ -6,11 +6,6 @@ use crate::app::app_events::{
 const MAX_AUTOMATIC_MEMORY_PROCESS_TASKS: usize = 10;
 
 impl CoduxApp {
-    pub(super) fn reload_ai_history(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.start_ai_history_refresh(true, cx);
-        self.invalidate_memory_panel(cx);
-    }
-
     pub(super) fn schedule_ai_index_progress_expiry(
         &self,
         generation: u64,
@@ -229,31 +224,6 @@ impl CoduxApp {
             .max(1.0)
     }
 
-    pub(super) fn select_ai_session(
-        &mut self,
-        session_id: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some((session_id, session_title)) = self
-            .state
-            .ai_history
-            .sessions
-            .iter()
-            .find(|session| session.id == session_id)
-            .map(|session| (session.id.clone(), session.title.clone()))
-        else {
-            self.status_message = "AI session is no longer available".to_string();
-            self.normalize_selected_ai_session();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        self.selected_ai_session_id = Some(session_id);
-        self.reload_selected_ai_session_detail();
-        self.status_message = format!("selected AI session: {session_title}");
-        self.invalidate_memory_panel(cx);
-    }
-
     pub(super) fn selected_ai_session(&self) -> Option<&AISessionSummary> {
         self.selected_ai_session_id.as_deref().and_then(|id| {
             self.state
@@ -314,19 +284,6 @@ impl CoduxApp {
             self.runtime_service
                 .reload_project_ai_session_detail(&project_path, session_id),
         );
-    }
-
-    pub(super) fn remove_selected_ai_session(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(session_id) = self.selected_ai_session_id.clone() else {
-            self.status_message = "no AI session to remove".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        self.remove_ai_session_confirmed(session_id, cx);
     }
 
     fn remove_ai_session_confirmed(&mut self, session_id: String, cx: &mut Context<Self>) {
@@ -437,50 +394,6 @@ impl CoduxApp {
         self.invalidate_memory_panel(cx);
     }
 
-    pub(super) fn rename_selected_ai_session_to(
-        &mut self,
-        title: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let title = title.trim().to_string();
-        if title.is_empty() {
-            self.status_message = "AI session title cannot be empty".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        }
-        let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for AI session rename".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        let worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
-        let project_request = ai_history_worktree_request(project, worktree.as_ref());
-        let Some(session) = self.selected_ai_session().cloned() else {
-            self.status_message = "no AI session to rename".to_string();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        match self.runtime_service.rename_indexed_ai_session(
-            project_request,
-            session.id.clone(),
-            title.clone(),
-        ) {
-            Ok(state) => {
-                if let Some(summary) = ai_history_summary_from_project_state(&state) {
-                    self.state.ai_history = summary;
-                    self.state.refresh_ai_history_stats();
-                }
-                self.refresh_ai_global_history_summary();
-                self.selected_ai_session_id = Some(session.id);
-                self.reload_selected_ai_session_detail();
-                self.status_message = format!("AI session renamed: {title}");
-            }
-            Err(error) => self.status_message = format!("failed to rename AI session: {error}"),
-        }
-        self.invalidate_memory_panel(cx);
-    }
-
     pub(super) fn refresh_ai_global_history_summary(&mut self) {
         let projects = ai_history_project_requests(&self.state.projects);
         match self
@@ -513,7 +426,7 @@ impl CoduxApp {
             self.invalidate_memory_panel(cx);
             return;
         };
-        prepare_memory_launch_artifacts(&self.state);
+        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
         self.state.tool_permissions = self.runtime_service.sync_tool_permissions();
         let command = ai_session_restore_command(&session);
         self.restore_ai_session_in_main_split(session.title.clone(), command, window, cx);
@@ -793,14 +706,6 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         self.update_selected_memory_status("archived", cx);
-    }
-
-    pub(super) fn restore_selected_memory_entry(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.update_selected_memory_status("active", cx);
     }
 
     pub(super) fn delete_selected_memory_entry(
@@ -1322,19 +1227,6 @@ impl CoduxApp {
         }
     }
 
-    pub(super) fn selected_runtime_session(&self) -> Option<&RuntimeSessionSummary> {
-        self.selected_runtime_terminal_id
-            .as_deref()
-            .and_then(|id| {
-                self.state
-                    .runtime_events
-                    .sessions
-                    .iter()
-                    .find(|session| session.terminal_id == id)
-            })
-            .or_else(|| self.state.runtime_events.sessions.first())
-    }
-
     pub(super) fn normalize_selected_runtime_session(&mut self) {
         let selected_still_exists = self
             .selected_runtime_terminal_id
@@ -1357,58 +1249,4 @@ impl CoduxApp {
         }
     }
 
-    pub(super) fn select_runtime_session(
-        &mut self,
-        terminal_id: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(session) = self
-            .state
-            .runtime_events
-            .sessions
-            .iter()
-            .find(|session| session.terminal_id == terminal_id)
-        else {
-            self.status_message = "runtime session is no longer available".to_string();
-            self.normalize_selected_runtime_session();
-            self.invalidate_memory_panel(cx);
-            return;
-        };
-        let session_title = session.session_title.clone();
-        let session_terminal_id = session.terminal_id.clone();
-        self.selected_runtime_terminal_id = Some(session_terminal_id.clone());
-        let matched_view_id = self
-            .terminals
-            .iter()
-            .find(|tab| {
-                tab.panes
-                    .iter()
-                    .any(|slot| slot.terminal_id.as_deref() == Some(session_terminal_id.as_str()))
-            })
-            .map(|tab| tab.id);
-        if let Some(view_id) = matched_view_id {
-            self.refresh_terminal_slot_snapshots();
-            self.active_terminal_id = view_id;
-            if let Err(error) = self.ensure_active_terminal_mounted(cx) {
-                self.status_message = format!("failed to focus terminal session: {error}");
-                self.invalidate_memory_panel(cx);
-                return;
-            }
-            if let Some(view) = self.active_terminal_view() {
-                view.read(cx).focus_handle().focus(window, cx);
-            }
-            self.detach_inactive_terminal_views();
-            self.status_message = format!(
-                "selected runtime session {} and focused terminal {}",
-                session_title, view_id
-            );
-        } else {
-            self.status_message = format!(
-                "selected runtime session {} ({})",
-                session_title, session_terminal_id
-            );
-        }
-        self.invalidate_memory_panel(cx);
-    }
 }

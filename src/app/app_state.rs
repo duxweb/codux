@@ -92,7 +92,6 @@ pub struct CoduxApp {
     pub(in crate::app) file_tree_expanded_dirs: HashSet<String>,
     pub(in crate::app) file_tree_children: HashMap<String, Vec<FileEntry>>,
     pub(in crate::app) file_tree_scroll_handle: UniformListScrollHandle,
-    pub(in crate::app) file_preview_scroll_handle: UniformListScrollHandle,
     pub(in crate::app) file_panel_refreshing: bool,
     pub(in crate::app) selected_git_file: Option<String>,
     pub(in crate::app) selected_git_branch: Option<String>,
@@ -144,7 +143,6 @@ pub struct CoduxApp {
     pub(in crate::app) pet_custom_install_seen_revision: u64,
     pub(in crate::app) pet_update_seen_revision: u64,
     pub(in crate::app) settings_seen_revision: u64,
-    pub(in crate::app) ssh_seen_revision: u64,
     pub(in crate::app) memory_seen_revision: u64,
     pub(in crate::app) child_window_update_seen_revision: u64,
     pub(in crate::app) child_window_settings_seen_revision: u64,
@@ -327,6 +325,7 @@ pub(in crate::app) struct RuntimeActivityTickResult {
     pub(in crate::app) memory_events: usize,
     pub(in crate::app) dock_badge_count: Option<i64>,
     pub(in crate::app) changed: bool,
+    #[allow(dead_code)]
     pub(in crate::app) ai_state_error: Option<String>,
 }
 

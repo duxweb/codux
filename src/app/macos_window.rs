@@ -565,17 +565,6 @@ fn call_desktop_pet_original_window_proc(
 
 #[cfg(target_os = "macos")]
 #[allow(unexpected_cfgs)]
-pub(in crate::app) fn show_desktop_pet_native_menu(
-    window: &mut Window,
-    position: gpui::Point<gpui::Pixels>,
-    entries: &[NativeMenuEntry],
-) -> Option<&'static str> {
-    let ns_view = appkit_view(window)?;
-    show_desktop_pet_native_menu_for_view(ns_view, position, entries)
-}
-
-#[cfg(target_os = "macos")]
-#[allow(unexpected_cfgs)]
 pub(in crate::app) fn spawn_native_popup_menu(
     window: &mut Window,
     position: gpui::Point<gpui::Pixels>,

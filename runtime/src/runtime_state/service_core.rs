@@ -54,6 +54,7 @@ impl RuntimeService {
             git_watch_manager: Arc::new(git::GitWatchManager::default()),
             file_watch_events: Arc::new(Mutex::new(VecDeque::new())),
             active_file_watch_path: Arc::new(Mutex::new(None)),
+            ai_history_activation_keys: Arc::new(Mutex::new(HashSet::new())),
             git_cancels: Arc::new(Mutex::new(HashMap::new())),
             power_manager: shared_power_manager(),
             remote_host,
@@ -358,11 +359,20 @@ impl RuntimeService {
         let Some(request) = self.active_ai_history_project_request() else {
             return;
         };
+        let activation_key = format!("{}:{}", request.id, request.path);
+        let should_refresh = self
+            .ai_history_activation_keys
+            .lock()
+            .map(|mut keys| keys.insert(activation_key))
+            .unwrap_or(false);
+        if !should_refresh {
+            return;
+        }
         let ai_history = self.ai_history_indexer.clone();
         let _ = std::thread::Builder::new()
             .name("codux-ai-history-activation".to_string())
             .spawn(move || {
-                let _ = ai_history.project_state(request);
+                let _ = ai_history.refresh_project(request);
             });
     }
 

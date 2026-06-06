@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use codux_runtime::{
-    ai_history::{AIGlobalHistorySummary, AIHistorySummary, AISessionDetail, AISessionSummary},
+    ai_history::{AIGlobalHistorySummary, AIHistorySummary, AISessionSummary},
     ai_history_indexer::AIHistoryEvent,
     desktop_pet::{
         DESKTOP_PET_BASE_HEIGHT, DESKTOP_PET_BASE_WIDTH, DESKTOP_PET_HIDE, DESKTOP_PET_MUTE_1_HOUR,
@@ -40,7 +40,6 @@ use codux_runtime::{
     remote::{RemoteDeviceSummary, RemotePairingInfo, RemotePairingPollResult, RemoteSummary},
     runtime_activity::RuntimeActivitySummary,
     runtime_bridge::RuntimeInventory,
-    runtime_event::RuntimeSessionSummary,
     runtime_state::{FileEntry, FileKind, ProjectInfo, RuntimeService, RuntimeState},
     settings::{SettingsSummary, locale_from_language_setting},
     ssh::{SSHConnectionProfile, SSHProfileSummary, SSHProfileUpsertRequest, SSHSummary},
@@ -163,15 +162,14 @@ use self::{
     app_events::{
         ChildWindowUpdateKind, PetCustomInstallEvent, current_child_window_update_event,
         current_pet_custom_install_event, current_pet_update_event, current_settings_update_event,
-        current_ssh_update_event, publish_child_window_update, publish_pet_custom_install,
+        publish_child_window_update, publish_pet_custom_install,
         publish_pet_update, publish_settings_update, publish_ssh_update,
         publish_statistics_settings_update,
     },
     app_helpers::{
-        PROJECT_BADGE_COLORS, defer_codux_app_update, file_search_status_message,
-        generated_git_branch_name, generated_git_commit_message, generated_project_child_name,
-        git_remote_action_label, join_relative_child_path, normalized_git_action_paths, plural,
-        project_badge_text_from_name,
+        PROJECT_BADGE_COLORS, defer_codux_app_update, generated_git_branch_name,
+        generated_git_commit_message, generated_project_child_name, git_remote_action_label,
+        join_relative_child_path, normalized_git_action_paths, plural, project_badge_text_from_name,
     },
     app_state::{
         AIProviderTestResult, GIT_CREDENTIALS_COMPACT_HEIGHT, GIT_CREDENTIALS_WINDOW_WIDTH,
@@ -216,7 +214,7 @@ use self::{
     ui_helpers::{
         assistant_header_icon_button, column_header, dialog_button_label, dialog_cancel_button,
         dialog_footer_bar, dialog_primary_button, dialog_secondary_button, empty_label,
-        header_icon_button, header_icon_button_loading, section,
+        header_icon_button, header_icon_button_loading,
     },
     ui_invalidation::UiRegion,
     window_shell::child_window_shell,

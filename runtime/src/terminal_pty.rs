@@ -1,4 +1,7 @@
-use crate::ai_runtime::{AIRuntimeBridge, AIRuntimeTerminalBinding};
+use crate::ai_runtime::{
+    AIHookEventMetadata, AIHookEventPayload, AIRuntimeBridge, AIRuntimeTerminalBinding,
+    canonical_tool_name,
+};
 use anyhow::{Context, Result, anyhow};
 use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
@@ -82,6 +85,11 @@ const DOTENV_KEYS: &[&str] = &[
     "CODEX_HOME",
     "OPENCODE_API_KEY",
     "OPENCODE_BASE_URL",
+    "CODEWHALE_PROVIDER",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_BASE_URL",
+    "DEEPSEEK_MODEL",
+    "DEEPSEEK_AUTH_TOKEN",
     "HTTPS_PROXY",
     "HTTP_PROXY",
     "ALL_PROXY",
@@ -388,6 +396,7 @@ impl TerminalManager {
             return;
         };
         ai_runtime.registry().upsert(session.ai_runtime_binding());
+        attach_ai_runtime_terminal_output_watcher(session, Arc::clone(ai_runtime));
     }
 
     fn remove_ai_runtime_terminal(&self, session: &TerminalPtySession) {
@@ -1039,6 +1048,212 @@ fn emit_terminal_event(
     }
 }
 
+fn attach_ai_runtime_terminal_output_watcher(
+    session: &TerminalPtySession,
+    ai_runtime: Arc<AIRuntimeBridge>,
+) {
+    let binding = session.ai_runtime_binding();
+    let watcher = Arc::new(parking_lot::Mutex::new(
+        CodeWhaleTerminalProgressWatcher::new(binding, ai_runtime),
+    ));
+    session.subscribe_events(Arc::new(move |event| {
+        watcher.lock().handle_terminal_event(&event);
+    }));
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TerminalProgressOsc {
+    Started,
+    Completed,
+}
+
+#[derive(Debug, Default)]
+struct TerminalProgressOscParser {
+    scan_tail: Vec<u8>,
+}
+
+impl TerminalProgressOscParser {
+    fn push(&mut self, bytes: &[u8]) -> Vec<TerminalProgressOsc> {
+        if bytes.is_empty() {
+            return Vec::new();
+        }
+        if self.scan_tail.is_empty() && !bytes.contains(&0x1b) {
+            return Vec::new();
+        }
+        let mut scan = Vec::with_capacity(self.scan_tail.len() + bytes.len());
+        scan.extend_from_slice(&self.scan_tail);
+        scan.extend_from_slice(bytes);
+
+        let mut events = Vec::new();
+        let mut index = 0;
+        let mut consumed_until = 0;
+        while index < scan.len() {
+            let Some(relative) = scan[index..].iter().position(|byte| *byte == 0x1b) else {
+                consumed_until = scan.len();
+                break;
+            };
+            index += relative;
+            let Some(rest) = scan.get(index..) else {
+                break;
+            };
+            if b"\x1b]9;4;".starts_with(rest) {
+                consumed_until = index;
+                break;
+            }
+            let Some(body) = rest.strip_prefix(b"\x1b]9;4;") else {
+                index += 1;
+                consumed_until = index;
+                continue;
+            };
+            let Some((value, terminator_len)) = terminal_progress_osc_value(body) else {
+                consumed_until = index;
+                break;
+            };
+            match value {
+                b'1' => events.push(TerminalProgressOsc::Started),
+                b'0' => events.push(TerminalProgressOsc::Completed),
+                _ => {}
+            }
+            index += b"\x1b]9;4;".len() + 1 + terminator_len;
+            consumed_until = index;
+        }
+
+        let tail = &scan[consumed_until.min(scan.len())..];
+        let tail_len = tail.len().min(32);
+        self.scan_tail.clear();
+        self.scan_tail
+            .extend_from_slice(&tail[tail.len().saturating_sub(tail_len)..]);
+        events
+    }
+}
+
+fn terminal_progress_osc_value(body: &[u8]) -> Option<(u8, usize)> {
+    let value = *body.first()?;
+    let rest = &body[1..];
+    if rest.first().copied() == Some(0x07) {
+        return Some((value, 1));
+    }
+    if rest.starts_with(b"\x1b\\") {
+        return Some((value, 2));
+    }
+    None
+}
+
+struct CodeWhaleTerminalProgressWatcher {
+    binding: AIRuntimeTerminalBinding,
+    ai_runtime: Arc<AIRuntimeBridge>,
+    parser: TerminalProgressOscParser,
+}
+
+impl CodeWhaleTerminalProgressWatcher {
+    fn new(binding: AIRuntimeTerminalBinding, ai_runtime: Arc<AIRuntimeBridge>) -> Self {
+        Self {
+            binding,
+            ai_runtime,
+            parser: TerminalProgressOscParser::default(),
+        }
+    }
+
+    fn handle_terminal_event(&mut self, event: &TerminalEvent) {
+        let TerminalEvent::Output {
+            session_id, bytes, ..
+        } = event
+        else {
+            return;
+        };
+        if session_id != &self.binding.terminal_id {
+            return;
+        }
+        for progress in self.parser.push(bytes) {
+            match progress {
+                TerminalProgressOsc::Started => {}
+                TerminalProgressOsc::Completed => {
+                    if self.current_session_is_running() {
+                        self.submit_progress_hook("turnCompleted", true);
+                    }
+                }
+            }
+        }
+    }
+
+    fn current_session_is_running(&self) -> bool {
+        self.ai_runtime
+            .runtime_state_snapshot()
+            .sessions
+            .iter()
+            .any(|session| {
+                session.terminal_id == self.binding.terminal_id
+                    && canonical_tool_name(&session.tool).as_deref() == Some("codewhale")
+                    && matches!(session.state.as_str(), "responding" | "needsInput")
+            })
+    }
+
+    fn submit_progress_hook(&self, kind: &str, has_completed_turn: bool) {
+        let existing = self
+            .ai_runtime
+            .runtime_state_snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.terminal_id == self.binding.terminal_id);
+        let payload = AIHookEventPayload {
+            kind: kind.to_string(),
+            terminal_id: self.binding.terminal_id.clone(),
+            terminal_instance_id: self.binding.terminal_instance_id.clone(),
+            project_id: self.binding.project_id.clone(),
+            project_name: existing
+                .as_ref()
+                .map(|session| session.project_name.clone())
+                .unwrap_or_else(|| "Workspace".to_string()),
+            project_path: existing
+                .as_ref()
+                .and_then(|session| session.project_path.clone())
+                .or_else(|| Some(self.binding.cwd.clone())),
+            session_title: existing
+                .as_ref()
+                .map(|session| session.session_title.clone())
+                .unwrap_or_else(|| self.binding.title.clone()),
+            tool: "codewhale".to_string(),
+            ai_session_id: existing
+                .as_ref()
+                .and_then(|session| session.ai_session_id.clone())
+                .or_else(|| self.binding.session_key.clone()),
+            model: existing.as_ref().and_then(|session| session.model.clone()),
+            input_tokens: None,
+            output_tokens: None,
+            cached_input_tokens: None,
+            total_tokens: None,
+            updated_at: now_seconds(),
+            metadata: Some(AIHookEventMetadata {
+                transcript_path: None,
+                notification_type: None,
+                source: Some("terminal-progress-osc".to_string()),
+                reason: Some(
+                    if has_completed_turn {
+                        "progress-completed"
+                    } else {
+                        "progress-started"
+                    }
+                    .to_string(),
+                ),
+                cwd: Some(self.binding.cwd.clone()),
+                target_tool_name: None,
+                message: None,
+                was_interrupted: Some(false),
+                has_completed_turn: Some(has_completed_turn),
+            }),
+        };
+        if let Err(error) = self.ai_runtime.submit_hook_event(payload) {
+            crate::ai_runtime::runtime_log_line(
+                "terminal-ai-runtime",
+                &format!(
+                    "submit codewhale progress hook failed terminal={} kind={} error={}",
+                    self.binding.terminal_id, kind, error
+                ),
+            );
+        }
+    }
+}
+
 pub fn terminal_environment(
     shell: &str,
     cwd: Option<&str>,
@@ -1611,6 +1826,7 @@ fn dotenv_paths(home: &str) -> Vec<PathBuf> {
         ".codex/.env",
         ".opencode/.env",
         ".config/opencode/.env",
+        ".codewhale/.env",
     ]
     .iter()
     .map(|path| Path::new(home).join(path))
@@ -2016,6 +2232,26 @@ mod tests {
     }
 
     #[test]
+    fn terminal_progress_osc_parser_detects_split_start_and_completion() {
+        let mut parser = TerminalProgressOscParser::default();
+
+        assert!(parser.push(b"noise\x1b]9;").is_empty());
+        assert_eq!(parser.push(b"4;1\x07"), vec![TerminalProgressOsc::Started]);
+        assert_eq!(
+            parser.push(b"\x1b]9;4;0\x1b\\"),
+            vec![TerminalProgressOsc::Completed]
+        );
+    }
+
+    #[test]
+    fn terminal_progress_osc_parser_ignores_incomplete_sequence() {
+        let mut parser = TerminalProgressOscParser::default();
+
+        assert!(parser.push(b"\x1b]9;4;0").is_empty());
+        assert_eq!(parser.push(b"\x07"), vec![TerminalProgressOsc::Completed]);
+    }
+
+    #[test]
     fn terminal_history_bytes_respects_configured_scrollback() {
         assert_eq!(terminal_history_bytes(Some(10_000), 100), 4 * 100 * 10_000);
         assert_eq!(terminal_history_bytes(Some(1), 100), MIN_HISTORY_BYTES);
@@ -2316,6 +2552,143 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn codewhale_terminal_progress_osc_completes_running_session() {
+        let dir = std::env::temp_dir().join(format!(
+            "codux-codewhale-terminal-progress-{}",
+            Uuid::new_v4()
+        ));
+        let bridge = Arc::new(AIRuntimeBridge::with_paths(
+            dir.join("root"),
+            dir.join("temp"),
+            dir.join("home"),
+        ));
+        bridge.ensure_started().expect("runtime should start");
+        let terminal_id = format!("test-codewhale-terminal-{}", Uuid::new_v4());
+        let binding = AIRuntimeTerminalBinding {
+            terminal_id: terminal_id.clone(),
+            project_id: "project-1".to_string(),
+            slot_id: "slot-1".to_string(),
+            title: "Terminal".to_string(),
+            cwd: "/tmp/project".to_string(),
+            tool: None,
+            is_active: false,
+            session_key: Some("codewhale-session-1".to_string()),
+            terminal_instance_id: Some("terminal-instance-1".to_string()),
+        };
+        let mut watcher =
+            CodeWhaleTerminalProgressWatcher::new(binding.clone(), Arc::clone(&bridge));
+        bridge
+            .submit_hook_event(AIHookEventPayload {
+                kind: "promptSubmitted".to_string(),
+                terminal_id: terminal_id.clone(),
+                terminal_instance_id: binding.terminal_instance_id.clone(),
+                project_id: "project-1".to_string(),
+                project_name: "Codux".to_string(),
+                project_path: Some("/tmp/project".to_string()),
+                session_title: "Terminal".to_string(),
+                tool: "codewhale".to_string(),
+                ai_session_id: Some("codewhale-session-1".to_string()),
+                model: None,
+                input_tokens: None,
+                output_tokens: None,
+                cached_input_tokens: None,
+                total_tokens: None,
+                updated_at: now_seconds(),
+                metadata: None,
+            })
+            .expect("prompt hook should submit");
+        wait_for_session_state(&bridge, &terminal_id, "responding", Duration::from_secs(2));
+
+        watcher.handle_terminal_event(&TerminalEvent::Output {
+            session_id: terminal_id.clone(),
+            text: String::new(),
+            bytes: b"\x1b]9;4;0\x07".to_vec(),
+        });
+        wait_for_session_state(&bridge, &terminal_id, "idle", Duration::from_secs(2));
+
+        let snapshot = bridge.runtime_state_snapshot();
+        let session = snapshot
+            .sessions
+            .iter()
+            .find(|session| session.terminal_id == terminal_id)
+            .expect("session should exist");
+        assert_eq!(session.tool, "codewhale");
+        assert!(session.has_completed_turn);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminal_progress_osc_does_not_complete_non_codewhale_session() {
+        let dir = std::env::temp_dir().join(format!(
+            "codux-codewhale-terminal-progress-ignore-{}",
+            Uuid::new_v4()
+        ));
+        let bridge = Arc::new(AIRuntimeBridge::with_paths(
+            dir.join("root"),
+            dir.join("temp"),
+            dir.join("home"),
+        ));
+        bridge.ensure_started().expect("runtime should start");
+        let terminal_id = format!("test-codex-terminal-{}", Uuid::new_v4());
+        let binding = AIRuntimeTerminalBinding {
+            terminal_id: terminal_id.clone(),
+            project_id: "project-1".to_string(),
+            slot_id: "slot-1".to_string(),
+            title: "Terminal".to_string(),
+            cwd: "/tmp/project".to_string(),
+            tool: None,
+            is_active: false,
+            session_key: Some("codex-session-1".to_string()),
+            terminal_instance_id: Some("terminal-instance-1".to_string()),
+        };
+        let mut watcher =
+            CodeWhaleTerminalProgressWatcher::new(binding.clone(), Arc::clone(&bridge));
+        bridge
+            .submit_hook_event(AIHookEventPayload {
+                kind: "promptSubmitted".to_string(),
+                terminal_id: terminal_id.clone(),
+                terminal_instance_id: binding.terminal_instance_id.clone(),
+                project_id: "project-1".to_string(),
+                project_name: "Codux".to_string(),
+                project_path: Some("/tmp/project".to_string()),
+                session_title: "Terminal".to_string(),
+                tool: "codex".to_string(),
+                ai_session_id: Some("codex-session-1".to_string()),
+                model: None,
+                input_tokens: None,
+                output_tokens: None,
+                cached_input_tokens: None,
+                total_tokens: None,
+                updated_at: now_seconds(),
+                metadata: None,
+            })
+            .expect("prompt hook should submit");
+        wait_for_session_state(&bridge, &terminal_id, "responding", Duration::from_secs(2));
+
+        watcher.handle_terminal_event(&TerminalEvent::Output {
+            session_id: terminal_id.clone(),
+            text: String::new(),
+            bytes: b"\x1b]9;4;0\x07".to_vec(),
+        });
+        std::thread::sleep(Duration::from_millis(150));
+
+        let snapshot = bridge.runtime_state_snapshot();
+        let session = snapshot
+            .sessions
+            .iter()
+            .find(|session| session.terminal_id == terminal_id)
+            .expect("session should exist");
+        assert_eq!(session.tool, "codex");
+        assert_eq!(session.state, "responding");
+        assert!(!session.has_completed_turn);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
     fn recv_until_contains(
         rx: &flume::Receiver<Vec<u8>>,
         needle: &str,
@@ -2332,5 +2705,30 @@ mod tests {
             }
         }
         text
+    }
+
+    #[cfg(unix)]
+    fn wait_for_session_state(
+        bridge: &AIRuntimeBridge,
+        terminal_id: &str,
+        state: &str,
+        timeout: Duration,
+    ) {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if bridge
+                .runtime_state_snapshot()
+                .sessions
+                .iter()
+                .any(|session| session.terminal_id == terminal_id && session.state == state)
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!(
+            "terminal {terminal_id} did not reach state {state}; snapshot={:?}",
+            bridge.runtime_state_snapshot().sessions
+        );
     }
 }

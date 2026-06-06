@@ -17,11 +17,14 @@ include!("types.rs");
 include!("indexing.rs");
 include!("snapshot.rs");
 include!("parsers_claude_codex.rs");
+include!("parsers_codewhale.rs");
 include!("parsers_other.rs");
 include!("usage.rs");
 include!("title.rs");
 include!("paths.rs");
 include!("fs_helpers.rs");
+include!("history_driver.rs");
+mod history_sources;
 
 #[cfg(test)]
 include!("tests.rs");

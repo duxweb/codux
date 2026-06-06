@@ -1417,7 +1417,7 @@ impl CoduxApp {
             |app, settings, cx| {
                 app.apply_async_settings_summary(settings);
                 app.status_message = "memory setting saved".to_string();
-                prepare_memory_launch_artifacts(&app.state);
+                prepare_memory_launch_artifacts(&app.runtime_service, &app.state);
                 app.invalidate_ui_region(cx, UiRegion::Root);
             },
             cx,
