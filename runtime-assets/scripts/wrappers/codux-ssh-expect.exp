@@ -20,6 +20,12 @@ if {$argc == 0} {
     exit 64
 }
 
+if {[info exists env(CODUX_SSH_NONINTERACTIVE)] && $env(CODUX_SSH_NONINTERACTIVE) eq "1"} {
+    set noninteractive 1
+} else {
+    set noninteractive 0
+}
+
 spawn {*}$argv
 
 expect {
@@ -50,6 +56,15 @@ expect {
         exit 0
     }
     timeout {}
+}
+
+if {$noninteractive} {
+    expect eof
+    catch wait wait_result
+    if {[info exists wait_result] && [llength $wait_result] >= 4} {
+        exit [lindex $wait_result 3]
+    }
+    exit 0
 }
 
 interact

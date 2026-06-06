@@ -228,4 +228,9 @@ fi
 
 export CODUX_SSH_PASSWORD="${ssh_password}"
 export CODUX_SSH_KEY_PASSPHRASE="${ssh_key_passphrase}"
+if [[ ${#remote_command[@]} -gt 0 ]]; then
+  export CODUX_SSH_NONINTERACTIVE=1
+else
+  unset CODUX_SSH_NONINTERACTIVE
+fi
 exec "${expect_bin}" "${expect_script}" "${ssh_args[@]}"

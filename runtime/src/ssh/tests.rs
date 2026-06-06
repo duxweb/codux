@@ -97,3 +97,65 @@ fn ssh_store_uses_shared_config_document_snapshot() {
 
     fs::remove_dir_all(support_dir).ok();
 }
+
+#[cfg(not(windows))]
+#[test]
+fn codux_ssh_remote_command_exits_after_noninteractive_password_auth() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!("codux-ssh-noninteractive-{}", Uuid::new_v4()));
+    let bin = dir.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let fake_ssh = bin.join("ssh");
+    fs::write(
+        &fake_ssh,
+        "#!/bin/sh\nprintf 'password: ' >&2\nIFS= read -r _password\nprintf 'remote-ok\\n'\nexit 0\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_ssh).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_ssh, permissions).unwrap();
+
+    let profiles = dir.join("ssh_profiles.json");
+    fs::write(
+        &profiles,
+        serde_json::json!([{
+            "id": "profile-1",
+            "name": "Test",
+            "host": "example.com",
+            "port": 22,
+            "username": "root",
+            "credentialKind": "password",
+            "privateKeyPath": "",
+            "password": "secret",
+            "updatedAt": 1
+        }])
+        .to_string(),
+    )
+    .unwrap();
+
+    let wrapper = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("runtime-assets/scripts/wrappers/bin/codux-ssh");
+
+    let output = Command::new("zsh")
+        .arg(wrapper)
+        .arg("profile-1")
+        .arg("--")
+        .arg("echo remote-ok")
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .env("CODUX_SSH_PROFILES_FILE", &profiles)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "codux-ssh should exit after remote command, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("remote-ok"));
+
+    fs::remove_dir_all(dir).ok();
+}
