@@ -1,6 +1,7 @@
 use super::RemoteService;
 use super::crypto::{remote_e2e_decrypt, remote_e2e_encrypt, remote_e2e_symmetric_key};
 use super::remote_settings_from_raw;
+use super::sequence::RemoteSequenceGuard;
 use super::types::{RemoteEnvelope, RemoteOutgoingEnvelope};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -10,10 +11,10 @@ impl RemoteService {
         serde_json::from_str::<RemoteEnvelope>(text).map_err(|error| error.to_string())
     }
 
-    pub fn decrypt_envelope_if_needed(
+    pub(crate) fn decrypt_envelope_if_needed(
         &self,
         envelope: RemoteEnvelope,
-        receive_seq_by_device: &mut HashMap<String, i64>,
+        receive_sequence_by_device: &mut HashMap<String, RemoteSequenceGuard>,
     ) -> Result<Option<RemoteEnvelope>, String> {
         if envelope.kind != "secure.message" {
             return Ok(Some(envelope));
@@ -25,12 +26,11 @@ impl RemoteService {
         let plaintext = self.decrypt_device_payload(&device_id, &envelope.payload)?;
         let mut inner = serde_json::from_slice::<RemoteEnvelope>(&plaintext)
             .map_err(|error| error.to_string())?;
-        if let Some(seq) = inner.seq {
-            let previous = receive_seq_by_device.get(&device_id).copied().unwrap_or(0);
-            if seq <= previous {
+        if inner.seq.is_some() {
+            let guard = receive_sequence_by_device.entry(device_id.clone()).or_default();
+            if !guard.accept(&inner.kind, inner.session_id.as_deref(), inner.seq) {
                 return Ok(None);
             }
-            receive_seq_by_device.insert(device_id.clone(), seq);
         }
         inner.device_id = Some(device_id);
         Ok(Some(inner))

@@ -444,12 +444,96 @@ fn remote_service_wraps_and_unwraps_secure_envelopes_with_sequence_guard() {
     assert_eq!(decrypted.device_id.as_deref(), Some("device-1"));
     assert_eq!(decrypted.session_id.as_deref(), Some("term-1"));
     assert_eq!(decrypted.seq, Some(1));
-    assert_eq!(receive_seq.get("device-1"), Some(&1));
+    assert!(receive_seq.contains_key("device-1"));
 
     let replay = service
         .decrypt_envelope_if_needed(parsed, &mut receive_seq)
         .expect("decrypt replay");
     assert!(replay.is_none());
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn remote_service_accepts_out_of_order_secure_envelopes_across_channels() {
+    let dir = std::env::temp_dir().join(format!(
+        "codux-gpui-remote-envelope-out-of-order-test-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&dir).expect("create temp support");
+
+    let host_secret = StaticSecret::from([13_u8; 32]);
+    let host_public = X25519PublicKey::from(&host_secret);
+    let device_secret = StaticSecret::from([14_u8; 32]);
+    let device_public = X25519PublicKey::from(&device_secret);
+    let host_private_key = remote_base64_url_encode(host_secret.to_bytes().as_slice());
+    let host_public_key = remote_base64_url_encode(host_public.as_bytes());
+    let device_public_key = remote_base64_url_encode(device_public.as_bytes());
+
+    fs::write(
+        dir.join("settings.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "remote": {
+                "isEnabled": true,
+                "serverUrl": "http://relay.example",
+                "hostID": "host-1",
+                "hostPrivateKey": host_private_key,
+                "hostPublicKey": host_public_key,
+                "cachedDevices": [
+                    {
+                        "id": "device-1",
+                        "hostId": "host-1",
+                        "name": "Phone",
+                        "publicKey": device_public_key
+                    }
+                ]
+            }
+        }))
+        .unwrap(),
+    )
+    .expect("write settings");
+
+    let service = RemoteService::new(dir.clone());
+    let mut receive_seq = HashMap::new();
+    let next_secure = |kind: &str, seq: i64| {
+        let payload = service
+            .encrypt_device_payload(
+                "device-1",
+                serde_json::to_vec(&RemoteOutgoingEnvelope {
+                    kind: kind.to_string(),
+                    device_id: Some("device-1".to_string()),
+                    session_id: None,
+                    seq: Some(seq),
+                    payload: json!({ "ok": true }),
+                })
+                .expect("serialize")
+                .as_slice(),
+            )
+            .expect("encrypt");
+        super::types::RemoteEnvelope {
+            kind: "secure.message".to_string(),
+            device_id: Some("device-1".to_string()),
+            session_id: None,
+            seq: None,
+            payload,
+        }
+    };
+
+    let second = service
+        .decrypt_envelope_if_needed(next_secure("terminal.list", 2), &mut receive_seq)
+        .expect("decrypt")
+        .expect("terminal list");
+    let first = service
+        .decrypt_envelope_if_needed(next_secure("project.select", 1), &mut receive_seq)
+        .expect("decrypt")
+        .expect("project select");
+    let duplicate = service
+        .decrypt_envelope_if_needed(next_secure("project.select", 1), &mut receive_seq)
+        .expect("decrypt");
+
+    assert_eq!(second.kind, "terminal.list");
+    assert_eq!(first.kind, "project.select");
+    assert!(duplicate.is_none());
 
     fs::remove_dir_all(dir).ok();
 }

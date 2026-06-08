@@ -366,6 +366,10 @@ impl TerminalManager {
         Ok(self.session(session_id)?.snapshot())
     }
 
+    pub fn snapshot_tail(&self, session_id: &str, max_chars: usize) -> Result<(String, usize)> {
+        Ok(self.session(session_id)?.snapshot_tail(max_chars))
+    }
+
     pub fn input_snapshot(&self, session_id: &str) -> Result<TerminalInputSnapshot> {
         Ok(self.session(session_id)?.input_snapshot())
     }
@@ -663,6 +667,10 @@ impl TerminalPtySession {
 
     pub fn snapshot(&self) -> String {
         self.history.lock().to_text()
+    }
+
+    pub fn snapshot_tail(&self, max_chars: usize) -> (String, usize) {
+        self.history.lock().tail_text(max_chars)
     }
 
     pub fn buffer_characters(&self) -> usize {
@@ -974,6 +982,33 @@ impl RingHistory {
             text.push_str(chunk);
         }
         text
+    }
+
+    fn tail_text(&self, max_chars: usize) -> (String, usize) {
+        if max_chars == 0 || self.len_chars <= max_chars {
+            return (self.to_text(), 0);
+        }
+        let mut remaining = max_chars;
+        let mut parts = Vec::new();
+        for chunk in self.chunks.iter().rev() {
+            if remaining == 0 {
+                break;
+            }
+            let chunk_chars = chunk.chars().count();
+            if chunk_chars <= remaining {
+                parts.push(chunk.clone());
+                remaining -= chunk_chars;
+            } else {
+                let tail = chunk
+                    .chars()
+                    .skip(chunk_chars - remaining)
+                    .collect::<String>();
+                parts.push(tail);
+                remaining = 0;
+            }
+        }
+        parts.reverse();
+        (parts.concat(), self.len_chars.saturating_sub(max_chars))
     }
 
     fn len_chars(&self) -> usize {
@@ -2203,6 +2238,16 @@ mod tests {
         let mut capture = TerminalOutputCapture::new(5);
         capture.push(b"hello world");
         assert_eq!(capture.snapshot().tail, "world");
+    }
+
+    #[test]
+    fn terminal_history_tail_returns_recent_window_and_offset() {
+        let mut history = RingHistory::new(1024);
+        history.push_text("hello");
+        history.push_text(" world");
+
+        assert_eq!(history.tail_text(5), ("world".to_string(), 6));
+        assert_eq!(history.tail_text(20), ("hello world".to_string(), 0));
     }
 
     #[test]

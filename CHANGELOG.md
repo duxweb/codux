@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-06-08
+
+### Changed
+
+- Improved mobile remote synchronization by keeping project, terminal, selected project, active session, and pending project selection state inside a dedicated runtime store.
+- Limited mobile terminal full-buffer requests to bounded windows so large Codex resume histories do not overwhelm low-bandwidth mobile sessions.
+
+### Fixed
+
+- Fixed encrypted remote message replay checks so small cross-channel packet reordering no longer drops valid project, terminal, or host-info messages during rapid project switching.
+- Fixed rapid mobile project switching so `project.selected`, `project.list`, `terminal.list`, terminal binding, and `terminal.buffer` follow one stable confirmation path without blank terminal states.
+- Fixed redundant project-select recovery requests that could be triggered when `project.list` arrived before the refreshed `terminal.list`.
+- Fixed desktop host sequence validation to use the same per-channel sliding-window replay guard as mobile while still rejecting duplicate and stale encrypted messages.
+
 ## [1.7.0] - 2026-06-08
 
 ### Added

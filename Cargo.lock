@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "codux"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -1242,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "codux-runtime"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
