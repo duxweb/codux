@@ -3,6 +3,7 @@ use super::{
     codex::ensure_codex_config_installed,
     command::{hook_command, is_managed_hook, is_managed_hook_action},
     json::{load_json_object, write_json_object},
+    kimi::install_kimi_hooks_in,
 };
 use crate::{
     ai_runtime::tool_driver::{
@@ -47,6 +48,9 @@ pub fn install_managed_hook_configs_in(
             }
             AIRuntimeToolHookDriver::CodeWhaleToml => {
                 install_codewhale_hooks_in(home_dir, managed_hook_script)?;
+            }
+            AIRuntimeToolHookDriver::KimiToml => {
+                install_kimi_hooks_in(home_dir, managed_hook_script)?;
             }
             AIRuntimeToolHookDriver::OpenCodePlugin | AIRuntimeToolHookDriver::None => {}
         }

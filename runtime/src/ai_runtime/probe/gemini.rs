@@ -101,6 +101,7 @@ pub(crate) fn probe_gemini_runtime(
         has_completed_turn,
         session_origin: state.origin,
         source: "probe".to_string(),
+        plan: None,
     })
 }
 

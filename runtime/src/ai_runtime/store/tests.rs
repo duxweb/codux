@@ -65,6 +65,7 @@ fn runtime_snapshot_sets_restored_session_baseline() {
             has_completed_turn: false,
             session_origin: "restored".to_string(),
             source: "probe".to_string(),
+            plan: None,
         }
     ));
 
@@ -255,6 +256,7 @@ fn codex_stale_completed_turn_after_new_prompt_stays_running() {
             has_completed_turn: true,
             session_origin: "live".to_string(),
             source: "probe".to_string(),
+            plan: None,
         },
         Some(&previous),
     );
@@ -675,6 +677,7 @@ fn stale_runtime_completion_snapshot_after_prompt_stays_running() {
             has_completed_turn: true,
             session_origin: "live".to_string(),
             source: "probe".to_string(),
+            plan: None,
         },
     );
 
@@ -725,6 +728,7 @@ fn same_second_completion_snapshot_after_prompt_completes() {
             has_completed_turn: true,
             session_origin: "live".to_string(),
             source: "probe".to_string(),
+            plan: None,
         },
     );
 
@@ -783,6 +787,7 @@ fn later_probe_for_same_completed_turn_does_not_notify_twice() {
             has_completed_turn: true,
             session_origin: "live".to_string(),
             source: "probe".to_string(),
+            plan: None,
         },
     );
 

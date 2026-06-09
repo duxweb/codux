@@ -43,6 +43,7 @@ pub struct AIRuntimeHookConfigStatus {
     pub opencode: AIRuntimeToolHookConfigStatus,
     pub kiro: AIRuntimeToolHookConfigStatus,
     pub codewhale: AIRuntimeToolHookConfigStatus,
+    pub kimi: AIRuntimeToolHookConfigStatus,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -340,7 +341,7 @@ impl AIRuntimeBridge {
         super::runtime_log_line(
             "runtime-hooks",
             &format!(
-                "{phase} codex={} claude={} gemini={} agy={} opencode={} kiro={} codewhale={} claude_missing={}",
+                "{phase} codex={} claude={} gemini={} agy={} opencode={} kiro={} codewhale={} kimi={} claude_missing={}",
                 status.codex.configured,
                 status.claude.configured,
                 status.gemini.configured,
@@ -348,6 +349,7 @@ impl AIRuntimeBridge {
                 status.opencode.configured,
                 status.kiro.configured,
                 status.codewhale.configured,
+                status.kimi.configured,
                 status.claude.missing.join("|")
             ),
         );
@@ -381,6 +383,8 @@ mod tests {
             assert!(bridge.wrapper_bin_dir().join("codewhale-tui").is_file());
             assert!(bridge.wrapper_bin_dir().join("deepseek").is_file());
             assert!(bridge.wrapper_bin_dir().join("deepseek-tui").is_file());
+            assert!(bridge.wrapper_bin_dir().join("kimi").is_file());
+            assert!(bridge.wrapper_bin_dir().join("kimi-code").is_file());
         }
         #[cfg(windows)]
         {
@@ -389,6 +393,8 @@ mod tests {
             assert!(bridge.wrapper_bin_dir().join("codewhale-tui.ps1").is_file());
             assert!(bridge.wrapper_bin_dir().join("deepseek.ps1").is_file());
             assert!(bridge.wrapper_bin_dir().join("deepseek-tui.ps1").is_file());
+            assert!(bridge.wrapper_bin_dir().join("kimi.ps1").is_file());
+            assert!(bridge.wrapper_bin_dir().join("kimi-code.ps1").is_file());
             assert!(!bridge.wrapper_bin_dir().join("codex.cmd").exists());
         }
         assert!(
@@ -875,6 +881,62 @@ command = "echo custom"
         assert!(args.lines().any(|arg| arg == "deepseek-chat"));
         assert!(args.lines().any(|arg| arg == "resume"));
         assert!(args.lines().any(|arg| arg == "session-1"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn kimi_wrapper_applies_configured_model_without_unknown_permission_args() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        let dir = std::env::temp_dir().join(format!("codux-kimi-wrapper-{}", Uuid::new_v4()));
+        let bridge =
+            AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+        bridge.stage_assets().unwrap();
+
+        let real_bin = dir.join("real-bin");
+        fs::create_dir_all(&real_bin).unwrap();
+        let fake_kimi = real_bin.join("kimi");
+        fs::write(&fake_kimi, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+        let mut permissions = fs::metadata(&fake_kimi).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_kimi, permissions).unwrap();
+
+        let permissions_file = dir.join("tool-permissions.json");
+        fs::write(
+            &permissions_file,
+            serde_json::json!({
+                "kimi": "fullAccess",
+                "kimiModel": "kimi-k2"
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+        let output = Command::new(bridge.wrapper_bin_dir().join("kimi"))
+            .arg("hello")
+            .env("PATH", &search_path)
+            .env("DMUX_ORIGINAL_PATH", &search_path)
+            .env("DMUX_SESSION_ID", "terminal-1")
+            .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+            .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+            .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "wrapper should execute fake kimi, stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let args = String::from_utf8_lossy(&output.stdout);
+        assert!(args.lines().any(|arg| arg == "--model"), "{args}");
+        assert!(args.lines().any(|arg| arg == "kimi-k2"), "{args}");
+        assert!(!args.lines().any(|arg| arg == "--approval-mode"), "{args}");
+        assert!(!args.lines().any(|arg| arg == "yolo"), "{args}");
+        assert!(args.lines().any(|arg| arg == "hello"), "{args}");
         fs::remove_dir_all(dir).unwrap();
     }
 

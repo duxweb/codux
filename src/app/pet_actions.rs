@@ -376,7 +376,7 @@ impl CoduxApp {
             &self.state.settings.language,
         );
         if !line.text.trim().is_empty() {
-            self.set_desktop_pet_activity_line(line.text, line.tone, cx);
+            self.set_desktop_pet_activity(line.text, line.tone, line.plan_items, cx);
             self.request_desktop_pet_llm_line(cx);
             return;
         }
@@ -418,10 +418,24 @@ impl CoduxApp {
         tone: DesktopPetActivityTone,
         cx: &mut Context<Self>,
     ) {
-        if self.desktop_pet_line != line || self.desktop_pet_tone != tone {
+        self.set_desktop_pet_activity(line, tone, Vec::new(), cx);
+    }
+
+    pub(super) fn set_desktop_pet_activity(
+        &mut self,
+        line: String,
+        tone: DesktopPetActivityTone,
+        plan_items: Vec<DesktopPetPlanItem>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.desktop_pet_line != line
+            || self.desktop_pet_tone != tone
+            || self.desktop_pet_plan_items != plan_items
+        {
             let has_line = !line.trim().is_empty();
             self.desktop_pet_line = line;
             self.desktop_pet_tone = tone;
+            self.desktop_pet_plan_items = plan_items;
             self.desktop_pet_line_visible_until = if has_line {
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -698,6 +712,7 @@ impl CoduxApp {
                 if action_id == DESKTOP_PET_SKIP_LINE {
                     self.desktop_pet_line.clear();
                     self.desktop_pet_tone = DesktopPetActivityTone::Normal;
+                    self.desktop_pet_plan_items.clear();
                 }
                 self.status_message = desktop_pet_action_status(action_id).to_string();
             }
@@ -1247,6 +1262,7 @@ impl CoduxApp {
     ) -> impl IntoElement {
         let focus_handle = self.root_focus_handle.clone();
         let line = self.desktop_pet_line.trim().to_string();
+        let plan_items = self.desktop_pet_plan_items.clone();
         let sprite_path = pet_sprite_path(
             &self.runtime.source_root,
             &self.state.support_dir,
@@ -1275,7 +1291,13 @@ impl CoduxApp {
                     .relative()
                     .bg(cx.theme().transparent)
                     .when(!line.is_empty(), |this| {
-                        this.child(desktop_pet_bubble(line, tone, bubble_is_left_tail))
+                        this.child(desktop_pet_bubble(
+                            line,
+                            tone,
+                            plan_items,
+                            &self.state.settings.language,
+                            bubble_is_left_tail,
+                        ))
                     })
                     .child(
                         div()

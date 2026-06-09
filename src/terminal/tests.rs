@@ -1142,6 +1142,20 @@ mod tests {
     }
 
     #[test]
+    fn terminal_paths_input_joins_quoted_paths_with_trailing_space() {
+        let paths = vec![
+            PathBuf::from("/tmp/codux-image.png"),
+            PathBuf::from("/tmp/codux image.png"),
+        ];
+
+        assert_eq!(
+            terminal_paths_input(&paths),
+            Some("/tmp/codux-image.png '/tmp/codux image.png' ".to_string())
+        );
+        assert_eq!(terminal_paths_input(&[]), None);
+    }
+
+    #[test]
     fn bold_ansi_foreground_uses_bright_color() {
         let renderer = TerminalRenderer::new(
             default_terminal_font_family().to_string(),

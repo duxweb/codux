@@ -89,6 +89,7 @@ pub(super) fn bridge_terminal_session(
         target_tool_name: None,
         message: None,
         latest_assistant_preview: None,
+        plan: None,
     })
 }
 

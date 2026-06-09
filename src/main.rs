@@ -21,6 +21,8 @@ use gpui::{
     size,
 };
 use gpui_component::Root;
+use parking_lot::Mutex;
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -52,6 +54,7 @@ fn main() -> Result<()> {
     app.run(move |cx: &mut App| {
         app::macos_window::install_dock_reopen_handler();
         gpui_component::init(cx);
+        load_embedded_fonts(cx);
         disable_root_tab_focus_bindings(cx);
         let initial_state = codux_runtime::runtime_state::RuntimeState::load();
         let _ = codux_runtime::app_icon::apply_app_icon(&initial_state.settings.icon_style);
@@ -74,6 +77,33 @@ fn main() -> Result<()> {
     });
 
     Ok(())
+}
+
+fn load_embedded_fonts(cx: &App) {
+    let asset_source = cx.asset_source();
+    let Ok(font_paths) = asset_source.list("fonts") else {
+        return;
+    };
+    let embedded_fonts = Mutex::new(Vec::<Cow<'static, [u8]>>::new());
+    let executor = cx.background_executor();
+
+    cx.foreground_executor().block_on(executor.scoped(|scope| {
+        for font_path in &font_paths {
+            if !font_path.ends_with(".ttf") {
+                continue;
+            }
+            scope.spawn(async {
+                if let Ok(Some(font_bytes)) = asset_source.load(font_path) {
+                    embedded_fonts.lock().push(font_bytes);
+                }
+            });
+        }
+    }));
+
+    let fonts = embedded_fonts.into_inner();
+    if !fonts.is_empty() {
+        let _ = cx.text_system().add_fonts(fonts);
+    }
 }
 
 fn open_main_window(

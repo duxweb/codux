@@ -5,8 +5,8 @@
 <h1 align="center">Codux AI</h1>
 
 <p align="center">
-  <b>A Rust-native workspace for AI coding CLIs.</b><br/>
-  Run Codex, Claude Code, Gemini CLI, OpenCode, Kiro CLI, CodeWhale, and Agy across projects, worktrees, terminals, Git, memory, tokens, SSH, and mobile handoff.
+  <b>A Rust + GPUI native control plane for AI coding CLIs.</b><br/>
+  Run Codex, Claude Code, Gemini CLI, OpenCode, Kiro CLI, Kimi Code, CodeWhale, and Agy across projects, worktrees, terminals, Git, memory, tokens, SSH, and mobile handoff.
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@ AI coding CLIs are powerful, but serious work quickly spreads across projects, G
 
 | When AI coding gets messy | Codux AI gives you |
 | :------------------------ | :----------------- |
-| Every AI CLI has its own state | One project-aware runtime view for Codex, Claude Code, Gemini CLI, OpenCode, Kiro CLI, CodeWhale, and Agy. |
+| Every AI CLI has its own state | One project-aware runtime view for Codex, Claude Code, Gemini CLI, OpenCode, Kiro CLI, Kimi Code, CodeWhale, and Agy. |
 | Long sessions are hard to resume | Live AI runtime status, local history indexing, session restore, and per-worktree context. |
 | Parallel tasks collide | A worktree-first task model where each task keeps its own terminal layout, Git state, files, and AI sessions. |
 | Token usage is vague | Usage by tool, model, project, worktree, and day, without maintaining spreadsheets. |
@@ -40,6 +40,15 @@ AI coding CLIs are powerful, but serious work quickly spreads across projects, G
 | You leave the desk mid-run | Codux Mobile pairs with the desktop host through the v3 relay/WebRTC path so you can continue sessions remotely. |
 
 Codux AI is not an editor replacement. It is a control plane for developers who already use AI coding CLIs heavily and need a stable way to manage multi-project, long-running AI work.
+
+## Rust + GPUI Native Foundation
+
+Codux AI is a native desktop app built with Rust and GPUI. GPUI comes from the same high-performance UI technology stack used by Zed, giving Codux a fast native foundation for terminal rendering, project switching, Git views, file previews, and long-running runtime updates.
+
+- Rust owns the runtime, project state, terminal PTY management, remote protocol, settings, Git integration, SSH profile handling, and local indexing.
+- GPUI powers the desktop interface, windowing, input handling, canvas rendering, native dialogs, and high-frequency UI updates.
+- The terminal surface is built on `alacritty_terminal`, with Codux-specific selection, scrollback, colors, key mapping, mouse reporting, drag/drop, clipboard, and remote replica behavior around it.
+- The architecture is cross-platform by design: current desktop releases target macOS and Windows, and the remote protocol is shaped so future Linux headless hosts can expose the same runtime domains without a GUI.
 
 ## Worktree-first Workflow
 
@@ -63,6 +72,7 @@ Codux detects supported CLIs from managed terminals, reads local session history
 | Gemini CLI | Full | Full | Tool-dependent | Yes |
 | OpenCode | Full | Full | Tool-dependent | Yes |
 | Kiro CLI | Full | Full | Tool-dependent | Yes |
+| Kimi Code | Full | Full | Tool-dependent | Tool-dependent |
 | CodeWhale | Full | Full | Tool-dependent | Yes |
 | Agy | Full | Full | Tool-dependent | Yes |
 
@@ -77,11 +87,24 @@ Codux is not just wrapping a shell. Each supported AI tool is represented by a r
 - **History sources** normalize local CLI transcripts into one timeline.
 - **Memory injection** gives supported CLIs project context without duplicating wrapper logic.
 
-This keeps multiple Codex, Claude, CodeWhale, or other sessions from crossing state, and makes new tool support easier to add without rewriting the whole runtime.
+This keeps multiple Codex, Claude, Kimi Code, CodeWhale, or other sessions from crossing state, and makes new tool support easier to add without rewriting the whole runtime.
+
+## AI CLI Optimizations
+
+Codux is not just a terminal with tabs. It adds an AI-aware control layer around the terminal so long-running agent work stays visible, recoverable, and safe to continue:
+
+- **Live agent state, not just text output**: Codux tracks running, completed, interrupted, permission-waiting, and plan-updating sessions, then ties each session back to the correct project and worktree.
+- **Task plans when the CLI exposes them**: Codux can surface the current plan and completion state, so desktop pets and runtime views can show what the agent is actually working through.
+- **A terminal tuned for long AI runs**: Scrollback, selection, ANSI color state, alternate-screen apps, modified key sequences, mouse reporting, and terminal scrollbars are handled in the managed terminal layer.
+- **Prompt-safe clipboard and path handling**: Pasted images can become temporary files with local paths instead of base64 payloads; dragged files insert shell-quoted paths that AI tools can use immediately.
+- **Project surfaces beside the terminal**: Text editing, Markdown preview, image preview, external-open fallbacks, and focused Git diff windows keep review work close to the running CLI.
+- **Remote handoff without losing terminal state**: The v3.1 path uses bounded snapshots, sequence guards, chunking, progress, and subscriptions so mobile can recover large Codex or Claude histories safely.
+- **SSH profiles built for agents**: `codux-ssh <profile>` lets AI CLIs run remote commands through saved, tested profiles without exposing passwords, passphrases, or private-key paths.
+- **Local memory that follows the work**: Codux extracts durable user preferences, project profiles, and module notes from local transcripts, filters noisy boundaries, and injects only relevant context for the active project or worktree.
 
 ## AI History, Tokens, and Memory
 
-Codux indexes AI session history locally and turns it into usable project context.
+Codux indexes AI session history locally and turns it into durable project context.
 
 - See recent sessions by project and worktree.
 - Track token usage by day, model, tool, project, and workspace.
@@ -91,7 +114,7 @@ Codux indexes AI session history locally and turns it into usable project contex
 
 Memory and history are stored locally. Codux treats project lists and memory as the durable assets; AI history can be rebuilt from supported local CLI transcripts.
 
-## Git, Files, and Secure Connections
+## Project Surfaces and Secure Connections
 
 Codux keeps the terminal next to the project surfaces you need during AI work:
 

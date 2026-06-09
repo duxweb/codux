@@ -86,6 +86,7 @@ pub(in crate::app) struct DesktopPetAnimation {
 pub(in crate::app) struct DesktopPetActivityLine {
     pub(in crate::app) text: String,
     pub(in crate::app) tone: DesktopPetActivityTone,
+    pub(in crate::app) plan_items: Vec<DesktopPetPlanItem>,
 }
 
 impl DesktopPetActivityLine {
@@ -93,8 +94,15 @@ impl DesktopPetActivityLine {
         Self {
             text: String::new(),
             tone: DesktopPetActivityTone::Normal,
+            plan_items: Vec::new(),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::app) struct DesktopPetPlanItem {
+    pub(in crate::app) text: String,
+    pub(in crate::app) status: String,
 }
 
 pub(in crate::app) struct DesktopPetLlmContext {
@@ -117,6 +125,13 @@ fn replace_first_placeholder(template: String, value: &str) -> String {
 
 fn replace_two_placeholders(template: String, first: &str, second: &str) -> String {
     template.replacen("%@", first, 1).replacen("%@", second, 1)
+}
+
+fn replace_three_placeholders(template: String, first: &str, second: &str, third: &str) -> String {
+    template
+        .replacen("%@", first, 1)
+        .replacen("%@", second, 1)
+        .replacen("%@", third, 1)
 }
 
 pub(in crate::app) fn desktop_pet_runtime_activity_line(
@@ -158,6 +173,7 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
                     target,
                 ),
                 tone: DesktopPetActivityTone::Attention,
+                plan_items: Vec::new(),
             };
         }
         return DesktopPetActivityLine {
@@ -169,6 +185,7 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
                 &session.tool,
             ),
             tone: DesktopPetActivityTone::Attention,
+            plan_items: Vec::new(),
         };
     }
 
@@ -186,6 +203,7 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
                 )
             }),
             tone: DesktopPetActivityTone::Attention,
+            plan_items: Vec::new(),
         };
     }
 
@@ -207,6 +225,7 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
                     &session.tool,
                 ),
                 tone: DesktopPetActivityTone::Warning,
+                plan_items: Vec::new(),
             };
         }
         return DesktopPetActivityLine {
@@ -215,6 +234,7 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
                 &session.tool,
             ),
             tone: DesktopPetActivityTone::Success,
+            plan_items: Vec::new(),
         };
     }
 
@@ -224,6 +244,23 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
         .filter(|session| session.state == "running")
         .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
     {
+        if let Some(plan_items) = desktop_pet_plan_items(session) {
+            let completed = plan_items
+                .iter()
+                .filter(|item| item.status == "completed")
+                .count();
+            let total = plan_items.len();
+            return DesktopPetActivityLine {
+                text: replace_three_placeholders(
+                    tr("pet.activity.plan_format", "%@ tasks %@/%@"),
+                    &desktop_pet_session_project_label(session),
+                    &completed.to_string(),
+                    &total.to_string(),
+                ),
+                tone: DesktopPetActivityTone::Normal,
+                plan_items,
+            };
+        }
         return DesktopPetActivityLine {
             text: normalized_desktop_pet_preview(session.latest_assistant_preview.as_deref())
                 .unwrap_or_else(|| {
@@ -233,10 +270,49 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
                     )
                 }),
             tone: DesktopPetActivityTone::Normal,
+            plan_items: Vec::new(),
         };
     }
 
     DesktopPetActivityLine::empty()
+}
+
+fn desktop_pet_session_project_label(
+    session: &codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
+) -> String {
+    normalized_desktop_pet_preview(Some(&session.project_name))
+        .filter(|name| !name.trim().is_empty())
+        .or_else(|| {
+            session
+                .project_path
+                .as_deref()
+                .and_then(|path| Path::new(path).file_name())
+                .and_then(|name| name.to_str())
+                .and_then(|name| normalized_desktop_pet_preview(Some(name)))
+        })
+        .unwrap_or_else(|| session.tool.clone())
+}
+
+fn desktop_pet_plan_items(
+    session: &codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
+) -> Option<Vec<DesktopPetPlanItem>> {
+    let plan = session.plan.as_ref()?;
+    let mut items = plan
+        .items
+        .iter()
+        .filter_map(|item| {
+            let text = normalized_desktop_pet_preview(Some(&item.text))?;
+            Some(DesktopPetPlanItem {
+                text,
+                status: item.status.clone(),
+            })
+        })
+        .collect::<Vec<_>>();
+    if items.is_empty() {
+        return None;
+    }
+    items.truncate(4);
+    Some(items)
 }
 
 pub(in crate::app) fn desktop_pet_llm_context(
@@ -589,6 +665,9 @@ pub(in crate::app) const PET_FAILED_FRAME_COUNT: usize = 8;
 pub(in crate::app) const DESKTOP_PET_SPRITE_SIZE: f32 = 112.0;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_WIDTH: f32 = 198.0;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_MIN_HEIGHT: f32 = 52.0;
+const DESKTOP_PET_PLAN_BUBBLE_MIN_HEIGHT: f32 = 96.0;
+const DESKTOP_PET_PLAN_TITLE_MAX_UNITS: usize = 18;
+const DESKTOP_PET_PLAN_ITEM_MAX_UNITS: usize = 16;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_TOP: f32 = 52.0;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_EDGE: f32 = 8.0;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_TAIL_SIZE: f32 = 9.0;
@@ -699,6 +778,8 @@ pub(in crate::app) fn desktop_pet_sprite(
 pub(in crate::app) fn desktop_pet_bubble(
     line: String,
     tone: DesktopPetActivityTone,
+    plan_items: Vec<DesktopPetPlanItem>,
+    language: &str,
     left_tail: bool,
 ) -> AnyElement {
     let (fill, stroke, text) = match tone {
@@ -710,31 +791,45 @@ pub(in crate::app) fn desktop_pet_bubble(
     let text_pad_left = if left_tail { 24.0 } else { 17.0 };
     let text_pad_right = if left_tail { 17.0 } else { 24.0 };
     let text_width = DESKTOP_PET_BUBBLE_WIDTH - text_pad_left - text_pad_right;
+    let has_plan = !plan_items.is_empty();
+    let display_line = if has_plan {
+        desktop_pet_truncate_display_units(&line, DESKTOP_PET_PLAN_TITLE_MAX_UNITS)
+    } else {
+        line
+    };
+    let min_height = if has_plan {
+        DESKTOP_PET_PLAN_BUBBLE_MIN_HEIGHT
+    } else {
+        DESKTOP_PET_BUBBLE_MIN_HEIGHT
+    };
+    let (text_size, line_height) = desktop_pet_bubble_text_metrics(has_plan);
 
     div()
         .absolute()
         .top(px(DESKTOP_PET_BUBBLE_TOP))
         .w(px(DESKTOP_PET_BUBBLE_WIDTH))
-        .min_h(px(DESKTOP_PET_BUBBLE_MIN_HEIGHT))
+        .min_h(px(min_height))
         .when(left_tail, |this| this.right(px(DESKTOP_PET_BUBBLE_EDGE)))
         .when(!left_tail, |this| this.left(px(DESKTOP_PET_BUBBLE_EDGE)))
         .child(pixel_bubble_canvas(stroke, fill, left_tail))
         .child(
             div()
                 .relative()
-                .min_h(px(DESKTOP_PET_BUBBLE_MIN_HEIGHT))
+                .min_h(px(min_height))
                 .pt(px(10.0))
                 .pb(px(10.0))
                 .pl(px(text_pad_left))
                 .pr(px(text_pad_right))
                 .flex()
-                .items_center()
-                .justify_start()
+                .flex_col()
+                .when(has_plan, |this| this.items_start())
+                .when(!has_plan, |this| this.items_center())
+                .justify_center()
                 .overflow_hidden()
                 .w_full()
-                .font_family("SF Mono")
-                .text_size(rems(0.875))
-                .line_height(rems(1.0625))
+                .font_family(desktop_pet_bubble_font_family(language))
+                .text_size(text_size)
+                .line_height(line_height)
                 .font_weight(FontWeight::BOLD)
                 .text_left()
                 .text_color(color(text))
@@ -742,12 +837,91 @@ pub(in crate::app) fn desktop_pet_bubble(
                     div()
                         .w(px(text_width))
                         .min_w_0()
-                        .whitespace_normal()
-                        .line_clamp(3)
-                        .child(line),
-                ),
+                        .when(has_plan, |this| this.truncate())
+                        .when(!has_plan, |this| this.whitespace_normal())
+                        .line_clamp(if has_plan { 1 } else { 3 })
+                        .child(display_line),
+                )
+                .when(has_plan, |this| {
+                    this.child(
+                        div()
+                            .mt(px(4.0))
+                            .w(px(text_width))
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .children(
+                                plan_items.into_iter().map(|item| {
+                                    desktop_pet_plan_row(item, text, 0x35BFE4).into_any_element()
+                                }),
+                            ),
+                    )
+                }),
         )
         .into_any_element()
+}
+
+fn desktop_pet_bubble_font_family(language: &str) -> &'static str {
+    match locale_from_language_setting(language).as_str() {
+        "zh-Hans" => "Fusion Pixel 12px Prop zh_hans",
+        "zh-Hant" => "Fusion Pixel 12px Prop zh_hant",
+        "ja" => "Fusion Pixel 12px Prop ja",
+        "ko" => "Fusion Pixel 12px Prop ko",
+        _ => "Fusion Pixel 12px Prop latin",
+    }
+}
+
+fn desktop_pet_bubble_text_metrics(has_plan: bool) -> (Pixels, Pixels) {
+    if has_plan {
+        (px(12.0), px(14.0))
+    } else {
+        (px(14.0), px(17.0))
+    }
+}
+
+fn desktop_pet_plan_row(item: DesktopPetPlanItem, text: u32, active_text: u32) -> impl IntoElement {
+    let active = item.status == "in_progress";
+    let row_text = if active { active_text } else { text };
+    let mark = if item.status == "completed" { "✓" } else { "□" };
+    let item_text = desktop_pet_truncate_display_units(&item.text, DESKTOP_PET_PLAN_ITEM_MAX_UNITS);
+    div()
+        .w_full()
+        .min_w_0()
+        .flex()
+        .gap(px(4.0))
+        .items_center()
+        .text_color(color(row_text))
+        .child(
+            div()
+                .w(px(18.0))
+                .flex_none()
+                .text_center()
+                .child(mark),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .child(item_text),
+        )
+}
+
+fn desktop_pet_truncate_display_units(value: &str, max_units: usize) -> String {
+    let mut units = 0usize;
+    let mut output = String::new();
+    for ch in value.chars() {
+        let width = if ch.is_ascii() { 1 } else { 2 };
+        if units + width > max_units {
+            if !output.is_empty() {
+                output.push('…');
+            }
+            return output;
+        }
+        output.push(ch);
+        units += width;
+    }
+    output
 }
 
 fn pixel_bubble_canvas(stroke_hex: u32, fill_hex: u32, left_tail: bool) -> AnyElement {
@@ -946,6 +1120,7 @@ mod tests {
             baseline_total_tokens: 0,
             baseline_cached_input_tokens: 0,
             source: "runtime".to_string(),
+            plan: None,
         }
     }
 
@@ -962,6 +1137,44 @@ mod tests {
 
         assert_eq!(line.text, "Analyzing files\nPreparing patch");
         assert_eq!(line.tone, DesktopPetActivityTone::Normal);
+    }
+
+    #[test]
+    fn runtime_activity_line_prefers_running_plan_items() {
+        let mut session = runtime_session("running");
+        session.latest_assistant_preview = Some("Fallback text".to_string());
+        session.plan = Some(codux_runtime::ai_runtime::AIPlanSnapshot {
+            source: "codex".to_string(),
+            session_id: "session-a".to_string(),
+            updated_at: 10.0,
+            items: vec![
+                codux_runtime::ai_runtime::AIPlanItem {
+                    text: "Read logs".to_string(),
+                    status: "completed".to_string(),
+                    priority: None,
+                },
+                codux_runtime::ai_runtime::AIPlanItem {
+                    text: "Patch parser".to_string(),
+                    status: "in_progress".to_string(),
+                    priority: None,
+                },
+            ],
+        });
+        let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
+            sessions: vec![session],
+            ..Default::default()
+        };
+
+        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+
+        assert!(line.text.contains("Codux"));
+        assert!(!line.text.contains("codex"));
+        assert_eq!(line.tone, DesktopPetActivityTone::Normal);
+        assert_eq!(line.plan_items.len(), 2);
+        assert_eq!(line.plan_items[0].text, "Read logs");
+        assert_eq!(line.plan_items[0].status, "completed");
+        assert_eq!(line.plan_items[1].text, "Patch parser");
+        assert_eq!(line.plan_items[1].status, "in_progress");
     }
 
     #[test]

@@ -556,6 +556,7 @@ fn enqueue_completed_session_creates_pending_memory_task() {
         target_tool_name: None,
         message: None,
         latest_assistant_preview: None,
+        plan: None,
     };
 
     let result = service

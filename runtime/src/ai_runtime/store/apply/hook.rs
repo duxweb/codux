@@ -241,6 +241,11 @@ pub(in crate::ai_runtime::store) fn apply_hook_unlocked(
         } else {
             base.and_then(|session| session.latest_assistant_preview.clone())
         },
+        plan: if state == "responding" || state == "needsInput" {
+            base.and_then(|session| session.plan.clone())
+        } else {
+            None
+        },
     };
 
     if previous.as_ref() == Some(&next) {

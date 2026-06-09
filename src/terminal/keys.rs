@@ -368,6 +368,19 @@ fn terminal_path_input(path: &Path) -> String {
     shell_quote_path(&path.to_string_lossy())
 }
 
+fn terminal_paths_input(paths: &[PathBuf]) -> Option<String> {
+    let mut values = paths
+        .iter()
+        .map(|path| terminal_path_input(path))
+        .filter(|path| !path.trim().is_empty())
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        return None;
+    }
+    values.push(String::new());
+    Some(values.join(" "))
+}
+
 fn shell_quote_path(value: &str) -> String {
     if value
         .chars()

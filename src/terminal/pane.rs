@@ -17,16 +17,14 @@ impl TerminalPane {
         let config = terminal_pty_config_with_view(pty_config, &terminal_config);
         let (session_event_tx, session_event_rx) = mpsc::channel();
         let emit = Arc::new(move |event| match event {
-            TerminalEvent::Exit { .. } => {
-                let _ = session_event_tx.send(TerminalUiEvent::Exit);
-            }
-            TerminalEvent::Error { message, .. } => {
-                let _ = session_event_tx.send(TerminalUiEvent::Error(message));
-            }
-            TerminalEvent::Output { .. } => {}
-            TerminalEvent::Viewport { cols, rows, .. } => {
-                let _ = session_event_tx.send(TerminalUiEvent::Viewport { cols, rows });
-            }
+            TerminalEvent::Exit { .. } => session_event_tx.send(TerminalUiEvent::Exit).is_ok(),
+            TerminalEvent::Error { message, .. } => session_event_tx
+                .send(TerminalUiEvent::Error(message))
+                .is_ok(),
+            TerminalEvent::Output { .. } => session_event_tx.send(TerminalUiEvent::Wakeup).is_ok(),
+            TerminalEvent::Viewport { cols, rows, .. } => session_event_tx
+                .send(TerminalUiEvent::Viewport { cols, rows })
+                .is_ok(),
         });
         let terminal_id = config.terminal_id.clone();
         let attach_started_at = Instant::now();
@@ -124,16 +122,14 @@ impl TerminalPane {
         let terminal_id = config.terminal_id.clone();
         let session_event_tx = pending.session_event_tx.clone();
         let emit = Arc::new(move |event| match event {
-            TerminalEvent::Exit { .. } => {
-                let _ = session_event_tx.send(TerminalUiEvent::Exit);
-            }
-            TerminalEvent::Error { message, .. } => {
-                let _ = session_event_tx.send(TerminalUiEvent::Error(message));
-            }
-            TerminalEvent::Output { .. } => {}
-            TerminalEvent::Viewport { cols, rows, .. } => {
-                let _ = session_event_tx.send(TerminalUiEvent::Viewport { cols, rows });
-            }
+            TerminalEvent::Exit { .. } => session_event_tx.send(TerminalUiEvent::Exit).is_ok(),
+            TerminalEvent::Error { message, .. } => session_event_tx
+                .send(TerminalUiEvent::Error(message))
+                .is_ok(),
+            TerminalEvent::Output { .. } => session_event_tx.send(TerminalUiEvent::Wakeup).is_ok(),
+            TerminalEvent::Viewport { cols, rows, .. } => session_event_tx
+                .send(TerminalUiEvent::Viewport { cols, rows })
+                .is_ok(),
         });
         let attach_started_at = Instant::now();
         let (session, output_rx) =

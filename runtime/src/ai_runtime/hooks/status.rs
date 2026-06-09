@@ -1,5 +1,6 @@
 use super::{
     codewhale::codewhale_hook_config_status_in, command::is_managed_hook, json::load_json_object,
+    kimi::kimi_hook_config_status_in,
 };
 use crate::{
     ai_runtime::bridge::{AIRuntimeHookConfigStatus, AIRuntimeToolHookConfigStatus},
@@ -23,6 +24,7 @@ pub fn hook_config_status_in(
     let mut agy = AIRuntimeToolHookConfigStatus::default();
     let mut kiro = AIRuntimeToolHookConfigStatus::default();
     let mut codewhale = AIRuntimeToolHookConfigStatus::default();
+    let mut kimi = AIRuntimeToolHookConfigStatus::default();
     let opencode = opencode_hook_config_status(opencode_config_dir);
 
     for driver in ai_runtime_tool_drivers() {
@@ -43,6 +45,7 @@ pub fn hook_config_status_in(
                 )
             }
             AIRuntimeToolHookDriver::CodeWhaleToml => codewhale_hook_config_status_in(home_dir),
+            AIRuntimeToolHookDriver::KimiToml => kimi_hook_config_status_in(home_dir),
             AIRuntimeToolHookDriver::OpenCodePlugin | AIRuntimeToolHookDriver::None => continue,
         };
         match driver.id {
@@ -52,6 +55,7 @@ pub fn hook_config_status_in(
             "agy" => agy = status,
             "kiro" => kiro = status,
             "codewhale" => codewhale = status,
+            "kimi" => kimi = status,
             _ => {}
         }
     }
@@ -64,6 +68,7 @@ pub fn hook_config_status_in(
         opencode,
         kiro,
         codewhale,
+        kimi,
     }
 }
 

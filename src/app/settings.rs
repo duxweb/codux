@@ -2330,6 +2330,24 @@ fn settings_ai_pane(
             window,
             cx,
         ),
+        settings_runtime_tool_block(
+            settings_text(
+                language,
+                "settings.ai.tool.configuration_format",
+                "%@ Configuration",
+            )
+            .replace("%@", "Kimi Code"),
+            "kimi",
+            "kimiModel",
+            &permissions.kimi,
+            &permissions.kimi_model,
+            "kimi-k2",
+            false,
+            &permissions.codex_effort,
+            language,
+            window,
+            cx,
+        ),
     ]);
 
     settings_form(vec![

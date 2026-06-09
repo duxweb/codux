@@ -8,8 +8,10 @@ use crate::ai_runtime::{
         common::parse_iso8601_seconds,
         usage::{UsageTotals, resolve_runtime_usage, usage_totals_from_fields},
     },
+    snapshot::{AIPlanItem, AIPlanSnapshot},
     state::normalized_string,
 };
+use serde_json::Value;
 use std::{
     collections::VecDeque,
     fs,
@@ -32,6 +34,7 @@ pub(super) struct CodexParsedState {
     pub(super) was_interrupted: bool,
     pub(super) has_completed_turn: bool,
     pub(super) origin: String,
+    pub(super) plan: Option<AIPlanSnapshot>,
     last_user_message_at: Option<f64>,
 }
 
@@ -157,6 +160,9 @@ where
         if let Some(preview) = codex_assistant_preview(row_type, &payload) {
             state.assistant_preview = Some(preview);
         }
+        if let Some(plan) = codex_update_plan(row_type, &payload, timestamp.or(state.updated_at)) {
+            state.plan = Some(plan);
+        }
 
         if row_type == Some("turn_context") {
             if project_path
@@ -191,6 +197,57 @@ where
         fallback_started_at,
         fallback_updated_at,
     )
+}
+
+fn codex_update_plan(
+    row_type: Option<&str>,
+    payload: &CodexPayloadFields<'_>,
+    updated_at: Option<f64>,
+) -> Option<AIPlanSnapshot> {
+    if row_type != Some("response_item")
+        || payload.payload_type.as_deref() != Some("function_call")
+        || payload.name.as_deref() != Some("update_plan")
+    {
+        return None;
+    }
+    let arguments = payload.arguments.as_deref()?;
+    let value = serde_json::from_str::<Value>(arguments).ok()?;
+    let items = value
+        .get("plan")
+        .and_then(|value| value.as_array())?
+        .iter()
+        .filter_map(|item| {
+            let text = item
+                .get("step")
+                .and_then(|value| value.as_str())
+                .and_then(|value| normalized_string(Some(value)))?;
+            let status = item
+                .get("status")
+                .and_then(|value| value.as_str())
+                .map(normalized_plan_status)
+                .unwrap_or_else(|| "pending".to_string());
+            Some(AIPlanItem {
+                text,
+                status,
+                priority: None,
+            })
+        })
+        .collect::<Vec<_>>();
+    (!items.is_empty()).then_some(AIPlanSnapshot {
+        source: "codex".to_string(),
+        session_id: "update_plan".to_string(),
+        updated_at: updated_at.unwrap_or(0.0),
+        items,
+    })
+}
+
+fn normalized_plan_status(value: &str) -> String {
+    match value.trim() {
+        "completed" | "complete" | "done" => "completed",
+        "in_progress" | "in-progress" | "running" | "active" => "in_progress",
+        _ => "pending",
+    }
+    .to_string()
 }
 
 fn update_codex_turn_state(
@@ -357,4 +414,42 @@ fn finish_codex_state(
         .to_string();
     }
     Some(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_latest_update_plan_from_response_item() {
+        let arguments = serde_json::json!({
+            "plan": [
+                {"step": "Read runtime probes", "status": "completed"},
+                {"step": "Wire pet bubble", "status": "in_progress"},
+                {"step": "Run tests", "status": "pending"}
+            ]
+        })
+        .to_string();
+        let line = serde_json::json!({
+            "timestamp": "2026-06-09T10:00:00Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call",
+                "name": "update_plan",
+                "arguments": arguments
+            }
+        })
+        .to_string();
+
+        let state = parse_codex_runtime_lines(vec![line].into_iter(), None, Some(1.0), Some(2.0))
+            .expect("codex state");
+        let plan = state.plan.expect("plan");
+
+        assert_eq!(plan.source, "codex");
+        assert_eq!(plan.items.len(), 3);
+        assert_eq!(plan.items[0].text, "Read runtime probes");
+        assert_eq!(plan.items[0].status, "completed");
+        assert_eq!(plan.items[1].status, "in_progress");
+        assert_eq!(plan.items[2].status, "pending");
+    }
 }

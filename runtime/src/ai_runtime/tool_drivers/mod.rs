@@ -5,6 +5,7 @@ mod claude;
 mod codewhale;
 mod codex;
 mod gemini;
+mod kimi;
 mod kiro;
 mod opencode;
 
@@ -15,6 +16,7 @@ pub const AI_RUNTIME_TOOL_DRIVERS: &[AIRuntimeToolDriver] = &[
     opencode::DRIVER,
     kiro::DRIVER,
     codewhale::DRIVER,
+    kimi::DRIVER,
     agy::DRIVER,
 ];
 

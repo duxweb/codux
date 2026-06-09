@@ -6,6 +6,7 @@ use std::borrow::Cow;
 #[derive(RustEmbed)]
 #[folder = "runtime-assets"]
 #[include = "app-icons/**/*.svg"]
+#[include = "fonts/**/*"]
 #[include = "heroicons/**/*.svg"]
 #[include = "icons/**/*"]
 #[include = "pets/**/*"]

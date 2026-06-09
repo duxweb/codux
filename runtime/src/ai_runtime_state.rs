@@ -1,4 +1,4 @@
-use crate::ai_runtime::{AIProjectPhase, AIRuntimeStateSnapshot, AISessionSnapshot};
+use crate::ai_runtime::{AIPlanSnapshot, AIProjectPhase, AIRuntimeStateSnapshot, AISessionSnapshot};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::path::PathBuf;
@@ -86,6 +86,8 @@ pub struct AIRuntimeSessionSummary {
     pub message: Option<String>,
     #[serde(default)]
     pub latest_assistant_preview: Option<String>,
+    #[serde(default)]
+    pub plan: Option<AIPlanSnapshot>,
     #[serde(default)]
     pub total_tokens: i64,
     #[serde(default)]
@@ -383,6 +385,7 @@ fn session_from_runtime_snapshot(session: &AISessionSnapshot) -> AIRuntimeSessio
         target_tool_name: session.target_tool_name.clone(),
         message: session.message.clone(),
         latest_assistant_preview: session.latest_assistant_preview.clone(),
+        plan: session.plan.clone(),
         total_tokens: (session.total_tokens - session.baseline_total_tokens).max(0),
         cached_input_tokens: (session.cached_input_tokens - session.baseline_cached_input_tokens)
             .max(0),
@@ -409,7 +412,7 @@ fn runtime_snapshot_session_state(session: &AISessionSnapshot) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai_runtime::AIProjectTotals;
+    use crate::ai_runtime::{AIPlanItem, AIPlanSnapshot, AIProjectTotals};
 
     #[test]
     fn summary_returns_default_memory_state() {
@@ -484,6 +487,16 @@ mod tests {
                     target_tool_name: None,
                     message: None,
                     latest_assistant_preview: None,
+                    plan: Some(AIPlanSnapshot {
+                        source: "codex".to_string(),
+                        session_id: "session-a".to_string(),
+                        updated_at: 20.0,
+                        items: vec![AIPlanItem {
+                            text: "Patch parser".to_string(),
+                            status: "in_progress".to_string(),
+                            priority: None,
+                        }],
+                    }),
                 },
                 AISessionSnapshot {
                     terminal_id: "term-b".to_string(),
@@ -517,6 +530,7 @@ mod tests {
                     target_tool_name: None,
                     message: None,
                     latest_assistant_preview: None,
+                    plan: None,
                 },
             ],
             ..Default::default()
@@ -557,6 +571,10 @@ mod tests {
         assert_eq!(summary.sessions[1].model.as_deref(), Some("gpt-5"));
         assert_eq!(summary.sessions[1].total_tokens, 100);
         assert_eq!(summary.sessions[1].cached_input_tokens, 15);
+        let plan = summary.sessions[1].plan.as_ref().expect("plan");
+        assert_eq!(plan.items.len(), 1);
+        assert_eq!(plan.items[0].text, "Patch parser");
+        assert_eq!(plan.items[0].status, "in_progress");
 
         assert_eq!(summary.path, STATE_SOURCE);
     }

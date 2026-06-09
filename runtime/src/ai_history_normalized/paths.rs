@@ -172,6 +172,39 @@ fn codewhale_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
     matched
 }
 
+fn kimi_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
+    let sessions_dir = home.join(".kimi-code").join("sessions");
+    let mut matched = recursive_files(&sessions_dir, "jsonl")
+        .into_iter()
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name == "wire.jsonl")
+                .unwrap_or(false)
+        })
+        .filter(|path| kimi_wire_belongs_to_project(path, project_path))
+        .collect::<Vec<_>>();
+    matched.sort_by_key(|path| std::cmp::Reverse(file_modified_millis(path).unwrap_or(0)));
+    matched
+}
+
+fn kimi_wire_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
+    kimi_state_for_wire(file_path)
+        .and_then(|state_path| fs::read_to_string(state_path).ok())
+        .and_then(|data| serde_json::from_str::<Value>(&data).ok())
+        .and_then(|value| kimi_project_path(&value))
+        .map(|path| paths_equivalent(Some(&path), project_path))
+        .unwrap_or(false)
+}
+
+fn kimi_state_for_wire(file_path: &Path) -> Option<PathBuf> {
+    file_path
+        .parent()?
+        .parent()?
+        .parent()
+        .map(|path| path.join("state.json"))
+}
+
 fn codewhale_file_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
     let Ok(data) = fs::read_to_string(file_path) else {
         return false;

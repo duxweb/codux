@@ -14,12 +14,14 @@ pub struct ToolPermissionsSummary {
     pub opencode: String,
     pub kiro: String,
     pub codewhale: String,
+    pub kimi: String,
     pub codex_model: String,
     pub claude_code_model: String,
     pub gemini_model: String,
     pub opencode_model: String,
     pub kiro_model: String,
     pub codewhale_model: String,
+    pub kimi_model: String,
     pub codex_effort: String,
     pub full_access_count: usize,
     pub error: Option<String>,
@@ -40,6 +42,8 @@ struct AIRuntimeToolSettings {
     kiro: String,
     #[serde(default = "default_permission_mode")]
     codewhale: String,
+    #[serde(default = "default_permission_mode")]
+    kimi: String,
     #[serde(default)]
     codex_model: String,
     #[serde(default)]
@@ -52,6 +56,8 @@ struct AIRuntimeToolSettings {
     kiro_model: String,
     #[serde(default)]
     codewhale_model: String,
+    #[serde(default)]
+    kimi_model: String,
     #[serde(default = "default_codex_effort")]
     codex_effort: String,
 }
@@ -65,12 +71,14 @@ impl Default for AIRuntimeToolSettings {
             opencode: default_permission_mode(),
             kiro: default_permission_mode(),
             codewhale: default_permission_mode(),
+            kimi: default_permission_mode(),
             codex_model: String::new(),
             claude_code_model: String::new(),
             gemini_model: String::new(),
             opencode_model: String::new(),
             kiro_model: String::new(),
             codewhale_model: String::new(),
+            kimi_model: String::new(),
             codex_effort: default_codex_effort(),
         }
     }
@@ -144,6 +152,7 @@ fn summary_from_settings(
         &settings.opencode,
         &settings.kiro,
         &settings.codewhale,
+        &settings.kimi,
     ]
     .into_iter()
     .filter(|mode| mode.as_str() == "fullAccess")
@@ -157,12 +166,14 @@ fn summary_from_settings(
         opencode: settings.opencode,
         kiro: settings.kiro,
         codewhale: settings.codewhale,
+        kimi: settings.kimi,
         codex_model: settings.codex_model,
         claude_code_model: settings.claude_code_model,
         gemini_model: settings.gemini_model,
         opencode_model: settings.opencode_model,
         kiro_model: settings.kiro_model,
         codewhale_model: settings.codewhale_model,
+        kimi_model: settings.kimi_model,
         codex_effort: settings.codex_effort,
         full_access_count,
         error,
@@ -176,12 +187,14 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
     settings.opencode = sanitize_permission_mode(&settings.opencode);
     settings.kiro = sanitize_permission_mode(&settings.kiro);
     settings.codewhale = sanitize_permission_mode(&settings.codewhale);
+    settings.kimi = sanitize_permission_mode(&settings.kimi);
     settings.codex_model = sanitize_model(&settings.codex_model);
     settings.claude_code_model = sanitize_model(&settings.claude_code_model);
     settings.gemini_model = sanitize_model(&settings.gemini_model);
     settings.opencode_model = sanitize_model(&settings.opencode_model);
     settings.kiro_model = sanitize_model(&settings.kiro_model);
     settings.codewhale_model = sanitize_model(&settings.codewhale_model);
+    settings.kimi_model = sanitize_model(&settings.kimi_model);
     settings.codex_effort = match settings.codex_effort.trim() {
         "none" => "none".to_string(),
         "minimal" => "minimal".to_string(),
@@ -243,8 +256,10 @@ mod tests {
                         "opencode": "default",
                         "kiro": "fullAccess",
                         "codewhale": "fullAccess",
+                        "kimi": "fullAccess",
                         "codexModel": " gpt-5.5 ",
                         "codewhaleModel": " deepseek-chat ",
+                        "kimiModel": " kimi-k2 ",
                         "codexEffort": "xhigh"
                     }
                 }
@@ -263,13 +278,16 @@ mod tests {
             serde_json::from_str::<Value>(&fs::read_to_string(output_path).unwrap()).unwrap();
 
         assert!(summary.available);
-        assert_eq!(summary.full_access_count, 4);
+        assert_eq!(summary.full_access_count, 5);
         assert_eq!(summary.claude_code, "default");
         assert_eq!(summary.codex_model, "gpt-5.5");
         assert_eq!(summary.codewhale_model, "deepseek-chat");
+        assert_eq!(summary.kimi_model, "kimi-k2");
         assert_eq!(written["codex"], "fullAccess");
         assert_eq!(written["codewhale"], "fullAccess");
         assert_eq!(written["codewhaleModel"], "deepseek-chat");
+        assert_eq!(written["kimi"], "fullAccess");
+        assert_eq!(written["kimiModel"], "kimi-k2");
         assert_eq!(written["claudeCode"], "default");
         assert_eq!(written["codexEffort"], "xhigh");
 

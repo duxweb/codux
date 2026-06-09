@@ -17,9 +17,9 @@ use codux_runtime::terminal_pty::{
 };
 use gpui::{
     App, AppContext, Bounds, ClipboardEntry, ClipboardItem, Context, CursorStyle, Edges, Element,
-    ElementId, Entity, FocusHandle, Font, FontFeatures, FontStyle, FontWeight, GlobalElementId,
-    Hsla, ImageFormat, InputHandler, InspectorElementId, InteractiveElement, IntoElement,
-    KeyDownEvent, Keystroke, LayoutId, Modifiers, ModifiersChangedEvent, MouseButton,
+    ElementId, Entity, ExternalPaths, FocusHandle, Font, FontFeatures, FontStyle, FontWeight,
+    GlobalElementId, Hsla, ImageFormat, InputHandler, InspectorElementId, InteractiveElement,
+    IntoElement, KeyDownEvent, Keystroke, LayoutId, Modifiers, ModifiersChangedEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection, ParentElement, Pixels,
     Point, Render, ScrollWheelEvent, SharedString, Size, Style, Styled, Subscription, Task,
     TextAlign, TextRun, TouchPhase, UTF16Selection, UnderlineStyle, WeakEntity, Window, div, px,

@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.7.6] - 2026-06-09
+
+### Added
+
+- Added Kimi Code CLI as a first-class AI runtime driver with `kimi` and `kimi-code` wrapper aliases, managed hooks, runtime status, settings, history indexing, and session fork support.
+- Added Kimi Code settings for permission mode and model selection, with model arguments applied through the runtime wrapper without injecting unverified permission flags.
+- Added Kimi Code history indexing for `~/.kimi-code/sessions/**/state.json` and `agents/*/wire.jsonl` session data.
+
+### Changed
+
+- Updated the README feature overview to include Kimi Code alongside Codex, Claude Code, Gemini CLI, OpenCode, Kiro CLI, CodeWhale, and Agy.
+
+### Fixed
+
+- Fixed runtime tool configuration counts and permission summaries so newly supported tools are written into the managed wrapper settings file.
+
 ## [1.7.5] - 2026-06-09
 
 ### Added

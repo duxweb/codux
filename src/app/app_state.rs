@@ -68,6 +68,7 @@ pub struct CoduxApp {
     pub(in crate::app) parent_main_window: Option<gpui::WeakEntity<CoduxApp>>,
     pub(in crate::app) desktop_pet_line: String,
     pub(in crate::app) desktop_pet_tone: DesktopPetActivityTone,
+    pub(in crate::app) desktop_pet_plan_items: Vec<DesktopPetPlanItem>,
     pub(in crate::app) desktop_pet_main_window_fullscreen: bool,
     pub(in crate::app) desktop_pet_active_llm_key: String,
     pub(in crate::app) desktop_pet_requested_llm_key: String,

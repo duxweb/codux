@@ -200,6 +200,9 @@ configured_permission_mode() {
     gemini|agy)
       config_key="gemini"
       ;;
+    kimi|kimi-code)
+      config_key="kimi"
+      ;;
     opencode)
       config_key="opencode"
       ;;
@@ -248,6 +251,9 @@ configured_tool_model() {
       ;;
     gemini|agy)
       config_key="geminiModel"
+      ;;
+    kimi|kimi-code)
+      config_key="kimiModel"
       ;;
     opencode)
       config_key="opencodeModel"
@@ -324,7 +330,7 @@ apply_configured_model_arg() {
     codex)
       launch_args=("--model=${configured_model}" "${launch_args[@]}")
       ;;
-    claude|claude-code|gemini|agy|opencode|codewhale|codewhale-tui|deepseek|deepseek-tui)
+    claude|claude-code|gemini|agy|kimi|kimi-code|opencode|codewhale|codewhale-tui|deepseek|deepseek-tui)
       launch_args=(--model "${configured_model}" "${launch_args[@]}")
       ;;
   esac
@@ -675,6 +681,16 @@ if [[ "$tool_name" == "gemini" || "$tool_name" == "agy" ]]; then
     && ! has_exact_arg "-y" "${launch_args[@]}"; then
     launch_args=(--approval-mode yolo "${launch_args[@]}")
   fi
+  launch_model="$(extract_model_target "${launch_args[@]}" || true)"
+  resume_target=""
+  resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
+  run_wrapped_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
+  exit $?
+fi
+
+if [[ "$tool_name" == "kimi" || "$tool_name" == "kimi-code" ]]; then
+  launch_args=("$@")
+  apply_configured_model_arg
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"

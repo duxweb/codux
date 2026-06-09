@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [1.7.6] - 2026-06-09
+
+### 新增
+
+- 新增 Kimi Code CLI 一等 runtime 驱动，支持 `kimi` 和 `kimi-code` wrapper alias、托管 hooks、运行状态、设置、历史索引和会话 fork。
+- 新增 Kimi Code 权限模式与模型设置，runtime wrapper 会注入模型参数，但不会注入未确认的权限参数。
+- 新增 Kimi Code 历史索引，读取 `~/.kimi-code/sessions/**/state.json` 与 `agents/*/wire.jsonl` 会话数据。
+
+### 调整
+
+- 更新 README 功能介绍，将 Kimi Code 纳入 Codex、Claude Code、Gemini CLI、OpenCode、Kiro CLI、CodeWhale 和 Agy 的统一支持列表。
+
+### 修复
+
+- 修复 runtime 工具数量统计和权限摘要，确保新增支持的工具会写入托管 wrapper 设置文件。
+
 ## [1.7.5] - 2026-06-09
 
 ### 新增

@@ -27,9 +27,14 @@ pub(crate) fn probe_codex_runtime(
         request.started_at,
         request.updated_at,
     )?;
+    let external_session_id = normalized_string(request.external_session_id.as_deref());
+    let mut plan = parsed.plan;
+    if let (Some(plan), Some(session_id)) = (plan.as_mut(), external_session_id.as_ref()) {
+        plan.session_id = session_id.clone();
+    }
     Some(AIRuntimeContextSnapshot {
         tool: "codex".to_string(),
-        external_session_id: normalized_string(request.external_session_id.as_deref()),
+        external_session_id,
         transcript_path: Some(transcript_path),
         model: parsed.model,
         assistant_preview: parsed.assistant_preview,
@@ -45,5 +50,6 @@ pub(crate) fn probe_codex_runtime(
         has_completed_turn: parsed.has_completed_turn,
         session_origin: parsed.origin,
         source: "probe".to_string(),
+        plan,
     })
 }

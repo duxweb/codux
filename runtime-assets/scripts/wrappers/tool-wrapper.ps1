@@ -116,6 +116,8 @@ function Tool-Config-Key([string]$Name) {
     "claude-code" { "claudeCode" }
     "gemini" { "gemini" }
     "agy" { "gemini" }
+    "kimi" { "kimi" }
+    "kimi-code" { "kimi" }
     "opencode" { "opencode" }
     "codewhale" { "codewhale" }
     "codewhale-tui" { "codewhale" }
@@ -132,6 +134,8 @@ function Tool-Model-Key([string]$Name) {
     "claude-code" { "claudeCodeModel" }
     "gemini" { "geminiModel" }
     "agy" { "geminiModel" }
+    "kimi" { "kimiModel" }
+    "kimi-code" { "kimiModel" }
     "opencode" { "opencodeModel" }
     "codewhale" { "codewhaleModel" }
     "codewhale-tui" { "codewhaleModel" }
@@ -403,6 +407,8 @@ if ($permissionMode -eq "fullAccess") {
         -not (Has-Arg $launchArgs "-y")) {
       $launchArgs = @("--approval-mode", "yolo") + $launchArgs
     }
+  } elseif ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
+    # Kimi Code uses the generic model flag, but its permission flags differ from Gemini/Agy.
   } elseif ($Tool -eq "opencode") {
     if (-not (Has-Arg $launchArgs "--dangerously-skip-permissions")) {
       $launchArgs = @("--dangerously-skip-permissions") + $launchArgs

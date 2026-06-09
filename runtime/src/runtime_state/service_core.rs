@@ -1291,7 +1291,7 @@ mod app_runtime_ready_tests {
             .expect("ensure task a terminal pty");
         assert_eq!(ensured, terminal_a_top);
         let (attached, rx) = terminal_manager
-            .attach_or_create_with_context(config, Some(&launch_context), Arc::new(|_| {}))
+            .attach_or_create_with_context(config, Some(&launch_context), Arc::new(|_| true))
             .expect("attach task a terminal pty");
         assert_eq!(attached.id(), terminal_a_top);
         attached

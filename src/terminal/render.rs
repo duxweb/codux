@@ -45,7 +45,9 @@ impl Render for TerminalView {
             .on_mouse_up(MouseButton::Right, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
-            .on_scroll_wheel(cx.listener(Self::on_scroll));
+            .on_scroll_wheel(cx.listener(Self::on_scroll))
+            .drag_over::<ExternalPaths>(move |this, _paths, _window, _cx| this)
+            .on_drop(cx.listener(Self::drop_external_paths));
         let terminal = terminal.child(element).child(
             div()
                 .absolute()

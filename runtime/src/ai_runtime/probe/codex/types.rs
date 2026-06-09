@@ -39,6 +39,10 @@ pub(super) struct CodexPayloadFields<'a> {
     pub(super) summary: Option<&'a RawValue>,
     #[serde(borrow)]
     pub(super) summary_text: Option<&'a RawValue>,
+    #[serde(borrow)]
+    pub(super) name: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    pub(super) arguments: Option<Cow<'a, str>>,
 }
 
 #[derive(Default, Deserialize)]

@@ -271,7 +271,7 @@ pub struct TerminalSessionSnapshot {
     pub has_buffer: bool,
 }
 
-pub type EventSink = Arc<dyn Fn(TerminalEvent) + Send + Sync + 'static>;
+pub type EventSink = Arc<dyn Fn(TerminalEvent) -> bool + Send + Sync + 'static>;
 
 pub struct TerminalManager {
     sessions: parking_lot::Mutex<HashMap<String, Arc<TerminalPtySession>>>,
@@ -305,7 +305,13 @@ impl TerminalManager {
     where
         F: Fn(TerminalEvent) + Send + Sync + 'static,
     {
-        self.create_with_sink(config, Arc::new(emit))
+        self.create_with_sink(
+            config,
+            Arc::new(move |event| {
+                emit(event);
+                true
+            }),
+        )
     }
 
     pub fn create_with_sink(&self, config: TerminalPtyConfig, emit: EventSink) -> Result<String> {
@@ -1676,9 +1682,9 @@ fn emit_terminal_event(
     subscribers: &Arc<parking_lot::Mutex<Vec<EventSink>>>,
     event: TerminalEvent,
 ) {
-    for subscriber in subscribers.lock().iter() {
-        subscriber(event.clone());
-    }
+    subscribers
+        .lock()
+        .retain(|subscriber| subscriber(event.clone()));
 }
 
 fn attach_ai_runtime_terminal_output_watcher(
@@ -1691,6 +1697,7 @@ fn attach_ai_runtime_terminal_output_watcher(
     ));
     session.subscribe_events(Arc::new(move |event| {
         watcher.lock().handle_terminal_event(&event);
+        true
     }));
 }
 
@@ -3152,7 +3159,7 @@ mod tests {
     #[test]
     fn terminal_manager_reuses_session_and_broadcasts_to_subscribers() {
         let manager = TerminalManager::new();
-        let emit: EventSink = Arc::new(|_| {});
+        let emit: EventSink = Arc::new(|_| true);
         let config = TerminalPtyConfig {
             terminal_id: Some(format!("test-terminal-{}", Uuid::new_v4())),
             shell: Some("/bin/cat".to_string()),
@@ -3216,7 +3223,7 @@ mod tests {
             .expect("terminal should prewarm");
         assert_eq!(ensured_id, terminal_id);
 
-        let emit: EventSink = Arc::new(|_| {});
+        let emit: EventSink = Arc::new(|_| true);
         let (session, rx) = manager
             .attach_or_create_with_context(config, None, emit)
             .expect("terminal should attach");
@@ -3230,6 +3237,35 @@ mod tests {
         );
 
         let _ = session.kill();
+    }
+
+    #[test]
+    fn terminal_event_subscribers_are_pruned_when_sink_is_closed() {
+        let subscribers: Arc<parking_lot::Mutex<Vec<EventSink>>> =
+            Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        subscribers.lock().push(Arc::new(move |_| {
+            tx.send(()).is_ok()
+        }));
+
+        emit_terminal_event(
+            &subscribers,
+            TerminalEvent::Exit {
+                session_id: "session-a".to_string(),
+                exit_code: None,
+            },
+        );
+        assert_eq!(subscribers.lock().len(), 1);
+        drop(rx);
+
+        emit_terminal_event(
+            &subscribers,
+            TerminalEvent::Exit {
+                session_id: "session-a".to_string(),
+                exit_code: None,
+            },
+        );
+        assert!(subscribers.lock().is_empty());
     }
 
     #[cfg(unix)]
@@ -3256,7 +3292,7 @@ mod tests {
             scrollback_lines: Some(100),
             ..Default::default()
         };
-        let emit: EventSink = Arc::new(|_| {});
+        let emit: EventSink = Arc::new(|_| true);
 
         let (session, _) = manager
             .attach_or_create_with_context(config, None, emit)

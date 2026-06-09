@@ -149,6 +149,7 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
         has_completed_turn,
         latest_assistant_preview: normalized_string(snapshot.assistant_preview.as_deref())
             .or(session.latest_assistant_preview.clone()),
+        plan: snapshot.plan.or(session.plan.clone()),
         ..session
     };
 

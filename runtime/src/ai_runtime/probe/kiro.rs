@@ -31,6 +31,7 @@ pub(crate) fn probe_kiro_runtime(
         has_completed_turn: parsed.has_completed_turn,
         session_origin: parsed.origin,
         source: "probe".to_string(),
+        plan: None,
     })
 }
 

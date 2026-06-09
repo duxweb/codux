@@ -3,6 +3,7 @@ mod codex;
 mod command;
 mod install;
 mod json;
+mod kimi;
 mod status;
 
 pub use install::{install_managed_hook_configs, install_managed_hook_configs_in};

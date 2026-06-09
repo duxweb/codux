@@ -474,6 +474,75 @@ runtime launch context
     }
 
     #[test]
+    fn parses_kimi_history_wire_jsonl() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let session_dir = root.join(".kimi-code/sessions/project-key/session-abc");
+        let agent_dir = session_dir.join("agents/main");
+        fs::create_dir_all(&agent_dir).unwrap();
+        fs::write(
+            session_dir.join("state.json"),
+            serde_json::json!({
+                "sessionId": "session-abc",
+                "title": "Kimi Session",
+                "cwd": project_path,
+                "model": "kimi-k2",
+                "createdAt": "2026-05-17T00:00:00Z"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        fs::write(
+            agent_dir.join("wire.jsonl"),
+            [
+                serde_json::json!({
+                    "role": "user",
+                    "content": "hello kimi",
+                    "timestamp": "2026-05-17T00:00:01Z"
+                })
+                .to_string(),
+                serde_json::json!({
+                    "role": "assistant",
+                    "content": "hello from kimi",
+                    "timestamp": "2026-05-17T00:00:02Z",
+                    "model": "kimi-k2",
+                    "usage": {
+                        "input_tokens": 40,
+                        "output_tokens": 20,
+                        "cached_input_tokens": 5,
+                        "reasoning_output_tokens": 3
+                    }
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.project_summary.project_total_tokens, 55);
+        assert_eq!(snapshot.project_summary.project_cached_input_tokens, 5);
+        assert_eq!(snapshot.sessions.len(), 1);
+        assert_eq!(snapshot.sessions[0].last_tool.as_deref(), Some("kimi"));
+        assert_eq!(snapshot.sessions[0].last_model.as_deref(), Some("kimi-k2"));
+        assert_eq!(snapshot.sessions[0].request_count, 1);
+        assert!(snapshot
+            .tool_breakdown
+            .iter()
+            .any(|item| item.key == "kimi" && item.total_tokens == 55));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn separates_gemini_and_agy_history_roots() {
         let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
         let project_path = root.join("project-a").to_string_lossy().to_string();

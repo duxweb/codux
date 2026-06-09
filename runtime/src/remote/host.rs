@@ -2692,7 +2692,10 @@ impl RemoteHostRuntime {
             return;
         }
         let runtime = Arc::clone(self);
-        let emit = Arc::new(move |event| runtime.handle_terminal_event(event));
+        let emit = Arc::new(move |event| {
+            runtime.handle_terminal_event(event);
+            true
+        });
         if self.terminals.subscribe_events(session_id, emit).is_err() {
             if let Ok(mut subscriptions) = self.terminal_event_subscriptions.lock() {
                 subscriptions.remove(session_id);

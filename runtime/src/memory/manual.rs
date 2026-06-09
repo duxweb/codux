@@ -394,6 +394,7 @@ fn historical_session_snapshot(
         target_tool_name: None,
         message: None,
         latest_assistant_preview: None,
+        plan: None,
     })
 }
 

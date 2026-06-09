@@ -243,7 +243,8 @@
       "pet.tooltip.pet": "Pet",
       "pet.total_xp": "Total XP",
       "pet.xp.label": "Experience",
-      "pet.name.save": "Save pet name"
+      "pet.name.save": "Save pet name",
+      "pet.activity.plan_format": "%@ Aufgaben %@/%@"
     },
     "en": {
       "pet.activity.completed_format": "%@ completed",
@@ -488,7 +489,8 @@
       "pet.speech.llm.idle_system_prompt_format": "You are a desktop pixel pet named %@. Personality: %@. Write a casual idle monologue in Simplified Chinese. Use at most 2 short lines and 36 characters total. Do not mention code, files, secrets, commands, or exact task results. Do not explain. Output only the line.",
       "pet.speech.llm.idle_user_prompt_format": "Idle event: %@\nCurrent hour: %@\nRecent tool: %@ / model: %@\nProject nickname: %@",
       "pet.today_tokens": "Today",
-      "pet.name.save": "Save pet name"
+      "pet.name.save": "Save pet name",
+      "pet.activity.plan_format": "%@ tasks %@/%@"
     },
     "es": {
       "pet.activity.completed_format": "%@ completado",
@@ -733,7 +735,8 @@
       "pet.tooltip.pet": "Pet",
       "pet.total_xp": "Total XP",
       "pet.xp.label": "Experience",
-      "pet.name.save": "Save pet name"
+      "pet.name.save": "Save pet name",
+      "pet.activity.plan_format": "%@ tareas %@/%@"
     },
     "fr": {
       "pet.activity.completed_format": "%@ terminé",
@@ -978,7 +981,8 @@
       "pet.tooltip.pet": "Pet",
       "pet.total_xp": "Total XP",
       "pet.xp.label": "Experience",
-      "pet.name.save": "Save pet name"
+      "pet.name.save": "Save pet name",
+      "pet.activity.plan_format": "%@ tâches %@/%@"
     },
     "ja": {
       "pet.activity.completed_format": "%@ 完了",
@@ -1223,7 +1227,8 @@
       "pet.tooltip.pet": "Pet",
       "pet.total_xp": "Total XP",
       "pet.xp.label": "Experience",
-      "pet.name.save": "Save pet name"
+      "pet.name.save": "Save pet name",
+      "pet.activity.plan_format": "%@ タスク %@/%@"
     },
     "ko": {
       "pet.activity.completed_format": "%@ 완료",
@@ -1468,7 +1473,8 @@
       "pet.tooltip.pet": "Pet",
       "pet.total_xp": "Total XP",
       "pet.xp.label": "Experience",
-      "pet.name.save": "Save pet name"
+      "pet.name.save": "Save pet name",
+      "pet.activity.plan_format": "%@ 작업 %@/%@"
     },
     "pt-BR": {
       "pet.activity.completed_format": "%@ concluído",
@@ -1713,7 +1719,8 @@
       "pet.tooltip.pet": "Pet",
       "pet.total_xp": "Total XP",
       "pet.xp.label": "Experience",
-      "pet.name.save": "Save pet name"
+      "pet.name.save": "Save pet name",
+      "pet.activity.plan_format": "%@ tarefas %@/%@"
     },
     "ru": {
       "pet.activity.completed_format": "%@ завершено",
@@ -1958,7 +1965,8 @@
       "pet.tooltip.pet": "Pet",
       "pet.total_xp": "Total XP",
       "pet.xp.label": "Experience",
-      "pet.name.save": "Save pet name"
+      "pet.name.save": "Save pet name",
+      "pet.activity.plan_format": "%@ задач %@/%@"
     },
     "zh-Hans": {
       "pet.activity.completed_format": "%@ 已完成",
@@ -2203,7 +2211,8 @@
       "pet.tooltip.pet": "宠物",
       "pet.total_xp": "总 XP",
       "pet.xp.label": "经验值",
-      "pet.name.save": "保存宠物昵称"
+      "pet.name.save": "保存宠物昵称",
+      "pet.activity.plan_format": "%@ 任务 %@/%@"
     },
     "zh-Hant": {
       "pet.activity.completed_format": "%@ 已完成",
@@ -2448,7 +2457,8 @@
       "pet.tooltip.pet": "寵物",
       "pet.total_xp": "總 XP",
       "pet.xp.label": "經驗值",
-      "pet.name.save": "儲存寵物暱稱"
+      "pet.name.save": "儲存寵物暱稱",
+      "pet.activity.plan_format": "%@ 任務 %@/%@"
     }
   }
 }

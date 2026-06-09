@@ -530,6 +530,7 @@ mod tests {
         assert!(
             ai_session_fork_command(AISessionForkTarget::CodeWhale, path).starts_with("codewhale ")
         );
+        assert!(ai_session_fork_command(AISessionForkTarget::Kimi, path).starts_with("kimi "));
     }
 
     #[test]

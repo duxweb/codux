@@ -101,6 +101,7 @@ pub(crate) fn probe_codewhale_runtime(
         has_completed_turn: true,
         session_origin: state.origin,
         source: "probe".to_string(),
+        plan: None,
     })
 }
 

@@ -218,6 +218,7 @@ fn is_ai_runtime_process(command: &str) -> bool {
         "agy",
         "codewhale",
         "deepseek",
+        "kimi",
     ]
     .iter()
     .any(|needle| lower.contains(needle))
@@ -296,5 +297,6 @@ mod tests {
         ));
         assert!(is_ai_runtime_process("/usr/bin/codewhale-tui"));
         assert!(is_ai_runtime_process("/usr/bin/deepseek resume session-1"));
+        assert!(is_ai_runtime_process("/usr/bin/kimi-code"));
     }
 }

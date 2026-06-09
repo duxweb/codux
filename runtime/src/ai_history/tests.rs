@@ -259,6 +259,7 @@ fn runtime_session(terminal_id: &str) -> AIRuntimeSessionSummary {
         baseline_total_tokens: 0,
         baseline_cached_input_tokens: 0,
         source: "test".to_string(),
+        plan: None,
     }
 }
 

@@ -62,6 +62,77 @@ fn parse_agy_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -
     parse_gemini_like_history_file("agy", project, file_path)
 }
 
+fn parse_kimi_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -> ParsedHistory {
+    let Some(state_path) = kimi_state_for_wire(file_path) else {
+        return ParsedHistory::default();
+    };
+    let state = fs::read_to_string(&state_path)
+        .ok()
+        .and_then(|data| serde_json::from_str::<Value>(&data).ok())
+        .unwrap_or(Value::Null);
+    let Some(project_path) = kimi_project_path(&state) else {
+        return ParsedHistory::default();
+    };
+    if !paths_equivalent(Some(&project_path), &project.path) {
+        return ParsedHistory::default();
+    }
+
+    let session_id = kimi_session_id(&state, file_path);
+    let mut result = ParsedHistory::default();
+    let mut session_title = kimi_session_title(&state);
+    let mut session_model = kimi_model(&state);
+    let mut last_timestamp = None;
+    let mut last_usage: Option<HistoryUsage> = None;
+
+    let _ = for_each_jsonl_line(file_path, 0, |line, _| {
+        let Ok(row) = serde_json::from_str::<Value>(line) else {
+            return true;
+        };
+        let timestamp = kimi_timestamp(&row).unwrap_or_else(now_seconds);
+        last_timestamp = Some(timestamp);
+        if let Some(role) = kimi_role(&row) {
+            result.events.push(HistoryEvent {
+                source: "kimi".to_string(),
+                session_id: session_id.clone(),
+                timestamp,
+                role,
+            });
+            if role == HistoryRole::User && session_title.is_none() {
+                session_title = kimi_text(&row).map(|value| truncate_title(&value));
+            }
+        }
+        if let Some(model) = kimi_model(&row) {
+            session_model = Some(model);
+        }
+        if let Some(usage) = kimi_usage(&row) {
+            last_usage = Some(usage);
+        }
+        true
+    });
+
+    let usage = last_usage.or_else(|| kimi_usage(&state));
+    if let Some(usage) = usage {
+        if usage.total_tokens() > 0 || usage.cached_input_tokens > 0 {
+            result.entries.push(HistoryEntry {
+                source: "kimi".to_string(),
+                session_id: session_id.clone(),
+                external_session_id: Some(session_id),
+                session_title: session_title.or_else(|| Some(project.name.clone())),
+                timestamp: last_timestamp
+                    .or_else(|| kimi_timestamp(&state))
+                    .unwrap_or_else(now_seconds),
+                model: session_model,
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                cached_input_tokens: usage.cached_input_tokens,
+                reasoning_output_tokens: usage.reasoning_output_tokens,
+            });
+        }
+    }
+
+    result
+}
+
 fn parse_gemini_like_history_file(
     source: &str,
     project: &AIHistoryProjectRequest,
@@ -151,6 +222,184 @@ fn parse_gemini_like_history_file(
         });
     }
     result
+}
+
+fn kimi_session_id(state: &Value, file_path: &Path) -> String {
+    state
+        .get("sessionId")
+        .or_else(|| state.get("session_id"))
+        .or_else(|| state.get("id"))
+        .and_then(|value| value.as_str())
+        .and_then(normalized_string)
+        .or_else(|| {
+            file_path
+                .parent()
+                .and_then(|path| path.parent())
+                .and_then(|path| path.file_name())
+                .and_then(|name| name.to_str())
+                .and_then(normalized_string)
+        })
+        .unwrap_or_else(|| deterministic_uuid(&file_path.display().to_string()))
+}
+
+fn kimi_project_path(value: &Value) -> Option<String> {
+    value
+        .get("cwd")
+        .or_else(|| value.get("projectPath"))
+        .or_else(|| value.get("project_path"))
+        .or_else(|| value.get("workingDirectory"))
+        .or_else(|| value.get("working_directory"))
+        .and_then(|value| value.as_str())
+        .and_then(normalized_string)
+        .or_else(|| {
+            value
+                .get("project")
+                .and_then(|project| {
+                    project
+                        .get("path")
+                        .or_else(|| project.get("root"))
+                        .or_else(|| project.get("cwd"))
+                })
+                .and_then(|value| value.as_str())
+                .and_then(normalized_string)
+        })
+}
+
+fn kimi_model(value: &Value) -> Option<String> {
+    value
+        .get("model")
+        .or_else(|| value.get("modelName"))
+        .or_else(|| value.get("model_name"))
+        .and_then(|value| value.as_str())
+        .and_then(normalized_string)
+        .or_else(|| {
+            value
+                .get("message")
+                .and_then(kimi_model)
+        })
+}
+
+fn kimi_session_title(value: &Value) -> Option<String> {
+    value
+        .get("title")
+        .or_else(|| value.get("summary"))
+        .and_then(|value| value.as_str())
+        .and_then(normalized_string)
+        .map(|value| truncate_title(&value))
+}
+
+fn kimi_timestamp(value: &Value) -> Option<f64> {
+    value
+        .get("timestamp")
+        .or_else(|| value.get("createdAt"))
+        .or_else(|| value.get("created_at"))
+        .or_else(|| value.get("time"))
+        .and_then(value_to_string)
+        .and_then(|value| {
+            parse_iso8601_seconds(&value).or_else(|| {
+                value.parse::<f64>().ok().map(|number| {
+                    if number > 10_000_000_000.0 {
+                        number / 1000.0
+                    } else {
+                        number
+                    }
+                })
+            })
+        })
+}
+
+fn kimi_role(value: &Value) -> Option<HistoryRole> {
+    let role = value
+        .get("role")
+        .or_else(|| value.get("message").and_then(|message| message.get("role")))
+        .or_else(|| value.get("type"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if role.contains("user") || role == "human" {
+        Some(HistoryRole::User)
+    } else if role.contains("assistant") || role.contains("agent") || role.contains("model") {
+        Some(HistoryRole::Assistant)
+    } else {
+        None
+    }
+}
+
+fn kimi_usage(value: &Value) -> Option<HistoryUsage> {
+    let usage = value
+        .get("usage")
+        .or_else(|| value.get("tokenUsage"))
+        .or_else(|| value.get("token_usage"))
+        .or_else(|| value.get("tokens"))
+        .or_else(|| value.get("message").and_then(|message| message.get("usage")))?;
+    let cached = json_i64(
+        usage
+            .get("cached_input_tokens")
+            .or_else(|| usage.get("cacheReadInputTokens"))
+            .or_else(|| usage.get("cachedTokens")),
+    );
+    let reasoning = json_i64(
+        usage
+            .get("reasoning_output_tokens")
+            .or_else(|| usage.get("reasoningTokens")),
+    );
+    let mut input = json_i64(
+        usage
+            .get("input_tokens")
+            .or_else(|| usage.get("prompt_tokens"))
+            .or_else(|| usage.get("promptTokens"))
+            .or_else(|| usage.get("inputTokens")),
+    );
+    let mut output = json_i64(
+        usage
+            .get("output_tokens")
+            .or_else(|| usage.get("completion_tokens"))
+            .or_else(|| usage.get("completionTokens"))
+            .or_else(|| usage.get("outputTokens")),
+    );
+    let total = json_i64(
+        usage
+            .get("total_tokens")
+            .or_else(|| usage.get("totalTokens"))
+            .or_else(|| usage.get("total")),
+    );
+    if input == 0 && output == 0 && total > 0 {
+        input = total;
+    }
+    input = (input - cached).max(0);
+    output = (output - reasoning).max(0);
+    let resolved = HistoryUsage {
+        input_tokens: input,
+        output_tokens: output,
+        cached_input_tokens: cached.max(0),
+        reasoning_output_tokens: reasoning.max(0),
+    };
+    (resolved.total_tokens() > 0 || resolved.cached_input_tokens > 0).then_some(resolved)
+}
+
+fn kimi_text(value: &Value) -> Option<String> {
+    value
+        .get("content")
+        .or_else(|| value.get("text"))
+        .or_else(|| value.get("message").and_then(|message| message.get("content")))
+        .and_then(|content| {
+            content.as_str().map(str::to_string).or_else(|| {
+                content.as_array().map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| {
+                            item.as_str().map(str::to_string).or_else(|| {
+                                item.get("text")
+                                    .and_then(|value| value.as_str())
+                                    .map(str::to_string)
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+            })
+        })
+        .and_then(|value| normalized_string(&value))
 }
 
 fn parse_opencode_history_file(

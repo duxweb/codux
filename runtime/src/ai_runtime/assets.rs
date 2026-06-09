@@ -121,6 +121,22 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kiro.ps1"),
     ),
     (
+        "scripts/wrappers/bin/kimi",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kimi"),
+    ),
+    (
+        "scripts/wrappers/bin/kimi-code",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kimi-code"),
+    ),
+    (
+        "scripts/wrappers/bin/kimi-code.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kimi-code.ps1"),
+    ),
+    (
+        "scripts/wrappers/bin/kimi.ps1",
+        include_bytes!("../../../runtime-assets/scripts/wrappers/bin/kimi.ps1"),
+    ),
+    (
         "scripts/wrappers/bin/opencode",
         include_bytes!("../../../runtime-assets/scripts/wrappers/bin/opencode"),
     ),

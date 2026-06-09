@@ -5,7 +5,7 @@ use crate::{
             paths::paths_equivalent,
             preview::joined_preview_from_values,
         },
-        snapshot::{AIRuntimeContextSnapshot, AIRuntimeProbeRequest},
+        snapshot::{AIPlanItem, AIPlanSnapshot, AIRuntimeContextSnapshot, AIRuntimeProbeRequest},
         state::normalized_string,
     },
     runtime_paths::home_dir,
@@ -146,6 +146,7 @@ pub(crate) fn probe_opencode_runtime(
         None
     };
     let has_completed_turn = last_completion_at > 0.0 && last_completion_at >= last_user_at;
+    let plan = opencode_plan(&conn, &external_session_id);
     Some(AIRuntimeContextSnapshot {
         tool: "opencode".to_string(),
         external_session_id: Some(external_session_id),
@@ -169,7 +170,62 @@ pub(crate) fn probe_opencode_runtime(
         }
         .to_string(),
         source: "probe".to_string(),
+        plan,
     })
+}
+
+fn opencode_plan(conn: &rusqlite::Connection, session_id: &str) -> Option<AIPlanSnapshot> {
+    let mut statement = conn
+        .prepare(
+            r#"
+            SELECT content, status, priority, time_updated
+            FROM todo
+            WHERE session_id = ?1
+            ORDER BY position ASC;
+            "#,
+        )
+        .ok()?;
+    let rows = statement
+        .query_map([session_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })
+        .ok()?;
+    let mut updated_at = 0.0f64;
+    let mut items = Vec::new();
+    for row in rows.flatten() {
+        let (content, status, priority, time_updated) = row;
+        let Some(text) = normalized_string(Some(&content)) else {
+            continue;
+        };
+        updated_at = updated_at.max(time_updated as f64 / 1000.0);
+        items.push(AIPlanItem {
+            text,
+            status: normalized_plan_status(&status),
+            priority: priority
+                .as_deref()
+                .and_then(|priority| normalized_string(Some(priority))),
+        });
+    }
+    (!items.is_empty()).then_some(AIPlanSnapshot {
+        source: "opencode".to_string(),
+        session_id: session_id.to_string(),
+        updated_at,
+        items,
+    })
+}
+
+fn normalized_plan_status(value: &str) -> String {
+    match value.trim() {
+        "completed" | "complete" | "done" => "completed",
+        "in_progress" | "in-progress" | "running" | "active" => "in_progress",
+        _ => "pending",
+    }
+    .to_string()
 }
 
 fn is_opencode_final_assistant_finish(value: &str, completed_at: Option<f64>) -> bool {
@@ -190,4 +246,58 @@ fn opencode_value_timestamp(value: &Value) -> Option<f64> {
         return Some(milliseconds / 1000.0);
     }
     parse_iso8601_seconds(&raw)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_todo_table_into_plan() {
+        let conn = rusqlite::Connection::open_in_memory().expect("db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE todo (
+                session_id TEXT,
+                content TEXT,
+                status TEXT,
+                priority TEXT,
+                position INTEGER,
+                time_updated INTEGER
+            );
+            "#,
+        )
+        .expect("schema");
+        conn.execute(
+            "INSERT INTO todo (session_id, content, status, priority, position, time_updated)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params!["session-a", "Check OpenCode DB", "completed", "high", 0, 1000i64],
+        )
+        .expect("insert first");
+        conn.execute(
+            "INSERT INTO todo (session_id, content, status, priority, position, time_updated)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                "session-a",
+                "Render pet plan",
+                "in_progress",
+                Option::<String>::None,
+                1,
+                2000i64
+            ],
+        )
+        .expect("insert second");
+
+        let plan = opencode_plan(&conn, "session-a").expect("plan");
+
+        assert_eq!(plan.source, "opencode");
+        assert_eq!(plan.session_id, "session-a");
+        assert_eq!(plan.updated_at, 2.0);
+        assert_eq!(plan.items.len(), 2);
+        assert_eq!(plan.items[0].text, "Check OpenCode DB");
+        assert_eq!(plan.items[0].status, "completed");
+        assert_eq!(plan.items[0].priority.as_deref(), Some("high"));
+        assert_eq!(plan.items[1].status, "in_progress");
+        assert_eq!(plan.items[1].priority, None);
+    }
 }

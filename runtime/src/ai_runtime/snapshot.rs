@@ -48,6 +48,26 @@ pub struct AISessionSnapshot {
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_assistant_preview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<AIPlanSnapshot>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIPlanSnapshot {
+    pub source: String,
+    pub session_id: String,
+    pub updated_at: f64,
+    pub items: Vec<AIPlanItem>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AIPlanItem {
+    pub text: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -163,4 +183,6 @@ pub struct AIRuntimeContextSnapshot {
     pub has_completed_turn: bool,
     pub session_origin: String,
     pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<AIPlanSnapshot>,
 }

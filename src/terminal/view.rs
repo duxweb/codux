@@ -589,6 +589,19 @@ impl TerminalView {
         });
     }
 
+    fn drop_external_paths(
+        &mut self,
+        paths: &ExternalPaths,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(text) = terminal_paths_input(paths.paths()) else {
+            return;
+        };
+        self.focus_handle.focus(window, cx);
+        self.paste_text(&text, cx);
+    }
+
     fn terminal_clipboard_paste_text(&self, cx: &mut App) -> Option<String> {
         terminal_clipboard_paste_text(cx, self.config.paste_images_as_paths)
     }
