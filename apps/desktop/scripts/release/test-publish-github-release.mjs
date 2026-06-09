@@ -28,7 +28,7 @@ writeAsset("windows/Codux/Codux.exe", "raw-exe");
 
 const result = spawnSync(
   "node",
-  ["scripts/release/publish-github-release.mjs", "--dry-run"],
+  ["apps/desktop/scripts/release/publish-github-release.mjs", "--dry-run"],
   {
     cwd: root,
     stdio: "pipe",

@@ -13,8 +13,8 @@ const channel =
   rawChannel === "stable" || rawChannel === "beta" ? rawChannel : version.includes("-") ? "beta" : "stable";
 
 if (!dryRun) {
-  updateCargoVersion("Cargo.toml", version);
-  updateCargoVersion("runtime/Cargo.toml", version);
+  updateCargoVersion("apps/desktop/Cargo.toml", version);
+  updateCargoVersion("apps/desktop/runtime/Cargo.toml", version);
   updateCargoLockPackageVersion("Cargo.lock", "codux", version);
   updateCargoLockPackageVersion("Cargo.lock", "codux-runtime", version);
 }

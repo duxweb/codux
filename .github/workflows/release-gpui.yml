@@ -62,7 +62,7 @@ jobs:
         run: |
           mkdir -p dist
           requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
-          node scripts/release/prepare-release.mjs "${SOURCE_REF}" "${requested_channel}"
+          node apps/desktop/scripts/release/prepare-release.mjs "${SOURCE_REF}" "${requested_channel}"
 
       - name: Upload release notes
         uses: actions/upload-artifact@v4
@@ -124,7 +124,7 @@ jobs:
           RELEASE_NOTES_PATH: dist/release-notes.md
         run: |
           mkdir -p dist
-          node scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
+          node apps/desktop/scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
 
       - name: Build
         shell: bash
@@ -209,7 +209,7 @@ jobs:
           RELEASE_NOTES_PATH: dist/release-notes.md
         run: |
           mkdir -p dist
-          node scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
+          node apps/desktop/scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
 
       - name: Download built binary
         uses: actions/download-artifact@v4
@@ -230,7 +230,7 @@ jobs:
 
       - name: Package
         shell: bash
-        run: node scripts/release/package-gpui.mjs
+        run: node apps/desktop/scripts/release/package-gpui.mjs
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
@@ -277,4 +277,4 @@ jobs:
           merge-multiple: true
 
       - name: Publish GitHub release and update metadata
-        run: node scripts/release/publish-github-release.mjs
+        run: node apps/desktop/scripts/release/publish-github-release.mjs

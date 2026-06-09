@@ -1,11 +1,11 @@
 /target/
-.DS_Store
+**/.DS_Store
 **/*.rs.bk
 /dist/
 /release-artifacts/
 /release-artifacts-local/
-/runtime/target/
-/runtime/Cargo.lock
+/apps/desktop/runtime/target/
+/apps/desktop/runtime/Cargo.lock
 /plan/
 
 # Monorepo app build outputs

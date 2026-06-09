@@ -8,6 +8,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
+const desktopRoot = path.join(root, "apps", "desktop");
+const desktopAssetsRoot = path.join(desktopRoot, "runtime-assets");
 const appName = process.env.CODUX_APP_NAME || "Codux";
 const bundleId = process.env.CODUX_BUNDLE_ID || "com.duxweb.codux";
 const binaryName = process.env.CODUX_BINARY_NAME || "codux";
@@ -41,7 +43,7 @@ function packageMacos() {
   fs.mkdirSync(macosDir, { recursive: true });
   fs.mkdirSync(resourcesDir, { recursive: true });
   fs.copyFileSync(binaryPath, path.join(macosDir, appName));
-  fs.copyFileSync(path.join(root, "runtime-assets", "icons", "icon.icns"), path.join(resourcesDir, "AppIcon.icns"));
+  fs.copyFileSync(path.join(desktopAssetsRoot, "icons", "icon.icns"), path.join(resourcesDir, "AppIcon.icns"));
   fs.writeFileSync(path.join(contentsDir, "Info.plist"), macosInfoPlist(), "utf8");
 
   const signingIdentity = macosSigningIdentity();
@@ -150,7 +152,7 @@ function packageWindows() {
     const packageDir = path.join(tempDir, appName);
     fs.mkdirSync(packageDir, { recursive: true });
     fs.copyFileSync(exePath, path.join(packageDir, `${appName}.exe`));
-    fs.copyFileSync(path.join(root, "runtime-assets", "icons", "icon.ico"), path.join(packageDir, "icon.ico"));
+    fs.copyFileSync(path.join(desktopAssetsRoot, "icons", "icon.ico"), path.join(packageDir, "icon.ico"));
 
     const installerScriptPath = path.join(tempDir, `${appName}.nsi`);
     const installerPath = path.join(outputDir, `${artifactBaseName("windows")}-setup.exe`);
@@ -198,7 +200,7 @@ function targetArchLabel() {
 }
 
 function readCargoVersion() {
-  const content = fs.readFileSync(path.join(root, "Cargo.toml"), "utf8");
+  const content = fs.readFileSync(path.join(desktopRoot, "Cargo.toml"), "utf8");
   return content.match(/^version = "(.+)"$/m)?.[1] || "0.0.0";
 }
 
@@ -310,8 +312,8 @@ ShowInstDetails show
 ShowUninstDetails show
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "${escapeNsis(path.join(root, "runtime-assets", "icons", "icon.ico"))}"
-!define MUI_UNICON "${escapeNsis(path.join(root, "runtime-assets", "icons", "icon.ico"))}"
+!define MUI_ICON "${escapeNsis(path.join(desktopAssetsRoot, "icons", "icon.ico"))}"
+!define MUI_UNICON "${escapeNsis(path.join(desktopAssetsRoot, "icons", "icon.ico"))}"
 
 Var CreateDesktopShortcut
 Var CreateStartMenuShortcut

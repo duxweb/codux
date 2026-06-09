@@ -74,6 +74,10 @@ Mac、Windows、Linux headless、Flutter 都按 peer 处理。任意 peer 可以
 ```text
 codux/
   apps/
+    desktop/
+      runtime/
+      runtime-assets/
+      scripts/
     mobile/
     relay-server/
   crates/
@@ -81,13 +85,11 @@ codux/
     codux-terminal-core/
   docs/
   plan/
-  scripts/
-  runtime/
-  src/
 ```
 
 已完成：
 
+- `apps/desktop`：Rust + GPUI desktop app，包含桌面端 runtime、assets 和 release scripts。
 - `apps/mobile`：Flutter mobile controller。
 - `apps/relay-server`：Go relay service。
 - `crates/codux-protocol`：共享协议边界。
@@ -95,7 +97,7 @@ codux/
 
 原则：
 
-- 顶层仓库统一版本、文档、计划、发布脚本和 CI。
+- 顶层仓库统一版本、文档、计划和 CI；各 app 的构建/发布脚本跟随各自目录。
 - Cargo workspace 只包含 Rust app/crates，不把 Flutter、web、Go 服务端加入 Cargo workspace。
 - Flutter、web、Go 服务端作为 `apps/*` 子项目保留各自原生构建系统。
 

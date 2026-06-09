@@ -200,7 +200,7 @@ cargo run
 ```bash
 cargo check
 cargo test -p codux-runtime ssh::tests
-node scripts/release/test-package-gpui.mjs
+node apps/desktop/scripts/release/test-package-gpui.mjs
 ```
 
 桌面端通过推送版本标签触发发布，例如 `v1.6.2`。发布工作流会构建 Rust 原生 macOS 和 Windows 产物，发布 GitHub Release，并更新对应的自动更新通道。

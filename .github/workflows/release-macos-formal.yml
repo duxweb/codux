@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p dist
           requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
-          node scripts/release/prepare-release.mjs "${{ steps.ref.outputs.source_ref }}" "${requested_channel}"
+          node apps/desktop/scripts/release/prepare-release.mjs "${{ steps.ref.outputs.source_ref }}" "${requested_channel}"
 
       - name: Upload release notes
         uses: actions/upload-artifact@v4
@@ -150,7 +150,7 @@ jobs:
           RELEASE_NOTES_PATH: dist/release-notes.md
         run: |
           mkdir -p dist
-          node scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
+          node apps/desktop/scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
 
       - name: Build
         shell: bash
@@ -165,7 +165,7 @@ jobs:
 
       - name: Package formal macOS bundle
         shell: bash
-        run: node scripts/release/package-gpui.mjs
+        run: node apps/desktop/scripts/release/package-gpui.mjs
 
       - name: Upload formal macOS artifacts
         uses: actions/upload-artifact@v4
@@ -213,4 +213,4 @@ jobs:
           path: release-artifacts/macos-universal-formal
 
       - name: Publish formal macOS assets and updater metadata
-        run: node scripts/release/publish-github-release.mjs
+        run: node apps/desktop/scripts/release/publish-github-release.mjs

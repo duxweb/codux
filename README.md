@@ -45,11 +45,11 @@ Codux AI is not an editor replacement. It is a control plane for developers who 
 
 This repository is the Codux monorepo:
 
-- `src/`, `runtime/`: Rust + GPUI desktop app and runtime.
-- `crates/codux-protocol`: shared remote protocol helpers and capabilities.
-- `crates/codux-terminal-core`: shared terminal session, sequence, snapshot, and remote PTY model primitives.
+- `apps/desktop`: Rust + GPUI desktop app, desktop runtime, desktop assets, and desktop release scripts.
 - `apps/mobile`: Flutter mobile controller.
 - `apps/relay-server`: Go relay service for pairing, signaling, and WebSocket fallback.
+- `crates/codux-protocol`: shared remote protocol helpers and capabilities.
+- `crates/codux-terminal-core`: shared terminal session, sequence, snapshot, and remote PTY model primitives.
 
 Flutter and Go apps keep their own native build systems. Only Rust packages are Cargo workspace members.
 
@@ -212,7 +212,7 @@ Useful checks before submitting changes:
 ```bash
 cargo check
 cargo test -p codux-runtime ssh::tests
-node scripts/release/test-package-gpui.mjs
+node apps/desktop/scripts/release/test-package-gpui.mjs
 ```
 
 Desktop releases are created by pushing a version tag such as `v1.6.2`. The release workflow builds Rust-native macOS and Windows artifacts, publishes the GitHub Release, and updates the configured updater channel.
