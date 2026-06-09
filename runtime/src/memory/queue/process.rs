@@ -138,7 +138,8 @@ impl MemoryService {
             .cloned()
             .ok_or_else(|| "No available AI provider is configured.".to_string())?;
         let response_text = {
-            let transcript = resolve_transcript_for_task(&task, &project)?;
+            let transcript =
+                resolve_transcript_for_task_with_settings(&task, &project, &settings.memory)?;
             let (user_summary, user_memories, project_memories) =
                 self.extraction_prompt_context(&settings.memory, &task.project_id, &transcript)?;
             let prompt = make_extraction_prompt(
@@ -150,17 +151,10 @@ impl MemoryService {
                 output_locale,
                 &settings.memory,
             );
-            llm::complete_with_provider_options(
+            complete_memory_extraction_with_retry(
                 &provider,
                 &prompt,
                 Some(extraction_system_prompt()),
-                llm::LLMProviderCompletionOptions {
-                    max_tokens: 4096,
-                    temperature: 0.1,
-                    preserve_formatting: true,
-                    json_response: true,
-                    timeout_seconds: 120,
-                },
             )
             .await
             .map_err(|error| format!("{} failed: {}", provider_summary(&provider), error))?
@@ -200,5 +194,77 @@ impl MemoryService {
                 .await;
         }
         Ok(())
+    }
+}
+
+async fn complete_memory_extraction_with_retry(
+    provider: &crate::settings::AIProviderSettings,
+    prompt: &str,
+    system_prompt: Option<&str>,
+) -> Result<String, String> {
+    let options = llm::LLMProviderCompletionOptions {
+        max_tokens: 4096,
+        temperature: 0.1,
+        preserve_formatting: true,
+        json_response: true,
+        timeout_seconds: 120,
+    };
+    let mut last_error = None;
+    for attempt in 0..3 {
+        match llm::complete_with_provider_options(provider, prompt, system_prompt, options.clone())
+            .await
+        {
+            Ok(response) => return Ok(response),
+            Err(error) if is_transient_memory_provider_error(&error) && attempt < 2 => {
+                last_error = Some(error);
+                tokio::time::sleep(Duration::from_millis(300 * (attempt as u64 + 1))).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "Memory extraction provider retry failed.".to_string()))
+}
+
+fn is_transient_memory_provider_error(error: &str) -> bool {
+    let message = error.to_lowercase();
+    [
+        "empty response",
+        "error decoding response body",
+        "timeout",
+        "timed out",
+        "eof",
+        "connection reset",
+        "connection closed",
+        "temporarily unavailable",
+        "too many requests",
+        "rate limit",
+        "429",
+        "502",
+        "503",
+        "504",
+    ]
+    .iter()
+    .any(|needle| message.contains(needle))
+}
+
+#[cfg(test)]
+mod process_tests {
+    use super::is_transient_memory_provider_error;
+
+    #[test]
+    fn classifies_only_transport_like_memory_provider_errors_as_transient() {
+        assert!(is_transient_memory_provider_error(
+            "The AI provider returned an empty response."
+        ));
+        assert!(is_transient_memory_provider_error(
+            "error decoding response body for url"
+        ));
+        assert!(is_transient_memory_provider_error(
+            "request failed with status 503"
+        ));
+        assert!(!is_transient_memory_provider_error("invalid api key"));
+        assert!(!is_transient_memory_provider_error(
+            "Memory extraction provider returned malformed memory JSON."
+        ));
     }
 }

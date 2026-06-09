@@ -2,7 +2,7 @@ use super::{
     MemoryService, now_seconds,
     transcript::{
         memory_project_context, memory_project_context_for_task, resolve_transcript_for_task,
-        resolve_transcript_source, session_identifier,
+        resolve_transcript_for_task_with_settings, resolve_transcript_source, session_identifier,
     },
 };
 use crate::{

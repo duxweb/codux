@@ -1,7 +1,8 @@
 use alacritty_terminal::{
     event::{Event, EventListener, WindowSize},
     grid::Dimensions,
-    index::{Column, Line, Point as TerminalPoint},
+    index::{Column, Line, Point as TerminalPoint, Side as TerminalSide},
+    selection::{Selection as AlacrittySelection, SelectionType as AlacrittySelectionType},
     term::{
         Config as AlacrittyConfig, RenderableCursor, Term, TermMode,
         cell::{Cell, Flags},
@@ -24,15 +25,18 @@ use gpui::{
     TextAlign, TextRun, TouchPhase, UTF16Selection, UnderlineStyle, WeakEntity, Window, div, px,
     quad, rgb, transparent_black,
 };
+use gpui_component::scroll::{Scrollbar, ScrollbarAxis, ScrollbarHandle, ScrollbarShow};
 use parking_lot::Mutex;
 use regex::Regex;
 use std::{
+    cell::{Cell as StdCell, RefCell},
     collections::{HashMap, VecDeque, hash_map::DefaultHasher},
     env, fs,
     hash::{Hash, Hasher},
     io::Write,
     ops::Range,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::{Arc, LazyLock, OnceLock, mpsc},
     time::{Duration, Instant},
 };
@@ -537,9 +541,11 @@ pub struct TerminalView {
     config: TerminalConfig,
     layout: Arc<Mutex<TerminalLayoutMetrics>>,
     selection: Arc<Mutex<SelectionState>>,
+    scroll_handle: TerminalScrollHandle,
     marked_text: Option<String>,
     hover_link: Option<TerminalLink>,
     scroll_input: TerminalScrollInputState,
+    selection_frame_pending: bool,
     focus_in_subscription: Option<Subscription>,
     focus_out_subscription: Option<Subscription>,
     focus_observer: Option<Arc<dyn Fn(&mut Window, &mut Context<TerminalView>)>>,
@@ -554,6 +560,61 @@ struct TerminalScrollInputState {
     pending_pixels: f32,
     frame_pending: bool,
     suppress_residual_precise_scroll: bool,
+}
+
+#[derive(Debug, Default)]
+struct TerminalScrollHandleState {
+    line_height: Pixels,
+    total_lines: usize,
+    viewport_lines: usize,
+    display_offset: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+struct TerminalScrollHandle {
+    state: Rc<RefCell<TerminalScrollHandleState>>,
+    future_display_offset: Rc<StdCell<Option<usize>>>,
+}
+
+impl TerminalScrollHandle {
+    fn update(&self, content: &TerminalContent, line_height: Pixels) {
+        *self.state.borrow_mut() = TerminalScrollHandleState {
+            line_height: line_height.max(px(1.0)),
+            total_lines: content.total_lines.max(content.screen_lines),
+            viewport_lines: content.screen_lines,
+            display_offset: content.display_offset,
+        };
+    }
+
+    fn take_future_display_offset(&self) -> Option<usize> {
+        self.future_display_offset.take()
+    }
+}
+
+impl ScrollbarHandle for TerminalScrollHandle {
+    fn offset(&self) -> Point<Pixels> {
+        let state = self.state.borrow();
+        let max_offset = state.total_lines.saturating_sub(state.viewport_lines);
+        let scroll_offset = max_offset.saturating_sub(state.display_offset);
+        Point::new(px(0.0), -(scroll_offset as f32 * state.line_height))
+    }
+
+    fn set_offset(&self, offset: Point<Pixels>) {
+        let state = self.state.borrow();
+        let max_offset = state.total_lines.saturating_sub(state.viewport_lines);
+        let offset_delta = (offset.y / state.line_height).round() as i32;
+        let display_offset = (max_offset as i32 + offset_delta).clamp(0, max_offset as i32);
+        self.future_display_offset
+            .set(Some(display_offset as usize));
+    }
+
+    fn content_size(&self) -> Size<Pixels> {
+        let state = self.state.borrow();
+        Size {
+            width: px(0.0),
+            height: state.total_lines as f32 * state.line_height,
+        }
+    }
 }
 
 impl TerminalScrollInputState {
@@ -619,9 +680,11 @@ impl TerminalView {
             config,
             layout: Arc::new(Mutex::new(TerminalLayoutMetrics::default())),
             selection: Arc::new(Mutex::new(SelectionState::default())),
+            scroll_handle: TerminalScrollHandle::default(),
             marked_text: None,
             hover_link: None,
             scroll_input: TerminalScrollInputState::default(),
+            selection_frame_pending: false,
             focus_in_subscription: None,
             focus_out_subscription: None,
             focus_observer: None,
@@ -734,9 +797,11 @@ impl TerminalView {
 
         if event.button == MouseButton::Left && event.modifiers.shift {
             if let Some(point) = point {
-                self.selection
-                    .lock()
-                    .extend(self.selection_point_from_cell(point, cx));
+                let selection_point = self.selection_point_from_cell(point, cx);
+                self.selection.lock().extend(selection_point);
+                self.model.update(cx, |model, _| {
+                    model.update_selection(selection_point, TerminalSide::Right)
+                });
             }
             self.selection_autoscroll = None;
             cx.stop_propagation();
@@ -762,11 +827,14 @@ impl TerminalView {
         match event.button {
             MouseButton::Left => {
                 if let Some(point) = point {
-                    self.selection
-                        .lock()
-                        .start(self.selection_point_from_cell(point, cx));
+                    let selection_point = self.selection_point_from_cell(point, cx);
+                    self.selection.lock().start(selection_point);
+                    self.model.update(cx, |model, _| {
+                        model.start_selection(selection_point, TerminalSide::Left)
+                    });
                 } else {
                     self.selection.lock().clear();
+                    self.model.update(cx, |model, _| model.clear_selection());
                 }
                 self.selection_autoscroll = None;
             }
@@ -797,9 +865,11 @@ impl TerminalView {
                 return;
             }
             if selection_dragging {
-                self.selection
-                    .lock()
-                    .finish(self.selection_point_from_cell(point, cx));
+                let selection_point = self.selection_point_from_cell(point, cx);
+                self.selection.lock().finish(selection_point);
+                self.model.update(cx, |model, _| {
+                    model.update_selection(selection_point, TerminalSide::Right)
+                });
             }
         } else {
             self.selection.lock().dragging = false;
@@ -840,18 +910,26 @@ impl TerminalView {
             else {
                 return;
             };
-            self.selection
-                .lock()
-                .update(self.selection_point_from_cell(point, cx));
+            let selection_point = self.selection_point_from_cell(point, cx);
+            let selection_changed = self.selection.lock().update(selection_point);
             self.selection_autoscroll = (scroll_lines != 0).then_some(SelectionAutoScroll {
                 edge_cell: point,
                 lines: scroll_lines,
             });
+            if !selection_changed && scroll_lines == 0 {
+                cx.stop_propagation();
+                return;
+            }
+            if selection_changed {
+                self.model.update(cx, |model, _| {
+                    model.update_selection(selection_point, TerminalSide::Right)
+                });
+            }
             if scroll_lines != 0 {
                 self.queue_display_scroll(scroll_lines, cx);
             }
             cx.stop_propagation();
-            cx.notify();
+            self.schedule_selection_frame(cx);
         }
     }
 
@@ -917,6 +995,23 @@ impl TerminalView {
         self.schedule_scroll_flush(cx);
     }
 
+    fn schedule_selection_frame(&mut self, cx: &mut Context<Self>) {
+        if self.selection_frame_pending {
+            return;
+        }
+
+        self.selection_frame_pending = true;
+        let timer = cx.background_executor().clone();
+        cx.spawn(async move |terminal: WeakEntity<Self>, cx| {
+            timer.timer(TERMINAL_SCROLL_FRAME_INTERVAL).await;
+            let _ = terminal.update(cx, |terminal, cx| {
+                terminal.selection_frame_pending = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn schedule_scroll_flush(&mut self, cx: &mut Context<Self>) {
         if self.scroll_input.frame_pending {
             return;
@@ -957,7 +1052,10 @@ impl TerminalView {
             && self.selection.lock().dragging
         {
             let point = self.selection_point_from_cell(autoscroll.edge_cell, cx);
-            self.selection.lock().update(point);
+            let _ = self.selection.lock().update(point);
+            self.model.update(cx, |model, _| {
+                model.update_selection(point, TerminalSide::Right)
+            });
             return Some(ScrollFlushResult {
                 did_scroll,
                 next_lines: Some(autoscroll.lines),
@@ -1078,8 +1176,7 @@ impl TerminalView {
     }
 
     fn selected_text(&self, cx: &App) -> Option<String> {
-        let selection = self.selection.lock().range()?;
-        let text = self.model.read(cx).selected_text(selection);
+        let text = self.model.read(cx).selected_text()?;
         (!text.is_empty()).then_some(text)
     }
 
@@ -1434,6 +1531,13 @@ fn trace_terminal_paint_snapshot(content: &TerminalContent, cursor_visible: bool
 impl Render for TerminalView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.process_events(window, cx);
+        if let Some(new_display_offset) = self.scroll_handle.take_future_display_offset() {
+            self.model.update(cx, |model, _| {
+                let current = model.display_offset() as i32;
+                let target = new_display_offset as i32;
+                model.scroll_display(target.saturating_sub(current));
+            });
+        }
 
         self.renderer.measure_cell(window);
         self.ensure_focus_report_subscriptions(window, cx);
@@ -1445,7 +1549,7 @@ impl Render for TerminalView {
             model: self.model.clone(),
             renderer: self.renderer.clone(),
             layout: self.layout.clone(),
-            selection: self.selection.clone(),
+            scroll_handle: self.scroll_handle.clone(),
             session: self.session.clone(),
             focus_handle: self.focus_handle.clone(),
             terminal_view: cx.weak_entity(),
@@ -1458,6 +1562,8 @@ impl Render for TerminalView {
 
         let terminal = div()
             .size_full()
+            .relative()
+            .overflow_hidden()
             .bg(self.config.colors.background())
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::on_key_down))
@@ -1470,10 +1576,24 @@ impl Render for TerminalView {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_modifiers_changed(cx.listener(Self::on_modifiers_changed))
             .on_scroll_wheel(cx.listener(Self::on_scroll));
+        let terminal = terminal.child(element).child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .child(
+                    Scrollbar::new(&self.scroll_handle)
+                        .id("terminal-scrollbar")
+                        .axis(ScrollbarAxis::Vertical)
+                        .scrollbar_show(ScrollbarShow::Scrolling),
+                ),
+        );
         if self.hover_link.is_some() {
-            terminal.cursor(CursorStyle::PointingHand).child(element)
+            terminal.cursor(CursorStyle::PointingHand)
         } else {
-            terminal.child(element)
+            terminal
         }
     }
 }
@@ -1620,6 +1740,7 @@ impl TerminalModel {
     }
 
     fn process_output_bytes(&mut self, bytes: &[u8], cx: &mut Context<Self>) {
+        let before_display_offset = self.handle.display_offset();
         let sync_update = self.update_synchronized_output_state(bytes);
         let color_scheme_update =
             update_terminal_color_scheme_state(bytes, &mut self.color_scheme_state);
@@ -1642,6 +1763,10 @@ impl TerminalModel {
 
         if sync_update.should_notify || event_should_notify || self.sync_output_pending_notify {
             self.sync_output_pending_notify = false;
+        }
+        let after_display_offset = self.handle.display_offset();
+        if after_display_offset != before_display_offset {
+            self.snapshot_dirty = true;
         }
         cx.notify();
     }
@@ -1877,8 +2002,24 @@ impl TerminalModel {
         true
     }
 
-    fn selected_text(&self, selection: SelectionRange) -> String {
-        self.handle.selected_text(selection)
+    fn start_selection(&self, point: TerminalSelectionPoint, side: TerminalSide) {
+        self.handle.start_selection(point, side);
+    }
+
+    fn update_selection(&self, point: TerminalSelectionPoint, side: TerminalSide) {
+        self.handle.update_selection(point, side);
+    }
+
+    fn clear_selection(&self) {
+        self.handle.clear_selection();
+    }
+
+    fn selected_text(&self) -> Option<String> {
+        self.handle.selected_text()
+    }
+
+    fn selection_range(&self) -> Option<SelectionRange> {
+        self.handle.selection_range()
     }
 
     fn resize(&mut self, cols: usize, rows: usize, window_size: WindowSize) {
@@ -2053,7 +2194,57 @@ impl TerminalStateHandle {
         term.grid().display_offset() != before
     }
 
-    fn selected_text(&self, selection: SelectionRange) -> String {
+    fn start_selection(&self, point: TerminalSelectionPoint, side: TerminalSide) {
+        let mut term = self.term.lock();
+        term.selection = Some(AlacrittySelection::new(
+            AlacrittySelectionType::Simple,
+            TerminalPoint::new(Line(point.line), Column(point.col)),
+            side,
+        ));
+    }
+
+    fn update_selection(&self, point: TerminalSelectionPoint, side: TerminalSide) {
+        let mut term = self.term.lock();
+        let point = TerminalPoint::new(Line(point.line), Column(point.col));
+        if let Some(selection) = &mut term.selection {
+            selection.update(point, side);
+        } else {
+            term.selection = Some(AlacrittySelection::new(
+                AlacrittySelectionType::Simple,
+                point,
+                side.opposite(),
+            ));
+            if let Some(selection) = &mut term.selection {
+                selection.update(point, side);
+            }
+        }
+    }
+
+    fn clear_selection(&self) {
+        self.term.lock().selection = None;
+    }
+
+    fn selected_text(&self) -> Option<String> {
+        self.term.lock().selection_to_string()
+    }
+
+    fn selection_range(&self) -> Option<SelectionRange> {
+        let term = self.term.lock();
+        let range = term.selection.as_ref()?.to_range(&term)?;
+        Some(SelectionRange {
+            start: TerminalSelectionPoint {
+                line: range.start.line.0,
+                col: range.start.column.0,
+            },
+            end: TerminalSelectionPoint {
+                line: range.end.line.0,
+                col: range.end.column.0,
+            },
+        })
+    }
+
+    #[cfg(test)]
+    fn selected_text_for_range(&self, selection: SelectionRange) -> String {
         let term = self.term.lock();
         let grid = term.grid();
         let start = selection.start;
@@ -2110,6 +2301,7 @@ struct TerminalContent {
     display_offset: usize,
     columns: usize,
     screen_lines: usize,
+    total_lines: usize,
     #[cfg(test)]
     scrolled_to_bottom: bool,
 }
@@ -2132,6 +2324,7 @@ impl TerminalContent {
             display_offset: content.display_offset,
             columns: term.columns(),
             screen_lines: term.screen_lines(),
+            total_lines: term.grid().total_lines(),
             #[cfg(test)]
             scrolled_to_bottom: content.display_offset == 0,
         }
@@ -2377,7 +2570,7 @@ struct TerminalElement {
     model: Entity<TerminalModel>,
     renderer: TerminalRenderer,
     layout: Arc<Mutex<TerminalLayoutMetrics>>,
-    selection: Arc<Mutex<SelectionState>>,
+    scroll_handle: TerminalScrollHandle,
     session: TerminalSessionBinding,
     focus_handle: FocusHandle,
     terminal_view: WeakEntity<TerminalView>,
@@ -2471,8 +2664,10 @@ impl Element for TerminalElement {
         }
 
         let snapshot = self.model.update(cx, |model, cx| model.sync(cx));
+        self.scroll_handle
+            .update(&snapshot, self.renderer.cell_height.max(px(1.0)));
         trace_terminal_paint_snapshot(&snapshot, self.cursor_visible);
-        let selection = self.selection.lock().range();
+        let selection = self.model.read(cx).selection_range();
         self.renderer.prepare_paint(
             bounds,
             self.padding,
@@ -2728,11 +2923,16 @@ impl SelectionState {
         self.dragging = true;
     }
 
-    fn update(&mut self, point: TerminalSelectionPoint) {
+    fn update(&mut self, point: TerminalSelectionPoint) -> bool {
         if self.anchor.is_some() {
+            if self.head == Some(point) && self.dragging {
+                return false;
+            }
             self.head = Some(point);
             self.dragging = true;
+            return true;
         }
+        false
     }
 
     fn extend(&mut self, point: TerminalSelectionPoint) {
@@ -2754,20 +2954,6 @@ impl SelectionState {
         self.anchor = None;
         self.head = None;
         self.dragging = false;
-    }
-
-    fn range(&self) -> Option<SelectionRange> {
-        let anchor = self.anchor?;
-        let head = self.head?;
-        if anchor == head {
-            return None;
-        }
-        let (start, end) = if anchor <= head {
-            (anchor, head)
-        } else {
-            (head, anchor)
-        };
-        Some(SelectionRange { start, end })
     }
 }
 
@@ -5485,7 +5671,7 @@ mod tests {
         state.process_bytes(b"hello\r\nworld");
 
         assert_eq!(
-            state.selected_text(SelectionRange {
+            state.handle.selected_text_for_range(SelectionRange {
                 start: TerminalSelectionPoint { line: 0, col: 0 },
                 end: TerminalSelectionPoint { line: 1, col: 5 },
             }),
@@ -5499,11 +5685,37 @@ mod tests {
         state.process_bytes("中文恢复记录".as_bytes());
 
         assert_eq!(
-            state.selected_text(SelectionRange {
+            state.handle.selected_text_for_range(SelectionRange {
                 start: TerminalSelectionPoint { line: 0, col: 0 },
                 end: TerminalSelectionPoint { line: 0, col: 11 },
             }),
             "中文恢复记录"
+        );
+    }
+
+    #[test]
+    fn alacritty_selection_tracks_output_scrollback_rotation() {
+        let mut state = TerminalModel::new_for_test(10, 3, 100);
+        state.process_bytes(b"one\r\ntwo\r\nthree");
+        state.start_selection(
+            TerminalSelectionPoint { line: 1, col: 0 },
+            TerminalSide::Left,
+        );
+        state.update_selection(
+            TerminalSelectionPoint { line: 1, col: 3 },
+            TerminalSide::Right,
+        );
+        assert_eq!(state.selected_text(), Some("two".to_string()));
+
+        state.process_bytes(b"\r\nfour");
+
+        assert_eq!(state.selected_text(), Some("two".to_string()));
+        assert_eq!(
+            state.selection_range(),
+            Some(SelectionRange {
+                start: TerminalSelectionPoint { line: 0, col: 0 },
+                end: TerminalSelectionPoint { line: 0, col: 3 },
+            })
         );
     }
 
@@ -5684,12 +5896,14 @@ mod tests {
         selection.extend(TerminalSelectionPoint { line: 4, col: 3 });
 
         assert_eq!(
-            selection.range(),
-            Some(SelectionRange {
-                start: TerminalSelectionPoint { line: 2, col: 4 },
-                end: TerminalSelectionPoint { line: 4, col: 3 },
-            })
+            selection.anchor,
+            Some(TerminalSelectionPoint { line: 2, col: 4 })
         );
+        assert_eq!(
+            selection.head,
+            Some(TerminalSelectionPoint { line: 4, col: 3 })
+        );
+        assert!(selection.dragging);
     }
 
     #[test]

@@ -2,6 +2,8 @@ fn fetch_opencode_transcript(
     project_path: &str,
     external_session_id: &str,
     database_path: &str,
+    line_limit: i32,
+    token_limit: i32,
 ) -> Option<String> {
     let conn = Connection::open(database_path).ok()?;
     let mut statement = conn
@@ -59,13 +61,13 @@ fn fetch_opencode_transcript(
     let text = lines
         .into_iter()
         .rev()
-        .take(120)
+        .take(line_limit.max(1) as usize)
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
         .collect::<Vec<_>>()
         .join("\n");
-    compact_transcript_for_memory(&text, 8000)
+    compact_transcript_for_memory(&text, token_limit)
 }
 
 fn opencode_database_path() -> PathBuf {

@@ -11,6 +11,7 @@ use crate::{
     },
     project_store::ProjectWorkspaceRecord,
     runtime_paths::home_dir,
+    settings::AIMemorySettings,
 };
 use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};

@@ -862,6 +862,66 @@ fn resolves_extraction_task_transcript_from_file() {
 }
 
 #[test]
+fn resolves_extraction_transcript_for_memory_uses_settings_boundary() {
+    let support_dir = temp_support_dir();
+    let transcript_dir = std::env::temp_dir().join(format!("codux-transcript-{}", Uuid::new_v4()));
+    fs::create_dir_all(&transcript_dir).unwrap();
+    let transcript = transcript_dir.join("session.jsonl");
+    let mut lines = Vec::new();
+    for index in 0..30 {
+        lines.push(format!("stdout: noisy output line {index}"));
+    }
+    lines.push("user: old durable fact should be outside boundary".to_string());
+    for index in 0..20 {
+        lines.push(format!("stderr: build noise {index}"));
+    }
+    lines.push("user: keep recent memory boundary decision".to_string());
+    lines.push("assistant: implemented memory transcript boundary".to_string());
+    fs::write(&transcript, lines.join("\n")).unwrap();
+    let project = ProjectWorkspaceRecord {
+        id: "project-a".to_string(),
+        root_project_id: "project-a".to_string(),
+        root_project_name: "Project A".to_string(),
+        root_project_path: transcript_dir.display().to_string(),
+        workspace_path: transcript_dir.display().to_string(),
+        git_default_push_remote_name: None,
+    };
+    let task = MemoryExtractionTask {
+        id: "task-a".to_string(),
+        project_id: "project-a".to_string(),
+        tool: "codex".to_string(),
+        session_id: "session-a".to_string(),
+        transcript_path: transcript.display().to_string(),
+        workspace_path: Some(transcript_dir.display().to_string()),
+        source_fingerprint: "fingerprint-a".to_string(),
+        status: "pending".to_string(),
+        attempts: 0,
+        error: None,
+        enqueued_at: 1.0,
+    };
+    let context = crate::memory::transcript::memory_project_context_for_task(&[project], &task)
+        .expect("project context");
+    let text = crate::memory::transcript::resolve_transcript_for_task_with_settings(
+        &task,
+        &context,
+        &AIMemorySettings {
+            max_extraction_transcript_lines: 8,
+            max_extraction_transcript_tokens: 2000,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert!(text.contains("keep recent memory boundary decision"));
+    assert!(text.contains("implemented memory transcript boundary"));
+    assert!(!text.contains("old durable fact should be outside boundary"));
+    assert!(text.contains("omitted"));
+
+    fs::remove_dir_all(support_dir).unwrap();
+    fs::remove_dir_all(transcript_dir).unwrap();
+}
+
+#[test]
 fn apply_extraction_response_writes_memory_and_summary() {
     let support_dir = temp_support_dir();
     let service = MemoryService::new(support_dir.clone());
