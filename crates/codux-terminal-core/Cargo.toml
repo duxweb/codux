@@ -1,0 +1,6 @@
+[package]
+name = "codux-terminal-core"
+version = "1.7.6"
+edition = "2024"
+
+[dependencies]

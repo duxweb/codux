@@ -29,6 +29,7 @@ use crate::worktree::{
     WorktreeCreateRequest, WorktreeMergeRequest, WorktreeRemoveRequest, WorktreeService,
 };
 use base64::Engine;
+use codux_terminal_core::TerminalSequence;
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -43,6 +44,7 @@ use std::{
 };
 
 const REMOTE_TERMINAL_OUTPUT_BATCH_MS: u64 = 32;
+const REMOTE_TERMINAL_BUFFER_SNAPSHOT_TTL: Duration = Duration::from_secs(60);
 
 struct RemoteProjectScope {
     project_id: String,
@@ -65,14 +67,23 @@ struct RemoteTerminalOutputBatch {
     viewers: HashSet<String>,
 }
 
+struct RemoteTerminalBufferSnapshot {
+    data: String,
+    start_offset: usize,
+    total_characters: usize,
+    output_seq: TerminalSequence,
+    created_at: Instant,
+}
+
 pub struct RemoteHostRuntime {
     runtime_instance_id: String,
     support_dir: PathBuf,
     ai_history: AIHistoryIndexer,
     terminals: Arc<TerminalManager>,
     terminal_subscriptions: RemoteTerminalSubscriptions,
-    terminal_output_seq_by_session: Mutex<HashMap<String, i64>>,
+    terminal_output_seq_by_session: Mutex<HashMap<String, TerminalSequence>>,
     terminal_output_batches: Mutex<HashMap<String, RemoteTerminalOutputBatch>>,
+    terminal_buffer_snapshots: Mutex<HashMap<String, RemoteTerminalBufferSnapshot>>,
     remote_project_scope_by_device: Mutex<HashMap<String, String>>,
     terminal_event_subscriptions: Mutex<HashSet<String>>,
     terminal_upload_sessions: Mutex<HashMap<String, RemoteTerminalUploadSession>>,
@@ -116,6 +127,7 @@ impl RemoteHostRuntime {
             terminal_subscriptions: RemoteTerminalSubscriptions::default(),
             terminal_output_seq_by_session: Mutex::new(HashMap::new()),
             terminal_output_batches: Mutex::new(HashMap::new()),
+            terminal_buffer_snapshots: Mutex::new(HashMap::new()),
             remote_project_scope_by_device: Mutex::new(HashMap::new()),
             terminal_event_subscriptions: Mutex::new(HashSet::new()),
             terminal_upload_sessions: Mutex::new(HashMap::new()),
@@ -1082,6 +1094,14 @@ impl RemoteHostRuntime {
                     return;
                 };
                 self.register_project_terminal_viewers(project_id, Some(device_id));
+                if envelope
+                    .payload
+                    .get("baseline")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    self.send_project_terminal_baselines(project_id, Some(device_id), envelope);
+                }
             }
             "session" => {
                 let session_id = envelope
@@ -1094,6 +1114,14 @@ impl RemoteHostRuntime {
                 };
                 self.register_terminal_viewer(session_id, Some(device_id));
                 self.send_terminal_viewport_state(session_id, Some(device_id));
+                if envelope
+                    .payload
+                    .get("baseline")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    self.send_terminal_baseline(session_id, Some(device_id), envelope);
+                }
             }
             _ => self.send_error(envelope, "Unsupported terminal subscription scope."),
         }
@@ -2253,7 +2281,9 @@ impl RemoteHostRuntime {
         self.register_terminal_viewer(session_id, device_id);
         match self.terminal_buffer_window(session_id, offset, max_chars, request_id, tail) {
             Ok(window) => {
-                let output_seq = self.current_terminal_output_seq(session_id);
+                let output_seq = window
+                    .output_seq
+                    .unwrap_or_else(|| self.current_terminal_output_seq(session_id));
                 for payload in terminal_buffer_payloads(&window, output_seq, chunk_chars) {
                     self.send_terminal_data(
                         "terminal.output",
@@ -2320,6 +2350,7 @@ impl RemoteHostRuntime {
                 offset: 0,
                 total_characters,
                 truncated: false,
+                output_seq: None,
                 request_id,
                 tail: true,
                 screen_snapshot: true,
@@ -2327,28 +2358,107 @@ impl RemoteHostRuntime {
             });
         }
 
-        let total_characters = self.terminals.buffer_characters(session_id)?;
-        let (chunk, clamped) = {
-            let data = self.terminals.snapshot(session_id)?;
-            let clamped = offset.min(total_characters);
-            let chunk = data
-                .chars()
-                .skip(clamped)
-                .take(max_chars)
-                .collect::<String>();
-            (chunk, clamped)
+        let request_id_for_window = request_id.clone();
+        let frozen = request_id
+            .as_deref()
+            .and_then(|request_id| {
+                self.terminal_buffer_snapshot(session_id, request_id, offset, max_chars)
+                    .transpose()
+            })
+            .transpose()?;
+        let (data, start_offset, total_characters, output_seq) = match frozen {
+            Some(snapshot) => (
+                snapshot.data,
+                snapshot.start_offset,
+                snapshot.total_characters,
+                Some(snapshot.output_seq),
+            ),
+            None => {
+                let data = self.terminals.snapshot(session_id)?;
+                let total_characters = data.chars().count();
+                (data, 0, total_characters, None)
+            }
         };
+        let clamped = offset.max(start_offset).min(total_characters);
+        let chunk = data
+            .chars()
+            .skip(clamped.saturating_sub(start_offset))
+            .take(max_chars)
+            .collect::<String>();
         let truncated = clamped + chunk.chars().count() < total_characters;
+        if !truncated {
+            if let Some(request_id) = request_id_for_window.as_deref() {
+                self.remove_terminal_buffer_snapshot(session_id, request_id);
+            }
+        }
         Ok(RemoteTerminalBufferWindow {
             data: chunk,
             offset: clamped,
             total_characters,
             truncated,
-            request_id,
+            output_seq,
+            request_id: request_id_for_window,
             tail: false,
             screen_snapshot: false,
             has_previous: clamped > 0,
         })
+    }
+
+    fn terminal_buffer_snapshot(
+        &self,
+        session_id: &str,
+        request_id: &str,
+        offset: usize,
+        max_chars: usize,
+    ) -> Result<Option<RemoteTerminalBufferSnapshot>, anyhow::Error> {
+        let key = terminal_buffer_snapshot_key(session_id, request_id);
+        let now = Instant::now();
+        if let Ok(mut snapshots) = self.terminal_buffer_snapshots.lock() {
+            snapshots.retain(|_, snapshot| {
+                now.duration_since(snapshot.created_at) <= REMOTE_TERMINAL_BUFFER_SNAPSHOT_TTL
+            });
+            if let Some(snapshot) = snapshots.get(&key) {
+                return Ok(Some(RemoteTerminalBufferSnapshot {
+                    data: snapshot.data.clone(),
+                    start_offset: snapshot.start_offset,
+                    total_characters: snapshot.total_characters,
+                    output_seq: snapshot.output_seq,
+                    created_at: snapshot.created_at,
+                }));
+            }
+        }
+        if offset != 0 {
+            return Ok(None);
+        }
+
+        let data = self.terminals.snapshot(session_id)?;
+        let total_characters = data.chars().count();
+        let snapshot = RemoteTerminalBufferSnapshot {
+            data,
+            start_offset: 0,
+            total_characters,
+            output_seq: self.current_terminal_output_seq(session_id),
+            created_at: now,
+        };
+        let returned = RemoteTerminalBufferSnapshot {
+            data: snapshot.data.clone(),
+            start_offset: snapshot.start_offset,
+            total_characters: snapshot.total_characters,
+            output_seq: snapshot.output_seq,
+            created_at: snapshot.created_at,
+        };
+        if max_chars < total_characters {
+            if let Ok(mut snapshots) = self.terminal_buffer_snapshots.lock() {
+                snapshots.insert(key, snapshot);
+            }
+        }
+        Ok(Some(returned))
+    }
+
+    fn remove_terminal_buffer_snapshot(&self, session_id: &str, request_id: &str) {
+        if let Ok(mut snapshots) = self.terminal_buffer_snapshots.lock() {
+            snapshots.remove(&terminal_buffer_snapshot_key(session_id, request_id));
+        }
     }
 
     fn remote_terminal_payload(&self, session_id: &str) -> Option<Value> {
@@ -2710,7 +2820,7 @@ impl RemoteHostRuntime {
             .unwrap_or(false)
     }
 
-    fn next_terminal_output_seq(&self, session_id: &str) -> i64 {
+    fn next_terminal_output_seq(&self, session_id: &str) -> TerminalSequence {
         self.terminal_output_seq_by_session
             .lock()
             .map(|mut sequences| {
@@ -2721,7 +2831,7 @@ impl RemoteHostRuntime {
             .unwrap_or(0)
     }
 
-    fn current_terminal_output_seq(&self, session_id: &str) -> i64 {
+    fn current_terminal_output_seq(&self, session_id: &str) -> TerminalSequence {
         self.terminal_output_seq_by_session
             .lock()
             .ok()
@@ -2767,6 +2877,69 @@ impl RemoteHostRuntime {
             };
             self.register_terminal_viewer(session_id, Some(device_id));
         }
+    }
+
+    fn send_project_terminal_baselines(
+        self: &Arc<Self>,
+        project_id: &str,
+        device_id: Option<&str>,
+        envelope: &RemoteEnvelope,
+    ) {
+        let sessions = self
+            .remote_terminals()
+            .into_iter()
+            .filter(|terminal| {
+                terminal.get("projectId").and_then(Value::as_str) == Some(project_id)
+            })
+            .filter_map(|terminal| {
+                terminal
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect::<Vec<_>>();
+        for session_id in sessions {
+            self.send_terminal_baseline(&session_id, device_id, envelope);
+        }
+    }
+
+    fn send_terminal_baseline(
+        self: &Arc<Self>,
+        session_id: &str,
+        device_id: Option<&str>,
+        envelope: &RemoteEnvelope,
+    ) {
+        let max_chars = envelope
+            .payload
+            .get("maxChars")
+            .and_then(Value::as_u64)
+            .map(|value| value as usize)
+            .filter(|value| *value > 0)
+            .unwrap_or(REMOTE_TERMINAL_BUFFER_MAX_CHARS);
+        let chunk_chars = envelope
+            .payload
+            .get("chunkChars")
+            .and_then(Value::as_u64)
+            .map(|value| value as usize)
+            .filter(|value| *value > 0)
+            .map(|value| value.clamp(4 * 1024, 64 * 1024));
+        let request_id = envelope
+            .payload
+            .get("requestId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("subscribe-{}-{session_id}", uuid::Uuid::new_v4()));
+        self.send_terminal_buffer(
+            session_id,
+            device_id,
+            0,
+            max_chars,
+            chunk_chars,
+            Some(request_id),
+            false,
+        );
     }
 
     fn remove_terminal_viewer_for_session(&self, session_id: &str, device_id: Option<&str>) {
@@ -3239,6 +3412,10 @@ pub(crate) fn remote_terminal_order_key(value: &Value) -> (String, String) {
     (created_at, id)
 }
 
+fn terminal_buffer_snapshot_key(session_id: &str, request_id: &str) -> String {
+    format!("{session_id}:{request_id}")
+}
+
 pub(crate) fn remote_terminal_snapshot_payload(
     terminal: TerminalSessionSnapshot,
     layout_kind: &str,
@@ -3312,12 +3489,79 @@ fn remote_push_unique_branch(values: &mut Vec<String>, value: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::remote::crypto::remote_base64_url_encode;
+    use crate::remote::transport::{RemoteTransport, RemoteTransportKind};
     use crate::terminal_layout::TerminalPaneSummary;
+    use async_trait::async_trait;
+    use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
     fn temp_support_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("{name}-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("create temp support dir");
         dir
+    }
+
+    #[derive(Default)]
+    struct CapturingTransport {
+        messages: Mutex<Vec<(Option<String>, Vec<u8>)>>,
+    }
+
+    impl CapturingTransport {
+        fn take_messages(&self) -> Vec<(Option<String>, Vec<u8>)> {
+            self.messages
+                .lock()
+                .map(|mut messages| messages.drain(..).collect())
+                .unwrap_or_default()
+        }
+    }
+
+    #[async_trait]
+    impl RemoteTransport for CapturingTransport {
+        fn kind(&self) -> RemoteTransportKind {
+            RemoteTransportKind::WebSocketRelay
+        }
+
+        fn send(&self, data: Vec<u8>, device_id: Option<&str>) -> bool {
+            if let Ok(mut messages) = self.messages.lock() {
+                messages.push((device_id.map(str::to_string), data));
+            }
+            true
+        }
+
+        async fn shutdown(&self) {}
+    }
+
+    fn write_paired_remote_settings(support_dir: &Path) {
+        let host_secret = StaticSecret::from([21_u8; 32]);
+        let host_public = X25519PublicKey::from(&host_secret);
+        let device_secret = StaticSecret::from([22_u8; 32]);
+        let device_public = X25519PublicKey::from(&device_secret);
+        let host_private_key = remote_base64_url_encode(host_secret.to_bytes().as_slice());
+        let host_public_key = remote_base64_url_encode(host_public.as_bytes());
+        let device_public_key = remote_base64_url_encode(device_public.as_bytes());
+
+        fs::write(
+            support_dir.join("settings.json"),
+            serde_json::to_string_pretty(&json!({
+                "remote": {
+                    "isEnabled": true,
+                    "serverUrl": "http://relay.example",
+                    "hostID": "host-1",
+                    "hostPrivateKey": host_private_key,
+                    "hostPublicKey": host_public_key,
+                    "cachedDevices": [
+                        {
+                            "id": "device-1",
+                            "hostId": "host-1",
+                            "name": "Phone",
+                            "publicKey": device_public_key
+                        }
+                    ]
+                }
+            }))
+            .expect("serialize settings"),
+        )
+        .expect("write settings");
     }
 
     fn write_two_project_state(support_dir: &Path) -> (PathBuf, PathBuf) {
@@ -3510,6 +3754,92 @@ mod tests {
     }
 
     #[test]
+    fn terminal_project_subscribe_with_baseline_sends_buffer_snapshot() {
+        let support_dir = temp_support_dir("codux-remote-terminal-subscribe-baseline");
+        let (project_a, _) = write_two_project_state(&support_dir);
+        write_paired_remote_settings(&support_dir);
+        let terminals = Arc::new(TerminalManager::new());
+        let runtime = Arc::new(RemoteHostRuntime::new_with_ai_history_and_terminals(
+            support_dir.clone(),
+            Default::default(),
+            Arc::clone(&terminals),
+        ));
+        let transport = Arc::new(CapturingTransport::default());
+        if let Ok(mut current) = runtime.transport.lock() {
+            *current = Some(transport.clone());
+        }
+        let session_id = terminals
+            .create(
+                TerminalPtyConfig {
+                    shell: Some("sh".to_string()),
+                    command: Some("printf baseline-data".to_string()),
+                    cwd: Some(project_a.to_string_lossy().to_string()),
+                    project_id: Some("project-a".to_string()),
+                    ..Default::default()
+                },
+                |_| {},
+            )
+            .expect("create terminal");
+
+        for _ in 0..20 {
+            if terminals
+                .snapshot(&session_id)
+                .map(|snapshot| snapshot.contains("baseline-data"))
+                .unwrap_or(false)
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+
+        runtime.handle_terminal_subscribe(&RemoteEnvelope {
+            kind: "terminal.subscribe".to_string(),
+            device_id: Some("device-1".to_string()),
+            session_id: None,
+            seq: None,
+            payload: json!({
+                "scope": "project",
+                "projectId": "project-a",
+                "baseline": true,
+                "maxChars": 64,
+                "chunkChars": 16
+            }),
+        });
+
+        let mut baseline = None;
+        for (_, data) in transport.take_messages() {
+            let text = String::from_utf8(data).expect("utf8 transport");
+            let envelope = runtime
+                .service()
+                .parse_incoming_envelope(&text)
+                .expect("parse outgoing envelope");
+            let Some(inner) = runtime
+                .service()
+                .decrypt_envelope_if_needed(envelope, &mut HashMap::new())
+                .expect("decrypt outgoing envelope")
+            else {
+                continue;
+            };
+            if inner.kind == "terminal.output" && inner.session_id.as_deref() == Some(&session_id) {
+                baseline = Some(inner.payload);
+                break;
+            }
+        }
+        let baseline = baseline.expect("baseline terminal output");
+        assert_eq!(baseline["buffer"], true);
+        assert_eq!(baseline["offset"], 0);
+        assert_eq!(baseline["requestId"].as_str().is_some(), true);
+        assert!(
+            baseline["data"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("baseline-data")
+        );
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
     fn remote_terminal_plan_uses_device_project_scope_without_desktop_ui_selection() {
         let support_dir = temp_support_dir("codux-remote-scope-terminal");
         write_two_project_state(&support_dir);
@@ -3588,7 +3918,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_terminal_buffer_window_limits_full_history() {
+    fn remote_terminal_buffer_window_returns_retained_history_window() {
         let support_dir = temp_support_dir("codux-remote-terminal-buffer-window");
         let terminals = Arc::new(TerminalManager::new());
         let runtime = RemoteHostRuntime::new_with_ai_history_and_terminals(
@@ -3625,6 +3955,7 @@ mod tests {
         assert_eq!(window.offset, 0);
         assert_eq!(window.total_characters, 6);
         assert!(window.truncated);
+        assert!(!window.has_previous);
 
         let next = runtime
             .terminal_buffer_window(&session_id, 3, 3, None, false)
@@ -3633,6 +3964,75 @@ mod tests {
         assert_eq!(next.offset, 3);
         assert_eq!(next.total_characters, 6);
         assert!(!next.truncated);
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn remote_terminal_buffer_window_freezes_pages_for_request_id() {
+        let support_dir = temp_support_dir("codux-remote-terminal-buffer-frozen-pages");
+        let terminals = Arc::new(TerminalManager::new());
+        let runtime = RemoteHostRuntime::new_with_ai_history_and_terminals(
+            support_dir.clone(),
+            Default::default(),
+            Arc::clone(&terminals),
+        );
+        let session_id = terminals
+            .create(
+                TerminalPtyConfig {
+                    shell: Some("sh".to_string()),
+                    command: Some("cat".to_string()),
+                    cwd: Some(support_dir.to_string_lossy().to_string()),
+                    ..Default::default()
+                },
+                |_| {},
+            )
+            .expect("create terminal");
+        terminals
+            .write(&session_id, b"abcdef")
+            .expect("write initial");
+
+        let mut first = None;
+        for _ in 0..20 {
+            let current = runtime
+                .terminal_buffer_window(
+                    &session_id,
+                    0,
+                    3,
+                    Some("request-freeze".to_string()),
+                    false,
+                )
+                .expect("first terminal buffer window");
+            if current.total_characters >= 6 {
+                first = Some(current);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        let first = first.expect("terminal output");
+        assert_eq!(first.data, "abc");
+        assert_eq!(first.total_characters, 6);
+        assert!(first.truncated);
+
+        terminals
+            .write(&session_id, b"XYZ")
+            .expect("write appended");
+        std::thread::sleep(std::time::Duration::from_millis(25));
+
+        let second = runtime
+            .terminal_buffer_window(&session_id, 3, 3, Some("request-freeze".to_string()), false)
+            .expect("second terminal buffer window");
+        assert_eq!(second.data, "def");
+        assert_eq!(second.offset, 3);
+        assert_eq!(second.total_characters, 6);
+        assert_eq!(second.output_seq, first.output_seq);
+        assert!(!second.truncated);
+
+        let live = runtime
+            .terminal_buffer_window(&session_id, 0, 16, Some("request-live".to_string()), false)
+            .expect("live terminal buffer window");
+        assert!(live.total_characters >= 9);
+        assert!(live.data.contains("XYZ"));
 
         fs::remove_dir_all(support_dir).ok();
     }

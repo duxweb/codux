@@ -3,6 +3,15 @@ name = "codux"
 version = "1.7.6"
 edition = "2024"
 
+[workspace]
+members = [
+    ".",
+    "runtime",
+    "crates/codux-protocol",
+    "crates/codux-terminal-core",
+]
+resolver = "2"
+
 [dependencies]
 anyhow = "1"
 alacritty_terminal = "0.25.1"

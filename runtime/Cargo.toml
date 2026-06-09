@@ -11,6 +11,8 @@ async-trait = "0.1"
 base64 = "0.22"
 bytes = "1.9"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+codux-protocol = { path = "../crates/codux-protocol" }
+codux-terminal-core = { path = "../crates/codux-terminal-core" }
 flume = "0.12"
 futures-util = "0.3"
 parking_lot = "0.12"

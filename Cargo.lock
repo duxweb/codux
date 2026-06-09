@@ -1241,6 +1241,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "codux-protocol"
+version = "1.7.6"
+dependencies = [
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "codux-runtime"
 version = "1.7.6"
 dependencies = [
@@ -1251,6 +1259,8 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "chrono",
+ "codux-protocol",
+ "codux-terminal-core",
  "core-foundation-sys",
  "dispatch2",
  "flume 0.12.0",
@@ -1291,6 +1301,10 @@ dependencies = [
  "zed-font-kit",
  "zip",
 ]
+
+[[package]]
+name = "codux-terminal-core"
+version = "1.7.6"
 
 [[package]]
 name = "collections"
