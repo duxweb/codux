@@ -21,6 +21,134 @@ const LOCAL_VIEWPORT_OWNER: &str = "local";
 
 type EventSinks = Arc<Mutex<Vec<TerminalEventSink>>>;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LocalPtyCommandMode {
+    #[default]
+    Default,
+    InteractiveLogin,
+}
+
+#[derive(Clone, Debug)]
+pub struct LocalPtySpawnConfig {
+    pub shell: String,
+    pub cwd: Option<String>,
+    pub initial_command: Option<String>,
+    pub cols: u16,
+    pub rows: u16,
+    pub env: HashMap<String, String>,
+    pub clear_env: bool,
+    pub command_mode: LocalPtyCommandMode,
+}
+
+pub struct LocalPtyProcess {
+    pub writer: Box<dyn Write + Send>,
+    pub reader: Box<dyn Read + Send>,
+    pub control: LocalPtyProcessHandle,
+}
+
+struct LocalPtyProcessControl {
+    child: Mutex<Box<dyn Child + Send + Sync>>,
+    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    pty_master: Mutex<Box<dyn MasterPty + Send>>,
+}
+
+#[derive(Clone)]
+pub struct LocalPtyProcessHandle {
+    inner: Arc<LocalPtyProcessControl>,
+}
+
+impl LocalPtyProcessHandle {
+    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        self.inner
+            .pty_master
+            .lock()
+            .resize(PtySize {
+                cols: cols.max(20),
+                rows: rows.max(8),
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn kill(&self) -> Result<(), String> {
+        self.inner
+            .killer
+            .lock()
+            .kill()
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn wait_exit_code(&self) -> Option<i32> {
+        self.inner
+            .child
+            .lock()
+            .wait()
+            .ok()
+            .map(|status| i32::try_from(status.exit_code()).unwrap_or(i32::MAX))
+    }
+}
+
+pub fn spawn_local_pty(config: LocalPtySpawnConfig) -> Result<LocalPtyProcess, String> {
+    let cols = config.cols.max(20);
+    let rows = config.rows.max(8);
+    let pty_system = native_pty_system();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|error| format!("failed to open PTY: {error}"))?;
+    let mut command_builder = build_shell_command(
+        &config.shell,
+        config.initial_command.as_deref(),
+        config.command_mode,
+    );
+    if let Some(cwd) = config
+        .cwd
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        command_builder.cwd(PathBuf::from(cwd));
+    }
+    if config.clear_env {
+        command_builder.env_clear();
+    }
+    for (key, value) in &config.env {
+        command_builder.env(key, value);
+    }
+    let child = pair
+        .slave
+        .spawn_command(command_builder)
+        .map_err(|error| format!("failed to spawn shell {}: {error}", config.shell))?;
+    let killer = child.clone_killer();
+    drop(pair.slave);
+
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|error| format!("failed to take PTY writer: {error}"))?;
+    let reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|error| format!("failed to clone PTY reader: {error}"))?;
+    let control = LocalPtyProcessHandle {
+        inner: Arc::new(LocalPtyProcessControl {
+            child: Mutex::new(child),
+            killer: Mutex::new(killer),
+            pty_master: Mutex::new(pair.master),
+        }),
+    };
+
+    Ok(LocalPtyProcess {
+        writer,
+        reader,
+        control,
+    })
+}
+
 #[derive(Default)]
 pub struct LocalPtyDriver {
     sessions: Mutex<HashMap<String, Arc<LocalPtySession>>>,
@@ -84,9 +212,7 @@ pub struct LocalPtySession {
     history: Arc<Mutex<RingHistory>>,
     event_sinks: EventSinks,
     info: Arc<Mutex<TerminalSessionSnapshot>>,
-    _child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
-    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
-    pty_master: Mutex<Box<dyn MasterPty + Send>>,
+    control: LocalPtyProcessHandle,
     viewport: Mutex<TerminalViewportState>,
 }
 
@@ -112,37 +238,16 @@ impl LocalPtySession {
             .clone()
             .filter(|value| !value.trim().is_empty());
 
-        let pty_system = native_pty_system();
-        let pair = pty_system
-            .openpty(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|error| format!("failed to open PTY: {error}"))?;
-        let mut command_builder = build_shell_command(&shell, command.as_deref());
-        command_builder.cwd(PathBuf::from(&cwd));
-        if let Some(env) = &config.env {
-            for (key, value) in env {
-                command_builder.env(key, value);
-            }
-        }
-        let child = pair
-            .slave
-            .spawn_command(command_builder)
-            .map_err(|error| format!("failed to spawn shell {shell}: {error}"))?;
-        let killer = child.clone_killer();
-        drop(pair.slave);
-
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|error| format!("failed to take PTY writer: {error}"))?;
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|error| format!("failed to clone PTY reader: {error}"))?;
+        let process = spawn_local_pty(LocalPtySpawnConfig {
+            shell: shell.clone(),
+            cwd: Some(cwd.clone()),
+            initial_command: command.clone(),
+            cols,
+            rows,
+            env: config.env.clone().unwrap_or_default(),
+            clear_env: false,
+            command_mode: LocalPtyCommandMode::Default,
+        })?;
         let event_sinks = Arc::new(Mutex::new(Vec::new()));
         if let Some(event_sink) = event_sink {
             event_sinks.lock().push(event_sink);
@@ -181,30 +286,27 @@ impl LocalPtySession {
             has_buffer: false,
         }));
         let history = Arc::new(Mutex::new(RingHistory::new(DEFAULT_HISTORY_LIMIT)));
-        let child = Arc::new(Mutex::new(child));
         spawn_reader(
             id.clone(),
-            reader,
+            process.reader,
             Arc::clone(&history),
             Arc::clone(&info),
             Arc::clone(&event_sinks),
         );
         spawn_waiter(
             id.clone(),
-            Arc::clone(&child),
+            process.control.clone(),
             Arc::clone(&info),
             Arc::clone(&event_sinks),
         );
 
         Ok(Self {
             id,
-            stdin_writer: Mutex::new(writer),
+            stdin_writer: Mutex::new(process.writer),
             history,
             event_sinks,
             info,
-            _child: child,
-            killer: Mutex::new(killer),
-            pty_master: Mutex::new(pair.master),
+            control: process.control,
             viewport: Mutex::new(TerminalViewportState {
                 owner: LOCAL_VIEWPORT_OWNER.to_string(),
                 cols,
@@ -297,16 +399,7 @@ impl TerminalSessionHandle for LocalPtySessionHandle {
         if viewport.cols == cols && viewport.rows == rows {
             return Ok(Some(viewport.clone()));
         }
-        self.0
-            .pty_master
-            .lock()
-            .resize(PtySize {
-                cols,
-                rows,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|error| error.to_string())?;
+        self.0.control.resize(cols, rows)?;
         {
             let mut info = self.0.info.lock();
             info.cols = cols;
@@ -347,11 +440,7 @@ impl TerminalSessionHandle for LocalPtySessionHandle {
     }
 
     fn kill(&self) -> Result<(), String> {
-        self.0
-            .killer
-            .lock()
-            .kill()
-            .map_err(|error| error.to_string())
+        self.0.control.kill()
     }
 }
 
@@ -466,16 +555,12 @@ fn spawn_reader(
 
 fn spawn_waiter(
     session_id: String,
-    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
+    control: LocalPtyProcessHandle,
     info: Arc<Mutex<TerminalSessionSnapshot>>,
     event_sinks: EventSinks,
 ) {
     thread::spawn(move || {
-        let exit_code = child
-            .lock()
-            .wait()
-            .ok()
-            .map(|status| i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
+        let exit_code = control.wait_exit_code();
         {
             let mut info = info.lock();
             info.status = "exited".to_string();
@@ -497,7 +582,14 @@ fn emit_event(event_sinks: &EventSinks, event: TerminalEvent) {
     sinks.retain(|sink| sink(event.clone()));
 }
 
-fn build_shell_command(shell: &str, command: Option<&str>) -> CommandBuilder {
+fn build_shell_command(
+    shell: &str,
+    command: Option<&str>,
+    mode: LocalPtyCommandMode,
+) -> CommandBuilder {
+    if mode == LocalPtyCommandMode::InteractiveLogin {
+        return build_interactive_login_shell_command(shell, command);
+    }
     let mut builder = CommandBuilder::new(shell);
     if let Some(command) = command {
         if cfg!(windows) {
@@ -507,6 +599,65 @@ fn build_shell_command(shell: &str, command: Option<&str>) -> CommandBuilder {
         }
     }
     builder
+}
+
+#[cfg(unix)]
+fn build_interactive_login_shell_command(shell: &str, command: Option<&str>) -> CommandBuilder {
+    let shell_name = shell_name(shell);
+    let mut builder = CommandBuilder::new(shell);
+    if matches!(shell_name.as_deref(), Some("zsh")) {
+        if let Some(command) = command {
+            builder.args(["+o", "prompt_sp", "-i", "-l", "-c", command]);
+        } else {
+            builder.args(["+o", "prompt_sp", "-i", "-l"]);
+        }
+        return builder;
+    }
+    if matches!(shell_name.as_deref(), Some("bash" | "sh")) {
+        if let Some(command) = command {
+            builder.args(["-i", "-l", "-c", command]);
+        } else {
+            builder.args(["-i", "-l"]);
+        }
+        return builder;
+    }
+    if let Some(command) = command {
+        builder.args(["-l", "-c", command]);
+    }
+    builder
+}
+
+#[cfg(windows)]
+fn build_interactive_login_shell_command(shell: &str, command: Option<&str>) -> CommandBuilder {
+    let shell_name = shell_name(shell);
+    let mut builder = CommandBuilder::new(shell);
+    if matches!(
+        shell_name.as_deref(),
+        Some("powershell.exe" | "powershell" | "pwsh.exe" | "pwsh")
+    ) {
+        builder.args(["-NoLogo", "-NoProfile", "-NoExit"]);
+        builder.args(["-ExecutionPolicy", "Bypass"]);
+        if let Some(command) = command {
+            builder.args(["-Command", command]);
+        }
+        return builder;
+    }
+    if let Some(command) = command {
+        builder.arg(command);
+    }
+    builder
+}
+
+fn shell_name(shell: &str) -> Option<String> {
+    let file_name = PathBuf::from(shell)
+        .file_name()?
+        .to_string_lossy()
+        .to_string();
+    if file_name.is_empty() {
+        None
+    } else {
+        Some(file_name.to_ascii_lowercase())
+    }
 }
 
 fn default_shell() -> String {
@@ -588,6 +739,60 @@ mod tests {
         assert!(
             snapshot.contains("codux-pty-test"),
             "snapshot did not contain command output: {snapshot:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn interactive_login_command_mode_matches_desktop_zsh_args() {
+        let command = build_shell_command(
+            "/bin/zsh",
+            Some("printf codux"),
+            LocalPtyCommandMode::InteractiveLogin,
+        );
+        let argv: Vec<_> = command
+            .get_argv()
+            .iter()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect();
+
+        assert_eq!(
+            argv,
+            vec![
+                "/bin/zsh".to_string(),
+                "+o".to_string(),
+                "prompt_sp".to_string(),
+                "-i".to_string(),
+                "-l".to_string(),
+                "-c".to_string(),
+                "printf codux".to_string(),
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn interactive_login_command_mode_matches_desktop_bash_args() {
+        let command = build_shell_command(
+            "/bin/bash",
+            Some("printf codux"),
+            LocalPtyCommandMode::InteractiveLogin,
+        );
+        let argv: Vec<_> = command
+            .get_argv()
+            .iter()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect();
+
+        assert_eq!(
+            argv,
+            vec![
+                "/bin/bash".to_string(),
+                "-i".to_string(),
+                "-l".to_string(),
+                "-c".to_string(),
+                "printf codux".to_string(),
+            ]
         );
     }
 }

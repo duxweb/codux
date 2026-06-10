@@ -14,7 +14,9 @@ use codux_terminal_core::{
     TerminalSessionHandle as CoreTerminalSessionHandle,
 };
 pub use codux_terminal_core::{TerminalEvent, TerminalSessionSnapshot, TerminalViewportState};
-use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use codux_terminal_pty::{
+    LocalPtyCommandMode, LocalPtyProcessHandle, LocalPtySpawnConfig, spawn_local_pty,
+};
 use serde::Deserialize;
 use std::{
     collections::{HashMap, VecDeque},
@@ -575,15 +577,13 @@ pub struct TerminalPtySession {
     event_subscribers: Arc<parking_lot::Mutex<Vec<EventSink>>>,
     info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
     ai_runtime_binding: AIRuntimeTerminalBinding,
-    _child: Arc<parking_lot::Mutex<Box<dyn Child + Send + Sync>>>,
-    killer: Arc<parking_lot::Mutex<Box<dyn ChildKiller + Send + Sync>>>,
-    pty_master: Arc<parking_lot::Mutex<Box<dyn MasterPty + Send>>>,
+    pty_control: LocalPtyProcessHandle,
     viewport: Arc<parking_lot::Mutex<TerminalViewportLease>>,
 }
 
 #[derive(Clone)]
 pub struct TerminalPtySessionHandle {
-    pty_master: Arc<parking_lot::Mutex<Box<dyn MasterPty + Send>>>,
+    pty_control: LocalPtyProcessHandle,
     info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
     viewport: Arc<parking_lot::Mutex<TerminalViewportLease>>,
     event_subscribers: Arc<parking_lot::Mutex<Vec<EventSink>>>,
@@ -615,41 +615,20 @@ impl TerminalPtySession {
             .clone()
             .filter(|value| !value.trim().is_empty());
 
-        let pty_system = native_pty_system();
-        let pair = pty_system
-            .openpty(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .context("failed to open PTY")?;
-        let mut command = build_shell_command(&shell, initial_command.as_deref());
-        if let Some(cwd) = cwd.as_deref() {
-            command.cwd(PathBuf::from(cwd));
-        }
-        clear_terminal_environment(&mut command);
         let environment = terminal_environment(&shell, cwd.as_deref(), &id, &config, context);
-        for (key, value) in environment {
-            command.env(key, value);
-        }
-
-        let child = pair
-            .slave
-            .spawn_command(command)
-            .with_context(|| format!("failed to spawn shell {shell}"))?;
-        let killer = child.clone_killer();
-        drop(pair.slave);
-
-        let writer = pair
-            .master
-            .take_writer()
-            .context("failed to take PTY writer")?;
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .context("failed to clone PTY reader")?;
-        let stdin_writer = Arc::new(parking_lot::Mutex::new(writer));
+        let process = spawn_local_pty(LocalPtySpawnConfig {
+            shell: shell.clone(),
+            cwd: cwd.clone(),
+            initial_command: initial_command.clone(),
+            cols,
+            rows,
+            env: environment,
+            clear_env: true,
+            command_mode: LocalPtyCommandMode::InteractiveLogin,
+        })
+        .map_err(anyhow::Error::msg)
+        .with_context(|| format!("failed to spawn shell {shell}"))?;
+        let stdin_writer = Arc::new(parking_lot::Mutex::new(process.writer));
         let input_capture = Arc::new(parking_lot::Mutex::new(TerminalInputCapture::new(
             INPUT_CAPTURE_LIMIT,
         )));
@@ -747,12 +726,9 @@ impl TerminalPtySession {
             session_key,
             terminal_instance_id: session_instance_id,
         };
-        let pty_master = Arc::new(parking_lot::Mutex::new(pair.master));
-        let child = Arc::new(parking_lot::Mutex::new(child));
-
         spawn_waiter(
             id.clone(),
-            child.clone(),
+            process.control.clone(),
             info.clone(),
             event_subscribers.clone(),
         );
@@ -760,7 +736,7 @@ impl TerminalPtySession {
         let terminal_writer = CaptureWriter::new(stdin_writer.clone(), input_capture.clone());
         let terminal_reader = CaptureReader::new(
             id.clone(),
-            reader,
+            process.reader,
             output_capture.clone(),
             history.clone(),
             screen.clone(),
@@ -780,9 +756,7 @@ impl TerminalPtySession {
                 event_subscribers,
                 info,
                 ai_runtime_binding,
-                _child: child,
-                killer: Arc::new(parking_lot::Mutex::new(killer)),
-                pty_master,
+                pty_control: process.control,
                 viewport,
             },
             Box::new(terminal_writer),
@@ -796,7 +770,7 @@ impl TerminalPtySession {
 
     pub fn clone_handle(&self) -> TerminalPtySessionHandle {
         TerminalPtySessionHandle {
-            pty_master: self.pty_master.clone(),
+            pty_control: self.pty_control.clone(),
             info: self.info.clone(),
             viewport: self.viewport.clone(),
             event_subscribers: self.event_subscribers.clone(),
@@ -854,8 +828,7 @@ impl TerminalPtySession {
     }
 
     pub fn kill(&self) -> Result<()> {
-        self.killer.lock().kill()?;
-        Ok(())
+        self.pty_control.kill().map_err(anyhow::Error::msg)
     }
 
     pub fn snapshot(&self) -> String {
@@ -960,12 +933,9 @@ impl TerminalPtySessionHandle {
         if viewport.state.cols == cols && viewport.state.rows == rows {
             return Ok(Some(viewport.state.clone()));
         }
-        self.pty_master.lock().resize(PtySize {
-            cols,
-            rows,
-            pixel_width: 0,
-            pixel_height: 0,
-        })?;
+        self.pty_control
+            .resize(cols, rows)
+            .map_err(anyhow::Error::msg)?;
         {
             let mut info = self.info.lock();
             info.cols = cols;
@@ -1697,18 +1667,14 @@ fn ansi_sequence_next_state(state: AnsiSequenceState, byte: u8) -> AnsiSequenceS
 
 fn spawn_waiter(
     id: String,
-    child: Arc<parking_lot::Mutex<Box<dyn Child + Send + Sync>>>,
+    control: LocalPtyProcessHandle,
     info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
     event_subscribers: Arc<parking_lot::Mutex<Vec<EventSink>>>,
 ) {
     std::thread::Builder::new()
         .name(format!("codux-terminal-waiter-{id}"))
         .spawn(move || {
-            let exit_code = child
-                .lock()
-                .wait()
-                .ok()
-                .map(|status| status.exit_code() as i32);
+            let exit_code = control.wait_exit_code();
             emit_terminal_event(
                 &event_subscribers,
                 TerminalEvent::Exit {
@@ -2606,10 +2572,6 @@ fn flush_utf8_decoder(pending: &mut Vec<u8>) -> String {
     }
 }
 
-fn clear_terminal_environment(command: &mut CommandBuilder) {
-    command.env_clear();
-}
-
 fn normalize_terminal_cwd(cwd: Option<String>) -> Option<String> {
     cwd.and_then(|value| {
         let trimmed = value.trim();
@@ -2635,53 +2597,6 @@ fn normalize_terminal_path(path: &str) -> String {
 #[cfg(not(windows))]
 fn normalize_terminal_path(path: &str) -> String {
     path.to_string()
-}
-
-#[cfg(unix)]
-fn build_shell_command(shell: &str, initial_command: Option<&str>) -> CommandBuilder {
-    let shell_name = shell_name(shell);
-    let mut command = CommandBuilder::new(shell);
-    if matches!(shell_name.as_deref(), Some("zsh")) {
-        if let Some(initial_command) = initial_command {
-            command.args(["+o", "prompt_sp", "-i", "-l", "-c", initial_command]);
-        } else {
-            command.args(["+o", "prompt_sp", "-i", "-l"]);
-        }
-        return command;
-    }
-    if matches!(shell_name.as_deref(), Some("bash" | "sh")) {
-        if let Some(initial_command) = initial_command {
-            command.args(["-i", "-l", "-c", initial_command]);
-        } else {
-            command.args(["-i", "-l"]);
-        }
-        return command;
-    }
-    if let Some(initial_command) = initial_command {
-        command.args(["-l", "-c", initial_command]);
-    }
-    command
-}
-
-#[cfg(windows)]
-fn build_shell_command(shell: &str, initial_command: Option<&str>) -> CommandBuilder {
-    let shell_name = shell_name(shell);
-    let mut command = CommandBuilder::new(shell);
-    if matches!(
-        shell_name.as_deref(),
-        Some("powershell.exe" | "powershell" | "pwsh.exe" | "pwsh")
-    ) {
-        command.args(["-NoLogo", "-NoProfile", "-NoExit"]);
-        command.args(["-ExecutionPolicy", "Bypass"]);
-        if let Some(initial_command) = initial_command {
-            command.args(["-Command", initial_command]);
-        }
-        return command;
-    }
-    if let Some(initial_command) = initial_command {
-        command.arg(initial_command);
-    }
-    command
 }
 
 pub fn default_shell() -> String {

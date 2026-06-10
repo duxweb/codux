@@ -15,9 +15,9 @@ codux-protocol = { path = "../../../crates/codux-protocol" }
 codux-remote-transport = { path = "../../../crates/codux-remote-transport" }
 codux-runtime-core = { path = "../../../crates/codux-runtime-core" }
 codux-terminal-core = { path = "../../../crates/codux-terminal-core" }
+codux-terminal-pty = { path = "../../../crates/codux-terminal-pty" }
 flume = "0.12"
 parking_lot = "0.12"
-portable-pty = "0.9"
 redb = "4.1.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
