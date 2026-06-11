@@ -33,11 +33,47 @@ fn restores_visible_screen_from_screen_baseline_while_retaining_history_content(
     );
 
     let screen = session.screen_snapshot();
-    assert_eq!(session.content(), "raw history that should stay in scrollback cache");
+    assert_eq!(
+        session.content(),
+        "raw history that should stay in scrollback cache"
+    );
     assert_eq!(session.buffer_length(), 43);
     assert_eq!(session.sequence(), 7);
     assert!(screen.data.contains("visible tui"));
-    assert!(!screen.data.contains("raw history"));
+    session.scroll_screen_lines(8);
+    let scrolled = session.screen_snapshot();
+    assert!(scrolled.data.contains("raw history"));
+}
+
+#[test]
+fn live_output_can_update_visible_screen_from_screen_keyframe() {
+    let mut session = RemotePtySession::<String>::new("session-1", 256);
+    session.replace_from_baseline_screen(
+        "cached raw history",
+        Some("\x1b[2J\x1b[Hold screen"),
+        Some(18),
+        Some(3),
+    );
+
+    session.append_live_screen(
+        "partial live raw",
+        Some("\x1b[2J\x1b[Hrestored tui\n\x1b[3;1Hinput box"),
+        Some(32),
+        Some(4),
+    );
+
+    let screen = session.screen_snapshot();
+    assert_eq!(session.content(), "cached raw historypartial live raw");
+    assert_eq!(session.buffer_length(), 32);
+    assert_eq!(session.sequence(), 4);
+    assert!(screen.data.contains("restored tui"));
+    assert!(screen.data.contains("input box"));
+    assert!(!screen.data.contains("old screen"));
+
+    session.scroll_screen_lines(8);
+    let scrolled = session.screen_snapshot();
+    assert!(scrolled.data.contains("cached raw history"));
+    assert!(scrolled.data.contains("partial live raw"));
 }
 
 #[test]

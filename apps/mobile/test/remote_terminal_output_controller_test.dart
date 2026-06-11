@@ -381,6 +381,75 @@ void main() {
   );
 
   test(
+    'live output with screen keyframe updates visible screen without waiting for baseline',
+    () {
+      final controller = RemoteTerminalOutputController(maxBufferChars: 65536);
+
+      controller.bindSession('session-1', requireBaseline: true);
+
+      final result = controller.accept(
+        _liveOutput(
+          'partial live raw',
+          outputSeq: 11,
+          screenData: '\u001b[2J\u001b[Hrestored tui\n\u001b[3;1Hinput box',
+        ),
+        activeSessionId: 'session-1',
+      );
+      final screen = controller.screenSnapshot('session-1');
+
+      expect(_kinds(result), [
+        RemoteTerminalOutputEffectKind.loading,
+        RemoteTerminalOutputEffectKind.sessionUpdated,
+        RemoteTerminalOutputEffectKind.ack,
+      ]);
+      expect(controller.cachedOutput('session-1'), 'partial live raw');
+      expect(screen?.data, contains('restored tui'));
+      expect(screen?.data, contains('input box'));
+      expect(screen?.data, isNot(contains('partial live raw')));
+    },
+  );
+
+  test(
+    'live screen keyframe completes pending baseline and ignores stale buffer',
+    () {
+      final controller = RemoteTerminalOutputController(maxBufferChars: 65536);
+
+      controller.bindSession('session-1', requireBaseline: true);
+      final live = controller.accept(
+        _liveOutput(
+          'partial live raw',
+          outputSeq: 11,
+          screenData: '\u001b[2J\u001b[Hrestored tui\n\u001b[3;1Hinput box',
+        ),
+        activeSessionId: 'session-1',
+      );
+      final stale = controller.accept(
+        _terminalBuffer(
+          'old screen',
+          offset: 0,
+          bufferLength: 10,
+          truncated: false,
+          outputSeq: 10,
+          requestId: 'stale-restore',
+          screenData: '\u001b[2J\u001b[Hold screen',
+        ),
+        activeSessionId: 'session-1',
+      );
+      final screen = controller.screenSnapshot('session-1');
+
+      expect(_kinds(live), [
+        RemoteTerminalOutputEffectKind.loading,
+        RemoteTerminalOutputEffectKind.sessionUpdated,
+        RemoteTerminalOutputEffectKind.ack,
+      ]);
+      expect(_kinds(stale), [RemoteTerminalOutputEffectKind.ack]);
+      expect(controller.cachedOutput('session-1'), 'partial live raw');
+      expect(screen?.data, contains('restored tui'));
+      expect(screen?.data, isNot(contains('old screen')));
+    },
+  );
+
+  test(
     'tail history window with previous history does not hydrate on ui mount',
     () {
       final controller = RemoteTerminalOutputController(maxBufferChars: 4);
@@ -821,19 +890,31 @@ RelayEnvelope _terminalBufferForSession(
   );
 }
 
-RelayEnvelope _liveOutput(String data, {required int outputSeq}) {
-  return _liveOutputForSession('session-1', data, outputSeq: outputSeq);
+RelayEnvelope _liveOutput(
+  String data, {
+  required int outputSeq,
+  String? screenData,
+}) {
+  return _liveOutputForSession(
+    'session-1',
+    data,
+    outputSeq: outputSeq,
+    screenData: screenData,
+  );
 }
 
 RelayEnvelope _liveOutputForSession(
   String sessionId,
   String data, {
   required int outputSeq,
+  String? screenData,
 }) {
+  final payload = <String, Object?>{'data': data, 'outputSeq': outputSeq};
+  if (screenData != null) payload['screenData'] = screenData;
   return RelayEnvelope(
     type: 'terminal.output',
     sessionId: sessionId,
-    payload: {'data': data, 'outputSeq': outputSeq},
+    payload: payload,
   );
 }
 

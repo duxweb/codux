@@ -136,11 +136,13 @@ class RemotePtySession<T> {
 
   void appendLive({
     required String data,
+    String? screenData,
     required int? bufferLength,
     required int? sequence,
   }) {
     _core.appendLive(
       data: data,
+      screenData: screenData,
       bufferLength: bufferLength,
       sequence: sequence,
     );

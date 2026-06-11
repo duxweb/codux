@@ -18,7 +18,7 @@ use super::protocol::{
     REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_DELETE, REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE,
     REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_SELECT, RemoteTerminalBufferWindow,
     RemoteTerminalSubscriptionTarget, RemoteTerminalSubscriptions, terminal_buffer_payloads,
-    webrtc_transport_candidate, websocket_relay_transport_candidate,
+    terminal_live_output_payload, webrtc_transport_candidate, websocket_relay_transport_candidate,
 };
 use super::relay::{remote_pairing_ticket_payload, remote_server_url, remote_stun_urls};
 use super::sequence::RemoteSequenceGuard;
@@ -82,6 +82,7 @@ struct RemoteTerminalPlan {
 struct RemoteTerminalOutputBatch {
     data: String,
     buffer_length: usize,
+    screen_data: Option<String>,
     viewers: HashSet<String>,
 }
 
@@ -3305,6 +3306,12 @@ impl RemoteHostRuntime {
             return;
         }
         let buffer_length = self.terminals.buffer_characters(&session_id).unwrap_or(0);
+        let screen_data = self
+            .terminals
+            .screen_snapshot(&session_id)
+            .ok()
+            .map(|snapshot| snapshot.data)
+            .filter(|data| !data.is_empty());
         let should_spawn = {
             let Ok(mut batches) = self.terminal_output_batches.lock() else {
                 return;
@@ -3315,11 +3322,13 @@ impl RemoteHostRuntime {
                     .or_insert_with(|| RemoteTerminalOutputBatch {
                         data: String::new(),
                         buffer_length,
+                        screen_data: None,
                         viewers: HashSet::new(),
                     });
             let was_empty = batch.data.is_empty();
             batch.data.push_str(&text);
             batch.buffer_length = buffer_length;
+            batch.screen_data = screen_data;
             batch.viewers.extend(viewers);
             was_empty
         };
@@ -3357,16 +3366,18 @@ impl RemoteHostRuntime {
             return;
         }
         let output_seq = self.next_terminal_output_seq(session_id);
+        let payload = terminal_live_output_payload(
+            batch.data,
+            batch.buffer_length,
+            output_seq,
+            batch.screen_data,
+        );
         for device_id in batch.viewers {
             self.send_terminal_data(
                 "terminal.output",
                 Some(&device_id),
                 Some(session_id),
-                json!({
-                    "data": batch.data.clone(),
-                    "bufferLength": batch.buffer_length,
-                    "outputSeq": output_seq,
-                }),
+                payload.clone(),
             );
         }
     }
@@ -4458,6 +4469,95 @@ mod tests {
         assert!(screen_data.contains("visible tui"));
         assert!(!screen_data.contains("old line"));
         assert!(window.tail);
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn remote_terminal_live_output_includes_headless_screen_keyframe() {
+        let support_dir = temp_support_dir("codux-remote-terminal-live-screen-keyframe");
+        write_paired_remote_settings(&support_dir);
+        let terminals = Arc::new(TerminalManager::new());
+        let runtime = Arc::new(RemoteHostRuntime::new_with_ai_history_and_terminals(
+            support_dir.clone(),
+            Default::default(),
+            Arc::clone(&terminals),
+        ));
+        let transport = Arc::new(CapturingTransport::default());
+        if let Ok(mut current) = runtime.transport.lock() {
+            *current = Some(transport.clone());
+        }
+        let session_id = terminals
+            .create(
+                TerminalPtyConfig {
+                    shell: Some("sh".to_string()),
+                    command: Some(
+                        "printf '\\033[2J\\033[Hrestored tui\\n\\033[3;1Hinput box'".to_string(),
+                    ),
+                    cwd: Some(support_dir.to_string_lossy().to_string()),
+                    ..Default::default()
+                },
+                |_| {},
+            )
+            .expect("create terminal");
+
+        for _ in 0..20 {
+            if terminals
+                .screen_snapshot(&session_id)
+                .map(|snapshot| snapshot.data.contains("restored tui"))
+                .unwrap_or(false)
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        runtime.register_terminal_viewer(&session_id, Some("device-1"));
+        transport.take_messages();
+
+        runtime.queue_terminal_output_batch(session_id.clone(), "partial live raw".to_string());
+        runtime.flush_terminal_output_batch(&session_id);
+
+        let mut live = None;
+        for (_, data) in transport.take_messages() {
+            let text = String::from_utf8(data).expect("utf8 transport");
+            let envelope = runtime
+                .service()
+                .parse_incoming_envelope(&text)
+                .expect("parse outgoing envelope");
+            let Some(inner) = runtime
+                .service()
+                .decrypt_envelope_if_needed(envelope, &mut HashMap::new())
+                .expect("decrypt outgoing envelope")
+            else {
+                continue;
+            };
+            if inner.kind == "terminal.output" && inner.session_id.as_deref() == Some(&session_id) {
+                live = Some(inner.payload);
+                break;
+            }
+        }
+        let live = live.expect("live terminal output");
+
+        assert_eq!(live["data"], "partial live raw");
+        assert_eq!(live["outputSeq"], 1);
+        assert!(
+            live["screenData"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("restored tui")
+        );
+        assert!(
+            live["screenData"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("input box")
+        );
+        assert!(
+            !live["screenData"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("partial live raw")
+        );
 
         fs::remove_dir_all(support_dir).ok();
     }

@@ -89,28 +89,49 @@ void main() {
     expect(screen.cells.any((cell) => cell.text == 't'), isTrue);
   });
 
-  test(
-    'remote pty session restores visible screen from screen baseline',
-    () {
-      final session = RemotePtySession<String>(
-        'session-1',
-        maxCachedChars: 200,
-      );
+  test('remote pty session restores visible screen from screen baseline', () {
+    final session = RemotePtySession<String>('session-1', maxCachedChars: 200);
 
-      session.replaceFromBaseline(
-        content: 'raw history fragment that stays cached',
-        screenData: '\u001b[2J\u001b[Hvisible tui',
-        bufferLength: 38,
-        sequence: 3,
-      );
+    session.replaceFromBaseline(
+      content: 'raw history fragment that stays cached',
+      screenData: '\u001b[2J\u001b[Hvisible tui',
+      bufferLength: 38,
+      sequence: 3,
+    );
 
-      final screen = session.screenSnapshot();
+    final screen = session.screenSnapshot();
 
-      expect(session.content, 'raw history fragment that stays cached');
-      expect(session.bufferLength, 38);
-      expect(session.sequence, 3);
-      expect(screen.data, contains('visible tui'));
-      expect(screen.data, isNot(contains('raw history')));
-    },
-  );
+    expect(session.content, 'raw history fragment that stays cached');
+    expect(session.bufferLength, 38);
+    expect(session.sequence, 3);
+    expect(screen.data, contains('visible tui'));
+    expect(screen.data, isNot(contains('raw history')));
+  });
+
+  test('remote pty session applies live screen keyframe', () {
+    final session = RemotePtySession<String>('session-1', maxCachedChars: 200);
+
+    session.replaceFromBaseline(
+      content: 'cached raw history',
+      screenData: '\u001b[2J\u001b[Hold screen',
+      bufferLength: 18,
+      sequence: 3,
+    );
+    session.appendLive(
+      data: 'partial live raw',
+      screenData: '\u001b[2J\u001b[Hrestored tui\n\u001b[3;1Hinput box',
+      bufferLength: 32,
+      sequence: 4,
+    );
+
+    final screen = session.screenSnapshot();
+
+    expect(session.content, 'cached raw historypartial live raw');
+    expect(session.bufferLength, 32);
+    expect(session.sequence, 4);
+    expect(screen.data, contains('restored tui'));
+    expect(screen.data, contains('input box'));
+    expect(screen.data, isNot(contains('partial live raw')));
+    expect(screen.data, isNot(contains('old screen')));
+  });
 }

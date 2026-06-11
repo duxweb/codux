@@ -209,24 +209,57 @@ void main() {
     }
   });
 
-  test('Rust FFI terminal core restores visible screen from screen baseline', () {
+  test(
+    'Rust FFI terminal core restores visible screen from screen baseline',
+    () {
+      final session = codux_protocol_ffi.TerminalCoreSession(
+        sessionId: 'session-1',
+        maxCachedChars: 100,
+      );
+      try {
+        session.replaceFromBaseline(
+          content: 'raw tail fragment',
+          screenData: '\u001b[2J\u001b[Hvisible tui',
+          bufferLength: 17,
+          sequence: 3,
+        );
+
+        final screen = session.screenSnapshot();
+
+        expect(session.content, 'raw tail fragment');
+        expect(screen.data, contains('visible tui'));
+        expect(screen.data, isNot(contains('raw tail fragment')));
+      } finally {
+        session.dispose();
+      }
+    },
+  );
+
+  test('Rust FFI terminal core applies live screen keyframe', () {
     final session = codux_protocol_ffi.TerminalCoreSession(
       sessionId: 'session-1',
       maxCachedChars: 100,
     );
     try {
       session.replaceFromBaseline(
-        content: 'raw tail fragment',
-        screenData: '\u001b[2J\u001b[Hvisible tui',
-        bufferLength: 17,
+        content: 'cached raw history',
+        screenData: '\u001b[2J\u001b[Hold screen',
+        bufferLength: 18,
         sequence: 3,
+      );
+      session.appendLive(
+        data: 'partial live raw',
+        screenData: '\u001b[2J\u001b[Hrestored tui',
+        bufferLength: 32,
+        sequence: 4,
       );
 
       final screen = session.screenSnapshot();
 
-      expect(session.content, 'raw tail fragment');
-      expect(screen.data, contains('visible tui'));
-      expect(screen.data, isNot(contains('raw tail fragment')));
+      expect(session.content, 'cached raw historypartial live raw');
+      expect(screen.data, contains('restored tui'));
+      expect(screen.data, isNot(contains('partial live raw')));
+      expect(screen.data, isNot(contains('old screen')));
     } finally {
       session.dispose();
     }

@@ -306,6 +306,29 @@ pub extern "C" fn codux_terminal_session_append_live(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn codux_terminal_session_append_live_screen(
+    session: *mut FfiRemotePtySession,
+    data: *const c_char,
+    screen_data: *const c_char,
+    buffer_length: i64,
+    sequence: i64,
+) {
+    let Some(session) = terminal_session_mut(session) else {
+        return;
+    };
+    let Some(data) = c_to_string(data) else {
+        return;
+    };
+    let screen_data = c_to_string(screen_data);
+    session.append_live_screen(
+        &data,
+        screen_data.as_deref().filter(|value| !value.is_empty()),
+        optional_usize(buffer_length),
+        optional_sequence(sequence),
+    );
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn codux_terminal_session_clear(session: *mut FfiRemotePtySession) {
     if let Some(session) = terminal_session_mut(session) {
         session.clear();

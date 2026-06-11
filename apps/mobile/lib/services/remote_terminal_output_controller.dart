@@ -361,6 +361,7 @@ class RemoteTerminalOutputController {
     final ptySession = _ptySessions.session(sessionId);
     if (!replayingHeldLive &&
         !isBuffer &&
+        decoded.screenData == null &&
         ptySession.holdLive(sequence: outputSeq, output: message)) {
       CoduxLog.debug(
         '[codux-flutter-output] hold live output before baseline seq=${outputSeq ?? 0} session=$sessionId',
@@ -381,16 +382,38 @@ class RemoteTerminalOutputController {
         outputSeq: outputSeq,
         offset: null,
       );
-      if (resync.render && raw.isNotEmpty) {
-        _appendLiveToSession(sessionId, raw, decoded.bufferLength, resync.ack);
+      var heldLive = const <RelayEnvelope>[];
+      if (resync.render && (raw.isNotEmpty || decoded.screenData != null)) {
+        heldLive = _applyLiveToSession(
+          sessionId,
+          raw,
+          decoded.screenData,
+          decoded.bufferLength,
+          resync.ack,
+        );
+        if (decoded.screenData != null) {
+          _activeBufferRequestBySession.remove(sessionId);
+          _removeRestoreRequest(sessionId);
+          _assembler.remove(sessionId);
+        }
       }
-      return [
+      final effects = [
         RemoteTerminalOutputEffect.ack(
           sessionId: sessionId,
           outputSeq: resync.ack,
           bufferLength: decoded.bufferLength,
         ),
       ];
+      for (final held in heldLive) {
+        effects.addAll(
+          _accept(
+            held,
+            activeSessionId: activeSessionId,
+            replayingHeldLive: true,
+          ),
+        );
+      }
+      return effects;
     }
 
     final resync = observeTerminalOutputForResync(
@@ -462,7 +485,13 @@ class RemoteTerminalOutputController {
           effects.add(RemoteTerminalOutputEffect.markBufferReceived(sessionId));
         }
       } else {
-        _appendLiveToSession(sessionId, raw, decoded.bufferLength, resync.ack);
+        heldLive = _applyLiveToSession(
+          sessionId,
+          raw,
+          decoded.screenData,
+          decoded.bufferLength,
+          resync.ack,
+        );
         _activeBufferRequestBySession.remove(sessionId);
         _removeRestoreRequest(sessionId);
         if (isActiveSession) {
@@ -470,16 +499,26 @@ class RemoteTerminalOutputController {
           effects.add(RemoteTerminalOutputEffect.markBufferReceived(sessionId));
         }
       }
-    } else if (raw.isNotEmpty && isActiveSession) {
+    } else if ((raw.isNotEmpty || decoded.screenData != null) &&
+        isActiveSession) {
       effects.add(RemoteTerminalOutputEffect.loading(loading: false));
     }
 
-    if (raw.isNotEmpty) {
-      if (!isBuffer) {
-        _appendLiveToSession(sessionId, raw, decoded.bufferLength, resync.ack);
-        if (isActiveSession) {
-          effects.add(RemoteTerminalOutputEffect.sessionUpdated(sessionId));
-        }
+    if (!isBuffer && (raw.isNotEmpty || decoded.screenData != null)) {
+      heldLive = _applyLiveToSession(
+        sessionId,
+        raw,
+        decoded.screenData,
+        decoded.bufferLength,
+        resync.ack,
+      );
+      if (decoded.screenData != null) {
+        _activeBufferRequestBySession.remove(sessionId);
+        _removeRestoreRequest(sessionId);
+        _assembler.remove(sessionId);
+      }
+      if (isActiveSession) {
+        effects.add(RemoteTerminalOutputEffect.sessionUpdated(sessionId));
       }
     }
 
@@ -491,7 +530,7 @@ class RemoteTerminalOutputController {
       ),
     );
 
-    if (isBuffer && heldLive.isNotEmpty) {
+    if (heldLive.isNotEmpty) {
       for (final held in heldLive) {
         effects.addAll(
           _accept(
@@ -535,6 +574,7 @@ class RemoteTerminalOutputController {
   void _appendLiveToSession(
     String sessionId,
     String data,
+    String? screenData,
     int? bufferLength,
     int? outputSeq,
   ) {
@@ -542,9 +582,31 @@ class RemoteTerminalOutputController {
         .session(sessionId)
         .appendLive(
           data: data,
+          screenData: screenData,
           bufferLength: bufferLength,
           sequence: outputSeq,
         );
+  }
+
+  List<RelayEnvelope> _applyLiveToSession(
+    String sessionId,
+    String data,
+    String? screenData,
+    int? bufferLength,
+    int? outputSeq,
+  ) {
+    final session = _ptySessions.session(sessionId);
+    if (screenData != null && session.awaitingBaseline) {
+      final existing = _ptySessions.content(sessionId) ?? '';
+      return session.replaceFromBaseline(
+        content: '$existing$data',
+        screenData: screenData,
+        bufferLength: bufferLength,
+        sequence: outputSeq,
+      );
+    }
+    _appendLiveToSession(sessionId, data, screenData, bufferLength, outputSeq);
+    return const [];
   }
 }
 

@@ -649,6 +649,10 @@ pub fn host_capabilities() -> Value {
             "requestId": true,
             "screenData": true,
         },
+        "terminalOutput": {
+            "sequence": true,
+            "screenData": true,
+        },
         "terminalViewport": {
             "ownership": true,
             "state": true,
@@ -728,6 +732,23 @@ fn terminal_buffer_payload(
         payload["chunkIndex"] = json!(chunk_index);
         payload["chunkCount"] = json!(chunk_count);
         payload["chunked"] = json!(true);
+    }
+    payload
+}
+
+pub fn terminal_live_output_payload(
+    data: String,
+    buffer_length: usize,
+    output_seq: i64,
+    screen_data: Option<String>,
+) -> Value {
+    let mut payload = json!({
+        "data": data,
+        "bufferLength": buffer_length,
+        "outputSeq": output_seq,
+    });
+    if let Some(screen_data) = screen_data.filter(|data| !data.is_empty()) {
+        payload["screenData"] = json!(screen_data);
     }
     payload
 }
@@ -814,7 +835,21 @@ mod tests {
         assert_eq!(capabilities["terminalBuffer"]["chunking"], true);
         assert_eq!(capabilities["terminalBuffer"]["requestId"], true);
         assert_eq!(capabilities["terminalBuffer"]["screenData"], true);
+        assert_eq!(capabilities["terminalOutput"]["sequence"], true);
+        assert_eq!(capabilities["terminalOutput"]["screenData"], true);
         assert_eq!(capabilities["terminalViewport"]["ownership"], true);
+    }
+
+    #[test]
+    fn terminal_live_output_payload_includes_screen_keyframe() {
+        let payload =
+            terminal_live_output_payload("raw".to_string(), 128, 9, Some("\x1b[Hscreen".into()));
+
+        assert_eq!(payload["data"], "raw");
+        assert_eq!(payload["bufferLength"], 128);
+        assert_eq!(payload["outputSeq"], 9);
+        assert_eq!(payload["screenData"], "\x1b[Hscreen");
+        assert!(payload.get("buffer").is_none());
     }
 
     #[test]

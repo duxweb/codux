@@ -52,6 +52,11 @@ bool _hasRequiredSymbols(DynamicLibrary library) {
         )
       >
     >('codux_terminal_session_replace_from_baseline_screen_json');
+    library.lookup<
+      NativeFunction<
+        Void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Int64, Int64)
+      >
+    >('codux_terminal_session_append_live_screen');
     library.lookup<NativeFunction<Pointer<Utf8> Function(Pointer<Void>)>>(
       'codux_terminal_session_screen_snapshot_json',
     );
@@ -351,6 +356,11 @@ final _terminalSessionAppendLive = _dylib
       Void Function(Pointer<Void>, Pointer<Utf8>, Int64, Int64),
       void Function(Pointer<Void>, Pointer<Utf8>, int, int)
     >('codux_terminal_session_append_live');
+final _terminalSessionAppendLiveScreen = _dylib
+    .lookupFunction<
+      Void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Int64, Int64),
+      void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, int, int)
+    >('codux_terminal_session_append_live_screen');
 final _terminalSessionClear = _dylib
     .lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
       'codux_terminal_session_clear',
@@ -1000,19 +1010,23 @@ class TerminalCoreSession {
 
   void appendLive({
     required String data,
+    String? screenData,
     required int? bufferLength,
     required int? sequence,
   }) {
     final dataPtr = data.toNativeUtf8();
+    final screenDataPtr = (screenData ?? '').toNativeUtf8();
     try {
-      _terminalSessionAppendLive(
+      _terminalSessionAppendLiveScreen(
         _liveHandle(),
         dataPtr,
+        screenDataPtr,
         bufferLength ?? -1,
         sequence ?? -1,
       );
     } finally {
       malloc.free(dataPtr);
+      malloc.free(screenDataPtr);
     }
   }
 
