@@ -1,8 +1,8 @@
 use super::RemoteService;
 use super::crypto::{remote_e2e_decrypt, remote_e2e_encrypt, remote_e2e_symmetric_key};
 use super::remote_settings_from_raw;
-use super::sequence::RemoteSequenceGuard;
 use super::types::{RemoteEnvelope, RemoteOutgoingEnvelope};
+use codux_terminal_core::RemoteSequenceGuard;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -29,7 +29,7 @@ impl RemoteService {
         if inner.seq.is_some() {
             let guard = receive_sequence_by_device
                 .entry(device_id.clone())
-                .or_default();
+                .or_insert_with(|| RemoteSequenceGuard::new(128));
             if !guard.accept(&inner.kind, inner.session_id.as_deref(), inner.seq) {
                 return Ok(None);
             }

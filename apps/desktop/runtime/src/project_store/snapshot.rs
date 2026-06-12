@@ -149,7 +149,7 @@ impl ProjectStore {
     }
 }
 
-fn project_runtime_worktrees(
+pub(super) fn project_runtime_worktrees(
     snapshot: &AppSnapshot,
     project: &ProjectRecord,
 ) -> Vec<RuntimeWorktreeItem> {

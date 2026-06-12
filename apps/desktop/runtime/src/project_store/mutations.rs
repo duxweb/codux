@@ -11,11 +11,9 @@ use crate::project_store::raw_state::{
     ensure_array, project_index, project_record, prune_project_state, select_project_after_removal,
     update_default_worktree_record,
 };
+use codux_runtime_core::worktree::selected_runtime_worktree_id;
 use serde_json::{Map, Value};
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::collections::{HashMap, HashSet};
 
 impl ProjectStore {
     pub fn create_project(
@@ -146,11 +144,18 @@ impl ProjectStore {
             return Err("Project not found.".to_string());
         }
         if request.worktree_id != request.project_id {
-            let is_runnable = snapshot.worktrees.iter().any(|worktree| {
-                worktree.project_id == request.project_id
-                    && worktree.id == request.worktree_id
-                    && (worktree.is_default || Path::new(&worktree.path).exists())
-            });
+            let project = snapshot
+                .projects
+                .iter()
+                .find(|project| project.id == request.project_id)
+                .ok_or_else(|| "Project not found.".to_string())?;
+            let is_runnable = selected_runtime_worktree_id(
+                &request.project_id,
+                Some(&request.worktree_id),
+                super::snapshot::project_runtime_worktrees(&snapshot, project),
+            )
+            .as_deref()
+                == Some(request.worktree_id.as_str());
             if !is_runnable {
                 return Err("Worktree not found.".to_string());
             }

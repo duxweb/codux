@@ -6,7 +6,6 @@ mod pairing;
 mod protocol;
 mod registration;
 mod relay;
-mod sequence;
 mod settings;
 mod summary;
 mod sync;

@@ -21,7 +21,6 @@ use super::protocol::{
     terminal_live_output_payload, webrtc_transport_candidate, websocket_relay_transport_candidate,
 };
 use super::relay::{remote_pairing_ticket_payload, remote_server_url, remote_stun_urls};
-use super::sequence::RemoteSequenceGuard;
 use super::transport::RemoteTransport;
 use super::transport_factory::RemoteTransportFactory;
 use super::types::{
@@ -48,7 +47,8 @@ use codux_runtime_core::{
     upload as runtime_upload, worktree as runtime_worktree,
 };
 use codux_terminal_core::{
-    TerminalDriver, TerminalSequence, TerminalSessionHandle, runtime_scope_parts,
+    RemoteSequenceGuard, TerminalDriver, TerminalSequence, TerminalSessionHandle,
+    runtime_scope_parts,
 };
 use serde_json::{Value, json};
 use std::{
