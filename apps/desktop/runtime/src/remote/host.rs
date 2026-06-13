@@ -5,7 +5,8 @@ use super::protocol::{
     REMOTE_AI_STATS, REMOTE_DEVICE_CONNECTED, REMOTE_DEVICE_DISCONNECTED, REMOTE_ERROR,
     REMOTE_FILE_DELETE, REMOTE_FILE_DELETED, REMOTE_FILE_LIST, REMOTE_FILE_READ, REMOTE_FILE_RENAME,
     REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN, REMOTE_GIT_STATUS,
-    REMOTE_HOST_INFO, REMOTE_HOST_OFFLINE, REMOTE_PROJECT_ADD, REMOTE_PROJECT_EDIT,
+    REMOTE_HOST_INFO, REMOTE_HOST_OFFLINE, REMOTE_PAIRING_CONFIRMED, REMOTE_PAIRING_REJECTED,
+    REMOTE_PROJECT_ADD, REMOTE_PROJECT_EDIT,
     REMOTE_PROJECT_LIST, REMOTE_PROJECT_REMOVE, REMOTE_PROJECT_SELECT, REMOTE_PROJECT_SELECTED,
     REMOTE_PROJECT_UPDATED, REMOTE_RESOURCE_AI_STATS, REMOTE_RESOURCE_GIT_STATUS,
     REMOTE_RESOURCE_PROJECTS, REMOTE_RESOURCE_SUBSCRIBE, REMOTE_RESOURCE_TERMINALS,
@@ -998,7 +999,7 @@ impl RemoteHostRuntime {
             .and_then(|mut pending| pending.remove(pairing_id));
         if let Some(handshake) = handshake.as_ref() {
             self.send_plain(
-                "pairing.rejected",
+                REMOTE_PAIRING_REJECTED,
                 Some(&handshake.device_id),
                 None,
                 json!({ "pairingId": pairing_id }),
@@ -1053,7 +1054,7 @@ impl RemoteHostRuntime {
             *active = None;
         }
         self.send_plain(
-            "pairing.confirmed",
+            REMOTE_PAIRING_CONFIRMED,
             Some(&device_id),
             None,
             json!({

@@ -26,6 +26,15 @@ abstract final class RemoteMessageType {
   static final deviceDisconnected = codux_protocol_ffi.messageType(
     'deviceDisconnected',
   );
+  static final pairingRequest = codux_protocol_ffi.messageType(
+    'pairingRequest',
+  );
+  static final pairingConfirmed = codux_protocol_ffi.messageType(
+    'pairingConfirmed',
+  );
+  static final pairingRejected = codux_protocol_ffi.messageType(
+    'pairingRejected',
+  );
   static final transportPing = codux_protocol_ffi.messageType('transportPing');
   static final transportPong = codux_protocol_ffi.messageType('transportPong');
   static final resourceSubscribe = codux_protocol_ffi.messageType(

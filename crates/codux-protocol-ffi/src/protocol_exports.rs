@@ -4,7 +4,8 @@ use codux_protocol::{
     REMOTE_FILE_READ, REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE,
     REMOTE_DEVICE_CONNECTED, REMOTE_DEVICE_DISCONNECTED, REMOTE_DEVICE_INFO, REMOTE_FILE_WRITTEN,
     REMOTE_GIT_STATUS, REMOTE_HELLO, REMOTE_HOST_INFO, REMOTE_HOST_OFFLINE, REMOTE_PROJECT_ADD,
-    REMOTE_PROJECT_EDIT, REMOTE_PROJECT_LIST, REMOTE_PROJECT_REMOVE, REMOTE_PROJECT_SELECT,
+    REMOTE_PAIRING_CONFIRMED, REMOTE_PAIRING_REJECTED, REMOTE_PAIRING_REQUEST, REMOTE_PROJECT_EDIT,
+    REMOTE_PROJECT_LIST, REMOTE_PROJECT_REMOVE, REMOTE_PROJECT_SELECT,
     REMOTE_PROJECT_SELECTED, REMOTE_PROJECT_UPDATED, REMOTE_PROTOCOL_VERSION, REMOTE_RELAY_ERROR,
     REMOTE_RESOURCE_AI_STATS, REMOTE_RESOURCE_FILES, REMOTE_RESOURCE_GIT_STATUS,
     REMOTE_RESOURCE_PROJECTS, REMOTE_RESOURCE_SUBSCRIBE, REMOTE_RESOURCE_TERMINALS,
@@ -143,6 +144,9 @@ fn message_type_by_name(name: &str) -> Option<&'static str> {
         "deviceInfo" => REMOTE_DEVICE_INFO,
         "deviceConnected" => REMOTE_DEVICE_CONNECTED,
         "deviceDisconnected" => REMOTE_DEVICE_DISCONNECTED,
+        "pairingRequest" => REMOTE_PAIRING_REQUEST,
+        "pairingConfirmed" => REMOTE_PAIRING_CONFIRMED,
+        "pairingRejected" => REMOTE_PAIRING_REJECTED,
         "transportPing" => REMOTE_TRANSPORT_PING,
         "transportPong" => REMOTE_TRANSPORT_PONG,
         "resourceSubscribe" => REMOTE_RESOURCE_SUBSCRIBE,
@@ -237,6 +241,10 @@ mod tests {
         assert_eq!(
             message_type_by_name("terminalViewportScroll"),
             Some("terminal.viewport.scroll")
+        );
+        assert_eq!(
+            message_type_by_name("pairingConfirmed"),
+            Some("pairing.confirmed")
         );
         assert_eq!(resource_type_by_name("gitStatus"), Some("git.status"));
         assert_eq!(

@@ -151,7 +151,7 @@ RelayEnvelope pairingRequestEnvelope(PairingPayload payload, String name) {
     throw Exception(tr('remote.qrMissingFields', LocaleChoices.system.id));
   }
   return RelayEnvelope(
-    type: 'pairing.request',
+    type: RemoteMessageType.pairingRequest,
     deviceId: payload.devicePublicKey,
     payload: {
       'pairingId': pairingId,
@@ -204,12 +204,12 @@ Future<StoredDevice> claimPairingOverRelay({
         })
         .where(
           (message) =>
-              message.type == 'pairing.confirmed' ||
-              message.type == 'pairing.rejected',
+              message.type == RemoteMessageType.pairingConfirmed ||
+              message.type == RemoteMessageType.pairingRejected,
         )
         .first
         .timeout(timeout);
-    if (message.type == 'pairing.rejected') {
+    if (message.type == RemoteMessageType.pairingRejected) {
       throw const PairingRejectedException();
     }
     return confirmedDevice(payload: payload, name: name, confirmed: message);

@@ -17,6 +17,7 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use codux_protocol::{
     REMOTE_DEVICE_CONNECTED, REMOTE_DEVICE_DISCONNECTED, REMOTE_DEVICE_INFO, REMOTE_HOST_OFFLINE,
+    REMOTE_PAIRING_CONFIRMED, REMOTE_PAIRING_REJECTED, REMOTE_PAIRING_REQUEST,
     REMOTE_PROTOCOL_VERSION, REMOTE_TRANSPORT_ROLE_HOST, REMOTE_TRANSPORT_WEBRTC,
     REMOTE_TRANSPORT_WEBSOCKET_RELAY, RemoteRelayDecision, RemoteRelayEnvelope,
     RemoteRelayPeerWindow, RemoteRelayPolicy, relay_error_envelope, relay_hello_envelope,
@@ -374,7 +375,7 @@ async fn claim_pairing(
             hub.send_to_host(
                 &pairing.host_id,
                 RemoteRelayEnvelope {
-                    kind: "pairing.request".into(),
+                    kind: REMOTE_PAIRING_REQUEST.into(),
                     host_id: pairing.host_id.clone(),
                     payload: Some(json!({
                         "pairingId": pairing.id,
@@ -453,7 +454,7 @@ async fn confirm_pairing(
             hub.send_to_host(
                 &host_id,
                 RemoteRelayEnvelope {
-                    kind: "pairing.confirmed".into(),
+                    kind: REMOTE_PAIRING_CONFIRMED.into(),
                     host_id: host_id.clone(),
                     device_id: device.id.clone(),
                     payload: Some(json!({ "deviceId": device.id, "deviceName": device.name })),
@@ -493,7 +494,7 @@ async fn reject_pairing(
             hub.send_to_host(
                 &host_id,
                 RemoteRelayEnvelope {
-                    kind: "pairing.rejected".into(),
+                    kind: REMOTE_PAIRING_REJECTED.into(),
                     host_id: host_id.clone(),
                     payload: Some(
                         json!({ "pairingId": pairing.id, "deviceName": pairing.device_name }),
