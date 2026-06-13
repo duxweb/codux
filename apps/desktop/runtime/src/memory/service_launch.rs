@@ -5,6 +5,10 @@ impl MemoryService {
         project_name: &str,
         workspace_path: &str,
     ) -> Option<MemoryLaunchArtifacts> {
+        let input_hash = Self::launch_input_hash(&[project_id, project_name, workspace_path]);
+        if Self::launch_artifacts_recently_prepared(project_id, input_hash) {
+            return Some(launch_artifact_paths(project_id));
+        }
         let project_profile = self
             .project_profile_for_launch(project_id, project_name, workspace_path)
             .or_else(|| self.current_project_profile(project_id).ok().flatten());
@@ -46,6 +50,51 @@ impl MemoryService {
         write_if_changed(&artifacts.workspace_root.join("CLAUDE.md"), content);
         write_if_changed(&artifacts.workspace_root.join("GEMINI.md"), content);
         Some(())
+    }
+
+    /// Debounce repeated launch-artifact preparation for the same project + the
+    /// same inputs. A burst of triggers (e.g. several terminal splits opened in
+    /// a row) each rescans the repo for the project profile and rewrites the
+    /// files; collapse them so only the first within the TTL does the work and
+    /// the rest return the still-fresh on-disk artifacts. Memory changes are
+    /// reflected on the next prepare after the (short) TTL.
+    pub(super) fn launch_artifacts_recently_prepared(project_id: &str, input_hash: u64) -> bool {
+        // The debounce is a process-global; never short-circuit in tests, which
+        // share the process and would otherwise see nondeterministic skips.
+        if cfg!(test) {
+            return false;
+        }
+        use std::sync::{LazyLock, Mutex};
+        use std::time::{Duration, Instant};
+        const TTL: Duration = Duration::from_secs(3);
+        static DEBOUNCE: LazyLock<Mutex<std::collections::HashMap<String, (Instant, u64)>>> =
+            LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+        let Ok(mut map) = DEBOUNCE.lock() else {
+            return false;
+        };
+        let now = Instant::now();
+        if let Some((at, hash)) = map.get(project_id)
+            && *hash == input_hash
+            && now.duration_since(*at) < TTL
+        {
+            return true;
+        }
+        // Bound the map: it is keyed by project, so it only grows with distinct
+        // projects, but clear it if it somehow gets large.
+        if map.len() > 256 {
+            map.clear();
+        }
+        map.insert(project_id.to_string(), (now, input_hash));
+        false
+    }
+
+    pub(super) fn launch_input_hash(parts: &[&str]) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        for part in parts {
+            part.hash(&mut hasher);
+        }
+        hasher.finish()
     }
 }
 

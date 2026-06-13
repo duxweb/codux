@@ -29,6 +29,18 @@ impl MemoryService {
         }
 
         let workspace_path = request.workspace_path.as_deref().unwrap_or_default();
+        let input_hash = Self::launch_input_hash(&[
+            &request.project_id,
+            &request.project_name,
+            workspace_path,
+            global_prompt,
+            extra_context,
+            if should_inject_memory { "1" } else { "0" },
+        ]);
+        if Self::launch_artifacts_recently_prepared(&request.project_id, input_hash) {
+            return Some(super::launch_artifact_paths(&request.project_id));
+        }
+
         let project_profile = should_inject_memory
             .then(|| {
                 self.project_profile_for_launch(
