@@ -210,14 +210,17 @@ impl TerminalRenderer {
             .last_log_signature
             .swap(signature, std::sync::atomic::Ordering::Relaxed);
         if previous != signature {
-            eprintln!(
-                "[term-diag] paint viewport_start_line={} cells={} visible={}..{} focused={} fp={:016x}",
-                content.viewport_start_line,
-                content.cells.len(),
-                visible_rows.start,
-                visible_rows.end,
-                cursor_focused,
-                content_fp,
+            codux_runtime::runtime_trace::runtime_trace(
+                "term-diag",
+                &format!(
+                    "paint viewport_start_line={} cells={} visible={}..{} focused={} fp={:016x}",
+                    content.viewport_start_line,
+                    content.cells.len(),
+                    visible_rows.start,
+                    visible_rows.end,
+                    cursor_focused,
+                    content_fp,
+                ),
             );
         }
 
