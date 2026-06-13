@@ -537,6 +537,10 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
   @override
   void insertTextPlaceholder(Size size) {}
 
+  // Flutter 3.44 adds this to TextInputClient; keep it unannotated so older
+  // local SDKs still accept the implementation.
+  void onFocusReceived() {}
+
   @override
   void performPrivateCommand(String action, Map<String, dynamic> data) {}
 
