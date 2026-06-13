@@ -1,10 +1,7 @@
 use codux_remote_transport::{
     RemoteControllerTransportConfig, RemoteTransport, RemoteTransportCandidate, remote_stun_urls,
 };
-use codux_terminal_core::{
-    HeadlessTerminalScreen, RemotePtySession, RemoteRuntimeModel, RemoteSequenceGuard,
-    TerminalBufferAssembler, TerminalOutputSequencer,
-};
+use codux_terminal_core::{RemoteRuntimeModel, RemoteSequenceGuard};
 use std::any::Any;
 use std::collections::VecDeque;
 use std::ffi::{CStr, CString, c_char};
@@ -12,7 +9,6 @@ use std::ptr;
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 
-pub type FfiRemotePtySession = RemotePtySession<i64>;
 pub type FfiRemoteRuntimeModel = RemoteRuntimeModel;
 
 pub struct FfiControllerTransport {
@@ -71,61 +67,8 @@ pub(crate) fn clean_ffi_string(value: Option<String>) -> Option<String> {
     })
 }
 
-pub(crate) fn optional_usize(value: i64) -> Option<usize> {
-    if value < 0 {
-        None
-    } else {
-        usize::try_from(value).ok()
-    }
-}
-
 pub(crate) fn optional_sequence(value: i64) -> Option<i64> {
     if value < 0 { None } else { Some(value) }
-}
-
-pub(crate) fn terminal_session_ref<'a>(
-    session: *const FfiRemotePtySession,
-) -> Option<&'a FfiRemotePtySession> {
-    if session.is_null() {
-        return None;
-    }
-    unsafe { session.as_ref() }
-}
-
-pub(crate) fn terminal_session_mut<'a>(
-    session: *mut FfiRemotePtySession,
-) -> Option<&'a mut FfiRemotePtySession> {
-    if session.is_null() {
-        return None;
-    }
-    unsafe { session.as_mut() }
-}
-
-pub(crate) fn terminal_output_sequencer_ref<'a>(
-    sequencer: *const TerminalOutputSequencer,
-) -> Option<&'a TerminalOutputSequencer> {
-    if sequencer.is_null() {
-        return None;
-    }
-    unsafe { sequencer.as_ref() }
-}
-
-pub(crate) fn terminal_output_sequencer_mut<'a>(
-    sequencer: *mut TerminalOutputSequencer,
-) -> Option<&'a mut TerminalOutputSequencer> {
-    if sequencer.is_null() {
-        return None;
-    }
-    unsafe { sequencer.as_mut() }
-}
-
-pub(crate) fn terminal_buffer_assembler_mut<'a>(
-    assembler: *mut TerminalBufferAssembler,
-) -> Option<&'a mut TerminalBufferAssembler> {
-    if assembler.is_null() {
-        return None;
-    }
-    unsafe { assembler.as_mut() }
 }
 
 pub(crate) fn remote_sequence_guard_mut<'a>(
@@ -153,24 +96,6 @@ pub(crate) fn remote_runtime_model_mut<'a>(
         return None;
     }
     unsafe { model.as_mut() }
-}
-
-pub(crate) fn terminal_screen_ref<'a>(
-    screen: *const HeadlessTerminalScreen,
-) -> Option<&'a HeadlessTerminalScreen> {
-    if screen.is_null() {
-        return None;
-    }
-    unsafe { screen.as_ref() }
-}
-
-pub(crate) fn terminal_screen_mut<'a>(
-    screen: *mut HeadlessTerminalScreen,
-) -> Option<&'a mut HeadlessTerminalScreen> {
-    if screen.is_null() {
-        return None;
-    }
-    unsafe { screen.as_mut() }
 }
 
 pub(crate) fn controller_transport_ref<'a>(
