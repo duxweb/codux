@@ -62,6 +62,8 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
   double? _lastScrollOffset;
   bool _cursorBlinkVisible = true;
   Timer? _cursorBlinkTimer;
+  int? _lastEmittedCols;
+  int? _lastEmittedRows;
 
   @override
   void initState() {
@@ -206,7 +208,14 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
             : math.max(0.0, contentHeight - constraints.maxHeight);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          widget.onResize(cols, rows);
+          // Only emit a resize when the measured grid actually changed. The
+          // build runs on every cursor-blink/setState; emitting unconditionally
+          // ran an FFI screen resize per frame.
+          if (cols != _lastEmittedCols || rows != _lastEmittedRows) {
+            _lastEmittedCols = cols;
+            _lastEmittedRows = rows;
+            widget.onResize(cols, rows);
+          }
           final connection = _inputConnection;
           if (connection != null && connection.attached) {
             _syncKeyboardGeometry(connection);
@@ -237,22 +246,46 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: CustomPaint(
-                    size: Size.infinite,
-                    painter: _TerminalScreenPainter(
-                      snapshot: snapshot,
-                      cellWidth: cellWidth,
-                      cellHeight: cellHeight,
-                      fontSize: fontSize,
-                      scrollOffsetY: snapshot == null
-                          ? 0
-                          : _painterScrollOffsetY(
-                              snapshot,
-                              scrollOffset,
-                              constraints.maxHeight,
-                              cellHeight,
-                            ),
-                      cursorBlinkVisible: _cursorBlinkVisible,
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      size: Size.infinite,
+                      painter: _TerminalScreenPainter(
+                        snapshot: snapshot,
+                        cellWidth: cellWidth,
+                        cellHeight: cellHeight,
+                        fontSize: fontSize,
+                        scrollOffsetY: snapshot == null
+                            ? 0
+                            : _painterScrollOffsetY(
+                                snapshot,
+                                scrollOffset,
+                                constraints.maxHeight,
+                                cellHeight,
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Cursor on its own layer so the blink doesn't repaint the grid.
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      size: Size.infinite,
+                      painter: _TerminalCursorPainter(
+                        snapshot: snapshot,
+                        cellWidth: cellWidth,
+                        cellHeight: cellHeight,
+                        fontSize: fontSize,
+                        scrollOffsetY: snapshot == null
+                            ? 0
+                            : _painterScrollOffsetY(
+                                snapshot,
+                                scrollOffset,
+                                constraints.maxHeight,
+                                cellHeight,
+                              ),
+                        cursorBlinkVisible: _cursorBlinkVisible,
+                      ),
                     ),
                   ),
                 ),
@@ -635,6 +668,12 @@ List<String> _terminalFontFamilyFallback() {
   };
 }
 
+// TextStyle is rebuilt once per visible cell per repaint, each call allocating
+// a fontFamilyFallback list. The painter only uses a few distinct styles, so
+// memoizing by value key removes that per-cell allocation.
+final Map<(int, double, bool, bool, TextDecoration?), TextStyle>
+_terminalTextStyleCache = {};
+
 TextStyle _terminalTextStyle({
   required Color color,
   required double fontSize,
@@ -642,7 +681,10 @@ TextStyle _terminalTextStyle({
   bool italic = false,
   TextDecoration? decoration,
 }) {
-  return TextStyle(
+  final key = (color.toARGB32(), fontSize, bold, italic, decoration);
+  final cached = _terminalTextStyleCache[key];
+  if (cached != null) return cached;
+  final style = TextStyle(
     color: color,
     fontFamily: _terminalFontFamily(),
     fontFamilyFallback: _terminalFontFamilyFallback(),
@@ -654,8 +696,15 @@ TextStyle _terminalTextStyle({
     fontStyle: italic ? FontStyle.italic : FontStyle.normal,
     decoration: decoration,
   );
+  if (_terminalTextStyleCache.length > 1024) _terminalTextStyleCache.clear();
+  _terminalTextStyleCache[key] = style;
+  return style;
 }
 
+// The grid is painted on its own layer (cells only, no cursor). Its
+// shouldRepaint ignores the cursor blink, so the 530ms blink toggle no longer
+// re-shapes and repaints the entire grid — only the small cursor layer below
+// repaints on a blink.
 class _TerminalScreenPainter extends CustomPainter {
   _TerminalScreenPainter({
     required this.snapshot,
@@ -663,7 +712,6 @@ class _TerminalScreenPainter extends CustomPainter {
     required this.cellHeight,
     required this.fontSize,
     required this.scrollOffsetY,
-    required this.cursorBlinkVisible,
   });
 
   final TerminalScreenSnapshot? snapshot;
@@ -671,7 +719,6 @@ class _TerminalScreenPainter extends CustomPainter {
   final double cellHeight;
   final double fontSize;
   final double scrollOffsetY;
-  final bool cursorBlinkVisible;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -680,7 +727,6 @@ class _TerminalScreenPainter extends CustomPainter {
     if (screen == null) return;
 
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
-    final cursorCell = _cursorCell(screen);
 
     for (final cell in screen.cells) {
       if (cell.hidden) continue;
@@ -726,46 +772,88 @@ class _TerminalScreenPainter extends CustomPainter {
         fontSize: fontSize,
       );
     }
+  }
 
-    if (screen.cursor.visible && cursorBlinkVisible) {
-      final cursorTop = (screen.cursor.row * cellHeight + scrollOffsetY)
-          .floorToDouble();
-      final cursorIsBlock =
-          screen.cursor.shape == TerminalScreenCursorShape.block;
-      final cursorCellCol = cursorIsBlock && cursorCell != null
-          ? cursorCell.col
-          : screen.cursor.col;
-      final cursorCellWidth = cursorIsBlock && cursorCell != null
-          ? cursorCell.width
-          : 1;
-      final cursorLeft = (cursorCellCol * cellWidth).floorToDouble();
-      final cursorRect = Rect.fromLTWH(
-        cursorLeft,
-        cursorTop,
-        (cellWidth * cursorCellWidth).roundToDouble().clamp(
-          1.0,
-          double.infinity,
-        ),
-        cellHeight.roundToDouble().clamp(1.0, double.infinity),
-      );
-      if (cursorRect.right <= 0 ||
-          cursorRect.left >= size.width ||
-          cursorRect.bottom <= 0 ||
-          cursorRect.top >= size.height) {
-        return;
-      }
-      _paintCursor(canvas, cursorRect, screen.cursor.shape);
-      if (cursorIsBlock && cursorCell != null && cursorCell.text.isNotEmpty) {
-        _paintCellText(
-          textPainter: textPainter,
-          canvas: canvas,
-          cell: cursorCell,
-          left: cursorLeft,
-          top: cursorTop,
-          color: AppColors.bgBase,
-        );
-      }
+  @override
+  bool shouldRepaint(covariant _TerminalScreenPainter oldDelegate) {
+    return snapshot != oldDelegate.snapshot ||
+        cellWidth != oldDelegate.cellWidth ||
+        cellHeight != oldDelegate.cellHeight ||
+        fontSize != oldDelegate.fontSize ||
+        scrollOffsetY != oldDelegate.scrollOffsetY;
+  }
+}
+
+// Cursor-only overlay layer. Repaints on blink toggle / cursor move / scroll
+// without touching the grid layer above.
+class _TerminalCursorPainter extends CustomPainter {
+  _TerminalCursorPainter({
+    required this.snapshot,
+    required this.cellWidth,
+    required this.cellHeight,
+    required this.fontSize,
+    required this.scrollOffsetY,
+    required this.cursorBlinkVisible,
+  });
+
+  final TerminalScreenSnapshot? snapshot;
+  final double cellWidth;
+  final double cellHeight;
+  final double fontSize;
+  final double scrollOffsetY;
+  final bool cursorBlinkVisible;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final screen = snapshot;
+    if (screen == null) return;
+    if (!screen.cursor.visible || !cursorBlinkVisible) return;
+
+    final cursorCell = _cursorCell(screen);
+    final cursorTop = (screen.cursor.row * cellHeight + scrollOffsetY)
+        .floorToDouble();
+    final cursorIsBlock =
+        screen.cursor.shape == TerminalScreenCursorShape.block;
+    final cursorCellCol = cursorIsBlock && cursorCell != null
+        ? cursorCell.col
+        : screen.cursor.col;
+    final cursorCellWidth = cursorIsBlock && cursorCell != null
+        ? cursorCell.width
+        : 1;
+    final cursorLeft = (cursorCellCol * cellWidth).floorToDouble();
+    final cursorRect = Rect.fromLTWH(
+      cursorLeft,
+      cursorTop,
+      (cellWidth * cursorCellWidth).roundToDouble().clamp(1.0, double.infinity),
+      cellHeight.roundToDouble().clamp(1.0, double.infinity),
+    );
+    if (cursorRect.right <= 0 ||
+        cursorRect.left >= size.width ||
+        cursorRect.bottom <= 0 ||
+        cursorRect.top >= size.height) {
+      return;
     }
+    _paintCursor(canvas, cursorRect, screen.cursor.shape);
+    if (cursorIsBlock && cursorCell != null && cursorCell.text.isNotEmpty) {
+      _paintCellText(
+        textPainter: TextPainter(textDirection: TextDirection.ltr),
+        canvas: canvas,
+        cell: cursorCell,
+        left: cursorLeft,
+        top: cursorTop,
+        color: AppColors.bgBase,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TerminalCursorPainter oldDelegate) {
+    return cursorBlinkVisible != oldDelegate.cursorBlinkVisible ||
+        snapshot != oldDelegate.snapshot ||
+        scrollOffsetY != oldDelegate.scrollOffsetY ||
+        cellWidth != oldDelegate.cellWidth ||
+        cellHeight != oldDelegate.cellHeight ||
+        fontSize != oldDelegate.fontSize;
   }
 
   void _paintCursor(
@@ -843,16 +931,6 @@ class _TerminalScreenPainter extends CustomPainter {
       height: cellHeight,
       fontSize: fontSize,
     );
-  }
-
-  @override
-  bool shouldRepaint(covariant _TerminalScreenPainter oldDelegate) {
-    return snapshot != oldDelegate.snapshot ||
-        cellWidth != oldDelegate.cellWidth ||
-        cellHeight != oldDelegate.cellHeight ||
-        fontSize != oldDelegate.fontSize ||
-        scrollOffsetY != oldDelegate.scrollOffsetY ||
-        cursorBlinkVisible != oldDelegate.cursorBlinkVisible;
   }
 }
 

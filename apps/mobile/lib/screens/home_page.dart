@@ -1676,6 +1676,18 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       }
       _claimTerminalViewport(sessionId: bindSessionId);
       _flushPendingTerminalResize(force: true, sessionId: bindSessionId);
+      // Guarantee the local screen matches the measured viewport before the
+      // baseline is replayed, so scrollback reflows at the correct width even
+      // when the host resize is gated (viewport owned by desktop) or deduped.
+      final pendingCols = _terminalViewportController.pendingCols;
+      final pendingRows = _terminalViewportController.pendingRows;
+      if (pendingCols != null && pendingRows != null) {
+        _terminalOutputController.resizeScreen(
+          bindSessionId,
+          cols: pendingCols,
+          rows: pendingRows,
+        );
+      }
       final bindResult = _terminalBindingCoordinator.bindSession(
         plan: plan,
         bindSessionId: bindSessionId,
@@ -1687,6 +1699,19 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       CoduxLog.info(
         '[codux-flutter-terminal] bind session=$bindSessionId project=${_selectedProjectId ?? ''} cached=${bindResult.restored}',
       );
+      // Bound live sessions so headless-screen worker threads from previously
+      // visited projects do not accumulate across switches and stall the app.
+      final evicted = _terminalOutputController.evictInactiveSessions(
+        bindSessionId,
+      );
+      for (final sessionId in evicted) {
+        _terminalInputSender.clear(sessionId: sessionId);
+      }
+      if (evicted.isNotEmpty) {
+        CoduxLog.info(
+          '[codux-flutter-terminal] evict inactive sessions=${evicted.length} keep=$bindSessionId',
+        );
+      }
       if (bindResult.baselineRequested) {
         _terminalBufferRetry.track(bindSessionId, _retryTerminalBaseline);
       }

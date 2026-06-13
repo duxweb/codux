@@ -234,6 +234,33 @@ class RemoteTerminalOutputController {
     _gapSessions.remove(sessionId);
   }
 
+  /// Bound the number of live remote pty sessions. Each session owns headless
+  /// screen worker threads, so without a cap they accumulate across project
+  /// switches until the app stalls. Keeps [activeSessionId] and the most
+  /// recently bound sessions; evicts the rest and clears their bookkeeping.
+  /// Returns the evicted session ids.
+  List<String> evictInactiveSessions(
+    String activeSessionId, {
+    int maxSessions = 8,
+  }) {
+    if (activeSessionId.trim().isEmpty) return const [];
+    _ptySessions.touch(activeSessionId);
+    final evicted = _ptySessions.evictExcept(
+      activeSessionId,
+      maxSessions: maxSessions,
+    );
+    for (final sessionId in evicted) {
+      _activeBufferRequestBySession.remove(sessionId);
+      _restoreBufferRequestIds.removeWhere(
+        (requestId) => requestId.startsWith('$sessionId:'),
+      );
+      _assembler.remove(sessionId);
+      _sequencer.remove(sessionId);
+      _gapSessions.remove(sessionId);
+    }
+    return evicted;
+  }
+
   void resetTransient() {
     _assembler.reset();
     _activeBufferRequestBySession.clear();

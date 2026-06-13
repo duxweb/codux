@@ -169,6 +169,12 @@ class RemoteTerminalPane extends StatelessWidget {
                           children: [
                             if (showTerminal)
                               TerminalScreenView(
+                                // Session-scoped key: a project switch gives
+                                // the new session a fresh view state (scroll
+                                // position, follow-tail, blink, resize-emit
+                                // dedupe) instead of inheriting the previous
+                                // session's in-flight scroll/anchor.
+                                key: ValueKey('terminal-${sessionId ?? ''}'),
                                 snapshot: terminalScreen,
                                 keyboardRequested: keyboardRequested,
                                 scrollEnabled: !keyboardVisible,

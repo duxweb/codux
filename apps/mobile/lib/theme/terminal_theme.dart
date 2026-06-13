@@ -15,7 +15,38 @@ class TerminalPaintColors {
 }
 
 class TerminalTheme {
+  // Resolved cell colors are a pure function of (fg, bg, inverse) plus the
+  // compile-time AppColors. The painter calls this once per visible cell on
+  // every repaint, and each call runs several computeLuminance() passes. A
+  // terminal screen only has a handful of distinct color combos, so memoizing
+  // by a compact value key removes nearly all of that per-cell luminance work.
+  static final Map<String, TerminalPaintColors> _cellColorCache = {};
+
+  static String _colorKey(Map<String, dynamic> value) {
+    final kind = '${value['kind'] ?? ''}';
+    return switch (kind) {
+      'rgb' => 'r${value['r']},${value['g']},${value['b']}',
+      'indexed' => 'i${value['index']}',
+      'named' => 'n${value['name']}',
+      _ => kind,
+    };
+  }
+
   static TerminalPaintColors resolveCellColors({
+    required Map<String, dynamic> fg,
+    required Map<String, dynamic> bg,
+    required bool inverse,
+  }) {
+    final cacheKey = '${_colorKey(fg)}|${_colorKey(bg)}|$inverse';
+    final cached = _cellColorCache[cacheKey];
+    if (cached != null) return cached;
+    final resolved = _resolveCellColors(fg: fg, bg: bg, inverse: inverse);
+    if (_cellColorCache.length > 512) _cellColorCache.clear();
+    _cellColorCache[cacheKey] = resolved;
+    return resolved;
+  }
+
+  static TerminalPaintColors _resolveCellColors({
     required Map<String, dynamic> fg,
     required Map<String, dynamic> bg,
     required bool inverse,

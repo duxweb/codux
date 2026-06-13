@@ -2,6 +2,11 @@ use std::collections::BTreeMap;
 
 use crate::{HeadlessTerminalScreen, TerminalScreenSnapshot, TerminalSequence};
 
+/// Upper bound on live frames held while awaiting a baseline. A baseline that
+/// never arrives (host torn down mid-request) would otherwise let the held
+/// buffers grow without limit; past the cap we drop the oldest held frames.
+const MAX_HELD_LIVE: usize = 2048;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemotePtySnapshot {
     pub session_id: String,
@@ -240,8 +245,22 @@ impl<T> RemotePtySession<T> {
         }
         if let Some(sequence) = sequence {
             self.held_sequenced_live.entry(sequence).or_insert(output);
+            // Drop the oldest held frames past the cap. The baseline replay and
+            // sequence-gap resync repair any resulting hole.
+            while self.held_sequenced_live.len() > MAX_HELD_LIVE {
+                let oldest = *self
+                    .held_sequenced_live
+                    .keys()
+                    .next()
+                    .expect("non-empty held buffer");
+                self.held_sequenced_live.remove(&oldest);
+            }
         } else {
             self.held_unsequenced_live.push(output);
+            if self.held_unsequenced_live.len() > MAX_HELD_LIVE {
+                let overflow = self.held_unsequenced_live.len() - MAX_HELD_LIVE;
+                self.held_unsequenced_live.drain(0..overflow);
+            }
         }
         true
     }
