@@ -109,6 +109,135 @@ impl CoduxApp {
         Some(TerminalCloseTarget::Split { pane_index })
     }
 
+    /// Reconcile the in-memory terminal layout with sessions a connected mobile
+    /// client created (split/tab) for the current scope. Mobile-created PTYs are
+    /// already live in the shared `TerminalManager` and persisted into the
+    /// layout; here we attach the desktop view to each one we are not yet showing
+    /// — without re-mounting existing panes (no flicker), reusing the running PTY
+    /// via the attach path. Driven by the runtime's terminal-layout generation.
+    pub(in crate::app) fn reconcile_remote_terminal_layout(&mut self, cx: &mut Context<Self>) {
+        if self.terminal_layout_loading {
+            return;
+        }
+        let Some(launch_context) = self.current_terminal_launch_context() else {
+            return;
+        };
+        let owner_id = launch_context.project_id.clone();
+        let base_pty_config = launch_context.to_config();
+        let layout = self.runtime_service.reload_terminal_layout(Some(&owner_id));
+
+        let shown_ids: std::collections::HashSet<String> = self
+            .terminals
+            .iter()
+            .flat_map(|tab| tab.panes.iter())
+            .filter_map(|slot| slot.terminal_id.clone())
+            .collect();
+
+        let mut pending: Vec<(TerminalPtyConfig, crate::terminal::PendingTerminalAttach)> =
+            Vec::new();
+
+        // New top split panes -> append to the main (Top) tab.
+        for pane in &layout.top_panes {
+            let raw_id = pane.terminal_id.trim();
+            if raw_id.is_empty() {
+                continue;
+            }
+            let pane_plan = TerminalPanePlan {
+                terminal_id: Some(raw_id.to_string()),
+                title: pane.title.clone(),
+                restored_output_bytes: 0,
+                restored_output_tail: String::new(),
+            };
+            let Some(pane_terminal_id) =
+                terminal_pane_terminal_id(Some(&launch_context), &pane_plan)
+            else {
+                continue;
+            };
+            if shown_ids.contains(&pane_terminal_id) {
+                continue;
+            }
+            let pty_config = terminal_pty_config_for_terminal_id(
+                &base_pty_config,
+                Some(&pane_terminal_id),
+                &pane.title,
+            );
+            let (terminal_pane, attach) = TerminalPane::pending_with_pty_config(
+                cx,
+                pty_config.clone(),
+                self.terminal_config_from_settings(),
+            );
+            self.register_terminal_pane(Some(&pane_terminal_id), &terminal_pane, cx);
+            if let Some(tab) = self.main_terminal_mut() {
+                tab.panes.push(TerminalPaneSlot {
+                    title: pane.title.clone(),
+                    terminal_id: Some(pane_terminal_id),
+                    pane: Some(terminal_pane),
+                    restored_output_bytes: 0,
+                    restored_output_tail: String::new(),
+                });
+            }
+            pending.push((pty_config, attach));
+        }
+
+        // New bottom tabs -> append as separate Bottom tabs.
+        for tab_summary in &layout.tabs {
+            let raw_id = tab_summary.terminal_id.trim();
+            if raw_id.is_empty() {
+                continue;
+            }
+            let pane_plan = TerminalPanePlan {
+                terminal_id: Some(raw_id.to_string()),
+                title: tab_summary.label.clone(),
+                restored_output_bytes: 0,
+                restored_output_tail: String::new(),
+            };
+            let Some(pane_terminal_id) =
+                terminal_pane_terminal_id(Some(&launch_context), &pane_plan)
+            else {
+                continue;
+            };
+            if shown_ids.contains(&pane_terminal_id) {
+                continue;
+            }
+            let pty_config = terminal_pty_config_for_terminal_id(
+                &base_pty_config,
+                Some(&pane_terminal_id),
+                &tab_summary.label,
+            );
+            let (terminal_pane, attach) = TerminalPane::pending_with_pty_config(
+                cx,
+                pty_config.clone(),
+                self.terminal_config_from_settings(),
+            );
+            self.register_terminal_pane(Some(&pane_terminal_id), &terminal_pane, cx);
+            let id = self.next_terminal_index;
+            self.next_terminal_index += 1;
+            self.terminals.push(TerminalTab {
+                id,
+                label: tab_summary.label.clone(),
+                placement: TerminalTabPlacement::Bottom,
+                terminal_id: Some(pane_terminal_id.clone()),
+                panes: vec![TerminalPaneSlot {
+                    title: tab_summary.label.clone(),
+                    terminal_id: Some(pane_terminal_id),
+                    pane: Some(terminal_pane),
+                    restored_output_bytes: 0,
+                    restored_output_tail: String::new(),
+                }],
+            });
+            pending.push((pty_config, attach));
+        }
+
+        if pending.is_empty() {
+            return;
+        }
+        // Do not steal focus/active selection — the desktop user may be working;
+        // the new pane/tab just appears.
+        self.sync_terminal_state_after_layout_change(cx);
+        self.spawn_attach_pending_terminals(None, pending, cx);
+        self.invalidate_terminal_workspace(cx);
+    }
+
     pub(in crate::app) fn add_terminal_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
         let launch_context = self.current_terminal_launch_context();

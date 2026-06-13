@@ -239,6 +239,13 @@ impl RuntimeService {
         self.remote_host.broadcast_terminal_list_change();
     }
 
+    /// Generation that changes whenever a mobile request created/closed a
+    /// terminal. The desktop app polls this to reconcile its in-memory layout
+    /// with sessions the phone added.
+    pub fn remote_terminal_layout_generation(&self) -> u64 {
+        self.remote_host.remote_terminal_layout_generation()
+    }
+
     pub fn shutdown_runtime_state(&self) {
         self.remote_host.shutdown();
     }

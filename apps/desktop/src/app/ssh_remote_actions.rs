@@ -1071,6 +1071,15 @@ impl CoduxApp {
             }
             self.normalize_selected_remote_device();
         }
+        // Pick up terminals a connected phone created (split/tab) for the current
+        // scope: when the runtime's terminal-layout generation advances, attach
+        // the desktop view to the already-running mobile PTYs.
+        let remote_terminal_generation =
+            self.runtime_service.remote_terminal_layout_generation();
+        if remote_terminal_generation != self.last_remote_terminal_layout_generation {
+            self.last_remote_terminal_layout_generation = remote_terminal_generation;
+            self.reconcile_remote_terminal_layout(cx);
+        }
         let scheduled_refresh = self.pending_runtime_refresh.take();
         let has_scheduled_refresh = scheduled_refresh.is_some();
         if let Some(refresh) = scheduled_refresh {

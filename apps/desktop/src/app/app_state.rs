@@ -34,6 +34,10 @@ pub struct CoduxApp {
     pub(in crate::app) terminal_layout_cache: HashMap<WorktreeScopeKey, TerminalLayoutCacheEntry>,
     pub(in crate::app) file_panel_cache: HashMap<WorktreeScopeKey, FilePanelState>,
     pub(in crate::app) next_terminal_index: usize,
+    // Last observed runtime terminal-layout generation. A change means a mobile
+    // request created/closed a terminal; the activity tick then reconciles the
+    // in-memory layout to pick up phone-created splits/tabs.
+    pub(in crate::app) last_remote_terminal_layout_generation: u64,
     pub(in crate::app) runtime: RuntimeInventory,
     pub(in crate::app) state: RuntimeState,
     pub(in crate::app) runtime_service: RuntimeService,

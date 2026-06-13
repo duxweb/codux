@@ -130,6 +130,10 @@ pub struct RemoteHostRuntime {
     events: Mutex<VecDeque<RemoteSummary>>,
     snapshot: Mutex<RemoteSummary>,
     connection_generation: AtomicU64,
+    // Bumped whenever a remote (mobile) request mutates the terminal layout
+    // (create/close). The desktop app polls this to reconcile its own in-memory
+    // terminal layout with sessions the phone added/removed.
+    remote_terminal_layout_generation: AtomicU64,
     resolved_relay: Mutex<Option<String>>,
     send_seq_by_device: Mutex<HashMap<String, i64>>,
     receive_seq_by_device: Mutex<HashMap<String, RemoteSequenceGuard>>,
@@ -175,6 +179,7 @@ impl RemoteHostRuntime {
             events: Mutex::new(VecDeque::new()),
             snapshot: Mutex::new(snapshot),
             connection_generation: AtomicU64::new(0),
+            remote_terminal_layout_generation: AtomicU64::new(0),
             resolved_relay: Mutex::new(None),
             send_seq_by_device: Mutex::new(HashMap::new()),
             receive_seq_by_device: Mutex::new(HashMap::new()),
@@ -229,6 +234,18 @@ impl RemoteHostRuntime {
     /// showing the closed session's stale content.
     pub fn broadcast_terminal_list_change(&self) {
         self.broadcast_terminal_list(None);
+    }
+
+    /// Current remote-terminal-layout generation. The desktop app compares this
+    /// across ticks; a change means a mobile request created/closed a terminal
+    /// and the app should reconcile its in-memory layout.
+    pub fn remote_terminal_layout_generation(&self) -> u64 {
+        self.remote_terminal_layout_generation.load(Ordering::Relaxed)
+    }
+
+    fn bump_remote_terminal_layout_generation(&self) {
+        self.remote_terminal_layout_generation
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn apply_snapshot(&self, summary: RemoteSummary) -> RemoteSummary {
@@ -1658,6 +1675,7 @@ impl RemoteHostRuntime {
                     &plan.title,
                     &plan.layout_kind,
                 );
+                self.bump_remote_terminal_layout_generation();
                 self.mark_terminal_event_subscription(&session_id);
                 self.register_terminal_viewer(&session_id, envelope.device_id.as_deref());
                 self.send_terminal_data(
@@ -1953,6 +1971,7 @@ impl RemoteHostRuntime {
         match self.terminals.kill(session_id) {
             Ok(()) => {
                 self.clear_terminal_output_seq(session_id);
+                self.bump_remote_terminal_layout_generation();
                 self.send_terminal_data(
                     REMOTE_TERMINAL_CLOSED,
                     envelope.device_id.as_deref(),
