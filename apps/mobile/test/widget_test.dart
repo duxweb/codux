@@ -621,11 +621,11 @@ void main() {
       expect(log, contains('user select project=project-3 previous=project-2'));
       expect(
         log,
-        contains('project.selected project=project-2 current=project-3'),
+        contains('project.selected project=project-2 worktree= current=project-3'),
       );
       expect(log, contains('bind session=session-3 project=project-3'));
       final staleAckOffset = log.indexOf(
-        'project.selected project=project-2 current=project-3',
+        'project.selected project=project-2 worktree= current=project-3',
       );
       expect(staleAckOffset, isNonNegative);
       expect(

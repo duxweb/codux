@@ -166,6 +166,11 @@ class _CoduxHomePageState extends State<CoduxHomePage>
   bool _showTerminal = false;
   bool _showTerminalSwitcher = false;
   bool _terminalReady = false;
+  // A bind requested before the terminal viewport has measured is deferred
+  // (the bind needs the measured grid). Remember it so it is replayed once the
+  // viewport becomes ready, instead of being silently dropped.
+  RemoteRuntimePlan? _deferredBindPlan;
+  String _deferredBindReason = '';
   RemoteTerminalBufferPhase _terminalBufferPhase =
       RemoteTerminalBufferPhase.idle;
   double? _terminalBufferProgress;
@@ -1662,8 +1667,18 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       CoduxLog.debug(
         '[codux-flutter-terminal] defer bind session=${plan.bindSessionId} reason=$reason viewportReady=false',
       );
+      _deferredBindPlan = plan;
+      _deferredBindReason = reason;
       return;
     }
+    if (plan.bindSessionId != null) {
+      _applyTerminalBind(plan, reason);
+    }
+  }
+
+  void _applyTerminalBind(RemoteRuntimePlan plan, String reason) {
+    // A fresh bind supersedes any bind still waiting on the viewport.
+    _deferredBindPlan = null;
     if (plan.bindSessionId != null) {
       final bindSessionId = plan.bindSessionId!;
       final restored = _restoreTerminalSessionFromCache(bindSessionId);
@@ -4356,6 +4371,11 @@ class _CoduxHomePageState extends State<CoduxHomePage>
             CoduxLog.debug(
               '[codux-flutter-terminal] first resize ready selected=${_selectedProjectId ?? ''} session=${_sessionId ?? ''} terminalListLoaded=$_terminalListLoaded',
             );
+            // Replay a bind that arrived before the viewport had measured.
+            final deferredBindPlan = _deferredBindPlan;
+            if (deferredBindPlan != null && _terminalViewportReady) {
+              _applyTerminalBind(deferredBindPlan, _deferredBindReason);
+            }
             _ensureTerminalForSelectedProject();
             _mountVisibleTerminal(reason: 'first-resize');
           });
