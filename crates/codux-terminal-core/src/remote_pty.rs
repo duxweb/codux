@@ -24,6 +24,21 @@ pub struct RemotePtySession<T> {
     page_buffer: Option<RemotePtyPageBuffer>,
     held_sequenced_live: BTreeMap<TerminalSequence, T>,
     held_unsequenced_live: Vec<T>,
+    // Scrollback state served by the host screen (display offset / total
+    // lines / overscan margins above and below of the last host-scrolled
+    // snapshot). When set, the scroll screen shows a host-rendered history
+    // viewport instead of the local raw-byte replay.
+    host_scroll: Option<(usize, usize, usize, usize)>,
+    // Authoritative scrollback length reported by the host; the local
+    // keyframe screen has no scrollback of its own, so this drives the
+    // client scroll range even at the live bottom.
+    host_total_lines: Option<usize>,
+    // Dedicated screen for host-served scroll snapshots: they can be taller
+    // than the viewport (overscan margin above) and must not disturb the
+    // live keyframe screen.
+    scroll_screen: HeadlessTerminalScreen,
+    screen_cols: usize,
+    screen_rows: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +63,11 @@ impl<T> RemotePtySession<T> {
             page_buffer: None,
             held_sequenced_live: BTreeMap::new(),
             held_unsequenced_live: Vec::new(),
+            host_scroll: None,
+            host_total_lines: None,
+            scroll_screen: HeadlessTerminalScreen::new(80, 24, 0),
+            screen_cols: 80,
+            screen_rows: 24,
         }
     }
 
@@ -81,14 +101,74 @@ impl<T> RemotePtySession<T> {
     }
 
     pub fn screen_snapshot(&self) -> TerminalScreenSnapshot {
+        if let Some((display_offset, total_lines, margin_rows, margin_rows_below)) =
+            self.host_scroll
+        {
+            let mut snapshot = self.scroll_screen.snapshot();
+            snapshot.display_offset = display_offset;
+            snapshot.total_lines = total_lines.max(snapshot.rows);
+            snapshot.margin_rows = margin_rows;
+            snapshot.margin_rows_below = margin_rows_below;
+            return snapshot;
+        }
         if self.screen_view == RemotePtyScreenView::Keyframe && self.has_keyframe_screen {
-            self.keyframe_screen.snapshot()
+            let mut snapshot = self.keyframe_screen.snapshot();
+            if let Some(total) = self.host_total_lines {
+                snapshot.total_lines = total.max(snapshot.total_lines);
+            }
+            snapshot
         } else {
             self.history_screen.snapshot()
         }
     }
 
+    /// Apply a host-rendered scrolled viewport (terminal.viewport.scrolled).
+    /// The host screen owns the authoritative scrollback at the live grid
+    /// size; rendering it replaces the fragile local raw-byte history
+    /// replay entirely. `margin_rows` rows at the top of the data are
+    /// pre-rendered overscan context above the viewport;
+    /// `margin_rows_below` rows at the bottom are context below it.
+    pub fn apply_host_scroll_snapshot(
+        &mut self,
+        screen_data: &str,
+        display_offset: usize,
+        total_lines: usize,
+        margin_rows: usize,
+        margin_rows_below: usize,
+    ) {
+        if screen_data.is_empty() {
+            return;
+        }
+        self.host_total_lines = Some(total_lines);
+        if display_offset == 0 {
+            // At the live bottom the keyframe screen stays in charge so
+            // live output keeps rendering; sync replies (margin > 0) only
+            // seed the scroll range recorded above.
+            if margin_rows == 0 {
+                self.keyframe_screen
+                    .replace_with_keyframe(screen_data.as_bytes());
+                self.has_keyframe_screen = true;
+            }
+            self.screen_view = if self.has_keyframe_screen {
+                RemotePtyScreenView::Keyframe
+            } else {
+                self.screen_view
+            };
+            self.host_scroll = None;
+            return;
+        }
+        self.scroll_screen.resize(
+            self.screen_cols,
+            self.screen_rows + margin_rows + margin_rows_below,
+        );
+        self.scroll_screen
+            .replace_with_keyframe(screen_data.as_bytes());
+        self.host_scroll = Some((display_offset, total_lines, margin_rows, margin_rows_below));
+    }
+
     pub fn resize_screen(&mut self, cols: usize, rows: usize) {
+        self.screen_cols = cols;
+        self.screen_rows = rows;
         self.history_screen.resize(cols, rows);
         self.keyframe_screen.resize(cols, rows);
     }
@@ -124,6 +204,8 @@ impl<T> RemotePtySession<T> {
     pub fn scroll_screen_to_bottom(&mut self) {
         self.history_screen.scroll_to_bottom();
         self.keyframe_screen.scroll_to_bottom();
+        self.scroll_screen.clear();
+        self.host_scroll = None;
         self.screen_view = if self.has_keyframe_screen {
             RemotePtyScreenView::Keyframe
         } else {
@@ -215,6 +297,7 @@ impl<T> RemotePtySession<T> {
             self.history_screen.process(content.as_bytes());
             self.history_screen.scroll_to_bottom();
         }
+        self.host_scroll = None;
         if let Some(screen_data) = screen_data.filter(|data| !data.is_empty()) {
             self.replace_keyframe_screen(screen_data);
         } else {
@@ -281,7 +364,9 @@ impl<T> RemotePtySession<T> {
         self.sequence = 0;
         self.history_screen.clear();
         self.keyframe_screen.clear();
+        self.scroll_screen.clear();
         self.has_keyframe_screen = false;
+        self.host_scroll = None;
         self.screen_view = RemotePtyScreenView::History;
         self.reset_transient(false);
     }

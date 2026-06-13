@@ -40,6 +40,35 @@ pub fn remote_stun_urls() -> Vec<String> {
     ]
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RemoteTurnConfig {
+    pub urls: Vec<String>,
+    pub username: String,
+    pub credential: String,
+}
+
+/// Optional TURN relay configuration sourced from the environment:
+/// `CODUX_TURN_URLS` holds comma-separated `turn:`/`turns:` URLs, with
+/// optional `CODUX_TURN_USERNAME` / `CODUX_TURN_CREDENTIAL` for long-term
+/// credentials. Returns `None` when no TURN URLs are configured.
+pub fn remote_turn_config_from_env() -> Option<RemoteTurnConfig> {
+    let urls: Vec<String> = std::env::var("CODUX_TURN_URLS")
+        .ok()?
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect();
+    if urls.is_empty() {
+        return None;
+    }
+    Some(RemoteTurnConfig {
+        urls,
+        username: std::env::var("CODUX_TURN_USERNAME").unwrap_or_default(),
+        credential: std::env::var("CODUX_TURN_CREDENTIAL").unwrap_or_default(),
+    })
+}
+
 pub fn remote_url(
     base: &str,
     path: &str,

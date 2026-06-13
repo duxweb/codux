@@ -75,6 +75,18 @@ class TerminalBufferRetryCoordinator {
     return _sendAndTrack(id, send);
   }
 
+  /// Start watching an already-sent baseline request: schedules the retry
+  /// timer without re-sending. If no buffer arrives within [retryDelay],
+  /// `send` re-issues the request; after [maxRetries] attempts
+  /// [onRetryExhausted] fires so the caller can unfreeze the session.
+  void track(String sessionId, bool Function(String sessionId) send) {
+    _retryTimer?.cancel();
+    _pendingSessionId = sessionId;
+    _retryAttempt = 0;
+    _lastBufferedSessionId = sessionId;
+    _scheduleRetry(sessionId, send);
+  }
+
   void markReceived({
     required String? sessionId,
     required String? activeSessionId,

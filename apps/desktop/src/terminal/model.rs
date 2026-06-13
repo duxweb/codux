@@ -11,6 +11,10 @@ struct TerminalModel {
     sync_output_pending_notify: bool,
     sync_output_scan_tail: Vec<u8>,
     restored_bootstrap_active: bool,
+    // A remote client (mobile, always dark-themed) owns the viewport; color
+    // scheme queries must be answered for the renderer the user is actually
+    // looking at, not the desktop theme.
+    remote_viewer: bool,
     last_paint_sync: Option<Instant>,
     last_engine_resize_at: Option<Instant>,
     engine_resize_flush_pending: bool,
@@ -110,6 +114,14 @@ impl TerminalModel {
                 }
             }
         });
+        // Publish the real engine content (restored tail) right away: the
+        // seeded published content is dimensions-only, and if any later
+        // publish path stalls (no output, deferred sync state) the pane
+        // must not sit on a blank seed.
+        cx.spawn(async move |this: WeakEntity<Self>, cx| {
+            let _ = this.update(cx, |model, cx| model.schedule_snapshot_publish(cx));
+        })
+        .detach();
 
         Self {
             handle: TerminalStateHandle {
@@ -130,6 +142,7 @@ impl TerminalModel {
             sync_output_pending_notify: false,
             sync_output_scan_tail: Vec::new(),
             restored_bootstrap_active,
+            remote_viewer: false,
             last_paint_sync: None,
             last_engine_resize_at: None,
             engine_resize_flush_pending: false,
@@ -259,7 +272,19 @@ impl TerminalModel {
                         should_notify = true;
                     }
                 }
-                TerminalUiEvent::Viewport { cols, rows } => {
+                TerminalUiEvent::Viewport {
+                    cols,
+                    rows,
+                    remote_owner,
+                } => {
+                    let scheme_changed = self.remote_viewer != remote_owner
+                        && self.effective_scheme_is_dark() != scheme_is_dark(remote_owner, &self.colors);
+                    self.remote_viewer = remote_owner;
+                    if scheme_changed && self.color_scheme_state.updates_enabled {
+                        // Let the TUI re-adapt to the renderer that now owns
+                        // the viewport (mobile is always dark).
+                        self.write_color_scheme_report();
+                    }
                     self.resize(
                         cols as usize,
                         rows as usize,
@@ -341,16 +366,35 @@ impl TerminalModel {
     }
 
     fn respond_to_osc_color_queries(&self, update: &TerminalColorSchemeUpdate) {
+        // While a remote (always dark) client owns the viewport, report its
+        // colors: the TUI derives panel backgrounds from these replies and
+        // must match the renderer the user is looking at.
         for _ in 0..update.osc_foreground_queries {
-            self.write_bytes(&terminal_osc_color_report(10, self.colors.foreground()));
+            let report = if self.remote_viewer {
+                terminal_osc_rgb_report(10, REMOTE_VIEWER_FOREGROUND)
+            } else {
+                terminal_osc_color_report(10, self.colors.foreground())
+            };
+            self.write_bytes(&report);
         }
         for _ in 0..update.osc_background_queries {
-            self.write_bytes(&terminal_osc_color_report(11, self.colors.background()));
+            let report = if self.remote_viewer {
+                terminal_osc_rgb_report(11, REMOTE_VIEWER_BACKGROUND)
+            } else {
+                terminal_osc_color_report(11, self.colors.background())
+            };
+            self.write_bytes(&report);
         }
     }
 
     fn write_color_scheme_report(&self) {
-        self.write_bytes(terminal_color_scheme_report(&self.colors));
+        self.write_bytes(terminal_color_scheme_report_for(
+            self.effective_scheme_is_dark(),
+        ));
+    }
+
+    fn effective_scheme_is_dark(&self) -> bool {
+        scheme_is_dark(self.remote_viewer, &self.colors)
     }
 
     fn sync(&mut self, cx: &mut Context<Self>) -> TerminalContent {
@@ -747,6 +791,7 @@ impl TerminalModel {
             sync_output_pending_notify: false,
             sync_output_scan_tail: Vec::new(),
             restored_bootstrap_active: false,
+            remote_viewer: false,
             last_paint_sync: None,
             last_engine_resize_at: None,
             engine_resize_flush_pending: false,

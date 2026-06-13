@@ -1,5 +1,5 @@
 use crate::control_messages::transport_pong_for_ping_bytes;
-use crate::url_rules::remote_stun_urls;
+use crate::url_rules::{remote_stun_urls, remote_turn_config_from_env};
 use crate::websocket::{RemoteWebSocketControllerTransport, RemoteWebSocketHostTransport};
 use crate::{
     RemoteHostTransportConfig, RemoteTransport, RemoteTransportLogHandler,
@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use codux_protocol::{RemoteEnvelope, RemoteOutgoingEnvelope, RemoteTransportKind};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use webrtc::api::APIBuilder;
 use webrtc::api::media_engine::MediaEngine;
@@ -23,14 +24,23 @@ use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
+/// Minimum spacing between direct-route recovery attempts so a flapping
+/// network cannot trigger a re-negotiation storm.
+const CONTROLLER_DIRECT_RETRY_HOLD_DOWN: Duration = Duration::from_secs(30);
+
 pub(crate) struct RemoteControllerCompositeTransport {
     relay: Arc<RemoteWebSocketControllerTransport>,
-    pc: Arc<RTCPeerConnection>,
+    pc: Mutex<Option<Arc<RTCPeerConnection>>>,
     dc: Mutex<Option<Arc<RTCDataChannel>>>,
     direct_tx: mpsc::UnboundedSender<ControllerDirectSend>,
     direct_route: DirectRouteState,
     relay_route: RelayRouteState,
+    on_message: RemoteTransportMessageHandler,
     on_state: RemoteTransportStateHandler,
+    device_id: String,
+    ice_servers: Vec<RTCIceServer>,
+    direct_retry_at: Mutex<Option<Instant>>,
+    weak_self: Mutex<Weak<RemoteControllerCompositeTransport>>,
 }
 
 struct ControllerDirectSend {
@@ -108,6 +118,22 @@ pub(crate) fn controller_relay_state_handler(
     })
 }
 
+fn build_ice_servers(stun_urls: Vec<String>) -> Vec<RTCIceServer> {
+    let mut servers = vec![RTCIceServer {
+        urls: stun_urls,
+        ..Default::default()
+    }];
+    if let Some(turn) = remote_turn_config_from_env() {
+        servers.push(RTCIceServer {
+            urls: turn.urls,
+            username: turn.username,
+            credential: turn.credential,
+            ..Default::default()
+        });
+    }
+    servers
+}
+
 impl RemoteControllerCompositeTransport {
     pub(crate) async fn connect(
         config: &crate::RemoteControllerTransportConfig,
@@ -117,36 +143,29 @@ impl RemoteControllerCompositeTransport {
         on_message: RemoteTransportMessageHandler,
         on_state: RemoteTransportStateHandler,
     ) -> Result<Arc<Self>, String> {
-        let mut media_engine = MediaEngine::default();
-        media_engine
-            .register_default_codecs()
-            .map_err(|error| error.to_string())?;
-        let api = APIBuilder::new().with_media_engine(media_engine).build();
-        let pc = Arc::new(
-            api.new_peer_connection(RTCConfiguration {
-                ice_servers: vec![RTCIceServer {
-                    urls: if config.stun_urls.is_empty() {
-                        remote_stun_urls()
-                    } else {
-                        config.stun_urls.clone()
-                    },
-                    ..Default::default()
-                }],
-                ..Default::default()
-            })
-            .await
-            .map_err(|error| error.to_string())?,
-        );
+        let ice_servers = build_ice_servers(if config.stun_urls.is_empty() {
+            remote_stun_urls()
+        } else {
+            config.stun_urls.clone()
+        });
         let (direct_tx, direct_rx) = mpsc::unbounded_channel::<ControllerDirectSend>();
         let transport = Arc::new(Self {
             relay,
-            pc: Arc::clone(&pc),
+            pc: Mutex::new(None),
             dc: Mutex::new(None),
             direct_tx,
             direct_route,
             relay_route,
-            on_state: Arc::clone(&on_state),
+            on_message,
+            on_state,
+            device_id: config.device_id.clone(),
+            ice_servers,
+            direct_retry_at: Mutex::new(None),
+            weak_self: Mutex::new(Weak::new()),
         });
+        if let Ok(mut weak) = transport.weak_self.lock() {
+            *weak = Arc::downgrade(&transport);
+        }
         transport.spawn_direct_writer(direct_rx);
         let weak_transport = Arc::downgrade(&transport);
         transport
@@ -162,9 +181,31 @@ impl RemoteControllerCompositeTransport {
                 }
                 true
             })));
+        transport.negotiate_direct().await?;
+        Ok(transport)
+    }
 
-        let ice_relay = Arc::clone(&transport.relay);
-        let ice_device_id = config.device_id.clone();
+    /// Builds a fresh peer connection plus data channel, swaps it in as the
+    /// current direct route, and sends a `webrtc.offer` over the relay. Used
+    /// for the initial negotiation and for re-negotiation after the direct
+    /// route was demoted to relay.
+    async fn negotiate_direct(self: &Arc<Self>) -> Result<(), String> {
+        let mut media_engine = MediaEngine::default();
+        media_engine
+            .register_default_codecs()
+            .map_err(|error| error.to_string())?;
+        let api = APIBuilder::new().with_media_engine(media_engine).build();
+        let pc = Arc::new(
+            api.new_peer_connection(RTCConfiguration {
+                ice_servers: self.ice_servers.clone(),
+                ..Default::default()
+            })
+            .await
+            .map_err(|error| error.to_string())?,
+        );
+
+        let ice_relay = Arc::clone(&self.relay);
+        let ice_device_id = self.device_id.clone();
         pc.on_ice_candidate(Box::new(move |candidate| {
             let ice_relay = Arc::clone(&ice_relay);
             let ice_device_id = ice_device_id.clone();
@@ -183,29 +224,34 @@ impl RemoteControllerCompositeTransport {
             })
         }));
 
-        let state_handler = Arc::clone(&on_state);
-        let direct_route = transport.direct_route.clone();
-        let state_transport = Arc::clone(&transport);
+        let state_transport = Arc::downgrade(self);
+        let state_pc = Arc::downgrade(&pc);
         pc.on_peer_connection_state_change(Box::new(move |state| {
-            let state_handler = Arc::clone(&state_handler);
-            let direct_route = direct_route.clone();
-            let relay_route = state_transport.relay_route.clone();
-            let relay = Arc::clone(&state_transport.relay);
+            let state_transport = state_transport.clone();
+            let state_pc = state_pc.clone();
             Box::pin(async move {
-                if matches!(
+                if !matches!(
                     state,
                     RTCPeerConnectionState::Failed
                         | RTCPeerConnectionState::Disconnected
                         | RTCPeerConnectionState::Closed
                 ) {
-                    if direct_route.mark_unhealthy() {
-                        if relay.is_open() && relay_route.is_ready() {
-                            state_handler(String::new(), "connected:path=relay".to_string());
-                        } else {
-                            relay_route.set_ready(false);
-                            state_handler(String::new(), "closed".to_string());
-                        }
-                    }
+                    return;
+                }
+                let Some(transport) = state_transport.upgrade() else {
+                    return;
+                };
+                let Some(pc) = state_pc.upgrade() else {
+                    return;
+                };
+                // Ignore terminal states from a superseded peer connection so
+                // a re-negotiated direct route is not demoted by its
+                // predecessor shutting down.
+                if !transport.is_current_peer(&pc) {
+                    return;
+                }
+                if transport.direct_route.mark_unhealthy() {
+                    transport.publish_current_path_after_direct_loss();
                 }
             })
         }));
@@ -215,13 +261,22 @@ impl RemoteControllerCompositeTransport {
             .await
             .map_err(|error| error.to_string())?;
         install_controller_data_channel(
-            Arc::clone(&transport),
+            Arc::downgrade(self),
             Arc::clone(&dc),
-            on_message,
-            on_state,
+            Arc::clone(&self.on_message),
+            Arc::clone(&self.on_state),
         );
-        if let Ok(mut current) = transport.dc.lock() {
+
+        let previous_pc = self
+            .pc
+            .lock()
+            .ok()
+            .and_then(|mut current| current.replace(Arc::clone(&pc)));
+        if let Ok(mut current) = self.dc.lock() {
             *current = Some(dc);
+        }
+        if let Some(previous) = previous_pc {
+            let _ = previous.close().await;
         }
 
         let offer = pc
@@ -238,13 +293,31 @@ impl RemoteControllerCompositeTransport {
             .await
             .ok_or_else(|| "Missing WebRTC local offer.".to_string())?;
         send_controller_signal(
-            &transport.relay,
+            &self.relay,
             "webrtc.offer",
-            &config.device_id,
+            &self.device_id,
             json!({ "description": description }),
         );
+        Ok(())
+    }
 
-        Ok(transport)
+    fn current_pc(&self) -> Option<Arc<RTCPeerConnection>> {
+        self.pc.lock().ok().and_then(|current| current.clone())
+    }
+
+    fn is_current_peer(&self, pc: &Arc<RTCPeerConnection>) -> bool {
+        self.current_pc()
+            .map(|current| Arc::ptr_eq(&current, pc))
+            .unwrap_or(false)
+    }
+
+    fn is_current_channel(&self, dc: &Arc<RTCDataChannel>) -> bool {
+        self.dc
+            .lock()
+            .ok()
+            .and_then(|current| current.clone())
+            .map(|current| Arc::ptr_eq(&current, dc))
+            .unwrap_or(false)
     }
 
     fn spawn_direct_writer(
@@ -290,7 +363,9 @@ impl RemoteControllerCompositeTransport {
                     .cloned()
                     .and_then(|value| session_description_from_value(value).ok())
                 {
-                    let _ = self.pc.set_remote_description(description).await;
+                    if let Some(pc) = self.current_pc() {
+                        let _ = pc.set_remote_description(description).await;
+                    }
                 }
             }
             "webrtc.ice" => {
@@ -300,7 +375,9 @@ impl RemoteControllerCompositeTransport {
                     .cloned()
                     .and_then(|value| serde_json::from_value::<RTCIceCandidateInit>(value).ok())
                 {
-                    let _ = self.pc.add_ice_candidate(candidate).await;
+                    if let Some(pc) = self.current_pc() {
+                        let _ = pc.add_ice_candidate(candidate).await;
+                    }
                 }
             }
             _ => {}
@@ -322,6 +399,33 @@ impl RemoteControllerCompositeTransport {
             self.relay_route.set_ready(false);
             (self.on_state)(String::new(), "closed".to_string());
         }
+    }
+
+    /// Attempts to re-upgrade a demoted direct route by re-negotiating the
+    /// peer connection over the relay, rate limited by a hold-down so probes
+    /// can fire freely without causing an offer storm.
+    fn try_direct_recovery(&self) {
+        if self.direct_route.is_ready() || !self.relay.is_open() {
+            return;
+        }
+        let now = Instant::now();
+        {
+            let Ok(mut last_retry) = self.direct_retry_at.lock() else {
+                return;
+            };
+            if let Some(previous) = *last_retry {
+                if now.duration_since(previous) < CONTROLLER_DIRECT_RETRY_HOLD_DOWN {
+                    return;
+                }
+            }
+            *last_retry = Some(now);
+        }
+        let Some(transport) = self.weak_self.lock().ok().and_then(|weak| weak.upgrade()) else {
+            return;
+        };
+        tokio::spawn(async move {
+            let _ = transport.negotiate_direct().await;
+        });
     }
 }
 
@@ -363,15 +467,18 @@ impl RemoteTransport for RemoteControllerCompositeTransport {
     fn probe_preferred_route(&self) -> bool {
         if let Some(state) = preferred_route_probe_state(&self.direct_route) {
             (self.on_state)(String::new(), state.to_string());
-            true
-        } else {
-            false
+            return true;
         }
+        self.try_direct_recovery();
+        false
     }
 
     async fn shutdown(&self) {
         self.relay.shutdown().await;
-        let _ = self.pc.close().await;
+        let pc = self.pc.lock().ok().and_then(|mut current| current.take());
+        if let Some(pc) = pc {
+            let _ = pc.close().await;
+        }
     }
 }
 
@@ -382,10 +489,17 @@ pub(crate) fn preferred_route_probe_state(direct_route: &DirectRouteState) -> Op
 pub struct RemoteWebRtcHostTransport {
     relay: Mutex<Option<Arc<RemoteWebSocketHostTransport>>>,
     peers: Mutex<HashMap<String, Arc<WebRtcPeer>>>,
-    ice_servers: Vec<String>,
+    ice_servers: Vec<RTCIceServer>,
+    direct_tx: mpsc::UnboundedSender<HostDirectSend>,
     on_message: RemoteTransportMessageHandler,
     on_state: RemoteTransportStateHandler,
     on_log: Option<RemoteTransportLogHandler>,
+}
+
+struct HostDirectSend {
+    channel: Arc<RTCDataChannel>,
+    text: String,
+    fallback_data: Vec<u8>,
 }
 
 struct WebRtcPeer {
@@ -402,18 +516,21 @@ impl RemoteWebRtcHostTransport {
         on_pairing: RemoteTransportPairingHandler,
         on_log: Option<RemoteTransportLogHandler>,
     ) -> Result<Arc<Self>, String> {
+        let (direct_tx, direct_rx) = mpsc::unbounded_channel::<HostDirectSend>();
         let transport = Arc::new(Self {
             relay: Mutex::new(None),
             peers: Mutex::new(HashMap::new()),
-            ice_servers: if config.stun_urls.is_empty() {
+            ice_servers: build_ice_servers(if config.stun_urls.is_empty() {
                 remote_stun_urls()
             } else {
                 config.stun_urls.clone()
-            },
+            }),
+            direct_tx,
             on_message: Arc::clone(&on_message),
             on_state: Arc::clone(&on_state),
             on_log: on_log.clone(),
         });
+        transport.spawn_direct_writer(direct_rx);
         let weak = Arc::downgrade(&transport);
         let relay = RemoteWebSocketHostTransport::connect(
             ws_url,
@@ -439,6 +556,22 @@ impl RemoteWebRtcHostTransport {
         }
         transport.log(format!("webrtc_transport ready host={}", config.host_id));
         Ok(transport)
+    }
+
+    /// Serializes direct data-channel sends through a single writer task so
+    /// messages keep their submission order; per-message spawns offered no
+    /// ordering guarantee.
+    fn spawn_direct_writer(self: &Arc<Self>, mut rx: mpsc::UnboundedReceiver<HostDirectSend>) {
+        let weak = Arc::downgrade(self);
+        tokio::spawn(async move {
+            while let Some(message) = rx.recv().await {
+                if message.channel.send_text(&message.text).await.is_err() {
+                    if let Some(transport) = weak.upgrade() {
+                        let _ = transport.send_relay(message.fallback_data);
+                    }
+                }
+            }
+        });
     }
 
     async fn handle_signal(self: Arc<Self>, device_id: String, envelope: RemoteEnvelope) {
@@ -538,10 +671,7 @@ impl RemoteWebRtcHostTransport {
         let api = APIBuilder::new().with_media_engine(media_engine).build();
         let pc = Arc::new(
             api.new_peer_connection(RTCConfiguration {
-                ice_servers: vec![RTCIceServer {
-                    urls: self.ice_servers.clone(),
-                    ..Default::default()
-                }],
+                ice_servers: self.ice_servers.clone(),
                 ..Default::default()
             })
             .await
@@ -637,17 +767,14 @@ impl RemoteTransport for RemoteWebRtcHostTransport {
             if let Some(channel) = channel {
                 if channel.ready_state() == RTCDataChannelState::Open {
                     if let Ok(text) = String::from_utf8(data.clone()) {
-                        let relay = self.relay.lock().ok().and_then(|value| value.clone());
-                        let data = data.clone();
-                        let channel = Arc::clone(&channel);
-                        tokio::spawn(async move {
-                            if let Err(_error) = channel.send_text(text).await {
-                                if let Some(relay) = relay {
-                                    let _ = relay.send(data, None);
-                                }
-                            }
-                        });
-                        return true;
+                        return self
+                            .direct_tx
+                            .send(HostDirectSend {
+                                channel,
+                                text,
+                                fallback_data: data,
+                            })
+                            .is_ok();
                     }
                 }
             }
@@ -724,31 +851,63 @@ fn install_data_channel(
 }
 
 fn install_controller_data_channel(
-    transport: Arc<RemoteControllerCompositeTransport>,
+    transport: Weak<RemoteControllerCompositeTransport>,
     dc: Arc<RTCDataChannel>,
     on_message: RemoteTransportMessageHandler,
     on_state: RemoteTransportStateHandler,
 ) {
-    let open_transport = Arc::clone(&transport);
+    let open_transport = transport.clone();
     let open_state = Arc::clone(&on_state);
+    let open_dc = Arc::downgrade(&dc);
     dc.on_open(Box::new(move || {
-        let open_transport = Arc::clone(&open_transport);
+        let open_transport = open_transport.clone();
         let open_state = Arc::clone(&open_state);
+        let open_dc = open_dc.clone();
         Box::pin(async move {
-            open_transport.direct_route.set_ready(true);
+            let Some(transport) = open_transport.upgrade() else {
+                return;
+            };
+            let Some(dc) = open_dc.upgrade() else {
+                return;
+            };
+            // A channel from a superseded negotiation must not flip the
+            // current direct route ready.
+            if !transport.is_current_channel(&dc) {
+                return;
+            }
+            transport.direct_route.set_ready(true);
             open_state(String::new(), "connected:path=direct".to_string());
         })
     }));
-    let close_transport = Arc::clone(&transport);
+    let close_transport = transport.clone();
     let close_state = Arc::clone(&on_state);
+    let close_dc = Arc::downgrade(&dc);
     dc.on_close(Box::new(move || {
-        let close_transport = Arc::clone(&close_transport);
+        let close_transport = close_transport.clone();
         let close_state = Arc::clone(&close_state);
+        let close_dc = close_dc.clone();
         Box::pin(async move {
-            if let Ok(mut current) = close_transport.dc.lock() {
-                *current = None;
-            }
-            if close_transport.direct_route.mark_unhealthy() {
+            let Some(transport) = close_transport.upgrade() else {
+                return;
+            };
+            let Some(dc) = close_dc.upgrade() else {
+                return;
+            };
+            let was_current = {
+                if let Ok(mut current) = transport.dc.lock() {
+                    let is_current = current
+                        .as_ref()
+                        .map(|existing| Arc::ptr_eq(existing, &dc))
+                        .unwrap_or(false);
+                    if is_current {
+                        *current = None;
+                    }
+                    is_current
+                } else {
+                    false
+                }
+            };
+            if was_current && transport.direct_route.mark_unhealthy() {
                 close_state(String::new(), "connected:path=relay".to_string());
             }
         })

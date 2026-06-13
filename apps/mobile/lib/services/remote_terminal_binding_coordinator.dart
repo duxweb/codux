@@ -114,6 +114,7 @@ class RemoteTerminalBindingCoordinator {
     required String reason,
     required TerminalBufferCapability capability,
     bool baseline = true,
+    bool replaceActive = false,
   }) {
     final cleanSessionId = sessionId.trim();
     if (cleanSessionId.isEmpty) return false;
@@ -133,6 +134,7 @@ class RemoteTerminalBindingCoordinator {
         requestId,
         requireBaseline: true,
         resetAssembler: true,
+        replaceActive: replaceActive,
       );
       if (!started) return false;
     }
@@ -159,7 +161,13 @@ class RemoteTerminalBindingCoordinator {
     if (!transportConnected || !protocolReady) return;
     final sessionId = activeSessionId;
     if (sessionId != null && sessionId.isNotEmpty) {
-      final baseline = !_outputController.hasCachedOutput(sessionId);
+      // While the cached output sequence is continuous the cache is already
+      // an exact mirror, so re-subscribing with baseline:false avoids holding
+      // live output for a baseline round-trip; a recorded gap means lost
+      // frames that only a baseline can repair.
+      final baseline =
+          !_outputController.hasCachedOutput(sessionId) ||
+          _outputController.hasSequenceGap(sessionId);
       final requested = subscribeSessionBaseline(
         sessionId: sessionId,
         reason: reason,
@@ -213,7 +221,9 @@ class RemoteTerminalBindingCoordinator {
     required bool restored,
   }) {
     var baselineRequested = false;
-    final hasCachedOutput = _outputController.hasCachedOutput(bindSessionId);
+    final hasCachedOutput =
+        _outputController.hasCachedOutput(bindSessionId) &&
+        !_outputController.hasSequenceGap(bindSessionId);
     final needsFullBuffer = plan.bindFullBuffer && !hasCachedOutput;
     if (selectedProjectId != null) {
       replaceProjectSubscription(

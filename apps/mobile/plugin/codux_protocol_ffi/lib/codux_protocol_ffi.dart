@@ -457,6 +457,11 @@ final _terminalSessionScrollScreenToBottom = _dylib
     .lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
       'codux_terminal_session_scroll_screen_to_bottom',
     );
+final _terminalSessionApplyHostScroll = _dylib
+    .lookupFunction<
+      Void Function(Pointer<Void>, Pointer<Utf8>, Int64, Int64, Int64, Int64),
+      void Function(Pointer<Void>, Pointer<Utf8>, int, int, int, int)
+    >('codux_terminal_session_apply_host_scroll');
 final _terminalSessionContent = _dylib
     .lookupFunction<
       Pointer<Utf8> Function(Pointer<Void>),
@@ -1278,6 +1283,28 @@ class TerminalCoreSession {
     _terminalSessionScrollScreenToBottom(_liveHandle());
   }
 
+  void applyHostScroll({
+    required String screenData,
+    required int displayOffset,
+    required int totalLines,
+    int marginRows = 0,
+    int marginRowsBelow = 0,
+  }) {
+    final screenDataPtr = screenData.toNativeUtf8();
+    try {
+      _terminalSessionApplyHostScroll(
+        _liveHandle(),
+        screenDataPtr,
+        displayOffset,
+        totalLines,
+        marginRows,
+        marginRowsBelow,
+      );
+    } finally {
+      malloc.free(screenDataPtr);
+    }
+  }
+
   void requireBaseline() {
     _terminalSessionRequireBaseline(_liveHandle());
   }
@@ -1401,6 +1428,8 @@ class TerminalScreenSnapshot {
     required this.rows,
     required this.totalLines,
     required this.displayOffset,
+    this.marginRows = 0,
+    this.marginRowsBelow = 0,
     required this.scrollPixelOffset,
     required this.applicationCursor,
     required this.cells,
@@ -1412,6 +1441,14 @@ class TerminalScreenSnapshot {
   final int rows;
   final int totalLines;
   final int displayOffset;
+
+  /// Rows at the top of the grid that are pre-rendered overscan context
+  /// above the visible viewport (host-served scrolling).
+  final int marginRows;
+
+  /// Rows at the bottom of the grid that are pre-rendered overscan context
+  /// below the visible viewport (host-served scrolling).
+  final int marginRowsBelow;
   final double scrollPixelOffset;
   final bool applicationCursor;
   final List<TerminalScreenCell> cells;
@@ -1425,6 +1462,8 @@ class TerminalScreenSnapshot {
       rows: _jsonInt(json['rows']),
       totalLines: _jsonInt(json['totalLines']),
       displayOffset: _jsonInt(json['displayOffset']),
+      marginRows: _jsonInt(json['marginRows']),
+      marginRowsBelow: _jsonInt(json['marginRowsBelow']),
       scrollPixelOffset: _jsonDouble(json['scrollPixelOffset']),
       applicationCursor: json['applicationCursor'] == true,
       cells: [
@@ -1725,11 +1764,16 @@ class TerminalOutputSequenceObservation {
     required this.action,
     required this.previousSeq,
     required this.shouldRender,
+    this.gap = false,
   });
 
   final String action;
   final int previousSeq;
   final bool shouldRender;
+
+  /// True when a live frame skipped ahead of the previously observed
+  /// sequence, meaning output was lost and a baseline resync is required.
+  final bool gap;
 
   factory TerminalOutputSequenceObservation.fromJson(
     Map<String, dynamic> json,
@@ -1738,6 +1782,7 @@ class TerminalOutputSequenceObservation {
       action: '${json['action'] ?? ''}',
       previousSeq: _jsonInt(json['previousSeq']),
       shouldRender: json['shouldRender'] == true,
+      gap: json['gap'] == true,
     );
   }
 }

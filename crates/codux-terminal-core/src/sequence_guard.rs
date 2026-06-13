@@ -72,6 +72,12 @@ impl RemoteSequenceWindow {
 
 fn sequence_channel_for(kind: &str, session_id: Option<&str>) -> String {
     match session_id.map(str::trim).filter(|value| !value.is_empty()) {
+        // Chunked baseline transfers are slow relative to the live output
+        // flood on the same session; sharing one window would drop late
+        // chunks as stale once 128 newer output frames have passed.
+        Some(session_id) if kind == "terminal.buffer" => {
+            format!("session:{session_id}:buffer")
+        }
         Some(session_id) => format!("session:{session_id}"),
         None => format!("type:{kind}"),
     }

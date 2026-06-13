@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:codux_protocol_ffi/codux_protocol_ffi.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
@@ -22,11 +20,17 @@ class TerminalScreenView extends StatefulWidget {
     required this.onSettleScroll,
     required this.onScrollToBottom,
     required this.onCursorBottom,
+    this.remoteScroll = false,
   });
 
   final TerminalScreenSnapshot? snapshot;
   final bool keyboardRequested;
   final bool scrollEnabled;
+
+  /// Whether scrollback is served by the host (with network latency).
+  /// The scroll position is owned by Flutter, so delayed host
+  /// confirmations only affect which snapshot rows are available to draw.
+  final bool remoteScroll;
   final ValueChanged<String> onInput;
   final void Function(int cols, int rows) onResize;
   final void Function(double pixels, double cellHeight) onScrollPixels;
@@ -39,33 +43,27 @@ class TerminalScreenView extends StatefulWidget {
 }
 
 class _TerminalScreenViewState extends State<TerminalScreenView>
-    with SingleTickerProviderStateMixin
     implements TextInputClient {
-  late final AnimationController _inertiaController;
+  final ScrollController _scrollController = ScrollController();
   final FocusNode _keyboardFocusNode = FocusNode(
     debugLabel: 'terminal-screen-input',
   );
   TextInputConnection? _inputConnection;
   TextEditingValue _editingValue = _terminalInputSentinelValue;
   bool _followTail = true;
-  bool _coreScrollFlushScheduled = false;
+  bool _scrollIdle = true;
+  bool _scrollFlushScheduled = false;
   bool _scrollToBottomScheduled = false;
-  double _pendingCoreScrollPixels = 0;
-  double _visualScrollOffset = 0;
-  double _unconfirmedCoreScrollPixels = 0;
-  double? _lastSnapshotScrollPosition;
-  double _lastInertiaPosition = 0;
-  double _dragPixels = 0;
-  double _fallbackEventTimeMs = 0;
+  bool _suppressScrollEmit = false;
+  double _pendingScrollPixels = 0;
+  double? _lastScrollOffset;
   bool _cursorBlinkVisible = true;
   Timer? _cursorBlinkTimer;
-  final List<_TerminalDragSample> _dragSamples = [];
 
   @override
   void initState() {
     super.initState();
-    _inertiaController = AnimationController.unbounded(vsync: this)
-      ..addListener(_handleInertiaTick);
+    _scrollController.addListener(_handleScrollOffsetChanged);
     _startCursorBlink();
     _syncKeyboardFocus();
   }
@@ -85,8 +83,6 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
         _cursorSignature(oldWidget.snapshot)) {
       _resetCursorBlink();
     }
-    _syncVisualScrollFromSnapshot(oldWidget.snapshot, widget.snapshot);
-    _syncFollowTailFromSnapshot();
   }
 
   @override
@@ -94,7 +90,7 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
     _cursorBlinkTimer?.cancel();
     _closeKeyboardConnection();
     _keyboardFocusNode.dispose();
-    _inertiaController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -138,6 +134,7 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
       if (!mounted || !_followTail || widget.snapshot?.displayOffset == 0) {
         return;
       }
+      _jumpToBottom();
       widget.onScrollToBottom();
     });
   }
@@ -199,22 +196,37 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
         const cellHeight = _terminalCellHeight;
         final cols = math.max(20, constraints.maxWidth ~/ cellWidth);
         final rows = math.max(8, constraints.maxHeight ~/ cellHeight);
+        final snapshot = widget.snapshot;
+        // The virtual content covers the full scrollback; the scroll offset
+        // is measured from the top of history, bottom = maxScrollExtent.
+        final contentHeight = (snapshot?.totalLines ?? 0) * cellHeight;
+        final scrollOffset = _scrollController.hasClients
+            ? _scrollController.position.pixels
+            : math.max(0.0, contentHeight - constraints.maxHeight);
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
           widget.onResize(cols, rows);
           final connection = _inputConnection;
           if (connection != null && connection.attached) {
             _syncKeyboardGeometry(connection);
           }
+          _maintainScrollAnchor();
           final screen = widget.snapshot;
           if (screen != null) {
+            final offsetNow = _scrollController.hasClients
+                ? _scrollController.position.pixels
+                : scrollOffset;
             final cursorBottom =
                 (screen.cursor.row + 1) * cellHeight +
-                screen.scrollPixelOffset +
-                _visualScrollOffset;
+                _painterScrollOffsetY(
+                  screen,
+                  offsetNow,
+                  constraints.maxHeight,
+                  cellHeight,
+                );
             widget.onCursorBottom(cursorBottom);
           }
         });
-        final snapshot = widget.snapshot;
 
         return KeyboardListener(
           focusNode: _keyboardFocusNode,
@@ -231,21 +243,33 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
                       cellWidth: cellWidth,
                       cellHeight: cellHeight,
                       fontSize: fontSize,
-                      scrollOffsetY:
-                          (snapshot?.scrollPixelOffset ?? 0) +
-                          _visualScrollOffset,
+                      scrollOffsetY: snapshot == null
+                          ? 0
+                          : _painterScrollOffsetY(
+                              snapshot,
+                              scrollOffset,
+                              constraints.maxHeight,
+                              cellHeight,
+                            ),
                       cursorBlinkVisible: _cursorBlinkVisible,
                     ),
                   ),
                 ),
+                // Transparent scroll surface: Flutter physics owns the
+                // position; the painter above translates the snapshot to it.
                 Positioned.fill(
-                  child: _TerminalScrollGestureLayer(
-                    enabled: widget.scrollEnabled,
-                    onScrollStart: _handleScrollStart,
-                    onScrollPixels: _handleScrollPixels,
-                    onPointerScrollPixels: _handlePointerScrollPixels,
-                    onScrollEnd: _handleScrollEnd,
-                    onScrollCancel: _handleScrollCancel,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _handleScrollNotification,
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      physics: widget.scrollEnabled
+                          ? const ClampingScrollPhysics()
+                          : const NeverScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: contentHeight,
+                        width: constraints.maxWidth,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -256,284 +280,130 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
     );
   }
 
-  bool _scrollByPixels(double pixels, double cellHeight) {
-    if (!pixels.isFinite || pixels == 0 || cellHeight <= 0) return false;
-    final scrollPosition = _currentScrollPosition(cellHeight);
-    if (scrollPosition != null && pixels < 0) {
-      if (scrollPosition <= _terminalScrollEpsilon) {
-        return false;
+  void _handleScrollOffsetChanged() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final previous = _lastScrollOffset;
+    _lastScrollOffset = position.pixels;
+    // Follow the tail while the position stays within half a row of the
+    // bottom; scrolling away releases the pin.
+    _followTail =
+        position.maxScrollExtent - position.pixels <= _terminalCellHeight / 2;
+    setState(() {});
+    if (_suppressScrollEmit || previous == null) return;
+    // Offset grows downward from the top of history; the contract wants
+    // positive pixels for scrolling up into history.
+    final delta = previous - position.pixels;
+    if (delta == 0) return;
+    _pendingScrollPixels += delta;
+    _scheduleScrollFlush();
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      _scrollIdle = false;
+    } else if (notification is ScrollEndNotification) {
+      _scrollIdle = true;
+      if (!_suppressScrollEmit) {
+        _flushScrollPixels();
+        widget.onSettleScroll();
       }
-      pixels = math.max(pixels, -scrollPosition);
-      if (pixels.abs() < _terminalScrollEpsilon) {
-        return false;
-      }
     }
-    if (pixels > 0) _followTail = false;
-    setState(() {
-      _visualScrollOffset += pixels;
-      _pendingCoreScrollPixels += pixels;
-    });
-    _scheduleCoreScrollFlush();
-    return true;
+    return false;
   }
 
-  void _handleScrollPixels(double pixels, Duration? sourceTimeStamp) {
-    _dragPixels += pixels;
-    _recordDragSample(sourceTimeStamp);
-    _scrollByPixels(pixels, _terminalCellHeight);
-  }
-
-  void _handlePointerScrollPixels(double pixels) {
-    _stopInertia();
-    _scrollByPixels(pixels, _terminalCellHeight);
-  }
-
-  void _handleScrollStart(Duration? sourceTimeStamp) {
-    _stopInertia();
-    _dragPixels = 0;
-    _dragSamples
-      ..clear()
-      ..add(_TerminalDragSample(_eventTimeMs(sourceTimeStamp), _dragPixels));
-  }
-
-  void _handleScrollEnd(double velocity) {
-    _flushCoreScroll();
-    final inertiaVelocity = _resolveInertiaVelocity(velocity);
-    if (inertiaVelocity != 0) {
-      _startInertia(inertiaVelocity);
-    }
-    _dragPixels = 0;
-    _dragSamples.clear();
-    if (_inertiaController.isAnimating) return;
-    _syncFollowTailFromSnapshot();
-    widget.onSettleScroll();
-  }
-
-  void _handleScrollCancel() {
-    _stopInertia();
-    _dragPixels = 0;
-    _dragSamples.clear();
-    _flushCoreScroll();
-    _syncFollowTailFromSnapshot();
-    widget.onSettleScroll();
-  }
-
-  double _resolveInertiaVelocity(double primaryVelocity) {
-    final sampledVelocity = _sampledReleaseVelocity();
-    final velocity = _resolveReleaseVelocity(primaryVelocity, sampledVelocity);
-    if (!velocity.isFinite) return 0;
-
-    final speed = velocity.abs();
-    final speedT = _smoothStep(speed / _terminalFullInertiaVelocity);
-    final distanceT = _smoothStep(
-      _dragPixels.abs() / _terminalFullInertiaDistance,
-    );
-    final distanceScale =
-        _terminalMinInertiaDistanceScale +
-        (1 - _terminalMinInertiaDistanceScale) * distanceT;
-    final resolvedVelocity =
-        velocity.sign *
-        math.min(speed, _terminalMaxInertiaVelocity) *
-        speedT *
-        distanceScale;
-
-    if (resolvedVelocity.abs() < _terminalMinResolvedInertiaVelocity) {
-      return 0;
-    }
-    return resolvedVelocity;
-  }
-
-  double _resolveReleaseVelocity(
-    double primaryVelocity,
-    double? sampledVelocity,
-  ) {
-    if (sampledVelocity == null || !sampledVelocity.isFinite) {
-      return primaryVelocity;
-    }
-    if (!primaryVelocity.isFinite || primaryVelocity == 0) {
-      return sampledVelocity;
-    }
-    if (sampledVelocity.sign == primaryVelocity.sign) {
-      return sampledVelocity.abs() >= primaryVelocity.abs()
-          ? sampledVelocity
-          : primaryVelocity;
-    }
-    return sampledVelocity;
-  }
-
-  double? _sampledReleaseVelocity() {
-    if (_dragSamples.length < 2) return null;
-    final last = _dragSamples.last;
-    var first = _dragSamples.first;
-    for (final sample in _dragSamples.reversed) {
-      final elapsedMs = last.timeMs - sample.timeMs;
-      if (elapsedMs >= _terminalMinVelocitySampleMs) {
-        first = sample;
-      }
-      if (elapsedMs >= _terminalVelocitySampleWindowMs) break;
-    }
-
-    final elapsedMs = last.timeMs - first.timeMs;
-    if (elapsedMs < _terminalMinVelocitySampleMs) return null;
-    return (last.pixels - first.pixels) / elapsedMs * 1000;
-  }
-
-  void _recordDragSample(Duration? sourceTimeStamp) {
-    final timeMs = _eventTimeMs(sourceTimeStamp);
-    if (_dragSamples.isNotEmpty && timeMs < _dragSamples.last.timeMs) {
-      _dragSamples.clear();
-    }
-    _dragSamples.add(_TerminalDragSample(timeMs, _dragPixels));
-    while (_dragSamples.length > 2 &&
-        timeMs - _dragSamples.first.timeMs > _terminalVelocitySampleWindowMs) {
-      _dragSamples.removeAt(0);
-    }
-  }
-
-  double _eventTimeMs(Duration? sourceTimeStamp) {
-    final frameTimeStamp =
-        SchedulerBinding.instance.currentSystemFrameTimeStamp;
-    final timestamp = sourceTimeStamp ?? frameTimeStamp;
-    final eventTimeMs = timestamp.inMicroseconds / 1000;
-    if (eventTimeMs > _fallbackEventTimeMs) {
-      _fallbackEventTimeMs = eventTimeMs;
-      return eventTimeMs;
-    }
-    _fallbackEventTimeMs += _terminalFallbackEventStepMs;
-    return _fallbackEventTimeMs;
-  }
-
-  void _handleInertiaTick() {
-    final delta = _inertiaController.value - _lastInertiaPosition;
-    _lastInertiaPosition = _inertiaController.value;
-    if (delta.abs() < _terminalScrollEpsilon) return;
-    if (!_scrollByPixels(delta, _terminalCellHeight)) {
-      _stopInertia();
-    }
-  }
-
-  void _startInertia(double velocity) {
-    if (!velocity.isFinite ||
-        velocity.abs() < _terminalMinResolvedInertiaVelocity) {
-      return;
-    }
-    _lastInertiaPosition = 0;
-    _inertiaController.value = 0;
-    _inertiaController
-        .animateWith(
-          ClampingScrollSimulation(
-            position: 0,
-            velocity: velocity.clamp(
-              -_terminalMaxInertiaVelocity,
-              _terminalMaxInertiaVelocity,
-            ),
-            friction: _terminalInertiaFriction,
-          ),
-        )
-        .whenCompleteOrCancel(() {
-          if (!mounted) return;
-          _lastInertiaPosition = 0;
-          _flushCoreScroll();
-          _syncFollowTailFromSnapshot();
-          widget.onSettleScroll();
-        });
-  }
-
-  void _stopInertia() {
-    if (_inertiaController.isAnimating) {
-      _inertiaController.stop();
-    }
-    _lastInertiaPosition = 0;
-  }
-
-  void _scheduleCoreScrollFlush() {
-    if (_coreScrollFlushScheduled) return;
-    _coreScrollFlushScheduled = true;
+  void _scheduleScrollFlush() {
+    if (_scrollFlushScheduled) return;
+    _scrollFlushScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _coreScrollFlushScheduled = false;
+      _scrollFlushScheduled = false;
       if (!mounted) return;
-      _flushCoreScroll();
+      _flushScrollPixels();
     });
   }
 
-  void _flushCoreScroll() {
-    final pixels = _pendingCoreScrollPixels;
+  void _flushScrollPixels() {
+    final pixels = _pendingScrollPixels;
     if (pixels == 0) return;
-    _pendingCoreScrollPixels = 0;
-    _unconfirmedCoreScrollPixels += pixels;
+    _pendingScrollPixels = 0;
     widget.onScrollPixels(pixels, _terminalCellHeight);
   }
 
-  void _syncVisualScrollFromSnapshot(
-    TerminalScreenSnapshot? oldSnapshot,
-    TerminalScreenSnapshot? newSnapshot,
+  void _maintainScrollAnchor() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    // Pin to the (possibly grown) bottom while following the tail; never
+    // fight an in-flight user drag or fling.
+    if (_followTail &&
+        _scrollIdle &&
+        position.maxScrollExtent - position.pixels > _terminalScrollEpsilon) {
+      _suppressedJumpTo(position.maxScrollExtent);
+    }
+    // Content-extent shrink corrections move pixels without notifying;
+    // realign so the next user delta is measured from the real offset.
+    _lastScrollOffset = position.pixels;
+  }
+
+  void _jumpToBottom() {
+    if (!_scrollController.hasClients) return;
+    _suppressedJumpTo(_scrollController.position.maxScrollExtent);
+  }
+
+  void _suppressedJumpTo(double target) {
+    _suppressScrollEmit = true;
+    try {
+      _scrollController.jumpTo(target);
+    } finally {
+      _suppressScrollEmit = false;
+    }
+  }
+
+  // The snapshot grid is drawn at absolute content coordinates: the
+  // viewport portion sits with its bottom at line totalLines -
+  // displayOffset, marginRows of above-context render above it and
+  // marginRowsBelow of below-context render below it, all translated by
+  // the Flutter scroll offset. The sub-line scrollPixelOffset is already
+  // folded into the offset the host was asked to show, so it does not
+  // reappear here.
+  double _painterScrollOffsetY(
+    TerminalScreenSnapshot screen,
+    double scrollOffset,
+    double viewportHeight,
+    double cellHeight,
   ) {
-    if (newSnapshot == null) {
-      _lastSnapshotScrollPosition = null;
-      _unconfirmedCoreScrollPixels = 0;
-      return;
-    }
-    final newPosition = _snapshotScrollPosition(newSnapshot);
-    final previousPosition =
-        _lastSnapshotScrollPosition ??
-        (oldSnapshot == null
-            ? newPosition
-            : _snapshotScrollPosition(oldSnapshot));
-    _lastSnapshotScrollPosition = newPosition;
-
-    final consumedPixels = newPosition - previousPosition;
-    final snapshotChanged =
-        !identical(oldSnapshot, newSnapshot) && oldSnapshot != newSnapshot;
-    if (_unconfirmedCoreScrollPixels == 0) return;
-    if (consumedPixels == 0) {
-      if (!snapshotChanged) return;
-      _stopInertia();
-      _visualScrollOffset -= _unconfirmedCoreScrollPixels;
-      _unconfirmedCoreScrollPixels = 0;
-      if (_visualScrollOffset.abs() < _terminalScrollEpsilon) {
-        _visualScrollOffset = 0;
-      }
-      return;
-    }
-
-    final consumedSign = consumedPixels.sign;
-    final pendingSign = _unconfirmedCoreScrollPixels.sign;
-    if (consumedSign != pendingSign) {
-      _stopInertia();
-      _unconfirmedCoreScrollPixels = 0;
-      return;
-    }
-
-    final appliedPixels = math.min(
-      consumedPixels.abs(),
-      _unconfirmedCoreScrollPixels.abs(),
-    );
-    final adjustment = consumedSign * appliedPixels;
-    _unconfirmedCoreScrollPixels -= adjustment;
-    _visualScrollOffset -= adjustment;
-
-    if (_unconfirmedCoreScrollPixels.abs() < _terminalScrollEpsilon) {
-      _unconfirmedCoreScrollPixels = 0;
-    }
-    if (_visualScrollOffset.abs() < _terminalScrollEpsilon) {
-      _visualScrollOffset = 0;
-    }
+    final viewportRows =
+        screen.rows - screen.marginRows - screen.marginRowsBelow;
+    final absoluteTopY =
+        (screen.totalLines -
+            screen.displayOffset -
+            viewportRows -
+            screen.marginRows) *
+        cellHeight;
+    return absoluteTopY -
+        scrollOffset +
+        _bottomAnchorOffset(screen, viewportHeight, cellHeight);
   }
 
-  void _syncFollowTailFromSnapshot() {
-    final screen = widget.snapshot;
-    if (screen == null) return;
-    if (screen.displayOffset == 0 && screen.scrollPixelOffset <= 0) {
-      _followTail = true;
+  // When the host grid is at least one full row shorter than this screen
+  // (the desktop owns the viewport from a smaller window) and all content
+  // fits in the viewport, anchor content to the bottom so the TUI composer
+  // sits by the keyboard. Taller content is already bottom-aligned at
+  // maxScrollExtent by the absolute coordinate math.
+  double _bottomAnchorOffset(
+    TerminalScreenSnapshot screen,
+    double viewportHeight,
+    double cellHeight,
+  ) {
+    if (screen.marginRows > 0 ||
+        screen.marginRowsBelow > 0 ||
+        screen.displayOffset > 0) {
+      return 0;
     }
-  }
-
-  double? _currentScrollPosition(double cellHeight) {
-    final screen = widget.snapshot;
-    if (screen == null) return null;
-    return screen.displayOffset * cellHeight +
-        screen.scrollPixelOffset +
-        _visualScrollOffset;
+    final contentRows =
+        screen.rows - screen.marginRows - screen.marginRowsBelow;
+    final deficit = viewportHeight - contentRows * cellHeight;
+    if (deficit < cellHeight) return 0;
+    return math.max(0.0, viewportHeight - screen.totalLines * cellHeight);
   }
 
   @override
@@ -656,66 +526,11 @@ class _TerminalScreenViewState extends State<TerminalScreenView>
   void showAutocorrectionPromptRect(int start, int end) {}
 }
 
-class _TerminalScrollGestureLayer extends StatelessWidget {
-  const _TerminalScrollGestureLayer({
-    required this.enabled,
-    required this.onScrollStart,
-    required this.onScrollPixels,
-    required this.onPointerScrollPixels,
-    required this.onScrollEnd,
-    required this.onScrollCancel,
-  });
-
-  final bool enabled;
-  final ValueChanged<Duration?> onScrollStart;
-  final void Function(double pixels, Duration? sourceTimeStamp) onScrollPixels;
-  final ValueChanged<double> onPointerScrollPixels;
-  final ValueChanged<double> onScrollEnd;
-  final VoidCallback onScrollCancel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerSignal: (event) {
-        if (!enabled) return;
-        if (event is PointerScrollEvent) {
-          onPointerScrollPixels(-event.scrollDelta.dy);
-        }
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        dragStartBehavior: DragStartBehavior.down,
-        onVerticalDragStart: enabled
-            ? (details) => onScrollStart(details.sourceTimeStamp)
-            : null,
-        onVerticalDragUpdate: enabled
-            ? (details) =>
-                  onScrollPixels(details.delta.dy, details.sourceTimeStamp)
-            : null,
-        onVerticalDragEnd: enabled
-            ? (details) => onScrollEnd(details.primaryVelocity ?? 0)
-            : null,
-        onVerticalDragCancel: enabled ? onScrollCancel : null,
-      ),
-    );
-  }
-}
-
 const _terminalFontSize = 11.5;
 const _terminalLineHeight = 1.25;
 const _terminalCellHeight = _terminalFontSize * _terminalLineHeight;
 const _terminalLetterSpacing = 0.0;
 const _terminalFontFamily = 'Maple Mono NF CN';
-const _terminalMaxInertiaVelocity = 3200.0;
-const _terminalInertiaFriction = 0.035;
-const _terminalFullInertiaVelocity = 1800.0;
-const _terminalMinResolvedInertiaVelocity = 4.0;
-const _terminalFullInertiaDistance = _terminalCellHeight * 6;
-const _terminalMinInertiaDistanceScale = 0.25;
-const _terminalVelocitySampleWindowMs = 120.0;
-const _terminalMinVelocitySampleMs = 16.0;
-const _terminalFallbackEventStepMs = 16.0;
 const _terminalScrollEpsilon = 0.01;
 const _terminalCursorBlinkInterval = Duration(milliseconds: 530);
 const _terminalInputSentinel = '  ';
@@ -751,27 +566,10 @@ String _terminalInputFromEditingValue(TextEditingValue next) {
   return '';
 }
 
-double _snapshotScrollPosition(TerminalScreenSnapshot snapshot) {
-  return snapshot.displayOffset * _terminalCellHeight +
-      snapshot.scrollPixelOffset;
-}
-
 String _cursorSignature(TerminalScreenSnapshot? snapshot) {
   final cursor = snapshot?.cursor;
   if (cursor == null) return '';
   return '${cursor.row}:${cursor.col}:${cursor.visible}:${cursor.shape}';
-}
-
-double _smoothStep(double value) {
-  final x = value.clamp(0.0, 1.0);
-  return x * x * (3 - 2 * x);
-}
-
-class _TerminalDragSample {
-  const _TerminalDragSample(this.timeMs, this.pixels);
-
-  final double timeMs;
-  final double pixels;
 }
 
 double _terminalCellWidth(BuildContext context, double fontSize) {
@@ -817,7 +615,7 @@ class _TerminalScreenPainter extends CustomPainter {
     final cursorCell = _cursorCell(screen);
 
     for (final cell in screen.cells) {
-      if (cell.hidden || cell.text.isEmpty) continue;
+      if (cell.hidden) continue;
       final left = cell.col * cellWidth;
       final top = cell.row * cellHeight + scrollOffsetY;
       if (left >= size.width || top >= size.height || top + cellHeight <= 0) {
@@ -834,6 +632,9 @@ class _TerminalScreenPainter extends CustomPainter {
           Paint()..color = colors.bg,
         );
       }
+      // Background-only cells (TUI panel bands erased with a background
+      // color) carry no glyph; they still need the rect above.
+      if (cell.text.isEmpty) continue;
       textPainter.text = TextSpan(
         text: cell.text,
         style: TextStyle(

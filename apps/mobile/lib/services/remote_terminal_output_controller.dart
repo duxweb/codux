@@ -13,6 +13,7 @@ enum RemoteTerminalOutputEffectKind {
   ack,
   markBufferReceived,
   sessionUpdated,
+  requestBaselineResync,
 }
 
 class RemoteTerminalOutputEffect {
@@ -60,6 +61,14 @@ class RemoteTerminalOutputEffect {
         sessionId: sessionId,
       );
 
+  /// A live output frame skipped ahead of the previously observed sequence:
+  /// output was lost in transit and the session needs a baseline resync.
+  factory RemoteTerminalOutputEffect.requestBaselineResync(String sessionId) =>
+      RemoteTerminalOutputEffect._(
+        kind: RemoteTerminalOutputEffectKind.requestBaselineResync,
+        sessionId: sessionId,
+      );
+
   final RemoteTerminalOutputEffectKind kind;
   final String? sessionId;
   final int? outputSeq;
@@ -83,6 +92,7 @@ class RemoteTerminalOutputController {
   final TerminalOutputSequencer _sequencer = TerminalOutputSequencer();
   final Map<String, String> _activeBufferRequestBySession = {};
   final Set<String> _restoreBufferRequestIds = {};
+  final Set<String> _gapSessions = {};
 
   String? cachedOutput(String sessionId) => _ptySessions.content(sessionId);
 
@@ -95,6 +105,10 @@ class RemoteTerminalOutputController {
   int bufferOffset(String sessionId) => _ptySessions.bufferLength(sessionId);
 
   int sequenceFor(String sessionId) => _ptySessions.sequence(sessionId);
+
+  /// True when a live output gap was observed for [sessionId] and no baseline
+  /// has repaired it yet; such a session must not skip its baseline request.
+  bool hasSequenceGap(String sessionId) => _gapSessions.contains(sessionId);
 
   void resizeScreen(String sessionId, {required int cols, required int rows}) {
     _ptySessions.resizeScreen(sessionId, cols: cols, rows: rows);
@@ -124,6 +138,24 @@ class RemoteTerminalOutputController {
     _ptySessions.scrollScreenToBottom(sessionId);
   }
 
+  void applyHostScroll(
+    String sessionId, {
+    required String screenData,
+    required int displayOffset,
+    required int totalLines,
+    int marginRows = 0,
+    int marginRowsBelow = 0,
+  }) {
+    _ptySessions.applyHostScroll(
+      sessionId,
+      screenData: screenData,
+      displayOffset: displayOffset,
+      totalLines: totalLines,
+      marginRows: marginRows,
+      marginRowsBelow: marginRowsBelow,
+    );
+  }
+
   String? activeBufferRequestId(String sessionId) =>
       _activeBufferRequestBySession[sessionId];
 
@@ -135,14 +167,23 @@ class RemoteTerminalOutputController {
     String requestId, {
     bool requireBaseline = false,
     bool resetAssembler = true,
+    bool replaceActive = false,
   }) {
     if (sessionId.trim().isEmpty || requestId.trim().isEmpty) return false;
     final activeRequestId = _activeBufferRequestBySession[sessionId];
     if (activeRequestId != null && activeRequestId != requestId) {
-      CoduxLog.debug(
-        '[codux-flutter-output] keep active buffer request session=$sessionId active=$activeRequestId ignored=$requestId',
+      if (!replaceActive) {
+        CoduxLog.debug(
+          '[codux-flutter-output] keep active buffer request session=$sessionId active=$activeRequestId ignored=$requestId',
+        );
+        return false;
+      }
+      _restoreBufferRequestIds.remove(
+        _bufferRequestKey(sessionId, activeRequestId),
       );
-      return false;
+      CoduxLog.info(
+        '[codux-flutter-output] replace active buffer request session=$sessionId previous=$activeRequestId next=$requestId',
+      );
     }
     _activeBufferRequestBySession[sessionId] = requestId;
     final requestKey = _bufferRequestKey(sessionId, requestId);
@@ -163,7 +204,17 @@ class RemoteTerminalOutputController {
   void bindSession(String sessionId, {required bool requireBaseline}) {
     if (sessionId.trim().isEmpty) return;
     _sequencer.remove(sessionId);
+    _gapSessions.remove(sessionId);
     _assembler.remove(sessionId);
+    // A rebind wipes the assembler, so any in-flight buffer request can
+    // never complete; leaving it active would block the follow-up baseline
+    // request forever and freeze the session in awaitingBaseline.
+    final staleRequestId = _activeBufferRequestBySession.remove(sessionId);
+    if (staleRequestId != null) {
+      _restoreBufferRequestIds.remove(
+        _bufferRequestKey(sessionId, staleRequestId),
+      );
+    }
     final session = _ptySessions.session(sessionId);
     if (requireBaseline) {
       session.requireBaseline();
@@ -180,6 +231,7 @@ class RemoteTerminalOutputController {
     );
     _assembler.remove(sessionId);
     _sequencer.remove(sessionId);
+    _gapSessions.remove(sessionId);
   }
 
   void resetTransient() {
@@ -190,7 +242,10 @@ class RemoteTerminalOutputController {
 
   void resetSessionTransient(String sessionId, {bool resetSequence = false}) {
     _assembler.remove(sessionId);
-    if (resetSequence) _sequencer.remove(sessionId);
+    if (resetSequence) {
+      _sequencer.remove(sessionId);
+      _gapSessions.remove(sessionId);
+    }
     _ptySessions
         .session(sessionId)
         .resetTransient(resetSequence: resetSequence);
@@ -200,6 +255,7 @@ class RemoteTerminalOutputController {
     _ptySessions.clear();
     _activeBufferRequestBySession.clear();
     _restoreBufferRequestIds.clear();
+    _gapSessions.clear();
     _assembler.reset();
     _sequencer.reset();
   }
@@ -208,6 +264,7 @@ class RemoteTerminalOutputController {
     _ptySessions.clear();
     _activeBufferRequestBySession.clear();
     _restoreBufferRequestIds.clear();
+    _gapSessions.clear();
     _assembler.reset();
     _sequencer.dispose();
   }
@@ -430,13 +487,20 @@ class RemoteTerminalOutputController {
           _assembler.remove(sessionId);
         }
       }
-      final effects = [
+      final effects = <RemoteTerminalOutputEffect>[];
+      if (resync.gap && _gapSessions.add(sessionId)) {
+        CoduxLog.warn(
+          '[codux-flutter-output] sequence gap seq=${outputSeq ?? 0} session=$sessionId',
+        );
+        effects.add(RemoteTerminalOutputEffect.requestBaselineResync(sessionId));
+      }
+      effects.add(
         RemoteTerminalOutputEffect.ack(
           sessionId: sessionId,
           outputSeq: resync.ack,
           bufferLength: decoded.bufferLength,
         ),
-      ];
+      );
       for (final held in heldLive) {
         effects.addAll(
           _accept(
@@ -475,6 +539,12 @@ class RemoteTerminalOutputController {
     );
 
     final effects = <RemoteTerminalOutputEffect>[];
+    if (resync.gap && _gapSessions.add(sessionId)) {
+      CoduxLog.warn(
+        '[codux-flutter-output] sequence gap seq=${outputSeq ?? 0} session=$sessionId',
+      );
+      effects.add(RemoteTerminalOutputEffect.requestBaselineResync(sessionId));
+    }
     var heldLive = const <RelayEnvelope>[];
 
     if (isBuffer) {
@@ -621,6 +691,9 @@ class RemoteTerminalOutputController {
     int? bufferLength,
     int? outputSeq,
   ) {
+    // A baseline replaces the cached content wholesale, repairing any
+    // previously observed live-output gap.
+    _gapSessions.remove(sessionId);
     return _ptySessions
         .session(sessionId)
         .replaceFromBaseline(

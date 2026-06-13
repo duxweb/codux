@@ -10,6 +10,10 @@ struct TerminalWindowSize {
 enum TerminalUiEvent {
     Wakeup,
     Error(String),
-    Viewport { cols: u16, rows: u16 },
+    Viewport {
+        cols: u16,
+        rows: u16,
+        remote_owner: bool,
+    },
     Exit,
 }

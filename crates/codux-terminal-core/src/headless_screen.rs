@@ -22,6 +22,7 @@ use crate::TerminalInputMode;
 /// Invoked on the screen worker thread.
 pub type TerminalPtyResponder = Arc<dyn Fn(&[u8]) + Send + Sync>;
 
+const PROCESS_CHUNK_BYTES: usize = 64 * 1024;
 const GHOSTTY_CELL_WIDTH_PX: u32 = 10;
 const GHOSTTY_CELL_HEIGHT_PX: u32 = 20;
 
@@ -33,6 +34,16 @@ pub struct TerminalScreenSnapshot {
     pub rows: usize,
     pub total_lines: usize,
     pub display_offset: usize,
+    /// Rows at the top of the grid that are overscan context (content above
+    /// the visible viewport, pre-rendered for smooth scrolling). 0 for
+    /// plain viewport snapshots.
+    #[serde(default)]
+    pub margin_rows: usize,
+    /// Rows at the bottom of the grid that are overscan context (content
+    /// below the visible viewport, pre-rendered for smooth scrolling). 0
+    /// for plain viewport snapshots.
+    #[serde(default)]
+    pub margin_rows_below: usize,
     pub scroll_pixel_offset: f64,
     pub application_cursor: bool,
     pub input_mode: TerminalInputMode,
@@ -120,16 +131,24 @@ impl HeadlessTerminalScreen {
     }
 
     pub fn process(&mut self, bytes: &[u8]) {
-        self.engine.process(bytes);
+        // Large writes are split so interleaved worker queries (snapshot,
+        // display offset) wait for one chunk instead of one multi-second
+        // parse. The VT parser is incremental; arbitrary split points are
+        // safe.
+        for chunk in bytes.chunks(PROCESS_CHUNK_BYTES) {
+            self.engine.process(chunk);
+        }
     }
 
     /// Process recorded output without answering the queries it contains.
     /// Replayed history can carry stale DSR/DA queries from a previous run;
     /// answering those would inject unsolicited reply bytes into the PTY.
     pub fn process_replay(&mut self, bytes: &[u8]) {
-        if !bytes.is_empty() {
-            self.engine
-                .send(GhosttyScreenCommand::ProcessReplay(bytes.to_vec()));
+        for chunk in bytes.chunks(PROCESS_CHUNK_BYTES) {
+            if !chunk.is_empty() {
+                self.engine
+                    .send(GhosttyScreenCommand::ProcessReplay(chunk.to_vec()));
+            }
         }
     }
 
@@ -205,6 +224,18 @@ impl HeadlessTerminalScreen {
     /// published snapshot, e.g. bracketed paste.
     pub fn input_mode(&self) -> TerminalInputMode {
         self.engine.input_mode()
+    }
+
+    /// Request a snapshot of the viewport as it would appear at `offset`,
+    /// without disturbing the current scroll position. Used to pre-render
+    /// overscan context for remote scrolling.
+    pub fn snapshot_at_offset_request(&self, offset: usize) -> HeadlessTerminalSnapshotRequest {
+        let (tx, rx) = mpsc::channel();
+        let _ = self
+            .engine
+            .tx
+            .send(GhosttyScreenCommand::SnapshotAtOffset { offset, reply: tx });
+        HeadlessTerminalSnapshotRequest { rx }
     }
 
     pub fn display_offset(&self) -> usize {
@@ -348,6 +379,13 @@ enum GhosttyScreenCommand {
         include_data: bool,
         reply: mpsc::Sender<TerminalScreenSnapshot>,
     },
+    // Atomic peek at another history offset: scrolls, snapshots, restores.
+    // Atomicity inside one command keeps concurrent snapshot consumers from
+    // observing the temporary position.
+    SnapshotAtOffset {
+        offset: usize,
+        reply: mpsc::Sender<TerminalScreenSnapshot>,
+    },
     Clear,
 }
 
@@ -452,6 +490,13 @@ impl GhosttyScreenWorker {
                 } => {
                     let _ = reply.send(self.snapshot(scroll_pixel_offset, include_data));
                 }
+                GhosttyScreenCommand::SnapshotAtOffset { offset, reply } => {
+                    let saved = self.display_offset();
+                    self.scroll_to_offset(offset);
+                    let snapshot = self.snapshot(0.0, true);
+                    self.scroll_to_offset(saved);
+                    let _ = reply.send(snapshot);
+                }
                 GhosttyScreenCommand::Clear => {
                     self = Self::new(
                         self.cols,
@@ -543,6 +588,8 @@ impl GhosttyScreenWorker {
             rows,
             total_lines,
             display_offset,
+            margin_rows: 0,
+            margin_rows_below: 0,
             scroll_pixel_offset,
             application_cursor: terminal.mode(Mode::DECCKM).unwrap_or(false),
             input_mode: ghostty_input_mode(terminal),
@@ -854,10 +901,25 @@ fn terminal_snapshot_data(
                         output.push_str(&snapshot_style_sgr(cell.style.clone()));
                         current_style = cell.style.clone();
                     }
-                    output.push_str(&terminal_snapshot_text(&cell.text));
+                    if cell.text.is_empty() {
+                        // Background-only cells (BCE-erased panel bands)
+                        // must still advance the cursor and paint their
+                        // background on the receiving screen.
+                        for _ in 0..cell.width.max(1) {
+                            output.push(' ');
+                        }
+                    } else {
+                        output.push_str(&terminal_snapshot_text(&cell.text));
+                    }
                     col += cell.width;
                 }
                 None => {
+                    // Gap cells have no recorded style; reset to default so
+                    // the space does not paint a lingering band background.
+                    if current_style != SnapshotCellStyle::default() {
+                        output.push_str("\x1b[0m");
+                        current_style = SnapshotCellStyle::default();
+                    }
                     output.push(' ');
                     col += 1;
                 }
@@ -925,6 +987,90 @@ fn snapshot_color_sgr(color: &TerminalScreenColor, background: bool, codes: &mut
             codes.push("5".to_string());
             codes.push(index.to_string());
         }
+    }
+}
+
+/// Stack overscan snapshots (content above and below the viewport) around
+/// the viewport snapshot, producing one taller snapshot whose top
+/// `margin_rows` rows and bottom `margin_rows_below` rows are pre-rendered
+/// context for smooth remote scrolling. The below-peek, when present, is a
+/// snapshot taken at `viewport.display_offset.saturating_sub(viewport.rows)`.
+pub fn stack_scrolled_snapshots(
+    above: &TerminalScreenSnapshot,
+    viewport: &TerminalScreenSnapshot,
+    below: Option<&TerminalScreenSnapshot>,
+) -> TerminalScreenSnapshot {
+    // Rows of `above` that sit strictly above the viewport top. When the
+    // above-peek was clamped at the top of history, only the non-overlapping
+    // prefix is context.
+    let margin = above
+        .display_offset
+        .saturating_sub(viewport.display_offset)
+        .min(above.rows);
+    // Rows of `below` that sit strictly below the viewport bottom; 0 when
+    // the viewport is already at the live bottom.
+    let margin_below = below
+        .map(|below| {
+            viewport
+                .display_offset
+                .saturating_sub(below.display_offset)
+                .min(below.rows)
+        })
+        .unwrap_or(0);
+    if margin == 0 && margin_below == 0 {
+        return viewport.clone();
+    }
+    let rows = margin + viewport.rows + margin_below;
+    let mut cells = Vec::with_capacity(
+        above.cells.len() + viewport.cells.len() + below.map_or(0, |below| below.cells.len()),
+    );
+    let above_skip = above.rows - margin;
+    for cell in &above.cells {
+        let row = cell.row - above_skip as i32;
+        if row < 0 {
+            continue;
+        }
+        let mut cell = cell.clone();
+        cell.row = row;
+        cells.push(cell);
+    }
+    for cell in &viewport.cells {
+        let mut cell = cell.clone();
+        cell.row += margin as i32;
+        cells.push(cell);
+    }
+    if margin_below > 0 {
+        // The unique below rows are the below-peek's last `margin_below`
+        // rows; everything before them overlaps the viewport.
+        let below = below.expect("margin_below > 0 implies below snapshot");
+        let below_skip = below.rows - margin_below;
+        let base = (margin + viewport.rows) as i32;
+        for cell in &below.cells {
+            let row = cell.row - below_skip as i32;
+            if row < 0 {
+                continue;
+            }
+            let mut cell = cell.clone();
+            cell.row = base + row;
+            cells.push(cell);
+        }
+    }
+    let mut cursor = viewport.cursor.clone();
+    cursor.row += margin;
+    let data = terminal_snapshot_data(viewport.cols, rows, &cells, &cursor);
+    TerminalScreenSnapshot {
+        data,
+        cols: viewport.cols,
+        rows,
+        total_lines: viewport.total_lines,
+        display_offset: viewport.display_offset,
+        margin_rows: margin,
+        margin_rows_below: margin_below,
+        scroll_pixel_offset: viewport.scroll_pixel_offset,
+        application_cursor: viewport.application_cursor,
+        input_mode: viewport.input_mode,
+        cells,
+        cursor,
     }
 }
 
@@ -1217,6 +1363,38 @@ mod tests {
 
         screen.settle_pixel_scroll();
         assert_eq!(screen.snapshot().scroll_pixel_offset, 3.0);
+    }
+
+    #[test]
+    fn regenerated_snapshot_keeps_default_background_after_styled_band() {
+        let mut screen = HeadlessTerminalScreen::new(20, 4, 100);
+        // Row 0: a BCE-erased panel band (background-only cells) with wide
+        // CJK text. Row 1: default-style wide text after a 3-column gap.
+        screen.process("\x1b[H\x1b[48;5;17m\x1b[2K中文面板\x1b[0m\r\n\x1b[3C下一行".as_bytes());
+        let snapshot = screen.snapshot();
+
+        // Replay the snapshot data into a fresh screen, as the mobile remote
+        // terminal does, and verify the band background does not leak into
+        // gap cells on the following row.
+        let mut regenerated = HeadlessTerminalScreen::new(20, 4, 100);
+        regenerated.process(snapshot.data.as_bytes());
+        let regenerated = regenerated.snapshot();
+
+        assert!(
+            regenerated
+                .cells
+                .iter()
+                .any(|cell| cell.row == 0 && cell.bg == TerminalScreenColor::Indexed { index: 17 }),
+            "band row should keep its background"
+        );
+        for cell in regenerated.cells.iter().filter(|cell| cell.row == 1) {
+            assert_eq!(
+                cell.bg,
+                TerminalScreenColor::Default,
+                "row 1 col {} unexpectedly inherited the band background",
+                cell.col
+            );
+        }
     }
 
     #[test]

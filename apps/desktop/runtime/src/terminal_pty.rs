@@ -383,6 +383,24 @@ impl TerminalManager {
         self.session(session_id)?.claim_viewport(owner)
     }
 
+    pub fn touch_viewport_lease(&self, session_id: &str, owner: &str) {
+        if let Ok(session) = self.session(session_id) {
+            session.clone_handle().touch_viewport_lease(owner);
+        }
+    }
+
+    pub fn scroll_screen_lines(
+        &self,
+        session_id: &str,
+        lines: i32,
+    ) -> Result<TerminalScreenSnapshot> {
+        Ok(self.session(session_id)?.scroll_screen_lines(lines))
+    }
+
+    pub fn scroll_screen_to_bottom(&self, session_id: &str) -> Result<TerminalScreenSnapshot> {
+        Ok(self.session(session_id)?.scroll_screen_to_bottom())
+    }
+
     pub fn release_viewport(
         &self,
         session_id: &str,
@@ -693,7 +711,9 @@ impl TerminalPtySession {
         let screen = Arc::new(parking_lot::Mutex::new(HeadlessTerminalScreen::new(
             cols as usize,
             rows as usize,
-            config.scrollback_lines.unwrap_or(1000),
+            // Serves remote scrollback views (terminal.viewport.scroll);
+            // deep enough for meaningful mobile history browsing.
+            config.scrollback_lines.unwrap_or(5000),
         )));
         let output_subscribers = Arc::new(parking_lot::Mutex::new(Vec::new()));
         let event_subscribers = Arc::new(parking_lot::Mutex::new(Vec::new()));
@@ -892,7 +912,53 @@ impl TerminalPtySession {
     }
 
     pub fn screen_snapshot(&self) -> TerminalScreenSnapshot {
-        self.screen.lock().snapshot()
+        // Queue the snapshot under the lock, but wait for the worker reply
+        // outside of it: holding the screen mutex across the round-trip
+        // convoys the PTY reader and every remote handler behind one
+        // slow snapshot.
+        let request = self.screen.lock().snapshot_request(true);
+        request.snapshot()
+    }
+
+    /// Scroll the host-side screen viewport (serves remote scrollback
+    /// views: the host screen owns the authoritative scrollback at the
+    /// current grid size). Returns a snapshot of the scrolled viewport
+    /// stacked with one screen of overscan context above it, so the client
+    /// can pre-render content revealed by inertial scrolling.
+    pub fn scroll_screen_lines(&self, lines: i32) -> TerminalScreenSnapshot {
+        {
+            let mut screen = self.screen.lock();
+            screen.scroll_lines(lines);
+        }
+        self.scrolled_view_snapshot()
+    }
+
+    pub fn scroll_screen_to_bottom(&self) -> TerminalScreenSnapshot {
+        {
+            let mut screen = self.screen.lock();
+            screen.scroll_to_bottom();
+        }
+        self.screen_snapshot()
+    }
+
+    fn scrolled_view_snapshot(&self) -> TerminalScreenSnapshot {
+        let viewport = self.screen_snapshot();
+        let above_offset = viewport.display_offset + viewport.rows;
+        // Queue both overscan requests before waiting on either, so the
+        // worker round-trips overlap instead of running serially.
+        let (above_request, below_request) = {
+            let screen = self.screen.lock();
+            let above = screen.snapshot_at_offset_request(above_offset);
+            let below = (viewport.display_offset > 0).then(|| {
+                screen.snapshot_at_offset_request(
+                    viewport.display_offset.saturating_sub(viewport.rows),
+                )
+            });
+            (above, below)
+        };
+        let above = above_request.snapshot();
+        let below = below_request.map(|request| request.snapshot());
+        codux_terminal_core::stack_scrolled_snapshots(&above, &viewport, below.as_ref())
     }
 
     pub fn buffer_characters(&self) -> usize {
@@ -962,11 +1028,27 @@ impl TerminalPtySessionHandle {
             .map(|_| ())
     }
 
+    /// Active claim: explicit user intent (mobile viewport envelopes,
+    /// desktop terminal input). Always takes ownership and renews the lease.
     pub fn claim_viewport(&self, owner: &str) -> Result<TerminalViewportState> {
+        self.claim_viewport_with(owner, true)
+    }
+
+    /// Passive claim: ambient paths such as the desktop prepaint. Does NOT
+    /// steal an unexpired lease held by a different owner — otherwise a
+    /// painting desktop pane revokes a mobile claim within one frame.
+    pub fn claim_viewport_passive(&self, owner: &str) -> Result<TerminalViewportState> {
+        self.claim_viewport_with(owner, false)
+    }
+
+    fn claim_viewport_with(&self, owner: &str, force: bool) -> Result<TerminalViewportState> {
         let owner = terminal_viewport_owner(owner);
         let mut viewport = self.viewport.lock();
-        let state = &mut viewport.state;
         let now = Instant::now();
+        if !force && viewport.state.owner != owner && now < viewport.expires_at {
+            return Ok(viewport.state.clone());
+        }
+        let state = &mut viewport.state;
         let owner_changed = state.owner != owner;
         if state.owner != owner {
             state.owner = owner;
@@ -976,9 +1058,21 @@ impl TerminalPtySessionHandle {
         let state = viewport.state.clone();
         drop(viewport);
         if owner_changed {
+            // A scrolled host viewport belongs to the previous owner.
+            self.screen.lock().scroll_to_bottom();
             self.emit_viewport_state(&state);
         }
         Ok(state)
+    }
+
+    /// Renew the lease when traffic from the current owner proves it is
+    /// still actively viewing (input, output acks). No-op for non-owners.
+    pub fn touch_viewport_lease(&self, owner: &str) {
+        let owner = terminal_viewport_owner(owner);
+        let mut viewport = self.viewport.lock();
+        if viewport.state.owner == owner {
+            viewport.expires_at = Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL;
+        }
     }
 
     pub fn release_viewport(&self, owner: &str) -> Result<Option<TerminalViewportState>> {

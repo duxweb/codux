@@ -198,6 +198,12 @@ impl ControllerHealthTransport {
                 if transport.closed.load(Ordering::SeqCst) {
                     return;
                 }
+                // A demoted direct route should not be permanent: keep
+                // probing so the transport can re-negotiate and re-upgrade
+                // (the transport applies its own retry hold-down).
+                if transport.health.path() == "relay" {
+                    let _ = transport.inner.probe_preferred_route();
+                }
                 transport.send_health_ping().await;
             }
         });

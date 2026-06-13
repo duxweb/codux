@@ -129,7 +129,7 @@ void main() {
     expect(controller.cachedOutput('session-1'), 'old-new');
   });
 
-  test('live sequence gaps are accepted without full buffer recovery', () {
+  test('live sequence gaps render but request a baseline resync', () {
     final controller = RemoteTerminalOutputController(maxBufferChars: 4);
 
     controller.bindSession('session-1', requireBaseline: false);
@@ -137,17 +137,51 @@ void main() {
       _liveOutput('one', outputSeq: 1),
       activeSessionId: 'session-1',
     );
+    expect(controller.hasSequenceGap('session-1'), isFalse);
+
     final skipped = controller.accept(
       _liveOutput('three', outputSeq: 3),
       activeSessionId: 'session-1',
     );
 
     expect(_kinds(skipped), [
+      RemoteTerminalOutputEffectKind.requestBaselineResync,
       RemoteTerminalOutputEffectKind.loading,
       RemoteTerminalOutputEffectKind.sessionUpdated,
       RemoteTerminalOutputEffectKind.ack,
     ]);
     expect(controller.cachedOutput('session-1'), 'onethree');
+    expect(controller.hasSequenceGap('session-1'), isTrue);
+
+    // The gap is only reported once until repaired.
+    final next = controller.accept(
+      _liveOutput('six', outputSeq: 6),
+      activeSessionId: 'session-1',
+    );
+    expect(
+      _kinds(next),
+      isNot(contains(RemoteTerminalOutputEffectKind.requestBaselineResync)),
+    );
+
+    // A baseline restore repairs the gap.
+    controller.startBufferRequest(
+      'session-1',
+      'request-resync',
+      requireBaseline: true,
+      replaceActive: true,
+    );
+    controller.accept(
+      _terminalBuffer(
+        'sync',
+        offset: 0,
+        bufferLength: 4,
+        truncated: false,
+        requestId: 'request-resync',
+        outputSeq: 6,
+      ),
+      activeSessionId: 'session-1',
+    );
+    expect(controller.hasSequenceGap('session-1'), isFalse);
   });
 
   test('stale request id baseline cannot replace current terminal state', () {
@@ -331,6 +365,7 @@ void main() {
       activeSessionId: 'session-1',
     );
     expect(_kinds(gap), [
+      RemoteTerminalOutputEffectKind.requestBaselineResync,
       RemoteTerminalOutputEffectKind.loading,
       RemoteTerminalOutputEffectKind.sessionUpdated,
       RemoteTerminalOutputEffectKind.ack,

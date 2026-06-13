@@ -32,6 +32,7 @@ class RemoteTerminalPane extends StatelessWidget {
     required this.keyboardVisible,
     required this.terminalCursorBottom,
     required this.terminalScreen,
+    this.remoteScroll = false,
     required this.onConnect,
     required this.onInput,
     required this.onResize,
@@ -66,6 +67,7 @@ class RemoteTerminalPane extends StatelessWidget {
   final bool keyboardVisible;
   final double terminalCursorBottom;
   final RemoteTerminalScreenSnapshot? terminalScreen;
+  final bool remoteScroll;
   final VoidCallback onConnect;
   final ValueChanged<String> onInput;
   final void Function(int cols, int rows) onResize;
@@ -168,6 +170,7 @@ class RemoteTerminalPane extends StatelessWidget {
                                 snapshot: terminalScreen,
                                 keyboardRequested: keyboardRequested,
                                 scrollEnabled: !keyboardVisible,
+                                remoteScroll: remoteScroll,
                                 onInput: onInput,
                                 onResize: onResize,
                                 onScrollPixels: onScrollPixels,

@@ -21,11 +21,11 @@ use webrtc::{
 pub use websocket::{RemoteWebSocketControllerTransport, RemoteWebSocketHostTransport};
 
 pub use url_rules::{
-    CHINA_RELAY_SERVER_URL, DEFAULT_RELAY_SERVER_URL, GLOBAL_RELAY_SERVER_URL,
+    CHINA_RELAY_SERVER_URL, DEFAULT_RELAY_SERVER_URL, GLOBAL_RELAY_SERVER_URL, RemoteTurnConfig,
     preferred_controller_transport_kind, preferred_pairing_transport_kind,
     remote_client_websocket_url, remote_pairing_code_url, remote_pairing_ticket_url,
     remote_pairing_websocket_url, remote_relay_preset_for_url, remote_relay_url_for_preset,
-    remote_server_url, remote_stun_urls, remote_url,
+    remote_server_url, remote_stun_urls, remote_turn_config_from_env, remote_url,
 };
 
 pub type RemoteTransportMessageHandler = Arc<dyn Fn(String, Vec<u8>) + Send + Sync + 'static>;

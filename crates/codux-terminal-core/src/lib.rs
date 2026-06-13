@@ -11,7 +11,7 @@ pub use buffer_assembler::{TerminalBufferAssembler, TerminalBufferAssemblyResult
 pub use headless_screen::{
     HeadlessTerminalScreen, HeadlessTerminalSnapshotRequest, TerminalPtyResponder,
     TerminalScreenCellSnapshot, TerminalScreenColor, TerminalScreenCursorShape,
-    TerminalScreenCursorSnapshot, TerminalScreenSnapshot,
+    TerminalScreenCursorSnapshot, TerminalScreenSnapshot, stack_scrolled_snapshots,
 };
 pub use output_sequence::{
     TerminalOutputSequenceAction, TerminalOutputSequenceResult, TerminalOutputSequencer,

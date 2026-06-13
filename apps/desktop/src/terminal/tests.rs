@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn color_scheme_report_matches_xterm_codes() {
         assert_eq!(
-            terminal_color_scheme_report(&ColorPalette::default()),
+            terminal_color_scheme_report_for(ColorPalette::default().is_dark()),
             b"\x1b[?997;1n"
         );
 
@@ -384,7 +384,10 @@ mod tests {
             .background(0xee, 0xee, 0xee)
             .foreground(0x11, 0x11, 0x11)
             .build();
-        assert_eq!(terminal_color_scheme_report(&light), b"\x1b[?997;2n");
+        assert_eq!(
+            terminal_color_scheme_report_for(light.is_dark()),
+            b"\x1b[?997;2n"
+        );
     }
 
     #[test]

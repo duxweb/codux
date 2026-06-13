@@ -14,6 +14,7 @@ use super::protocol::{
     REMOTE_TERMINAL_SUBSCRIBE, REMOTE_TERMINAL_UNSUBSCRIBE, REMOTE_TERMINAL_UPLOAD,
     REMOTE_TERMINAL_UPLOAD_CANCEL, REMOTE_TERMINAL_UPLOAD_CHUNK, REMOTE_TERMINAL_UPLOAD_FINISH,
     REMOTE_TERMINAL_UPLOAD_START, REMOTE_TERMINAL_VIEWPORT_CLAIM, REMOTE_TERMINAL_VIEWPORT_RELEASE,
+    REMOTE_TERMINAL_VIEWPORT_SCROLL, REMOTE_TERMINAL_VIEWPORT_SCROLLED,
     REMOTE_TERMINAL_VIEWPORT_RESIZE, REMOTE_TRANSPORT_PING, REMOTE_TRANSPORT_PONG,
     REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_DELETE, REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE,
     REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_SELECT, RemoteTerminalBufferWindow,
@@ -658,11 +659,20 @@ impl RemoteHostRuntime {
             REMOTE_TERMINAL_UNSUBSCRIBE => self.handle_terminal_unsubscribe(&envelope),
             REMOTE_TERMINAL_CREATE => self.handle_terminal_create(&envelope),
             REMOTE_TERMINAL_BUFFER => self.handle_terminal_buffer(&envelope),
-            REMOTE_TERMINAL_OUTPUT_ACK => {}
+            REMOTE_TERMINAL_OUTPUT_ACK => {
+                // Steady output acks prove the remote client is still
+                // actively viewing; keep its viewport lease alive so the
+                // desktop's passive claim cannot reclaim mid-session.
+                if let Some(session_id) = envelope.session_id.as_deref() {
+                    let owner = self.remote_viewport_owner(&envelope);
+                    self.terminals.touch_viewport_lease(session_id, &owner);
+                }
+            }
             REMOTE_TERMINAL_INPUT => self.handle_terminal_input(&envelope),
             REMOTE_TERMINAL_VIEWPORT_CLAIM => self.handle_terminal_viewport_claim(&envelope),
             REMOTE_TERMINAL_VIEWPORT_RESIZE => self.handle_terminal_viewport_resize(&envelope),
             REMOTE_TERMINAL_VIEWPORT_RELEASE => self.handle_terminal_viewport_release(&envelope),
+            REMOTE_TERMINAL_VIEWPORT_SCROLL => self.handle_terminal_viewport_scroll(&envelope),
             REMOTE_TERMINAL_RESIZE => self.handle_terminal_resize(&envelope),
             REMOTE_TERMINAL_CLOSE => self.handle_terminal_close(&envelope),
             REMOTE_TERMINAL_SIGNAL => self.handle_terminal_signal(&envelope),
@@ -1709,6 +1719,8 @@ impl RemoteHostRuntime {
             return;
         };
         self.register_terminal_viewer(session_id, envelope.device_id.as_deref());
+        self.terminals
+            .touch_viewport_lease(session_id, &self.remote_viewport_owner(envelope));
         if let Some(input_id) = envelope.payload.get("inputId").and_then(Value::as_str) {
             self.send_terminal_data(
                 "terminal.input.ack",
@@ -1803,6 +1815,54 @@ impl RemoteHostRuntime {
         let owner = self.remote_viewport_owner(envelope);
         let _ = self.terminals.claim_viewport(session_id, &owner);
         self.resize_terminal_viewport_from_envelope(session_id, envelope, cols, rows);
+    }
+
+    // Serves remote scrollback from the host screen: the authoritative
+    // scrollback lives here at the current grid size, so the client never
+    // has to rebuild history by replaying raw bytes recorded at other
+    // grid sizes (which corrupts TUI repaints).
+    fn handle_terminal_viewport_scroll(self: &Arc<Self>, envelope: &RemoteEnvelope) {
+        let Some(session_id) = envelope.session_id.as_deref() else {
+            return;
+        };
+        let owner = self.remote_viewport_owner(envelope);
+        self.terminals.touch_viewport_lease(session_id, &owner);
+        let to_bottom = envelope
+            .payload
+            .get("toBottom")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let lines = envelope
+            .payload
+            .get("lines")
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let snapshot = if to_bottom {
+            self.terminals.scroll_screen_to_bottom(session_id)
+        } else {
+            // lines == 0 is a sync request: reply with the current viewport
+            // (plus overscan) so the client learns totalLines and seeds its
+            // scroll range before the first gesture.
+            self.terminals.scroll_screen_lines(session_id, lines)
+        };
+        let Ok(snapshot) = snapshot else {
+            return;
+        };
+        self.send_terminal_data(
+            REMOTE_TERMINAL_VIEWPORT_SCROLLED,
+            envelope.device_id.as_deref(),
+            Some(session_id),
+            json!({
+                "displayOffset": snapshot.display_offset,
+                "totalLines": snapshot.total_lines,
+                "cols": snapshot.cols,
+                "rows": snapshot.rows,
+                "marginRows": snapshot.margin_rows,
+                "marginRowsBelow": snapshot.margin_rows_below,
+                "screenData": snapshot.data,
+            }),
+        );
     }
 
     fn handle_terminal_viewport_release(self: &Arc<Self>, envelope: &RemoteEnvelope) {

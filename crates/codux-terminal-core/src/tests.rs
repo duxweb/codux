@@ -355,6 +355,54 @@ fn live_output_can_update_visible_screen_from_screen_keyframe() {
 }
 
 #[test]
+fn host_scroll_snapshot_overrides_view_and_offsets() {
+    let mut session = RemotePtySession::<String>::new("session-1", 512);
+    session.resize_screen(20, 8);
+    session.replace_from_baseline_screen(
+        "history",
+        Some("\x1b[2J\x1b[Hlive bottom"),
+        Some(7),
+        Some(1),
+    );
+
+    // Host-rendered scrolled viewport replaces the display and reports the
+    // host's offsets through the snapshot.
+    session.apply_host_scroll_snapshot("\x1b[2J\x1b[Hhost history view", 12, 200, 0, 0);
+    let scrolled = session.screen_snapshot();
+    assert!(scrolled.data.contains("host history view"));
+    assert_eq!(scrolled.display_offset, 12);
+    assert_eq!(scrolled.total_lines, 200);
+
+    // Returning to the bottom clears the host scroll state.
+    session.apply_host_scroll_snapshot("\x1b[2J\x1b[Hback to bottom", 0, 200, 0, 0);
+    let bottom = session.screen_snapshot();
+    assert!(bottom.data.contains("back to bottom"));
+    assert_eq!(bottom.display_offset, 0);
+
+    // A new baseline resets any lingering host scroll override.
+    session.apply_host_scroll_snapshot("\x1b[2J\x1b[Hscrolled again", 5, 50, 0, 0);
+    session.replace_from_baseline_screen(
+        "fresh",
+        Some("\x1b[2J\x1b[Hfresh keyframe"),
+        Some(5),
+        Some(2),
+    );
+    assert_eq!(session.screen_snapshot().display_offset, 0);
+}
+
+#[test]
+fn scroll_to_bottom_clears_host_scroll_override() {
+    let mut session = RemotePtySession::<String>::new("session-1", 512);
+    session.resize_screen(20, 8);
+    session.replace_from_baseline_screen("history", Some("\x1b[2J\x1b[Hlive"), Some(7), Some(1));
+    session.apply_host_scroll_snapshot("\x1b[2J\x1b[Hhost view", 9, 90, 0, 0);
+    assert_eq!(session.screen_snapshot().display_offset, 9);
+
+    session.scroll_screen_to_bottom();
+    assert_eq!(session.screen_snapshot().display_offset, 0);
+}
+
+#[test]
 fn live_screen_keyframe_replaces_current_screen_without_polluting_history() {
     let mut session = RemotePtySession::<String>::new("session-1", 512);
     session.resize_screen(20, 8);
@@ -434,6 +482,40 @@ fn output_sequencer_drops_duplicates_and_tracks_buffers() {
     assert_eq!(baseline.action, TerminalOutputSequenceAction::Baseline);
     assert_eq!(next.action, TerminalOutputSequenceAction::Accept);
     assert_eq!(sequencer.sequence_for("term-1"), 3);
+}
+
+#[test]
+fn output_sequencer_reports_live_sequence_gaps() {
+    let mut sequencer = TerminalOutputSequencer::new();
+
+    let first = sequencer.observe("term-1", false, Some(1), None, false);
+    let contiguous = sequencer.observe("term-1", false, Some(2), None, false);
+    let gapped = sequencer.observe("term-1", false, Some(5), None, false);
+    let duplicate = sequencer.observe("term-1", false, Some(5), None, false);
+    let after_gap = sequencer.observe("term-1", false, Some(6), None, false);
+
+    assert!(!first.gap);
+    assert!(!contiguous.gap);
+    assert_eq!(gapped.action, TerminalOutputSequenceAction::Accept);
+    assert!(gapped.gap);
+    assert_eq!(gapped.previous_seq, 2);
+    assert_eq!(duplicate.action, TerminalOutputSequenceAction::Duplicate);
+    assert!(!duplicate.gap);
+    assert!(!after_gap.gap);
+    assert_eq!(sequencer.sequence_for("term-1"), 6);
+}
+
+#[test]
+fn output_sequencer_does_not_report_gap_after_baseline_rebase() {
+    let mut sequencer = TerminalOutputSequencer::new();
+    sequencer.observe("term-1", false, Some(2), None, false);
+
+    let baseline = sequencer.observe("term-1", true, Some(2), Some(0), false);
+    let rebased = sequencer.observe("term-1", false, Some(9), None, false);
+
+    assert_eq!(baseline.action, TerminalOutputSequenceAction::Baseline);
+    assert!(!baseline.gap);
+    assert!(!rebased.gap);
 }
 
 #[test]

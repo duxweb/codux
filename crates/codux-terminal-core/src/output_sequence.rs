@@ -23,6 +23,10 @@ impl TerminalOutputSequenceAction {
 pub struct TerminalOutputSequenceResult {
     pub action: TerminalOutputSequenceAction,
     pub previous_seq: TerminalSequence,
+    /// True when a live frame arrived with `output_seq > previous_seq + 1`,
+    /// meaning at least one frame was lost in transit and the session needs a
+    /// baseline resync to repair the missing output.
+    pub gap: bool,
 }
 
 impl TerminalOutputSequenceResult {
@@ -77,6 +81,7 @@ impl TerminalOutputSequencer {
             return TerminalOutputSequenceResult {
                 action: TerminalOutputSequenceAction::Baseline,
                 previous_seq,
+                gap: false,
             };
         }
 
@@ -84,21 +89,25 @@ impl TerminalOutputSequencer {
             return TerminalOutputSequenceResult {
                 action: TerminalOutputSequenceAction::Accept,
                 previous_seq,
+                gap: false,
             };
         };
         if output_seq <= previous_seq {
             return TerminalOutputSequenceResult {
                 action: TerminalOutputSequenceAction::Duplicate,
                 previous_seq,
+                gap: false,
             };
         }
         let allow_rebase = self.allow_next_live_rebase_sessions.remove(session_id);
+        let gap = !allow_rebase && previous_seq > 0 && output_seq > previous_seq + 1;
         if (allow_rebase || previous_seq > 0) && output_seq > previous_seq {
             self.seq_by_session
                 .insert(session_id.to_string(), output_seq);
             return TerminalOutputSequenceResult {
                 action: TerminalOutputSequenceAction::Accept,
                 previous_seq,
+                gap,
             };
         }
         self.seq_by_session
@@ -107,6 +116,7 @@ impl TerminalOutputSequencer {
         TerminalOutputSequenceResult {
             action: TerminalOutputSequenceAction::Accept,
             previous_seq,
+            gap: false,
         }
     }
 

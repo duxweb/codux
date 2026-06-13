@@ -1,10 +1,18 @@
 import 'terminal_output_sequencer.dart';
 
 class TerminalOutputResyncResult {
-  const TerminalOutputResyncResult({required this.render, required this.ack});
+  const TerminalOutputResyncResult({
+    required this.render,
+    required this.ack,
+    this.gap = false,
+  });
 
   final bool render;
   final int? ack;
+
+  /// True when the observed live frame left a hole in the output sequence,
+  /// meaning the session needs a baseline resync to repair lost output.
+  final bool gap;
 }
 
 TerminalOutputResyncResult observeTerminalOutputForResync({
@@ -25,7 +33,11 @@ TerminalOutputResyncResult observeTerminalOutputForResync({
   switch (sequence.action) {
     case TerminalOutputSequenceAction.accept:
     case TerminalOutputSequenceAction.baseline:
-      return TerminalOutputResyncResult(render: true, ack: outputSeq);
+      return TerminalOutputResyncResult(
+        render: true,
+        ack: outputSeq,
+        gap: sequence.gap,
+      );
     case TerminalOutputSequenceAction.duplicate:
       return TerminalOutputResyncResult(render: false, ack: outputSeq);
   }

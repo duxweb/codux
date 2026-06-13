@@ -69,6 +69,10 @@ class TerminalViewportController {
     return true;
   }
 
+  // resize/flushPending only PROPOSE an envelope; the dedup cache is
+  // committed via markSent after the caller actually sends it. Committing
+  // up front poisoned the cache when a send gate (terminal list not loaded
+  // yet) dropped the envelope, permanently suppressing the resize.
   TerminalViewportResize? resize({
     required String sessionId,
     required int cols,
@@ -84,9 +88,6 @@ class TerminalViewportController {
         ? (lastSessionSize?.rows ?? _lastRows ?? rows)
         : rows;
     if (lastSessionSize?.matches(cols, nextRows) == true) return null;
-    _lastCols = cols;
-    _lastRows = nextRows;
-    _sentBySession[id] = _ViewportSize(cols, nextRows);
     return TerminalViewportResize(cols: cols, rows: nextRows);
   }
 
@@ -99,13 +100,20 @@ class TerminalViewportController {
     final cols = _pendingCols;
     final rows = _pendingRows;
     if (cols == null || rows == null || cols <= 0 || rows <= 0) return null;
-    final lastSessionSize = _sentBySession[id];
-    if (lastSessionSize?.matches(cols, rows) == true) return null;
-    if (!force && _lastCols == cols && _lastRows == rows) return null;
-    _lastCols = cols;
-    _lastRows = rows;
-    _sentBySession[id] = _ViewportSize(cols, rows);
+    if (!force) {
+      final lastSessionSize = _sentBySession[id];
+      if (lastSessionSize?.matches(cols, rows) == true) return null;
+      if (_lastCols == cols && _lastRows == rows) return null;
+    }
     return TerminalViewportResize(cols: cols, rows: rows);
+  }
+
+  void markSent(String sessionId, TerminalViewportResize resize) {
+    final id = sessionId.trim();
+    if (id.isEmpty) return;
+    _lastCols = resize.cols;
+    _lastRows = resize.rows;
+    _sentBySession[id] = _ViewportSize(resize.cols, resize.rows);
   }
 }
 

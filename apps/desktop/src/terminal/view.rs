@@ -247,6 +247,11 @@ impl TerminalView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // Typing into this pane is explicit intent to use it here: take the
+        // viewport back from a remote owner (mobile handoff) immediately.
+        if !self.session.local_viewport_owns() {
+            let _ = self.session.claim_local_viewport_active();
+        }
         if is_copy_keystroke(&event.keystroke) {
             if let Some(text) = self.selected_text(cx) {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));

@@ -222,12 +222,30 @@ fn update_terminal_color_scheme_state(
     update
 }
 
-fn terminal_color_scheme_report(colors: &ColorPalette) -> &'static [u8] {
-    if colors.is_dark() {
+fn terminal_color_scheme_report_for(dark: bool) -> &'static [u8] {
+    if dark {
         b"\x1b[?997;1n"
     } else {
         b"\x1b[?997;2n"
     }
+}
+
+fn scheme_is_dark(remote_viewer: bool, colors: &ColorPalette) -> bool {
+    // The mobile client renders with a fixed dark theme.
+    remote_viewer || colors.is_dark()
+}
+
+// Mobile app theme (apps/mobile/lib/theme/app_theme.dart):
+// bgBase #0D1117, textPrimary #E6EDF3.
+const REMOTE_VIEWER_BACKGROUND: (u8, u8, u8) = (0x0d, 0x11, 0x17);
+const REMOTE_VIEWER_FOREGROUND: (u8, u8, u8) = (0xe6, 0xed, 0xf3);
+
+fn terminal_osc_rgb_report(code: u8, (r, g, b): (u8, u8, u8)) -> Vec<u8> {
+    format!(
+        "\x1b]{};rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x07",
+        code, r, r, g, g, b, b
+    )
+    .into_bytes()
 }
 
 // xterm dynamic color reply (OSC 10 = foreground, OSC 11 = background),

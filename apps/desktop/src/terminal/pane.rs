@@ -22,8 +22,14 @@ impl TerminalPane {
                 .send(TerminalUiEvent::Error(message))
                 .is_ok(),
             TerminalEvent::Output { .. } => session_event_tx.send(TerminalUiEvent::Wakeup).is_ok(),
-            TerminalEvent::Viewport { cols, rows, .. } => session_event_tx
-                .send(TerminalUiEvent::Viewport { cols, rows })
+            TerminalEvent::Viewport {
+                cols, rows, owner, ..
+            } => session_event_tx
+                .send(TerminalUiEvent::Viewport {
+                    cols,
+                    rows,
+                    remote_owner: owner != terminal_viewport_local_owner(),
+                })
                 .is_ok(),
         });
         let terminal_id = config.terminal_id.clone();
@@ -154,8 +160,14 @@ impl TerminalPane {
                 .send(TerminalUiEvent::Error(message))
                 .is_ok(),
             TerminalEvent::Output { .. } => session_event_tx.send(TerminalUiEvent::Wakeup).is_ok(),
-            TerminalEvent::Viewport { cols, rows, .. } => session_event_tx
-                .send(TerminalUiEvent::Viewport { cols, rows })
+            TerminalEvent::Viewport {
+                cols, rows, owner, ..
+            } => session_event_tx
+                .send(TerminalUiEvent::Viewport {
+                    cols,
+                    rows,
+                    remote_owner: owner != terminal_viewport_local_owner(),
+                })
                 .is_ok(),
         });
         let attach_started_at = Instant::now();
@@ -388,15 +400,32 @@ impl TerminalSessionBinding {
         Ok(())
     }
 
+    // Passive claim from prepaint: respects an unexpired remote lease, so a
+    // painting desktop pane no longer revokes a mobile claim every frame.
     fn claim_local_viewport(&self) -> Result<()> {
+        self.claim_local_viewport_with(false)
+    }
+
+    // Active claim on explicit local input: the user is typing into this
+    // pane, so take the viewport back immediately regardless of leases.
+    fn claim_local_viewport_active(&self) -> Result<()> {
+        self.claim_local_viewport_with(true)
+    }
+
+    fn claim_local_viewport_with(&self, force: bool) -> Result<()> {
         let (session, last_resize) = {
             let inner = self.inner.lock();
             (inner.session.clone(), inner.last_resize)
         };
         if let Some(session) = session {
             let handle = session.clone_handle();
-            let state = handle.claim_viewport(terminal_viewport_local_owner())?;
-            if let Some((cols, rows)) = last_resize
+            let state = if force {
+                handle.claim_viewport(terminal_viewport_local_owner())?
+            } else {
+                handle.claim_viewport_passive(terminal_viewport_local_owner())?
+            };
+            if state.owner == terminal_viewport_local_owner()
+                && let Some((cols, rows)) = last_resize
                 && (state.cols, state.rows) != (cols, rows)
             {
                 handle.resize_viewport(terminal_viewport_local_owner(), cols, rows)?;

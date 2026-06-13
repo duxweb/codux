@@ -67,6 +67,8 @@ pub const REMOTE_TERMINAL_VIEWPORT_CLAIM: &str = "terminal.viewport.claim";
 pub const REMOTE_TERMINAL_VIEWPORT_RESIZE: &str = "terminal.viewport.resize";
 pub const REMOTE_TERMINAL_VIEWPORT_RELEASE: &str = "terminal.viewport.release";
 pub const REMOTE_TERMINAL_VIEWPORT_STATE: &str = "terminal.viewport.state";
+pub const REMOTE_TERMINAL_VIEWPORT_SCROLL: &str = "terminal.viewport.scroll";
+pub const REMOTE_TERMINAL_VIEWPORT_SCROLLED: &str = "terminal.viewport.scrolled";
 pub const REMOTE_TERMINAL_UPLOAD: &str = "terminal.upload";
 pub const REMOTE_TERMINAL_UPLOAD_START: &str = "terminal.upload.start";
 pub const REMOTE_TERMINAL_UPLOAD_CHUNK: &str = "terminal.upload.chunk";
@@ -656,6 +658,7 @@ pub fn host_capabilities() -> Value {
         "terminalViewport": {
             "ownership": true,
             "state": true,
+            "scroll": true,
         },
     })
 }

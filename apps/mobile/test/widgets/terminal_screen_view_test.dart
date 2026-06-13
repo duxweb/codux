@@ -19,7 +19,7 @@ void main() {
           width: 320,
           height: 240,
           child: TerminalScreenView(
-            snapshot: _snapshot(),
+            snapshot: _snapshot(totalLines: 200),
             keyboardRequested: false,
             scrollEnabled: true,
             onInput: (_) {},
@@ -96,29 +96,32 @@ void main() {
     final scrollPixels = <double>[];
 
     await tester.pumpWidget(
-      _terminalHarness(onScrollPixels: (pixels, _) => scrollPixels.add(pixels)),
+      _terminalHarness(
+        snapshot: _snapshot(totalLines: 200),
+        onScrollPixels: (pixels, _) => scrollPixels.add(pixels),
+      ),
     );
     await tester.pump();
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byType(TerminalScreenView)),
+    await tester.fling(
+      find.byType(TerminalScreenView),
+      const Offset(0, 160),
+      1200,
     );
-    await gesture.moveBy(const Offset(0, 180));
-    await tester.pump(const Duration(milliseconds: 16));
-    await gesture.up();
     await tester.pump();
     final beforeInertiaWindow = scrollPixels.fold<double>(
       0,
       (sum, value) => sum + value,
     );
     await tester.pump(const Duration(milliseconds: 120));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
     final afterInertiaWindow = scrollPixels.fold<double>(
       0,
       (sum, value) => sum + value,
     );
 
     expect(afterInertiaWindow, greaterThan(beforeInertiaWindow));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('native terminal does not scroll past live tail', (tester) async {
@@ -147,29 +150,38 @@ void main() {
 
     await tester.pumpWidget(
       _terminalHarness(
-        snapshot: _snapshot(displayOffset: 1),
+        snapshot: _snapshot(totalLines: 200),
         onScrollPixels: (pixels, _) => scrollPixels.add(pixels),
       ),
     );
     await tester.pump();
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byType(TerminalScreenView)),
+    final terminal = find.byType(TerminalScreenView);
+    // Scroll a short distance up into history first.
+    await tester.drag(terminal, const Offset(0, 100));
+    await tester.pump();
+    final intoHistory = scrollPixels.fold<double>(
+      0,
+      (sum, value) => sum + value,
     );
-    await gesture.moveBy(const Offset(0, -180));
-    await tester.pump(const Duration(milliseconds: 16));
-    await gesture.up();
+    expect(intoHistory, greaterThan(0));
+
+    // A fast scroll back down far past the bottom clamps at the live
+    // tail: the emitted pixels return exactly the scrolled-back
+    // distance and never overshoot it.
+    scrollPixels.clear();
+    await tester.drag(terminal, const Offset(0, -400));
     await tester.pump(const Duration(milliseconds: 180));
 
     final total = scrollPixels.fold<double>(0, (sum, value) => sum + value);
     expect(total, lessThan(0));
-    expect(total, greaterThan(-20));
+    expect(total, closeTo(-intoHistory, 0.01));
   });
 
   testWidgets(
     'native terminal tolerates rebuild before core snapshot catches up',
     (tester) async {
-      var snapshot = _snapshot(scrollPixelOffset: 0);
+      var snapshot = _snapshot(totalLines: 200, scrollPixelOffset: 0);
       final scrollPixels = <double>[];
 
       await tester.pumpWidget(
@@ -181,10 +193,13 @@ void main() {
       await tester.pump();
 
       final terminal = find.byType(TerminalScreenView);
-      await tester.drag(terminal, const Offset(0, 9));
+      await tester.drag(terminal, const Offset(0, 48));
       await tester.pump();
-      expect(scrollPixels.fold<double>(0, (sum, value) => sum + value), 9);
+      final dragged = scrollPixels.fold<double>(0, (sum, value) => sum + value);
+      expect(dragged, greaterThan(0));
 
+      // Rebuild before the host confirms the new scrollback offset: the
+      // Flutter-owned position must hold without emitting spurious deltas.
       await tester.pumpWidget(
         _terminalHarness(
           snapshot: snapshot,
@@ -193,8 +208,13 @@ void main() {
       );
       await tester.pump();
       expect(find.byType(TerminalScreenView), findsOneWidget);
+      expect(
+        scrollPixels.fold<double>(0, (sum, value) => sum + value),
+        dragged,
+      );
 
-      snapshot = _snapshot(scrollPixelOffset: 9);
+      // The host snapshot catches up with the already-applied scroll.
+      snapshot = _snapshot(totalLines: 200, scrollPixelOffset: dragged);
       await tester.pumpWidget(
         _terminalHarness(
           snapshot: snapshot,
@@ -203,6 +223,11 @@ void main() {
       );
       await tester.pump();
       expect(find.byType(TerminalScreenView), findsOneWidget);
+      expect(
+        scrollPixels.fold<double>(0, (sum, value) => sum + value),
+        dragged,
+      );
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -377,12 +402,13 @@ TerminalScreenSnapshot _snapshot({
   int displayOffset = 0,
   double scrollPixelOffset = 0,
   String data = 'ready',
+  int totalLines = 24,
 }) {
   return TerminalScreenSnapshot(
     data: data,
     cols: 80,
     rows: 24,
-    totalLines: 24,
+    totalLines: totalLines,
     displayOffset: displayOffset,
     scrollPixelOffset: scrollPixelOffset,
     applicationCursor: false,

@@ -75,6 +75,22 @@ class RemotePtySession<T> {
     _core.scrollScreenToBottom();
   }
 
+  void applyHostScroll({
+    required String screenData,
+    required int displayOffset,
+    required int totalLines,
+    int marginRows = 0,
+    int marginRowsBelow = 0,
+  }) {
+    _core.applyHostScroll(
+      screenData: screenData,
+      displayOffset: displayOffset,
+      totalLines: totalLines,
+      marginRows: marginRows,
+      marginRowsBelow: marginRowsBelow,
+    );
+  }
+
   void resetTransient({bool resetSequence = false}) {
     _core.resetTransient(resetSequence: resetSequence);
     _clearHeldLive();
@@ -243,6 +259,23 @@ class RemotePtySessionStore<T> {
 
   void scrollScreenToBottom(String sessionId) {
     _sessions[sessionId]?.scrollScreenToBottom();
+  }
+
+  void applyHostScroll(
+    String sessionId, {
+    required String screenData,
+    required int displayOffset,
+    required int totalLines,
+    int marginRows = 0,
+    int marginRowsBelow = 0,
+  }) {
+    _sessions[sessionId]?.applyHostScroll(
+      screenData: screenData,
+      displayOffset: displayOffset,
+      totalLines: totalLines,
+      marginRows: marginRows,
+      marginRowsBelow: marginRowsBelow,
+    );
   }
 
   void remove(String sessionId) {

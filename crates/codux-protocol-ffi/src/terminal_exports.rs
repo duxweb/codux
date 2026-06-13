@@ -277,6 +277,30 @@ pub extern "C" fn codux_terminal_session_settle_screen_pixel_scroll(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn codux_terminal_session_apply_host_scroll(
+    session: *mut FfiRemotePtySession,
+    screen_data: *const c_char,
+    display_offset: i64,
+    total_lines: i64,
+    margin_rows: i64,
+    margin_rows_below: i64,
+) {
+    let Some(session) = terminal_session_mut(session) else {
+        return;
+    };
+    let Some(screen_data) = c_to_string(screen_data) else {
+        return;
+    };
+    session.apply_host_scroll_snapshot(
+        &screen_data,
+        usize::try_from(display_offset).unwrap_or(0),
+        usize::try_from(total_lines).unwrap_or(0),
+        usize::try_from(margin_rows).unwrap_or(0),
+        usize::try_from(margin_rows_below).unwrap_or(0),
+    );
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn codux_terminal_session_scroll_screen_to_bottom(
     session: *mut FfiRemotePtySession,
 ) {
@@ -638,6 +662,7 @@ pub extern "C" fn codux_terminal_output_sequencer_observe_json(
             "action": result.action.as_str(),
             "previousSeq": result.previous_seq,
             "shouldRender": result.should_render(),
+            "gap": result.gap,
         })
         .to_string(),
     )

@@ -7,10 +7,16 @@ class TerminalOutputSequenceResult {
   const TerminalOutputSequenceResult({
     required this.action,
     required this.previousSeq,
+    this.gap = false,
   });
 
   final TerminalOutputSequenceAction action;
   final int previousSeq;
+
+  /// True when a live frame skipped ahead of the previously observed
+  /// sequence, meaning output was lost and a baseline resync is required.
+  final bool gap;
+
   bool get shouldRender =>
       action == TerminalOutputSequenceAction.accept ||
       action == TerminalOutputSequenceAction.baseline;
@@ -39,6 +45,7 @@ class TerminalOutputSequencer {
     return TerminalOutputSequenceResult(
       action: _actionFromCore(result.action),
       previousSeq: result.previousSeq,
+      gap: result.gap,
     );
   }
 
