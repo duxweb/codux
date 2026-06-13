@@ -9,6 +9,10 @@ struct TerminalRenderer {
     palette: ColorPalette,
     measured_key: Option<TerminalCellMeasurementKey>,
     cache: Arc<Mutex<TerminalRenderCache>>,
+    // Diagnostic: last logged (content fingerprint ^ focus) so the per-frame
+    // prepare_paint only logs when the painted content or focus actually
+    // changes. Used to investigate the "duplicate/stale until focus" report.
+    last_log_signature: Arc<std::sync::atomic::AtomicU64>,
 }
 
 #[derive(Clone)]
@@ -82,6 +86,7 @@ impl TerminalRenderer {
             palette,
             measured_key: None,
             cache: Arc::new(Mutex::new(TerminalRenderCache::default())),
+            last_log_signature: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
 
@@ -146,6 +151,7 @@ impl TerminalRenderer {
         let mut lines = Vec::new();
         let mut cursor_cell = None;
         let cache_key = self.cache_key();
+        let mut content_fp = 0u64;
         let mut index = 0usize;
         while index < content.cells.len() {
             let line = content.cells[index].point.line;
@@ -166,6 +172,7 @@ impl TerminalRenderer {
                 .row_hashes
                 .get(line)
                 .unwrap_or_else(|| terminal_row_hash(cells));
+            content_fp ^= row_hash.rotate_left((row % 64) as u32);
             let prepared = self.prepare_cached_row(row, cells, default_bg, cache_key, row_hash);
             if let Some(hover_link) = hover_link
                 && hover_link.line == line
@@ -189,6 +196,29 @@ impl TerminalRenderer {
                     .find(|indexed| indexed.point.column == content.cursor.col)
                     .map(|indexed| &indexed.cell);
             }
+        }
+
+        // Diagnostic for the "duplicate/stale until focus" report: emit one line
+        // only when the painted content fingerprint or focus actually changes,
+        // so we can see whether an unfocused terminal stops repainting on PTY
+        // updates (no new lines while unfocused) or paints inconsistent content.
+        let signature = content_fp
+            ^ (content.viewport_start_line as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            ^ ((cursor_focused as u64) << 1)
+            ^ ((content.cells.len() as u64) << 2);
+        let previous = self
+            .last_log_signature
+            .swap(signature, std::sync::atomic::Ordering::Relaxed);
+        if previous != signature {
+            eprintln!(
+                "[term-diag] paint viewport_start_line={} cells={} visible={}..{} focused={} fp={:016x}",
+                content.viewport_start_line,
+                content.cells.len(),
+                visible_rows.start,
+                visible_rows.end,
+                cursor_focused,
+                content_fp,
+            );
         }
 
         if let Some(selection) = selection {
