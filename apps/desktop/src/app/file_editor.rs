@@ -1193,8 +1193,13 @@ impl CoduxApp {
         })
         .detach();
         self.file_editor_states.insert(key.clone(), state.clone());
+        // Restore the scroll line captured when this file's editor was last
+        // evicted, so reopening an evicted tab returns to where the user was.
+        if let Some(offset) = self.file_editor_scroll.get(&key).copied() {
+            state.update(cx, |state, cx| state.set_scroll_offset(offset, cx));
+        }
         self.touch_file_editor_state(&key);
-        self.prune_file_editor_states();
+        self.prune_file_editor_states(cx);
         state
     }
 
@@ -1208,7 +1213,7 @@ impl CoduxApp {
     /// not retain every file's rope + syntax tree forever. Evicts least-recently
     /// used states beyond `MAX_FILE_EDITOR_STATES`, but never a state that is
     /// still referenced by an open tab or has unsaved (dirty) changes.
-    fn prune_file_editor_states(&mut self) {
+    fn prune_file_editor_states(&mut self, cx: &mut Context<Self>) {
         const MAX_FILE_EDITOR_STATES: usize = 12;
         if self.file_editor_states.len() <= MAX_FILE_EDITOR_STATES {
             return;
@@ -1230,6 +1235,18 @@ impl CoduxApp {
             if protected.contains(&key) {
                 index += 1;
                 continue;
+            }
+            // Remember the evicted editor's scroll line so reopening this file
+            // returns to it (the offset is tiny; it survives the heavy state).
+            if let Some(offset) = self
+                .file_editor_states
+                .get(&key)
+                .map(|state| state.read(cx).scroll_offset())
+            {
+                if self.file_editor_scroll.len() >= 256 {
+                    self.file_editor_scroll.clear();
+                }
+                self.file_editor_scroll.insert(key.clone(), offset);
             }
             self.file_editor_states.remove(&key);
             self.file_editor_loading_states.remove(&key);

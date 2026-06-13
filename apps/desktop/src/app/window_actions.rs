@@ -180,6 +180,7 @@ impl CoduxApp {
             active_file_editor_tab: None,
             file_editor_states: HashMap::new(),
             file_editor_state_lru: Vec::new(),
+            file_editor_scroll: HashMap::new(),
             file_editor_loading_states: HashSet::new(),
             file_search_open: false,
             file_search_query: String::new(),
@@ -553,6 +554,7 @@ impl CoduxApp {
         app.file_editor_tabs.clear();
         app.file_editor_states.clear();
         app.file_editor_state_lru.clear();
+        app.file_editor_scroll.clear();
         app.file_editor_loading_states.clear();
         app.active_file_editor_tab = None;
         app.add_file_editor_window_tab(relative_path);

@@ -221,6 +221,7 @@ impl CoduxApp {
             self.reset_current_worktree_ui_state(cx);
             self.file_editor_states.clear();
             self.file_editor_state_lru.clear();
+            self.file_editor_scroll.clear();
             self.file_editor_loading_states.clear();
             self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
             let generation = self.project_switch_generation;

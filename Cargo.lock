@@ -3265,7 +3265,7 @@ dependencies = [
 [[package]]
 name = "gpui-component"
 version = "0.5.2"
-source = "git+https://github.com/dux-web/gpui-component?rev=cd8507a#cd8507a7ae2167119110f5ba6fc58ca5ce27c63b"
+source = "git+https://github.com/dux-web/gpui-component?rev=830cffa#830cffa421dc2e02973b85f037f6fc42b31b90ef"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -3341,7 +3341,7 @@ dependencies = [
 [[package]]
 name = "gpui-component-assets"
 version = "0.5.1"
-source = "git+https://github.com/dux-web/gpui-component?rev=cd8507a#cd8507a7ae2167119110f5ba6fc58ca5ce27c63b"
+source = "git+https://github.com/dux-web/gpui-component?rev=830cffa#830cffa421dc2e02973b85f037f6fc42b31b90ef"
 dependencies = [
  "anyhow",
  "gpui",
@@ -3355,7 +3355,7 @@ dependencies = [
 [[package]]
 name = "gpui-component-macros"
 version = "0.5.1"
-source = "git+https://github.com/dux-web/gpui-component?rev=cd8507a#cd8507a7ae2167119110f5ba6fc58ca5ce27c63b"
+source = "git+https://github.com/dux-web/gpui-component?rev=830cffa#830cffa421dc2e02973b85f037f6fc42b31b90ef"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -22,5 +22,5 @@ libghostty-vt-sys = { path = "crates/third_party/libghostty-vt-sys" }
 # Fork with a per-line tree-sitter highlight cache (editor scroll perf). Based
 # on the upstream commit codux pins; PR'd upstream as dux-web/gpui-component.
 [patch."https://github.com/longbridge/gpui-component"]
-gpui-component = { git = "https://github.com/dux-web/gpui-component", rev = "cd8507a" }
-gpui-component-assets = { git = "https://github.com/dux-web/gpui-component", rev = "cd8507a" }
+gpui-component = { git = "https://github.com/dux-web/gpui-component", rev = "830cffa" }
+gpui-component-assets = { git = "https://github.com/dux-web/gpui-component", rev = "830cffa" }

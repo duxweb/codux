@@ -96,6 +96,11 @@ pub struct CoduxApp {
     // otherwise retain every file's rope + syntax tree forever (only cleared on
     // worktree switch / window close), growing process memory unboundedly.
     pub(in crate::app) file_editor_state_lru: Vec<String>,
+    // Last scroll offset per editor-state key, captured when a state is evicted
+    // by the LRU and restored when the file is reopened, so a tab evicted from
+    // the cache still returns to its previous scroll line (small Point, unlike
+    // the heavy InputState it survives).
+    pub(in crate::app) file_editor_scroll: HashMap<String, gpui::Point<gpui::Pixels>>,
     pub(in crate::app) file_editor_loading_states: HashSet<String>,
     pub(in crate::app) file_search_open: bool,
     pub(in crate::app) file_search_query: String,
