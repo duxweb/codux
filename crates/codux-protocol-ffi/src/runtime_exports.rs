@@ -235,6 +235,24 @@ pub extern "C" fn codux_remote_runtime_model_remove_terminal_json(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn codux_remote_runtime_model_apply_git_status_json(
+    model: *mut FfiRemoteRuntimeModel,
+    status_json: *const c_char,
+) -> *mut c_char {
+    let Some(model) = remote_runtime_model_mut(model) else {
+        return ptr::null_mut();
+    };
+    let Some(status_json) = c_to_string(status_json) else {
+        return ptr::null_mut();
+    };
+    let Ok(status) = serde_json::from_str::<serde_json::Value>(&status_json) else {
+        return ptr::null_mut();
+    };
+    let plan = model.apply_git_status(status);
+    json_string_to_c(&plan)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn codux_remote_runtime_model_set_terminal_creating_project(
     model: *mut FfiRemoteRuntimeModel,
     project_id: *const c_char,

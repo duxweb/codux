@@ -1593,6 +1593,76 @@ fn runtime_model_host_selection_replaces_unbound_cached_project() {
     assert_eq!(runtime.snapshot().active_session_id, None);
 }
 
+#[test]
+fn apply_git_status_stores_projection_by_project() {
+    let mut runtime = RemoteRuntimeModel::new();
+    let status = serde_json::json!({
+        "projectId": "project-1",
+        "branch": "main",
+        "changes": 3,
+    });
+    let plan = runtime.apply_git_status(status.clone());
+    assert!(plan.state_changed);
+    let snapshot = runtime.snapshot();
+    assert_eq!(snapshot.git_status_by_project.get("project-1"), Some(&status));
+
+    // A status without a project id is ignored and changes nothing.
+    let ignored = runtime.apply_git_status(serde_json::json!({ "branch": "x" }));
+    assert_eq!(ignored, RemoteRuntimePlan::default());
+    assert_eq!(runtime.snapshot().git_status_by_project.len(), 1);
+
+    // A full reset drops git status; keep_projects retains it.
+    runtime.reset(true);
+    assert_eq!(runtime.snapshot().git_status_by_project.len(), 1);
+    runtime.reset(false);
+    assert!(runtime.snapshot().git_status_by_project.is_empty());
+}
+
+/// Drift tripwire: the JSON keys of a fully-populated `RemoteRuntimePlan` must
+/// match the set the mobile FFI binding (`RemoteRuntimeCorePlan.fromJson` /
+/// `_planFromCore` in remote_runtime_store.dart) reads. If this fails because a
+/// field was added/renamed here, update the Dart binding to match — otherwise
+/// the new field is silently dropped at the FFI boundary.
+#[test]
+fn runtime_plan_json_keys_match_dart_binding() {
+    let plan = RemoteRuntimePlan {
+        state_changed: true,
+        clear_terminal: true,
+        reset_terminal_input: true,
+        reset_terminal_buffer: true,
+        request_terminal_list: true,
+        request_project_select_id: Some("p".to_string()),
+        bind_session_id: Some("s".to_string()),
+        bind_full_buffer: true,
+        flush_terminal_input: true,
+        removed_session_id: Some("r".to_string()),
+    };
+    let value = serde_json::to_value(&plan).expect("plan serializes");
+    let mut keys: Vec<String> = value
+        .as_object()
+        .expect("plan is a JSON object")
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    let expected = vec![
+        "bindFullBuffer",
+        "bindSessionId",
+        "clearTerminal",
+        "flushTerminalInput",
+        "removedSessionId",
+        "requestProjectSelectId",
+        "requestTerminalList",
+        "resetTerminalBuffer",
+        "resetTerminalInput",
+        "stateChanged",
+    ];
+    assert_eq!(
+        keys, expected,
+        "RemoteRuntimePlan fields changed — update the Dart RemoteRuntimeCorePlan binding and _planFromCore mapping to match"
+    );
+}
+
 fn worktree(id: &str, project_id: &str) -> RemoteRuntimeWorktree {
     RemoteRuntimeWorktree {
         id: id.to_string(),

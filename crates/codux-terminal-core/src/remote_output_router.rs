@@ -359,6 +359,7 @@ impl RemoteTerminalOutputRouter {
         self.assembler.remove(session_id);
         self.sequencer.remove(session_id);
         self.gap_sessions.remove(session_id);
+        self.render_gen.remove(session_id);
     }
 
     /// Evict least-recently-bound inactive sessions beyond `max_sessions`,
@@ -410,6 +411,7 @@ impl RemoteTerminalOutputRouter {
         self.gap_sessions.clear();
         self.assembler.reset();
         self.sequencer.reset();
+        self.render_gen.clear();
     }
 
     pub fn active_buffer_request_id(&self, session_id: &str) -> Option<&str> {

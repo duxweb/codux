@@ -796,8 +796,11 @@ impl Hub {
                         Some(crate::store::now_millis()),
                     ));
                 }
-                // A reconnecting host cancels any pending grace-delayed offline.
-                self.bump_host_offline_gen(&peer.host_id).await;
+                // A reconnecting host cancels any pending grace-delayed offline:
+                // dropping the generation entry makes the in-flight grace task
+                // see `None` and skip. Removing (rather than bumping) also keeps
+                // the map from accumulating an entry per ever-connected host.
+                self.host_offline_gen.lock().await.remove(&peer.host_id);
             }
             PeerRole::Client => {
                 if let Some(old) = peers.clients.insert(
@@ -861,20 +864,22 @@ impl Hub {
         tokio::spawn(async move {
             let generation = hub.bump_host_offline_gen(&host_id).await;
             tokio::time::sleep(HOST_OFFLINE_GRACE).await;
-            let generation_current = hub
-                .host_offline_gen
-                .lock()
-                .await
-                .get(&host_id)
-                .copied();
-            if generation_current != Some(generation) {
-                return; // host reconnected (or disconnected again); not gone.
+            // Check presence first, then the generation — never holding both
+            // locks at once (register takes peers→gen; nesting them the other
+            // way here would deadlock).
+            let host_back = hub.peers.lock().await.hosts.contains_key(&host_id);
+            let mut gens = hub.host_offline_gen.lock().await;
+            if gens.get(&host_id).copied() != Some(generation) {
+                return; // superseded by a newer disconnect/reconnect; it owns the entry.
             }
-            if hub.peers.lock().await.hosts.contains_key(&host_id) {
-                return; // host is back.
+            // Our generation is the latest, so we own cleanup on every path —
+            // remove the entry whether the host came back or is truly gone.
+            gens.remove(&host_id);
+            drop(gens);
+            if host_back {
+                return; // host reconnected within grace; not gone.
             }
             hub.broadcast_host_offline(&host_id).await;
-            hub.host_offline_gen.lock().await.remove(&host_id);
         });
     }
 

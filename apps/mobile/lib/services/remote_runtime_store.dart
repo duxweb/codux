@@ -92,7 +92,6 @@ class RemoteRuntimeStore {
 
   final codux_runtime_core.RemoteRuntimeCore _core =
       codux_runtime_core.RemoteRuntimeCore();
-  Map<String, RemoteGitStatusInfo> _gitStatusByProject = const {};
 
   RemoteRuntimeState get state => _stateFromCore();
   List<ProjectInfo> get projects => state.projects;
@@ -113,11 +112,11 @@ class RemoteRuntimeStore {
   }
 
   RemoteGitStatusInfo? gitStatusForProject(String projectId) =>
-      _gitStatusByProject[projectId];
+      state.gitStatusByProject[projectId];
 
   RemoteGitStatusInfo? get selectedGitStatus {
     final projectId = selectedProjectId;
-    return projectId == null ? null : _gitStatusByProject[projectId];
+    return projectId == null ? null : state.gitStatusByProject[projectId];
   }
 
   RemoteTerminalScope? terminalScopeForProject(String projectId) {
@@ -276,8 +275,7 @@ class RemoteRuntimeStore {
 
   RemoteRuntimePlan applyGitStatus(RemoteGitStatusInfo status) {
     if (status.projectId.isEmpty) return const RemoteRuntimePlan();
-    _gitStatusByProject = {..._gitStatusByProject, status.projectId: status};
-    return const RemoteRuntimePlan(stateChanged: true);
+    return _planFromCore(_core.applyGitStatus(status.toJson()));
   }
 
   ProjectInfo? selectedProject() {
@@ -333,7 +331,10 @@ class RemoteRuntimeStore {
       lastTerminalIdByProject: snapshot.lastTerminalIdByProject,
       baseBranchesByProject: snapshot.baseBranchesByProject,
       defaultBaseBranchByProject: snapshot.defaultBaseBranchByProject,
-      gitStatusByProject: _gitStatusByProject,
+      gitStatusByProject: {
+        for (final entry in snapshot.gitStatusByProject.entries)
+          entry.key: RemoteGitStatusInfo.fromJson(entry.value),
+      },
     );
   }
 }

@@ -766,6 +766,11 @@ final _remoteRuntimeModelRemoveTerminalJson = _dylib
       Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>),
       Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>)
     >('codux_remote_runtime_model_remove_terminal_json');
+final _remoteRuntimeModelApplyGitStatusJson = _dylib
+    .lookupFunction<
+      Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>),
+      Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>)
+    >('codux_remote_runtime_model_apply_git_status_json');
 final _remoteRuntimeModelSetTerminalCreatingProject = _dylib
     .lookupFunction<
       Void Function(Pointer<Void>, Pointer<Utf8>),
@@ -1993,6 +1998,7 @@ class RemoteRuntimeCoreState {
     required this.lastTerminalIdByProject,
     required this.baseBranchesByProject,
     required this.defaultBaseBranchByProject,
+    required this.gitStatusByProject,
     this.selectedProjectId,
     this.activeSessionId,
     this.selectedWorktreeId,
@@ -2015,6 +2021,7 @@ class RemoteRuntimeCoreState {
   final Map<String, String> lastTerminalIdByProject;
   final Map<String, List<String>> baseBranchesByProject;
   final Map<String, String> defaultBaseBranchByProject;
+  final Map<String, Map<String, dynamic>> gitStatusByProject;
 
   factory RemoteRuntimeCoreState.fromJson(Map<String, dynamic> json) {
     final projects = json['projects'];
@@ -2023,6 +2030,7 @@ class RemoteRuntimeCoreState {
     final last = json['lastTerminalIdByProject'];
     final baseBranches = json['baseBranchesByProject'];
     final defaultBaseBranches = json['defaultBaseBranchByProject'];
+    final gitStatus = json['gitStatusByProject'];
     return RemoteRuntimeCoreState(
       projects: [
         if (projects is List)
@@ -2067,6 +2075,12 @@ class RemoteRuntimeCoreState {
         if (defaultBaseBranches is Map)
           for (final entry in defaultBaseBranches.entries)
             '${entry.key}': '${entry.value}',
+      },
+      gitStatusByProject: {
+        if (gitStatus is Map)
+          for (final entry in gitStatus.entries)
+            if (entry.value is Map)
+              '${entry.key}': Map<String, dynamic>.from(entry.value as Map),
       },
     );
   }
@@ -2321,6 +2335,19 @@ class RemoteRuntimeCore {
       );
     } finally {
       malloc.free(terminalPtr);
+    }
+  }
+
+  RemoteRuntimeCorePlan applyGitStatus(Map<String, dynamic> status) {
+    final statusPtr = jsonEncode(status).toNativeUtf8();
+    try {
+      return RemoteRuntimeCorePlan.fromJson(
+        _decodeEnvelope(
+          _remoteRuntimeModelApplyGitStatusJson(_liveHandle(), statusPtr),
+        ),
+      );
+    } finally {
+      malloc.free(statusPtr);
     }
   }
 

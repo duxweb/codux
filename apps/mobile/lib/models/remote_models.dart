@@ -515,6 +515,22 @@ class RemoteGitStatusInfo {
             )
             .toList(),
       );
+
+  Map<String, dynamic> toJson() => {
+    'projectId': projectId,
+    'projectPath': projectPath,
+    'branch': branch,
+    if (upstream != null) 'upstream': upstream,
+    'ahead': ahead,
+    'behind': behind,
+    'staged': staged,
+    'unstaged': unstaged,
+    'untracked': untracked,
+    'changes': changes,
+    'isRepository': isRepository,
+    if (error != null) 'error': error,
+    'changedFiles': changedFiles.map((item) => item.toJson()).toList(),
+  };
 }
 
 class RemoteGitFileStatus {
@@ -534,6 +550,12 @@ class RemoteGitFileStatus {
         indexStatus: '${json['indexStatus'] ?? ''}',
         worktreeStatus: '${json['worktreeStatus'] ?? ''}',
       );
+
+  Map<String, dynamic> toJson() => {
+    'path': path,
+    'indexStatus': indexStatus,
+    'worktreeStatus': worktreeStatus,
+  };
 }
 
 class AIStatsInfo {

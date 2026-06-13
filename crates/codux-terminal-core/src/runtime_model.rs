@@ -141,7 +141,10 @@ pub struct RemoteRuntimePlan {
     pub removed_session_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+// Not `Eq`: `git_status_by_project` holds opaque git-status JSON (`serde_json::Value`),
+// which is `PartialEq` but not `Eq`. The runtime model does no logic on git status —
+// it only stores the per-project projection so all subscription state lives in one place.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteRuntimeStateSnapshot {
     pub projects: Vec<RemoteRuntimeProject>,
@@ -170,6 +173,8 @@ pub struct RemoteRuntimeStateSnapshot {
     pub base_branches_by_project: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub default_base_branch_by_project: HashMap<String, String>,
+    #[serde(default)]
+    pub git_status_by_project: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -189,6 +194,7 @@ pub struct RemoteRuntimeModel {
     selected_worktree_id_by_project: HashMap<String, String>,
     base_branches_by_project: HashMap<String, Vec<String>>,
     default_base_branch_by_project: HashMap<String, String>,
+    git_status_by_project: HashMap<String, serde_json::Value>,
 }
 
 impl RemoteRuntimeModel {
@@ -212,6 +218,24 @@ impl RemoteRuntimeModel {
             selected_worktree_id_by_project: self.selected_worktree_id_by_project.clone(),
             base_branches_by_project: self.base_branches_by_project.clone(),
             default_base_branch_by_project: self.default_base_branch_by_project.clone(),
+            git_status_by_project: self.git_status_by_project.clone(),
+        }
+    }
+
+    /// Store the latest git-status projection for a project. Returns a plan with
+    /// `state_changed` so the UI re-renders; a status with no `projectId` is ignored.
+    pub fn apply_git_status(&mut self, status: serde_json::Value) -> RemoteRuntimePlan {
+        let project_id = status
+            .get("projectId")
+            .and_then(|value| value.as_str())
+            .and_then(clean_nonempty_str);
+        let Some(project_id) = project_id else {
+            return RemoteRuntimePlan::default();
+        };
+        self.git_status_by_project.insert(project_id, status);
+        RemoteRuntimePlan {
+            state_changed: true,
+            ..RemoteRuntimePlan::default()
         }
     }
 
@@ -300,6 +324,11 @@ impl RemoteRuntimeModel {
             },
             default_base_branch_by_project: if keep_projects {
                 self.default_base_branch_by_project.clone()
+            } else {
+                HashMap::new()
+            },
+            git_status_by_project: if keep_projects {
+                self.git_status_by_project.clone()
             } else {
                 HashMap::new()
             },
