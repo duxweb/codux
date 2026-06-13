@@ -217,6 +217,14 @@ impl RemoteHostRuntime {
         Arc::clone(&self.terminals)
     }
 
+    /// Push the current terminal list to subscribed devices. Called when the
+    /// desktop closes a terminal so connected mobile clients reconcile their
+    /// view (mobile already drops sessions no longer in the list) instead of
+    /// showing the closed session's stale content.
+    pub fn broadcast_terminal_list_change(&self) {
+        self.broadcast_terminal_list(None);
+    }
+
     pub fn apply_snapshot(&self, summary: RemoteSummary) -> RemoteSummary {
         self.update_snapshot(summary.clone());
         summary

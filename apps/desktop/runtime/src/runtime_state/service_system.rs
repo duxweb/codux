@@ -233,6 +233,12 @@ impl RuntimeService {
         self.remote_host.drain_events()
     }
 
+    /// Notify connected mobile clients that the terminal set changed (e.g. a
+    /// terminal was closed on the desktop) so they reconcile their view.
+    pub fn broadcast_remote_terminal_list(&self) {
+        self.remote_host.broadcast_terminal_list_change();
+    }
+
     pub fn shutdown_runtime_state(&self) {
         self.remote_host.shutdown();
     }

@@ -429,9 +429,15 @@ impl CoduxApp {
             .iter()
             .any(|session| session.id == terminal_id);
         if exists {
-            self.terminal_manager
+            let result = self
+                .terminal_manager
                 .kill(terminal_id)
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string());
+            // Tell connected mobile clients the terminal set changed so they
+            // reconcile their view instead of showing the closed session's
+            // stale content. (A no-op when no device is connected.)
+            self.runtime_service.broadcast_remote_terminal_list();
+            result
         } else {
             Ok(())
         }
