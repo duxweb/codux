@@ -4116,11 +4116,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       }
     }
 
-    final textScale =
-        (_settings.appFontSize / MobileSettings.defaultAppFontSize).clamp(
-          0.75,
-          1.25,
-        );
+    final textScale = _settings.appTextScale.clamp(0.75, 1.25);
 
     return MediaQuery(
       data: media.copyWith(textScaler: TextScaler.linear(textScale)),
@@ -4251,7 +4247,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       currentAccent: prefs.accent,
       currentLocale: prefs.locale,
       currentLogLevel: _settings.logLevel,
-      appFontSize: _settings.appFontSize,
+      appTextScale: _settings.appTextScale,
       terminalFontSize: _settings.terminalFontSize,
       onChangeAccent: (next) {
         widget.onChangeAccent(next);
@@ -4265,8 +4261,8 @@ class _CoduxHomePageState extends State<CoduxHomePage>
         CoduxLog.setLevelName(next);
         setState(() => _settings = _settings.copyWith(logLevel: next));
       },
-      onChangeAppFontSize: (next) {
-        final settings = _settings.copyWith(appFontSize: next);
+      onChangeAppTextScale: (next) {
+        final settings = _settings.copyWith(appTextScale: next);
         setState(() => _settings = settings);
         unawaited(_storage.saveSettings(settings));
       },

@@ -13,12 +13,12 @@ class SettingsScreen extends StatelessWidget {
     required this.currentAccent,
     required this.currentLocale,
     required this.currentLogLevel,
-    required this.appFontSize,
+    required this.appTextScale,
     required this.terminalFontSize,
     required this.onChangeAccent,
     required this.onChangeLocale,
     required this.onChangeLogLevel,
-    required this.onChangeAppFontSize,
+    required this.onChangeAppTextScale,
     required this.onChangeTerminalFontSize,
     required this.onUseDetectedName,
     required this.onSave,
@@ -32,12 +32,12 @@ class SettingsScreen extends StatelessWidget {
   final AccentOption currentAccent;
   final LocaleOption currentLocale;
   final String currentLogLevel;
-  final double appFontSize;
+  final double appTextScale;
   final double terminalFontSize;
   final ValueChanged<AccentOption> onChangeAccent;
   final ValueChanged<LocaleOption> onChangeLocale;
   final ValueChanged<String> onChangeLogLevel;
-  final ValueChanged<double> onChangeAppFontSize;
+  final ValueChanged<double> onChangeAppTextScale;
   final ValueChanged<double> onChangeTerminalFontSize;
   final VoidCallback onUseDetectedName;
   final VoidCallback onSave;
@@ -102,16 +102,12 @@ class SettingsScreen extends StatelessWidget {
                   children: [
                     _StepSliderTile(
                       label: prefs.t('settings.appFontSize'),
-                      valueLabel: _fontSizeValueLabel(
-                        prefs,
-                        appFontSize,
-                        MobileSettings.defaultAppFontSize,
-                      ),
-                      value: appFontSize,
-                      steps: MobileSettings.appFontSizeSteps,
+                      valueLabel: _appTextScaleLabel(prefs, appTextScale),
+                      value: appTextScale,
+                      steps: MobileSettings.appTextScaleSteps,
                       stepLabels: _appFontStepLabels(prefs),
                       accent: accent,
-                      onChanged: onChangeAppFontSize,
+                      onChanged: onChangeAppTextScale,
                     ),
                     _Divider(),
                     _StepSliderTile(
@@ -119,7 +115,7 @@ class SettingsScreen extends StatelessWidget {
                       valueLabel: _fontSizeValueLabel(
                         prefs,
                         terminalFontSize,
-                        MobileSettings.defaultTerminalFontSize,
+                        MobileSettings.standardTerminalFontSize,
                       ),
                       value: terminalFontSize,
                       steps: MobileSettings.terminalFontSizeSteps,
@@ -759,6 +755,16 @@ List<String> _terminalFontStepLabels(AppPreferences prefs) => [
   prefs.t('settings.fontLarge'),
   prefs.t('settings.fontExtraLarge'),
 ];
+
+String _appTextScaleLabel(AppPreferences prefs, double value) {
+  if (value < MobileSettings.defaultAppTextScale) {
+    return prefs.t('settings.fontSmall');
+  }
+  if (value > MobileSettings.defaultAppTextScale) {
+    return prefs.t('settings.fontLarge');
+  }
+  return prefs.t('settings.fontStandard');
+}
 
 String _fontSizeValueLabel(
   AppPreferences prefs,

@@ -727,9 +727,10 @@ List<T> _listOf<T>(Object? value, T Function(Map<String, dynamic>) mapper) {
 }
 
 class MobileSettings {
-  static const defaultAppFontSize = 16.0;
-  static const defaultTerminalFontSize = 14.0;
-  static const List<double> appFontSizeSteps = [14.0, 16.0, 18.0];
+  static const defaultAppTextScale = 1.0;
+  static const defaultTerminalFontSize = 12.0;
+  static const standardTerminalFontSize = 14.0;
+  static const List<double> appTextScaleSteps = [0.875, 1.0, 1.125];
   static const List<double> terminalFontSizeSteps = [
     10.0,
     12.0,
@@ -743,14 +744,14 @@ class MobileSettings {
     this.accentId = 'cyan',
     this.localeId = 'system',
     this.logLevel = 'info',
-    this.appFontSize = defaultAppFontSize,
+    this.appTextScale = defaultAppTextScale,
     this.terminalFontSize = defaultTerminalFontSize,
   });
   final String localName;
   final String accentId;
   final String localeId;
   final String logLevel;
-  final double appFontSize;
+  final double appTextScale;
   final double terminalFontSize;
 
   MobileSettings copyWith({
@@ -758,7 +759,7 @@ class MobileSettings {
     String? accentId,
     String? localeId,
     String? logLevel,
-    double? appFontSize,
+    double? appTextScale,
     double? terminalFontSize,
   }) {
     return MobileSettings(
@@ -766,15 +767,15 @@ class MobileSettings {
       accentId: accentId ?? this.accentId,
       localeId: localeId ?? this.localeId,
       logLevel: logLevel ?? this.logLevel,
-      appFontSize: appFontSize ?? this.appFontSize,
+      appTextScale: appTextScale ?? this.appTextScale,
       terminalFontSize: terminalFontSize ?? this.terminalFontSize,
     );
   }
 
   factory MobileSettings.fromJson(Map<String, dynamic> json) {
-    final appFontSize = json['appFontSize'] is num
-        ? (json['appFontSize'] as num).toDouble()
-        : double.tryParse('${json['appFontSize'] ?? ''}');
+    final appTextScale = json['appTextScale'] is num
+        ? (json['appTextScale'] as num).toDouble()
+        : double.tryParse('${json['appTextScale'] ?? ''}');
     final terminalFontSize = json['terminalFontSize'] is num
         ? (json['terminalFontSize'] as num).toDouble()
         : double.tryParse('${json['terminalFontSize'] ?? ''}');
@@ -783,10 +784,10 @@ class MobileSettings {
       accentId: '${json['accentId'] ?? 'cyan'}',
       localeId: '${json['localeId'] ?? 'system'}',
       logLevel: '${json['logLevel'] ?? 'info'}',
-      appFontSize: _nearestFontStep(
-        appFontSize,
-        MobileSettings.appFontSizeSteps,
-        MobileSettings.defaultAppFontSize,
+      appTextScale: _nearestFontStep(
+        appTextScale,
+        MobileSettings.appTextScaleSteps,
+        MobileSettings.defaultAppTextScale,
       ),
       terminalFontSize: _nearestFontStep(
         terminalFontSize,
@@ -801,7 +802,7 @@ class MobileSettings {
     'accentId': accentId,
     'localeId': localeId,
     'logLevel': logLevel,
-    'appFontSize': appFontSize,
+    'appTextScale': appTextScale,
     'terminalFontSize': terminalFontSize,
   };
 }
