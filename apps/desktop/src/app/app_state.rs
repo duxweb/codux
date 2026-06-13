@@ -91,6 +91,11 @@ pub struct CoduxApp {
     pub(in crate::app) file_editor_tabs: Vec<FileEditorTab>,
     pub(in crate::app) active_file_editor_tab: Option<String>,
     pub(in crate::app) file_editor_states: HashMap<String, gpui::Entity<InputState>>,
+    // Most-recently-accessed editor-state keys, oldest first. Bounds the
+    // editor-state cache: opening files across many projects/worktrees would
+    // otherwise retain every file's rope + syntax tree forever (only cleared on
+    // worktree switch / window close), growing process memory unboundedly.
+    pub(in crate::app) file_editor_state_lru: Vec<String>,
     pub(in crate::app) file_editor_loading_states: HashSet<String>,
     pub(in crate::app) file_search_open: bool,
     pub(in crate::app) file_search_query: String,

@@ -756,6 +756,7 @@ impl CoduxApp {
         self.file_editor_tabs.remove(index);
         let key = self.file_editor_state_key(&relative_path);
         self.file_editor_states.remove(&key);
+        self.file_editor_state_lru.retain(|existing| existing != &key);
 
         if self.active_file_editor_tab.as_deref() == Some(relative_path.as_str()) {
             self.active_file_editor_tab = self
@@ -1169,7 +1170,9 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) -> gpui::Entity<InputState> {
         if let Some(state) = self.file_editor_states.get(&key) {
-            return state.clone();
+            let state = state.clone();
+            self.touch_file_editor_state(&key);
+            return state;
         }
 
         let state = cx.new(|cx| {
@@ -1189,8 +1192,52 @@ impl CoduxApp {
             }
         })
         .detach();
-        self.file_editor_states.insert(key, state.clone());
+        self.file_editor_states.insert(key.clone(), state.clone());
+        self.touch_file_editor_state(&key);
+        self.prune_file_editor_states();
         state
+    }
+
+    /// Mark an editor-state key as most-recently-used.
+    fn touch_file_editor_state(&mut self, key: &str) {
+        self.file_editor_state_lru.retain(|existing| existing != key);
+        self.file_editor_state_lru.push(key.to_string());
+    }
+
+    /// Bound the editor-state cache so opening files across many projects does
+    /// not retain every file's rope + syntax tree forever. Evicts least-recently
+    /// used states beyond `MAX_FILE_EDITOR_STATES`, but never a state that is
+    /// still referenced by an open tab or has unsaved (dirty) changes.
+    fn prune_file_editor_states(&mut self) {
+        const MAX_FILE_EDITOR_STATES: usize = 24;
+        if self.file_editor_states.len() <= MAX_FILE_EDITOR_STATES {
+            return;
+        }
+        let dirty_paths: Vec<String> = self
+            .file_editor_tabs
+            .iter()
+            .filter(|tab| tab.dirty)
+            .map(|tab| tab.relative_path.clone())
+            .collect();
+        let protected: std::collections::HashSet<String> = dirty_paths
+            .iter()
+            .map(|path| self.file_editor_state_key(path))
+            .collect();
+        let mut lru = std::mem::take(&mut self.file_editor_state_lru);
+        let mut index = 0;
+        while self.file_editor_states.len() > MAX_FILE_EDITOR_STATES && index < lru.len() {
+            let key = lru[index].clone();
+            if protected.contains(&key) {
+                index += 1;
+                continue;
+            }
+            self.file_editor_states.remove(&key);
+            self.file_editor_loading_states.remove(&key);
+            lru.remove(index);
+        }
+        // Drop LRU entries for states that no longer exist.
+        lru.retain(|key| self.file_editor_states.contains_key(key));
+        self.file_editor_state_lru = lru;
     }
 
     pub(super) fn apply_file_editor_layout(&mut self, layout: FileEditorLayoutSummary) {
