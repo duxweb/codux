@@ -172,8 +172,34 @@ impl TerminalModel {
         }
 
         self.output_flush_pending = true;
-        self.process_output_bytes(&bytes, cx);
+        // Append to the pending buffer and drain at most one capped chunk now;
+        // a large burst (session restore) keeps the remainder for the next
+        // frame instead of processing everything synchronously.
+        self.pending_output_bytes.extend(bytes);
+        self.drain_pending_output(cx);
         self.schedule_pending_output_flush(cx);
+    }
+
+    /// Process up to [`TERMINAL_OUTPUT_MAX_BYTES_PER_FLUSH`] of the pending
+    /// output. Returns true if bytes remained unprocessed (caller should keep
+    /// the flush armed so the rest drains on the next frame).
+    fn drain_pending_output(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.pending_output_bytes.is_empty() {
+            return false;
+        }
+        if self.pending_output_bytes.len() <= TERMINAL_OUTPUT_MAX_BYTES_PER_FLUSH {
+            let bytes = std::mem::take(&mut self.pending_output_bytes);
+            self.process_output_bytes(&bytes, cx);
+            return false;
+        }
+        // Split off a capped chunk; the VT parser is stateful across calls, so
+        // any byte boundary is safe to resume from.
+        let rest = self
+            .pending_output_bytes
+            .split_off(TERMINAL_OUTPUT_MAX_BYTES_PER_FLUSH);
+        let chunk = std::mem::replace(&mut self.pending_output_bytes, rest);
+        self.process_output_bytes(&chunk, cx);
+        true
     }
 
     fn schedule_pending_output_flush(&mut self, cx: &mut Context<Self>) {
@@ -189,8 +215,7 @@ impl TerminalModel {
     }
 
     fn flush_output(&mut self, cx: &mut Context<Self>) {
-        let bytes = std::mem::take(&mut self.pending_output_bytes);
-        if bytes.is_empty() {
+        if self.pending_output_bytes.is_empty() {
             if self.process_pending_events(cx) || self.snapshot_dirty {
                 self.request_snapshot_publish(cx);
                 cx.notify();
@@ -198,7 +223,14 @@ impl TerminalModel {
             return;
         }
 
-        self.process_output_bytes(&bytes, cx);
+        let has_backlog = self.drain_pending_output(cx);
+        if has_backlog {
+            // More than one capped chunk is queued (e.g. a session restore);
+            // keep the flush armed so the rest drains on subsequent frames
+            // without blocking this one.
+            self.output_flush_pending = true;
+            self.schedule_pending_output_flush(cx);
+        }
     }
 
     fn process_output_bytes(&mut self, bytes: &[u8], cx: &mut Context<Self>) {

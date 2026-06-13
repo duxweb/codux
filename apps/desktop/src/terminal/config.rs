@@ -98,6 +98,12 @@ fn default_terminal_font_family() -> &'static str {
 const DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER: f32 = 1.45;
 const TERMINAL_SCROLL_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const TERMINAL_OUTPUT_FRAME_INTERVAL: Duration = Duration::from_millis(16);
+// Cap on how many output bytes are fed to the VT engine in a single flush.
+// A session restore (the AI CLI replaying its whole transcript) can deliver
+// hundreds of KB at once; processing it all in one synchronous call froze the
+// UI for seconds. Past the cap the remainder is kept and drained on the next
+// frame, so a large burst spreads across frames instead of blocking one.
+const TERMINAL_OUTPUT_MAX_BYTES_PER_FLUSH: usize = 256 * 1024;
 const TERMINAL_INITIAL_LAYOUT_WAIT: Duration = Duration::from_millis(120);
 const TERMINAL_SNAPSHOT_PUBLISH_SLOW: Duration = Duration::from_millis(24);
 // A model counts as "being painted" when its element prepaint synced within
