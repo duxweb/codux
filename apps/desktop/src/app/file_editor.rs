@@ -756,7 +756,8 @@ impl CoduxApp {
         self.file_editor_tabs.remove(index);
         let key = self.file_editor_state_key(&relative_path);
         self.file_editor_states.remove(&key);
-        self.file_editor_state_lru.retain(|existing| existing != &key);
+        self.file_editor_state_lru
+            .retain(|existing| existing != &key);
 
         if self.active_file_editor_tab.as_deref() == Some(relative_path.as_str()) {
             self.active_file_editor_tab = self
@@ -1205,7 +1206,8 @@ impl CoduxApp {
 
     /// Mark an editor-state key as most-recently-used.
     fn touch_file_editor_state(&mut self, key: &str) {
-        self.file_editor_state_lru.retain(|existing| existing != key);
+        self.file_editor_state_lru
+            .retain(|existing| existing != key);
         self.file_editor_state_lru.push(key.to_string());
     }
 

@@ -163,8 +163,7 @@ impl Render for WorkspaceBodyView {
                     self.terminal_workspace_view = Some(view.clone());
                     view
                 };
-                let split_file_editor = app.workspace_split
-                    == Some(WorkspaceSplitKind::FileEditor)
+                let split_file_editor = app.workspace_split == Some(WorkspaceSplitKind::FileEditor)
                     && !app.file_editor_tabs.is_empty();
                 if !split_file_editor {
                     return gpui::AnyView::from(terminal_view).into_any_element();
@@ -1121,7 +1120,10 @@ fn terminal_main_split_area(
             });
         })
         .children(panes.into_iter().enumerate().map(move |(index, slot)| {
-            let ratio = ratios.get(index).copied().unwrap_or(1.0 / pane_count as f64);
+            let ratio = ratios
+                .get(index)
+                .copied()
+                .unwrap_or(1.0 / pane_count as f64);
             resizable_panel()
                 .size(px((total_width.as_f32() as f64 * ratio) as f32))
                 .size_range(TERMINAL_TOP_PANE_MIN_WIDTH..Pixels::MAX)

@@ -171,15 +171,12 @@ impl CoduxApp {
         let mut index = 0;
         while index < self.terminals.len() {
             if self.terminals[index].placement == TerminalTabPlacement::Bottom {
-                let terminal_id = self.terminals[index]
-                    .terminal_id
-                    .clone()
-                    .or_else(|| {
-                        self.terminals[index]
-                            .panes
-                            .first()
-                            .and_then(|slot| slot.terminal_id.clone())
-                    });
+                let terminal_id = self.terminals[index].terminal_id.clone().or_else(|| {
+                    self.terminals[index]
+                        .panes
+                        .first()
+                        .and_then(|slot| slot.terminal_id.clone())
+                });
                 if terminal_id
                     .as_deref()
                     .is_some_and(|terminal_id| !layout_ids.contains(terminal_id))
@@ -198,7 +195,11 @@ impl CoduxApp {
             self.remove_registered_terminal_pane(&terminal_id);
         }
         if removed_stale {
-            if !self.terminals.iter().any(|tab| tab.id == self.active_terminal_id) {
+            if !self
+                .terminals
+                .iter()
+                .any(|tab| tab.id == self.active_terminal_id)
+            {
                 let next_active_id = self
                     .bottom_terminals()
                     .next()

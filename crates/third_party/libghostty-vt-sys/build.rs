@@ -527,17 +527,126 @@ fn find_file_with(
 }
 
 fn zig_command() -> PathBuf {
+    let mut probes = Vec::new();
+
     if let Ok(value) = env::var("ZIG") {
         let path = PathBuf::from(value);
         if !path.as_os_str().is_empty() {
-            return path;
+            probes.push(probe_zig_candidate(&path, true));
+            return select_zig_command_from_probes(&probes)
+                .unwrap_or_else(|error| panic!("failed to resolve ZIG from environment: {error}"));
         }
     }
-    let homebrew_zig = PathBuf::from("/opt/homebrew/opt/zig@0.15/bin/zig");
-    if homebrew_zig.exists() {
-        return homebrew_zig;
+
+    #[cfg(target_os = "macos")]
+    {
+        probes.push(probe_zig_candidate(
+            Path::new("/opt/homebrew/opt/zig@0.15/bin/zig"),
+            false,
+        ));
     }
-    PathBuf::from("zig")
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(home) = env::var_os("USERPROFILE").or_else(|| env::var_os("HOME")) {
+            probes.push(probe_zig_candidate(
+                &PathBuf::from(home)
+                    .join("tools")
+                    .join("zig-0.15.2")
+                    .join("zig.exe"),
+                false,
+            ));
+        }
+        probes.push(probe_zig_candidate(
+            Path::new("C:\\tools\\zig-0.15.2\\zig.exe"),
+            false,
+        ));
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        probes.push(probe_zig_candidate(
+            Path::new("/usr/local/bin/zig-0.15.2"),
+            false,
+        ));
+        probes.push(probe_zig_candidate(Path::new("/opt/zig-0.15.2/zig"), false));
+    }
+
+    probes.push(probe_zig_candidate(Path::new("zig"), false));
+    select_zig_command_from_probes(&probes).unwrap_or_else(|error| panic!("{error}"))
+}
+
+fn probe_zig_candidate(path: &Path, explicit: bool) -> ZigProbe {
+    ZigProbe {
+        path: path.to_path_buf(),
+        version: zig_version(path).ok(),
+        explicit,
+    }
+}
+
+fn zig_version(path: &Path) -> Result<String, String> {
+    let mut command = Command::new(path);
+    command.arg("version");
+    let output = command
+        .output()
+        .map_err(|error| format!("failed to execute {}: {error}", path.display()))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{} version failed with status {}\nstdout:\n{}\nstderr:\n{}",
+            path.display(),
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    String::from_utf8(output.stdout)
+        .map_err(|error| format!("{} printed non-UTF-8 stdout: {error}", path.display()))
+        .map(|version| version.trim().to_owned())
+}
+
+fn select_zig_command_from_probes(probes: &[ZigProbe]) -> Result<PathBuf, String> {
+    const REQUIRED_ZIG_VERSION: &str = "0.15.2";
+
+    let mut last_explicit_error = None;
+    for probe in probes {
+        match probe.version.as_deref() {
+            Some(version) if version == REQUIRED_ZIG_VERSION => {
+                return Ok(probe.path.clone());
+            }
+            Some(version) if probe.explicit => {
+                last_explicit_error = Some(format!(
+                    "Zig {} at {} does not meet the required build version of {}",
+                    version,
+                    probe.path.display(),
+                    REQUIRED_ZIG_VERSION
+                ));
+            }
+            None if probe.explicit => {
+                last_explicit_error = Some(format!(
+                    "failed to determine Zig version for explicit path {}",
+                    probe.path.display()
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(error) = last_explicit_error {
+        return Err(error);
+    }
+
+    Err(format!(
+        "Zig {} was not found. Set ZIG to a Zig {} executable or install it at one of the expected locations.",
+        REQUIRED_ZIG_VERSION, REQUIRED_ZIG_VERSION
+    ))
+}
+
+#[derive(Debug, Clone)]
+struct ZigProbe {
+    path: PathBuf,
+    version: Option<String>,
+    explicit: bool,
 }
 
 /// Clone ghostty at the pinned commit into OUT_DIR/ghostty-src.
@@ -632,5 +741,38 @@ fn zig_cpu(target: &str) -> Option<&'static str> {
         // the altnzcv feature required by simdutf's ARM intrinsic paths.
         "aarch64-apple-ios-sim" => Some("apple_a17"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn probe(path: &str, version: Option<&str>, explicit: bool) -> ZigProbe {
+        ZigProbe {
+            path: PathBuf::from(path),
+            version: version.map(str::to_owned),
+            explicit,
+        }
+    }
+
+    #[test]
+    fn chooses_first_required_zig_version_from_candidates() {
+        let selected = select_zig_command_from_probes(&[
+            probe("zig-0.16.0", Some("0.16.0"), false),
+            probe("zig-0.15.2", Some("0.15.2"), false),
+        ])
+        .expect("expected compatible Zig to be selected");
+
+        assert_eq!(selected, PathBuf::from("zig-0.15.2"));
+    }
+
+    #[test]
+    fn rejects_explicit_zig_with_wrong_version() {
+        let error = select_zig_command_from_probes(&[probe("zig", Some("0.16.0"), true)])
+            .expect_err("explicit incompatible Zig must fail");
+
+        assert!(error.contains("0.15.2"));
+        assert!(error.contains("0.16.0"));
     }
 }

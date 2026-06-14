@@ -1402,8 +1402,7 @@ impl CoduxApp {
                 // In split mode, if the file editor holds focus, Cmd+W closes the
                 // active file tab (and the split collapses once the last one is
                 // gone) instead of closing the terminal.
-                let close_split_file = self.workspace_split
-                    == Some(WorkspaceSplitKind::FileEditor)
+                let close_split_file = self.workspace_split == Some(WorkspaceSplitKind::FileEditor)
                     && self.active_file_editor_tab.is_some()
                     && self.active_file_editor_split_focused(window, cx);
                 if close_split_file {

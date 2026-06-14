@@ -107,7 +107,8 @@ fn run_system_git(
     cancel: Option<&GitCancelToken>,
 ) -> Result<(), String> {
     check_git_cancelled(cancel)?;
-    let mut child = Command::new("git")
+    let mut command = system_git_command();
+    let mut child = command
         .args(args)
         .current_dir(&working_dir)
         .stdin(Stdio::null())
@@ -135,6 +136,23 @@ fn run_system_git(
     }
     Err(normalize_git_error_message(&system_git_output_message(&output)))
 }
+
+fn system_git_command() -> Command {
+    let mut command = Command::new("git");
+    configure_background_command(&mut command);
+    command
+}
+
+#[cfg(windows)]
+fn configure_background_command(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn configure_background_command(_command: &mut Command) {}
 
 fn check_git_cancelled_with_child(
     cancel: Option<&GitCancelToken>,
@@ -312,9 +330,11 @@ fn default_ssh_key_paths() -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod remote_operation_tests {
-    use super::{check_git_cancelled, normalize_git_error_message, system_git_output_message};
+    use super::{
+        check_git_cancelled, normalize_git_error_message, system_git_command,
+        system_git_output_message,
+    };
     use std::{
-        process::Command,
         sync::{
             Arc,
             atomic::AtomicBool,
@@ -345,7 +365,7 @@ mod remote_operation_tests {
 
     #[test]
     fn system_git_error_prefers_stderr() {
-        let output = Command::new("git")
+        let output = system_git_command()
             .args(["not-a-codux-command"])
             .output()
             .expect("run git");
