@@ -109,10 +109,12 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Set up Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-          use-cache: false
+        shell: bash
+        run: |
+          brew install zig@0.15
+          zig_path="$(brew --prefix zig@0.15)/bin/zig"
+          echo "ZIG=$zig_path" >> "$GITHUB_ENV"
+          "$zig_path" version
 
       - name: Cache Rust build
         uses: actions/cache@v4

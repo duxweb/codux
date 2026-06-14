@@ -106,7 +106,17 @@ jobs:
         with:
           targets: ${{ matrix.targets || matrix.target }}
 
-      - name: Set up Zig
+      - name: Set up Zig (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install zig@0.15
+          zig_path="$(brew --prefix zig@0.15)/bin/zig"
+          echo "ZIG=$zig_path" >> "$GITHUB_ENV"
+          "$zig_path" version
+
+      - name: Set up Zig (Windows)
+        if: runner.os == 'Windows'
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
