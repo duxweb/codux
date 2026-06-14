@@ -41,14 +41,36 @@ fn main() {
 
     patch_ghostty_for_target(&ghostty_dir, &target);
 
-    // Build libghostty-vt via zig.
-    let install_prefix = out_dir.join("ghostty-install");
+    // Build libghostty-vt via zig. Zig 0.15's Windows build runner asserts
+    // when some RunStep paths are rooted at an absolute prefix, so keep the
+    // install prefix relative to the Ghostty source tree on Windows.
+    let platform = TargetPlatform::from_triple(&target);
+    let install_prefix = zig_install_prefix(&ghostty_dir, &out_dir, platform);
+    let install_prefix_arg = zig_install_prefix_arg(&install_prefix, platform);
+    if install_prefix.exists() {
+        std::fs::remove_dir_all(&install_prefix).unwrap_or_else(|error| {
+            panic!(
+                "failed to remove stale Ghostty install prefix {}: {error}",
+                install_prefix.display()
+            )
+        });
+    }
 
     let zig = zig_command();
     let mut build = Command::new(&zig);
     build
         .arg("build")
         .arg("-Demit-lib-vt")
+        .arg("-Demit-exe=false")
+        .arg("-Demit-docs=false")
+        .arg("-Demit-bench=false")
+        .arg("-Demit-helpgen=false")
+        .arg("-Demit-test-exe=false")
+        .arg("-Demit-unicode-table-gen=false")
+        .arg("-Demit-terminfo=false")
+        .arg("-Demit-termcap=false")
+        .arg("-Demit-themes=false")
+        .arg("-Demit-webdata=false")
         // Zig defaults to Debug, which enables ghostty's "slow runtime
         // safety" integrity checks: scrollback reflow gets an order of
         // magnitude slower and Debug-only assertions abort the process
@@ -56,7 +78,7 @@ fn main() {
         // way upstream ships it, regardless of the cargo profile.
         .arg("-Doptimize=ReleaseFast")
         .arg("--prefix")
-        .arg(&install_prefix)
+        .arg(&install_prefix_arg)
         .current_dir(&ghostty_dir);
 
     // Only pass -Dtarget when cross-compiling. For native builds, let zig
@@ -74,7 +96,6 @@ fn main() {
     let lib_dir = install_prefix.join("lib");
     let include_dir = install_prefix.join("include");
 
-    let platform = TargetPlatform::from_triple(&target);
     let static_lib_name = platform.static_lib_name();
     let static_link_name = platform.static_link_name();
     let shared_lib_path = if platform == TargetPlatform::Android {
@@ -202,6 +223,24 @@ impl TargetPlatform {
             Self::Windows => vec![format!("{name}.lib"), format!("lib{name}.lib")],
             _ => vec![format!("lib{name}.a")],
         }
+    }
+}
+
+fn zig_install_prefix(ghostty_dir: &Path, out_dir: &Path, platform: TargetPlatform) -> PathBuf {
+    match platform {
+        TargetPlatform::Windows => ghostty_dir.join("zig-out-codux"),
+        _ => out_dir.join("ghostty-install"),
+    }
+}
+
+fn zig_install_prefix_arg(install_prefix: &Path, platform: TargetPlatform) -> PathBuf {
+    match platform {
+        TargetPlatform::Windows => PathBuf::from(
+            install_prefix
+                .file_name()
+                .expect("Windows Ghostty install prefix must have a final path component"),
+        ),
+        _ => install_prefix.to_path_buf(),
     }
 }
 

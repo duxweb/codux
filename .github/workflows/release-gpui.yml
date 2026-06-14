@@ -143,7 +143,11 @@ jobs:
               target/aarch64-apple-darwin/release/codux \
               target/x86_64-apple-darwin/release/codux
           else
-            cargo build --release --target "${CARGO_BUILD_TARGET}"
+            if [[ "${RUNNER_OS}" == "Windows" ]]; then
+              pwsh -NoProfile -ExecutionPolicy Bypass -File tools/build-windows.ps1 -Target "${CARGO_BUILD_TARGET}"
+            else
+              cargo build --release --target "${CARGO_BUILD_TARGET}"
+            fi
           fi
 
       - name: Stage built binary
