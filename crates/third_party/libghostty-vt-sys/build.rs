@@ -332,12 +332,15 @@ fn patch_uucode_for_windows(ghostty_dir: &Path) {
     if source.contains("Codux: Zig 0.15.2 on Windows asserts") {
         return;
     }
+    if !source.contains(needle) {
+        assert!(
+            !source.contains("run_build_tables_exe.setCwd"),
+            "unsupported uucode setCwd form in {}",
+            path.display()
+        );
+        return;
+    }
     let patched = source.replace(needle, replacement);
-    assert!(
-        patched != source,
-        "failed to patch uucode Windows cwd issue in {}",
-        path.display()
-    );
     std::fs::write(&path, patched)
         .unwrap_or_else(|error| panic!("failed to write {}: {error}", path.display()));
 }
