@@ -71,11 +71,7 @@ pub struct RemoteTerminalOutputEffect {
 }
 
 impl RemoteTerminalOutputEffect {
-    fn loading(
-        loading: bool,
-        phase: RemoteTerminalBufferPhase,
-        progress: Option<f64>,
-    ) -> Self {
+    fn loading(loading: bool, phase: RemoteTerminalBufferPhase, progress: Option<f64>) -> Self {
         Self {
             kind: RemoteTerminalOutputEffectKind::Loading,
             session_id: None,
@@ -304,7 +300,11 @@ impl RemoteTerminalOutputRouter {
         if session_id.trim().is_empty() || request_id.trim().is_empty() {
             return false;
         }
-        if let Some(active) = self.active_buffer_request_by_session.get(session_id).cloned() {
+        if let Some(active) = self
+            .active_buffer_request_by_session
+            .get(session_id)
+            .cloned()
+        {
             if active != request_id {
                 if !replace_active {
                     return false;
@@ -421,7 +421,8 @@ impl RemoteTerminalOutputRouter {
     }
 
     pub fn has_active_buffer_request(&self, session_id: &str) -> bool {
-        self.active_buffer_request_by_session.contains_key(session_id)
+        self.active_buffer_request_by_session
+            .contains_key(session_id)
     }
 
     // ---- accept ---------------------------------------------------------
@@ -457,7 +458,10 @@ impl RemoteTerminalOutputRouter {
         let is_active_session = active_session_id == Some(session_id);
         let had_cached_output_at_start = self.has_cached_output(session_id);
         let incoming_request_id = payload_string(&payload, "requestId");
-        let active_request_id = self.active_buffer_request_by_session.get(session_id).cloned();
+        let active_request_id = self
+            .active_buffer_request_by_session
+            .get(session_id)
+            .cloned();
 
         let is_buffer_flag = payload.get("buffer").and_then(Value::as_bool) == Some(true);
 
@@ -497,10 +501,13 @@ impl RemoteTerminalOutputRouter {
         }
         if is_buffer_flag
             && had_cached_output_at_start
-            && self.active_buffer_request_by_session.get(session_id).is_none()
+            && self
+                .active_buffer_request_by_session
+                .get(session_id)
+                .is_none()
         {
-            let payload_offset = payload_int(&payload, "startOffset")
-                .or_else(|| payload_int(&payload, "offset"));
+            let payload_offset =
+                payload_int(&payload, "startOffset").or_else(|| payload_int(&payload, "offset"));
             let payload_buffer_length = payload_int(&payload, "bufferLength");
             let payload_output_seq = payload_int(&payload, "outputSeq");
             let known_output_seq = self.sequencer.sequence_for(session_id);
@@ -550,8 +557,10 @@ impl RemoteTerminalOutputRouter {
         let is_buffer = decoded.is_buffer;
         let output_seq = payload_int(&payload, "outputSeq");
 
-        let active_request_id_after_assembly =
-            self.active_buffer_request_by_session.get(session_id).cloned();
+        let active_request_id_after_assembly = self
+            .active_buffer_request_by_session
+            .get(session_id)
+            .cloned();
         if is_buffer
             && had_cached_output_at_start
             && active_request_id_after_assembly.is_none()
@@ -595,7 +604,9 @@ impl RemoteTerminalOutputRouter {
         }
 
         if !is_active_session && !is_buffer {
-            let resync = self.sequencer.observe(session_id, false, output_seq, None, false);
+            let resync = self
+                .sequencer
+                .observe(session_id, false, output_seq, None, false);
             let mut held_live: Vec<String> = Vec::new();
             if resync.should_render() && (!raw.is_empty() || decoded.screen_data.is_some()) {
                 held_live = self.apply_live_to_session(
@@ -631,7 +642,9 @@ impl RemoteTerminalOutputRouter {
             session_id,
             is_buffer,
             output_seq,
-            decoded.offset.and_then(|offset| usize::try_from(offset).ok()),
+            decoded
+                .offset
+                .and_then(|offset| usize::try_from(offset).ok()),
             decoded.tail,
         );
         if !resync.should_render() {
@@ -652,8 +665,10 @@ impl RemoteTerminalOutputRouter {
         let mut held_live: Vec<String> = Vec::new();
 
         if is_buffer {
-            let active_request_id =
-                self.active_buffer_request_by_session.get(session_id).cloned();
+            let active_request_id = self
+                .active_buffer_request_by_session
+                .get(session_id)
+                .cloned();
             let local_cache_empty = self.content(session_id).is_none();
             let is_restore_request = active_request_id
                 .as_ref()
@@ -873,7 +888,11 @@ fn payload_int(payload: &Value, key: &str) -> Option<i64> {
         .as_i64()
         .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
         .or_else(|| value.as_f64().map(|value| value as i64))
-        .or_else(|| value.as_str().and_then(|value| value.trim().parse::<i64>().ok()))
+        .or_else(|| {
+            value
+                .as_str()
+                .and_then(|value| value.trim().parse::<i64>().ok())
+        })
 }
 
 fn decode_terminal_output_payload(payload: &Value) -> DecodedPayload {
@@ -899,7 +918,8 @@ fn decode_data(payload: &Value) -> String {
     if payload.get("encoding").and_then(Value::as_str) != Some("base64+deflate+utf8") {
         return value;
     }
-    let Ok(compressed) = general_purpose::URL_SAFE_NO_PAD.decode(value.trim_end_matches('=')) else {
+    let Ok(compressed) = general_purpose::URL_SAFE_NO_PAD.decode(value.trim_end_matches('='))
+    else {
         return String::new();
     };
     use std::io::Read;

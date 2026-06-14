@@ -5,8 +5,8 @@ use crate::{
     },
     ai_history_indexer::{AIHistoryEvent, AIHistoryIndexer, AIHistoryProjectState},
     ai_history_normalized::{
-        global_today_normalized_tokens_at, indexed_sessions_since_at,
-        normalized_project_totals_since_at, AIGlobalHistorySnapshot, AIHistoryProjectRequest,
+        AIGlobalHistorySnapshot, AIHistoryProjectRequest, global_today_normalized_tokens_at,
+        indexed_sessions_since_at, normalized_project_totals_since_at,
     },
     ai_runtime::{
         AIRuntimeBridge, AIRuntimeBridgeSnapshot, AIRuntimeContextSnapshot, AIRuntimeProbeRequest,
@@ -51,10 +51,10 @@ use crate::{
     },
     performance::{PerformanceService, PerformanceSummary},
     pet::{
-        refresh_input_from_indexed_history, PetCatalog, PetClaimInput, PetCustomPet,
-        PetCustomPetInstallPreview, PetCustomPetInstallRequest, PetProjectTokenTotal,
-        PetRefreshInput, PetRenameRequest, PetRestoreRequest, PetService, PetSnapshot, PetStore,
-        PetSummary,
+        PetCatalog, PetClaimInput, PetCustomPet, PetCustomPetInstallPreview,
+        PetCustomPetInstallRequest, PetProjectTokenTotal, PetRefreshInput, PetRenameRequest,
+        PetRestoreRequest, PetService, PetSnapshot, PetStore, PetSummary,
+        refresh_input_from_indexed_history,
     },
     power::{PowerManager, PowerService, PowerSummary},
     project_activity::{ProjectActivityCoordinator, ProjectActivityEvent, ProjectActivitySnapshot},
@@ -73,12 +73,12 @@ use crate::{
     runtime_event::{RuntimeEventService, RuntimeEventSummary},
     runtime_paths,
     settings::{
-        sync_process_locale_preference, AppSettings, AppSettingsStore, SettingsService,
-        SettingsSummary,
+        AppSettings, AppSettingsStore, SettingsService, SettingsSummary,
+        sync_process_locale_preference,
     },
     ssh::{
-        render_ssh_launch_context_from_support_dir, SSHLaunchCommand, SSHProfileTestResult,
-        SSHProfileUpsertRequest, SSHProfilesSnapshot, SSHService, SSHStore, SSHSummary,
+        SSHLaunchCommand, SSHProfileTestResult, SSHProfileUpsertRequest, SSHProfilesSnapshot,
+        SSHService, SSHStore, SSHSummary, render_ssh_launch_context_from_support_dir,
     },
     terminal_layout::{TerminalLayoutService, TerminalLayoutSummary},
     terminal_pty::TerminalManager,
@@ -91,10 +91,10 @@ use crate::{
     },
 };
 use codux_terminal_core::{
-    runtime_scope_key, RuntimeModel, RuntimeProject, RuntimeWorktree, RuntimeWorktreeState,
+    RuntimeModel, RuntimeProject, RuntimeWorktree, RuntimeWorktreeState, runtime_scope_key,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},

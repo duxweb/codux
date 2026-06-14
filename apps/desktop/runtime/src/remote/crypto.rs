@@ -164,4 +164,3 @@ fn remote_e2e_private_key(value: &str) -> Option<StaticSecret> {
     let array: [u8; 32] = bytes.as_slice().try_into().ok()?;
     Some(StaticSecret::from(array))
 }
-

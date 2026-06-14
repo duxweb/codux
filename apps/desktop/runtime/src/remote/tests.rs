@@ -300,18 +300,24 @@ fn remote_e2e_crypto_matches_tauri_envelope_shape() {
         encrypted.get("alg").and_then(serde_json::Value::as_str),
         Some("X25519-HKDF-SHA256-AES-256-GCM")
     );
-    assert!(encrypted
-        .get("nonce")
-        .and_then(serde_json::Value::as_str)
-        .is_some());
-    assert!(encrypted
-        .get("ciphertext")
-        .and_then(serde_json::Value::as_str)
-        .is_some());
-    assert!(encrypted
-        .get("tag")
-        .and_then(serde_json::Value::as_str)
-        .is_some());
+    assert!(
+        encrypted
+            .get("nonce")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+    );
+    assert!(
+        encrypted
+            .get("ciphertext")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+    );
+    assert!(
+        encrypted
+            .get("tag")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+    );
 
     let decrypted =
         remote_e2e_decrypt(&encrypted, &device_key, "host-1", "device-1").expect("decrypt");
@@ -674,11 +680,13 @@ fn remote_file_read_write_and_rename_match_tauri_mobile_limits() {
     );
     assert!(remote_file_read(dir.to_str().unwrap()).is_err());
 
-    assert!(remote_file_rename(
-        source.to_str().unwrap(),
-        other.join("note.txt").to_str().unwrap()
-    )
-    .is_err());
+    assert!(
+        remote_file_rename(
+            source.to_str().unwrap(),
+            other.join("note.txt").to_str().unwrap()
+        )
+        .is_err()
+    );
     remote_file_rename(source.to_str().unwrap(), renamed.to_str().unwrap()).expect("rename");
     assert!(renamed.exists());
 
@@ -715,10 +723,12 @@ fn remote_ai_stats_payload_matches_tauri_empty_snapshot_shape() {
             .and_then(serde_json::Value::as_str),
         Some("Project One")
     );
-    assert!(payload
-        .get("projectSummary")
-        .and_then(serde_json::Value::as_object)
-        .is_some());
+    assert!(
+        payload
+            .get("projectSummary")
+            .and_then(serde_json::Value::as_object)
+            .is_some()
+    );
     assert_eq!(
         payload
             .get("sessions")
@@ -726,10 +736,12 @@ fn remote_ai_stats_payload_matches_tauri_empty_snapshot_shape() {
             .map(Vec::len),
         Some(0)
     );
-    assert!(payload
-        .get("updatedAt")
-        .and_then(serde_json::Value::as_str)
-        .is_some());
+    assert!(
+        payload
+            .get("updatedAt")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+    );
 }
 
 #[test]

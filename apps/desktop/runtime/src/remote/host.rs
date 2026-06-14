@@ -3,17 +3,16 @@ use super::crypto::{remote_base64_url_decode, remote_host_name};
 use super::pairing::remote_summary_show_pending_pairing;
 use super::protocol::{
     REMOTE_AI_STATS, REMOTE_DEVICE_CONNECTED, REMOTE_DEVICE_DISCONNECTED, REMOTE_ERROR,
-    REMOTE_FILE_DELETE, REMOTE_FILE_DELETED, REMOTE_FILE_LIST, REMOTE_FILE_READ, REMOTE_FILE_RENAME,
-    REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN, REMOTE_GIT_STATUS,
-    REMOTE_HOST_INFO, REMOTE_HOST_OFFLINE, REMOTE_PAIRING_CONFIRMED, REMOTE_PAIRING_REJECTED,
-    REMOTE_PROJECT_ADD, REMOTE_PROJECT_EDIT,
-    REMOTE_PROJECT_LIST, REMOTE_PROJECT_REMOVE, REMOTE_PROJECT_SELECT, REMOTE_PROJECT_SELECTED,
-    REMOTE_PROJECT_UPDATED, REMOTE_RESOURCE_AI_STATS, REMOTE_RESOURCE_GIT_STATUS,
-    REMOTE_RESOURCE_PROJECTS, REMOTE_RESOURCE_SUBSCRIBE, REMOTE_RESOURCE_TERMINALS,
-    REMOTE_RESOURCE_UNSUBSCRIBE, REMOTE_RESOURCE_WORKTREES, REMOTE_TERMINAL_BUFFER,
-    REMOTE_TERMINAL_BUFFER_MAX_CHARS, REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED,
-    REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT,
-    REMOTE_TERMINAL_INPUT_ACK, REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT,
+    REMOTE_FILE_DELETE, REMOTE_FILE_DELETED, REMOTE_FILE_LIST, REMOTE_FILE_READ,
+    REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN,
+    REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_HOST_OFFLINE, REMOTE_PAIRING_CONFIRMED,
+    REMOTE_PAIRING_REJECTED, REMOTE_PROJECT_ADD, REMOTE_PROJECT_EDIT, REMOTE_PROJECT_LIST,
+    REMOTE_PROJECT_REMOVE, REMOTE_PROJECT_SELECT, REMOTE_PROJECT_SELECTED, REMOTE_PROJECT_UPDATED,
+    REMOTE_RESOURCE_AI_STATS, REMOTE_RESOURCE_GIT_STATUS, REMOTE_RESOURCE_PROJECTS,
+    REMOTE_RESOURCE_SUBSCRIBE, REMOTE_RESOURCE_TERMINALS, REMOTE_RESOURCE_UNSUBSCRIBE,
+    REMOTE_RESOURCE_WORKTREES, REMOTE_TERMINAL_BUFFER, REMOTE_TERMINAL_BUFFER_MAX_CHARS,
+    REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED, REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED,
+    REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_INPUT_ACK, REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT,
     REMOTE_TERMINAL_OUTPUT_ACK, REMOTE_TERMINAL_RESIZE, REMOTE_TERMINAL_SIGNAL,
     REMOTE_TERMINAL_SUBSCRIBE, REMOTE_TERMINAL_UNSUBSCRIBE, REMOTE_TERMINAL_UPLOAD,
     REMOTE_TERMINAL_UPLOAD_ACK, REMOTE_TERMINAL_UPLOAD_CANCEL, REMOTE_TERMINAL_UPLOAD_CHUNK,
@@ -31,8 +30,8 @@ use super::relay::{remote_pairing_ticket_payload, remote_server_url, remote_stun
 use super::transport::RemoteTransport;
 use super::transport_factory::RemoteTransportFactory;
 use super::types::{
-    RemoteDeviceSettings, RemoteEnvelope, RemotePairingInfo, RemotePairingPollResult,
-    RemoteHostEvent, RemoteSummary, RemoteTerminalLayoutChanged, RemoteTransportCandidate,
+    RemoteDeviceSettings, RemoteEnvelope, RemoteHostEvent, RemotePairingInfo,
+    RemotePairingPollResult, RemoteSummary, RemoteTerminalLayoutChanged, RemoteTransportCandidate,
     RemoteTransportPairingRequest,
 };
 use crate::ai_history_indexer::{AIHistoryIndexer, AIHistoryProjectState};
@@ -237,7 +236,10 @@ impl RemoteHostRuntime {
     }
 
     fn publish_remote_terminal_layout_changed(&self) {
-        let generation = self.remote_terminal_layout_generation.fetch_add(1, Ordering::Relaxed) + 1;
+        let generation = self
+            .remote_terminal_layout_generation
+            .fetch_add(1, Ordering::Relaxed)
+            + 1;
         self.push_event(RemoteHostEvent::TerminalLayoutChanged(
             RemoteTerminalLayoutChanged { generation },
         ));
@@ -1089,7 +1091,12 @@ impl RemoteHostRuntime {
             return;
         };
         match remote_file_read(path) {
-            Ok(payload) => self.send(REMOTE_FILE_READ, envelope.device_id.as_deref(), None, payload),
+            Ok(payload) => self.send(
+                REMOTE_FILE_READ,
+                envelope.device_id.as_deref(),
+                None,
+                payload,
+            ),
             Err(error) => self.send_error(envelope, &error),
         }
     }
@@ -2455,7 +2462,12 @@ impl RemoteHostRuntime {
         }
         let payload = json!({ "terminals": self.remote_terminals() });
         for device_id in device_ids {
-            self.send(REMOTE_TERMINAL_LIST, Some(&device_id), None, payload.clone());
+            self.send(
+                REMOTE_TERMINAL_LIST,
+                Some(&device_id),
+                None,
+                payload.clone(),
+            );
         }
     }
 
@@ -4395,10 +4407,12 @@ mod tests {
             project_b.to_string_lossy(),
             worktree_b_path.to_string_lossy()
         );
-        assert!(runtime.drain_events().iter().any(|event| matches!(
-            event,
-            RemoteHostEvent::TerminalLayoutChanged(_)
-        )));
+        assert!(
+            runtime
+                .drain_events()
+                .iter()
+                .any(|event| matches!(event, RemoteHostEvent::TerminalLayoutChanged(_)))
+        );
 
         fs::remove_dir_all(support_dir).ok();
     }
@@ -5130,10 +5144,12 @@ mod tests {
         let layout_key = terminal_layout_storage_key("project-b", "worktree-b");
         let layout = TerminalLayoutService::new(support_dir.clone()).load(Some(&layout_key));
         assert_eq!(layout.tabs.len(), 1);
-        assert!(runtime.drain_events().iter().any(|event| matches!(
-            event,
-            RemoteHostEvent::TerminalLayoutChanged(_)
-        )));
+        assert!(
+            runtime
+                .drain_events()
+                .iter()
+                .any(|event| matches!(event, RemoteHostEvent::TerminalLayoutChanged(_)))
+        );
 
         fs::remove_dir_all(support_dir).ok();
     }
@@ -5204,10 +5220,12 @@ mod tests {
         assert_eq!(layout.top_panes.len(), 1);
         assert_eq!(layout.top_panes[0].terminal_id, session_a);
         assert!(terminals.snapshot(&session_b).is_err());
-        assert!(runtime.drain_events().iter().any(|event| matches!(
-            event,
-            RemoteHostEvent::TerminalLayoutChanged(_)
-        )));
+        assert!(
+            runtime
+                .drain_events()
+                .iter()
+                .any(|event| matches!(event, RemoteHostEvent::TerminalLayoutChanged(_)))
+        );
 
         runtime.handle_terminal_close(&RemoteEnvelope {
             kind: "terminal.close".to_string(),

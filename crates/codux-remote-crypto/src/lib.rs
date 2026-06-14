@@ -195,8 +195,7 @@ mod tests {
         let plaintext = b"{\"type\":\"hello\"}";
         // Host encrypts -> device decrypts.
         let payload = remote_e2e_encrypt(plaintext, &host_key, "host-1", "device-1").unwrap();
-        let recovered =
-            remote_e2e_decrypt(&payload, &device_key, "host-1", "device-1").unwrap();
+        let recovered = remote_e2e_decrypt(&payload, &device_key, "host-1", "device-1").unwrap();
         assert_eq!(recovered, plaintext);
     }
 

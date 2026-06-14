@@ -1604,7 +1604,10 @@ fn apply_git_status_stores_projection_by_project() {
     let plan = runtime.apply_git_status(status.clone());
     assert!(plan.state_changed);
     let snapshot = runtime.snapshot();
-    assert_eq!(snapshot.git_status_by_project.get("project-1"), Some(&status));
+    assert_eq!(
+        snapshot.git_status_by_project.get("project-1"),
+        Some(&status)
+    );
 
     // A status without a project id is ignored and changes nothing.
     let ignored = runtime.apply_git_status(serde_json::json!({ "branch": "x" }));

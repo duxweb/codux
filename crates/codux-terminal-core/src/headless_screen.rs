@@ -1279,7 +1279,10 @@ mod tests {
         let replies = replies.take();
         let text = String::from_utf8_lossy(&replies);
         assert!(text.contains("\x1b[1;3R"), "missing CPR reply: {text:?}");
-        assert!(text.contains("\x1b[?2004;2$y"), "missing DECRQM reply: {text:?}");
+        assert!(
+            text.contains("\x1b[?2004;2$y"),
+            "missing DECRQM reply: {text:?}"
+        );
         assert!(text.contains("\x1b[?62;"), "missing DA1 reply: {text:?}");
     }
 

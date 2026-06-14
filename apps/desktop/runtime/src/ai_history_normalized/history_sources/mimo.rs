@@ -1,10 +1,7 @@
 use super::*;
 
-pub const DRIVER: HistorySourceDriver = file_history_source_driver(
-    "mimo",
-    mimo_history_paths,
-    parse_opencode_history_file,
-);
+pub const DRIVER: HistorySourceDriver =
+    file_history_source_driver("mimo", mimo_history_paths, parse_opencode_history_file);
 
 fn mimo_history_paths(_project: &AIHistoryProjectRequest, home: &Path) -> Vec<PathBuf> {
     [
