@@ -408,25 +408,34 @@ fn patch_ghostty_uucode_dependency(ghostty_dir: &Path) {
     let path = ghostty_dir.join("build.zig.zon");
     let source = std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-    let needle = format!(
-        r#"        .uucode = .{{
-            // jacobsandlund/uucode
-            .url = "{UUCODE_URL}",
-            .hash = "uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9",
-        }},"#
-    );
     let replacement = r#"        .uucode = .{ .path = "./vendor/uucode-codux" },"#;
 
     if source.contains(replacement) {
         return;
     }
 
-    let patched = source.replace(&needle, replacement);
+    let start = source
+        .find("        .uucode = .{")
+        .unwrap_or_else(|| panic!("failed to find uucode dependency in {}", path.display()));
+    let after_start = start + "        .uucode = .{".len();
+    let relative_end = source[after_start..].find("        },").unwrap_or_else(|| {
+        panic!(
+            "failed to find end of uucode dependency in {}",
+            path.display()
+        )
+    });
+    let end = after_start + relative_end + "        },".len();
+    let block = &source[start..end];
     assert!(
-        patched != source,
-        "failed to patch uucode dependency in {}",
+        block.contains(UUCODE_URL),
+        "refusing to replace unexpected uucode dependency block in {}",
         path.display()
     );
+
+    let mut patched = String::with_capacity(source.len());
+    patched.push_str(&source[..start]);
+    patched.push_str(replacement);
+    patched.push_str(&source[end..]);
     std::fs::write(&path, patched)
         .unwrap_or_else(|error| panic!("failed to write {}: {error}", path.display()));
 }
