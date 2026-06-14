@@ -1077,6 +1077,43 @@ pub fn stack_scrolled_snapshots(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{cell::RefCell, hint::black_box, rc::Rc};
+
+    fn ghostty_terminal_with_pty_write_handler(
+        replies: Rc<RefCell<Vec<u8>>>,
+    ) -> Terminal<'static, 'static> {
+        let mut terminal = Terminal::new(TerminalOptions {
+            cols: 80,
+            rows: 24,
+            max_scrollback: 128,
+        })
+        .expect("terminal should be created");
+        terminal
+            .on_pty_write(move |_terminal, data| {
+                replies.borrow_mut().extend_from_slice(data);
+            })
+            .expect("pty write handler should be installed");
+        terminal
+    }
+
+    #[test]
+    fn ghostty_pty_write_callback_survives_terminal_move() {
+        let replies = Rc::new(RefCell::new(Vec::new()));
+        let mut terminal = ghostty_terminal_with_pty_write_handler(replies.clone());
+
+        let mut stack_noise = [0usize; 1024];
+        for (index, value) in stack_noise.iter_mut().enumerate() {
+            *value = index;
+        }
+        black_box(&mut stack_noise);
+
+        terminal.vt_write(b"\x1B[?7$p");
+
+        assert!(
+            !replies.borrow().is_empty(),
+            "DECRQM should trigger a PTY write reply after Terminal has moved"
+        );
+    }
 
     #[test]
     fn redraws_current_screen_after_clear_and_cursor_moves() {
@@ -1231,6 +1268,9 @@ mod tests {
         };
         let mut screen = HeadlessTerminalScreen::new_with_responder(20, 4, 100, Some(responder));
 
+        // This exercises the real worker path: the Ghostty terminal installs
+        // callbacks during construction, is then moved into the worker, and
+        // later dispatches PTY replies from vt_write.
         // CPR (CSI 6n), DECRQM for bracketed paste, DA1 (CSI c).
         screen.process(b"hi\x1b[6n\x1b[?2004$p\x1b[c");
         // Synchronize on the worker queue before reading replies.

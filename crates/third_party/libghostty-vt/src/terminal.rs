@@ -108,7 +108,7 @@ pub use ffi::GhosttySizeReportSize as SizeReportSize;
 #[derive(Debug)]
 pub struct Terminal<'alloc: 'cb, 'cb> {
     pub(crate) inner: Object<'alloc, ffi::GhosttyTerminal>,
-    vtable: VTable<'alloc, 'cb>,
+    vtable: Option<Box<VTable<'alloc, 'cb>>>,
 }
 
 /// Terminal initialization options.
@@ -157,7 +157,7 @@ impl<'alloc: 'cb, 'cb> Terminal<'alloc, 'cb> {
         from_result(result)?;
         Ok(Self {
             inner: Object::new(raw)?,
-            vtable: VTable::default(),
+            vtable: Some(Box::new(VTable::default())),
         })
     }
 
@@ -274,13 +274,6 @@ impl<'alloc: 'cb, 'cb> Terminal<'alloc, 'cb> {
         from_result(result)?;
         // SAFETY: Value should be initialized after successful call.
         Ok(unsafe { value.assume_init() })
-    }
-
-    fn set<T>(&self, tag: ffi::GhosttyTerminalOption, v: &T) -> Result<()> {
-        let result = unsafe {
-            ffi::ghostty_terminal_set(self.inner.as_raw(), tag, std::ptr::from_ref(v).cast())
-        };
-        from_result(result)
     }
 
     /// Get the terminal width in cells.
@@ -830,7 +823,7 @@ macro_rules! handlers {
                     let obj = $crate::alloc::Object::new(t).expect("received null terminal ptr in callback - this is a bug!");
                     let $t = $crate::terminal::Terminal::<'_, '_> {
                         inner: obj,
-                        vtable: ::core::default::Default::default(),
+                        vtable: None,
                     };
                     let $func = vtable.$name.as_deref_mut()
                         .expect("no handler set but callback is still called - this is a bug!");
@@ -841,12 +834,24 @@ macro_rules! handlers {
                     ret
                 }
 
-                self.vtable.$name = Some(::std::boxed::Box::new(f));
+                let userdata = {
+                    let vtable = self
+                        .vtable
+                        .as_mut()
+                        .expect("missing terminal callback vtable - this is a bug!");
+                    vtable.$name = Some(::std::boxed::Box::new(f));
+                    ::std::ptr::from_ref::<VTable<'alloc, 'cb>>(vtable.as_ref())
+                        .cast::<::std::ffi::c_void>()
+                };
 
-                self.set(
-                    $crate::ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_USERDATA,
-                    &self.vtable
-                )?;
+                let result = unsafe {
+                    $crate::ffi::ghostty_terminal_set(
+                        self.inner.as_raw(),
+                        $crate::ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_USERDATA,
+                        userdata
+                    )
+                };
+                $crate::error::from_result(result)?;
 
                 // The callback must be coerced into a function *pointer*
                 // and not a function *item* (which is a ZST whose address is meaningless).
