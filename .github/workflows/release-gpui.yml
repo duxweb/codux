@@ -159,6 +159,7 @@ jobs:
             cp target/universal-apple-darwin/release/codux dist/binary/codux
           elif [[ "${RUNNER_OS}" == "Windows" ]]; then
             cp "target/${CARGO_BUILD_TARGET}/release/codux.exe" dist/binary/codux.exe
+            cp "target/${CARGO_BUILD_TARGET}/release/ghostty-vt.dll" dist/binary/ghostty-vt.dll
           else
             cp "target/${CARGO_BUILD_TARGET}/release/codux" dist/binary/codux
           fi
@@ -232,6 +233,7 @@ jobs:
           mkdir -p "target/${CARGO_BUILD_TARGET}/release"
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             cp dist/binary/codux.exe "target/${CARGO_BUILD_TARGET}/release/codux.exe"
+            cp dist/binary/ghostty-vt.dll "target/${CARGO_BUILD_TARGET}/release/ghostty-vt.dll"
           else
             cp dist/binary/codux "target/${CARGO_BUILD_TARGET}/release/codux"
             chmod +x "target/${CARGO_BUILD_TARGET}/release/codux"

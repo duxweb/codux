@@ -56,8 +56,14 @@ cargo --version
 
 cargo build --release --target $Target
 
+$releaseDir = Join-Path $RepoRoot "target\$Target\release"
+$ghosttyDll = Join-Path $releaseDir "ghostty-vt.dll"
+if (-not (Test-Path $ghosttyDll)) {
+    throw "Required runtime DLL was not found: $ghosttyDll"
+}
+
 if (-not $SkipRun) {
-    $exe = Join-Path $RepoRoot "target\$Target\release\codux.exe"
+    $exe = Join-Path $releaseDir "codux.exe"
     if (-not (Test-Path $exe)) {
         throw "Built executable was not found: $exe"
     }

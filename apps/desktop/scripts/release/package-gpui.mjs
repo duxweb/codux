@@ -149,10 +149,12 @@ function appleNotaryConfigured() {
 
 function packageWindows() {
   const exePath = releaseBinaryPath(".exe");
+  const ghosttyVtDllPath = releaseDependencyPath("ghostty-vt.dll");
   withTempDir("codux-windows-", (tempDir) => {
     const packageDir = path.join(tempDir, appName);
     fs.mkdirSync(packageDir, { recursive: true });
     fs.copyFileSync(exePath, path.join(packageDir, `${appName}.exe`));
+    fs.copyFileSync(ghosttyVtDllPath, path.join(packageDir, "ghostty-vt.dll"));
     fs.copyFileSync(path.join(desktopAssetsRoot, "icons", "icon.ico"), path.join(packageDir, "icon.ico"));
     stageRuntimeAssets(path.join(packageDir, "runtime-root"));
 
@@ -212,6 +214,17 @@ function releaseBinaryPath(extension) {
     throw new Error(`Built binary not found: ${binaryPath}`);
   }
   return binaryPath;
+}
+
+function releaseDependencyPath(fileName) {
+  const segments = [root, "target"];
+  if (target) segments.push(target);
+  segments.push(profile, fileName);
+  const dependencyPath = path.join(...segments);
+  if (!fs.existsSync(dependencyPath)) {
+    throw new Error(`Built dependency not found: ${dependencyPath}`);
+  }
+  return dependencyPath;
 }
 
 function artifactBaseName(platform) {

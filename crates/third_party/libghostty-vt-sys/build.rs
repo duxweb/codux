@@ -80,6 +80,7 @@ fn main() {
     let lib_dir = install_prefix.join("lib");
     let include_dir = install_prefix.join("include");
 
+    let link_mode = LinkMode::for_platform(platform);
     let static_lib_name = platform.static_lib_name();
     let static_link_name = platform.static_link_name();
     let shared_lib_path = if platform == TargetPlatform::Android {
@@ -95,6 +96,18 @@ fn main() {
                     )
                 }),
         )
+    } else if platform == TargetPlatform::Windows {
+        let shared_lib_name = platform
+            .shared_lib_name()
+            .expect("Windows must have a shared library name");
+        Some(
+            find_nonempty_file(&install_prefix, shared_lib_name).unwrap_or_else(|| {
+                panic!(
+                    "expected non-empty shared library named {shared_lib_name} under {}",
+                    install_prefix.display()
+                )
+            }),
+        )
     } else {
         platform.shared_lib_name().map(|name| lib_dir.join(name))
     };
@@ -106,12 +119,18 @@ fn main() {
             shared_lib_path.display()
         );
     }
-    let static_lib_path = find_nonempty_file(&lib_dir, static_lib_name).unwrap_or_else(|| {
-        panic!(
-            "expected non-empty static library named {static_lib_name} under {}",
-            lib_dir.display()
+    let static_lib_path = if link_mode == LinkMode::Static {
+        Some(
+            find_nonempty_file(&lib_dir, static_lib_name).unwrap_or_else(|| {
+                panic!(
+                    "expected non-empty static library named {static_lib_name} under {}",
+                    lib_dir.display()
+                )
+            }),
         )
-    });
+    } else {
+        None
+    };
     assert!(
         include_dir.join("ghostty").join("vt.h").exists(),
         "expected header at {}",
@@ -139,9 +158,62 @@ fn main() {
             android_link_dir.display()
         );
         println!("cargo:rustc-link-lib=dylib=ghostty-vt");
+    } else if platform == TargetPlatform::Windows {
+        let shared_lib_path = shared_lib_path
+            .as_ref()
+            .expect("Windows must have a shared library path");
+        let runtime_lib_dir = out_dir.join("windows-runtime-lib");
+        std::fs::create_dir_all(&runtime_lib_dir).unwrap_or_else(|error| {
+            panic!(
+                "failed to create Windows runtime library directory {}: {error}",
+                runtime_lib_dir.display()
+            )
+        });
+        let runtime_lib = runtime_lib_dir.join(
+            shared_lib_path
+                .file_name()
+                .expect("Windows shared library path must have a file name"),
+        );
+        std::fs::copy(shared_lib_path, &runtime_lib).unwrap_or_else(|error| {
+            panic!(
+                "failed to copy {} to {}: {error}",
+                shared_lib_path.display(),
+                runtime_lib.display()
+            )
+        });
+
+        // A normal Cargo run/build leaves dependent DLLs next to the final exe
+        // only if the build script stages them there. Keep raw codux.exe
+        // runnable without requiring users or CI to know Cargo's OUT_DIR.
+        if let Some(profile_dir) = cargo_target_profile_dir(&out_dir, &target) {
+            let exe_sibling = profile_dir.join(
+                shared_lib_path
+                    .file_name()
+                    .expect("Windows shared library path must have a file name"),
+            );
+            std::fs::create_dir_all(&profile_dir).unwrap_or_else(|error| {
+                panic!(
+                    "failed to create Windows target profile directory {}: {error}",
+                    profile_dir.display()
+                )
+            });
+            std::fs::copy(shared_lib_path, &exe_sibling).unwrap_or_else(|error| {
+                panic!(
+                    "failed to copy {} to {}: {error}",
+                    shared_lib_path.display(),
+                    exe_sibling.display()
+                )
+            });
+        }
+
+        println!(
+            "cargo:rustc-link-search=native={}",
+            windows_import_lib_dir(&install_prefix).display()
+        );
+        println!("cargo:rustc-link-lib=dylib=ghostty-vt");
     } else {
         println!("cargo:rustc-link-search=native={}", lib_dir.display());
-        if let Some(parent) = static_lib_path.parent() {
+        if let Some(parent) = static_lib_path.as_ref().and_then(|path| path.parent()) {
             println!("cargo:rustc-link-search=native={}", parent.display());
         }
         println!("cargo:rustc-link-lib=static={static_link_name}");
@@ -166,6 +238,21 @@ enum TargetPlatform {
     Unix,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LinkMode {
+    Dynamic,
+    Static,
+}
+
+impl LinkMode {
+    fn for_platform(platform: TargetPlatform) -> Self {
+        match platform {
+            TargetPlatform::Windows | TargetPlatform::Android => Self::Dynamic,
+            TargetPlatform::Apple | TargetPlatform::Unix => Self::Static,
+        }
+    }
+}
+
 impl TargetPlatform {
     fn from_triple(target: &str) -> Self {
         if target.contains("apple") {
@@ -183,7 +270,7 @@ impl TargetPlatform {
         match self {
             Self::Apple => Some("libghostty-vt.0.1.0.dylib"),
             Self::Android => Some("libghostty-vt.so"),
-            Self::Windows => None,
+            Self::Windows => Some("ghostty-vt.dll"),
             Self::Unix => Some("libghostty-vt.so.0.1.0"),
         }
     }
@@ -533,6 +620,33 @@ fn find_file_with(
     None
 }
 
+fn cargo_target_profile_dir(out_dir: &Path, target: &str) -> Option<PathBuf> {
+    for path in out_dir.ancestors() {
+        if path.file_name().and_then(|name| name.to_str()) == Some("build") {
+            let profile_dir = path.parent()?;
+            let target_dir = profile_dir.parent()?;
+            if target_dir.file_name().and_then(|name| name.to_str()) == Some(target) {
+                return Some(profile_dir.to_path_buf());
+            }
+        }
+    }
+    None
+}
+
+fn windows_import_lib_dir(install_prefix: &Path) -> PathBuf {
+    let import_lib_name = "ghostty-vt.lib";
+    let import_lib = find_nonempty_file(install_prefix, import_lib_name).unwrap_or_else(|| {
+        panic!(
+            "expected non-empty Windows import library named {import_lib_name} under {}",
+            install_prefix.display()
+        )
+    });
+    import_lib
+        .parent()
+        .expect("Windows import library path must have a parent")
+        .to_path_buf()
+}
+
 fn zig_command() -> PathBuf {
     let mut probes = Vec::new();
 
@@ -785,5 +899,31 @@ mod tests {
 
         assert!(error.contains("0.15.2"));
         assert!(error.contains("0.16.0"));
+    }
+
+    #[test]
+    fn windows_uses_dynamic_linking_for_ghostty_vt() {
+        assert_eq!(
+            LinkMode::for_platform(TargetPlatform::Windows),
+            LinkMode::Dynamic
+        );
+        assert_eq!(
+            TargetPlatform::Windows.shared_lib_name(),
+            Some("ghostty-vt.dll")
+        );
+    }
+
+    #[test]
+    fn resolves_cargo_target_profile_dir_from_out_dir() {
+        let out_dir = PathBuf::from(
+            r"F:\repo\target\x86_64-pc-windows-msvc\release\build\libghostty-vt-sys-abcd\out",
+        );
+
+        assert_eq!(
+            cargo_target_profile_dir(&out_dir, "x86_64-pc-windows-msvc"),
+            Some(PathBuf::from(
+                r"F:\repo\target\x86_64-pc-windows-msvc\release"
+            ))
+        );
     }
 }
