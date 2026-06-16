@@ -4,7 +4,7 @@ use crate::{
 };
 use chrono::{Local, Timelike};
 use genai::adapter::AdapterKind;
-use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ChatResponseFormat};
+use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ChatResponseFormat, JsonSpec};
 use genai::resolver::{AuthData, Endpoint};
 use genai::{Client, ModelIden, ModelSpec, ServiceTarget, WebConfig};
 use serde::{Deserialize, Serialize};

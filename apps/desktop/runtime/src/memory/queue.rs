@@ -9,9 +9,10 @@ use crate::{
     ai_runtime::snapshot::AISessionSnapshot,
     llm,
     memory::extraction::{
-        PromptMemoryEntry, PromptMemorySummary, decode_extraction_response,
+        PromptMemoryEntry, PromptMemorySummary, decode_extraction_response_detailed,
         ensure_memory_provider_available, extraction_system_prompt, make_extraction_prompt,
-        provider_summary, select_memory_provider, should_stop_memory_queue_after_error,
+        memory_extraction_json_schema, provider_summary, select_memory_provider,
+        should_stop_memory_queue_after_error,
     },
     project_store::ProjectWorkspaceRecord,
     runtime_state::ProjectInfo,

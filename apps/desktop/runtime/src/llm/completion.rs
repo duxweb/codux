@@ -68,7 +68,7 @@ async fn complete_genai(
     runtime_trace(
         "ai-llm",
         &format!(
-            "request start kind={} provider_id={} model={} base_url={} prompt_chars={} system_chars={} max_tokens={} temperature={:.2} json_response={}",
+            "request start kind={} provider_id={} model={} base_url={} prompt_chars={} system_chars={} max_tokens={} temperature={:.2} json_response={} json_schema={} json_schema_supported={}",
             provider.kind,
             provider.id,
             model,
@@ -81,7 +81,16 @@ async fn complete_genai(
                 .unwrap_or(0),
             options.max_tokens,
             options.temperature,
-            options.json_response
+            options.json_response,
+            options
+                .json_schema
+                .as_ref()
+                .map(|schema| schema.name.as_str())
+                .unwrap_or(""),
+            options
+                .json_schema
+                .as_ref()
+                .is_some_and(|_| provider_supports_json_schema_response_format(provider))
         ),
     );
     let mut request = ChatRequest::default();
@@ -101,7 +110,17 @@ async fn complete_genai(
         .with_max_tokens(options.max_tokens)
         .with_temperature(f64::from(options.temperature))
         .with_capture_raw_body(true);
-    let chat_options = if options.json_response {
+    let chat_options = if let Some(json_schema) = options
+        .json_schema
+        .as_ref()
+        .filter(|_| provider_supports_json_schema_response_format(provider))
+    {
+        let mut spec = JsonSpec::new(json_schema.name.clone(), json_schema.schema.clone());
+        if let Some(description) = json_schema.description.as_deref() {
+            spec = spec.with_description(description);
+        }
+        chat_options.with_response_format(ChatResponseFormat::JsonSpec(spec))
+    } else if options.json_response {
         chat_options.with_response_format(ChatResponseFormat::JsonMode)
     } else {
         chat_options

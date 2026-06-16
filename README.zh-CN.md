@@ -37,7 +37,7 @@ AI 编程 CLI 很强，但真正干活时，项目、Git worktree、终端、历
 | Token 用量不透明 | 按工具、模型、项目、worktree 和日期统计用量，不需要手动记账。 |
 | 项目上下文容易丢 | 本地记忆保存用户习惯、项目画像、模块笔记，并为支持的 CLI 注入上下文。 |
 | 服务器连接难复用或不安全 | 保存 SSH 配置、测试连接，并提供 AI 工具可用但不暴露凭证的 `codux-ssh`。 |
-| 离开电脑就中断 | Codux Mobile 通过 v3 Relay / WebRTC 链路配对桌面端，可以远程继续控制会话。 |
+| 离开电脑就中断 | Codux Mobile 通过 Iroh 链路配对桌面端，可以远程继续控制会话。 |
 
 Codux AI 不是要替代编辑器。它面向已经重度使用 AI 编程 CLI 的开发者，解决多项目、长会话、并行任务、上下文沉淀、Token 可视化和远程接力这些真实问题。
 
@@ -98,7 +98,7 @@ Codux 不是带标签页的普通终端。它在终端外面加了一层感知 A
 - **为长时间 AI 输出调过的终端**：托管终端层处理 scrollback、选择复制、ANSI 色彩状态、alternate screen、组合按键、鼠标上报和终端滚动条。
 - **对 prompt 安全的剪贴板和路径处理**：图片粘贴可以变成临时文件路径，而不是 base64；文件拖入终端会插入可直接使用的 shell quoted 路径。
 - **终端旁边就是项目工作面**：文本编辑、Markdown 预览、图片预览、外部打开兜底和独立 Git diff 窗口，让评审工作不用都回到裸命令行。
-- **移动端接力不丢终端状态**：v3.1 链路使用有界 snapshot、sequence guard、分片、进度和订阅，大 Codex / Claude 历史也能安全恢复。
+- **移动端接力不丢终端状态**：共享 runtime 协议使用有界 snapshot、sequence guard、分片、进度和订阅，大 Codex / Claude 历史也能安全恢复。
 - **面向 agent 的 SSH profile**：`codux-ssh <profile>` 让 AI CLI 通过已保存、已测试的 profile 执行远程命令，同时不暴露密码、密钥口令或私钥路径。
 - **跟随任务的本地记忆**：Codux 从本地 transcript 中提取长期有效的用户偏好、项目画像和模块笔记，过滤低信号边界，并只把当前项目或 worktree 相关上下文注入给 AI CLI。
 
@@ -130,17 +130,15 @@ Codux 把 AI 工作中常用的项目界面放在终端旁边：
 
 ## 移动端接力
 
-Codux Mobile 通过 v3 远程链路连接桌面端。
+Codux Mobile 通过共享 Iroh 远程传输连接桌面端。
 
 - 使用短期二维码 ticket 与桌面端配对。
-- Relay 设置留空使用全球公共节点，也可以选择 China 节点或配置自定义 Relay 地址。
-- 可直连时优先使用 WebRTC DataChannel，P2P 不可用时回落 WebSocket 中继。
+- 使用 Iroh 全球网络，也可以选择已配置的中继预设或配置自定义 Relay 地址。
+- Iroh 会自动使用可用的直连路径，直连不可用时回落到选中的 Iroh Relay。
 - 项目、终端、文件和 AI 会话始终运行在桌面端，移动端只负责远程控制。
-- local、WebRTC、WebSocket Relay 和未来传输驱动都进入同一个 runtime 协议模型，由项目、终端、文件、Git/worktree 和 AI 统计状态统一承接。
+- 桌面端、移动端和后续 headless host 共用同一个 runtime 协议模型。项目、终端、文件、Git/worktree、上传和 AI 统计状态由共享 runtime crates 承接，而不是写在 UI 传输代码里。
 
-终端输入输出、文件内容、项目列表和 AI 统计都会在 Codux Desktop 与 Codux Mobile 之间加密传输。
-
-协议边界和 v3.1 分层说明见 [Remote Protocol Architecture](docs/remote-protocol-architecture.md)。
+远程控制流量使用 Iroh 提供的传输安全能力。
 
 ## 自定义宠物
 

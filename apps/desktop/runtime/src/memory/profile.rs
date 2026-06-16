@@ -125,6 +125,7 @@ impl MemoryService {
                 temperature: 0.1,
                 preserve_formatting: true,
                 json_response: true,
+                json_schema: None,
                 timeout_seconds: 120,
             },
         )

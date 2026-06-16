@@ -1,6 +1,6 @@
 [package]
 name = "codux-runtime"
-version = "1.8.0"
+version = "1.8.1"
 edition = "2024"
 
 [dependencies]
@@ -30,7 +30,7 @@ percent-encoding = "2.3"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "system-proxy"] }
 url = "2.5.7"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
-genai = "0.6.1"
+genai = "0.6.5"
 git2 = { version = "0.21.0", features = ["cred", "https", "ssh", "vendored-openssl"] }
 image = "0.25.1"
 libc = "0.2"

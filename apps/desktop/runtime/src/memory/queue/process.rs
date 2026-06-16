@@ -137,7 +137,7 @@ impl MemoryService {
         let provider = select_memory_provider(settings, Some(&task.tool))
             .cloned()
             .ok_or_else(|| "No available AI provider is configured.".to_string())?;
-        let response_text = {
+        let (response_text, response) = {
             let transcript =
                 resolve_transcript_for_task_with_settings(&task, &project, &settings.memory)?;
             let (user_summary, user_memories, project_memories) =
@@ -151,7 +151,7 @@ impl MemoryService {
                 output_locale,
                 &settings.memory,
             );
-            complete_memory_extraction_with_retry(
+            complete_and_decode_memory_extraction_with_retry(
                 &provider,
                 &prompt,
                 Some(extraction_system_prompt()),
@@ -159,7 +159,7 @@ impl MemoryService {
             .await
             .map_err(|error| format!("{} failed: {}", provider_summary(&provider), error))?
         };
-        let response = decode_extraction_response(&response_text)?;
+        let _ = response_text;
         let project_info = ProjectInfo {
             id: project.project_id.clone(),
             name: project.project_name.clone(),
@@ -207,6 +207,11 @@ async fn complete_memory_extraction_with_retry(
         temperature: 0.1,
         preserve_formatting: true,
         json_response: true,
+        json_schema: Some(llm::LLMJsonSchema {
+            name: "codux_memory_extraction".to_string(),
+            description: Some("Codux durable memory extraction result.".to_string()),
+            schema: memory_extraction_json_schema(),
+        }),
         timeout_seconds: 120,
     };
     let mut last_error = None;
@@ -223,6 +228,28 @@ async fn complete_memory_extraction_with_retry(
         }
     }
     Err(last_error.unwrap_or_else(|| "Memory extraction provider retry failed.".to_string()))
+}
+
+async fn complete_and_decode_memory_extraction_with_retry(
+    provider: &crate::settings::AIProviderSettings,
+    prompt: &str,
+    system_prompt: Option<&str>,
+) -> Result<(String, crate::memory::extraction::MemoryExtractionResponse), String> {
+    let mut last_error = None;
+    for attempt in 0..3 {
+        let response_text = complete_memory_extraction_with_retry(provider, prompt, system_prompt).await?;
+        match decode_extraction_response_detailed(&response_text) {
+            Ok(response) => return Ok((response_text, response)),
+            Err(error) if attempt < 2 => {
+                last_error = Some(error);
+                tokio::time::sleep(Duration::from_millis(300 * (attempt as u64 + 1))).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| {
+        "Memory extraction provider returned malformed memory JSON.".to_string()
+    }))
 }
 
 fn is_transient_memory_provider_error(error: &str) -> bool {

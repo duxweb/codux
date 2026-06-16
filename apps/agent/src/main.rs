@@ -111,6 +111,7 @@ async fn run_transport_smoke_async() -> Result<String, String> {
                 let _ = tx.send(format!("{source}:{text}"));
             })
         },
+        Arc::new(|_| Ok(())),
         Arc::new(|_, _| {}),
         Arc::new(|_| {}),
         None,

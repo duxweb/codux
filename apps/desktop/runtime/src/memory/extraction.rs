@@ -5,10 +5,13 @@ mod provider;
 mod types;
 
 pub use helpers::{normalized_memory_module, parse_uuid_string, valid_summary_content};
-pub use parser::{decode_extraction_response, should_stop_memory_queue_after_error};
+pub use parser::{
+    decode_extraction_response, decode_extraction_response_detailed,
+    should_stop_memory_queue_after_error,
+};
 pub use prompt::{
-    extraction_system_prompt, make_extraction_prompt, memory_extraction_language_label,
-    trim_memory_text,
+    extraction_system_prompt, make_extraction_prompt, memory_extraction_json_schema,
+    memory_extraction_language_label, trim_memory_text,
 };
 pub use provider::{
     ensure_memory_provider_available, provider_summary, select_memory_provider, supports_completion,
@@ -89,6 +92,29 @@ mod tests {
         assert!(prompt.contains("<transcript>"));
         assert!(prompt.contains("in Simplified Chinese"));
         assert!(prompt.contains("JSON keys and enum values must remain in English"));
+    }
+
+    #[test]
+    fn memory_extraction_schema_requires_stable_item_keys() {
+        let schema = memory_extraction_json_schema();
+        let required = schema
+            .pointer("/properties/working_add/items/required")
+            .and_then(|value| value.as_array())
+            .unwrap();
+        for key in [
+            "content",
+            "kind",
+            "tier",
+            "scope",
+            "module_key",
+            "rationale",
+            "merge_with",
+            "replace",
+            "archive",
+            "skip_reason",
+        ] {
+            assert!(required.iter().any(|value| value.as_str() == Some(key)));
+        }
     }
 
     #[test]

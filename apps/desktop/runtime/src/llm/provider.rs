@@ -103,6 +103,10 @@ fn provider_kind_allows_empty_api_key(kind: &str) -> bool {
     matches!(kind, "ollama" | "localLlama")
 }
 
+fn provider_supports_json_schema_response_format(provider: &AIProviderSettings) -> bool {
+    matches!(provider.kind.as_str(), "openai" | "anthropic" | "gemini")
+}
+
 fn default_model_for_provider_kind(kind: &str) -> &'static str {
     match kind {
         "anthropic" => "claude-3-5-haiku-latest",

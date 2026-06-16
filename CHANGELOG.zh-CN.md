@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-06-16
+
+### 调整
+
+- 远程链路切换为 Iroh-only 传输模型，并从 Cargo workspace 移除仓库内的 `apps/server` relay / pairing 服务。
+- 更新桌面端和移动端发布说明，主仓库继续作为桌面 / 移动端源码 tag，服务端部署由独立 service 仓库负责。
+- 将记忆提取使用的 provider SDK 升级到 `genai` 0.6.5，并为明确支持 JSON schema response format 的 provider 接入结构化输出 schema。
+
+### 修复
+
+- 修复向不支持 JSON schema response format 的 OpenAI-compatible provider 发送 schema 请求导致记忆提取失败的问题，包括 DeepSeek-compatible endpoint；这类 provider 继续使用 JSON mode，OpenAI、Anthropic 和 Gemini 才使用结构化 schema 输出。
+- 优化记忆提取重试和 malformed JSON 诊断，瞬时空响应或 provider 输出异常不会直接让队列任务失败。
+- 清理仍描述旧 relay / WebRTC / server 链路的远程架构文档和 README 引用。
+
 ## [1.8.0] - 2026-06-14
 
 ### 新增

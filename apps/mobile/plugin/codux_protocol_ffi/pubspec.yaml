@@ -1,6 +1,6 @@
 name: codux_protocol_ffi
 description: Rust-backed Codux remote protocol bindings for Flutter.
-version: 1.8.0
+version: 1.8.1
 publish_to: 'none'
 
 environment:

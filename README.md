@@ -37,7 +37,7 @@ AI coding CLIs are powerful, but serious work quickly spreads across projects, G
 | Token usage is vague | Usage by tool, model, project, worktree, and day, without maintaining spreadsheets. |
 | Project context gets lost | Local memory for user habits, project profiles, module notes, and app-managed context injection. |
 | Server access is fragile | Saved SSH profiles, connection testing, and a `codux-ssh` command that AI tools can use without seeing credentials. |
-| You leave the desk mid-run | Codux Mobile pairs with the desktop host through the v3 relay/WebRTC path so you can continue sessions remotely. |
+| You leave the desk mid-run | Codux Mobile pairs with the desktop host over Iroh so you can continue sessions remotely. |
 
 Codux AI is not an editor replacement. It is a control plane for developers who already use AI coding CLIs heavily and need a stable way to manage multi-project, long-running AI work.
 
@@ -48,14 +48,13 @@ This repository is the Codux monorepo:
 - `apps/desktop`: Rust + GPUI desktop app, desktop runtime, desktop assets, and desktop release scripts.
 - `apps/agent`: headless controlled-agent app that links protocol, terminal core, and the shared local PTY driver without GPUI.
 - `apps/mobile`: Flutter mobile controller.
-- `apps/server`: Rust relay service for persisted pairing, device authorization, signaling, and WebSocket fallback.
 - `crates/codux-protocol`: shared remote protocol helpers, capabilities, envelope DTOs, transport candidates, and relay rules.
 - `crates/codux-protocol-ffi`: Flutter-facing C ABI for shared protocol and terminal core bindings.
 - `crates/codux-runtime-core`: shared runtime domain payload rules for host info, project, file, Git, worktree, upload, and terminal shapes.
 - `crates/codux-terminal-core`: shared terminal session, sequence, baseline restore, and remote PTY model primitives.
 - `crates/codux-terminal-pty`: shared `portable_pty` local PTY driver for host/headless targets.
 
-Flutter keeps its own native build system. Rust packages, including `apps/server`, are Cargo workspace members.
+Flutter keeps its own native build system. The old in-repository relay server app has been removed because remote connectivity now uses the shared Iroh transport.
 
 ## Rust + GPUI Native Foundation
 
@@ -114,7 +113,7 @@ Codux is not just a terminal with tabs. It adds an AI-aware control layer around
 - **A terminal tuned for long AI runs**: Scrollback, selection, ANSI color state, alternate-screen apps, modified key sequences, mouse reporting, and terminal scrollbars are handled in the managed terminal layer.
 - **Prompt-safe clipboard and path handling**: Pasted images can become temporary files with local paths instead of base64 payloads; dragged files insert shell-quoted paths that AI tools can use immediately.
 - **Project surfaces beside the terminal**: Text editing, Markdown preview, image preview, external-open fallbacks, and focused Git diff windows keep review work close to the running CLI.
-- **Remote handoff without losing terminal state**: The v3.1 path uses bounded baselines, sequence guards, chunking, progress, and subscriptions so mobile can recover large Codex or Claude histories safely.
+- **Remote handoff without losing terminal state**: The shared runtime protocol uses bounded baselines, sequence guards, chunking, progress, and subscriptions so mobile can recover large Codex or Claude histories safely.
 - **SSH profiles built for agents**: `codux-ssh <profile>` lets AI CLIs run remote commands through saved, tested profiles without exposing passwords, passphrases, or private-key paths.
 - **Local memory that follows the work**: Codux extracts durable user preferences, project profiles, and module notes from local transcripts, filters noisy boundaries, and injects only relevant context for the active project or worktree.
 
@@ -146,17 +145,15 @@ Database and other secure connection profiles are planned. Today, database acces
 
 ## Mobile Handoff
 
-Codux Mobile connects to the desktop host through the v3 remote path.
+Codux Mobile connects to the desktop host through the shared Iroh remote transport.
 
 - Pair mobile with the desktop using a short-lived QR ticket.
-- Use the global public relay by leaving the relay setting empty, choose the China node when needed, or configure a custom relay endpoint.
-- Prefer WebRTC DataChannel when a direct path is available and fall back to WebSocket relay when P2P cannot connect.
+- Use the global Iroh network, choose a configured relay preset when needed, or configure a custom relay endpoint.
+- Iroh automatically uses the best available direct path and falls back to the selected Iroh relay when direct connectivity is unavailable.
 - Keep projects, terminals, files, and AI sessions running on the desktop host while mobile controls the session remotely.
-- Use one runtime protocol model across transport drivers: local, WebRTC, WebSocket relay, and future transports all feed the same project, terminal, file, Git/worktree, and AI-stat state.
+- Use one runtime protocol model across desktop, mobile, and future headless hosts. Project, terminal, file, Git/worktree, upload, and AI-stat state are handled by shared runtime crates instead of UI-specific transport code.
 
-Terminal input, output, file payloads, project lists, and AI stats are encrypted between Codux Desktop and Codux Mobile.
-
-For implementation boundaries and the v3.1 protocol shape, see [Remote Protocol Architecture](docs/remote-protocol-architecture.md).
+Iroh provides the transport security for remote control traffic.
 
 ## Custom Pets
 

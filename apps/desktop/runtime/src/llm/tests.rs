@@ -55,6 +55,22 @@ fn pet_speech_prompt_requests_original_persona_line() {
     assert!(!prompt.contains("fallback"));
 }
 
+#[test]
+fn json_schema_response_format_is_used_only_for_known_supported_providers() {
+    let mut openai = provider("openai", 0, true);
+    openai.kind = "openai".to_string();
+    assert!(provider_supports_json_schema_response_format(&openai));
+
+    let mut compatible = provider("deepseek-compatible", 0, true);
+    compatible.base_url = "https://api.deepseek.com/v1".to_string();
+    compatible.model = "deepseek-v4-flash".to_string();
+    assert!(!provider_supports_json_schema_response_format(&compatible));
+
+    let mut deepseek = provider("deepseek", 0, true);
+    deepseek.kind = "deepseek".to_string();
+    assert!(!provider_supports_json_schema_response_format(&deepseek));
+}
+
 fn provider(id: &str, priority: i32, use_for_memory_extraction: bool) -> AIProviderSettings {
     AIProviderSettings {
         id: id.to_string(),

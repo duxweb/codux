@@ -6,13 +6,17 @@ use serde_json::Value;
 use std::collections::HashSet;
 
 pub fn decode_extraction_response(raw: &str) -> Result<MemoryExtractionResponse, String> {
+    decode_extraction_response_detailed(raw).map_err(|error| error.to_string())
+}
+
+pub fn decode_extraction_response_detailed(raw: &str) -> Result<MemoryExtractionResponse, String> {
     let stripped = strip_markdown_code_fences(raw);
     for value in llm_json_values(&stripped) {
         if let Some(response) = parse_extraction_value(&value) {
             return Ok(response);
         }
     }
-    Err("Memory extraction provider returned malformed memory JSON.".to_string())
+    Err(malformed_json_error(raw))
 }
 
 pub fn should_stop_memory_queue_after_error(error: &str) -> bool {
@@ -47,6 +51,21 @@ fn push_unique_json_value(values: &mut Vec<Value>, value: Option<Value>) {
     };
     if !values.iter().any(|existing| existing == &value) {
         values.push(value);
+    }
+}
+
+fn malformed_json_error(raw: &str) -> String {
+    let preview = raw
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(240)
+        .collect::<String>();
+    if preview.is_empty() {
+        "Memory extraction provider returned malformed memory JSON: empty response.".to_string()
+    } else {
+        format!("Memory extraction provider returned malformed memory JSON: {preview}")
     }
 }
 

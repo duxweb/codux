@@ -4,6 +4,18 @@ Important changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-06-16
+
+### Changed
+
+- Aligned mobile remote transport documentation and release metadata with the Iroh-only desktop/controller protocol.
+- Updated the mobile release version to 1.8.1 for the shared desktop/mobile Iroh transport and terminal fixes.
+
+### Fixed
+
+- Fixed mobile pairing and reconnect expectations after the legacy relay/WebRTC path was removed from the shared protocol.
+- Kept mobile release notes aligned with the shared runtime, protocol FFI, memory extraction, and terminal stability fixes in the 1.8.1 source tag.
+
 ## [1.8.0] - 2026-06-14
 
 ### Added

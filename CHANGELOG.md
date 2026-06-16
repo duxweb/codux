@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-06-16
+
+### Changed
+
+- Switched the remote stack to the Iroh-only transport model and removed the in-repository `apps/server` relay/pairing service from the Cargo workspace.
+- Updated desktop and mobile release documentation so the monorepo remains the source tag for desktop/mobile code while service deployment is owned by the separate service repository.
+- Upgraded the memory extraction provider SDK to `genai` 0.6.5 and added structured-output schema support for providers that advertise compatible JSON schema response formats.
+
+### Fixed
+
+- Fixed memory extraction failures caused by sending JSON schema response formats to OpenAI-compatible providers that reject that mode, including DeepSeek-compatible endpoints; those providers now stay on JSON mode while OpenAI, Anthropic, and Gemini can use structured schema output.
+- Improved memory extraction retries and malformed JSON diagnostics so transient empty responses or malformed provider output do not immediately fail queued extraction work.
+- Cleaned stale remote architecture documents and README references that still described the removed legacy relay/WebRTC/server path.
+
 ## [1.8.0] - 2026-06-14
 
 ### Added

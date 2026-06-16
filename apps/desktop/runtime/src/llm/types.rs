@@ -39,12 +39,20 @@ pub struct PetIdleSpeechResponse {
     pub text: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
+pub struct LLMJsonSchema {
+    pub name: String,
+    pub description: Option<String>,
+    pub schema: Value,
+}
+
+#[derive(Debug, Clone)]
 pub struct LLMProviderCompletionOptions {
     pub max_tokens: u32,
     pub temperature: f32,
     pub preserve_formatting: bool,
     pub json_response: bool,
+    pub json_schema: Option<LLMJsonSchema>,
     pub timeout_seconds: u64,
 }
 
@@ -55,6 +63,7 @@ impl Default for LLMProviderCompletionOptions {
             temperature: 0.4,
             preserve_formatting: false,
             json_response: false,
+            json_schema: None,
             timeout_seconds: 15,
         }
     }

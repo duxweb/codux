@@ -3,7 +3,6 @@ members = [
     "apps/desktop",
     "apps/desktop/runtime",
     "apps/agent",
-    "apps/server",
     "crates/codux-protocol",
     "crates/codux-protocol-ffi",
     "crates/codux-remote-transport",
