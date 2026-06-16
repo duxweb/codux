@@ -1,5 +1,5 @@
 use super::RemoteService;
-use super::crypto::{remote_base64_url_decode, remote_host_name};
+use super::crypto::remote_host_name;
 use super::pairing::remote_summary_show_pending_pairing;
 use super::protocol::{
     REMOTE_AI_STATS, REMOTE_DEVICE_CONNECTED, REMOTE_DEVICE_DISCONNECTED, REMOTE_ERROR,
@@ -14,9 +14,7 @@ use super::protocol::{
     REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED, REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED,
     REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_INPUT_ACK, REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT,
     REMOTE_TERMINAL_OUTPUT_ACK, REMOTE_TERMINAL_RESIZE, REMOTE_TERMINAL_SIGNAL,
-    REMOTE_TERMINAL_SUBSCRIBE, REMOTE_TERMINAL_UNSUBSCRIBE, REMOTE_TERMINAL_UPLOAD,
-    REMOTE_TERMINAL_UPLOAD_ACK, REMOTE_TERMINAL_UPLOAD_CANCEL, REMOTE_TERMINAL_UPLOAD_CHUNK,
-    REMOTE_TERMINAL_UPLOAD_FINISH, REMOTE_TERMINAL_UPLOAD_START, REMOTE_TERMINAL_UPLOADED,
+    REMOTE_TERMINAL_SUBSCRIBE, REMOTE_TERMINAL_UNSUBSCRIBE, REMOTE_TERMINAL_UPLOADED,
     REMOTE_TERMINAL_VIEWPORT_CLAIM, REMOTE_TERMINAL_VIEWPORT_RELEASE,
     REMOTE_TERMINAL_VIEWPORT_RESIZE, REMOTE_TERMINAL_VIEWPORT_SCROLL,
     REMOTE_TERMINAL_VIEWPORT_SCROLLED, REMOTE_TERMINAL_VIEWPORT_STATE, REMOTE_TRANSPORT_PING,
@@ -46,7 +44,7 @@ use crate::terminal_pty::{
 use crate::worktree::{
     WorktreeCreateRequest, WorktreeMergeRequest, WorktreeRemoveRequest, WorktreeService,
 };
-use base64::Engine;
+use codux_remote_transport::RemoteTransportUpload;
 use codux_runtime_core::{
     file as runtime_file, git as runtime_git, host as runtime_host, project as runtime_project,
     subscription::RuntimeSubscriptionRouter, terminal as runtime_terminal,
@@ -60,7 +58,6 @@ use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
-    io::{Seek, Write},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -122,7 +119,6 @@ pub struct RemoteHostRuntime {
     terminal_buffer_baselines: Mutex<HashMap<String, RemoteTerminalBufferBaseline>>,
     remote_project_scope_by_device: Mutex<HashMap<String, String>>,
     terminal_event_subscriptions: Mutex<HashSet<String>>,
-    terminal_upload_sessions: Mutex<HashMap<String, RemoteTerminalUploadSession>>,
     transport: Mutex<Option<Arc<dyn RemoteTransport>>>,
     transport_start_lock: tokio::sync::Mutex<()>,
     active_pairing: Mutex<Option<RemotePairingInfo>>,
@@ -169,7 +165,6 @@ impl RemoteHostRuntime {
             terminal_buffer_baselines: Mutex::new(HashMap::new()),
             remote_project_scope_by_device: Mutex::new(HashMap::new()),
             terminal_event_subscriptions: Mutex::new(HashSet::new()),
-            terminal_upload_sessions: Mutex::new(HashMap::new()),
             transport: Mutex::new(None),
             transport_start_lock: tokio::sync::Mutex::new(()),
             active_pairing: Mutex::new(None),
@@ -309,9 +304,6 @@ impl RemoteHostRuntime {
         self.stop_with_message("Remote Host stopped.");
         self.resource_subscriptions.clear();
         self.terminal_subscriptions.clear();
-        if let Ok(mut uploads) = self.terminal_upload_sessions.lock() {
-            uploads.clear();
-        }
         for terminal in self.terminals.list() {
             let _ = self.terminals.kill(&terminal.id);
         }
@@ -358,7 +350,12 @@ impl RemoteHostRuntime {
             );
             return false;
         };
-        let ok = transport.send(data.into_bytes(), device_id);
+        let bytes = data.into_bytes();
+        let ok = if is_terminal_stream_kind(kind) {
+            transport.send_terminal(bytes, device_id)
+        } else {
+            transport.send(bytes, device_id)
+        };
         if matches!(
             kind,
             REMOTE_PROJECT_SELECTED | REMOTE_PROJECT_LIST | REMOTE_TERMINAL_LIST | REMOTE_ERROR
@@ -591,6 +588,7 @@ impl RemoteHostRuntime {
             return Ok(());
         }
         let weak_for_message = Arc::downgrade(self);
+        let weak_for_upload = Arc::downgrade(self);
         let weak_for_state = Arc::downgrade(self);
         let weak_for_pairing = Arc::downgrade(self);
         let state_generation = generation;
@@ -602,6 +600,12 @@ impl RemoteHostRuntime {
                         runtime.handle_transport_message(device_id, data);
                     });
                 }
+            }),
+            Arc::new(move |upload| {
+                let Some(runtime) = weak_for_upload.upgrade() else {
+                    return Err("remote runtime is not available".to_string());
+                };
+                runtime.handle_transport_upload(upload)
             }),
             Arc::new(move |device_id, state| {
                 if let Some(runtime) = weak_for_state.upgrade() {
@@ -709,6 +713,52 @@ impl RemoteHostRuntime {
         self.handle_remote_envelope(envelope);
     }
 
+    fn handle_transport_upload(&self, upload: RemoteTransportUpload) -> Result<(), String> {
+        let device_id = upload.device_id.trim();
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!(
+                "upload recv device={} session={} name={} bytes={}",
+                device_id,
+                upload.session_id,
+                upload.name,
+                upload.bytes.len()
+            ),
+        );
+        if !self.is_authorized_device(Some(device_id)) {
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                &format!("drop unauthorized upload device={device_id}"),
+            );
+            self.send_device_unauthorized(Some(device_id));
+            return Err("Device is not authorized.".to_string());
+        }
+        if upload.session_id.trim().is_empty() {
+            return Err("Terminal session is required.".to_string());
+        }
+        if upload.bytes.is_empty() || upload.bytes.len() > 20 * 1024 * 1024 {
+            return Err("Upload size is not supported.".to_string());
+        }
+        let name = sanitized_remote_upload_name(&upload.name);
+        let kind = if upload.kind.trim().eq_ignore_ascii_case("image") {
+            "image"
+        } else {
+            "file"
+        };
+        let path = self.write_terminal_upload_file(&upload.session_id, &name, &upload.bytes)?;
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!(
+                "upload stored device={} session={} path={}",
+                device_id,
+                upload.session_id,
+                path.to_string_lossy()
+            ),
+        );
+        self.finish_terminal_upload(Some(device_id), &upload.session_id, path, kind);
+        Ok(())
+    }
+
     fn handle_remote_envelope(self: &Arc<Self>, envelope: RemoteEnvelope) {
         match envelope.kind.as_str() {
             REMOTE_HOST_INFO => self.send_host_info(envelope.device_id.as_deref()),
@@ -755,11 +805,6 @@ impl RemoteHostRuntime {
             REMOTE_TERMINAL_RESIZE => self.handle_terminal_resize(&envelope),
             REMOTE_TERMINAL_CLOSE => self.handle_terminal_close(&envelope),
             REMOTE_TERMINAL_SIGNAL => self.handle_terminal_signal(&envelope),
-            REMOTE_TERMINAL_UPLOAD => self.handle_terminal_upload(&envelope),
-            REMOTE_TERMINAL_UPLOAD_START => self.handle_terminal_upload_start(&envelope),
-            REMOTE_TERMINAL_UPLOAD_CHUNK => self.handle_terminal_upload_chunk(&envelope),
-            REMOTE_TERMINAL_UPLOAD_FINISH => self.handle_terminal_upload_finish(&envelope),
-            REMOTE_TERMINAL_UPLOAD_CANCEL => self.handle_terminal_upload_cancel(&envelope),
             REMOTE_FILE_LIST => {
                 let path = envelope.payload.get("path").and_then(Value::as_str);
                 let purpose = envelope.payload.get("purpose").and_then(Value::as_str);
@@ -2124,308 +2169,6 @@ impl RemoteHostRuntime {
         }
     }
 
-    fn handle_terminal_upload(&self, envelope: &RemoteEnvelope) {
-        let Some(session_id) = envelope.session_id.as_deref() else {
-            self.send_error(envelope, "Terminal session is required.");
-            return;
-        };
-        let Some(data) = envelope.payload.get("data").and_then(Value::as_str) else {
-            self.send_error(envelope, "Upload data is required.");
-            return;
-        };
-        let bytes = match remote_upload_decode(data) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                self.send_error(envelope, &error);
-                return;
-            }
-        };
-        let name = sanitized_remote_upload_name(
-            envelope
-                .payload
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("upload.png"),
-        );
-        let kind = remote_terminal_upload_kind(&envelope.payload);
-        match self.write_terminal_upload_file(session_id, &name, &bytes) {
-            Ok(path) => {
-                self.finish_terminal_upload(envelope.device_id.as_deref(), session_id, path, &kind)
-            }
-            Err(error) => self.send_error(envelope, &error),
-        }
-    }
-
-    fn handle_terminal_upload_start(&self, envelope: &RemoteEnvelope) {
-        let Some(session_id) = envelope.session_id.as_deref() else {
-            self.send_terminal_upload_ack(
-                envelope,
-                "start",
-                None,
-                false,
-                Some("Terminal session is required."),
-            );
-            return;
-        };
-        let Some(upload_id) = envelope.payload.get("uploadId").and_then(Value::as_str) else {
-            self.send_terminal_upload_ack(
-                envelope,
-                "start",
-                None,
-                false,
-                Some("Upload id is required."),
-            );
-            return;
-        };
-        let total_bytes = envelope
-            .payload
-            .get("totalBytes")
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
-        let total_chunks = envelope
-            .payload
-            .get("totalChunks")
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as usize;
-        if total_bytes == 0 || total_bytes > 20 * 1024 * 1024 || total_chunks == 0 {
-            self.send_terminal_upload_ack(
-                envelope,
-                "start",
-                None,
-                false,
-                Some("Upload size is not supported."),
-            );
-            return;
-        }
-        let name = sanitized_remote_upload_name(
-            envelope
-                .payload
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("upload.png"),
-        );
-        let kind = remote_terminal_upload_kind(&envelope.payload);
-        let directory = remote_terminal_upload_directory(session_id);
-        if let Err(error) = fs::create_dir_all(&directory) {
-            self.send_terminal_upload_ack(envelope, "start", None, false, Some(&error.to_string()));
-            return;
-        }
-        let final_path = unique_remote_upload_path(&directory, &name);
-        let partial_path = final_path.with_extension(format!(
-            "{}.part-{}",
-            final_path
-                .extension()
-                .and_then(|value| value.to_str())
-                .unwrap_or("upload"),
-            upload_id
-        ));
-        if fs::File::create(&partial_path).is_err() {
-            self.send_terminal_upload_ack(
-                envelope,
-                "start",
-                None,
-                false,
-                Some("Unable to create upload file."),
-            );
-            return;
-        }
-        if let Ok(mut uploads) = self.terminal_upload_sessions.lock() {
-            uploads.insert(
-                upload_id.to_string(),
-                RemoteTerminalUploadSession {
-                    session_id: session_id.to_string(),
-                    device_id: envelope.device_id.clone(),
-                    total_bytes,
-                    total_chunks,
-                    partial_path,
-                    final_path,
-                    kind,
-                    received_chunks: HashSet::new(),
-                    received_bytes: 0,
-                },
-            );
-        }
-        self.send_terminal_upload_ack(envelope, "start", None, true, None);
-    }
-
-    fn handle_terminal_upload_chunk(&self, envelope: &RemoteEnvelope) {
-        let Some(upload_id) = envelope.payload.get("uploadId").and_then(Value::as_str) else {
-            self.send_terminal_upload_ack(
-                envelope,
-                "chunk",
-                None,
-                false,
-                Some("Upload id is required."),
-            );
-            return;
-        };
-        let chunk_index = envelope
-            .payload
-            .get("chunkIndex")
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as usize;
-        let offset = envelope
-            .payload
-            .get("offset")
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
-        let Some(data) = envelope.payload.get("data").and_then(Value::as_str) else {
-            self.send_terminal_upload_ack(
-                envelope,
-                "chunk",
-                Some(chunk_index),
-                false,
-                Some("Upload data is required."),
-            );
-            return;
-        };
-        let bytes = match remote_upload_decode(data) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                self.send_terminal_upload_ack(
-                    envelope,
-                    "chunk",
-                    Some(chunk_index),
-                    false,
-                    Some(&error),
-                );
-                return;
-            }
-        };
-        let mut uploads = match self.terminal_upload_sessions.lock() {
-            Ok(uploads) => uploads,
-            Err(_) => {
-                self.send_terminal_upload_ack(
-                    envelope,
-                    "chunk",
-                    Some(chunk_index),
-                    false,
-                    Some("Upload lock failed."),
-                );
-                return;
-            }
-        };
-        let Some(session) = uploads.get_mut(upload_id) else {
-            self.send_terminal_upload_ack(
-                envelope,
-                "chunk",
-                Some(chunk_index),
-                false,
-                Some("Upload not found."),
-            );
-            return;
-        };
-        if chunk_index >= session.total_chunks || offset + bytes.len() as u64 > session.total_bytes
-        {
-            self.send_terminal_upload_ack(
-                envelope,
-                "chunk",
-                Some(chunk_index),
-                false,
-                Some("Invalid upload chunk."),
-            );
-            return;
-        }
-        match fs::OpenOptions::new()
-            .write(true)
-            .open(&session.partial_path)
-        {
-            Ok(mut file) => {
-                if file.seek(std::io::SeekFrom::Start(offset)).is_err()
-                    || file.write_all(&bytes).is_err()
-                {
-                    self.send_terminal_upload_ack(
-                        envelope,
-                        "chunk",
-                        Some(chunk_index),
-                        false,
-                        Some("Upload write failed."),
-                    );
-                    return;
-                }
-                session.received_chunks.insert(chunk_index);
-                session.received_bytes = session.received_bytes.saturating_add(bytes.len() as u64);
-                self.send_terminal_upload_ack(envelope, "chunk", Some(chunk_index), true, None);
-            }
-            Err(error) => self.send_terminal_upload_ack(
-                envelope,
-                "chunk",
-                Some(chunk_index),
-                false,
-                Some(&error.to_string()),
-            ),
-        }
-    }
-
-    fn handle_terminal_upload_finish(&self, envelope: &RemoteEnvelope) {
-        let Some(upload_id) = envelope.payload.get("uploadId").and_then(Value::as_str) else {
-            self.send_terminal_upload_ack(
-                envelope,
-                "finish",
-                None,
-                false,
-                Some("Upload id is required."),
-            );
-            return;
-        };
-        let session = match self.terminal_upload_sessions.lock() {
-            Ok(mut uploads) => uploads.remove(upload_id),
-            Err(_) => None,
-        };
-        let Some(session) = session else {
-            self.send_terminal_upload_ack(
-                envelope,
-                "finish",
-                None,
-                false,
-                Some("Upload not found."),
-            );
-            return;
-        };
-        if session.received_chunks.len() != session.total_chunks {
-            self.send_terminal_upload_ack(
-                envelope,
-                "finish",
-                None,
-                false,
-                Some("Upload is missing chunks."),
-            );
-            return;
-        }
-        if fs::rename(&session.partial_path, &session.final_path).is_err() {
-            self.send_terminal_upload_ack(
-                envelope,
-                "finish",
-                None,
-                false,
-                Some("Upload finish failed."),
-            );
-            return;
-        }
-        self.send_terminal_upload_ack(envelope, "finish", None, true, None);
-        self.finish_terminal_upload(
-            session.device_id.as_deref(),
-            &session.session_id,
-            session.final_path,
-            &session.kind,
-        );
-    }
-
-    fn handle_terminal_upload_cancel(&self, envelope: &RemoteEnvelope) {
-        let Some(upload_id) = envelope.payload.get("uploadId").and_then(Value::as_str) else {
-            return;
-        };
-        let session = self
-            .terminal_upload_sessions
-            .lock()
-            .ok()
-            .and_then(|mut uploads| uploads.remove(upload_id));
-        if let Some(session) = session {
-            let _ = fs::remove_file(session.partial_path);
-        }
-        self.send_terminal_upload_ack(envelope, "cancel", None, true, None);
-    }
-
     fn write_terminal_upload_file(
         &self,
         session_id: &str,
@@ -2460,35 +2203,6 @@ impl RemoteHostRuntime {
                 "tool": Value::Null,
                 "inserted": true,
             }),
-        );
-    }
-
-    fn send_terminal_upload_ack(
-        &self,
-        envelope: &RemoteEnvelope,
-        stage: &str,
-        chunk_index: Option<usize>,
-        ok: bool,
-        message: Option<&str>,
-    ) {
-        let mut payload = json!({
-            "uploadId": envelope.payload.get("uploadId").cloned().unwrap_or(Value::Null),
-            "stage": stage,
-            "ok": ok,
-        });
-        if let Some(chunk_index) = chunk_index {
-            payload["chunkIndex"] = json!(chunk_index);
-        } else if let Some(value) = envelope.payload.get("chunkIndex") {
-            payload["chunkIndex"] = value.clone();
-        }
-        if let Some(message) = message {
-            payload["message"] = json!(message);
-        }
-        self.send_terminal_data(
-            REMOTE_TERMINAL_UPLOAD_ACK,
-            envelope.device_id.as_deref(),
-            envelope.session_id.as_deref(),
-            payload,
         );
     }
 
@@ -3843,18 +3557,6 @@ impl RemoteHostRuntime {
     }
 }
 
-struct RemoteTerminalUploadSession {
-    session_id: String,
-    device_id: Option<String>,
-    total_bytes: u64,
-    total_chunks: usize,
-    partial_path: PathBuf,
-    final_path: PathBuf,
-    kind: String,
-    received_chunks: HashSet<usize>,
-    received_bytes: u64,
-}
-
 fn default_project_name(path: &str) -> String {
     Path::new(path)
         .file_name()
@@ -3879,14 +3581,6 @@ pub(crate) fn remote_file_rename(path: &str, new_path: &str) -> Result<(), Strin
     runtime_file::file_rename(path, new_path)
 }
 
-fn remote_upload_decode(data: &str) -> Result<Vec<u8>, String> {
-    remote_base64_url_decode(data).or_else(|_| {
-        base64::engine::general_purpose::STANDARD
-            .decode(data)
-            .map_err(|error| error.to_string())
-    })
-}
-
 fn remote_pairing_code() -> String {
     let value = uuid::Uuid::new_v4().as_u128() % 1_000_000;
     format!("{value:06}")
@@ -3900,16 +3594,24 @@ pub(crate) fn sanitized_remote_upload_name(value: &str) -> String {
     runtime_upload::sanitized_upload_name(value)
 }
 
-pub(crate) fn remote_terminal_upload_kind(payload: &Value) -> String {
-    runtime_upload::terminal_upload_kind(payload)
-}
-
 pub(crate) fn terminal_upload_path_input(path: &Path) -> String {
     runtime_upload::terminal_upload_path_input(path)
 }
 
 pub(crate) fn unique_remote_upload_path(directory: &Path, file_name: &str) -> PathBuf {
     runtime_upload::unique_upload_path(directory, file_name)
+}
+
+fn is_terminal_stream_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        REMOTE_TERMINAL_OUTPUT
+            | REMOTE_TERMINAL_OUTPUT_ACK
+            | REMOTE_TERMINAL_INPUT
+            | REMOTE_TERMINAL_INPUT_ACK
+            | REMOTE_TERMINAL_SIGNAL
+            | REMOTE_TERMINAL_BUFFER
+    )
 }
 
 pub(crate) fn remote_ai_stats_payload(

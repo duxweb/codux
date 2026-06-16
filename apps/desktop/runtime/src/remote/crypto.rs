@@ -118,10 +118,6 @@ pub(crate) fn remote_base64_url_encode(bytes: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-pub(crate) fn remote_base64_url_decode(value: &str) -> Result<Vec<u8>, base64::DecodeError> {
-    URL_SAFE_NO_PAD.decode(value)
-}
-
 pub(crate) fn remote_pairing_payload(
     _settings: &RemoteSettings,
     pairing: &RemotePairingInfo,

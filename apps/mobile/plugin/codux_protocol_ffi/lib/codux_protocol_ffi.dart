@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
@@ -84,6 +85,23 @@ bool _hasRequiredSymbols(DynamicLibrary library) {
     library.lookup<NativeFunction<Pointer<Void> Function(Pointer<Utf8>)>>(
       'codux_controller_transport_connect_json',
     );
+    library.lookup<NativeFunction<Bool Function(Pointer<Void>, Pointer<Utf8>)>>(
+      'codux_controller_transport_send_terminal_json',
+    );
+    library.lookup<
+      NativeFunction<
+        Bool Function(
+          Pointer<Void>,
+          Pointer<Utf8>,
+          Pointer<Utf8>,
+          Pointer<Utf8>,
+          Pointer<Utf8>,
+          Pointer<Utf8>,
+          Pointer<Uint8>,
+          IntPtr,
+        )
+      >
+    >('codux_controller_transport_send_terminal_upload');
     library.lookup<NativeFunction<Pointer<Utf8> Function()>>(
       'codux_protocol_last_error',
     );
@@ -216,6 +234,34 @@ final _controllerTransportSendJson = _dylib
       Bool Function(Pointer<Void>, Pointer<Utf8>),
       bool Function(Pointer<Void>, Pointer<Utf8>)
     >('codux_controller_transport_send_json');
+final _controllerTransportSendTerminalJson = _dylib
+    .lookupFunction<
+      Bool Function(Pointer<Void>, Pointer<Utf8>),
+      bool Function(Pointer<Void>, Pointer<Utf8>)
+    >('codux_controller_transport_send_terminal_json');
+final _controllerTransportSendTerminalUpload = _dylib
+    .lookupFunction<
+      Bool Function(
+        Pointer<Void>,
+        Pointer<Utf8>,
+        Pointer<Utf8>,
+        Pointer<Utf8>,
+        Pointer<Utf8>,
+        Pointer<Utf8>,
+        Pointer<Uint8>,
+        IntPtr,
+      ),
+      bool Function(
+        Pointer<Void>,
+        Pointer<Utf8>,
+        Pointer<Utf8>,
+        Pointer<Utf8>,
+        Pointer<Utf8>,
+        Pointer<Utf8>,
+        Pointer<Uint8>,
+        int,
+      )
+    >('codux_controller_transport_send_terminal_upload');
 final _controllerTransportPollEventJson = _dylib
     .lookupFunction<
       Pointer<Utf8> Function(Pointer<Void>),
@@ -586,6 +632,54 @@ class ControllerTransportHandle {
       return _controllerTransportSendJson(handle, envelopePtr);
     } finally {
       malloc.free(envelopePtr);
+    }
+  }
+
+  bool sendTerminal(Map<String, dynamic> envelope) {
+    final handle = _liveHandle();
+    final envelopePtr = jsonEncode(envelope).toNativeUtf8();
+    try {
+      return _controllerTransportSendTerminalJson(handle, envelopePtr);
+    } finally {
+      malloc.free(envelopePtr);
+    }
+  }
+
+  bool sendTerminalUpload({
+    required String deviceId,
+    required String sessionId,
+    required String name,
+    required String mime,
+    required String kind,
+    required Uint8List bytes,
+  }) {
+    if (bytes.isEmpty) return false;
+    final handle = _liveHandle();
+    final devicePtr = deviceId.toNativeUtf8();
+    final sessionPtr = sessionId.toNativeUtf8();
+    final namePtr = name.toNativeUtf8();
+    final mimePtr = mime.toNativeUtf8();
+    final kindPtr = kind.toNativeUtf8();
+    final bytesPtr = malloc<Uint8>(bytes.length);
+    try {
+      bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
+      return _controllerTransportSendTerminalUpload(
+        handle,
+        devicePtr,
+        sessionPtr,
+        namePtr,
+        mimePtr,
+        kindPtr,
+        bytesPtr,
+        bytes.length,
+      );
+    } finally {
+      malloc.free(devicePtr);
+      malloc.free(sessionPtr);
+      malloc.free(namePtr);
+      malloc.free(mimePtr);
+      malloc.free(kindPtr);
+      malloc.free(bytesPtr);
     }
   }
 

@@ -2,6 +2,7 @@ use super::types::RemoteSettings;
 use codux_remote_transport::{
     RemoteHostTransportConfig, RemoteTransport, RemoteTransportFactory as SharedTransportFactory,
     RemoteTransportMessageHandler, RemoteTransportPairingHandler, RemoteTransportStateHandler,
+    RemoteTransportUploadHandler,
 };
 use std::sync::Arc;
 
@@ -11,12 +12,14 @@ impl RemoteTransportFactory {
     pub(crate) async fn connect_host(
         settings: &RemoteSettings,
         on_message: RemoteTransportMessageHandler,
+        on_upload: RemoteTransportUploadHandler,
         on_state: RemoteTransportStateHandler,
         on_pairing: RemoteTransportPairingHandler,
     ) -> Result<Arc<dyn RemoteTransport>, String> {
         SharedTransportFactory::connect_host(
             &host_transport_config(settings),
             on_message,
+            on_upload,
             on_state,
             on_pairing,
             Some(Arc::new(|message| {

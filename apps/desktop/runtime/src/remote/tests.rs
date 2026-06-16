@@ -1,8 +1,8 @@
 use super::crypto::{display_host_name, remote_pairing_payload};
 use super::host::{
     remote_ai_stats_payload, remote_file_list, remote_file_read, remote_file_rename,
-    remote_file_write, remote_terminal_upload_directory, remote_terminal_upload_kind,
-    sanitized_remote_upload_name, terminal_upload_path_input, unique_remote_upload_path,
+    remote_file_write, remote_terminal_upload_directory, sanitized_remote_upload_name,
+    terminal_upload_path_input, unique_remote_upload_path,
 };
 use super::pairing::remote_summary_show_pending_pairing;
 use super::summary::remote_summary_from_settings;
@@ -624,15 +624,6 @@ fn remote_terminal_upload_helpers_match_tauri_shape() {
             .and_then(|value| value.to_str()),
         Some("term_id")
     );
-    assert_eq!(
-        remote_terminal_upload_kind(&json!({ "kind": "file" })),
-        "file"
-    );
-    assert_eq!(
-        remote_terminal_upload_kind(&json!({ "kind": "image/png" })),
-        "image"
-    );
-
     let dir = std::env::temp_dir().join(format!(
         "codux-gpui-upload-path-test-{}",
         uuid::Uuid::new_v4()

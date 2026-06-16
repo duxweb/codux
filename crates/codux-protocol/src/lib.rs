@@ -72,12 +72,7 @@ pub const REMOTE_TERMINAL_VIEWPORT_RELEASE: &str = "terminal.viewport.release";
 pub const REMOTE_TERMINAL_VIEWPORT_STATE: &str = "terminal.viewport.state";
 pub const REMOTE_TERMINAL_VIEWPORT_SCROLL: &str = "terminal.viewport.scroll";
 pub const REMOTE_TERMINAL_VIEWPORT_SCROLLED: &str = "terminal.viewport.scrolled";
-pub const REMOTE_TERMINAL_UPLOAD: &str = "terminal.upload";
-pub const REMOTE_TERMINAL_UPLOAD_START: &str = "terminal.upload.start";
-pub const REMOTE_TERMINAL_UPLOAD_CHUNK: &str = "terminal.upload.chunk";
-pub const REMOTE_TERMINAL_UPLOAD_FINISH: &str = "terminal.upload.finish";
-pub const REMOTE_TERMINAL_UPLOAD_CANCEL: &str = "terminal.upload.cancel";
-pub const REMOTE_TERMINAL_UPLOAD_ACK: &str = "terminal.upload.ack";
+pub const REMOTE_TERMINAL_UPLOAD_BLOB: &str = "terminal.upload.blob";
 pub const REMOTE_TERMINAL_UPLOADED: &str = "terminal.uploaded";
 pub const REMOTE_FILE_LIST: &str = "file.list";
 pub const REMOTE_FILE_READ: &str = "file.read";
@@ -261,14 +256,7 @@ pub fn relay_error_envelope(
 }
 
 pub fn relay_blocks_message_type(kind: &str) -> bool {
-    matches!(
-        kind,
-        REMOTE_TERMINAL_UPLOAD
-            | REMOTE_TERMINAL_UPLOAD_START
-            | REMOTE_TERMINAL_UPLOAD_CHUNK
-            | REMOTE_TERMINAL_UPLOAD_FINISH
-            | REMOTE_FILE_WRITE
-    )
+    matches!(kind, REMOTE_FILE_WRITE)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -929,12 +917,12 @@ mod tests {
             policy.validate_message(&envelope, 17, &mut RemoteRelayPeerWindow::default(), 2_000),
             RemoteRelayDecision::Reject("message_too_large")
         );
-        let upload = RemoteRelayEnvelope {
-            kind: REMOTE_TERMINAL_UPLOAD_START.to_string(),
+        let write = RemoteRelayEnvelope {
+            kind: REMOTE_FILE_WRITE.to_string(),
             ..RemoteRelayEnvelope::default()
         };
         assert_eq!(
-            policy.validate_message(&upload, 8, &mut RemoteRelayPeerWindow::default(), 2_000),
+            policy.validate_message(&write, 8, &mut RemoteRelayPeerWindow::default(), 2_000),
             RemoteRelayDecision::Reject("upload_requires_p2p")
         );
     }

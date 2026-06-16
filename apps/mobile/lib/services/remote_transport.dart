@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:codux_protocol_ffi/codux_protocol_ffi.dart'
     as codux_protocol_ffi;
@@ -51,6 +52,15 @@ class RemoteTransportStateEvent {
 abstract interface class ControllerTransportEventHandle {
   bool get isClosed;
   bool send(Map<String, dynamic> envelope);
+  bool sendTerminal(Map<String, dynamic> envelope);
+  bool sendTerminalUpload({
+    required String deviceId,
+    required String sessionId,
+    required String name,
+    required String mime,
+    required String kind,
+    required Uint8List bytes,
+  });
   Map<String, dynamic>? pollEvent();
   void close();
 }
@@ -61,6 +71,15 @@ abstract interface class RemoteTransport {
   set onEnvelope(RemoteTransportEnvelopeHandler? handler);
   Future<void> connect(StoredDevice device);
   Future<bool> send(Map<String, dynamic> envelope);
+  Future<bool> sendTerminal(Map<String, dynamic> envelope);
+  Future<bool> sendTerminalUpload({
+    required String deviceId,
+    required String sessionId,
+    required String name,
+    required String mime,
+    required String kind,
+    required Uint8List bytes,
+  });
   Future<void> close();
 }
 
@@ -158,6 +177,31 @@ class RustControllerTransport implements RemoteTransport {
   }
 
   @override
+  Future<bool> sendTerminal(Map<String, dynamic> envelope) async {
+    return _handle?.sendTerminal(envelope) ?? false;
+  }
+
+  @override
+  Future<bool> sendTerminalUpload({
+    required String deviceId,
+    required String sessionId,
+    required String name,
+    required String mime,
+    required String kind,
+    required Uint8List bytes,
+  }) async {
+    return _handle?.sendTerminalUpload(
+          deviceId: deviceId,
+          sessionId: sessionId,
+          name: name,
+          mime: mime,
+          kind: kind,
+          bytes: bytes,
+        ) ??
+        false;
+  }
+
+  @override
   Future<void> close() async {
     _pollTimer?.cancel();
     _pollTimer = null;
@@ -227,6 +271,27 @@ class _FfiControllerTransportHandle implements ControllerTransportEventHandle {
 
   @override
   bool send(Map<String, dynamic> envelope) => _inner.send(envelope);
+
+  @override
+  bool sendTerminal(Map<String, dynamic> envelope) =>
+      _inner.sendTerminal(envelope);
+
+  @override
+  bool sendTerminalUpload({
+    required String deviceId,
+    required String sessionId,
+    required String name,
+    required String mime,
+    required String kind,
+    required Uint8List bytes,
+  }) => _inner.sendTerminalUpload(
+    deviceId: deviceId,
+    sessionId: sessionId,
+    name: name,
+    mime: mime,
+    kind: kind,
+    bytes: bytes,
+  );
 
   @override
   Map<String, dynamic>? pollEvent() => _inner.pollEvent();

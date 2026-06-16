@@ -40,7 +40,6 @@ import '../services/terminal_buffer_retry.dart';
 import '../services/terminal_input_batcher.dart';
 import '../services/terminal_input_reliable_sender.dart';
 import '../services/terminal_upload_metadata.dart';
-import '../services/terminal_upload_sender.dart';
 import '../services/update_check_service.dart';
 import '../services/terminal_viewport_controller.dart';
 import '../theme/app_theme.dart';
@@ -121,7 +120,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
   late final TerminalBufferRetryCoordinator _terminalBufferRetry;
   late final TerminalInputBatcher _terminalInputBatcher;
   late final TerminalInputReliableSender _terminalInputSender;
-  late final TerminalUploadSender _terminalUploadSender;
   late final RemoteNetworkRouteRefreshController _networkRouteRefreshController;
   late final LocalVoiceRecognitionService _voiceService;
   RemoteTransport? _activeTransport;
@@ -190,9 +188,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
 
   bool get _terminalDataVisible =>
       _showTerminal && _workspaceMode == 'terminal';
-
-  bool get _terminalViewportReady =>
-      _terminalReady && _terminalViewportClaimable;
 
   bool get _projectListLoaded => _remoteSync.projectListLoaded;
   bool _backgroundConnect = false;
@@ -497,10 +492,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
         _status = _t('app.connecting');
       }
     });
-  }
-
-  void _markTransportPath(String path, {String? endpoint}) {
-    _markTransportPathDetail(path, endpoint: endpoint);
   }
 
   void _markTransportPathDetail(
@@ -1014,10 +1005,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       send: _sendTerminalEnvelope,
       activeSessionId: () => _sessionId,
     );
-    _terminalUploadSender = TerminalUploadSender(
-      send: _sendTerminalUploadEnvelopeReliable,
-      afterChunkAck: () => Future<void>.delayed(Duration.zero),
-    );
     _terminalBindingCoordinator = RemoteTerminalBindingCoordinator(
       outputController: _terminalOutputController,
       send: _send,
@@ -1088,7 +1075,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       StateError('Terminal upload cancelled'),
     );
     _terminalUploadCompletion = null;
-    _terminalUploadSender.dispose();
     _voiceService.dispose();
     _terminalOutputController.dispose();
     unawaited(_closeActiveTransport());
@@ -2010,7 +1996,11 @@ class _CoduxHomePageState extends State<CoduxHomePage>
     }
   }
 
-  bool _send(RelayEnvelope message, {RemoteSendResultHandler? onResult}) {
+  bool _send(
+    RelayEnvelope message, {
+    bool sendTerminal = false,
+    RemoteSendResultHandler? onResult,
+  }) {
     if (!_transportConnected) {
       setState(() => _status = _t('app.remoteNotConnected'));
       CoduxLog.warn(
@@ -2034,6 +2024,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
         transport: transport,
         connected: () => _transportConnected,
         activeDevice: _activeDevice,
+        terminalStream: sendTerminal,
         onResult: (sentMessage, result) {
           if (sentMessage.type == RemoteMessageType.hostInfo ||
               sentMessage.type == RemoteMessageType.projectSelect ||
@@ -2069,31 +2060,19 @@ class _CoduxHomePageState extends State<CoduxHomePage>
   bool _sendTerminalEnvelope(RelayEnvelope message, {TerminalInfo? terminal}) {
     final scoped = _scopeTerminalEnvelope(message, terminal: terminal);
     if (scoped == null) return false;
-    return _send(scoped);
-  }
-
-  Future<bool> _sendTerminalEnvelopeReliable(
-    RelayEnvelope message, {
-    TerminalInfo? terminal,
-  }) async {
-    final scoped = _scopeTerminalEnvelope(message, terminal: terminal);
-    if (scoped == null) return false;
-    return _send(scoped);
-  }
-
-  Future<bool> _sendTerminalUploadEnvelopeReliable(
-    RelayEnvelope message,
-  ) async {
-    if (!_canUploadOverCurrentPath) {
-      CoduxLog.warn(
-        '[codux-flutter-upload] blocked upload on path=$_connectionPath type=${message.type}',
-      );
-      if (mounted) {
-        setState(() => _status = _t('upload.directRequired'));
-      }
-      return false;
+    if (_isTerminalStreamEnvelope(scoped)) {
+      return _send(scoped, sendTerminal: true);
     }
-    return _sendTerminalEnvelopeReliable(message);
+    return _send(scoped);
+  }
+
+  bool _isTerminalStreamEnvelope(RelayEnvelope message) {
+    return message.type == RemoteMessageType.terminalInput ||
+        message.type == RemoteMessageType.terminalInputAck ||
+        message.type == RemoteMessageType.terminalOutput ||
+        message.type == RemoteMessageType.terminalOutputAck ||
+        message.type == RemoteMessageType.terminalSignal ||
+        message.type == RemoteMessageType.terminalBuffer;
   }
 
   Future<void> _handleTransportEnvelope(
@@ -2251,8 +2230,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
           _showToast(_t('file.deleted'));
         case final type when type == RemoteMessageType.terminalUploaded:
           _handleTerminalUploaded(message);
-        case final type when type == RemoteMessageType.terminalUploadAck:
-          _terminalUploadSender.handleAck(message);
         case final type when type == RemoteMessageType.terminalInputAck:
           _terminalInputSender.handleAck(message);
       }
@@ -3933,6 +3910,9 @@ class _CoduxHomePageState extends State<CoduxHomePage>
 
   Future<void> _chooseUploadForTerminal() async {
     if (_terminalUploadLoading) return;
+    CoduxLog.info(
+      '[codux-flutter-upload] choose start connected=$_isConnected path=$_connectionPath session=$_sessionId',
+    );
     if (!_canUploadOverCurrentPath) {
       _showSnack(_t('upload.directRequired'));
       setState(() => _status = _t('upload.directRequired'));
@@ -3951,6 +3931,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
         imageLabel: prefs.t('upload.chooseImage'),
       ),
     );
+    CoduxLog.info('[codux-flutter-upload] source selected source=$source');
     if (source == null || !mounted) return;
     await _uploadPickedFileToTerminal(source);
   }
@@ -3976,6 +3957,9 @@ class _CoduxHomePageState extends State<CoduxHomePage>
     );
     final files = result?.files;
     final picked = files == null || files.isEmpty ? null : files.single;
+    CoduxLog.info(
+      '[codux-flutter-upload] picker result selected=${picked != null} source=$source',
+    );
     if (picked == null) return;
     if (picked.size > 20 * 1024 * 1024) {
       _showSnack(_t('upload.fileTooLarge'));
@@ -3988,7 +3972,10 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       _showSnack(_t('upload.fileReadFailed'));
       return;
     }
-    if (bytes.isEmpty) return;
+    if (bytes.isEmpty) {
+      CoduxLog.warn('[codux-flutter-upload] picked file is empty');
+      return;
+    }
     if (!_canUploadOverCurrentPath) {
       _showSnack(_t('upload.directRequired'));
       setState(() => _status = _t('upload.directRequired'));
@@ -4006,7 +3993,8 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       _status = _terminalUploadStatus;
     });
     try {
-      await _terminalUploadSender.uploadFile(
+      final sent = await _activeTransport?.sendTerminalUpload(
+        deviceId: _activeDevice?.deviceId ?? '',
         sessionId: id,
         name: picked.name,
         mime: terminalUploadMime(
@@ -4015,14 +4003,15 @@ class _CoduxHomePageState extends State<CoduxHomePage>
         ),
         bytes: bytes,
         kind: terminalUploadKind(source),
-        onProgress: (progress) {
-          if (!mounted) return;
-          final message = '$uploadingMessage ${progress.percent}%';
-          setState(() {
-            _terminalUploadStatus = message;
-            _status = message;
-          });
-        },
+      );
+      CoduxLog.info(
+        '[codux-flutter-upload] blob enqueue result=$sent session=$id name=${picked.name} bytes=${bytes.length}',
+      );
+      if (sent != true) {
+        throw StateError('Upload transport is not connected');
+      }
+      CoduxLog.info(
+        '[codux-flutter-upload] blob sent session=$id name=${picked.name} bytes=${bytes.length}',
       );
       if (!mounted) return;
       final insertingMessage = _t(terminalUploadInsertingKey(source));
@@ -4045,8 +4034,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
     }
   }
 
-  bool get _canUploadOverCurrentPath =>
-      _isConnected && _connectionPath == 'direct';
+  bool get _canUploadOverCurrentPath => _isConnected;
 
   Future<void> _checkUpdate() async {
     setState(() {

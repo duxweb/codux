@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:codux_flutter/models/remote_models.dart';
 import 'package:codux_flutter/services/remote_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,6 +175,59 @@ void main() {
     expect(event.path, 'relay');
     expect(event.relayUrl, 'https://iroh-service.dux.plus');
   });
+
+  test('terminal envelopes use native terminal stream', () async {
+    late _FakeControllerHandle handle;
+    final transport = RustControllerTransport(
+      handleFactory: (_) {
+        handle = _FakeControllerHandle([
+          {'kind': 'state', 'state': 'connected:path=relay'},
+        ]);
+        return handle;
+      },
+    );
+
+    await transport.connect(_storedDevice());
+    final sent = await transport.sendTerminal({
+      'type': 'terminal.input',
+      'sessionId': 'session-1',
+    });
+
+    expect(sent, isTrue);
+    expect(handle.terminalMessages, [
+      {'type': 'terminal.input', 'sessionId': 'session-1'},
+    ]);
+    await transport.close();
+  });
+
+  test('terminal uploads use iroh blobs', () async {
+    late _FakeControllerHandle handle;
+    final transport = RustControllerTransport(
+      handleFactory: (_) {
+        handle = _FakeControllerHandle([
+          {'kind': 'state', 'state': 'connected:path=relay'},
+        ]);
+        return handle;
+      },
+    );
+
+    await transport.connect(_storedDevice());
+    final sent = await transport.sendTerminalUpload(
+      deviceId: 'device-1',
+      sessionId: 'session-1',
+      name: 'photo.png',
+      mime: 'image/png',
+      kind: 'image',
+      bytes: Uint8List.fromList([1, 2, 3]),
+    );
+
+    expect(sent, isTrue);
+    expect(handle.uploads, hasLength(1));
+    expect(handle.uploads.single['sessionId'], 'session-1');
+    expect(handle.uploads.single['name'], 'photo.png');
+    expect(handle.uploads.single['bytes'], [1, 2, 3]);
+    await transport.close();
+  });
 }
 
 StoredDevice _storedDevice() => const StoredDevice(
@@ -195,6 +250,8 @@ final class _FakeControllerHandle implements ControllerTransportEventHandle {
   _FakeControllerHandle(this._events);
 
   final List<Map<String, dynamic>> _events;
+  final terminalMessages = <Map<String, dynamic>>[];
+  final uploads = <Map<String, Object>>[];
   var _closed = false;
   var pollCount = 0;
 
@@ -218,6 +275,32 @@ final class _FakeControllerHandle implements ControllerTransportEventHandle {
 
   @override
   bool send(Map<String, dynamic> envelope) => true;
+
+  @override
+  bool sendTerminal(Map<String, dynamic> envelope) {
+    terminalMessages.add(envelope);
+    return true;
+  }
+
+  @override
+  bool sendTerminalUpload({
+    required String deviceId,
+    required String sessionId,
+    required String name,
+    required String mime,
+    required String kind,
+    required Uint8List bytes,
+  }) {
+    uploads.add({
+      'deviceId': deviceId,
+      'sessionId': sessionId,
+      'name': name,
+      'mime': mime,
+      'kind': kind,
+      'bytes': bytes.toList(),
+    });
+    return true;
+  }
 
   void addEvent(Map<String, dynamic> event) {
     _events.add(event);

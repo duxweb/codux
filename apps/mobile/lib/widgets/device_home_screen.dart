@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../i18n.dart';
 import '../models/remote_models.dart';
-import '../services/remote_protocol.dart';
 import '../theme/app_theme.dart';
 import 'more_menu.dart';
 import 'swipe_list_tile.dart';
@@ -265,18 +264,6 @@ class _EmptyDeviceState extends StatelessWidget {
       ),
     );
   }
-}
-
-String _deviceProtocolLabel(BuildContext context, String transport) {
-  return switch (transport.toLowerCase()) {
-    RemoteTransportKind.iroh => 'Iroh',
-    _ => transport.toUpperCase(),
-  };
-}
-
-String _deviceTransportKind(StoredDevice device) {
-  final kind = remotePreferredTransportKind(device.transports, pairing: false);
-  return kind.isEmpty ? RemoteTransportKind.iroh : kind;
 }
 
 class _TransportText extends StatelessWidget {

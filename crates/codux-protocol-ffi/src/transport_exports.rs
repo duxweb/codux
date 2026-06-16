@@ -5,12 +5,12 @@ use crate::common::{
 };
 use codux_remote_transport::{
     RemoteControllerTransportConfig, RemoteTransport, RemoteTransportFactory,
-    preferred_controller_transport_kind, preferred_pairing_transport_kind, remote_relay_url,
-    remote_relay_url_for_preset,
+    RemoteTransportUpload, preferred_controller_transport_kind, preferred_pairing_transport_kind,
+    remote_relay_url, remote_relay_url_for_preset,
 };
 use serde_json::json;
 use std::collections::VecDeque;
-use std::ffi::c_char;
+use std::ffi::{c_char, c_uchar};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::{Arc, Mutex};
@@ -239,6 +239,71 @@ pub extern "C" fn codux_controller_transport_send_json(
             .ok()
             .and_then(|transport| transport.clone())
             .map(|transport| transport.send(envelope_json.into_bytes(), None))
+            .unwrap_or(false)
+    }))
+    .unwrap_or(false)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn codux_controller_transport_send_terminal_json(
+    transport: *mut FfiControllerTransport,
+    envelope_json: *const c_char,
+) -> bool {
+    catch_unwind(AssertUnwindSafe(|| {
+        let Some(transport) = controller_transport_ref(transport) else {
+            return false;
+        };
+        let Some(envelope_json) = c_to_string(envelope_json) else {
+            return false;
+        };
+        transport
+            .transport
+            .lock()
+            .ok()
+            .and_then(|transport| transport.clone())
+            .map(|transport| transport.send_terminal(envelope_json.into_bytes(), None))
+            .unwrap_or(false)
+    }))
+    .unwrap_or(false)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn codux_controller_transport_send_terminal_upload(
+    transport: *mut FfiControllerTransport,
+    device_id: *const c_char,
+    session_id: *const c_char,
+    name: *const c_char,
+    mime: *const c_char,
+    kind: *const c_char,
+    bytes: *const c_uchar,
+    byte_len: usize,
+) -> bool {
+    catch_unwind(AssertUnwindSafe(|| {
+        let Some(transport) = controller_transport_ref(transport) else {
+            return false;
+        };
+        if bytes.is_null() || byte_len == 0 {
+            return false;
+        }
+        let Some(session_id) = c_to_string(session_id) else {
+            return false;
+        };
+        let data = unsafe { std::slice::from_raw_parts(bytes, byte_len) }.to_vec();
+        let upload = RemoteTransportUpload {
+            device_id: c_to_string(device_id).unwrap_or_default(),
+            session_id,
+            name: c_to_string(name).unwrap_or_else(|| "upload".to_string()),
+            mime: c_to_string(mime).unwrap_or_default(),
+            kind: c_to_string(kind).unwrap_or_else(|| "file".to_string()),
+            bytes: data,
+            ticket: String::new(),
+        };
+        transport
+            .transport
+            .lock()
+            .ok()
+            .and_then(|transport| transport.clone())
+            .map(|transport| transport.send_terminal_upload(upload))
             .unwrap_or(false)
     }))
     .unwrap_or(false)

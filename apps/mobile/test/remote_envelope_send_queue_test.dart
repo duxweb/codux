@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:codux_flutter/models/remote_models.dart';
 import 'package:codux_flutter/services/remote_envelope_send_queue.dart';
 import 'package:codux_flutter/services/remote_transport.dart';
@@ -114,6 +116,28 @@ void main() {
     expect(transport.sent.single['type'], 'project.select');
     expect(results, [RemoteEnvelopeSendResult.rejected]);
   });
+
+  test('routes terminal stream envelopes through terminal transport', () async {
+    final queue = RemoteEnvelopeSendQueue();
+    final transport = _FakeTransport();
+    final device = await _fakeDevice();
+
+    await queue.send(
+      message: const RelayEnvelope(type: 'terminal.input', sessionId: 'term-1'),
+      transport: transport,
+      connected: () => true,
+      activeDevice: device,
+      terminalStream: true,
+    );
+
+    expect(transport.sent, isEmpty);
+    final envelope = RelayEnvelope.fromJson(transport.terminalSent.single);
+    expect(envelope.type, 'terminal.input');
+    expect(envelope.sessionId, 'term-1');
+    expect(envelope.hostId, 'host-1');
+    expect(envelope.deviceId, 'device-1');
+    expect(envelope.seq, 1);
+  });
 }
 
 Future<StoredDevice> _fakeDevice() async {
@@ -131,6 +155,7 @@ class _FakeTransport implements RemoteTransport {
 
   final bool sendResult;
   final sent = <Map<String, dynamic>>[];
+  final terminalSent = <Map<String, dynamic>>[];
 
   @override
   String get kind => RemoteTransportKind.iroh;
@@ -150,6 +175,24 @@ class _FakeTransport implements RemoteTransport {
   @override
   Future<bool> send(Map<String, dynamic> envelope) async {
     sent.add(envelope);
+    return sendResult;
+  }
+
+  @override
+  Future<bool> sendTerminal(Map<String, dynamic> envelope) async {
+    terminalSent.add(envelope);
+    return sendResult;
+  }
+
+  @override
+  Future<bool> sendTerminalUpload({
+    required String deviceId,
+    required String sessionId,
+    required String name,
+    required String mime,
+    required String kind,
+    required Uint8List bytes,
+  }) async {
     return sendResult;
   }
 }

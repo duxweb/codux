@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
@@ -2166,6 +2168,26 @@ final class _FakeRemoteTransport implements RemoteTransport {
     final accepted = onBeforeSend?.call(envelope) ?? true;
     onSent(this, envelope);
     if (!accepted) return false;
+    return true;
+  }
+
+  @override
+  Future<bool> sendTerminal(Map<String, dynamic> envelope) async {
+    final accepted = onBeforeSend?.call(envelope) ?? true;
+    onSent(this, envelope);
+    if (!accepted) return false;
+    return true;
+  }
+
+  @override
+  Future<bool> sendTerminalUpload({
+    required String deviceId,
+    required String sessionId,
+    required String name,
+    required String mime,
+    required String kind,
+    required Uint8List bytes,
+  }) async {
     return true;
   }
 

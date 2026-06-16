@@ -94,6 +94,9 @@ abstract final class RemoteMessageType {
   static final terminalInputAck = codux_protocol_ffi.messageType(
     'terminalInputAck',
   );
+  static final terminalSignal = codux_protocol_ffi.messageType(
+    'terminalSignal',
+  );
   static final terminalViewportClaim = codux_protocol_ffi.messageType(
     'terminalViewportClaim',
   );
@@ -105,18 +108,6 @@ abstract final class RemoteMessageType {
   );
   static final terminalViewportState = codux_protocol_ffi.messageType(
     'terminalViewportState',
-  );
-  static final terminalUploadStart = codux_protocol_ffi.messageType(
-    'terminalUploadStart',
-  );
-  static final terminalUploadChunk = codux_protocol_ffi.messageType(
-    'terminalUploadChunk',
-  );
-  static final terminalUploadFinish = codux_protocol_ffi.messageType(
-    'terminalUploadFinish',
-  );
-  static final terminalUploadAck = codux_protocol_ffi.messageType(
-    'terminalUploadAck',
   );
   static final terminalUploaded = codux_protocol_ffi.messageType(
     'terminalUploaded',

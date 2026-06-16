@@ -5,11 +5,7 @@ typedef RemoteSendErrorHandler = void Function(Object error);
 typedef RemoteSendResultHandler =
     void Function(RelayEnvelope message, RemoteEnvelopeSendResult result);
 
-enum RemoteEnvelopeSendResult {
-  delivered,
-  droppedWhileDisconnected,
-  rejected,
-}
+enum RemoteEnvelopeSendResult { delivered, droppedWhileDisconnected, rejected }
 
 class RemoteEnvelopeSendQueue {
   int _seq = 0;
@@ -25,6 +21,7 @@ class RemoteEnvelopeSendQueue {
     required RemoteTransport transport,
     required bool Function() connected,
     StoredDevice? activeDevice,
+    bool terminalStream = false,
     RemoteSendErrorHandler? onError,
     RemoteSendResultHandler? onResult,
   }) {
@@ -40,8 +37,10 @@ class RemoteEnvelopeSendQueue {
             return;
           }
           final outgoing = _attachDeviceIdentity(message, activeDevice, seq);
-          var sent = false;
-          sent = await transport.send(outgoing.toJson());
+          final envelope = outgoing.toJson();
+          final sent = terminalStream
+              ? await transport.sendTerminal(envelope)
+              : await transport.send(envelope);
           onResult?.call(
             message,
             sent
