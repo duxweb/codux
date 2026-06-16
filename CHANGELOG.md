@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-06-17
+
+### Fixed
+
+- Added right-click copy for selected desktop terminal text, clearing the selection after copying so Windows users can copy terminal output without sending `Ctrl+C` to the running process.
+
 ## [1.8.1] - 2026-06-16
 
 ### Changed

@@ -248,8 +248,7 @@ impl TerminalView {
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if is_copy_keystroke(&event.keystroke) {
-            if let Some(text) = self.selected_text(cx) {
-                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            if self.copy_selected_text(cx) {
                 cx.stop_propagation();
                 cx.notify();
                 return;
@@ -322,6 +321,15 @@ impl TerminalView {
                 self.model
                     .update(cx, |model, _| model.update_selection(selection_point));
             }
+            self.selection_autoscroll = None;
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+
+        if event.button == MouseButton::Right && self.copy_selected_text(cx) {
+            self.selection.lock().clear();
+            self.model.update(cx, |model, _| model.clear_selection());
             self.selection_autoscroll = None;
             cx.stop_propagation();
             cx.notify();
@@ -731,6 +739,14 @@ impl TerminalView {
     ) -> TerminalSelectionPoint {
         let content = self.model.read(cx).snapshot();
         selection_point_from_cell(point, &content)
+    }
+
+    fn copy_selected_text(&self, cx: &mut App) -> bool {
+        let Some(text) = self.selected_text(cx) else {
+            return false;
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        true
     }
 
     fn set_marked_text(&mut self, text: String, cx: &mut Context<Self>) {
