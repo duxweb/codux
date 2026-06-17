@@ -46,6 +46,7 @@ impl Render for TerminalView {
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .drag_over::<ExternalPaths>(move |this, _paths, _window, _cx| this)
             .on_drop(cx.listener(Self::drop_external_paths));
+        let remote_viewer = self.model.read(cx).remote_viewer();
         let terminal = terminal.child(element).child(
             div()
                 .absolute()
@@ -60,6 +61,29 @@ impl Render for TerminalView {
                         .scrollbar_show(ScrollbarShow::Scrolling),
                 ),
         );
+        let terminal = if remote_viewer {
+            terminal.child(
+                div()
+                    .absolute()
+                    .right(px(10.0))
+                    .bottom(px(10.0))
+                    .size(px(26.0))
+                    .rounded(px(8.0))
+                    .bg(self.config.colors.background().opacity(0.86))
+                    .border_1()
+                    .border_color(self.config.colors.foreground().opacity(0.18))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Icon::new(HeroIconName::PhoneArrowUpRight)
+                            .size_4()
+                            .text_color(self.config.colors.foreground().opacity(0.78)),
+                    ),
+            )
+        } else {
+            terminal
+        };
         if self.hover_link.is_some() {
             terminal.cursor(CursorStyle::PointingHand)
         } else {

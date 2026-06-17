@@ -1104,6 +1104,7 @@ mod tests {
 
         assert!(state.apply_ui_event(TerminalUiEvent::Viewport {
             remote_owner: true,
+            generation: 1,
         }));
         assert_eq!(state.dimensions(), (10, 4));
         assert!(state.remote_viewer);

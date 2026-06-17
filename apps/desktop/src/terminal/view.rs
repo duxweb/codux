@@ -608,8 +608,21 @@ impl TerminalView {
     }
 
     fn process_events(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let previous_generation = {
+            let model = self.model.read(cx);
+            model.viewport_generation()
+        };
         self.model
             .update(cx, |model, cx| model.process_pending_events(cx));
+        let (is_remote, generation) = {
+            let model = self.model.read(cx);
+            (model.remote_viewer(), model.viewport_generation())
+        };
+        if !is_remote && generation != previous_generation {
+            if let Err(error) = self.session.force_local_viewport_if_current_owner() {
+                eprintln!("failed to restore desktop terminal viewport: {error}");
+            }
+        }
     }
 
     fn write_bytes(&self, bytes: &[u8], cx: &mut Context<Self>) {

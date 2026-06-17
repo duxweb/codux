@@ -22,9 +22,12 @@ impl TerminalPane {
                 .send(TerminalUiEvent::Error(message))
                 .is_ok(),
             TerminalEvent::Output { .. } => session_event_tx.send(TerminalUiEvent::Wakeup).is_ok(),
-            TerminalEvent::Viewport { owner, .. } => session_event_tx
+            TerminalEvent::Viewport {
+                owner, generation, ..
+            } => session_event_tx
                 .send(TerminalUiEvent::Viewport {
                     remote_owner: owner != terminal_viewport_local_owner(),
+                    generation,
                 })
                 .is_ok(),
         });
@@ -156,9 +159,12 @@ impl TerminalPane {
                 .send(TerminalUiEvent::Error(message))
                 .is_ok(),
             TerminalEvent::Output { .. } => session_event_tx.send(TerminalUiEvent::Wakeup).is_ok(),
-            TerminalEvent::Viewport { owner, .. } => session_event_tx
+            TerminalEvent::Viewport {
+                owner, generation, ..
+            } => session_event_tx
                 .send(TerminalUiEvent::Viewport {
                     remote_owner: owner != terminal_viewport_local_owner(),
+                    generation,
                 })
                 .is_ok(),
         });
@@ -404,6 +410,30 @@ impl TerminalSessionBinding {
             {
                 handle.resize_viewport(terminal_viewport_local_owner(), cols, rows)?;
             }
+        }
+        Ok(())
+    }
+
+    fn restore_local_viewport(&self) -> Result<()> {
+        let (session, last_resize) = {
+            let inner = self.inner.lock();
+            (inner.session.clone(), inner.last_resize)
+        };
+        if let Some(session) = session {
+            let handle = session.clone_handle();
+            let state = handle.claim_viewport(terminal_viewport_local_owner())?;
+            if let Some((cols, rows)) = last_resize
+                && (state.cols, state.rows) != (cols, rows)
+            {
+                handle.resize_viewport(terminal_viewport_local_owner(), cols, rows)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn force_local_viewport_if_current_owner(&self) -> Result<()> {
+        if self.local_viewport_owns() {
+            self.restore_local_viewport()?;
         }
         Ok(())
     }

@@ -478,7 +478,6 @@ impl RemoteHostRuntime {
                 self.update_device_online(Some(&device_id), false);
                 self.clear_remote_project_scope(Some(&device_id));
                 self.remove_terminal_viewer(Some(&device_id));
-                self.release_viewports_for_device(Some(&device_id));
             }
             return;
         }
@@ -770,7 +769,6 @@ impl RemoteHostRuntime {
                 self.update_device_online(envelope.device_id.as_deref(), false);
                 self.clear_remote_project_scope(envelope.device_id.as_deref());
                 self.remove_terminal_viewer(envelope.device_id.as_deref());
-                self.release_viewports_for_device(envelope.device_id.as_deref());
             }
             REMOTE_PROJECT_LIST => self.send_project_list(envelope.device_id.as_deref()),
             REMOTE_PROJECT_SELECT => self.handle_project_select(&envelope),
@@ -3392,18 +3390,6 @@ impl RemoteHostRuntime {
         };
         self.resource_subscriptions.remove_device(device_id);
         self.terminal_subscriptions.remove_device(device_id);
-    }
-
-    fn release_viewports_for_device(&self, device_id: Option<&str>) {
-        let Some(device_id) = device_id.map(str::trim).filter(|value| !value.is_empty()) else {
-            return;
-        };
-        let owner = terminal_viewport_remote_owner(device_id);
-        for terminal in self.terminals.list() {
-            if let Ok(Some(state)) = self.terminals.release_viewport(&terminal.id, &owner) {
-                self.send_terminal_viewport_state_payload(&terminal.id, Some(device_id), &state);
-            }
-        }
     }
 
     fn release_all_remote_viewports(&self) {
@@ -6039,15 +6025,69 @@ mod tests {
         let state = terminals
             .viewport_state(&session_id)
             .expect("viewport state");
-        assert_eq!(state.owner, "desktop");
+        assert_eq!(state.owner, "remote:device-1");
         assert_eq!((state.cols, state.rows), (72, 18));
+
+        let expired = terminals
+            .expire_viewport_lease_for_test(&session_id)
+            .expect("expire viewport lease")
+            .expect("expired viewport state");
+        assert_eq!(expired.owner, "desktop");
+        assert_eq!((expired.cols, expired.rows), (72, 18));
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn device_transport_disconnect_keeps_viewport_until_lease_expires() {
+        let support_dir = temp_support_dir("codux-remote-terminal-viewport-transport-disconnect");
+        write_paired_remote_settings(&support_dir);
+        let terminals = Arc::new(TerminalManager::new());
+        let runtime = Arc::new(RemoteHostRuntime::new_with_ai_history_and_terminals(
+            support_dir.clone(),
+            Default::default(),
+            Arc::clone(&terminals),
+        ));
+        runtime.connection_generation.store(7, Ordering::SeqCst);
+        if let Ok(mut current) = runtime.transport.lock() {
+            *current = Some(Arc::new(CapturingTransport::default()));
+        }
+        let session_id = terminals
+            .create(
+                TerminalPtyConfig {
+                    shell: Some("sh".to_string()),
+                    command: Some("printf ready".to_string()),
+                    cwd: Some(support_dir.to_string_lossy().to_string()),
+                    cols: Some(100),
+                    rows: Some(32),
+                    ..Default::default()
+                },
+                |_| {},
+            )
+            .expect("create terminal");
+        terminals
+            .claim_viewport(&session_id, "remote:device-1")
+            .expect("remote claim");
+
+        runtime.handle_transport_state(7, "device-1".to_string(), "disconnected".to_string());
+
+        let state = terminals
+            .viewport_state(&session_id)
+            .expect("viewport state");
+        assert_eq!(state.owner, "remote:device-1");
+
+        let expired = terminals
+            .expire_viewport_lease_for_test(&session_id)
+            .expect("expire viewport lease")
+            .expect("expired viewport state");
+        assert_eq!(expired.owner, "desktop");
 
         fs::remove_dir_all(support_dir).ok();
     }
 
     #[test]
     fn host_transport_disconnect_releases_remote_terminal_viewports() {
-        let support_dir = temp_support_dir("codux-remote-terminal-viewport-transport-disconnect");
+        let support_dir = temp_support_dir("codux-remote-terminal-viewport-host-disconnect");
         write_paired_remote_settings(&support_dir);
         let terminals = Arc::new(TerminalManager::new());
         let runtime = Arc::new(RemoteHostRuntime::new_with_ai_history_and_terminals(

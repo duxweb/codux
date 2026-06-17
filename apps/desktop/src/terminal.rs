@@ -1,3 +1,4 @@
+use crate::heroicons::HeroIconName;
 use anyhow::Result;
 use codux_runtime::terminal_pty::{
     TerminalEvent, TerminalInputSnapshot, TerminalManager, TerminalOutputSnapshot,
@@ -18,6 +19,7 @@ use gpui::{
     TextAlign, TextRun, TouchPhase, UTF16Selection, UnderlineStyle, WeakEntity, Window, div, px,
     quad, rgb, transparent_black,
 };
+use gpui_component::Icon;
 use gpui_component::scroll::{Scrollbar, ScrollbarAxis, ScrollbarHandle, ScrollbarShow};
 use parking_lot::Mutex;
 use regex::Regex;

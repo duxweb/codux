@@ -229,8 +229,9 @@ pub struct TerminalOutputSnapshot {
 pub type EventSink = Arc<dyn Fn(TerminalEvent) -> bool + Send + Sync + 'static>;
 
 pub struct TerminalManager {
-    sessions: parking_lot::Mutex<HashMap<String, Arc<TerminalPtySession>>>,
+    sessions: Arc<parking_lot::Mutex<HashMap<String, Arc<TerminalPtySession>>>>,
     ai_runtime: Option<Arc<AIRuntimeBridge>>,
+    viewport_lease_watcher_started: std::sync::Once,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -261,15 +262,17 @@ impl RequestedTerminalIdentity {
 impl TerminalManager {
     pub fn new() -> Self {
         Self {
-            sessions: parking_lot::Mutex::new(HashMap::new()),
+            sessions: Arc::new(parking_lot::Mutex::new(HashMap::new())),
             ai_runtime: None,
+            viewport_lease_watcher_started: std::sync::Once::new(),
         }
     }
 
     pub fn with_ai_runtime(ai_runtime: Arc<AIRuntimeBridge>) -> Self {
         Self {
-            sessions: parking_lot::Mutex::new(HashMap::new()),
+            sessions: Arc::new(parking_lot::Mutex::new(HashMap::new())),
             ai_runtime: Some(ai_runtime),
+            viewport_lease_watcher_started: std::sync::Once::new(),
         }
     }
 
@@ -329,6 +332,7 @@ impl TerminalManager {
         self.register_ai_runtime_terminal(&session);
         let event_subscribers = session.event_subscribers.clone();
         self.sessions.lock().insert(id.clone(), session);
+        self.ensure_viewport_lease_watcher();
         spawn_headless_reader(id.clone(), reader, event_subscribers);
         Ok(id)
     }
@@ -367,6 +371,7 @@ impl TerminalManager {
         let rx = session.subscribe_output(true);
         let event_subscribers = session.event_subscribers.clone();
         self.sessions.lock().insert(id.clone(), session.clone());
+        self.ensure_viewport_lease_watcher();
         spawn_headless_reader(id, reader, event_subscribers);
         Ok((session, rx))
     }
@@ -435,6 +440,44 @@ impl TerminalManager {
 
     pub fn viewport_state(&self, session_id: &str) -> Result<TerminalViewportState> {
         Ok(self.session(session_id)?.viewport_state())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn expire_viewport_lease_for_test(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<TerminalViewportState>> {
+        let session = self
+            .sessions
+            .lock()
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("terminal session not found: {session_id}"))?;
+        {
+            let mut viewport = session.viewport.lock();
+            viewport.expires_at = Instant::now() - Duration::from_secs(1);
+        }
+        Ok(session.clone_handle().release_expired_viewport_lease())
+    }
+
+    fn ensure_viewport_lease_watcher(&self) {
+        let sessions = Arc::downgrade(&self.sessions);
+        self.viewport_lease_watcher_started.call_once(move || {
+            std::thread::Builder::new()
+                .name("codux-terminal-viewport-lease".to_string())
+                .spawn(move || {
+                    loop {
+                        std::thread::sleep(Duration::from_secs(1));
+                        let Some(sessions) = sessions.upgrade() else {
+                            break;
+                        };
+                        for session in sessions.lock().values().cloned().collect::<Vec<_>>() {
+                            session.clone_handle().release_expired_viewport_lease();
+                        }
+                    }
+                })
+                .expect("spawn terminal viewport lease watcher");
+        });
     }
 
     pub fn subscribe_events(&self, session_id: &str, emit: EventSink) -> Result<()> {
@@ -1102,6 +1145,22 @@ impl TerminalPtySessionHandle {
         if viewport.state.owner == owner {
             viewport.expires_at = Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL;
         }
+    }
+
+    pub fn release_expired_viewport_lease(&self) -> Option<TerminalViewportState> {
+        let mut viewport = self.viewport.lock();
+        if viewport.state.owner == terminal_viewport_local_owner()
+            || viewport.expires_at > Instant::now()
+        {
+            return None;
+        }
+        viewport.state.owner = terminal_viewport_local_owner().to_string();
+        viewport.state.generation = viewport.state.generation.saturating_add(1);
+        viewport.expires_at = Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL;
+        let state = viewport.state.clone();
+        drop(viewport);
+        self.emit_viewport_state(&state);
+        Some(state)
     }
 
     pub fn release_viewport(&self, owner: &str) -> Result<Option<TerminalViewportState>> {
@@ -3231,7 +3290,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn remote_visible_viewport_survives_expired_passive_desktop_claim() {
+    fn remote_visible_viewport_expires_back_to_desktop() {
         let manager = TerminalManager::new();
         let temp =
             std::env::temp_dir().join(format!("codux-terminal-viewport-lock-{}", Uuid::new_v4()));
@@ -3264,32 +3323,18 @@ mod tests {
             viewport.expires_at = Instant::now() - Duration::from_secs(1);
         }
 
-        let passive = handle
-            .claim_viewport_passive(terminal_viewport_local_owner())
-            .expect("desktop passive claim");
-        assert_eq!(passive.owner, "remote:phone");
-        assert_eq!((passive.cols, passive.rows), (72, 18));
+        let expired = handle
+            .release_expired_viewport_lease()
+            .expect("expired viewport state");
+        assert_eq!(expired.owner, terminal_viewport_local_owner());
+        assert_eq!((expired.cols, expired.rows), (72, 18));
 
-        let ignored = handle
-            .resize_viewport(terminal_viewport_local_owner(), 100, 32)
-            .expect("desktop passive resize while remote visible");
-        assert!(ignored.is_none());
-        let state = handle.viewport_state();
-        assert_eq!(state.owner, "remote:phone");
-        assert_eq!((state.cols, state.rows), (72, 18));
-
-        handle
-            .release_viewport("remote:phone")
-            .expect("remote release")
-            .expect("release state");
-        let local = handle
-            .claim_viewport_passive(terminal_viewport_local_owner())
-            .expect("desktop passive claim after release");
-        assert_eq!(local.owner, terminal_viewport_local_owner());
         let accepted = handle
             .resize_viewport(terminal_viewport_local_owner(), 100, 32)
-            .expect("desktop resize after release")
+            .expect("desktop resize after lease expiry")
             .expect("desktop resize accepted");
+        let state = handle.viewport_state();
+        assert_eq!(state.owner, terminal_viewport_local_owner());
         assert_eq!((accepted.cols, accepted.rows), (100, 32));
 
         let _ = session.kill();
@@ -3347,6 +3392,44 @@ mod tests {
             .expect("desktop resize accepted");
         assert_eq!(accepted.owner, terminal_viewport_local_owner());
         assert_eq!((accepted.cols, accepted.rows), (120, 40));
+
+        let _ = session.kill();
+        fs::remove_dir_all(temp).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn viewport_keepalive_prevents_remote_lease_expiry() {
+        let manager = TerminalManager::new();
+        let temp = std::env::temp_dir().join(format!(
+            "codux-terminal-viewport-keepalive-{}",
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(&temp).unwrap();
+        let session_id = manager
+            .create(
+                TerminalPtyConfig {
+                    shell: Some("sh".to_string()),
+                    command: Some("printf ready".to_string()),
+                    cwd: Some(temp.to_string_lossy().to_string()),
+                    cols: Some(100),
+                    rows: Some(32),
+                    ..Default::default()
+                },
+                |_| {},
+            )
+            .expect("create terminal");
+        let session = manager.session(&session_id).expect("session");
+        let handle = session.clone_handle();
+
+        handle.claim_viewport("remote:phone").expect("remote claim");
+        {
+            let mut viewport = session.viewport.lock();
+            viewport.expires_at = Instant::now() - Duration::from_secs(1);
+        }
+        handle.touch_viewport_lease("remote:phone");
+        assert!(handle.release_expired_viewport_lease().is_none());
+        assert_eq!(handle.viewport_state().owner, "remote:phone");
 
         let _ = session.kill();
         fs::remove_dir_all(temp).ok();

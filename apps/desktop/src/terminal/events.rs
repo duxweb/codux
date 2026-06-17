@@ -12,6 +12,7 @@ enum TerminalUiEvent {
     Error(String),
     Viewport {
         remote_owner: bool,
+        generation: u64,
     },
     Exit,
 }

@@ -15,6 +15,7 @@ struct TerminalModel {
     // scheme queries must be answered for the renderer the user is actually
     // looking at, not the desktop theme.
     remote_viewer: bool,
+    viewport_generation: u64,
     last_paint_sync: Option<Instant>,
     last_engine_resize_at: Option<Instant>,
     engine_resize_flush_pending: bool,
@@ -143,6 +144,7 @@ impl TerminalModel {
             sync_output_scan_tail: Vec::new(),
             restored_bootstrap_active,
             remote_viewer: false,
+            viewport_generation: 0,
             last_paint_sync: None,
             last_engine_resize_at: None,
             engine_resize_flush_pending: false,
@@ -308,10 +310,14 @@ impl TerminalModel {
     fn apply_ui_event(&mut self, event: TerminalUiEvent) -> bool {
         match event {
             TerminalUiEvent::Wakeup => !self.output_flush_pending,
-            TerminalUiEvent::Viewport { remote_owner } => {
+            TerminalUiEvent::Viewport {
+                remote_owner,
+                generation,
+            } => {
                 let scheme_changed = self.remote_viewer != remote_owner
                     && self.effective_scheme_is_dark() != scheme_is_dark(remote_owner, &self.colors);
                 self.remote_viewer = remote_owner;
+                self.viewport_generation = generation;
                 if scheme_changed && self.color_scheme_state.updates_enabled {
                     // Let the TUI re-adapt to the renderer that now owns
                     // the viewport (mobile is always dark).
@@ -415,6 +421,14 @@ impl TerminalModel {
 
     fn effective_scheme_is_dark(&self) -> bool {
         scheme_is_dark(self.remote_viewer, &self.colors)
+    }
+
+    fn remote_viewer(&self) -> bool {
+        self.remote_viewer
+    }
+
+    fn viewport_generation(&self) -> u64 {
+        self.viewport_generation
     }
 
     fn sync(&mut self, cx: &mut Context<Self>) -> TerminalContent {
@@ -821,6 +835,7 @@ impl TerminalModel {
             sync_output_scan_tail: Vec::new(),
             restored_bootstrap_active: false,
             remote_viewer: false,
+            viewport_generation: 0,
             last_paint_sync: None,
             last_engine_resize_at: None,
             engine_resize_flush_pending: false,
