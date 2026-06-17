@@ -170,14 +170,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
   String _terminalUploadStatus = '';
   RemoteSyncState get _remoteSync => _remoteSyncController.syncState;
   bool get _terminalListLoaded => _remoteSync.terminalListLoaded;
-  NativeTerminalReplay get _activeTerminalReplay {
-    final sessionId = _sessionId;
-    if (sessionId == null) {
-      return NativeTerminalReplay.empty(sessionId: '');
-    }
-    return _nativeTerminalReplay.replay(sessionId);
-  }
-
   bool get _terminalViewportClaimable =>
       _showTerminal &&
       !_showTerminalSwitcher &&
@@ -1065,6 +1057,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
     );
     _terminalUploadCompletion = null;
     _voiceService.dispose();
+    _nativeTerminalReplay.dispose();
     _terminalOutputController.dispose();
     unawaited(_closeActiveTransport());
     _settingsNameController.dispose();
@@ -2731,10 +2724,10 @@ class _CoduxHomePageState extends State<CoduxHomePage>
   void _syncNativeTerminalReplay(String sessionId) {
     final content = _terminalOutputController.nativeRenderOutput(sessionId);
     if (content == null) return;
-    final changed = _nativeTerminalReplay.syncSession(sessionId, content);
-    if (changed && sessionId == _sessionId && mounted) {
-      setState(() {});
-    }
+    // The terminal view listens to `_nativeTerminalReplay` directly, so this
+    // rebuilds only that subtree on output -- no full-page setState (and no
+    // keyboard-inset / layout recompute) per live frame.
+    _nativeTerminalReplay.syncSession(sessionId, content);
   }
 
   /// A live-output sequence gap was detected for [sessionId]: lost frames can
@@ -4556,7 +4549,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       keyboardVisible: _keyboardVisible,
       keyboardRequested: _keyboardRequested,
       keyboardRequestSerial: _keyboardRequestSerial,
-      terminalReplay: _activeTerminalReplay,
+      replayController: _nativeTerminalReplay,
       terminalFontSize: _settings.terminalFontSize,
       onConnect: () => _connect(),
       onInput: _queueTerminalTyping,

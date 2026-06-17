@@ -24,7 +24,6 @@ pub struct RemotePtySession<T> {
     history_screen: HeadlessTerminalScreen,
     keyframe_screen: HeadlessTerminalScreen,
     has_keyframe_screen: bool,
-    native_render_replay: Option<String>,
     screen_view: RemotePtyScreenView,
     awaiting_baseline: bool,
     held_sequenced_live: BTreeMap<TerminalSequence, T>,
@@ -63,7 +62,6 @@ impl<T> RemotePtySession<T> {
             history_screen: HeadlessTerminalScreen::new(80, 24, 2_000),
             keyframe_screen: HeadlessTerminalScreen::new(80, 24, 2_000),
             has_keyframe_screen: false,
-            native_render_replay: None,
             screen_view: RemotePtyScreenView::History,
             awaiting_baseline: false,
             held_sequenced_live: BTreeMap::new(),
@@ -84,10 +82,15 @@ impl<T> RemotePtySession<T> {
         &self.content
     }
 
+    /// The byte stream fed to the native terminal emulator: the raw PTY
+    /// history only. The screen `screenData` keyframe is deliberately NOT
+    /// spliced in here -- it is a synthetic full-screen repaint (it begins
+    /// with `ESC[H ESC[2J` and paints by absolute cursor positioning), so
+    /// replaying it mid-stream erases the scrollback rendered above it. The
+    /// keyframe updates only the cell-grid `keyframe_screen` used by the
+    /// scroll/snapshot path.
     pub fn native_render_content(&self) -> &str {
-        self.native_render_replay
-            .as_deref()
-            .unwrap_or(&self.content)
+        &self.content
     }
 
     pub fn buffer_length(&self) -> usize {
@@ -164,16 +167,7 @@ impl<T> RemotePtySession<T> {
             self.keyframe_screen
                 .replace_with_keyframe(screen_data.as_bytes());
             self.has_keyframe_screen = true;
-            self.native_render_replay = Some(native_render_replay(
-                &self.content,
-                screen_data,
-                self.max_cached_chars,
-            ));
-            self.screen_view = if self.has_keyframe_screen {
-                RemotePtyScreenView::Keyframe
-            } else {
-                self.screen_view
-            };
+            self.screen_view = RemotePtyScreenView::Keyframe;
             self.host_scroll = None;
             return;
         }
@@ -291,7 +285,9 @@ impl<T> RemotePtySession<T> {
         buffer_length: Option<usize>,
         sequence: Option<TerminalSequence>,
     ) -> Vec<T> {
-        self.content = trim_to_char_limit(content, self.max_cached_chars);
+        self.content.clear();
+        self.content.push_str(content);
+        trim_cache_buffer(&mut self.content, self.max_cached_chars);
         if let Some(buffer_length) = buffer_length {
             self.buffer_length = buffer_length;
         }
@@ -302,10 +298,9 @@ impl<T> RemotePtySession<T> {
         }
         self.host_scroll = None;
         if let Some(screen_data) = screen_data.filter(|data| !data.is_empty()) {
-            self.replace_keyframe_screen(screen_data);
+            self.apply_keyframe_screen(screen_data);
         } else {
             self.has_keyframe_screen = false;
-            self.native_render_replay = None;
             self.screen_view = RemotePtyScreenView::History;
         }
         let base_sequence = sequence.unwrap_or(self.sequence);
@@ -349,19 +344,25 @@ impl<T> RemotePtySession<T> {
             };
         }
         if !data.is_empty() {
-            self.content =
-                trim_to_char_limit(&format!("{}{}", self.content, data), self.max_cached_chars);
+            // The native render content is the raw PTY history; live output
+            // only ever appends its bytes. The screen keyframe is never
+            // spliced in (see `native_render_content`), so the stream stays a
+            // clean scrollback that the emulator extends, and the consumer
+            // feeds only the delta instead of re-rendering the whole buffer.
+            push_cache_buffer(&mut self.content, data, self.max_cached_chars);
             self.history_screen.process(data.as_bytes());
             if self.screen_view == RemotePtyScreenView::Keyframe && !self.has_keyframe_screen {
                 self.history_screen.scroll_to_bottom();
             }
         }
         if let Some(screen_data) = screen_data.filter(|data| !data.is_empty()) {
-            self.replace_keyframe_screen_for_live(screen_data);
+            // Refresh only the cell-grid keyframe screen (consumed by the
+            // scroll / snapshot path); the raw native render stream above is
+            // left untouched.
+            self.apply_keyframe_screen(screen_data);
         } else if !data.is_empty() && self.has_keyframe_screen {
             self.keyframe_screen.process(data.as_bytes());
             self.keyframe_screen.scroll_to_bottom();
-            self.append_native_render_replay(data);
         }
         if let Some(buffer_length) = buffer_length {
             self.buffer_length = buffer_length;
@@ -379,50 +380,23 @@ impl<T> RemotePtySession<T> {
         self.keyframe_screen.clear();
         self.scroll_screen.clear();
         self.has_keyframe_screen = false;
-        self.native_render_replay = None;
         self.host_scroll = None;
         self.screen_view = RemotePtyScreenView::History;
         self.reset_transient(false);
     }
 
-    fn replace_keyframe_screen(&mut self, screen_data: &str) {
+    /// Apply a screen keyframe to the cell-grid `keyframe_screen` used by the
+    /// scroll/snapshot path. It is never spliced into `native_render_content`
+    /// (the raw history stream), so it cannot erase the emulator's scrollback.
+    fn apply_keyframe_screen(&mut self, screen_data: &str) {
         self.keyframe_screen
             .replace_with_keyframe(screen_data.as_bytes());
         self.has_keyframe_screen = true;
-        self.native_render_replay = Some(native_render_replay(
-            &self.content,
-            screen_data,
-            self.max_cached_chars,
-        ));
         if self.screen_view == RemotePtyScreenView::Keyframe
             || self.history_screen.display_offset() == 0
         {
             self.screen_view = RemotePtyScreenView::Keyframe;
         }
-    }
-
-    fn replace_keyframe_screen_for_live(&mut self, screen_data: &str) {
-        self.keyframe_screen
-            .replace_with_keyframe(screen_data.as_bytes());
-        self.has_keyframe_screen = true;
-        self.native_render_replay = Some(native_render_replay(
-            &self.content,
-            screen_data,
-            self.max_cached_chars,
-        ));
-        if self.screen_view == RemotePtyScreenView::Keyframe
-            || self.history_screen.display_offset() == 0
-        {
-            self.screen_view = RemotePtyScreenView::Keyframe;
-        }
-    }
-
-    fn append_native_render_replay(&mut self, data: &str) {
-        let Some(replay) = self.native_render_replay.as_mut() else {
-            return;
-        };
-        replay.push_str(data);
-        *replay = trim_to_char_limit(replay, self.max_cached_chars);
     }
 
     fn ensure_history_view_at_bottom(&mut self) {
@@ -441,23 +415,78 @@ impl<T> RemotePtySession<T> {
     }
 }
 
-fn trim_to_char_limit(value: &str, max_chars: usize) -> String {
-    let total = value.chars().count();
-    if total <= max_chars {
-        return value.to_string();
-    }
-    value.chars().skip(total - max_chars).collect()
+/// Trailing line budget for the cached raw history and native ANSI replay.
+///
+/// The native terminal emulator (iOS SwiftTerm / Android) keeps its own
+/// ~500-line scrollback, so caching far more than it can hold only makes the
+/// full re-feed on a session switch needlessly large (the emulator parses it
+/// all and then discards everything past its scrollback). Bounding the cache
+/// a little above that scrollback keeps a switch's `replace` small while still
+/// fully repopulating the emulator. Deeper history is served by the host on
+/// demand (`apply_host_scroll`), not from this cache.
+const MAX_CACHED_LINES: usize = 600;
+
+/// Append `data` to `buffer`, then trim the front to the cache budget. Appends
+/// in place (no per-frame reallocation of the whole buffer).
+fn push_cache_buffer(buffer: &mut String, data: &str, max_chars: usize) {
+    buffer.push_str(data);
+    trim_cache_buffer(buffer, max_chars);
 }
 
-fn native_render_replay(raw_history: &str, screen_data: &str, max_chars: usize) -> String {
-    if raw_history.is_empty() {
-        return trim_to_char_limit(screen_data, max_chars);
+/// Trim the front of `buffer` in place so it keeps at most [`MAX_CACHED_LINES`]
+/// trailing newline-delimited lines and at most `max_chars` characters.
+///
+/// The line budget is the primary bound -- it matches the native emulator's
+/// scrollback so a restore re-feeds only what the emulator can hold.
+/// `max_chars` is a safety ceiling that also bounds pathologically long lines.
+/// Both scans are bounded by the size of the retained window (~600 lines), not
+/// the whole buffer, so the steady-state live path stays amortized O(appended
+/// bytes) rather than O(buffer length) per frame.
+fn trim_cache_buffer(buffer: &mut String, max_chars: usize) {
+    if max_chars == 0 {
+        buffer.clear();
+        return;
     }
-    if screen_data.is_empty() {
-        return trim_to_char_limit(raw_history, max_chars);
+    let bytes = buffer.as_bytes();
+    let len = bytes.len();
+
+    // Line budget: walk back from the end until we have passed
+    // MAX_CACHED_LINES newlines, then cut just after that newline (always a
+    // UTF-8 and line boundary, so the kept stream starts at a clean line).
+    let mut cut = 0usize;
+    let mut seen = 0usize;
+    let mut i = len;
+    while i > 0 {
+        i -= 1;
+        if bytes[i] == b'\n' {
+            seen += 1;
+            if seen > MAX_CACHED_LINES {
+                cut = i + 1;
+                break;
+            }
+        }
     }
-    let mut replay = String::with_capacity(raw_history.len() + screen_data.len());
-    replay.push_str(raw_history);
-    replay.push_str(screen_data);
-    trim_to_char_limit(&replay, max_chars)
+
+    // Char ceiling: only scan when the retained window is still over the byte
+    // ceiling (bytes >= chars), then drop to 7/8 of the ceiling so the
+    // pathological long-line case re-trims rarely rather than every frame.
+    if len - cut > max_chars {
+        let remaining = &buffer[cut..];
+        let total = remaining.chars().count();
+        if total > max_chars {
+            let target = max_chars.saturating_sub(max_chars / 8).max(1);
+            let drop = total - target;
+            let extra = remaining
+                .char_indices()
+                .nth(drop)
+                .map(|(index, _)| index)
+                .unwrap_or(remaining.len());
+            cut += extra;
+        }
+    }
+
+    if cut > 0 {
+        buffer.drain(..cut);
+    }
 }
+

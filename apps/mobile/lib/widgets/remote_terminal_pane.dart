@@ -30,7 +30,7 @@ class RemoteTerminalPane extends StatefulWidget {
     required this.keyboardVisible,
     required this.keyboardRequested,
     required this.keyboardRequestSerial,
-    required this.terminalReplay,
+    required this.replayController,
     required this.terminalFontSize,
     required this.onConnect,
     required this.onInput,
@@ -61,7 +61,7 @@ class RemoteTerminalPane extends StatefulWidget {
   final bool keyboardVisible;
   final bool keyboardRequested;
   final int keyboardRequestSerial;
-  final NativeTerminalReplay terminalReplay;
+  final NativeTerminalReplayController replayController;
   final double terminalFontSize;
   final VoidCallback onConnect;
   final ValueChanged<String> onInput;
@@ -165,23 +165,40 @@ class _RemoteTerminalPaneState extends State<RemoteTerminalPane> {
                           children: [
                             if (widget.showTerminal &&
                                 NativeTerminalView.supported)
-                              NativeTerminalView(
-                                key: Platform.isIOS
-                                    ? ValueKey(
-                                        'native-terminal-view-ios-${widget.terminalReplay.sessionId}',
-                                      )
-                                    : const ValueKey('native-terminal-view'),
-                                replay: widget.terminalReplay,
-                                fontSize: widget.terminalFontSize,
-                                keyboardRequested: widget.keyboardRequested,
-                                keyboardRequestSerial:
-                                    widget.keyboardRequestSerial,
-                                onInput: widget.onInput,
-                                onResize: widget.onResize,
-                                onSelectionChanged: widget.onSelectionChanged,
-                                onCursorMetrics: (metrics) {
-                                  if (_cursorMetrics == metrics) return;
-                                  setState(() => _cursorMetrics = metrics);
+                              // Subscribe to the replay controller here so a
+                              // live output frame rebuilds only this subtree,
+                              // not the whole page (toolbar, overlays, keyboard
+                              // inset / layout recompute).
+                              ListenableBuilder(
+                                listenable: widget.replayController,
+                                builder: (context, _) {
+                                  final sessionId = widget.sessionId;
+                                  final replay = sessionId == null
+                                      ? NativeTerminalReplay.empty(
+                                          sessionId: '',
+                                        )
+                                      : widget.replayController.replay(
+                                          sessionId,
+                                        );
+                                  return NativeTerminalView(
+                                    key: Platform.isIOS
+                                        ? ValueKey(
+                                            'native-terminal-view-ios-${replay.sessionId}',
+                                          )
+                                        : const ValueKey('native-terminal-view'),
+                                    replay: replay,
+                                    fontSize: widget.terminalFontSize,
+                                    keyboardRequested: widget.keyboardRequested,
+                                    keyboardRequestSerial:
+                                        widget.keyboardRequestSerial,
+                                    onInput: widget.onInput,
+                                    onResize: widget.onResize,
+                                    onSelectionChanged: widget.onSelectionChanged,
+                                    onCursorMetrics: (metrics) {
+                                      if (_cursorMetrics == metrics) return;
+                                      setState(() => _cursorMetrics = metrics);
+                                    },
+                                  );
                                 },
                               )
                             else if (widget.showTerminal)

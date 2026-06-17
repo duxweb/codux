@@ -313,7 +313,7 @@ void main() {
     );
     expect(
       controller.nativeRenderOutput('session-1'),
-      'history\u001b[2J\u001b[Hscreen',
+      'history',
     );
     expect(
       controller.startBufferRequest(
@@ -342,7 +342,7 @@ void main() {
     ]);
     expect(
       controller.nativeRenderOutput('session-1'),
-      'history\u001b[2J\u001b[Hscreen',
+      'history',
     );
   });
 
@@ -494,7 +494,7 @@ void main() {
       expect(controller.cachedOutput('session-1'), 'raw tail fragment');
       expect(
         controller.nativeRenderOutput('session-1'),
-        'raw tail fragment\u001b[2J\u001b[Hvisible tui',
+        'raw tail fragment',
       );
     },
   );
@@ -523,7 +523,7 @@ void main() {
       expect(controller.cachedOutput('session-1'), 'partial live raw');
       expect(
         controller.nativeRenderOutput('session-1'),
-        'partial live raw\u001b[2J\u001b[Hrestored tui\n\u001b[3;1Hinput box',
+        'partial live raw',
       );
     },
   );

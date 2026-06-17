@@ -1037,10 +1037,13 @@ mod tests {
     }
 
     #[test]
-    fn native_render_content_refreshes_current_screen_from_live_keyframe() {
+    fn native_render_content_is_raw_history_without_keyframe() {
         let mut router = RemoteTerminalOutputRouter::new(65536, 65536);
         router.bind_session("session-1", true);
 
+        // The baseline keyframe updates only the cell-grid screen; the native
+        // render content stays the raw history so the emulator can rebuild its
+        // scrollback (splicing the keyframe's ESC[2J would erase it).
         router.accept(
             &buffer_with_screen_data("session-1", "raw-history", "\x1b[2J\x1b[Hkeyframe", 10),
             Some("session-1"),
@@ -1049,17 +1052,21 @@ mod tests {
         assert_eq!(router.content("session-1"), Some("raw-history"));
         assert_eq!(
             router.native_render_content("session-1"),
-            Some("raw-history\x1b[2J\x1b[Hkeyframe")
+            Some("raw-history")
         );
 
+        // Live output appends its raw bytes; native render content tracks the
+        // raw history exactly.
         router.accept(&live("session-1", "\nlive", 11), Some("session-1"));
 
         assert_eq!(router.content("session-1"), Some("raw-history\nlive"));
         assert_eq!(
             router.native_render_content("session-1"),
-            Some("raw-history\x1b[2J\x1b[Hkeyframe\nlive")
+            Some("raw-history\nlive")
         );
 
+        // A live frame that also carries a fresh screen keyframe still only
+        // appends its raw bytes -- the keyframe never enters the stream.
         router.accept(
             &json!({
                 "type": "terminal.output",
@@ -1079,12 +1086,12 @@ mod tests {
         );
         assert_eq!(
             router.native_render_content("session-1"),
-            Some("raw-history\nlive\nworking\x1b[2J\x1b[Hupdated keyframe")
+            Some("raw-history\nlive\nworking")
         );
     }
 
     #[test]
-    fn empty_live_screen_keyframe_refreshes_native_render_content() {
+    fn empty_live_screen_keyframe_leaves_native_render_content_untouched() {
         let mut router = RemoteTerminalOutputRouter::new(65536, 65536);
         router.bind_session("session-1", true);
 
@@ -1093,6 +1100,8 @@ mod tests {
             Some("session-1"),
         );
 
+        // An empty-data live keyframe refreshes only the cell-grid screen used
+        // by the scroll path; the raw native render content is left as-is.
         let effects = router.accept(
             &json!({
                 "type": "terminal.output",
@@ -1111,7 +1120,7 @@ mod tests {
         assert_eq!(router.content("session-1"), Some("raw-history"));
         assert_eq!(
             router.native_render_content("session-1"),
-            Some("raw-history\x1b[2J\x1b[Hnew")
+            Some("raw-history")
         );
     }
 
@@ -1125,7 +1134,7 @@ mod tests {
         );
         assert_eq!(
             router.native_render_content("session-1"),
-            Some("history\x1b[2J\x1b[Hscreen")
+            Some("history")
         );
 
         assert!(router.start_buffer_request("session-1", "refresh-empty", true, true, true));
@@ -1137,7 +1146,7 @@ mod tests {
         assert_eq!(kinds(&empty), ["loading", "ack"]);
         assert_eq!(
             router.native_render_content("session-1"),
-            Some("history\x1b[2J\x1b[Hscreen")
+            Some("history")
         );
         assert_eq!(
             router.active_buffer_request_id("session-1"),
@@ -1146,7 +1155,7 @@ mod tests {
     }
 
     #[test]
-    fn tail_refresh_updates_native_keyframe_for_cached_session() {
+    fn tail_refresh_replaces_raw_native_render_content_for_cached_session() {
         let mut router = RemoteTerminalOutputRouter::new(65536, 65536);
         router.bind_session("session-1", true);
         router.accept(
@@ -1180,7 +1189,7 @@ mod tests {
         assert_eq!(router.content("session-1"), Some("raw-history\nnew"));
         assert_eq!(
             router.native_render_content("session-1"),
-            Some("raw-history\nnew\x1b[2J\x1b[Hnew")
+            Some("raw-history\nnew")
         );
     }
 

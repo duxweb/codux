@@ -101,7 +101,7 @@ RemoteTerminalPane _pane({ValueChanged<String>? onSendKey}) {
     keyboardVisible: false,
     keyboardRequested: false,
     keyboardRequestSerial: 0,
-    terminalReplay: NativeTerminalReplay.empty(sessionId: 'session-1'),
+    replayController: NativeTerminalReplayController(),
     terminalFontSize: 16,
     onConnect: () {},
     onInput: (_) {},

@@ -1,4 +1,9 @@
-class NativeTerminalReplayController {
+import 'package:flutter/foundation.dart';
+
+/// Owns the per-session native-terminal replay state and notifies listeners
+/// when a session's replay changes. The terminal view subscribes directly, so
+/// a live output frame rebuilds only that subtree instead of the whole page.
+class NativeTerminalReplayController extends ChangeNotifier {
   final Map<String, NativeTerminalReplay> _replayBySession = {};
   final Map<String, int> _contentLengthBySession = {};
   int _revision = 0;
@@ -20,6 +25,7 @@ class NativeTerminalReplayController {
       revision: _revision,
     );
     _contentLengthBySession[sessionId] = content.length;
+    notifyListeners();
     return true;
   }
 
@@ -41,6 +47,7 @@ class NativeTerminalReplayController {
       revision: _revision,
     );
     _contentLengthBySession[sessionId] = content.length;
+    notifyListeners();
     return true;
   }
 
@@ -48,6 +55,7 @@ class NativeTerminalReplayController {
     if (_replayBySession.remove(sessionId) != null) {
       _contentLengthBySession.remove(sessionId);
       _revision += 1;
+      notifyListeners();
     }
   }
 
@@ -56,6 +64,7 @@ class NativeTerminalReplayController {
       _replayBySession.clear();
       _contentLengthBySession.clear();
       _revision += 1;
+      notifyListeners();
     }
   }
 }

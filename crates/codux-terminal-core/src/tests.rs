@@ -516,8 +516,11 @@ fn live_screen_keyframe_replaces_current_screen_without_polluting_history() {
     assert!(screen.data.contains("new input"));
     assert!(!screen.data.contains("old screen"));
     assert!(!screen.data.contains("history 01"));
-    assert!(session.native_render_content().contains("new screen"));
-    assert!(session.native_render_content().contains("new input"));
+    // native_render_content is the raw history only -- no screen keyframe is
+    // ever spliced in (its ESC[2J would erase the emulator's scrollback on
+    // replay), so it carries the live bytes and neither keyframe.
+    assert!(session.native_render_content().contains("live raw"));
+    assert!(!session.native_render_content().contains("new screen"));
     assert!(!session.native_render_content().contains("old screen"));
 
     session.scroll_screen_lines(8);
@@ -535,7 +538,7 @@ fn live_screen_keyframe_replaces_current_screen_without_polluting_history() {
 }
 
 #[test]
-fn empty_live_screen_keyframe_refreshes_native_replay_current_screen() {
+fn empty_live_screen_keyframe_refreshes_cell_grid_only() {
     let mut session = RemotePtySession::<String>::new("session-1", 512);
     session.resize_screen(20, 8);
     let history = scrollable_history("history");
@@ -553,14 +556,12 @@ fn empty_live_screen_keyframe_refreshes_native_replay_current_screen() {
         Some(4),
     );
 
+    // A keyframe with no live bytes leaves the raw native render content
+    // untouched (no keyframe is ever spliced in); only the cell-grid screen
+    // below is refreshed.
     assert_eq!(session.content(), history);
-    assert!(
-        session
-            .native_render_content()
-            .contains("fresh screen\r\n\x1b[3;1Hfresh input")
-    );
+    assert!(!session.native_render_content().contains("fresh screen"));
     assert!(!session.native_render_content().contains("old screen"));
-    assert!(!session.native_render_content().contains("old input"));
 
     let screen = session.screen_snapshot();
     assert!(screen.data.contains("fresh screen"));
@@ -577,6 +578,29 @@ fn trims_cache_on_character_boundaries() {
     assert_eq!(session.content(), "好bcd");
     assert_eq!(session.buffer_length(), 7);
     assert_eq!(session.sequence(), 2);
+}
+
+#[test]
+fn caches_only_the_trailing_line_budget() {
+    // A generous char ceiling so the trailing-line budget is what bounds the
+    // cache, matching the native emulator's scrollback rather than 2M chars.
+    let mut session = RemotePtySession::<String>::new("session-1", 10_000_000);
+    let mut output = String::new();
+    for index in 0..800 {
+        output.push_str(&format!("line {index}\n"));
+    }
+    session.append_live(&output, Some(output.len()), Some(1));
+
+    let content = session.content();
+    // Oldest lines fall off the front; only the trailing window is retained.
+    assert!(!content.contains("line 0\n"));
+    assert!(!content.contains("line 150\n"));
+    assert!(content.contains("line 799\n"));
+    let kept = content.matches('\n').count();
+    assert!(
+        (590..=600).contains(&kept),
+        "kept {kept} lines, expected ~600"
+    );
 }
 
 #[test]
