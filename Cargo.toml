@@ -16,8 +16,6 @@ resolver = "2"
 [patch.crates-io]
 async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
 async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
-libghostty-vt = { path = "crates/third_party/libghostty-vt" }
-libghostty-vt-sys = { path = "crates/third_party/libghostty-vt-sys" }
 
 # Fork with a per-line tree-sitter highlight cache (editor scroll perf). Based
 # on the upstream commit codux pins; PR'd upstream as dux-web/gpui-component.

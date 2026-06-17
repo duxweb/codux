@@ -11968,11 +11968,3 @@ dependencies = [
  "syn 2.0.117",
  "winnow 1.0.3",
 ]
-
-[[patch.unused]]
-name = "libghostty-vt"
-version = "0.1.1"
-
-[[patch.unused]]
-name = "libghostty-vt-sys"
-version = "0.1.1"

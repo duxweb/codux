@@ -753,8 +753,14 @@ impl GhosttyScreenWorker {
             let fg = terminal_screen_color(cell.fg);
             let bg = terminal_screen_color(cell.bg);
             // Skip blank, default-styled cells so the consumer's own theme
-            // background shows through (and the snapshot stays compact).
-            if text.is_empty() && bg == TerminalScreenColor::Default && !cell_has_visuals(cell) {
+            // background shows through (and the snapshot stays compact). An
+            // unwritten alacritty cell is a space (`' '`), not `\0`, so trim
+            // before testing -- otherwise trailing run-of-spaces leak into the
+            // snapshot and into selection/URL reconstruction. Middle spaces are
+            // rebuilt from cell-column gaps by consumers; styled/colored spaces
+            // (non-default bg or visuals) are kept.
+            if text.trim().is_empty() && bg == TerminalScreenColor::Default && !cell_has_visuals(cell)
+            {
                 continue;
             }
             cells.push(TerminalScreenCellSnapshot {
