@@ -1,18 +1,13 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{Arc, mpsc};
 use std::thread;
 
-use libghostty_vt::{
-    RenderState, Terminal, TerminalOptions,
-    render::{CellIterator, CursorVisualStyle, RowIterator, Snapshot},
-    screen::{Cell, CellContentTag, CellWide},
-    style::{RgbColor, Style, Underline},
-    terminal::{
-        ConformanceLevel, DeviceAttributeFeature, DeviceAttributes, DeviceType, Mode,
-        PrimaryDeviceAttributes, ScrollViewport, SecondaryDeviceAttributes,
-        TertiaryDeviceAttributes,
-    },
-};
+use alacritty_terminal::event::{Event, EventListener, WindowSize};
+use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::term::cell::{Cell, Flags};
+use alacritty_terminal::term::{Config as AlacrittyConfig, Term, TermMode};
+use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Processor};
 use serde::Serialize;
 
 use crate::TerminalInputMode;
@@ -426,14 +421,56 @@ enum GhosttyScreenCommand {
     Clear,
 }
 
+/// Fixed grid size handed to the alacritty `Term`; scrollback is configured
+/// separately via [`AlacrittyConfig::scrolling_history`].
+struct HeadlessTermSize {
+    cols: usize,
+    rows: usize,
+}
+
+impl HeadlessTermSize {
+    fn new(cols: usize, rows: usize) -> Self {
+        Self { cols, rows }
+    }
+}
+
+impl Dimensions for HeadlessTermSize {
+    fn total_lines(&self) -> usize {
+        self.rows
+    }
+
+    fn screen_lines(&self) -> usize {
+        self.rows
+    }
+
+    fn columns(&self) -> usize {
+        self.cols
+    }
+}
+
+/// Buffers the VT engine's query replies (DSR/CPR, DECRQM, DA, ...) emitted
+/// while parsing. They are drained to the PTY responder after each parse
+/// completes; `Rc`/`RefCell` are sound because the worker (and the engine it
+/// owns) live entirely on the dedicated worker thread.
+#[derive(Clone)]
+struct HeadlessEventProxy {
+    events: Rc<RefCell<Vec<Event>>>,
+}
+
+impl EventListener for HeadlessEventProxy {
+    fn send_event(&self, event: Event) {
+        self.events.borrow_mut().push(event);
+    }
+}
+
 struct GhosttyScreenWorker {
-    terminal: Terminal<'static, 'static>,
-    render_state: RenderState<'static>,
+    term: Term<HeadlessEventProxy>,
+    parser: Processor,
+    events: Rc<RefCell<Vec<Event>>>,
     cols: usize,
     rows: usize,
     scrollback: usize,
     responder: Option<TerminalPtyResponder>,
-    responder_enabled: Arc<AtomicBool>,
 }
 
 impl GhosttyScreenWorker {
@@ -445,25 +482,60 @@ impl GhosttyScreenWorker {
     ) -> Self {
         let cols = cols.max(1);
         let rows = rows.max(1);
-        let mut terminal = Terminal::new(TerminalOptions {
-            cols: cols.try_into().unwrap_or(u16::MAX),
-            rows: rows.try_into().unwrap_or(u16::MAX),
-            max_scrollback: scrollback,
-        })
-        .expect("failed to create ghostty terminal");
-        let responder_enabled = Arc::new(AtomicBool::new(true));
-        if let Some(responder) = responder.clone() {
-            install_terminal_query_effects(&mut terminal, responder, responder_enabled.clone());
-        }
-        let render_state = RenderState::new().expect("failed to create ghostty render state");
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let config = AlacrittyConfig {
+            scrolling_history: scrollback,
+            ..Default::default()
+        };
+        let term = Term::new(
+            config,
+            &HeadlessTermSize::new(cols, rows),
+            HeadlessEventProxy {
+                events: events.clone(),
+            },
+        );
         Self {
-            terminal,
-            render_state,
+            term,
+            parser: Processor::new(),
+            events,
             cols,
             rows,
             scrollback,
             responder,
-            responder_enabled,
+        }
+    }
+
+    /// Feed bytes to the parser, then dispatch any query replies the engine
+    /// produced. `answer_queries` is false for replayed history so stale
+    /// DSR/DA queries in recorded output don't inject unsolicited replies.
+    fn feed(&mut self, bytes: &[u8], answer_queries: bool) {
+        self.parser.advance(&mut self.term, bytes);
+        let events: Vec<Event> = self.events.borrow_mut().drain(..).collect();
+        let Some(responder) = self.responder.as_ref() else {
+            return;
+        };
+        if !answer_queries {
+            return;
+        }
+        for event in events {
+            match event {
+                Event::PtyWrite(text) => responder(text.as_bytes()),
+                Event::TextAreaSizeRequest(format) => {
+                    responder(format(self.window_size()).as_bytes())
+                }
+                // OSC color queries are intentionally not answered here; the
+                // embedder resolves those from its own theme palette.
+                _ => {}
+            }
+        }
+    }
+
+    fn window_size(&self) -> WindowSize {
+        WindowSize {
+            num_lines: self.rows.try_into().unwrap_or(u16::MAX),
+            num_cols: self.cols.try_into().unwrap_or(u16::MAX),
+            cell_width: GHOSTTY_CELL_WIDTH_PX as u16,
+            cell_height: GHOSTTY_CELL_HEIGHT_PX as u16,
         }
     }
 
@@ -478,12 +550,8 @@ impl GhosttyScreenWorker {
                 },
             };
             match command {
-                GhosttyScreenCommand::Process(bytes) => self.terminal.vt_write(&bytes),
-                GhosttyScreenCommand::ProcessReplay(bytes) => {
-                    self.responder_enabled.store(false, Ordering::Relaxed);
-                    self.terminal.vt_write(&bytes);
-                    self.responder_enabled.store(true, Ordering::Relaxed);
-                }
+                GhosttyScreenCommand::Process(bytes) => self.feed(&bytes, true),
+                GhosttyScreenCommand::ProcessReplay(bytes) => self.feed(&bytes, false),
                 GhosttyScreenCommand::Resize { mut cols, mut rows } => {
                     // Layout settling queues resizes back-to-back, and every
                     // column change reflows the whole scrollback. Collapse a
@@ -508,14 +576,14 @@ impl GhosttyScreenWorker {
                 }
                 GhosttyScreenCommand::ScrollLines(lines) => self.scroll_lines(lines),
                 GhosttyScreenCommand::ScrollToBottom => {
-                    self.terminal.scroll_viewport(ScrollViewport::Bottom);
+                    self.term.scroll_display(Scroll::Bottom);
                 }
                 GhosttyScreenCommand::ScrollToOffset(offset) => self.scroll_to_offset(offset),
                 GhosttyScreenCommand::DisplayOffset(reply) => {
                     let _ = reply.send(self.display_offset());
                 }
                 GhosttyScreenCommand::InputMode(reply) => {
-                    let _ = reply.send(ghostty_input_mode(&self.terminal));
+                    let _ = reply.send(terminal_input_mode(&self.term));
                 }
                 GhosttyScreenCommand::HasHistoryAboveViewport(reply) => {
                     let _ = reply.send(self.has_history_above_viewport());
@@ -566,39 +634,33 @@ impl GhosttyScreenWorker {
         }
         self.cols = cols;
         self.rows = rows;
-        let _ = self.terminal.resize(
-            cols.try_into().unwrap_or(u16::MAX),
-            rows.try_into().unwrap_or(u16::MAX),
-            GHOSTTY_CELL_WIDTH_PX,
-            GHOSTTY_CELL_HEIGHT_PX,
-        );
+        self.term.resize(HeadlessTermSize::new(cols, rows));
     }
 
     fn scroll_lines(&mut self, lines: i32) {
         if lines == 0 {
             return;
         }
-        self.terminal
-            .scroll_viewport(ScrollViewport::Delta(-(lines as isize)));
+        // Positive `lines` scrolls up into history; `Scroll::Delta` uses the
+        // same sign (it adds to the display offset).
+        self.term.scroll_display(Scroll::Delta(lines));
     }
 
     fn scroll_to_offset(&mut self, offset: usize) {
-        let delta = offset as isize - self.display_offset() as isize;
+        let delta = offset as i32 - self.display_offset() as i32;
         if delta != 0 {
-            self.terminal.scroll_viewport(ScrollViewport::Delta(-delta));
+            self.term.scroll_display(Scroll::Delta(delta));
         }
     }
 
     fn display_offset(&self) -> usize {
-        self.terminal
-            .scrollbar()
-            .ok()
-            .map(ghostty_display_offset)
-            .unwrap_or(0)
+        self.term.grid().display_offset()
     }
 
     fn has_history_above_viewport(&self) -> bool {
-        self.display_offset() < self.terminal.scrollback_rows().unwrap_or(0)
+        let grid = self.term.grid();
+        let visible_top = -(grid.display_offset() as i32);
+        visible_top > grid.topmost_line().0
     }
 
     fn remote_viewport_snapshot(
@@ -637,51 +699,112 @@ impl GhosttyScreenWorker {
     }
 
     fn total_lines(&self) -> usize {
-        self.terminal
-            .scrollbar()
-            .ok()
-            .map(|scrollbar| scrollbar.total as usize)
-            .unwrap_or_else(|| self.terminal.total_rows().unwrap_or(self.rows))
-            .max(self.rows)
+        self.term.grid().total_lines().max(self.rows)
     }
 
     fn snapshot(&mut self, scroll_pixel_offset: f64, include_data: bool) -> TerminalScreenSnapshot {
-        let terminal = &self.terminal;
-        let scrollbar = terminal.scrollbar().ok();
-        let display_offset = scrollbar.map(ghostty_display_offset).unwrap_or(0);
-        let total_lines = scrollbar
-            .map(|scrollbar| scrollbar.total as usize)
-            .unwrap_or_else(|| terminal.total_rows().unwrap_or(self.rows))
-            .max(self.rows);
-        let snapshot = match self.render_state.update(terminal) {
-            Ok(snapshot) => snapshot,
-            Err(_) => {
-                return TerminalScreenSnapshot {
-                    cols: self.cols,
-                    rows: self.rows,
-                    total_lines: self.rows,
-                    scroll_pixel_offset,
-                    ..Default::default()
-                };
-            }
-        };
+        let cols = self.term.columns();
+        let rows = self.term.screen_lines();
+        let total_lines = self.term.grid().total_lines().max(rows);
+        let display_offset = self.term.grid().display_offset();
+        let input_mode = terminal_input_mode(&self.term);
+        let application_cursor = self.term.mode().contains(TermMode::APP_CURSOR);
 
-        let cols = snapshot.cols().map(usize::from).unwrap_or(self.cols);
-        let rows = snapshot.rows().map(usize::from).unwrap_or(self.rows);
-        let cursor = ghostty_cursor_snapshot(&snapshot);
-        let cells = ghostty_snapshot_cells(&snapshot, cols, rows);
+        // `display_iter` yields the visible viewport; map each term line to a
+        // 0..rows viewport row by adding the display offset. Overscan context
+        // for smooth remote scrolling is produced separately by
+        // `remote_viewport_snapshot` (scroll + stack), not here.
+        let content = self.term.renderable_content();
+        let cursor_point = content.cursor.point;
+        let cursor_shape = content.cursor.shape;
+        let cursor_visible =
+            content.mode.contains(TermMode::SHOW_CURSOR) && cursor_shape != CursorShape::Hidden;
+
+        let mut cells = Vec::new();
+        for indexed in content.display_iter {
+            let row = indexed.point.line.0 + display_offset as i32;
+            if row < 0 || row as usize >= rows {
+                continue;
+            }
+            let col = indexed.point.column.0;
+            if col >= cols {
+                continue;
+            }
+            let cell = indexed.cell;
+            // Wide-char spacers carry no glyph of their own; the leading cell
+            // already reports width 2.
+            if cell
+                .flags
+                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+            {
+                continue;
+            }
+            let mut text = String::new();
+            if cell.c != '\0' && !cell.c.is_control() {
+                text.push(cell.c);
+            }
+            if let Some(zerowidth) = cell.zerowidth() {
+                for ch in zerowidth {
+                    if !ch.is_control() {
+                        text.push(*ch);
+                    }
+                }
+            }
+            let fg = terminal_screen_color(cell.fg);
+            let bg = terminal_screen_color(cell.bg);
+            // Skip blank, default-styled cells so the consumer's own theme
+            // background shows through (and the snapshot stays compact).
+            if text.is_empty() && bg == TerminalScreenColor::Default && !cell_has_visuals(cell) {
+                continue;
+            }
+            cells.push(TerminalScreenCellSnapshot {
+                row,
+                col,
+                text,
+                width: if cell.flags.contains(Flags::WIDE_CHAR) {
+                    2
+                } else {
+                    1
+                },
+                fg,
+                bg,
+                bold: cell.flags.contains(Flags::BOLD),
+                dim: cell.flags.contains(Flags::DIM),
+                italic: cell.flags.contains(Flags::ITALIC),
+                underline: cell.flags.intersects(Flags::ALL_UNDERLINES),
+                inverse: cell.flags.contains(Flags::INVERSE),
+                hidden: cell.flags.contains(Flags::HIDDEN),
+                strikeout: cell.flags.contains(Flags::STRIKEOUT),
+            });
+        }
+
+        // Hide the cursor when its line has scrolled out of the viewport.
+        let cursor_row = cursor_point.line.0 + display_offset as i32;
+        let mut cursor = TerminalScreenCursorSnapshot {
+            row: 0,
+            col: 0,
+            visible: false,
+            shape: terminal_screen_cursor_shape(cursor_shape),
+        };
+        if cursor_row >= 0 && (cursor_row as usize) < rows {
+            cursor.row = cursor_row as usize;
+            cursor.col = cursor_point.column.0.min(cols.saturating_sub(1));
+            cursor.visible = cursor_visible;
+        }
+
         let data = if include_data {
             // Prefix the painted cells with the active DEC modes so a fresh
             // viewer that replays this keyframe restores the *state*, not just
             // the glyphs: an alt-screen TUI must re-enter the alternate buffer
             // before the repaint paints into it, and a mouse-tracking app needs
             // its tracking mode back so wheel scrolling is forwarded.
-            let mut data = terminal_keyframe_mode_prefix(terminal);
+            let mut data = terminal_keyframe_mode_prefix(&input_mode);
             data.push_str(&terminal_snapshot_data(cols, rows, &cells, &cursor));
             data
         } else {
             String::new()
         };
+
         TerminalScreenSnapshot {
             data,
             cols,
@@ -691,52 +814,11 @@ impl GhosttyScreenWorker {
             margin_rows: 0,
             margin_rows_below: 0,
             scroll_pixel_offset,
-            application_cursor: terminal.mode(Mode::DECCKM).unwrap_or(false),
-            input_mode: ghostty_input_mode(terminal),
+            application_cursor,
+            input_mode,
             cells,
             cursor,
         }
-    }
-}
-
-// With a pty-write effect installed, the engine answers DSR/CPR, DECRQM,
-// kitty keyboard and XTVERSION queries itself; DA replies additionally need
-// device attributes. OSC color queries are intentionally NOT answered by the
-// engine (ghostty-vt ignores them) — the embedder answers those from its
-// theme palette.
-fn install_terminal_query_effects(
-    terminal: &mut Terminal<'static, 'static>,
-    responder: TerminalPtyResponder,
-    enabled: Arc<AtomicBool>,
-) {
-    let result = terminal
-        .on_pty_write(move |_term, data| {
-            if enabled.load(Ordering::Relaxed) {
-                responder(data);
-            }
-        })
-        .and_then(|terminal| {
-            terminal.on_device_attributes(|_term| {
-                Some(DeviceAttributes {
-                    primary: PrimaryDeviceAttributes::new(
-                        ConformanceLevel::VT220,
-                        [
-                            DeviceAttributeFeature::ANSI_COLOR,
-                            DeviceAttributeFeature::SELECTIVE_ERASE,
-                        ],
-                    ),
-                    secondary: SecondaryDeviceAttributes {
-                        device_type: DeviceType::VT220,
-                        firmware_version: 1,
-                        rom_cartridge: 0,
-                    },
-                    tertiary: TertiaryDeviceAttributes::default(),
-                })
-            })
-        });
-    if result.is_err() {
-        // Query replies degrade gracefully when the effect cannot be
-        // installed; the terminal itself keeps working.
     }
 }
 
@@ -745,8 +827,7 @@ fn install_terminal_query_effects(
 /// alt-screen enter must precede the paint so it lands in the alternate buffer,
 /// and the mouse / cursor-key modes make the viewer forward wheel and arrow
 /// input instead of scrolling its local history.
-fn terminal_keyframe_mode_prefix(terminal: &Terminal<'_, '_>) -> String {
-    let mode = ghostty_input_mode(terminal);
+fn terminal_keyframe_mode_prefix(mode: &TerminalInputMode) -> String {
     let mut out = String::new();
     if mode.alternate_screen {
         out.push_str("\x1b[?1049h");
@@ -781,172 +862,72 @@ fn terminal_keyframe_mode_prefix(terminal: &Terminal<'_, '_>) -> String {
     out
 }
 
-fn ghostty_input_mode(terminal: &Terminal<'_, '_>) -> TerminalInputMode {
+fn terminal_input_mode(term: &Term<HeadlessEventProxy>) -> TerminalInputMode {
+    let mode = term.mode();
     TerminalInputMode {
-        application_cursor: terminal.mode(Mode::DECCKM).unwrap_or(false),
-        alternate_screen: terminal.mode(Mode::ALT_SCREEN).unwrap_or(false)
-            || terminal.mode(Mode::ALT_SCREEN_SAVE).unwrap_or(false)
-            || terminal.mode(Mode::ALT_SCREEN_LEGACY).unwrap_or(false),
-        alternate_scroll: terminal.mode(Mode::ALT_SCROLL).unwrap_or(false),
-        bracketed_paste: terminal.mode(Mode::BRACKETED_PASTE).unwrap_or(false),
-        focus_in_out: terminal.mode(Mode::FOCUS_EVENT).unwrap_or(false),
-        mouse_tracking: terminal.is_mouse_tracking().unwrap_or(false),
-        mouse_motion: terminal.mode(Mode::ANY_MOUSE).unwrap_or(false),
-        mouse_drag: terminal.mode(Mode::BUTTON_MOUSE).unwrap_or(false),
-        sgr_mouse: terminal.mode(Mode::SGR_MOUSE).unwrap_or(false),
-        utf8_mouse: terminal.mode(Mode::UTF8_MOUSE).unwrap_or(false),
+        application_cursor: mode.contains(TermMode::APP_CURSOR),
+        alternate_screen: mode.contains(TermMode::ALT_SCREEN),
+        alternate_scroll: mode.contains(TermMode::ALTERNATE_SCROLL),
+        bracketed_paste: mode.contains(TermMode::BRACKETED_PASTE),
+        focus_in_out: mode.contains(TermMode::FOCUS_IN_OUT),
+        mouse_tracking: mode.intersects(TermMode::MOUSE_MODE),
+        mouse_motion: mode.contains(TermMode::MOUSE_MOTION),
+        mouse_drag: mode.contains(TermMode::MOUSE_DRAG),
+        sgr_mouse: mode.contains(TermMode::SGR_MOUSE),
+        utf8_mouse: mode.contains(TermMode::UTF8_MOUSE),
     }
 }
 
-fn ghostty_display_offset(scrollbar: libghostty_vt::ffi::GhosttyTerminalScrollbar) -> usize {
-    scrollbar
-        .total
-        .saturating_sub(scrollbar.offset.saturating_add(scrollbar.len)) as usize
+/// Whether a blank cell still carries visible styling, so it must be retained
+/// in the snapshot even with no glyph and a default background.
+fn cell_has_visuals(cell: &Cell) -> bool {
+    cell.flags.intersects(
+        Flags::BOLD
+            | Flags::ITALIC
+            | Flags::DIM
+            | Flags::INVERSE
+            | Flags::HIDDEN
+            | Flags::STRIKEOUT
+            | Flags::ALL_UNDERLINES,
+    ) || terminal_screen_color(cell.fg) != TerminalScreenColor::Default
 }
 
-fn ghostty_snapshot_cells(
-    snapshot: &Snapshot<'_, '_>,
-    cols: usize,
-    rows: usize,
-) -> Vec<TerminalScreenCellSnapshot> {
-    let mut cells = Vec::new();
-    let mut row_iterator = match RowIterator::new() {
-        Ok(iterator) => iterator,
-        Err(_) => return cells,
-    };
-    let mut cell_iterator = match CellIterator::new() {
-        Ok(iterator) => iterator,
-        Err(_) => return cells,
-    };
-    let Ok(mut row_iteration) = row_iterator.update(snapshot) else {
-        return cells;
-    };
-
-    let mut row_index = 0usize;
-    while let Some(row) = row_iteration.next() {
-        if row_index >= rows {
-            break;
-        }
-        let Ok(mut cell_iteration) = cell_iterator.update(row) else {
-            row_index += 1;
-            continue;
-        };
-        for col in 0..cols {
-            if cell_iteration
-                .select(col.try_into().unwrap_or(u16::MAX))
-                .is_err()
-            {
-                continue;
-            }
-            let Ok(raw_cell) = cell_iteration.raw_cell() else {
-                continue;
-            };
-            let wide = raw_cell.wide().unwrap_or(CellWide::Narrow);
-            if matches!(wide, CellWide::SpacerTail | CellWide::SpacerHead) {
-                continue;
-            }
-            let text = match cell_iteration.graphemes() {
-                Ok(graphemes) => graphemes
-                    .into_iter()
-                    .filter(|ch| *ch != '\0' && !ch.is_control())
-                    .collect::<String>(),
-                Err(_) => String::new(),
-            };
-            let style = cell_iteration.style().unwrap_or_default();
-            let fg = style_color(style.fg_color);
-            let bg = cell_background_color(raw_cell).unwrap_or_else(|| style_color(style.bg_color));
-            if text.is_empty()
-                && bg == TerminalScreenColor::Default
-                && !ghostty_style_has_visuals(style)
-            {
-                continue;
-            }
-            cells.push(TerminalScreenCellSnapshot {
-                row: row_index as i32,
-                col,
-                text,
-                width: if wide == CellWide::Wide { 2 } else { 1 },
-                fg,
-                bg,
-                bold: style.bold,
-                dim: style.faint,
-                italic: style.italic,
-                underline: style.underline != Underline::None,
-                inverse: style.inverse,
-                hidden: style.invisible,
-                strikeout: style.strikethrough,
-            });
-        }
-        row_index += 1;
-    }
-    cells
-}
-
-fn ghostty_cursor_snapshot(snapshot: &Snapshot<'_, '_>) -> TerminalScreenCursorSnapshot {
-    let viewport = snapshot.cursor_viewport().ok().flatten();
-    let style = snapshot
-        .cursor_visual_style()
-        .unwrap_or(CursorVisualStyle::Block);
-    TerminalScreenCursorSnapshot {
-        row: viewport.map(|cursor| cursor.y as usize).unwrap_or(0),
-        col: viewport.map(|cursor| cursor.x as usize).unwrap_or(0),
-        visible: snapshot.cursor_visible().unwrap_or(false) && viewport.is_some(),
-        shape: ghostty_cursor_shape(style),
-    }
-}
-
-fn ghostty_cursor_shape(style: CursorVisualStyle) -> TerminalScreenCursorShape {
-    match style {
-        CursorVisualStyle::Bar => TerminalScreenCursorShape::Beam,
-        CursorVisualStyle::Underline => TerminalScreenCursorShape::Underline,
-        CursorVisualStyle::BlockHollow => TerminalScreenCursorShape::HollowBlock,
-        CursorVisualStyle::Block => TerminalScreenCursorShape::Block,
-        _ => TerminalScreenCursorShape::Block,
-    }
-}
-
-fn ghostty_style_has_visuals(style: Style) -> bool {
-    style.bold
-        || style.italic
-        || style.faint
-        || style.blink
-        || style.inverse
-        || style.invisible
-        || style.strikethrough
-        || style.overline
-        || style.underline != Underline::None
-        || style_color(style.fg_color) != TerminalScreenColor::Default
-        || style_color(style.bg_color) != TerminalScreenColor::Default
-}
-
-fn style_color(color: libghostty_vt::style::StyleColor) -> TerminalScreenColor {
+/// Map an alacritty cell color to the engine-neutral snapshot color. Named ANSI
+/// colors (0–15) become palette indices so the consumer's theme resolves them;
+/// the semantic foreground/background/cursor names collapse to `Default`.
+fn terminal_screen_color(color: Color) -> TerminalScreenColor {
     match color {
-        libghostty_vt::style::StyleColor::None => TerminalScreenColor::Default,
-        libghostty_vt::style::StyleColor::Palette(index) => {
-            TerminalScreenColor::Indexed { index: index.0 }
-        }
-        libghostty_vt::style::StyleColor::Rgb(color) => color.into(),
+        Color::Named(named) => match named {
+            NamedColor::Foreground
+            | NamedColor::Background
+            | NamedColor::Cursor
+            | NamedColor::DimForeground
+            | NamedColor::BrightForeground => TerminalScreenColor::Default,
+            other => {
+                let index = other as usize;
+                if index < 16 {
+                    TerminalScreenColor::Indexed { index: index as u8 }
+                } else {
+                    TerminalScreenColor::Default
+                }
+            }
+        },
+        Color::Spec(rgb) => TerminalScreenColor::Rgb {
+            r: rgb.r,
+            g: rgb.g,
+            b: rgb.b,
+        },
+        Color::Indexed(index) => TerminalScreenColor::Indexed { index },
     }
 }
 
-fn cell_background_color(cell: Cell) -> Option<TerminalScreenColor> {
-    match cell.content_tag().ok()? {
-        CellContentTag::BgColorPalette => cell
-            .bg_color_palette()
-            .ok()
-            .map(|index| TerminalScreenColor::Indexed { index: index.0 }),
-        CellContentTag::BgColorRgb => cell.bg_color_rgb().ok().map(TerminalScreenColor::from),
-        CellContentTag::Codepoint | CellContentTag::CodepointGrapheme => None,
-    }
-}
-
-impl From<RgbColor> for TerminalScreenColor {
-    fn from(color: RgbColor) -> Self {
-        Self::Rgb {
-            r: color.r,
-            g: color.g,
-            b: color.b,
-        }
+fn terminal_screen_cursor_shape(shape: CursorShape) -> TerminalScreenCursorShape {
+    match shape {
+        CursorShape::Block => TerminalScreenCursorShape::Block,
+        CursorShape::Beam => TerminalScreenCursorShape::Beam,
+        CursorShape::Underline => TerminalScreenCursorShape::Underline,
+        CursorShape::HollowBlock => TerminalScreenCursorShape::HollowBlock,
+        CursorShape::Hidden => TerminalScreenCursorShape::Block,
     }
 }
 
@@ -1218,43 +1199,6 @@ pub fn stack_scrolled_snapshots(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::RefCell, hint::black_box, rc::Rc};
-
-    fn ghostty_terminal_with_pty_write_handler(
-        replies: Rc<RefCell<Vec<u8>>>,
-    ) -> Terminal<'static, 'static> {
-        let mut terminal = Terminal::new(TerminalOptions {
-            cols: 80,
-            rows: 24,
-            max_scrollback: 128,
-        })
-        .expect("terminal should be created");
-        terminal
-            .on_pty_write(move |_terminal, data| {
-                replies.borrow_mut().extend_from_slice(data);
-            })
-            .expect("pty write handler should be installed");
-        terminal
-    }
-
-    #[test]
-    fn ghostty_pty_write_callback_survives_terminal_move() {
-        let replies = Rc::new(RefCell::new(Vec::new()));
-        let mut terminal = ghostty_terminal_with_pty_write_handler(replies.clone());
-
-        let mut stack_noise = [0usize; 1024];
-        for (index, value) in stack_noise.iter_mut().enumerate() {
-            *value = index;
-        }
-        black_box(&mut stack_noise);
-
-        terminal.vt_write(b"\x1B[?7$p");
-
-        assert!(
-            !replies.borrow().is_empty(),
-            "DECRQM should trigger a PTY write reply after Terminal has moved"
-        );
-    }
 
     #[test]
     fn redraws_current_screen_after_clear_and_cursor_moves() {
@@ -1424,7 +1368,7 @@ mod tests {
             text.contains("\x1b[?2004;2$y"),
             "missing DECRQM reply: {text:?}"
         );
-        assert!(text.contains("\x1b[?62;"), "missing DA1 reply: {text:?}");
+        assert!(text.contains("\x1b[?6c"), "missing DA1 reply: {text:?}");
     }
 
     #[test]

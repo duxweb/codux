@@ -324,8 +324,11 @@ fn baseline_keyframe_reconstructs_current_screen_over_raw_history() {
     assert_eq!(screen.display_offset, 0);
     assert!(screen.data.contains("tui current screen"));
 
-    // The raw history that scrolled off the visible screen is still reachable.
-    session.scroll_screen_lines(8);
+    // The raw history is still reachable by scrolling up. (The keyframe's ED 2
+    // scrolls the previously-visible rows into scrollback rather than erasing
+    // them in place, so the full raw history is preserved above the current
+    // screen; scroll to the top to reach the oldest line.)
+    session.scroll_screen_lines(100);
     let scrolled = session.screen_snapshot();
     assert!(scrolled.display_offset > 0);
     assert!(scrolled.data.contains("scrollback 01") || scrolled.data.contains("scrollback 02"));
