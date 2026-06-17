@@ -11,11 +11,10 @@ import '../services/remote_terminal_output_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/terminal_theme.dart';
 
-/// Self-drawn terminal that renders the shared Rust core's cell grid directly,
-/// instead of feeding an ANSI byte stream to a native emulator (SwiftTerm /
-/// Termux). The Rust `HeadlessTerminalScreen` is the single source of truth —
-/// the same snapshot the GPUI desktop draws from — so there is no second VT
-/// parser, no ANSI replay, and no scrollback reconstruction to drift.
+/// Self-drawn terminal that renders the shared Rust core's cell grid directly.
+/// The Rust `HeadlessTerminalScreen` is the single source of truth — the same
+/// snapshot the GPUI desktop draws from — so there is no second VT parser, no
+/// ANSI replay, and no scrollback reconstruction to drift.
 class SelfDrawnTerminalView extends StatefulWidget {
   const SelfDrawnTerminalView({
     super.key,
