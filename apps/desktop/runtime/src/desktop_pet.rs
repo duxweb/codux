@@ -11,7 +11,7 @@ use std::{
 };
 
 pub const DESKTOP_PET_LABEL: &str = "desktop-pet";
-pub const DESKTOP_PET_BASE_WIDTH: f64 = 352.0;
+pub const DESKTOP_PET_BASE_WIDTH: f64 = 418.0;
 pub const DESKTOP_PET_BASE_HEIGHT: f64 = 202.0;
 pub const DESKTOP_PET_MUTE_30_MINUTES: &str = "desktop-pet:mute-30-minutes";
 pub const DESKTOP_PET_MUTE_1_HOUR: &str = "desktop-pet:mute-1-hour";
@@ -22,7 +22,9 @@ pub const DESKTOP_PET_SPEAK_LESS: &str = "desktop-pet:speak-less";
 pub const DESKTOP_PET_HIDE: &str = "desktop-pet:hide";
 
 const DESKTOP_PET_SPRITE_SIZE: f64 = 112.0;
-const DESKTOP_PET_BUBBLE_WIDTH: f64 = 198.0;
+// Sized for the widest (plan/TODO) bubble; the window holds it and the click
+// hotspot covers it. A short non-plan bubble renders narrower inside this slot.
+const DESKTOP_PET_BUBBLE_WIDTH: f64 = 264.0;
 const DESKTOP_PET_BUBBLE_HEIGHT: f64 = 78.0;
 const DESKTOP_PET_BUBBLE_TOP: f64 = 52.0;
 const DESKTOP_PET_SPRITE_VISIBLE_INSET_X: f64 = 18.0;

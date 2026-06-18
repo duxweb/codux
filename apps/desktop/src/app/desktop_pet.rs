@@ -665,10 +665,15 @@ pub(in crate::app) const PET_WAVING_FRAME_COUNT: usize = 4;
 pub(in crate::app) const PET_FAILED_FRAME_COUNT: usize = 8;
 pub(in crate::app) const DESKTOP_PET_SPRITE_SIZE: f32 = 112.0;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_WIDTH: f32 = 198.0;
+// A plan/TODO bubble renders wider so multi-task lists are not cramped. The
+// floating window and click hotspot are sized for this width (runtime
+// DESKTOP_PET_BUBBLE_WIDTH / DESKTOP_PET_BASE_WIDTH); a plain chat line keeps
+// the narrow width above.
+pub(in crate::app) const DESKTOP_PET_PLAN_BUBBLE_WIDTH: f32 = 264.0;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_MIN_HEIGHT: f32 = 52.0;
 const DESKTOP_PET_PLAN_BUBBLE_MIN_HEIGHT: f32 = 96.0;
-const DESKTOP_PET_PLAN_TITLE_MAX_UNITS: usize = 18;
-const DESKTOP_PET_PLAN_ITEM_MAX_UNITS: usize = 16;
+const DESKTOP_PET_PLAN_TITLE_MAX_UNITS: usize = 32;
+const DESKTOP_PET_PLAN_ITEM_MAX_UNITS: usize = 28;
 /// Display-unit budget for the regular (no-plan) bubble line. Sized so the text
 /// wraps within DESKTOP_PET_BUBBLE_MAX_LINES and any overflow ends in a clean
 /// ellipsis instead of a raw-clipped half glyph.
@@ -679,7 +684,13 @@ const DESKTOP_PET_BUBBLE_MAX_LINES: usize = 4;
 const DESKTOP_PET_BUBBLE_TEXT_GUTTER: f32 = 4.0;
 const DESKTOP_PET_BUBBLE_TEXT_PAD_VERTICAL: f32 = 12.0;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_TOP: f32 = 52.0;
-pub(in crate::app) const DESKTOP_PET_BUBBLE_EDGE: f32 = 8.0;
+// Distance from the sprite-side window edge to the bubble's tail. The bubble is
+// pinned here (against the pet) and grows OUTWARD toward screen center, instead
+// of being anchored to the far window edge -- otherwise a narrow chat bubble
+// detaches from the pet now that the window is sized for the wide plan bubble.
+// Matches the runtime click hotspot: DESKTOP_PET_BASE_WIDTH - 8 - bubble width
+// = 418 - 8 - 264.
+const DESKTOP_PET_BUBBLE_TAIL_INSET: f32 = 146.0;
 pub(in crate::app) const DESKTOP_PET_BUBBLE_TAIL_SIZE: f32 = 9.0;
 pub(in crate::app) const DESKTOP_PET_SPRITE_BOTTOM: f32 = 8.0;
 pub(in crate::app) const DESKTOP_PET_SPRITE_SIDE: f32 = 24.0;
@@ -798,10 +809,15 @@ pub(in crate::app) fn desktop_pet_bubble(
         DesktopPetActivityTone::Success => (0x144D29, 0x8CF275, 0xE1FFD1),
         DesktopPetActivityTone::Warning => (0x610D12, 0xFF6B5C, 0xFFE8E1),
     };
+    let has_plan = !plan_items.is_empty();
+    let bubble_width = if has_plan {
+        DESKTOP_PET_PLAN_BUBBLE_WIDTH
+    } else {
+        DESKTOP_PET_BUBBLE_WIDTH
+    };
     let text_pad_left = if left_tail { 24.0 } else { 17.0 };
     let text_pad_right = if left_tail { 17.0 } else { 24.0 };
-    let text_width = DESKTOP_PET_BUBBLE_WIDTH - text_pad_left - text_pad_right;
-    let has_plan = !plan_items.is_empty();
+    let text_width = bubble_width - text_pad_left - text_pad_right;
     let display_line = if has_plan {
         desktop_pet_truncate_display_units(&line, DESKTOP_PET_PLAN_TITLE_MAX_UNITS)
     } else {
@@ -817,10 +833,14 @@ pub(in crate::app) fn desktop_pet_bubble(
     div()
         .absolute()
         .top(px(DESKTOP_PET_BUBBLE_TOP))
-        .w(px(DESKTOP_PET_BUBBLE_WIDTH))
+        .w(px(bubble_width))
         .min_h(px(min_height))
-        .when(left_tail, |this| this.right(px(DESKTOP_PET_BUBBLE_EDGE)))
-        .when(!left_tail, |this| this.left(px(DESKTOP_PET_BUBBLE_EDGE)))
+        .when(left_tail, |this| {
+            this.left(px(DESKTOP_PET_BUBBLE_TAIL_INSET))
+        })
+        .when(!left_tail, |this| {
+            this.right(px(DESKTOP_PET_BUBBLE_TAIL_INSET))
+        })
         .child(pixel_bubble_canvas(stroke, fill, left_tail))
         .child(
             div()
