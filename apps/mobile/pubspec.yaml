@@ -72,8 +72,14 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  assets:
-    - assets/fonts/MapleMono-NF-CN-Regular.ttf
+  # Bundled ONLY as a terminal glyph fallback (never the primary font), so it
+  # fills symbols the system monospace lacks -- e.g. Claude Code's `⏵⏵` status
+  # arrows -- on ROMs (some Android skins) that strip the system symbol fonts.
+  # Primary font is unchanged, so cell width / grid alignment are untouched.
+  fonts:
+    - family: NotoSansSymbols2
+      fonts:
+        - asset: assets/fonts/NotoSansSymbols2-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

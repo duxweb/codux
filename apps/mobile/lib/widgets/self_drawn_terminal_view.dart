@@ -11,6 +11,16 @@ import '../services/remote_terminal_output_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/terminal_theme.dart';
 
+/// Fallback fonts for glyphs the primary monospace lacks — e.g. Claude Code's
+/// `⏵⏵` status arrows. `NotoSansSymbols2` is bundled (see pubspec) so symbols
+/// render even on ROMs that strip the system symbol fonts; the platform emoji
+/// font covers color emoji. This only affects glyphs the primary font is
+/// missing, so cell width and grid alignment (measured from the primary font)
+/// are untouched.
+final List<String> _terminalGlyphFallback = Platform.isIOS
+    ? const ['NotoSansSymbols2', 'AppleColorEmoji']
+    : const ['NotoSansSymbols2', 'Noto Color Emoji'];
+
 /// Self-drawn terminal that renders the shared Rust core's cell grid directly.
 /// The Rust `HeadlessTerminalScreen` is the single source of truth — the same
 /// snapshot the GPUI desktop draws from — so there is no second VT parser, no
@@ -817,7 +827,22 @@ class _TerminalGridPainter extends CustomPainter {
         underline: cell.underline,
         strikeout: cell.strikeout,
       );
-      canvas.drawParagraph(paragraph, Offset(x, y + glyphTop));
+      // Glyphs from the non-monospace symbol fallback (e.g. ①②, drawn when the
+      // primary font lacks them) can be wider than their cell, which would spill
+      // into and overlap the next cell. Confine an over-wide glyph to its slot by
+      // scaling it horizontally to fit; cell-width primary-font glyphs are left
+      // untouched (small tolerance avoids scaling glyphs that already fit).
+      final slotWidth = cellWidth * span;
+      final glyphWidth = paragraph.maxIntrinsicWidth;
+      if (glyphWidth > slotWidth + 0.5) {
+        canvas.save();
+        canvas.translate(x, y + glyphTop);
+        canvas.scale(slotWidth / glyphWidth, 1.0);
+        canvas.drawParagraph(paragraph, Offset.zero);
+        canvas.restore();
+      } else {
+        canvas.drawParagraph(paragraph, Offset(x, y + glyphTop));
+      }
     }
 
     _paintSelection(canvas, snapshot);
@@ -924,6 +949,7 @@ class _TerminalGridPainter extends CustomPainter {
               fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
               fontStyle: italic ? FontStyle.italic : FontStyle.normal,
               fontFamily: fontFamily,
+              fontFamilyFallback: _terminalGlyphFallback,
               fontSize: fontSize,
               decoration: decorations.isEmpty
                   ? null
