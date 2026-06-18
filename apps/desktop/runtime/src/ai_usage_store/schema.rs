@@ -1,4 +1,11 @@
-const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "7";
+// Bumped 7 -> 8 to force a full re-index of historical logs after the token
+// parser fixes (Claude cache_creation backfill + codex cumulative-delta
+// de-inflation). On launch a version mismatch drops the index tables and
+// re-parses every log from offset 0 with the corrected parser. Pet XP is
+// preserved by construction: it sums total_tokens (cached excluded, so the
+// Claude fix is invisible to it) and only accumulates positive deltas against a
+// high-water mark (so the codex de-inflation cannot lower it).
+const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "8";
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 const SCHEMA_STATEMENTS: &[&str] = &[
