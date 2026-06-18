@@ -16,7 +16,14 @@ impl TerminalInputHandler {
         // even though the keystroke path already recalled history. Drop it: the
         // keystroke path owns real keys. This mirrors the marked-text guard in
         // `terminal_input_marked_text`.
-        if terminal_marked_text_looks_like_escape_sequence(text) {
+        let looks_like_escape = terminal_marked_text_looks_like_escape_sequence(text);
+        if terminal_trace_enabled() {
+            terminal_trace(&format!(
+                "key ime_commit text={text:?} hex={} dropped_as_escape={looks_like_escape}",
+                text.bytes().map(|b| format!("{b:02x}")).collect::<String>()
+            ));
+        }
+        if looks_like_escape {
             return;
         }
         let bytes = codux_terminal_core::terminal_text_input_bytes(text);

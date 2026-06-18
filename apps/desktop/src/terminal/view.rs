@@ -280,8 +280,22 @@ impl TerminalView {
     ) -> bool {
         let mode = self.model.read(cx).mode();
         let Some(bytes) = keystroke_to_bytes(keystroke, mode) else {
+            if terminal_trace_enabled() {
+                terminal_trace(&format!(
+                    "key keystroke key={:?} app_cursor={} -> none",
+                    keystroke.key, mode.application_cursor
+                ));
+            }
             return false;
         };
+        if terminal_trace_enabled() {
+            terminal_trace(&format!(
+                "key keystroke key={:?} app_cursor={} bytes={}",
+                keystroke.key,
+                mode.application_cursor,
+                bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+            ));
+        }
         self.blink_manager
             .update(cx, TerminalBlinkManager::pause_blinking);
         self.clear_pending_view_scroll();
