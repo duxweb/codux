@@ -801,9 +801,18 @@ impl RemoteTerminalOutputRouter {
     ) -> Vec<String> {
         let buffer_len = buffer_length.and_then(|value| usize::try_from(value).ok());
         let awaiting = self.session(session_id).is_restoring_baseline();
-        // A live frame carrying a screen keyframe while we are still awaiting a
-        // baseline completes the restore: fold the bytes in as the baseline.
-        if screen_data.is_some() && awaiting {
+        // Fold a screen keyframe in as the baseline when either: we are still
+        // awaiting a restore (the keyframe completes it), OR the frame carries
+        // no incremental bytes (`data` empty) -- a pure keyframe. The latter is
+        // the host's authoritative current screen and the ONLY message that can
+        // reconcile a grid that drifted from a torn snapshot (e.g. a viewport
+        // resize captured mid-repaint): plain live frames merely append deltas
+        // and never re-sync the grid, so without this a once-torn screen never
+        // self-heals even though the host keeps sending a fresh keyframe. Empty
+        // `data` is unique to the viewport keyframe -- flushed live batches
+        // always carry bytes -- so this does not disturb normal streaming, and
+        // re-processing the kept scrollback below preserves history.
+        if screen_data.is_some() && (awaiting || data.is_empty()) {
             let existing = self
                 .content(session_id)
                 .map(str::to_string)
@@ -1066,6 +1075,46 @@ mod tests {
 
         assert_eq!(kinds(&effects), ["loading", "sessionUpdated", "ack"]);
         assert_eq!(router.content("session-1"), Some("raw-history"));
+        assert_eq!(router.content("session-1"), Some("raw-history"));
+    }
+
+    #[test]
+    fn nonawaiting_screen_keyframe_reconciles_drifted_screen() {
+        // Regression: a viewport resize keyframe is captured before the TUI
+        // repaints, so the consumer can latch a half-painted screen as its
+        // baseline. The host then keeps sending a corrected keyframe, but a
+        // session that is no longer *awaiting* a baseline used to drop it on the
+        // floor (append-only live path), so the torn screen never self-healed.
+        // A pure keyframe (empty data) must now reconcile the cell grid even
+        // when not awaiting, while leaving the raw scrollback untouched.
+        let mut router = RemoteTerminalOutputRouter::new(65536, 65536);
+        router.bind_session("session-1", true);
+        router.accept(
+            &buffer_with_screen_data("session-1", "raw-history", "\x1b[2J\x1b[Hold-screen", 10),
+            Some("session-1"),
+        );
+        let before = router.screen_snapshot_json("session-1").unwrap();
+        assert!(before.contains("old-screen"), "baseline screen: {before}");
+
+        let effects = router.accept(
+            &json!({
+                "type": "terminal.output",
+                "sessionId": "session-1",
+                "payload": {
+                    "data": "",
+                    "screenData": "\x1b[2J\x1b[Hfresh-screen",
+                    "bufferLength": 11,
+                    "outputSeq": 11,
+                },
+            }),
+            Some("session-1"),
+        );
+        assert_eq!(kinds(&effects), ["loading", "sessionUpdated", "ack"]);
+
+        let after = router.screen_snapshot_json("session-1").unwrap();
+        assert!(after.contains("fresh-screen"), "screen adopts keyframe: {after}");
+        assert!(!after.contains("old-screen"), "stale screen cleared: {after}");
+        // Raw history (native render content / scrollback) is left intact.
         assert_eq!(router.content("session-1"), Some("raw-history"));
     }
 

@@ -1201,22 +1201,25 @@ impl TerminalPtySessionHandle {
         let owner = terminal_viewport_owner(owner);
         let cols = cols.max(20);
         let mut rows = rows.max(8);
-        // On the *normal* screen a remote viewer drives the column count (so its
-        // narrow viewport does not force horizontal scrolling) but the row count
-        // stays the host's: a phone in portrait reports many more rows than the
-        // desktop window has, and adopting them would make the desktop render a
-        // grid taller than its own viewport, pushing the bottom (prompt) out of
-        // view. The shorter viewer scrolls vertically instead.
+        // A remote viewer drives the column count (so its narrow viewport does
+        // not force horizontal scrolling) but the row count ALWAYS stays the
+        // host's: a phone in portrait reports many more rows than the desktop
+        // window has, and adopting them would make the desktop render a grid
+        // taller than its own viewport, pushing the bottom (prompt) out of view.
+        // The shorter viewer scrolls vertically instead.
         //
-        // An *alt screen* TUI is the exception: it repaints its whole screen on
-        // a row change but only partially on a column-only change (it assumes
-        // the terminal reflows the body, which the alt screen does not). So a
-        // column-only takeover leaves its conversation behind -> a blank box.
-        // Let an alt-screen session adopt the remote's rows too, so the row
-        // change forces a full repaint. Its content fills the grid, so the
-        // taller-than-window case renders fine (it just scrolls).
-        let keep_host_rows = owner != terminal_viewport_local_owner()
-            && !self.screen.lock().input_mode().alternate_screen;
+        // This used to make an exception for an alt-screen TUI: it only repaints
+        // partially on a column-only change (it assumes the terminal reflows the
+        // body, which the alt screen does not), so we grew its rows to force a
+        // full repaint for the viewer. But growing on claim then shrinking back
+        // on release is an asymmetric round trip the no-scrollback alt screen
+        // cannot survive -- the dropped top rows never come back, leaving the
+        // desktop blank above the prompt. That trick is no longer needed: the
+        // viewport resize now pushes an authoritative screen keyframe once the
+        // repaint settles (see send_terminal_viewport_keyframe and its
+        // post-resize follow-up), so the viewer adopts the host's real screen
+        // directly without ever disturbing the host's row count.
+        let keep_host_rows = owner != terminal_viewport_local_owner();
         let mut viewport = self.viewport.lock();
         if viewport.state.owner != owner {
             return Ok(None);
@@ -2103,6 +2106,15 @@ pub fn terminal_environment(
     values.insert("COLORTERM".to_string(), "truecolor".to_string());
     values.insert("CODEX_COLOR".to_string(), "1".to_string());
     values.insert("CODUX_GPUI".to_string(), "1".to_string());
+    // Default Claude Code to its classic renderer (conversation stays in the
+    // terminal's native scrollback) instead of the fullscreen alternate-screen
+    // TUI. The alt screen has no scrollback and does not reflow, which is what
+    // makes the desktop<->mobile viewport handoff fragile (blank top rows,
+    // torn keyframes). Only sets a default -- a user who exports the var
+    // themselves (e.g. "0" to keep the fullscreen TUI) is respected.
+    values
+        .entry("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN".to_string())
+        .or_insert_with(|| "1".to_string());
     values.insert(
         "LANG".to_string(),
         values.get("LANG").cloned().unwrap_or_else(default_lang),
@@ -3165,6 +3177,13 @@ mod tests {
         assert_eq!(
             env.get("DMUX_PROJECT_PATH").map(String::as_str),
             Some("/workspace/codux")
+        );
+        // Claude Code defaults to its classic (scrollback) renderer for a clean
+        // desktop<->mobile handoff, unless the user set the var themselves.
+        assert_eq!(
+            env.get("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN")
+                .map(String::as_str),
+            Some("1")
         );
         assert_eq!(
             env.get("CODUX_TERMINAL_ID").map(String::as_str),

@@ -68,6 +68,13 @@ use std::{
 
 const REMOTE_TERMINAL_OUTPUT_BATCH_MS: u64 = 32;
 const REMOTE_TERMINAL_BUFFER_BASELINE_TTL: Duration = Duration::from_secs(60);
+// A viewport resize keyframe is captured the instant the grid is resized, which
+// is before the TUI has processed the SIGWINCH and repainted into the new
+// geometry -- so it can capture a half-painted frame (e.g. an input box drawn
+// without its text). Push a second keyframe once the repaint has settled so the
+// viewer adopts the final screen. Generous enough to cover an alt-screen TUI's
+// full redraw.
+const REMOTE_TERMINAL_VIEWPORT_KEYFRAME_SETTLE_MS: u64 = 200;
 
 struct RemoteProjectScope {
     project_id: String,
@@ -2063,7 +2070,7 @@ impl RemoteHostRuntime {
     }
 
     fn resize_terminal_viewport_from_envelope(
-        &self,
+        self: &Arc<Self>,
         session_id: &str,
         envelope: &RemoteEnvelope,
         cols: u16,
@@ -2081,6 +2088,20 @@ impl RemoteHostRuntime {
                     &state,
                 );
                 self.send_terminal_viewport_keyframe(session_id, envelope.device_id.as_deref());
+                // The keyframe above is captured before the TUI repaints into
+                // the new geometry, so it may be half-painted. Re-send once the
+                // repaint settles; the viewer treats a keyframe as authoritative
+                // and reconciles its grid to the final screen.
+                let runtime = Arc::clone(self);
+                let session_id = session_id.to_string();
+                let device_id = envelope.device_id.clone();
+                crate::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(
+                        REMOTE_TERMINAL_VIEWPORT_KEYFRAME_SETTLE_MS,
+                    ))
+                    .await;
+                    runtime.send_terminal_viewport_keyframe(&session_id, device_id.as_deref());
+                });
             }
             Ok(None) => {
                 self.send_terminal_viewport_state(session_id, envelope.device_id.as_deref())
