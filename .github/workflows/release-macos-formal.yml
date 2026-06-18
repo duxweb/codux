@@ -82,10 +82,8 @@ jobs:
         include:
           - id: macos-aarch64
             target: aarch64-apple-darwin
-            zig_cache_suffix: aarch64
           - id: macos-x86_64
             target: x86_64-apple-darwin
-            zig_cache_suffix: x86_64
     runs-on: macos-26
     env:
       CARGO_BUILD_TARGET: ${{ matrix.target }}
@@ -117,14 +115,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Set up Zig
-        shell: bash
-        run: |
-          brew install zig@0.15
-          zig_path="$(brew --prefix zig@0.15)/bin/zig"
-          echo "ZIG=$zig_path" >> "$GITHUB_ENV"
-          "$zig_path" version
 
       - name: Cache Rust build
         uses: actions/cache@v4
@@ -172,13 +162,7 @@ jobs:
 
       - name: Build
         shell: bash
-        env:
-          ZIG_GLOBAL_CACHE_DIR: ${{ runner.temp }}/zig-global-cache-${{ matrix.zig_cache_suffix }}
-          ZIG_LOCAL_CACHE_DIR: ${{ runner.temp }}/zig-local-cache-${{ matrix.zig_cache_suffix }}
-        run: |
-          rm -rf "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR"
-          mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR"
-          cargo build --release --target "${CARGO_BUILD_TARGET}"
+        run: cargo build --release --target "${CARGO_BUILD_TARGET}"
 
       - name: Package formal macOS bundle
         shell: bash

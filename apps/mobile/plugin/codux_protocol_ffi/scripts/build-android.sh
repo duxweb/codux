@@ -35,13 +35,11 @@ if ! command -v cargo-ndk >/dev/null 2>&1; then
 fi
 
 cd "$REPO_ROOT"
-# Drop any stale ghostty shared library from the previous VT engine; the engine
-# is now alacritty_terminal (pure Rust), linked straight into the FFI .so, so no
-# separate native library needs to be bundled.
+# The engine is alacritty_terminal (pure Rust), linked straight into the FFI
+# .so, so no separate native VT library is bundled. Drop any stale runtime lib
+# left by the previous native engine.
 rm -f \
-  "$PLUGIN_DIR/android/src/main/jniLibs/arm64-v8a/libc++_shared.so" \
-  "$PLUGIN_DIR/android/src/main/jniLibs/arm64-v8a/libghostty-vt.so" \
-  "$PLUGIN_DIR/android/src/main/jniLibs/arm64-v8a/libghostty-vt.so.0"
+  "$PLUGIN_DIR/android/src/main/jniLibs/arm64-v8a/libc++_shared.so"
 
 cargo ndk \
   -t arm64-v8a \

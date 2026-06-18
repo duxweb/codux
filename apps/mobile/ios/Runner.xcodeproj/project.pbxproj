@@ -209,7 +209,6 @@
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				A37B7874980F6E851A377A8F /* [CP] Embed Pods Frameworks */,
-				6D1F3B2A4C5E678901234567 /* Patch and Sign Embedded Frameworks */,
 			);
 			buildRules = (
 			);
@@ -333,21 +332,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
-		};
-		6D1F3B2A4C5E678901234567 /* Patch and Sign Embedded Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Patch and Sign Embedded Frameworks";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -e\n\nGHOSTTY_FRAMEWORK=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libghostty.framework\"\nGHOSTTY_PLIST=\"${GHOSTTY_FRAMEWORK}/Info.plist\"\nMIN_IOS_VERSION=\"${IPHONEOS_DEPLOYMENT_TARGET:-16.0}\"\n\nif [ -f \"$GHOSTTY_PLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :MinimumOSVersion ${MIN_IOS_VERSION}\" \"$GHOSTTY_PLIST\" 2>/dev/null || \\\n    /usr/libexec/PlistBuddy -c \"Add :MinimumOSVersion string ${MIN_IOS_VERSION}\" \"$GHOSTTY_PLIST\"\nfi\n\nif [ \"${CODE_SIGNING_ALLOWED:-NO}\" != \"NO\" ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  if [ -d \"$GHOSTTY_FRAMEWORK\" ]; then\n    /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"$GHOSTTY_FRAMEWORK\"\n  fi\n\n  OBJECTIVE_C_FRAMEWORK=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/objective_c.framework\"\n  if [ -d \"$OBJECTIVE_C_FRAMEWORK\" ]; then\n    /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"$OBJECTIVE_C_FRAMEWORK\"\n  fi\nfi\n";
 		};
 		93B98BEA2E5D729E9C919726 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;

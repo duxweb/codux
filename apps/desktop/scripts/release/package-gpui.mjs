@@ -214,17 +214,6 @@ function releaseBinaryPath(extension) {
   return binaryPath;
 }
 
-function releaseDependencyPath(fileName) {
-  const segments = [root, "target"];
-  if (target) segments.push(target);
-  segments.push(profile, fileName);
-  const dependencyPath = path.join(...segments);
-  if (!fs.existsSync(dependencyPath)) {
-    throw new Error(`Built dependency not found: ${dependencyPath}`);
-  }
-  return dependencyPath;
-}
-
 function artifactBaseName(platform) {
   const version = readCargoVersion();
   const arch = targetArchLabel();

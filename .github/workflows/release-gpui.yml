@@ -80,12 +80,10 @@ jobs:
           - id: macos-aarch64
             os: macos-26
             target: aarch64-apple-darwin
-            zig_cache_suffix: aarch64
             artifact_suffix: -debug
           - id: macos-x86_64
             os: macos-26
             target: x86_64-apple-darwin
-            zig_cache_suffix: x86_64
             artifact_suffix: -debug
           - id: windows-x86_64
             os: windows-latest
@@ -111,22 +109,6 @@ jobs:
         with:
           targets: ${{ matrix.targets || matrix.target }}
 
-      - name: Set up Zig (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          brew install zig@0.15
-          zig_path="$(brew --prefix zig@0.15)/bin/zig"
-          echo "ZIG=$zig_path" >> "$GITHUB_ENV"
-          "$zig_path" version
-
-      - name: Set up Zig (Windows)
-        if: runner.os == 'Windows'
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-          use-cache: false
-
       - name: Restore Rust cache
         uses: actions/cache/restore@v4
         with:
@@ -149,13 +131,7 @@ jobs:
 
       - name: Build
         shell: bash
-        env:
-          ZIG_CACHE_SUFFIX: ${{ matrix.zig_cache_suffix || matrix.id }}
-          ZIG_GLOBAL_CACHE_DIR: ${{ runner.temp }}/zig-global-cache-${{ matrix.zig_cache_suffix || matrix.id }}
-          ZIG_LOCAL_CACHE_DIR: ${{ runner.temp }}/zig-local-cache-${{ matrix.zig_cache_suffix || matrix.id }}
         run: |
-          rm -rf "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR"
-          mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR"
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             pwsh -NoProfile -ExecutionPolicy Bypass -File tools/build-windows.ps1 -Target "${CARGO_BUILD_TARGET}"
           else
