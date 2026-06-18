@@ -1200,10 +1200,21 @@ impl TerminalPtySessionHandle {
     ) -> Result<Option<TerminalViewportState>> {
         let owner = terminal_viewport_owner(owner);
         let cols = cols.max(20);
-        let rows = rows.max(8);
+        let mut rows = rows.max(8);
         let mut viewport = self.viewport.lock();
         if viewport.state.owner != owner {
             return Ok(None);
+        }
+        // A remote viewer drives the column count (so its narrow viewport does
+        // not force the shared session into horizontal scrolling) but the row
+        // count stays the host's. A phone in portrait reports many more rows
+        // than the desktop window has; adopting them would make the desktop
+        // render a grid taller than its own viewport and push the bottom
+        // (prompt / TUI input box) out of view -- the blank/garbled desktop on
+        // takeover. Keeping the host rows means the desktop always renders
+        // full-height; the shorter viewer scrolls vertically instead.
+        if owner != terminal_viewport_local_owner() && viewport.state.rows >= 8 {
+            rows = viewport.state.rows;
         }
         viewport.expires_at = Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL;
         if viewport.state.cols == cols && viewport.state.rows == rows {
@@ -3341,7 +3352,9 @@ mod tests {
             .release_expired_viewport_lease()
             .expect("expired viewport state");
         assert_eq!(expired.owner, terminal_viewport_local_owner());
-        assert_eq!((expired.cols, expired.rows), (72, 18));
+        // The remote viewer drives columns only; the row count stays the host's
+        // (32), so the desktop never adopts a grid taller than its viewport.
+        assert_eq!((expired.cols, expired.rows), (72, 32));
 
         let accepted = handle
             .resize_viewport(terminal_viewport_local_owner(), 100, 32)
@@ -3391,9 +3404,10 @@ mod tests {
             .expect("desktop resize while remote owns");
         assert!(ignored.is_none());
         assert_eq!(handle.viewport_state().owner, "remote:phone");
+        // Remote drives columns only; rows stay the host's (32).
         assert_eq!(
             (handle.viewport_state().cols, handle.viewport_state().rows),
-            (72, 18)
+            (72, 32)
         );
 
         handle
