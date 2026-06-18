@@ -386,9 +386,43 @@ fn normalized_plan_status(value: &str) -> String {
     .to_string()
 }
 
+/// A genuine user interruption is recorded by Claude as a `user` row whose
+/// message text is exactly its marker -- `[Request interrupted by user]` or
+/// `[Request interrupted by user for tool use]`. Match ONLY that marker.
+///
+/// The previous heuristic stringified the whole row and scanned for
+/// "interrupted"/"cancelled"/"aborted" anywhere. Those words are everyday in
+/// command/tool output (e.g. "operation cancelled", "connection aborted", "no
+/// matches"), so tool-result `user` rows were constantly misread as turn
+/// interruptions. That pushed `last_completion_at` past `last_user_at`, flipping
+/// `response_state` to idle and demoting a live turn to "completed" -- the
+/// session showed no running state even while Claude was clearly working.
 fn is_claude_interrupted_row(row: &Value) -> bool {
-    let text = row.to_string().to_lowercase();
-    text.contains("interrupted") || text.contains("cancelled") || text.contains("aborted")
+    claude_user_message_text(row)
+        .map(|text| text.trim_start().starts_with("[Request interrupted by user"))
+        .unwrap_or(false)
+}
+
+/// The user message's plain text (string content, or the concatenated `text`
+/// blocks of array content). Tool results carry `tool_result` blocks rather than
+/// `text`, so they never contribute here -- exactly what keeps their incidental
+/// wording from being mistaken for the interrupt marker.
+fn claude_user_message_text(row: &Value) -> Option<String> {
+    match row.get("message")?.get("content")? {
+        Value::String(text) => Some(text.clone()),
+        Value::Array(items) => {
+            let mut out = String::new();
+            for item in items {
+                if item.get("type").and_then(Value::as_str) == Some("text") {
+                    if let Some(text) = item.get("text").and_then(Value::as_str) {
+                        out.push_str(text);
+                    }
+                }
+            }
+            (!out.is_empty()).then_some(out)
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -442,5 +476,67 @@ mod tests {
         assert_eq!(plan.items[0].text, "Write tests");
         assert_eq!(plan.items[0].status, "completed");
         assert_eq!(plan.updated_at, 11.0);
+    }
+
+    #[test]
+    fn tool_result_wording_is_not_an_interrupt() {
+        // Everyday command/tool output mentioning these words must NOT register
+        // as a turn interruption.
+        let block = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": [
+                {"type": "tool_result", "content": "error: operation cancelled\nbuild aborted"}
+            ]}
+        });
+        let text = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": "why was the deploy aborted?"}
+        });
+        assert!(!is_claude_interrupted_row(&block));
+        assert!(!is_claude_interrupted_row(&text));
+    }
+
+    #[test]
+    fn genuine_interrupt_marker_is_detected() {
+        let string_form = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": "[Request interrupted by user]"}
+        });
+        let block_form = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": [
+                {"type": "text", "text": "[Request interrupted by user for tool use]"}
+            ]}
+        });
+        assert!(is_claude_interrupted_row(&string_form));
+        assert!(is_claude_interrupted_row(&block_form));
+    }
+
+    #[test]
+    fn live_turn_with_cancel_wording_stays_responding() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("codux-claude-probe-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("session.jsonl");
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(
+            file,
+            r#"{{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:00Z","type":"user","message":{{"role":"user","content":"do the thing"}}}}"#
+        )
+        .unwrap();
+        // Tool result whose output mentions "cancelled" -- mid-turn activity,
+        // not an interruption. The turn must still read as responding.
+        writeln!(
+            file,
+            r#"{{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:05Z","type":"user","message":{{"role":"user","content":[{{"type":"tool_result","content":"error: operation cancelled"}}]}}}}"#
+        )
+        .unwrap();
+        drop(file);
+
+        let aggregate =
+            parse_claude_log_runtime_state(&path, "/tmp/p", "s1").expect("aggregate");
+        assert_eq!(aggregate.response_state().as_deref(), Some("responding"));
+        assert!(!aggregate.was_interrupted());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

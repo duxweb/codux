@@ -936,6 +936,173 @@ if [[ "${tool_name}" == "codewhale" || "${tool_name}" == "codewhale-tui" || "${t
   esac
 fi
 
+if [[ "${tool_name}" == "kimi" ]]; then
+  kimi_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
+  [[ -z "${kimi_tokens}" ]] && kimi_tokens="null"
+  case "${action}" in
+    session-start)
+      write_ai_hook_event \
+        "sessionStarted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kimi_tokens}" \
+        "" \
+        "" \
+        "$(extract_first_hook_field source)"
+      log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    prompt-submit)
+      write_ai_hook_event \
+        "promptSubmitted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kimi_tokens}" \
+        "" \
+        "" \
+        "user-input"
+      log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    before-agent|after-agent)
+      write_ai_hook_event \
+        "promptSubmitted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kimi_tokens}" \
+        "" \
+        "" \
+        "tool-use" \
+        "" \
+        "" \
+        "$(extract_first_hook_field tool_name toolName tool)"
+      log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    permission-request)
+      if has_full_access_permission; then
+        write_ai_hook_event \
+          "promptSubmitted" \
+          "$(extract_hook_session_id)" \
+          "$(resolved_hook_model)" \
+          "null" \
+          "" \
+          "" \
+          "permission-auto-allowed"
+      else
+        write_ai_hook_event \
+          "needsInput" \
+          "$(extract_hook_session_id)" \
+          "$(resolved_hook_model)" \
+          "null" \
+          "" \
+          "permission-request" \
+          "" \
+          "permission-request" \
+          "" \
+          "$(extract_first_hook_field tool_name toolName tool)" \
+          "$(extract_first_hook_field message prompt)"
+      fi
+      log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    notification)
+      kimi_notification_type="$(extract_hook_notification_type)"
+      if [[ -n "${kimi_notification_type}" ]]; then
+        write_ai_hook_event \
+          "needsInput" \
+          "$(extract_hook_session_id)" \
+          "$(resolved_hook_model)" \
+          "null" \
+          "" \
+          "${kimi_notification_type}" \
+          "" \
+          "${kimi_notification_type}" \
+          "" \
+          "$(extract_first_hook_field tool_name toolName tool)" \
+          "$(extract_first_hook_field message)"
+      fi
+      ;;
+    pre-compact|post-compact)
+      write_ai_hook_event \
+        "memoryRefreshing" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kimi_tokens}" \
+        "" \
+        "" \
+        "${action}"
+      log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    stop|stop-failure)
+      write_ai_hook_event \
+        "turnCompleted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kimi_tokens}" \
+        "" \
+        "" \
+        "" \
+        "$(extract_first_hook_field stop_reason reason)"
+      log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    session-end)
+      write_ai_hook_event \
+        "sessionEnded" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kimi_tokens}" \
+        "" \
+        "" \
+        "" \
+        "$(extract_first_hook_field reason)"
+      log_line "kimi hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+  esac
+fi
+
+if [[ "${tool_name}" == "kiro" || "${tool_name}" == "kiro-cli" ]]; then
+  kiro_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
+  [[ -z "${kiro_tokens}" ]] && kiro_tokens="null"
+  case "${action}" in
+    session-start)
+      write_ai_hook_event \
+        "sessionStarted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kiro_tokens}" \
+        "" \
+        "" \
+        "$(extract_first_hook_field source)" \
+        "" \
+        "$(extract_first_hook_field cwd current_working_directory working_directory)"
+      log_line "kiro hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    prompt-submit)
+      write_ai_hook_event \
+        "promptSubmitted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kiro_tokens}" \
+        "" \
+        "" \
+        "user-input" \
+        "" \
+        "$(extract_first_hook_field cwd current_working_directory working_directory)"
+      log_line "kiro hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+    stop)
+      write_ai_hook_event \
+        "turnCompleted" \
+        "$(extract_hook_session_id)" \
+        "$(resolved_hook_model)" \
+        "${kiro_tokens}" \
+        "" \
+        "" \
+        "" \
+        "$(extract_first_hook_field reason stop_reason)" \
+        "$(extract_first_hook_field cwd current_working_directory working_directory)"
+      log_line "kiro hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-}"
+      ;;
+  esac
+fi
+
 if [[ "${should_emit_claude_memory_context}" == true ]]; then
   claude_memory_additional_context
 fi

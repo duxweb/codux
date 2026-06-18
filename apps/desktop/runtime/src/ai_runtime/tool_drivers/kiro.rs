@@ -15,8 +15,14 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
         path_segments: &[".kiro", "agents", "codux-managed.json"],
         format: AIRuntimeJsonHookFormat::Kiro,
         definitions: &[
+            // Kiro fires `userPromptSubmit` when the user submits (responding)
+            // and `stop` at the END OF EACH TURN -- not at session end -- when
+            // the assistant finishes responding (completed). The previous wiring
+            // had no responding hook and mis-mapped `stop` to session-end, so
+            // Kiro showed completion but never a running/loading state.
             hook("agentSpawn", "session-start", 5000, false),
-            hook("stop", "session-end", 5000, false),
+            hook("userPromptSubmit", "prompt-submit", 5000, false),
+            hook("stop", "stop", 5000, false),
         ],
     }),
     probe: Some(probe_kiro_runtime),

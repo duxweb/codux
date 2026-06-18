@@ -83,6 +83,18 @@ pub(crate) fn probe_codewhale_runtime(
         "restored".to_string()
     };
 
+    // CodeWhale's live running/completed state is owned by the OSC progress hook
+    // (see CodeWhaleTerminalProgressWatcher / submit_progress_hook): the
+    // `codux-message-submit` hook marks the turn responding and an OSC
+    // "completed" sequence ends it. The session file is a rest snapshot with no
+    // live state field, so for a session started THIS launch ("fresh") the probe
+    // stays neutral (no response_state) and lets the OSC signal own the state.
+    // Asserting idle+completed here would demote the live turn on every 5s poll
+    // -- and because the OSC completion only fires while the session is still
+    // "running", that false demotion also suppressed the real turn-complete. A
+    // restored session (no OSC events this launch) is reported as finished so it
+    // renders as completed.
+    let restored = state.origin == "restored";
     Some(AIRuntimeContextSnapshot {
         tool: "codewhale".to_string(),
         external_session_id: Some(state.external_session_id),
@@ -95,10 +107,10 @@ pub(crate) fn probe_codewhale_runtime(
         total_tokens: state.total_tokens,
         updated_at: state.updated_at.max(request.updated_at),
         started_at: Some(state.started_at),
-        completed_at: Some(state.updated_at),
-        response_state: Some("idle".to_string()),
+        completed_at: restored.then_some(state.updated_at),
+        response_state: restored.then(|| "idle".to_string()),
         was_interrupted: false,
-        has_completed_turn: true,
+        has_completed_turn: restored,
         session_origin: state.origin,
         source: "probe".to_string(),
         plan: None,
@@ -326,6 +338,59 @@ mod tests {
         assert_eq!(snapshot.external_session_id.as_deref(), Some("session-1"));
         assert_eq!(snapshot.model.as_deref(), Some("deepseek-reasoner"));
         assert_eq!(snapshot.total_tokens, 456);
+        // Started this launch (request.started_at = 0 <= session start) -> fresh,
+        // so the probe defers to the live OSC progress signal instead of
+        // asserting a completed turn that would demote the running state.
+        assert_eq!(snapshot.response_state, None);
+        assert!(!snapshot.has_completed_turn);
+        assert_eq!(snapshot.completed_at, None);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn restored_codewhale_session_reports_completed() {
+        let root = std::env::temp_dir().join(format!("codux-codewhale-probe-{}", Uuid::new_v4()));
+        let project = root.join("project");
+        let session_dir = root.join(".codewhale").join("sessions");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&session_dir).unwrap();
+        let session_file = session_dir.join("session-1.json");
+        fs::write(
+            &session_file,
+            format!(
+                r#"{{
+                    "metadata": {{
+                        "id": "session-1",
+                        "workspace": "{}",
+                        "model": "deepseek-reasoner",
+                        "total_tokens": 456,
+                        "created_at": "2026-06-06T01:00:00Z",
+                        "updated_at": "2026-06-06T01:01:00Z"
+                    }}
+                }}"#,
+                project.display()
+            ),
+        )
+        .unwrap();
+
+        // request.started_at far in the future -> the session predates this
+        // launch (restored), so it is reported as a finished turn (completed).
+        let snapshot = probe_codewhale_runtime(&AIRuntimeProbeRequest {
+            terminal_id: "terminal-1".to_string(),
+            terminal_instance_id: Some("instance-1".to_string()),
+            project_id: "project-1".to_string(),
+            project_path: Some(project.display().to_string()),
+            tool: "codewhale".to_string(),
+            external_session_id: Some("session-1".to_string()),
+            transcript_path: Some(session_file.display().to_string()),
+            started_at: Some(9_999_999_999.0),
+            updated_at: 1.0,
+        })
+        .unwrap();
+
+        assert_eq!(snapshot.response_state.as_deref(), Some("idle"));
+        assert!(snapshot.has_completed_turn);
 
         let _ = fs::remove_dir_all(root);
     }
