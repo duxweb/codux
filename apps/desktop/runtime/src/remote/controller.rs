@@ -11,7 +11,9 @@
 
 use base64::Engine;
 use codux_protocol::{
-    REMOTE_AI_STATE, REMOTE_AI_STATS, REMOTE_ERROR, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DELETE,
+    REMOTE_AI_STATE, REMOTE_AI_STATS, REMOTE_ERROR, REMOTE_FILE_BYTES_WRITTEN, REMOTE_FILE_COPIED,
+    REMOTE_FILE_COPY, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DELETE, REMOTE_FILE_MOVE,
+    REMOTE_FILE_MOVED, REMOTE_FILE_WRITE_BYTES,
     REMOTE_FILE_DELETED, REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_READ,
     REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN,
     REMOTE_GIT_INVOKE, REMOTE_GIT_READ, REMOTE_GIT_STATUS, REMOTE_HOST_INFO,
@@ -483,6 +485,49 @@ impl RemoteController {
             REMOTE_FILE_CREATE_DIRECTORY,
             json!({ "path": path }),
         )
+    }
+
+    fn reply_path(value: Value) -> String {
+        value
+            .get("path")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    /// Copy a file/dir into `target_dir` on the host; returns the new path.
+    pub fn copy_path(&self, path: &str, target_dir: &str) -> Result<String, String> {
+        self.request(
+            REMOTE_FILE_COPIED,
+            REMOTE_FILE_COPY,
+            json!({ "path": path, "targetDir": target_dir }),
+        )
+        .map(Self::reply_path)
+    }
+
+    pub fn move_path(
+        &self,
+        path: &str,
+        target_dir: &str,
+        overwrite: bool,
+    ) -> Result<String, String> {
+        self.request(
+            REMOTE_FILE_MOVED,
+            REMOTE_FILE_MOVE,
+            json!({ "path": path, "targetDir": target_dir, "overwrite": overwrite }),
+        )
+        .map(Self::reply_path)
+    }
+
+    /// Write raw bytes (base64 over the wire) as `name` in `directory` on the host.
+    pub fn write_bytes(&self, directory: &str, name: &str, bytes: &[u8]) -> Result<String, String> {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        self.request(
+            REMOTE_FILE_BYTES_WRITTEN,
+            REMOTE_FILE_WRITE_BYTES,
+            json!({ "directory": directory, "name": name, "bytes": encoded }),
+        )
+        .map(Self::reply_path)
     }
 
     pub fn write_file(&self, path: &str, content: &str) -> Result<Value, String> {

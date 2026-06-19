@@ -84,6 +84,12 @@ pub const REMOTE_FILE_DELETE: &str = "file.delete";
 pub const REMOTE_FILE_DELETED: &str = "file.deleted";
 pub const REMOTE_FILE_CREATE_DIRECTORY: &str = "file.createDirectory";
 pub const REMOTE_FILE_DIRECTORY_CREATED: &str = "file.directoryCreated";
+pub const REMOTE_FILE_COPY: &str = "file.copy";
+pub const REMOTE_FILE_COPIED: &str = "file.copied";
+pub const REMOTE_FILE_MOVE: &str = "file.move";
+pub const REMOTE_FILE_MOVED: &str = "file.moved";
+pub const REMOTE_FILE_WRITE_BYTES: &str = "file.writeBytes";
+pub const REMOTE_FILE_BYTES_WRITTEN: &str = "file.bytesWritten";
 pub const REMOTE_GIT_STATUS: &str = "git.status";
 /// Generic git mutation (`{op, projectPath, args}`) → refreshed `git.status`.
 pub const REMOTE_GIT_INVOKE: &str = "git.invoke";

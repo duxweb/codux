@@ -111,6 +111,15 @@ impl RuntimeService {
         entry_path: &str,
         directory_path: Option<&str>,
     ) -> Result<(Vec<FileEntry>, String), String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let controller = self.remote_controllers.controller_for(&device_id)?;
+            let new_abs = controller.copy_path(
+                &remote_absolute_path(project_path, Some(entry_path)),
+                &remote_absolute_path(project_path, directory_path),
+            )?;
+            let entries = self.remote_project_files(&device_id, project_path, directory_path)?;
+            return Ok((entries, remote_relative_path(project_path, &new_abs)));
+        }
         let entry = FilesService::copy_to_directory(project_path, entry_path, directory_path)?;
         Ok((
             load_file_entries(project_path, directory_path),
@@ -125,6 +134,15 @@ impl RuntimeService {
         target_directory_path: &str,
         directory_path: Option<&str>,
     ) -> Result<(Vec<FileEntry>, String), String> {
+        if let Some((entries, relative)) = self.remote_move_file_entry(
+            project_path,
+            entry_path,
+            target_directory_path,
+            directory_path,
+            false,
+        ) {
+            return Ok((entries?, relative));
+        }
         let entry = FilesService::move_to_directory(project_path, entry_path, target_directory_path)?;
         Ok((
             load_file_entries(project_path, directory_path),
@@ -139,6 +157,15 @@ impl RuntimeService {
         target_directory_path: &str,
         directory_path: Option<&str>,
     ) -> Result<(Vec<FileEntry>, String), String> {
+        if let Some((entries, relative)) = self.remote_move_file_entry(
+            project_path,
+            entry_path,
+            target_directory_path,
+            directory_path,
+            true,
+        ) {
+            return Ok((entries?, relative));
+        }
         let entry =
             FilesService::move_to_directory_overwrite(project_path, entry_path, target_directory_path)?;
         Ok((
@@ -153,6 +180,25 @@ impl RuntimeService {
         source_paths: Vec<String>,
         directory_path: Option<&str>,
     ) -> Result<(Vec<FileEntry>, Option<String>), String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            // Source files are local on this desktop; upload each to the host.
+            let controller = self.remote_controllers.controller_for(&device_id)?;
+            let directory = remote_absolute_path(project_path, directory_path);
+            let mut selected = None;
+            for source in &source_paths {
+                let bytes = std::fs::read(source).map_err(|error| error.to_string())?;
+                let name = std::path::Path::new(source)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("file");
+                let new_abs = controller.write_bytes(&directory, name, &bytes)?;
+                if selected.is_none() {
+                    selected = Some(remote_relative_path(project_path, &new_abs));
+                }
+            }
+            let entries = self.remote_project_files(&device_id, project_path, directory_path)?;
+            return Ok((entries, selected));
+        }
         let entries = crate::files::file_import_external(FileExternalCopyRequest {
             root_path: project_path.to_string(),
             source_paths,
@@ -169,11 +215,49 @@ impl RuntimeService {
         file_name: &str,
         bytes: Vec<u8>,
     ) -> Result<(Vec<FileEntry>, String), String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let new_abs = self.remote_controllers.controller_for(&device_id)?.write_bytes(
+                &remote_absolute_path(project_path, directory_path),
+                file_name,
+                &bytes,
+            )?;
+            let entries = self.remote_project_files(&device_id, project_path, directory_path)?;
+            return Ok((entries, remote_relative_path(project_path, &new_abs)));
+        }
         let entry =
             FilesService::write_bytes_to_directory(project_path, directory_path, file_name, &bytes)?;
         Ok((
             load_file_entries(project_path, directory_path),
             entry.relative_path,
+        ))
+    }
+
+    /// Shared remote move (used by move + move-overwrite). `None` ⇒ local project.
+    fn remote_move_file_entry(
+        &self,
+        project_path: &str,
+        entry_path: &str,
+        target_directory_path: &str,
+        directory_path: Option<&str>,
+        overwrite: bool,
+    ) -> Option<(Result<Vec<FileEntry>, String>, String)> {
+        let device_id = self.host_device_for_project_path(project_path)?;
+        let controller = match self.remote_controllers.controller_for(&device_id) {
+            Ok(controller) => controller,
+            Err(error) => return Some((Err(error), String::new())),
+        };
+        let new_abs = match controller.move_path(
+            &remote_absolute_path(project_path, Some(entry_path)),
+            &remote_absolute_path(project_path, Some(target_directory_path)),
+            overwrite,
+        ) {
+            Ok(path) => path,
+            Err(error) => return Some((Err(error), String::new())),
+        };
+        let relative = remote_relative_path(project_path, &new_abs);
+        Some((
+            self.remote_project_files(&device_id, project_path, directory_path),
+            relative,
         ))
     }
 

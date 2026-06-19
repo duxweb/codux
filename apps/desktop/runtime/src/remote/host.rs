@@ -4,8 +4,11 @@ use super::pairing::remote_summary_show_pending_pairing;
 use super::protocol::{
     REMOTE_AI_STATE, REMOTE_AI_STATS, REMOTE_DEVICE_CONNECTED, REMOTE_DEVICE_DISCONNECTED,
     REMOTE_ERROR,
-    REMOTE_FILE_DELETE, REMOTE_FILE_DELETED, REMOTE_FILE_LIST, REMOTE_FILE_READ,
-    REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN,
+    REMOTE_FILE_BYTES_WRITTEN, REMOTE_FILE_COPIED, REMOTE_FILE_COPY, REMOTE_FILE_CREATE_DIRECTORY,
+    REMOTE_FILE_DELETE, REMOTE_FILE_DELETED, REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST,
+    REMOTE_FILE_MOVE, REMOTE_FILE_MOVED, REMOTE_FILE_READ,
+    REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITE_BYTES,
+    REMOTE_FILE_WRITTEN,
     REMOTE_GIT_INVOKE, REMOTE_GIT_READ, REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_HOST_OFFLINE,
     REMOTE_PAIRING_CONFIRMED,
     REMOTE_PAIRING_REJECTED, REMOTE_PROJECT_ADD, REMOTE_PROJECT_EDIT, REMOTE_PROJECT_LIST,
@@ -827,6 +830,10 @@ impl RemoteHostRuntime {
             REMOTE_FILE_WRITE => self.handle_file_write(&envelope),
             REMOTE_FILE_RENAME => self.handle_file_rename(&envelope),
             REMOTE_FILE_DELETE => self.handle_file_delete(&envelope),
+            REMOTE_FILE_CREATE_DIRECTORY => self.handle_file_create_directory(&envelope),
+            REMOTE_FILE_COPY => self.handle_file_copy(&envelope),
+            REMOTE_FILE_MOVE => self.handle_file_move(&envelope),
+            REMOTE_FILE_WRITE_BYTES => self.handle_file_write_bytes(&envelope),
             REMOTE_GIT_STATUS => self.handle_git_status(&envelope),
             REMOTE_GIT_INVOKE => self.handle_git_invoke(&envelope),
             REMOTE_GIT_READ => self.handle_git_read(&envelope),
@@ -1246,6 +1253,72 @@ impl RemoteHostRuntime {
                 json!({ "path": path }),
             ),
             Err(error) => self.send_error(envelope, &error.to_string()),
+        }
+    }
+
+    fn handle_file_create_directory(&self, envelope: &RemoteEnvelope) {
+        let Some(path) = envelope.payload.get("path").and_then(Value::as_str) else {
+            self.send_error(envelope, "Directory path is required.");
+            return;
+        };
+        match runtime_file::file_make_directory(path) {
+            Ok(()) => self.send(
+                REMOTE_FILE_DIRECTORY_CREATED,
+                envelope.device_id.as_deref(),
+                None,
+                json!({ "path": path }),
+            ),
+            Err(error) => self.send_error(envelope, &error),
+        }
+    }
+
+    fn handle_file_copy(&self, envelope: &RemoteEnvelope) {
+        let path = envelope.payload.get("path").and_then(Value::as_str).unwrap_or_default();
+        let target = envelope.payload.get("targetDir").and_then(Value::as_str).unwrap_or_default();
+        match runtime_file::file_copy(path, target) {
+            Ok(new_path) => self.send(
+                REMOTE_FILE_COPIED,
+                envelope.device_id.as_deref(),
+                None,
+                json!({ "path": new_path }),
+            ),
+            Err(error) => self.send_error(envelope, &error),
+        }
+    }
+
+    fn handle_file_move(&self, envelope: &RemoteEnvelope) {
+        let path = envelope.payload.get("path").and_then(Value::as_str).unwrap_or_default();
+        let target = envelope.payload.get("targetDir").and_then(Value::as_str).unwrap_or_default();
+        let overwrite = envelope.payload.get("overwrite").and_then(Value::as_bool).unwrap_or(false);
+        match runtime_file::file_move(path, target, overwrite) {
+            Ok(new_path) => self.send(
+                REMOTE_FILE_MOVED,
+                envelope.device_id.as_deref(),
+                None,
+                json!({ "path": new_path }),
+            ),
+            Err(error) => self.send_error(envelope, &error),
+        }
+    }
+
+    fn handle_file_write_bytes(&self, envelope: &RemoteEnvelope) {
+        use base64::Engine;
+        let directory = envelope.payload.get("directory").and_then(Value::as_str).unwrap_or_default();
+        let name = envelope.payload.get("name").and_then(Value::as_str).unwrap_or_default();
+        let bytes = envelope
+            .payload
+            .get("bytes")
+            .and_then(Value::as_str)
+            .and_then(|encoded| base64::engine::general_purpose::STANDARD.decode(encoded).ok())
+            .unwrap_or_default();
+        match runtime_file::file_write_bytes(directory, name, &bytes) {
+            Ok(new_path) => self.send(
+                REMOTE_FILE_BYTES_WRITTEN,
+                envelope.device_id.as_deref(),
+                None,
+                json!({ "path": new_path }),
+            ),
+            Err(error) => self.send_error(envelope, &error),
         }
     }
 

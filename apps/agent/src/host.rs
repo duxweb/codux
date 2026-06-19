@@ -6,10 +6,12 @@
 //! payload builders in `codux-runtime-core`.
 
 use codux_protocol::{
-    REMOTE_AI_STATE, REMOTE_AI_STATS, REMOTE_ERROR, REMOTE_FILE_CREATE_DIRECTORY,
-    REMOTE_FILE_DELETE, REMOTE_FILE_DELETED,
-    REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_READ, REMOTE_FILE_RENAME,
-    REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN, REMOTE_GIT_INVOKE,
+    REMOTE_AI_STATE, REMOTE_AI_STATS, REMOTE_ERROR, REMOTE_FILE_BYTES_WRITTEN, REMOTE_FILE_COPIED,
+    REMOTE_FILE_COPY, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DELETE, REMOTE_FILE_DELETED,
+    REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_MOVE, REMOTE_FILE_MOVED,
+    REMOTE_FILE_READ, REMOTE_FILE_RENAME,
+    REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITE_BYTES, REMOTE_FILE_WRITTEN,
+    REMOTE_GIT_INVOKE,
     REMOTE_GIT_READ, REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_PAIRING_CONFIRMED,
     REMOTE_PAIRING_REQUEST,
     REMOTE_PROJECT_ADD, REMOTE_PROJECT_LIST, REMOTE_PROJECT_REMOVE, REMOTE_TERMINAL_CLOSE,
@@ -22,8 +24,8 @@ use codux_remote_transport::{
 use codux_terminal_pty::LocalPtyDriver;
 use codux_runtime_core::{
     file::{
-        file_delete, file_list_payload, file_make_directory, file_read_payload, file_rename,
-        file_write,
+        file_copy, file_delete, file_list_payload, file_make_directory, file_move,
+        file_read_payload, file_rename, file_write, file_write_bytes,
     },
     git::git_status_payload,
     host::{host_info_payload, HostInfoPayload},
@@ -176,6 +178,39 @@ fn make_handler(
                 },
                 None => Some((REMOTE_ERROR, json!({ "message": "Directory path is required." }))),
             },
+            REMOTE_FILE_COPY => {
+                let path = payload.get("path").and_then(Value::as_str).unwrap_or("");
+                let target = payload.get("targetDir").and_then(Value::as_str).unwrap_or("");
+                match file_copy(path, target) {
+                    Ok(new_path) => Some((REMOTE_FILE_COPIED, json!({ "path": new_path }))),
+                    Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
+                }
+            }
+            REMOTE_FILE_MOVE => {
+                let path = payload.get("path").and_then(Value::as_str).unwrap_or("");
+                let target = payload.get("targetDir").and_then(Value::as_str).unwrap_or("");
+                let overwrite = payload.get("overwrite").and_then(Value::as_bool).unwrap_or(false);
+                match file_move(path, target, overwrite) {
+                    Ok(new_path) => Some((REMOTE_FILE_MOVED, json!({ "path": new_path }))),
+                    Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
+                }
+            }
+            REMOTE_FILE_WRITE_BYTES => {
+                use base64::Engine;
+                let directory = payload.get("directory").and_then(Value::as_str).unwrap_or("");
+                let name = payload.get("name").and_then(Value::as_str).unwrap_or("");
+                let bytes = payload
+                    .get("bytes")
+                    .and_then(Value::as_str)
+                    .and_then(|encoded| {
+                        base64::engine::general_purpose::STANDARD.decode(encoded).ok()
+                    })
+                    .unwrap_or_default();
+                match file_write_bytes(directory, name, &bytes) {
+                    Ok(new_path) => Some((REMOTE_FILE_BYTES_WRITTEN, json!({ "path": new_path }))),
+                    Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
+                }
+            }
             REMOTE_PROJECT_LIST => Some((
                 REMOTE_PROJECT_LIST,
                 project_list_payload(AgentProjectStore::new().list(), None, None),

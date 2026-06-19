@@ -203,6 +203,15 @@ fn git_summary_from_payload(value: &serde_json::Value) -> crate::git::GitSummary
     }
 }
 
+/// Strip the project root from a host-absolute path to a project-relative one.
+pub(crate) fn remote_relative_path(project_path: &str, absolute: &str) -> String {
+    absolute
+        .strip_prefix(project_path.trim_end_matches('/'))
+        .unwrap_or(absolute)
+        .trim_start_matches('/')
+        .to_string()
+}
+
 /// Pull a string field out of a git.read `result` payload.
 pub(crate) fn remote_git_string(value: &serde_json::Value, key: &str) -> String {
     value
