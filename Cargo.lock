@@ -1246,6 +1246,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "codux-memory"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "codux-ai-history",
+ "codux-llm",
+ "llm-json-repair",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "codux-protocol"
 version = "1.8.1"
 dependencies = [

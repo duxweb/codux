@@ -1,0 +1,16 @@
+[package]
+name = "codux-memory"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+codux-llm = { path = "../codux-llm" }
+codux-ai-history = { path = "../codux-ai-history" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "v5"] }
+sha2 = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+llm-json-repair = "0.1"
+tokio = { version = "1", features = ["time"] }
