@@ -57,12 +57,13 @@ impl CoduxApp {
         let terminal_config = terminal_config_for_settings(&state.settings, window.appearance());
         let terminal_manager = runtime_service.terminal_manager();
         let terminal_pane_registry = HashMap::new();
-        // Boot restore runs during App construction, before `self`/`Context<Self>`
-        // exists to drive the async attach chokepoint, so it spawns local PTYs
-        // synchronously (`pending_out: None`). Remote-hosted terminals attach on
-        // the next project-switch restore; opening them inline here would block
-        // the boot thread on a network round-trip. (Boot-time remote restore is a
-        // documented follow-up.)
+        // Boot restore runs during App construction, before a `Context<Self>`
+        // exists to drive the async attach chokepoint. Local terminals spawn
+        // their PTY synchronously here; remote-hosted ones are collected as
+        // pending and attached once the entity exists, in
+        // `attach_boot_pending_terminals` (see `CoduxApp::new`'s caller). This is
+        // empty for the common local-only boot.
+        let mut boot_pending_terminals = Vec::new();
         let (terminals, active_terminal_id, next_terminal_index) = spawn_terminal_tabs(
             &restore_plan,
             terminal_manager.clone(),
@@ -70,7 +71,7 @@ impl CoduxApp {
             &base_pty_config,
             terminal_config,
             &terminal_pane_registry,
-            None,
+            Some(&mut boot_pending_terminals),
             cx,
         )?;
         let selected_ai_provider_id = state
@@ -136,6 +137,7 @@ impl CoduxApp {
             terminals,
             terminal_pane_registry: HashMap::new(),
             terminal_manager,
+            boot_pending_terminals,
             terminal_layout_loading: false,
             active_terminal_id,
             active_terminal_runtime_ids: HashMap::new(),
@@ -423,6 +425,17 @@ impl CoduxApp {
         };
         app.register_terminal_panes_without_observers();
         Ok(app)
+    }
+
+    /// Attach any remote-hosted terminals restored at boot. Called once right
+    /// after the entity is created, when a `Context<Self>` is available to drive
+    /// the async attach chokepoint. A no-op for the common local-only boot.
+    pub fn attach_boot_pending_terminals(&mut self, cx: &mut Context<Self>) {
+        if self.boot_pending_terminals.is_empty() {
+            return;
+        }
+        let pending = std::mem::take(&mut self.boot_pending_terminals);
+        self.spawn_attach_pending_terminals(None, pending, cx);
     }
 
     pub(crate) fn observe_main_window_appearance(

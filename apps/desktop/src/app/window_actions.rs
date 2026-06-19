@@ -116,6 +116,7 @@ impl CoduxApp {
             terminal_manager: Arc::new(TerminalManager::with_ai_runtime(
                 runtime_service.ai_runtime_bridge(),
             )),
+            boot_pending_terminals: Vec::new(),
             terminal_layout_loading: false,
             active_terminal_id: 0,
             active_terminal_runtime_ids: HashMap::new(),

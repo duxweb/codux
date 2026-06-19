@@ -39,6 +39,14 @@ pub struct CoduxApp {
     pub(in crate::app) terminals: Vec<TerminalTab>,
     pub(in crate::app) terminal_pane_registry: HashMap<String, TerminalPane>,
     pub(in crate::app) terminal_manager: Arc<TerminalManager>,
+    /// Remote-hosted terminals restored at boot. Boot runs during construction,
+    /// before a `Context<Self>` exists to drive the async attach chokepoint, so
+    /// they are collected here and attached once via `attach_boot_pending_terminals`
+    /// right after the entity is created. Empty for the common local-only boot.
+    pub(in crate::app) boot_pending_terminals: Vec<(
+        codux_runtime::terminal_pty::TerminalPtyConfig,
+        crate::terminal::PendingTerminalAttach,
+    )>,
     pub(in crate::app) terminal_layout_loading: bool,
     pub(in crate::app) active_terminal_id: usize,
     pub(in crate::app) active_terminal_runtime_ids: HashMap<WorktreeScopeKey, String>,

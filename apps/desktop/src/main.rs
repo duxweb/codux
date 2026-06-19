@@ -163,6 +163,9 @@ fn open_main_window(
                 app.initialize_main_window_focus(window, cx);
             });
             view.update(cx, |app, cx| app.start_runtime_event_loop(cx));
+            // Attach any remote-hosted terminals restored at boot now that the
+            // entity exists (the async attach chokepoint needs a Context<Self>).
+            view.update(cx, |app, cx| app.attach_boot_pending_terminals(cx));
             cx.new(|cx| Root::new(view, window, cx))
         },
     );
