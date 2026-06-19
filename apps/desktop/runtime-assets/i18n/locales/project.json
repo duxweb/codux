@@ -96,7 +96,19 @@
       "project.remove.success_format": "Removed project (project.name).",
       "project.remove.title": "Remove Project",
       "project.reveal.finder.success": "Revealed project in Finder.",
-      "project.update.success_format": "Updated project (updatedProject.name)."
+      "project.update.success_format": "Updated project (updatedProject.name).",
+      "project.editor.browse.title": "Choose Folder",
+      "project.editor.browse.use": "Use this folder",
+      "project.editor.browse.new_folder": "New folder",
+      "project.editor.browse.new_folder_placeholder": "New folder name",
+      "project.editor.device.local": "This Mac",
+      "project.editor.device.remote": "Device",
+      "file.picker.open.title": "Open File",
+      "file.picker.open.confirm": "Open",
+      "file.picker.save.title": "Save As",
+      "file.picker.save.confirm": "Save",
+      "device.type.android": "Android",
+      "device.type.unknown": "Remote device"
     },
     "es": {
       "project.activity.generic_input_request_format": "%@ espera tu respuesta en %@",
@@ -439,7 +451,19 @@
       "project.remove.success_format": "已移除项目 (project.name)。",
       "project.remove.title": "移除项目",
       "project.reveal.finder.success": "已在访达中显示项目。",
-      "project.update.success_format": "已更新项目 (updatedProject.name)。"
+      "project.update.success_format": "已更新项目 (updatedProject.name)。",
+      "project.editor.browse.title": "选择文件夹",
+      "project.editor.browse.use": "使用此文件夹",
+      "project.editor.browse.new_folder": "新建文件夹",
+      "project.editor.browse.new_folder_placeholder": "新文件夹名称",
+      "project.editor.device.local": "本机",
+      "project.editor.device.remote": "设备",
+      "file.picker.open.title": "打开文件",
+      "file.picker.open.confirm": "打开",
+      "file.picker.save.title": "另存为",
+      "file.picker.save.confirm": "保存",
+      "device.type.android": "安卓",
+      "device.type.unknown": "远程设备"
     },
     "zh-Hant": {
       "project.activity.generic_input_request_format": "%@ 正在等待你輸入（專案：%@）",
@@ -488,7 +512,19 @@
       "project.remove.success_format": "已刪除項目 (project.name)。",
       "project.remove.title": "移除項目",
       "project.reveal.finder.success": "已在 Finder 中顯示專案。",
-      "project.update.success_format": "更新了項目 (updatedProject.name)。"
+      "project.update.success_format": "更新了項目 (updatedProject.name)。",
+      "project.editor.browse.title": "選擇資料夾",
+      "project.editor.browse.use": "使用此資料夾",
+      "project.editor.browse.new_folder": "新增資料夾",
+      "project.editor.browse.new_folder_placeholder": "新資料夾名稱",
+      "project.editor.device.local": "本機",
+      "project.editor.device.remote": "裝置",
+      "file.picker.open.title": "開啟檔案",
+      "file.picker.open.confirm": "開啟",
+      "file.picker.save.title": "另存新檔",
+      "file.picker.save.confirm": "儲存",
+      "device.type.android": "Android",
+      "device.type.unknown": "遠端裝置"
     }
   }
 }
