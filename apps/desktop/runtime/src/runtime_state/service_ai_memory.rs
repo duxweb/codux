@@ -19,6 +19,18 @@ impl RuntimeService {
         project_path: &str,
         session_id: &str,
     ) -> AISessionDetail {
+        let mut args = serde_json::Map::new();
+        args.insert("sessionId".to_string(), session_id.into());
+        if let Some(result) = self.remote_ai_session(project_path, "detail", args) {
+            return result
+                .ok()
+                .and_then(|value| serde_json::from_value(value).ok())
+                .unwrap_or_else(|| AISessionDetail {
+                    id: session_id.to_string(),
+                    error: Some("Unable to load remote session detail.".to_string()),
+                    ..Default::default()
+                });
+        }
         AIHistoryService::new(self.support_dir.clone())
             .project_session_detail(project_path, session_id)
             .unwrap_or_else(|error| AISessionDetail {
@@ -32,6 +44,18 @@ impl RuntimeService {
         &self,
         request: AISessionForkRequest,
     ) -> Result<AISessionForkResult, String> {
+        let mut args = serde_json::Map::new();
+        args.insert("projectId".to_string(), request.project_id.clone().into());
+        args.insert("projectName".to_string(), request.project_name.clone().into());
+        args.insert("sessionId".to_string(), request.session_id.clone().into());
+        if let Ok(target) = serde_json::to_value(request.target_tool) {
+            args.insert("targetTool".to_string(), target);
+        }
+        if let Some(result) = self.remote_ai_session(&request.project_path, "fork", args) {
+            return result.and_then(|value| {
+                serde_json::from_value(value).map_err(|error| error.to_string())
+            });
+        }
         AIHistoryService::new(self.support_dir.clone()).fork_project_session(request)
     }
 
@@ -41,6 +65,14 @@ impl RuntimeService {
         session_id: &str,
         title: &str,
     ) -> Result<AIHistorySummary, String> {
+        let mut args = serde_json::Map::new();
+        args.insert("sessionId".to_string(), session_id.into());
+        args.insert("title".to_string(), title.into());
+        if let Some(result) = self.remote_ai_session(project_path, "rename", args) {
+            return result.and_then(|value| {
+                serde_json::from_value(value).map_err(|error| error.to_string())
+            });
+        }
         AIHistoryService::new(self.support_dir.clone()).rename_project_session(
             project_path,
             session_id,
@@ -53,6 +85,13 @@ impl RuntimeService {
         project_path: &str,
         session_id: &str,
     ) -> Result<AIHistorySummary, String> {
+        let mut args = serde_json::Map::new();
+        args.insert("sessionId".to_string(), session_id.into());
+        if let Some(result) = self.remote_ai_session(project_path, "remove", args) {
+            return result.and_then(|value| {
+                serde_json::from_value(value).map_err(|error| error.to_string())
+            });
+        }
         AIHistoryService::new(self.support_dir.clone())
             .remove_project_session(project_path, session_id)
     }

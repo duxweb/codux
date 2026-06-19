@@ -16,6 +16,7 @@ use codux_protocol::{
     REMOTE_FILE_MOVED, REMOTE_FILE_WRITE_BYTES,
     REMOTE_FILE_DELETED, REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_READ,
     REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN,
+    REMOTE_AI_SESSION, REMOTE_AI_SESSION_RESULT,
     REMOTE_GIT_INVOKE, REMOTE_GIT_READ, REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_MEMORY_EXTRACT,
     REMOTE_MEMORY_READ, REMOTE_MEMORY_RESULT,
     REMOTE_PAIRING_CONFIRMED, REMOTE_PAIRING_REJECTED,
@@ -630,6 +631,22 @@ impl RemoteController {
             REMOTE_MEMORY_EXTRACT,
             json!({ "config": config, "outputLocale": output_locale }),
             std::time::Duration::from_secs(300),
+        )?;
+        Ok(value.get("result").cloned().unwrap_or(Value::Null))
+    }
+
+    /// Run an AI-session op on the host (`detail`/`rename`/`remove`/`fork`).
+    /// `args` is merged with `op`; returns the `result` JSON.
+    pub fn ai_session(&self, op: &str, args: Value) -> Result<Value, String> {
+        let mut payload = match args {
+            Value::Object(map) => map,
+            _ => serde_json::Map::new(),
+        };
+        payload.insert("op".to_string(), Value::String(op.to_string()));
+        let value = self.request(
+            REMOTE_AI_SESSION,
+            REMOTE_AI_SESSION_RESULT,
+            Value::Object(payload),
         )?;
         Ok(value.get("result").cloned().unwrap_or(Value::Null))
     }

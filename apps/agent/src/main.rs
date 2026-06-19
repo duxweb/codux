@@ -17,6 +17,7 @@ mod ai_stats;
 mod git;
 mod host;
 mod memory;
+mod sessions;
 mod worktree;
 mod projects;
 mod terminals;

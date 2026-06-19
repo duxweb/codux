@@ -1213,6 +1213,7 @@ dependencies = [
  "base64",
  "chrono",
  "codux-ai-history",
+ "codux-ai-sessions",
  "codux-memory",
  "codux-protocol",
  "codux-remote-transport",

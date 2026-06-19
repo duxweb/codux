@@ -1,7 +1,7 @@
 use codux_ai_history::normalized::{AIHeatmapDay, AITimeBucket, AIUsageBreakdownItem};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistorySummary {
     pub indexed: bool,
@@ -23,7 +23,7 @@ pub struct AIHistorySummary {
     pub error: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIGlobalHistorySummary {
     pub indexed_project_count: usize,
@@ -37,7 +37,7 @@ pub struct AIGlobalHistorySummary {
     pub error: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIProjectUsageSummary {
     pub project_path: String,
@@ -48,7 +48,7 @@ pub struct AIProjectUsageSummary {
     pub today_total_tokens: i64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AISessionSummary {
     pub id: String,
@@ -63,7 +63,7 @@ pub struct AISessionSummary {
     pub request_count: i64,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AISessionDetail {
     pub id: String,
@@ -81,7 +81,7 @@ pub struct AISessionDetail {
     pub error: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum AISessionForkTarget {
     Codex,
@@ -120,7 +120,7 @@ pub struct AISessionForkRequest {
     pub target_tool: AISessionForkTarget,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AISessionForkResult {
     pub title: String,
@@ -129,7 +129,7 @@ pub struct AISessionForkResult {
     pub omitted_items: usize,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AISessionFileSummary {
     pub file_path: String,
@@ -141,7 +141,7 @@ pub struct AISessionFileSummary {
     pub request_count: i64,
 }
 
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryStatsView {
     pub project_total_tokens: i64,
@@ -153,7 +153,7 @@ pub struct AIHistoryStatsView {
     pub model_rows: Vec<AIHistoryRankRow>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryCurrentSessionView {
     pub tool: String,
@@ -161,7 +161,7 @@ pub struct AIHistoryCurrentSessionView {
     pub total_tokens: i64,
 }
 
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryUsageBucketView {
     pub start: f64,
@@ -172,7 +172,7 @@ pub struct AIHistoryUsageBucketView {
     pub opacity: f32,
 }
 
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryHeatmapCellView {
     pub day: f64,
@@ -182,7 +182,7 @@ pub struct AIHistoryHeatmapCellView {
     pub opacity: f32,
 }
 
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryRankRow {
     pub label: String,
@@ -190,7 +190,7 @@ pub struct AIHistoryRankRow {
     pub percent: f32,
 }
 
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryDailyLevelView {
     pub tokens: i64,
@@ -198,7 +198,7 @@ pub struct AIHistoryDailyLevelView {
     pub tiers: Vec<AIHistoryDailyLevelTierView>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AIHistoryDailyLevelTierView {
     pub id: String,

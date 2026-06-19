@@ -11,6 +11,7 @@ use codux_protocol::{
     REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_MOVE, REMOTE_FILE_MOVED,
     REMOTE_FILE_READ, REMOTE_FILE_RENAME,
     REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITE_BYTES, REMOTE_FILE_WRITTEN,
+    REMOTE_AI_SESSION, REMOTE_AI_SESSION_RESULT,
     REMOTE_GIT_INVOKE,
     REMOTE_GIT_READ, REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_MEMORY_EXTRACT, REMOTE_MEMORY_READ,
     REMOTE_MEMORY_RESULT,
@@ -396,6 +397,13 @@ fn make_handler(
             REMOTE_MEMORY_READ => {
                 // The host runs the codux-memory engine against its own store.
                 Some((REMOTE_MEMORY_RESULT, crate::memory::memory_read_payload(&payload)))
+            }
+            REMOTE_AI_SESSION => {
+                // The host runs the codux-ai-sessions engine against its own history.
+                Some((
+                    REMOTE_AI_SESSION_RESULT,
+                    crate::sessions::ai_session_payload(&payload),
+                ))
             }
             REMOTE_AI_STATE => {
                 // The controller owns the project record and sends its path; the
@@ -867,6 +875,18 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
             return Err(format!("memory.extract reply missing op: {extract}"));
         }
 
+        // ai.session: the host runs the codux-ai-sessions engine. A detail query
+        // for an unknown session returns null (no error path), exercising the
+        // dispatch end to end.
+        request(
+            REMOTE_AI_SESSION,
+            json!({ "op": "detail", "projectPath": stats_project, "sessionId": "none" }),
+        )?;
+        let session = expect(&mut reply_rx, REMOTE_AI_SESSION_RESULT).await?;
+        if session.get("op").and_then(Value::as_str) != Some("detail") {
+            return Err(format!("ai.session reply missing op: {session}"));
+        }
+
         Ok::<(), String>(())
     };
     let result = run.await;
@@ -875,5 +895,5 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
     controller.shutdown().await;
     let _ = std::fs::remove_dir_all(&data_dir);
     result?;
-    Ok("codux-agent-serve-ok\npairing + file + project + terminal + git + ai + memory (read+extract) domains verified".to_string())
+    Ok("codux-agent-serve-ok\npairing + file + project + terminal + git + ai + memory (read+extract) + ai-session domains verified".to_string())
 }

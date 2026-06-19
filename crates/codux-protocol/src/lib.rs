@@ -112,6 +112,13 @@ pub const REMOTE_MEMORY_RESULT: &str = "memory.result";
 /// config is used for the run and not persisted.
 pub const REMOTE_MEMORY_EXTRACT: &str = "memory.extract";
 
+/// Generic AI-session op (`{op, projectPath, …}`) → `{op, result}`. The host
+/// runs the codux-ai-sessions engine against its own history. Ops: `detail`,
+/// `rename`, `remove`, `fork`.
+pub const REMOTE_AI_SESSION: &str = "ai.session";
+/// Reply to `ai.session`: `{op, result}` carrying the op's JSON.
+pub const REMOTE_AI_SESSION_RESULT: &str = "ai.session.result";
+
 pub const REMOTE_TRANSPORT_IROH: &str = "iroh";
 pub const REMOTE_TRANSPORT_ROLE_HOST: &str = "host";
 
