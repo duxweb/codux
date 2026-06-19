@@ -356,6 +356,12 @@ impl CoduxApp {
             project_editor_badge_symbol: None,
             project_editor_badge_color_hex: PROJECT_BADGE_COLORS[0].to_string(),
             project_editor_saving: false,
+            project_editor_host_device_id: None,
+            project_editor_pairing_open: false,
+            project_editor_pairing_ticket: String::new(),
+            project_editor_pairing_name: String::new(),
+            project_editor_pairing_error: None,
+            project_editor_pairing_busy: false,
             terminal_tab_editor_id: None,
             terminal_tab_editor_label: String::new(),
             worktree_creator_project_id: None,
@@ -497,6 +503,7 @@ impl CoduxApp {
         app.project_editor_badge_color_hex = project
             .badge_color_hex
             .unwrap_or_else(|| PROJECT_BADGE_COLORS[0].to_string());
+        app.project_editor_host_device_id = project.host_device_id;
         app
     }
 

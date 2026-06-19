@@ -1896,6 +1896,116 @@ impl CoduxApp {
         self.invalidate_project_management(cx);
     }
 
+    pub(super) fn set_project_editor_host_device_id(
+        &mut self,
+        value: Option<String>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.project_editor_host_device_id == value {
+            return;
+        }
+        // Switching device invalidates a path that lived on the other device.
+        self.project_editor_host_device_id = value;
+        self.project_editor_path = String::new();
+        self.invalidate_project_management(cx);
+    }
+
+    pub(super) fn toggle_project_editor_pairing(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_pairing_open = !self.project_editor_pairing_open;
+        self.project_editor_pairing_error = None;
+        self.invalidate_project_management(cx);
+    }
+
+    pub(super) fn set_project_editor_pairing_ticket(
+        &mut self,
+        value: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_pairing_ticket = value;
+        self.invalidate_project_management(cx);
+    }
+
+    pub(super) fn set_project_editor_pairing_name(
+        &mut self,
+        value: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_pairing_name = value;
+        self.invalidate_project_management(cx);
+    }
+
+    /// Pair with a remote host from the pasted ticket, then select it as the
+    /// project's device.
+    pub(super) fn submit_project_editor_pairing(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let ticket = self.project_editor_pairing_ticket.trim().to_string();
+        if ticket.is_empty() {
+            self.project_editor_pairing_error = Some("Paste a pairing ticket.".to_string());
+            self.invalidate_project_management(cx);
+            return;
+        }
+        let device_name = {
+            let name = self.project_editor_pairing_name.trim();
+            if name.is_empty() {
+                "Codux Desktop".to_string()
+            } else {
+                name.to_string()
+            }
+        };
+        let runtime_service = self.runtime_service.clone();
+        let window_handle = window.window_handle();
+        self.project_editor_pairing_busy = true;
+        self.project_editor_pairing_error = None;
+        self.invalidate_project_management(cx);
+
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::run_limited_blocking(move || {
+                runtime_service.pair_remote_host(&ticket, &device_name)
+            })
+            .await
+            .unwrap_or_else(|error| Err(format!("failed to join pairing: {error}")));
+
+            let _ = window_handle.update(cx, |_root, _window, cx| {
+                let _ = this.update(cx, |app, cx| {
+                    app.project_editor_pairing_busy = false;
+                    match result {
+                        Ok(saved) => {
+                            app.status_message = format!(
+                                "paired with {}",
+                                if saved.host_name.is_empty() {
+                                    saved.host_id.clone()
+                                } else {
+                                    saved.host_name.clone()
+                                }
+                            );
+                            app.project_editor_host_device_id = Some(saved.device_id);
+                            app.project_editor_path = String::new();
+                            app.project_editor_pairing_open = false;
+                            app.project_editor_pairing_ticket = String::new();
+                            app.project_editor_pairing_name = String::new();
+                            app.project_editor_pairing_error = None;
+                        }
+                        Err(error) => {
+                            app.project_editor_pairing_error = Some(error);
+                        }
+                    }
+                    app.invalidate_project_management(cx);
+                });
+            });
+        })
+        .detach();
+    }
+
     pub(super) fn choose_project_editor_directory(
         &mut self,
         window: &mut Window,
@@ -1981,6 +2091,7 @@ impl CoduxApp {
         let project_id = self.project_editor_project_id.clone();
         let badge_symbol = self.project_editor_badge_symbol.clone();
         let badge_color_hex = self.project_editor_badge_color_hex.clone();
+        let host_device_id = self.project_editor_host_device_id.clone();
         let runtime_service = self.runtime_service.clone();
         let window_handle = window.window_handle();
         self.project_editor_saving = true;
@@ -2001,7 +2112,7 @@ impl CoduxApp {
                         badge_text: project_badge_text_from_name(&name),
                         badge_symbol,
                         badge_color_hex: Some(badge_color_hex),
-                        host_device_id: None,
+                        host_device_id,
                     })
                 } else {
                     runtime_service.project_create(ProjectCreateRequest {
@@ -2010,7 +2121,7 @@ impl CoduxApp {
                         badge_text: project_badge_text_from_name(&name),
                         badge_symbol,
                         badge_color_hex: Some(badge_color_hex),
-                        host_device_id: None,
+                        host_device_id,
                     })
                 };
                 save_result.map(|_| (runtime_service.reload_state(), name))

@@ -43,6 +43,7 @@ impl CoduxApp {
                         cx,
                         |app, value, window, cx| app.set_project_editor_name(value, window, cx),
                     ))
+                    .child(self.project_editor_device_field(window, cx))
                     .child(project_editor_path_field(
                         tr("project.editor.directory", "Project Directory"),
                         tr("project.editor.choose_directory.prompt", "Choose"),
@@ -91,6 +92,176 @@ impl CoduxApp {
                 cx,
             ))
     }
+
+    /// The "Device" selector: This Mac (local) + each paired remote host, plus
+    /// an inline "pair a new device" form. Selecting a remote device marks the
+    /// project as hosted there (its domains route over the controller).
+    fn project_editor_device_field(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let locale = locale_from_language_setting(self.state.settings.language.as_str());
+        let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
+        let hosts = self.runtime_service.saved_remote_hosts();
+        let selected = self.project_editor_host_device_id.clone();
+
+        let mut row = div().flex().flex_wrap().items_center().gap_2().child(
+            project_editor_device_chip(
+                "project-editor-device-local".to_string(),
+                tr("project.editor.device.local", "This Mac"),
+                selected.is_none(),
+                cx,
+                |app, window, cx| app.set_project_editor_host_device_id(None, window, cx),
+            ),
+        );
+        for host in &hosts {
+            let device_id = host.device_id.clone();
+            let is_selected = selected.as_deref() == Some(device_id.as_str());
+            let label = if host.host_name.trim().is_empty() {
+                host.host_id.clone()
+            } else {
+                host.host_name.clone()
+            };
+            row = row.child(project_editor_device_chip(
+                format!("project-editor-device-{device_id}"),
+                label,
+                is_selected,
+                cx,
+                move |app, window, cx| {
+                    app.set_project_editor_host_device_id(Some(device_id.clone()), window, cx)
+                },
+            ));
+        }
+        row = row.child(
+            Button::new("project-editor-device-pair")
+                .secondary()
+                .compact()
+                .text_color(cx.theme().secondary_foreground)
+                .child(dialog_button_label(tr(
+                    "project.editor.device.pair",
+                    "Pair device…",
+                )))
+                .on_click(cx.listener(|app, _event, window, cx| {
+                    app.toggle_project_editor_pairing(window, cx);
+                })),
+        );
+
+        let mut field = div()
+            .flex()
+            .flex_col()
+            .gap(px(6.0))
+            .mb(px(24.0))
+            .child(
+                div()
+                    .text_size(rems(0.875))
+                    .line_height(rems(1.125))
+                    .text_color(color(theme::TEXT))
+                    .child(tr("project.editor.device", "Device")),
+            )
+            .child(row);
+        if self.project_editor_pairing_open {
+            field = field.child(self.project_editor_pairing_panel(window, cx));
+        }
+        field.into_any_element()
+    }
+
+    fn project_editor_pairing_panel(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let locale = locale_from_language_setting(self.state.settings.language.as_str());
+        let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
+        let mut panel = div()
+            .mt(px(10.0))
+            .p(px(12.0))
+            .rounded(px(8.0))
+            .border_1()
+            .border_color(color(theme::BORDER_SOFT))
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .child(
+                div()
+                    .text_size(rems(0.8125))
+                    .text_color(color(theme::TEXT_MUTED))
+                    .child(tr(
+                        "project.editor.device.pair.hint",
+                        "Paste the pairing ticket the host shows (codux://pair…).",
+                    )),
+            )
+            .child(project_editor_input(
+                "project-editor-pairing-ticket",
+                &self.project_editor_pairing_ticket,
+                "codux://pair?payload=…",
+                window,
+                cx,
+                |app, value, window, cx| app.set_project_editor_pairing_ticket(value, window, cx),
+            ))
+            .child(project_editor_input(
+                "project-editor-pairing-name",
+                &self.project_editor_pairing_name,
+                "This device name",
+                window,
+                cx,
+                |app, value, window, cx| app.set_project_editor_pairing_name(value, window, cx),
+            ));
+        if let Some(error) = self.project_editor_pairing_error.as_ref() {
+            panel = panel.child(
+                div()
+                    .text_size(rems(0.8125))
+                    .text_color(color(theme::ORANGE))
+                    .child(error.clone()),
+            );
+        }
+        panel
+            .child(
+                div().flex().child(
+                    dialog_primary_button(
+                        "project-editor-pairing-submit",
+                        tr("project.editor.device.pair.submit", "Pair"),
+                        cx,
+                        |app, _event, window, cx| app.submit_project_editor_pairing(window, cx),
+                    )
+                    .disabled(self.project_editor_pairing_busy)
+                    .loading(self.project_editor_pairing_busy),
+                ),
+            )
+            .into_any_element()
+    }
+}
+
+fn project_editor_device_chip(
+    id: String,
+    label: String,
+    selected: bool,
+    cx: &mut Context<CoduxApp>,
+    on_click: impl Fn(&mut CoduxApp, &mut Window, &mut Context<CoduxApp>) + 'static,
+) -> AnyElement {
+    div()
+        .id(SharedString::from(id))
+        .px(px(12.0))
+        .py(px(6.0))
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(color(if selected {
+            theme::BORDER
+        } else {
+            theme::BORDER_SOFT
+        }))
+        .bg(if selected {
+            cx.theme().secondary_hover
+        } else {
+            cx.theme().secondary
+        })
+        .text_size(rems(0.8125))
+        .text_color(color(theme::TEXT))
+        .cursor_pointer()
+        .hover(|style| style.bg(cx.theme().secondary_hover))
+        .on_click(cx.listener(move |app, _event, window, cx| on_click(app, window, cx)))
+        .child(label)
+        .into_any_element()
 }
 
 struct ProjectEditorSymbol {

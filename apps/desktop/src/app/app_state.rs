@@ -284,6 +284,15 @@ pub struct CoduxApp {
     pub(in crate::app) project_editor_badge_symbol: Option<String>,
     pub(in crate::app) project_editor_badge_color_hex: String,
     pub(in crate::app) project_editor_saving: bool,
+    /// `Some(device_id)` when the project being edited is hosted on a remote
+    /// device; `None` = local. Drives the editor's device picker + remote browse.
+    pub(in crate::app) project_editor_host_device_id: Option<String>,
+    /// Inline "pair a new device" form state within the project editor.
+    pub(in crate::app) project_editor_pairing_open: bool,
+    pub(in crate::app) project_editor_pairing_ticket: String,
+    pub(in crate::app) project_editor_pairing_name: String,
+    pub(in crate::app) project_editor_pairing_error: Option<String>,
+    pub(in crate::app) project_editor_pairing_busy: bool,
     pub(in crate::app) terminal_tab_editor_id: Option<usize>,
     pub(in crate::app) terminal_tab_editor_label: String,
     pub(in crate::app) worktree_creator_project_id: Option<String>,
