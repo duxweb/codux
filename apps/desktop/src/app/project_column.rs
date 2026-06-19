@@ -222,7 +222,7 @@ fn project_column_header(collapsed: bool) -> impl IntoElement {
         titlebar_drag_area(
             "project-column-titlebar-drag-collapsed",
             div()
-                .h(px(48.0))
+                .h(px(52.0))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -242,7 +242,7 @@ fn project_column_header(collapsed: bool) -> impl IntoElement {
         .into_any_element()
     } else {
         div()
-            .h(px(44.0))
+            .h(px(52.0))
             .px(px(10.0))
             .flex()
             .items_center()

@@ -388,7 +388,7 @@ fn task_column_header(
     let create_entity = app_entity.clone();
     let refresh_entity = app_entity.clone();
     div()
-        .h(px(44.0))
+        .h(px(52.0))
         .w_full()
         .px(px(10.0))
         .flex_shrink_0()
