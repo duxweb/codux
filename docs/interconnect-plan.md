@@ -95,13 +95,38 @@ x11/wayland unproven.)
 
 ## Status
 
-- **Done:** `apps/agent` serves a real host domain over Iroh — `host.info`, `file.list`,
-  `file.read` — via `apps/agent/src/host.rs`. `--serve` runs it; `--serve-smoke` (in
-  `just smoke`) proves a controller→host `file.list` round trip end to end. This is the
-  first real slice of P2 and establishes the serve-loop pattern for all domains.
-- **Next:** P1 trait seam + migrate ProjectStore/Worktree → terminal → AI → memory into the
-  shared host runtime, then point `apps/agent --serve` at it; in parallel, P3 desktop client
-  + P4 routing so the desktop can connect and use it.
+- **Done — agent serves every mirror-able domain over Iroh** (`apps/agent/src/host.rs`,
+  all proven by `--serve-smoke` controller→host round trips):
+  - `host.info`
+  - `file.*` — list / read / write / rename / delete / **createDirectory** (mkdir)
+  - `project.*` — list / add / remove (`AgentProjectStore`, JSON at the agent data dir)
+  - `terminal.*` — create / input / resize / close + async `terminal.output` streaming
+    (real PTYs via `codux-terminal-pty`)
+  - `git.status` — lean git2 reader (`apps/agent/src/git.rs`); git2 on the agent binary
+    only, never the shared crates, so the mobile FFI stays clear of libgit2
+  - `ai.stats` — the AI usage engine was extracted into the shared **`codux-ai-history`**
+    crate (normalized parsers + SQLite usage store + background indexer, GPUI-free); the
+    desktop re-exports it under the old module paths, the agent opens it against its data
+    dir and serves a single-reply usage snapshot (`apps/agent/src/ai_stats.rs`).
+
+  These cover every domain the **desktop host actually serves remotely today** — the agent
+  controlled-end is at parity with the desktop host.
+
+- **Memory is deliberately NOT a controlled-end mirror.** There is *no remote memory
+  protocol* anywhere (not in `codux-protocol`, not desktop↔desktop, not desktop↔mobile), so
+  there is nothing to mirror. And the memory engine's core flow — extraction/apply/profile —
+  selects an **AI provider with an API key** from `crate::settings::AISettings` to run LLM
+  completions. Serving memory on the headless host therefore requires two things that don't
+  exist yet: (a) a net-new remote memory protocol *and a consumer*, and (b) **model routing
+  to the host (P4)** so extraction has a provider. Building it before those lands would be
+  speculative scaffolding with no consumer. → **Memory moves into P4**, sequenced after
+  model routing, not into the controlled-end grind. (The host's stored memory *files* —
+  `memory-workspaces/MEMORY.md` and entries — are already reachable today via the `file.*`
+  domain.)
+
+- **Next:** P3 desktop-as-client (controller runtime + paste-ticket pairing in Rust + GPUI
+  UI) and P4 device-aware project model + `RuntimeService` routing — so the desktop can
+  actually connect to and drive an agent. Memory-over-remote rides on P4.
 
 ## Verification
 
