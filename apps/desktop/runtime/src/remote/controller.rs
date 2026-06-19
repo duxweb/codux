@@ -62,6 +62,22 @@ pub struct TicketTransport {
     pub relay_authentication: String,
 }
 
+/// A directory listing on a remote host, parsed from the `file.list` payload so
+/// the UI never has to touch the wire JSON.
+#[derive(Clone, Debug, Default)]
+pub struct RemoteDirectoryListing {
+    pub path: String,
+    pub parent: Option<String>,
+    pub entries: Vec<RemoteDirectoryEntry>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RemoteDirectoryEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+}
+
 /// Parse a pasted `codux://pair?payload=<base64url>` ticket (or a bare base64url
 /// payload) into its fields.
 pub fn parse_pairing_ticket(input: &str) -> Result<PairingTicket, String> {
@@ -379,6 +395,48 @@ impl RemoteController {
             payload["purpose"] = json!(purpose);
         }
         self.request(REMOTE_FILE_LIST, REMOTE_FILE_LIST, payload)
+    }
+
+    /// List a remote directory and parse it into a typed listing.
+    pub fn browse_directory(&self, path: Option<&str>) -> Result<RemoteDirectoryListing, String> {
+        let value = self.file_list(path, Some("projectFiles"))?;
+        Ok(RemoteDirectoryListing {
+            path: value
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            parent: value
+                .get("parent")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            entries: value
+                .get("entries")
+                .and_then(Value::as_array)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .map(|entry| RemoteDirectoryEntry {
+                            name: entry
+                                .get("name")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string(),
+                            path: entry
+                                .get("path")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string(),
+                            is_dir: entry
+                                .get("isDirectory")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        })
     }
 
     pub fn create_directory(&self, path: &str) -> Result<Value, String> {

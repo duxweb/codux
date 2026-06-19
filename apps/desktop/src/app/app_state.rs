@@ -1,5 +1,12 @@
 use super::*;
 
+/// One entry in the inline remote directory browser (a directory on a host).
+#[derive(Clone)]
+pub(in crate::app) struct RemoteBrowseEntry {
+    pub(in crate::app) name: String,
+    pub(in crate::app) path: String,
+}
+
 static ACTIVE_SETTINGS_SNAPSHOT: OnceLock<std::sync::Mutex<SettingsSummary>> = OnceLock::new();
 
 pub(crate) fn set_active_settings_snapshot(settings: SettingsSummary) {
@@ -293,6 +300,15 @@ pub struct CoduxApp {
     pub(in crate::app) project_editor_pairing_name: String,
     pub(in crate::app) project_editor_pairing_error: Option<String>,
     pub(in crate::app) project_editor_pairing_busy: bool,
+    /// Inline remote directory browser state (shown when choosing a directory on
+    /// a remote device instead of opening the native OS dialog).
+    pub(in crate::app) project_editor_browse_open: bool,
+    pub(in crate::app) project_editor_browse_busy: bool,
+    pub(in crate::app) project_editor_browse_path: String,
+    pub(in crate::app) project_editor_browse_parent: Option<String>,
+    pub(in crate::app) project_editor_browse_entries: Vec<RemoteBrowseEntry>,
+    pub(in crate::app) project_editor_browse_error: Option<String>,
+    pub(in crate::app) project_editor_browse_new_folder: String,
     pub(in crate::app) terminal_tab_editor_id: Option<usize>,
     pub(in crate::app) terminal_tab_editor_label: String,
     pub(in crate::app) worktree_creator_project_id: Option<String>,

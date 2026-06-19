@@ -27,16 +27,16 @@ impl RuntimeService {
         self.remote_controllers.forget(device_id)
     }
 
-    /// List a directory on a remote host (for the add-project remote browser).
-    /// Returns the raw `file.list` payload `{ path, parent, entries[] }`.
+    /// List a directory on a remote host (for the add-project remote browser),
+    /// parsed into a typed listing so the UI never touches the wire JSON.
     pub fn remote_browse_directory(
         &self,
         device_id: &str,
         path: Option<&str>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<crate::remote::RemoteDirectoryListing, String> {
         self.remote_controllers
             .controller_for(device_id)?
-            .file_list(path, Some("projectFiles"))
+            .browse_directory(path)
     }
 
     /// Create a directory on a remote host (for the add-project remote flow).

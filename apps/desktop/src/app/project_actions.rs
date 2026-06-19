@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::app_state::RemoteBrowseEntry;
 use crate::app::app_events::{ChildWindowUpdateKind, publish_child_window_update};
 use crate::app::terminal_worktree_actions::TerminalLayoutSnapshot;
 use crate::app::window_actions::{AuxiliaryWindowSlot, AuxiliaryWindowSpec};
@@ -2011,6 +2012,12 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A remote project's directory lives on the host — browse it over the
+        // controller transport instead of the local OS dialog.
+        if let Some(device_id) = self.project_editor_host_device_id.clone() {
+            self.open_project_editor_browse(device_id, None, window, cx);
+            return;
+        }
         let locale = locale_from_language_setting(&self.state.settings.language);
         let default_path = clean_dialog_path(&self.project_editor_path);
         let request = LocalizedOpenDialogRequest {
@@ -2074,6 +2081,168 @@ impl CoduxApp {
             }
         }
         self.invalidate_project_management(cx);
+    }
+
+    pub(super) fn open_project_editor_browse(
+        &mut self,
+        device_id: String,
+        path: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_browse_open = true;
+        self.project_editor_browse_error = None;
+        self.load_project_editor_browse(device_id, path, window.window_handle(), cx);
+    }
+
+    pub(super) fn close_project_editor_browse(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_browse_open = false;
+        self.project_editor_browse_error = None;
+        self.project_editor_browse_new_folder.clear();
+        self.invalidate_project_management(cx);
+    }
+
+    pub(super) fn project_editor_browse_navigate(
+        &mut self,
+        path: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(device_id) = self.project_editor_host_device_id.clone() {
+            self.load_project_editor_browse(device_id, path, window.window_handle(), cx);
+        }
+    }
+
+    pub(super) fn project_editor_browse_select(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.project_editor_browse_path.trim().is_empty() {
+            self.project_editor_path = self.project_editor_browse_path.clone();
+        }
+        self.project_editor_browse_open = false;
+        self.invalidate_project_management(cx);
+    }
+
+    pub(super) fn set_project_editor_browse_new_folder(
+        &mut self,
+        value: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_browse_new_folder = value;
+        self.invalidate_project_management(cx);
+    }
+
+    pub(super) fn project_editor_browse_create_folder(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let name = self.project_editor_browse_new_folder.trim().to_string();
+        let Some(device_id) = self.project_editor_host_device_id.clone() else {
+            return;
+        };
+        if name.is_empty() || self.project_editor_browse_path.trim().is_empty() {
+            return;
+        }
+        let parent = self
+            .project_editor_browse_path
+            .trim_end_matches('/')
+            .to_string();
+        let target = format!("{parent}/{name}");
+        let runtime_service = self.runtime_service.clone();
+        let window_handle = window.window_handle();
+        self.project_editor_browse_busy = true;
+        self.project_editor_browse_error = None;
+        self.invalidate_project_management(cx);
+
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::run_limited_blocking(move || {
+                runtime_service
+                    .remote_create_directory(&device_id, &target)
+                    .map(|_| (device_id, parent))
+            })
+            .await
+            .unwrap_or_else(|error| Err(format!("failed to join create directory: {error}")));
+
+            let _ = window_handle.update(cx, |_root, _window, cx| {
+                let _ = this.update(cx, |app, cx| {
+                    app.project_editor_browse_busy = false;
+                    match result {
+                        Ok((device_id, parent)) => {
+                            app.project_editor_browse_new_folder.clear();
+                            app.load_project_editor_browse(
+                                device_id,
+                                Some(parent),
+                                window_handle,
+                                cx,
+                            );
+                        }
+                        Err(error) => {
+                            app.project_editor_browse_error = Some(error);
+                            app.invalidate_project_management(cx);
+                        }
+                    }
+                });
+            });
+        })
+        .detach();
+    }
+
+    fn load_project_editor_browse(
+        &mut self,
+        device_id: String,
+        path: Option<String>,
+        window_handle: gpui::AnyWindowHandle,
+        cx: &mut Context<Self>,
+    ) {
+        let runtime_service = self.runtime_service.clone();
+        let path_for_call = path.clone();
+        self.project_editor_browse_busy = true;
+        self.project_editor_browse_error = None;
+        self.invalidate_project_management(cx);
+
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let result = codux_runtime::async_runtime::run_limited_blocking(move || {
+                runtime_service.remote_browse_directory(&device_id, path_for_call.as_deref())
+            })
+            .await
+            .unwrap_or_else(|error| Err(format!("failed to join remote browse: {error}")));
+
+            let _ = window_handle.update(cx, |_root, _window, cx| {
+                let _ = this.update(cx, |app, cx| {
+                    app.project_editor_browse_busy = false;
+                    match result {
+                        Ok(listing) => app.apply_project_editor_browse(listing),
+                        Err(error) => app.project_editor_browse_error = Some(error),
+                    }
+                    app.invalidate_project_management(cx);
+                });
+            });
+        })
+        .detach();
+    }
+
+    fn apply_project_editor_browse(&mut self, listing: codux_runtime::remote::RemoteDirectoryListing) {
+        self.project_editor_browse_path = listing.path;
+        self.project_editor_browse_parent = listing.parent;
+        // Only directories are pickable as a project root.
+        self.project_editor_browse_entries = listing
+            .entries
+            .into_iter()
+            .filter(|entry| entry.is_dir)
+            .map(|entry| RemoteBrowseEntry {
+                name: entry.name,
+                path: entry.path,
+            })
+            .collect();
+        self.project_editor_browse_error = None;
     }
 
     pub(super) fn save_project_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {

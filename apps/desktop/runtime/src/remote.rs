@@ -20,6 +20,7 @@ use std::path::PathBuf;
 
 pub use controller::{
     parse_pairing_ticket, PairingTicket, RemoteController, RemoteControllerTarget,
+    RemoteDirectoryEntry, RemoteDirectoryListing,
 };
 pub use controller_manager::RemoteControllerManager;
 pub use controller_store::{RemoteControllerStore, SavedRemoteHost, SavedRemoteTransport};

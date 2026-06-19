@@ -51,6 +51,9 @@ impl CoduxApp {
                         window,
                         cx,
                     ))
+                    .when(self.project_editor_browse_open, |element| {
+                        element.child(self.project_editor_browse_panel(window, cx))
+                    })
                     .child(project_editor_symbol_field(
                         tr("project.editor.icon", "Project Icon"),
                         tr("common.none", "None"),
@@ -230,6 +233,163 @@ impl CoduxApp {
             )
             .into_any_element()
     }
+}
+
+impl CoduxApp {
+    /// Inline remote directory browser: navigate the host's folders, create a
+    /// folder, and pick one as the project root.
+    fn project_editor_browse_panel(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let locale = locale_from_language_setting(self.state.settings.language.as_str());
+        let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
+        let current = self.project_editor_browse_path.clone();
+
+        let mut list = div()
+            .flex()
+            .flex_col()
+            .gap(px(2.0))
+            .max_h(px(200.0))
+            .overflow_y_scrollbar();
+        if let Some(parent) = self.project_editor_browse_parent.clone() {
+            list = list.child(project_editor_browse_row(
+                "project-editor-browse-up".to_string(),
+                "..".to_string(),
+                cx,
+                move |app, window, cx| {
+                    app.project_editor_browse_navigate(Some(parent.clone()), window, cx)
+                },
+            ));
+        }
+        for entry in &self.project_editor_browse_entries {
+            let path = entry.path.clone();
+            list = list.child(project_editor_browse_row(
+                format!("project-editor-browse-{path}"),
+                entry.name.clone(),
+                cx,
+                move |app, window, cx| {
+                    app.project_editor_browse_navigate(Some(path.clone()), window, cx)
+                },
+            ));
+        }
+
+        let mut panel = div()
+            .mt(px(8.0))
+            .p(px(12.0))
+            .rounded(px(8.0))
+            .border_1()
+            .border_color(color(theme::BORDER_SOFT))
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .child(
+                div()
+                    .text_size(rems(0.8125))
+                    .text_color(color(theme::TEXT_MUTED))
+                    .truncate()
+                    .child(if current.trim().is_empty() {
+                        tr("project.editor.browse.loading", "Loading…")
+                    } else {
+                        current.clone()
+                    }),
+            )
+            .child(list)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_1().min_w_0().child(project_editor_input(
+                        "project-editor-browse-newfolder",
+                        &self.project_editor_browse_new_folder,
+                        "New folder name",
+                        window,
+                        cx,
+                        |app, value, window, cx| {
+                            app.set_project_editor_browse_new_folder(value, window, cx)
+                        },
+                    )))
+                    .child(
+                        Button::new("project-editor-browse-create")
+                            .secondary()
+                            .compact()
+                            .text_color(cx.theme().secondary_foreground)
+                            .child(dialog_button_label(tr(
+                                "project.editor.browse.new_folder",
+                                "New folder",
+                            )))
+                            .disabled(self.project_editor_browse_busy)
+                            .on_click(cx.listener(|app, _event, window, cx| {
+                                app.project_editor_browse_create_folder(window, cx);
+                            })),
+                    ),
+            );
+        if let Some(error) = self.project_editor_browse_error.as_ref() {
+            panel = panel.child(
+                div()
+                    .text_size(rems(0.8125))
+                    .text_color(color(theme::ORANGE))
+                    .child(error.clone()),
+            );
+        }
+        panel
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        dialog_primary_button(
+                            "project-editor-browse-use",
+                            tr("project.editor.browse.use", "Use this folder"),
+                            cx,
+                            |app, _event, window, cx| app.project_editor_browse_select(window, cx),
+                        )
+                        .disabled(current.trim().is_empty() || self.project_editor_browse_busy),
+                    )
+                    .child(dialog_cancel_button(
+                        "project-editor-browse-cancel",
+                        tr("common.cancel", "Cancel"),
+                        cx,
+                        |app, _event, window, cx| app.close_project_editor_browse(window, cx),
+                    )),
+            )
+            .into_any_element()
+    }
+}
+
+fn project_editor_browse_row(
+    id: String,
+    label: String,
+    cx: &mut Context<CoduxApp>,
+    on_click: impl Fn(&mut CoduxApp, &mut Window, &mut Context<CoduxApp>) + 'static,
+) -> AnyElement {
+    div()
+        .id(SharedString::from(id))
+        .flex()
+        .items_center()
+        .gap_2()
+        .px(px(8.0))
+        .py(px(6.0))
+        .rounded(px(6.0))
+        .cursor_pointer()
+        .hover(|style| style.bg(cx.theme().secondary_hover))
+        .on_click(cx.listener(move |app, _event, window, cx| on_click(app, window, cx)))
+        .child(
+            Icon::new(HeroIconName::Folder)
+                .size_3()
+                .text_color(color(theme::TEXT_MUTED)),
+        )
+        .child(
+            div()
+                .text_size(rems(0.8125))
+                .text_color(color(theme::TEXT))
+                .truncate()
+                .child(label),
+        )
+        .into_any_element()
 }
 
 fn project_editor_device_chip(
