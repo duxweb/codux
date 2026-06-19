@@ -1897,21 +1897,6 @@ impl CoduxApp {
         self.invalidate_project_management(cx);
     }
 
-    pub(super) fn set_project_editor_host_device_id(
-        &mut self,
-        value: Option<String>,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.project_editor_host_device_id == value {
-            return;
-        }
-        // Switching device invalidates a path that lived on the other device.
-        self.project_editor_host_device_id = value;
-        self.project_editor_path = String::new();
-        self.invalidate_project_management(cx);
-    }
-
     pub(super) fn choose_project_editor_directory(
         &mut self,
         window: &mut Window,

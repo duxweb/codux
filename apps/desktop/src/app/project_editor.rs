@@ -43,14 +43,35 @@ impl CoduxApp {
                         cx,
                         |app, value, window, cx| app.set_project_editor_name(value, window, cx),
                     ))
-                    .child(self.project_editor_device_field(window, cx))
-                    .child(project_editor_path_field(
-                        tr("project.editor.directory", "Project Directory"),
-                        tr("project.editor.choose_directory.prompt", "Choose"),
-                        &self.project_editor_path,
-                        window,
-                        cx,
-                    ))
+                    .child({
+                        let (device_label, is_remote) = match &self.project_editor_host_device_id {
+                            None => (tr("project.editor.device.local", "This Mac"), false),
+                            Some(device_id) => (
+                                self.runtime_service
+                                    .saved_remote_hosts()
+                                    .into_iter()
+                                    .find(|host| &host.device_id == device_id)
+                                    .map(|host| {
+                                        if host.host_name.trim().is_empty() {
+                                            host.host_id
+                                        } else {
+                                            host.host_name
+                                        }
+                                    })
+                                    .unwrap_or_else(|| tr("project.editor.device.remote", "Device")),
+                                true,
+                            ),
+                        };
+                        project_editor_path_field(
+                            tr("project.editor.directory", "Project Directory"),
+                            tr("project.editor.choose_directory.prompt", "Choose"),
+                            &self.project_editor_path,
+                            device_label,
+                            is_remote,
+                            window,
+                            cx,
+                        )
+                    })
                     .child(project_editor_symbol_field(
                         tr("project.editor.icon", "Project Icon"),
                         tr("common.none", "None"),
@@ -91,78 +112,6 @@ impl CoduxApp {
                     ),
                 cx,
             ))
-    }
-
-    /// The "Device" selector: This Mac (local) + each paired remote host, plus
-    /// an inline "pair a new device" form. Selecting a remote device marks the
-    /// project as hosted there (its domains route over the controller).
-    fn project_editor_device_field(
-        &self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let locale = locale_from_language_setting(self.state.settings.language.as_str());
-        let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
-        let hosts = self.runtime_service.saved_remote_hosts();
-        let selected = self.project_editor_host_device_id.clone();
-
-        let mut row = div().flex().flex_wrap().items_center().gap_2().child(
-            project_editor_device_chip(
-                "project-editor-device-local".to_string(),
-                tr("project.editor.device.local", "This Mac"),
-                selected.is_none(),
-                cx,
-                |app, window, cx| app.set_project_editor_host_device_id(None, window, cx),
-            ),
-        );
-        for host in &hosts {
-            let device_id = host.device_id.clone();
-            let is_selected = selected.as_deref() == Some(device_id.as_str());
-            let label = if host.host_name.trim().is_empty() {
-                host.host_id.clone()
-            } else {
-                host.host_name.clone()
-            };
-            row = row.child(project_editor_device_chip(
-                format!("project-editor-device-{device_id}"),
-                label,
-                is_selected,
-                cx,
-                move |app, window, cx| {
-                    app.set_project_editor_host_device_id(Some(device_id.clone()), window, cx)
-                },
-            ));
-        }
-        // Pairing now lives in Settings → Remote (unified device management);
-        // this just jumps there. The newly paired host then shows up as a chip.
-        row = row.child(
-            Button::new("project-editor-device-pair")
-                .secondary()
-                .compact()
-                .text_color(cx.theme().secondary_foreground)
-                .child(dialog_button_label(tr(
-                    "project.editor.device.pair",
-                    "Pair device…",
-                )))
-                .on_click(cx.listener(|app, _event, _window, cx| {
-                    app.open_settings_window_with_pane(super::settings::SettingsPane::Remote, cx);
-                })),
-        );
-
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(6.0))
-            .mb(px(24.0))
-            .child(
-                div()
-                    .text_size(rems(0.875))
-                    .line_height(rems(1.125))
-                    .text_color(color(theme::TEXT))
-                    .child(tr("project.editor.device", "Device")),
-            )
-            .child(row)
-            .into_any_element()
     }
 
 }
@@ -654,38 +603,6 @@ fn file_picker_crumb(
         .into_any_element()
 }
 
-fn project_editor_device_chip(
-    id: String,
-    label: String,
-    selected: bool,
-    cx: &mut Context<CoduxApp>,
-    on_click: impl Fn(&mut CoduxApp, &mut Window, &mut Context<CoduxApp>) + 'static,
-) -> AnyElement {
-    div()
-        .id(SharedString::from(id))
-        .px(px(12.0))
-        .py(px(6.0))
-        .rounded(px(8.0))
-        .border_1()
-        .border_color(color(if selected {
-            theme::BORDER
-        } else {
-            theme::BORDER_SOFT
-        }))
-        .bg(if selected {
-            cx.theme().secondary_hover
-        } else {
-            cx.theme().secondary
-        })
-        .text_size(rems(0.8125))
-        .text_color(color(theme::TEXT))
-        .cursor_pointer()
-        .hover(|style| style.bg(cx.theme().secondary_hover))
-        .on_click(cx.listener(move |app, _event, window, cx| on_click(app, window, cx)))
-        .child(label)
-        .into_any_element()
-}
-
 struct ProjectEditorSymbol {
     id: &'static str,
     icon: Option<HeroIconName>,
@@ -939,9 +856,61 @@ fn project_editor_path_field(
     label: String,
     choose_label: String,
     path: &str,
+    device_label: String,
+    is_remote: bool,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
+    let value = path.to_string();
+    let input_state = window.use_keyed_state(SharedString::from("project-editor-path"), cx, {
+        let value = value.clone();
+        move |window, cx| {
+            InputState::new(window, cx)
+                .default_value(value.clone())
+                .placeholder("/path/to/project")
+        }
+    });
+    input_state.update(cx, |state, cx| {
+        if state.value().as_ref() != value {
+            state.set_value(value.clone(), window, cx);
+        }
+    });
+    cx.subscribe_in(&input_state, window, move |app, state, event, window, cx| {
+        if matches!(event, InputEvent::Change) {
+            app.set_project_editor_path(state.read(cx).value().to_string(), window, cx);
+        }
+    })
+    .detach();
+
+    // The device the project will live on is shown as a prefix inside the input
+    // (e.g. "This Mac | /path"); switching devices happens in the picker.
+    let device_prefix = div()
+        .flex()
+        .items_center()
+        .gap(px(5.0))
+        .pl(px(2.0))
+        .pr(px(8.0))
+        .mr(px(8.0))
+        .border_r_1()
+        .border_color(color(theme::BORDER_SOFT))
+        .child(
+            Icon::new(if is_remote {
+                HeroIconName::ServerStack
+            } else {
+                HeroIconName::ComputerDesktop
+            })
+            .size_4()
+            .text_color(color(theme::TEXT_MUTED)),
+        )
+        .child(
+            div()
+                .max_w(px(140.0))
+                .truncate()
+                .text_size(rems(0.8125))
+                .text_color(color(theme::TEXT_MUTED))
+                .child(device_label),
+        );
+
     div()
         .flex()
         .flex_col()
@@ -959,14 +928,11 @@ fn project_editor_path_field(
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(div().flex_1().min_w_0().child(project_editor_input(
-                    "project-editor-path",
-                    path,
-                    "/path/to/project",
-                    window,
-                    cx,
-                    |app, value, window, cx| app.set_project_editor_path(value, window, cx),
-                )))
+                .child(div().flex_1().min_w_0().child(
+                    Input::new(&input_state)
+                        .with_size(gpui_component::Size::Medium)
+                        .prefix(device_prefix),
+                ))
                 .child(
                     Button::new("project-editor-choose-path")
                         .secondary()
