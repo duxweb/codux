@@ -219,12 +219,16 @@ x11/wayland unproven.)
   git methods route to the host. Agent: git2 (local) + `git` CLI (branch/network, host auth);
   desktop host: GitService.
 
+- **Worktree domain complete (done).** The full mutation set routes to the host:
+  `reload_worktrees`/`reload_worktrees_from_state` map the host `worktree.list` payload →
+  `WorktreeSummary`; `create`/`remove`/`merge` route via `remote_worktree_mutation` →
+  `worktree.create`/`remove`/`merge` (host replies `worktree.updated`). Agent worktree support is
+  a new `apps/agent/src/worktree.rs` over the `git worktree` CLI (list-porcelain → `WorktreeInfo`
+  shape; add/remove/merge via `git worktree`). Added `Deserialize` to the worktree types. Only
+  `select` stays controller-local (a UI preference, not a host op). Agent serve-smoke drives
+  list → create.
+
 - **Remaining (each a real chunk, best done with fresh context):**
-  - **Worktrees** — protocol + desktop host already serve them (mobile uses them). Needs: the
-    controller side + routing the ~11 `RuntimeService` worktree methods, mapping the worktree
-    payload → `WorktreeSummary` (add `Deserialize` to the worktree types; `active_git` filled
-    from the routed `reload_project_git`), plus **agent worktree support** (via `git worktree`
-    CLI — the agent has no worktree service).
   - **AI session ops** — the AI *stats* panel already routes via `ai.state`. The session-level
     ops (detail / fork / rename / remove) would route to the host's AIHistoryService. Secondary.
   - **Terminal boot/float restore** — two immediate-constructor paths still local-only (the main
