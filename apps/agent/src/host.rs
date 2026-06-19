@@ -9,7 +9,8 @@ use codux_protocol::{
     REMOTE_ERROR, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DELETE, REMOTE_FILE_DELETED,
     REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_READ, REMOTE_FILE_RENAME,
     REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN, REMOTE_HOST_INFO,
-    REMOTE_TRANSPORT_IROH, REMOTE_TRANSPORT_PING, REMOTE_TRANSPORT_PONG,
+    REMOTE_PROJECT_ADD, REMOTE_PROJECT_LIST, REMOTE_PROJECT_REMOVE, REMOTE_TRANSPORT_IROH,
+    REMOTE_TRANSPORT_PING, REMOTE_TRANSPORT_PONG,
 };
 use codux_remote_transport::{
     RemoteHostTransportConfig, RemoteTransport, RemoteTransportCandidate, RemoteTransportFactory,
@@ -20,7 +21,10 @@ use codux_runtime_core::{
         file_write,
     },
     host::{host_info_payload, HostInfoPayload},
+    project::project_list_payload,
 };
+
+use crate::projects::AgentProjectStore;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
@@ -119,6 +123,37 @@ fn make_handler(
                 },
                 None => Some((REMOTE_ERROR, json!({ "message": "Directory path is required." }))),
             },
+            REMOTE_PROJECT_LIST => Some((
+                REMOTE_PROJECT_LIST,
+                project_list_payload(AgentProjectStore::new().list(), None, None),
+            )),
+            REMOTE_PROJECT_ADD => match payload.get("path").and_then(Value::as_str) {
+                Some(path) => {
+                    let name = payload.get("name").and_then(Value::as_str);
+                    match AgentProjectStore::new().add(path, name) {
+                        Ok(items) => {
+                            Some((REMOTE_PROJECT_LIST, project_list_payload(items, None, None)))
+                        }
+                        Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
+                    }
+                }
+                None => Some((REMOTE_ERROR, json!({ "message": "Project path is required." }))),
+            },
+            REMOTE_PROJECT_REMOVE => {
+                let id = payload
+                    .get("id")
+                    .or_else(|| payload.get("projectId"))
+                    .and_then(Value::as_str);
+                match id {
+                    Some(id) => match AgentProjectStore::new().remove(id) {
+                        Ok(items) => {
+                            Some((REMOTE_PROJECT_LIST, project_list_payload(items, None, None)))
+                        }
+                        Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
+                    },
+                    None => Some((REMOTE_ERROR, json!({ "message": "Project id is required." }))),
+                }
+            }
             _ => None,
         };
 
@@ -206,6 +241,12 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
         relay_preset: "global".to_string(),
         relay_url: "https://relay.example".to_string(),
     };
+    // Keep the smoke's project store out of the real ~/.codux-agent.
+    let data_dir = std::env::temp_dir().join(format!("codux-agent-data-{}", std::process::id()));
+    // Safe: the smoke sets this before any host/controller task is spawned.
+    unsafe {
+        std::env::set_var("CODUX_AGENT_DATA_DIR", &data_dir);
+    }
     let (host, _slot) = connect_serving_host(&cfg).await?;
     let (node_id, relay_url) = host
         .iroh_candidate()
@@ -307,12 +348,47 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
         if std::path::Path::new(&dir).exists() {
             return Err("delete did not remove the directory".to_string());
         }
+
+        // 3. project domain (add / remove)
+        let project_path = format!("/tmp/codux-agent-project-{}", std::process::id());
+        request(REMOTE_PROJECT_ADD, json!({ "path": project_path, "name": "Smoke" }))?;
+        let added = expect(&mut reply_rx, REMOTE_PROJECT_LIST).await?;
+        let project_id = added
+            .get("projects")
+            .and_then(Value::as_array)
+            .and_then(|projects| {
+                projects.iter().find(|project| {
+                    project.get("path").and_then(Value::as_str) == Some(project_path.as_str())
+                })
+            })
+            .and_then(|project| project.get("id").and_then(Value::as_str))
+            .ok_or_else(|| "project.add did not register the project".to_string())?
+            .to_string();
+
+        request(REMOTE_PROJECT_REMOVE, json!({ "id": project_id }))?;
+        let removed = expect(&mut reply_rx, REMOTE_PROJECT_LIST).await?;
+        let still_present = removed
+            .get("projects")
+            .and_then(Value::as_array)
+            .map(|projects| {
+                projects.iter().any(|project| {
+                    project.get("path").and_then(Value::as_str) == Some(project_path.as_str())
+                })
+            })
+            .unwrap_or(false);
+        if still_present {
+            return Err("project.remove did not remove the project".to_string());
+        }
         Ok::<(), String>(())
     };
     let result = run.await;
 
     host.shutdown().await;
     controller.shutdown().await;
+    let _ = std::fs::remove_dir_all(&data_dir);
     result?;
-    Ok("codux-agent-serve-ok\nfile domain (list/mkdir/write/read/delete) verified".to_string())
+    Ok(
+        "codux-agent-serve-ok\nfile domain (list/mkdir/write/read/delete) + project domain (add/remove) verified"
+            .to_string(),
+    )
 }

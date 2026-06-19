@@ -14,6 +14,7 @@ use std::{
 use tokio::sync::oneshot;
 
 mod host;
+mod projects;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
