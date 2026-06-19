@@ -228,26 +228,31 @@ x11/wayland unproven.)
   `select` stays controller-local (a UI preference, not a host op). Agent serve-smoke drives
   list → create.
 
+- **Memory engine extracted + read path routed (done).** The 3.4k-line memory engine now lives
+  in `crates/codux-memory` (and a small shared `crates/codux-llm` for the genai provider core),
+  so the host can run it. The crate owns narrow config types (`MemoryConfig`/`MemorySettings`/
+  `MemoryProvider`/`MemoryProjectInfo`/`MemoryProjectRecord`/`MemorySessionSnapshot`) that mirror
+  the desktop's richer settings; the desktop is a thin re-export shim converting at the boundary
+  (40 engine tests pass in the crate). The host serves `memory.read` (summary / manager /
+  management / status) against its own store, resolving its project id from the controller-sent
+  path (like `ai.state`). `reload_memory` / `memory_management_snapshot` / `memory_manager_snapshot`
+  route to the host for remote-hosted projects; agent serve-smoke drives `memory.read` e2e.
+  Added `Deserialize` to the memory reply types.
+
 - **Remaining (each a real chunk, best done with fresh context):**
+  - **Memory extraction** — the read path is done; the LLM write path remains. **Decision
+    (owner): the controller forwards its provider config** (incl. API key) over the
+    iroh-encrypted transport; the host uses it for the run and does not persist it. Build:
+    `memory.extract {config, outputLocale}` on the host runs the engine's
+    `process_memory_extraction_queue` with the forwarded `MemoryConfig.providers`; the agent
+    sources its AI sessions (its `AIHistoryIndexer` + runtime state) to enqueue candidates; the
+    controller forwards the selected provider + triggers; route the async
+    `process_memory_*` / `enqueue_*` RuntimeService methods. The protocol const
+    `REMOTE_MEMORY_EXTRACT` and the `codux-llm` `LlmProvider` wire shape are already in place.
   - **AI session ops** — the AI *stats* panel already routes via `ai.state`. The session-level
     ops (detail / fork / rename / remove) would route to the host's AIHistoryService. Secondary.
   - **Terminal boot/float restore** — two immediate-constructor paths still local-only (the main
     interactive add-terminal path is remote). Small.
-  - **Memory** — reading the host's `memory-workspaces` files already works via the routed file
-    domain. The blocker is **extraction** (generating memories from AI sessions via an LLM),
-    which must run on the host with an AI provider. **Decision (owner): the controller forwards
-    its provider config** (incl. API key) to the host over the iroh-encrypted transport; the
-    host uses it in memory and does not persist it. Build steps (the largest single piece, do in
-    a fresh session):
-    1. **Extract the memory engine into a shared crate** `codux-memory` (like `codux-ai-history`):
-       move `apps/desktop/runtime/src/memory/*`, replacing desktop couplings (`AISettings`,
-       `runtime_state::ProjectInfo`, `runtime_paths`, the AI-runtime bridge) with crate-local
-       params / a trait, keep the desktop re-export shim so its call sites are unchanged.
-    2. **Agent serves memory**: `memory.extract {project, providerConfig, sessions…}` runs the
-       engine with the forwarded provider; `memory.snapshot` returns the management view.
-    3. **Controller**: forward the desktop's selected provider config + trigger extraction;
-       route the `RuntimeService` memory methods for remote projects.
-    4. Validate against `codux-agent --serve` with a real provider config forwarded.
 
 ## Verification
 
