@@ -55,6 +55,15 @@ impl RuntimeService {
         self.remote_controllers.controller_for(device_id)?.host_info()
     }
 
+    /// The live controller for a device (used by the terminal UI to drive a
+    /// remote-hosted project's terminals).
+    pub fn remote_controller_for_device(
+        &self,
+        device_id: &str,
+    ) -> Result<std::sync::Arc<crate::remote::RemoteController>, String> {
+        self.remote_controllers.controller_for(device_id)
+    }
+
     /// Git status of a remote-hosted project, mapped from the host's `git.status`
     /// payload. (Only status is in the remote protocol today — operations like
     /// stage/commit/diff need a protocol expansion.)

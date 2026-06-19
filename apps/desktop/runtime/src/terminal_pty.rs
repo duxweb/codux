@@ -122,6 +122,8 @@ pub struct TerminalPtyConfig {
     pub session_key: Option<String>,
     pub title: Option<String>,
     pub tool: Option<String>,
+    /// When set, the terminal runs on this remote device over the controller.
+    pub host_device_id: Option<String>,
     pub support_dir: Option<PathBuf>,
     pub runtime_root: Option<PathBuf>,
     pub session_instance_id: Option<String>,
@@ -170,6 +172,7 @@ pub struct TerminalLaunchContext {
     pub memory_workspace_root: Option<PathBuf>,
     pub memory_prompt_file: Option<PathBuf>,
     pub memory_index_file: Option<PathBuf>,
+    pub host_device_id: Option<String>,
 }
 
 impl TerminalLaunchContext {
@@ -195,6 +198,7 @@ impl TerminalLaunchContext {
             memory_workspace_root: self.memory_workspace_root.clone(),
             memory_prompt_file: self.memory_prompt_file.clone(),
             memory_index_file: self.memory_index_file.clone(),
+            host_device_id: self.host_device_id.clone(),
             scrollback_lines: None,
             ..Default::default()
         }
@@ -3164,6 +3168,7 @@ mod tests {
             memory_index_file: Some(PathBuf::from(
                 "/tmp/codux/memory-workspaces/project-1/MEMORY.md",
             )),
+            host_device_id: None,
         };
         let env = terminal_environment(
             "/bin/zsh",
@@ -3258,6 +3263,7 @@ mod tests {
             memory_workspace_root: None,
             memory_prompt_file: None,
             memory_index_file: None,
+            host_device_id: None,
         };
 
         let env = terminal_environment(
@@ -3303,6 +3309,7 @@ mod tests {
             memory_index_file: Some(PathBuf::from(
                 "/tmp/codux/memory-workspaces/project-1/MEMORY.md",
             )),
+            host_device_id: None,
         };
 
         let env = terminal_environment(
@@ -3701,6 +3708,7 @@ mod tests {
             memory_workspace_root: None,
             memory_prompt_file: None,
             memory_index_file: None,
+            host_device_id: None,
         };
         let config = TerminalPtyConfig {
             terminal_id: Some(terminal_id),

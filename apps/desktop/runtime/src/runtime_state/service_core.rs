@@ -1308,6 +1308,7 @@ mod app_runtime_ready_tests {
             memory_workspace_root: None,
             memory_prompt_file: None,
             memory_index_file: None,
+            host_device_id: None,
         };
         let mut config = launch_context.to_config();
         config.shell = Some("/bin/cat".to_string());

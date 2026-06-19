@@ -1,5 +1,6 @@
 use crate::heroicons::HeroIconName;
 use anyhow::Result;
+use codux_runtime::remote::RemoteController;
 use codux_runtime::terminal_pty::{
     TerminalEvent, TerminalInputSnapshot, TerminalManager, TerminalOutputSnapshot,
     TerminalPtyConfig, TerminalPtySession, terminal_viewport_local_owner,

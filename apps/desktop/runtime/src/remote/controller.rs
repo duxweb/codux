@@ -23,7 +23,7 @@ use codux_remote_transport::{
     RemoteControllerTransportConfig, RemoteTransport, RemoteTransportCandidate,
 };
 use serde_json::{json, Value};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -166,14 +166,17 @@ struct Waiter {
 }
 
 type TerminalSink = Box<dyn Fn(Value) + Send + Sync>;
+type TerminalOutputForwarder = Box<dyn Fn(Vec<u8>) + Send + Sync>;
 
 #[derive(Default)]
 struct ControllerInner {
     waiters: Mutex<Vec<Waiter>>,
     events: Mutex<VecDeque<(String, Value)>>,
-    // High-frequency terminal.output frames are pushed here (full envelope) for
-    // a RemoteOutputRouter to assemble, rather than queued as events.
+    // Raw full-envelope sink (used by tests that drive a RemoteOutputRouter).
     terminal_sink: Mutex<Option<TerminalSink>>,
+    // Per-session byte forwarders for terminal.output — the desktop terminal UI
+    // registers one per remote session and the model parses the bytes itself.
+    terminal_outputs: Mutex<HashMap<String, TerminalOutputForwarder>>,
 }
 
 impl ControllerInner {
@@ -190,8 +193,9 @@ impl ControllerInner {
             .unwrap_or_default()
             .to_string();
         let payload = envelope.get("payload").cloned().unwrap_or(Value::Null);
-        // Terminal output streams to the router sink (full envelope: it carries
-        // the top-level sessionId the router needs), not the waiter/event path.
+        // Terminal output never goes through the waiter/event path. A raw sink
+        // (tests) gets the full envelope; otherwise demux by sessionId to the
+        // per-session byte forwarder (the desktop terminal UI).
         if kind == REMOTE_TERMINAL_OUTPUT {
             if let Ok(sink) = self.terminal_sink.lock() {
                 if let Some(sink) = sink.as_ref() {
@@ -199,6 +203,16 @@ impl ControllerInner {
                     return;
                 }
             }
+            let session_id = envelope.get("sessionId").and_then(Value::as_str);
+            let data = payload.get("data").and_then(Value::as_str);
+            if let (Some(session_id), Some(data)) = (session_id, data) {
+                if let Ok(forwarders) = self.terminal_outputs.lock() {
+                    if let Some(forwarder) = forwarders.get(session_id) {
+                        forwarder(data.as_bytes().to_vec());
+                    }
+                }
+            }
+            return;
         }
         {
             let mut waiters = self.waiters.lock().unwrap();
@@ -534,6 +548,40 @@ impl RemoteController {
         if let Ok(mut guard) = self.inner.terminal_sink.lock() {
             *guard = Some(sink);
         }
+    }
+
+    /// Forward this session's `terminal.output` bytes to `forwarder` (the desktop
+    /// terminal model's byte channel).
+    pub fn register_terminal_output(&self, session_id: &str, forwarder: TerminalOutputForwarder) {
+        if let Ok(mut guard) = self.inner.terminal_outputs.lock() {
+            guard.insert(session_id.to_string(), forwarder);
+        }
+    }
+
+    pub fn unregister_terminal_output(&self, session_id: &str) {
+        if let Ok(mut guard) = self.inner.terminal_outputs.lock() {
+            guard.remove(session_id);
+        }
+    }
+
+    /// Typed terminal create (keeps `serde_json` out of the UI crate).
+    pub fn open_terminal(
+        &self,
+        cwd: Option<&str>,
+        command: Option<&str>,
+        cols: Option<u16>,
+        rows: Option<u16>,
+        project_id: Option<&str>,
+        title: Option<&str>,
+    ) -> Result<String, String> {
+        self.create_terminal(json!({
+            "cwd": cwd,
+            "command": command,
+            "cols": cols,
+            "rows": rows,
+            "projectId": project_id,
+            "title": title,
+        }))
     }
 
     /// Create a terminal on the host; returns its session id.

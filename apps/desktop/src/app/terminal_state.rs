@@ -616,6 +616,7 @@ pub(in crate::app) fn terminal_launch_context(
             .as_ref()
             .map(|artifacts| artifacts.prompt_file.clone()),
         memory_index_file: memory_artifacts.map(|artifacts| artifacts.index_file),
+        host_device_id: project.host_device_id.clone(),
     })
 }
 

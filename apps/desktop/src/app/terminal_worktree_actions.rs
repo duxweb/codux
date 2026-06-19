@@ -658,6 +658,7 @@ impl CoduxApp {
             return;
         }
         let terminal_manager = self.terminal_manager.clone();
+        let runtime_service = self.runtime_service.clone();
         let terminal_config = self.terminal_config_from_settings();
         let attach_started_at = Instant::now();
         // Captured for the ad-hoc (generation=None) completion: if the user
@@ -670,6 +671,7 @@ impl CoduxApp {
             let results = codux_runtime::async_runtime::spawn_blocking({
                 let terminal_manager = terminal_manager.clone();
                 let terminal_config = terminal_config.clone();
+                let runtime_service = runtime_service.clone();
                 move || {
                     let handles = pending_terminals
                         .into_iter()
@@ -680,15 +682,36 @@ impl CoduxApp {
                                 .unwrap_or_else(|| "none".to_string());
                             let terminal_manager = terminal_manager.clone();
                             let terminal_config = terminal_config.clone();
+                            let runtime_service = runtime_service.clone();
                             thread::spawn(move || {
-                                let result = TerminalPane::attach_pending_session(
-                                    terminal_manager,
-                                    pty_config,
-                                    terminal_config,
-                                    pending,
-                                )
-                                .map(|_| ())
-                                .map_err(|error| error.to_string());
+                                // Remote-hosted projects run the terminal on the
+                                // host over the controller; local ones use the PTY.
+                                let result = if let Some(device_id) =
+                                    pty_config.host_device_id.clone()
+                                {
+                                    match runtime_service.remote_controller_for_device(&device_id) {
+                                        Ok(controller) => {
+                                            TerminalPane::attach_pending_session_remote(
+                                                controller,
+                                                pty_config,
+                                                terminal_config,
+                                                pending,
+                                            )
+                                            .map(|_| ())
+                                            .map_err(|error| error.to_string())
+                                        }
+                                        Err(error) => Err(error),
+                                    }
+                                } else {
+                                    TerminalPane::attach_pending_session(
+                                        terminal_manager,
+                                        pty_config,
+                                        terminal_config,
+                                        pending,
+                                    )
+                                    .map(|_| ())
+                                    .map_err(|error| error.to_string())
+                                };
                                 (terminal_id, result)
                             })
                         })
