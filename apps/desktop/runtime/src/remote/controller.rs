@@ -9,10 +9,11 @@
 //! transport's message callback feeds) so it composes cleanly with the
 //! synchronous `RuntimeService` domain methods that will route through it.
 
+use base64::Engine;
 use codux_protocol::{
     REMOTE_AI_STATS, REMOTE_ERROR, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DIRECTORY_CREATED,
-    REMOTE_FILE_LIST, REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_PROJECT_LIST,
-    REMOTE_TRANSPORT_IROH,
+    REMOTE_FILE_LIST, REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_PAIRING_CONFIRMED,
+    REMOTE_PAIRING_REJECTED, REMOTE_PAIRING_REQUEST, REMOTE_PROJECT_LIST, REMOTE_TRANSPORT_IROH,
 };
 use codux_remote_transport::{
     RemoteControllerTransportConfig, RemoteTransport, RemoteTransportCandidate,
@@ -22,11 +23,14 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use super::controller_store::{SavedRemoteHost, SavedRemoteTransport};
 use super::transport_factory::RemoteTransportFactory;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+/// The host operator must accept the pairing; allow a generous window.
+const PAIRING_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Everything needed to dial a remote host — produced from a pairing ticket.
 #[derive(Clone, Debug)]
@@ -38,6 +42,101 @@ pub struct RemoteControllerTarget {
     pub node_id: String,
     pub ticket: String,
     pub relay_authentication: String,
+}
+
+/// A pairing ticket pasted by the user: the host emits a `codux://pair?payload=`
+/// URL whose base64url payload is `{code, secret, pairingId, transports[]}`.
+/// The iroh node id + relay are carried inside each transport's `ticket`.
+#[derive(Clone, Debug)]
+pub struct PairingTicket {
+    pub code: String,
+    pub secret: String,
+    pub pairing_id: String,
+    pub transports: Vec<TicketTransport>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TicketTransport {
+    pub kind: String,
+    pub ticket: String,
+    pub relay_authentication: String,
+}
+
+/// Parse a pasted `codux://pair?payload=<base64url>` ticket (or a bare base64url
+/// payload) into its fields.
+pub fn parse_pairing_ticket(input: &str) -> Result<PairingTicket, String> {
+    let trimmed = input.trim();
+    let encoded = if let Some(rest) = trimmed.strip_prefix("codux://pair") {
+        url::Url::parse(&format!("codux://pair{rest}"))
+            .map_err(|error| error.to_string())?
+            .query_pairs()
+            .find(|(key, _)| key == "payload")
+            .map(|(_, value)| value.into_owned())
+            .ok_or_else(|| "Pairing ticket is missing its payload.".to_string())?
+    } else {
+        trimmed.to_string()
+    };
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(encoded.as_bytes())
+        .map_err(|error| format!("Pairing ticket is not valid base64url: {error}"))?;
+    let payload: Value =
+        serde_json::from_slice(&bytes).map_err(|error| format!("Pairing ticket is not valid: {error}"))?;
+
+    let field = |key: &str| {
+        payload
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let transports = payload
+        .get("transports")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| TicketTransport {
+                    kind: item
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .unwrap_or(REMOTE_TRANSPORT_IROH)
+                        .to_string(),
+                    ticket: item
+                        .get("ticket")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    relay_authentication: item
+                        .get("relayAuthentication")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let ticket = PairingTicket {
+        code: field("code"),
+        secret: field("secret"),
+        pairing_id: field("pairingId"),
+        transports,
+    };
+    if ticket.code.is_empty() || ticket.secret.is_empty() || ticket.pairing_id.is_empty() {
+        return Err("Pairing ticket is missing its code, secret, or pairing id.".to_string());
+    }
+    if !ticket
+        .transports
+        .iter()
+        .any(|transport| transport.kind == REMOTE_TRANSPORT_IROH && !transport.ticket.is_empty())
+    {
+        return Err("Pairing ticket has no usable iroh transport.".to_string());
+    }
+    Ok(ticket)
+}
+
+fn new_device_id() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
 }
 
 struct Waiter {
@@ -132,6 +231,89 @@ impl RemoteController {
         })
     }
 
+    /// Reconnect to a previously paired host (no fresh handshake — the host
+    /// caches our `device_id`). Uses the saved iroh `node_id` + `relay_url`,
+    /// since the original pairing ticket is single-use.
+    pub async fn connect_saved(host: &SavedRemoteHost) -> Result<Self, String> {
+        let iroh = host
+            .transports
+            .iter()
+            .find(|transport| transport.kind == REMOTE_TRANSPORT_IROH)
+            .ok_or_else(|| "Saved host has no iroh transport.".to_string())?;
+        Self::connect(&RemoteControllerTarget {
+            host_id: host.host_id.clone(),
+            device_id: host.device_id.clone(),
+            device_token: host.device_token.clone(),
+            relay_url: iroh.relay_url.clone(),
+            node_id: iroh.node_id.clone(),
+            ticket: String::new(),
+            relay_authentication: iroh.relay_authentication.clone(),
+        })
+        .await
+    }
+
+    /// Drive the pairing handshake against a host that has an active pairing:
+    /// connect unpaired (self-minted device id, empty token, ticket-only iroh
+    /// candidate), send `pairing.request`, and wait for the operator to confirm.
+    /// On success returns the live controller plus the persistable host record.
+    pub async fn pair(
+        ticket: &PairingTicket,
+        device_name: &str,
+    ) -> Result<(Self, SavedRemoteHost), String> {
+        let iroh = ticket
+            .transports
+            .iter()
+            .find(|transport| transport.kind == REMOTE_TRANSPORT_IROH && !transport.ticket.is_empty())
+            .ok_or_else(|| "Pairing ticket has no usable iroh transport.".to_string())?;
+        let device_id = new_device_id();
+        let controller = Self::connect(&RemoteControllerTarget {
+            host_id: String::new(),
+            device_id: device_id.clone(),
+            device_token: String::new(),
+            relay_url: String::new(),
+            node_id: String::new(),
+            ticket: iroh.ticket.clone(),
+            relay_authentication: iroh.relay_authentication.clone(),
+        })
+        .await?;
+
+        let request = json!({
+            "type": REMOTE_PAIRING_REQUEST,
+            "deviceId": device_id,
+            "payload": {
+                "pairingId": ticket.pairing_id,
+                "code": ticket.code,
+                "secret": ticket.secret,
+                "deviceName": device_name,
+                "deviceId": device_id,
+            },
+        });
+        let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
+        if !controller.transport.send(bytes, None) {
+            controller.shutdown().await;
+            return Err("Failed to send the pairing request to the host.".to_string());
+        }
+
+        let deadline = Instant::now() + PAIRING_TIMEOUT;
+        loop {
+            for (kind, payload) in controller.drain_events() {
+                if kind == REMOTE_PAIRING_CONFIRMED {
+                    let saved = saved_host_from_confirmed(&device_id, &payload);
+                    return Ok((controller, saved));
+                }
+                if kind == REMOTE_PAIRING_REJECTED {
+                    controller.shutdown().await;
+                    return Err("The host rejected the pairing request.".to_string());
+                }
+            }
+            if Instant::now() >= deadline {
+                controller.shutdown().await;
+                return Err("Timed out waiting for the host to confirm pairing.".to_string());
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
     /// Send a request and block until a reply of type `expect` arrives (or the
     /// host returns an error, or the request times out).
     pub fn request(&self, expect: &str, kind: &str, payload: Value) -> Result<Value, String> {
@@ -224,6 +406,55 @@ impl RemoteController {
     }
 }
 
+/// Build the persistable host record from a `pairing.confirmed` payload.
+fn saved_host_from_confirmed(device_id: &str, payload: &Value) -> SavedRemoteHost {
+    let field = |key: &str| {
+        payload
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let transports = payload
+        .get("transports")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| SavedRemoteTransport {
+                    kind: item
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .unwrap_or(REMOTE_TRANSPORT_IROH)
+                        .to_string(),
+                    node_id: item
+                        .get("nodeId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    relay_url: item
+                        .get("relayUrl")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    relay_authentication: item
+                        .get("relayAuthentication")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    SavedRemoteHost {
+        device_id: device_id.to_string(),
+        host_id: field("hostId"),
+        host_name: field("hostName"),
+        device_token: field("token"),
+        transports,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +494,58 @@ mod tests {
         let events = inner.events.lock().unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].0, "terminal.output");
+    }
+
+    #[test]
+    fn parse_pairing_ticket_decodes_host_payload() {
+        // Mirror the host's `remote_pairing_payload` shape exactly.
+        let payload = json!({
+            "code": "1234",
+            "secret": "s3cr3t",
+            "pairingId": "pair-abc",
+            "transports": [{ "kind": "iroh", "ticket": "ticket-blob", "relayAuthentication": "auth" }],
+        });
+        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&payload).unwrap());
+        let url = format!("codux://pair?payload={encoded}");
+
+        let ticket = parse_pairing_ticket(&url).unwrap();
+        assert_eq!(ticket.code, "1234");
+        assert_eq!(ticket.secret, "s3cr3t");
+        assert_eq!(ticket.pairing_id, "pair-abc");
+        assert_eq!(ticket.transports.len(), 1);
+        assert_eq!(ticket.transports[0].ticket, "ticket-blob");
+        assert_eq!(ticket.transports[0].relay_authentication, "auth");
+
+        // The bare base64url payload (no codux:// prefix) parses too.
+        assert!(parse_pairing_ticket(&encoded).is_ok());
+    }
+
+    #[test]
+    fn parse_pairing_ticket_rejects_incomplete() {
+        let payload = json!({ "code": "1", "secret": "", "pairingId": "p", "transports": [] });
+        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&payload).unwrap());
+        assert!(parse_pairing_ticket(&encoded).is_err());
+    }
+
+    #[test]
+    fn saved_host_from_confirmed_maps_reply() {
+        // Mirror the host's `pairing.confirmed` payload shape.
+        let payload = json!({
+            "hostId": "host-1",
+            "deviceId": "dev-1",
+            "token": "",
+            "hostName": "Studio",
+            "transports": [{ "kind": "iroh", "nodeId": "node-x", "relayUrl": "https://relay", "relayAuthentication": "" }],
+        });
+        let saved = saved_host_from_confirmed("dev-1", &payload);
+        assert_eq!(saved.host_id, "host-1");
+        assert_eq!(saved.host_name, "Studio");
+        assert_eq!(saved.device_id, "dev-1");
+        assert_eq!(saved.transports.len(), 1);
+        assert_eq!(saved.transports[0].node_id, "node-x");
+        assert_eq!(saved.transports[0].relay_url, "https://relay");
     }
 
     #[test]
