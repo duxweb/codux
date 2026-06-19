@@ -4,11 +4,13 @@ version = "1.8.1"
 edition = "2024"
 
 [dependencies]
+codux-ai-history = { path = "../../crates/codux-ai-history" }
 codux-protocol = { path = "../../crates/codux-protocol" }
 codux-remote-transport = { path = "../../crates/codux-remote-transport" }
 codux-runtime-core = { path = "../../crates/codux-runtime-core" }
 codux-terminal-core = { path = "../../crates/codux-terminal-core" }
 codux-terminal-pty = { path = "../../crates/codux-terminal-pty" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde_json = "1"
 git2 = { version = "0.21.0", features = ["cred", "https", "ssh", "vendored-openssl"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }

@@ -6,7 +6,8 @@
 //! payload builders in `codux-runtime-core`.
 
 use codux_protocol::{
-    REMOTE_ERROR, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DELETE, REMOTE_FILE_DELETED,
+    REMOTE_AI_STATS, REMOTE_ERROR, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DELETE,
+    REMOTE_FILE_DELETED,
     REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_READ, REMOTE_FILE_RENAME,
     REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN, REMOTE_GIT_STATUS,
     REMOTE_HOST_INFO,
@@ -29,6 +30,7 @@ use codux_runtime_core::{
 };
 
 use crate::projects::AgentProjectStore;
+use codux_ai_history::indexer::AIHistoryIndexer;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
@@ -48,6 +50,7 @@ type TransportSlot = Arc<Mutex<Option<Arc<dyn RemoteTransport>>>>;
 fn make_handler(
     slot: TransportSlot,
     driver: Arc<LocalPtyDriver>,
+    indexer: AIHistoryIndexer,
     host_id: String,
     name: String,
 ) -> codux_remote_transport::RemoteTransportMessageHandler {
@@ -182,6 +185,29 @@ fn make_handler(
                     ),
                 ))
             }
+            REMOTE_AI_STATS => {
+                // Resolve the project (path is needed to scan its CLI history),
+                // falling back to the first project like the desktop host.
+                let project_id = payload.get("projectId").and_then(Value::as_str).unwrap_or("");
+                let store = AgentProjectStore::new();
+                let project = store
+                    .list()
+                    .into_iter()
+                    .find(|item| item.id == project_id)
+                    .or_else(|| store.list().into_iter().next());
+                match project {
+                    Some(project) => Some((
+                        REMOTE_AI_STATS,
+                        crate::ai_stats::ai_stats_payload(
+                            &indexer,
+                            &project.id,
+                            &project.name,
+                            &project.path,
+                        ),
+                    )),
+                    None => Some((REMOTE_ERROR, json!({ "message": "Unable to load AI stats." }))),
+                }
+            }
             _ => None,
         };
 
@@ -213,6 +239,7 @@ async fn connect_serving_host(
 ) -> Result<(Arc<dyn RemoteTransport>, TransportSlot), String> {
     let slot: TransportSlot = Arc::new(Mutex::new(None));
     let driver = Arc::new(LocalPtyDriver::new());
+    let indexer = crate::ai_stats::open_indexer();
     let config = RemoteHostTransportConfig {
         relay_url: cfg.relay_url.clone(),
         relay_preset: cfg.relay_preset.clone(),
@@ -223,7 +250,13 @@ async fn connect_serving_host(
     };
     let host = RemoteTransportFactory::connect_host(
         &config,
-        make_handler(Arc::clone(&slot), driver, cfg.host_id.clone(), cfg.name.clone()),
+        make_handler(
+            Arc::clone(&slot),
+            driver,
+            indexer,
+            cfg.host_id.clone(),
+            cfg.name.clone(),
+        ),
         Arc::new(|_| Ok(())),
         Arc::new(|_, _| {}),
         Arc::new(|_| {}),
@@ -454,6 +487,30 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
         }
         let _ = std::fs::remove_dir_all(&repo_dir);
 
+        // 6. ai stats domain (single-reply usage snapshot for a project)
+        let stats_project = format!("/tmp/codux-agent-ai-{}", std::process::id());
+        request(REMOTE_PROJECT_ADD, json!({ "path": stats_project, "name": "AI" }))?;
+        let added = expect(&mut reply_rx, REMOTE_PROJECT_LIST).await?;
+        let stats_project_id = added
+            .get("projects")
+            .and_then(Value::as_array)
+            .and_then(|projects| {
+                projects.iter().find(|project| {
+                    project.get("path").and_then(Value::as_str) == Some(stats_project.as_str())
+                })
+            })
+            .and_then(|project| project.get("id").and_then(Value::as_str))
+            .ok_or_else(|| "project.add did not register the AI project".to_string())?
+            .to_string();
+        request(REMOTE_AI_STATS, json!({ "projectId": stats_project_id }))?;
+        let stats = expect(&mut reply_rx, REMOTE_AI_STATS).await?;
+        if stats.get("projectId").and_then(Value::as_str) != Some(stats_project_id.as_str()) {
+            return Err(format!("ai.stats reply missing matching projectId: {stats}"));
+        }
+        if stats.get("sessions").and_then(Value::as_array).is_none() {
+            return Err("ai.stats reply missing sessions array".to_string());
+        }
+
         Ok::<(), String>(())
     };
     let result = run.await;
@@ -462,7 +519,5 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
     controller.shutdown().await;
     let _ = std::fs::remove_dir_all(&data_dir);
     result?;
-    Ok(
-        "codux-agent-serve-ok\nfile + project + terminal + git domains verified".to_string(),
-    )
+    Ok("codux-agent-serve-ok\nfile + project + terminal + git + ai domains verified".to_string())
 }

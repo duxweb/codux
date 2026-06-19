@@ -1210,6 +1210,8 @@ dependencies = [
 name = "codux-agent"
 version = "1.8.1"
 dependencies = [
+ "chrono",
+ "codux-ai-history",
  "codux-protocol",
  "codux-remote-transport",
  "codux-runtime-core",

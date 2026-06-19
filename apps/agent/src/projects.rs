@@ -11,22 +11,27 @@ use std::{
     path::PathBuf,
 };
 
+/// The agent's persistent data directory (projects list, AI usage cache, …).
+/// `CODUX_AGENT_DATA_DIR` overrides the default `~/.codux-agent`.
+pub fn agent_data_dir() -> PathBuf {
+    std::env::var("CODUX_AGENT_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| ".".to_string());
+            PathBuf::from(home).join(".codux-agent")
+        })
+}
+
 pub struct AgentProjectStore {
     path: PathBuf,
 }
 
 impl AgentProjectStore {
     pub fn new() -> Self {
-        let dir = std::env::var("CODUX_AGENT_DATA_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                let home = std::env::var("HOME")
-                    .or_else(|_| std::env::var("USERPROFILE"))
-                    .unwrap_or_else(|_| ".".to_string());
-                PathBuf::from(home).join(".codux-agent")
-            });
         Self {
-            path: dir.join("projects.json"),
+            path: agent_data_dir().join("projects.json"),
         }
     }
 

@@ -13,6 +13,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 
+mod ai_stats;
 mod git;
 mod host;
 mod projects;
