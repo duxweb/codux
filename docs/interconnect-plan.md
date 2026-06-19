@@ -147,24 +147,34 @@ x11/wayland unproven.)
   without re-pairing (the host caches the device id). Ticket parsing, the confirmed-payload
   mapping, and the store round trip are unit-tested.
 
+- **Agent pairing (done, tested).** The headless agent speaks the host pairing handshake and
+  auto-confirms (reaching it means the controller holds the iroh ticket — the real gate), so a
+  desktop can pair with an agent, not only another desktop. `--serve` prints a pasteable
+  `codux://pair` ticket; the serve-smoke drives the pairing round trip.
+
+- **Controller manager + remote browse (done, tested).** `RemoteControllerManager` pools live
+  `RemoteController` connections (keyed by device id), lazy-connects from the saved store, and
+  bridges the async API into sync `RuntimeService` methods via `block_on`. First real routing
+  consumers on `RuntimeService`: `pair_remote_host`, `saved_remote_hosts`, `forget_remote_host`,
+  `remote_browse_directory`, `remote_create_directory`, `remote_host_info` — these back the
+  add-project remote flow. **Two end-to-end tests over real in-process iroh** prove the whole
+  loop: pair the controller against a real host and drive `host.info`; and paste a ticket →
+  pair (persist + cache) → browse a remote directory through the manager. (Run with
+  `cargo test -p codux-runtime -- --ignored controller`.)
+
 - **Next (ordered), each its own green commit:**
-  1. **Controller manager** — `HashMap<device_id, Arc<RemoteController>>` keyed by device id,
-     lazy-connect from `RemoteControllerStore` via `async_runtime::block_on(connect_saved)`,
-     held on `RuntimeService`. (Build together with step 2 so it has a real consumer.)
-  2. **RuntimeService routing seam** — branch at the top of each domain method (and the
-     `run_cancellable_project_git` / files / worktree / `terminal_manager()` delegate families):
-     if the project's `host_device_id` is set, forward via the controller; else local. **Per
-     domain this needs a payload→struct mapping** (the host returns the runtime-core JSON
-     payload; the desktop UI wants rich structs like `GitSummary`/`FileEntry`), so it is real
-     work per domain, not a blanket wrap. Validate with a live host↔controller round trip
-     (a second desktop, or the agent once it also speaks the pairing handshake).
-  3. **GPUI UI** — paste-ticket pairing dialog, remote directory browse in add-project (over
-     `file.list` + `file.createDirectory`), and the sidebar remote marker (the per-project
-     `.relative()` icon wrapper in `project_column.rs`).
-  4. **Agent pairing** — teach the headless agent the host pairing handshake (emit a ticket,
-     handle `pairing.request`, auto/headless-confirm) so a desktop can pair with an agent, not
-     only another desktop.
-  5. **Memory over remote (P4 tail)** — net-new memory protocol + host serving, riding on the
+  1. **GPUI UI** — the backend for this is done and validated. (a) Paste-ticket pairing dialog
+     → `pair_remote_host`. (b) Add-project: a "device" picker (`saved_remote_hosts`) + a remote
+     directory browser over `remote_browse_directory` / `remote_create_directory`, setting the
+     new project's `host_device_id`. (c) Sidebar remote marker on the per-project `.relative()`
+     icon wrapper in `project_column.rs` (driven by `ProjectInfo::host_device_id`). This is
+     where product/UX decisions live, so it's the natural next checkpoint with the owner.
+  2. **Hosted-project domain routing** — for a project whose `host_device_id` is set, route its
+     file/git/terminal/ai through the manager's controller. Per domain needs a payload→struct
+     mapping (host returns runtime-core JSON; desktop UI wants `GitSummary`/`FileEntry`), so
+     it's real work per domain, not a blanket wrap. The manager + `controller_for` make each a
+     thin addition; validate each against the agent (`cargo run -p codux-agent -- --serve`).
+  3. **Memory over remote (P4 tail)** — net-new memory protocol + host serving, riding on the
      model routing from step 2.
 
 ## Verification
