@@ -251,17 +251,17 @@ x11/wayland unproven.)
   status, no LLM). Memory domain is now complete: engine in codux-memory + codux-llm, desktop
   shim, read routing, host extraction.
 
-- **Terminal project-switch restore (done).** Switching to a remote-hosted project now
-  reconnects its terminals on the host. `spawn_terminal_tabs`/`mount_terminal_tab_panes` take an
-  optional `pending_out`: remote panes are built pending and deferred into the existing async
-  attach chokepoint (branches `host_device_id` → `attach_pending_session_remote`), so the UI
-  thread never blocks on the network. Local terminals are unchanged.
+- **Terminal restore complete (done).** Remote-hosted terminals reconnect on the host across all
+  restore paths. `spawn_terminal_tabs`/`mount_terminal_tab_panes` take an optional `pending_out`:
+  remote panes are built pending and deferred into the existing async attach chokepoint (branches
+  `host_device_id` → `attach_pending_session_remote`), so the UI thread never blocks on the
+  network; local terminals are unchanged. Project-switch restore drives the chokepoint inline;
+  boot restore (which runs during App construction, before a `Context<Self>` exists) collects
+  remote panes into `boot_pending_terminals` and attaches them via `attach_boot_pending_terminals`
+  right after the entity is created (`main.rs`). The terminal domain is now fully remote-aware
+  (interactive add/split, project-switch restore, boot restore).
 
 - **Remaining (each a real chunk, best done with fresh context):**
-  - **Terminal boot-time remote restore** — the boot path runs during App construction (no
-    `Context<Self>` for the async chokepoint yet), so it still spawns local PTYs and a remote
-    project's terminals attach on the next project-switch restore. Needs a post-construction
-    attach hook. Small.
   - **AI session ops** — the AI *stats* panel already routes via `ai.state`. The session-level
     ops (detail / fork / rename / remove) would route to the host's AIHistoryService. Secondary.
 
