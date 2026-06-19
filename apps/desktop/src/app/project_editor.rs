@@ -45,7 +45,7 @@ impl CoduxApp {
                     ))
                     .child({
                         let (device_label, is_remote) = match &self.project_editor_host_device_id {
-                            None => (tr("project.editor.device.local", "This Mac"), false),
+                            None => (tr("project.editor.device.local", "Local"), false),
                             Some(device_id) => (
                                 self.runtime_service
                                     .saved_remote_hosts()
@@ -142,7 +142,7 @@ impl CoduxApp {
         let current = self.project_editor_browse_path.clone();
         let can_confirm = self.file_picker_result_path().is_some() && !self.project_editor_browse_busy;
 
-        // Left: the device sidebar (This Mac + each paired host). Clicking a
+        // Left: the device sidebar (Local + each paired host). Clicking a
         // device re-lists from its root.
         let active_device = self.project_editor_host_device_id.clone();
         let mut devices = div()
@@ -157,7 +157,7 @@ impl CoduxApp {
             .overflow_y_scrollbar()
             .child(file_picker_device_row(
                 "file-picker-device-local".to_string(),
-                tr("project.editor.device.local", "This Mac"),
+                tr("project.editor.device.local", "Local"),
                 active_device.is_none(),
                 cx,
                 |app, window, cx| app.file_picker_switch_device(None, window, cx),
@@ -226,7 +226,7 @@ impl CoduxApp {
         }
 
         let root_label = match &active_device {
-            None => tr("project.editor.device.local", "This Mac"),
+            None => tr("project.editor.device.local", "Local"),
             Some(device_id) => self
                 .runtime_service
                 .saved_remote_hosts()
@@ -515,7 +515,7 @@ fn file_picker_breadcrumb(
             .into_any_element();
     }
     // The root crumb stands in for the bare filesystem root: an icon + the
-    // device label (e.g. "This Mac" / a host name) navigating to "/".
+    // device label (e.g. "Local" / a host name) navigating to "/".
     let mut row = bar.child(file_picker_root_crumb(root_label, is_remote, cx));
     let absolute = trimmed.starts_with('/');
     let mut cumulative = String::new();

@@ -101,7 +101,7 @@
       "project.editor.browse.use": "Use this folder",
       "project.editor.browse.new_folder": "New folder",
       "project.editor.browse.new_folder_placeholder": "New folder name",
-      "project.editor.device.local": "This Mac",
+      "project.editor.device.local": "Local",
       "project.editor.device.remote": "Device",
       "file.picker.open.title": "Open File",
       "file.picker.open.confirm": "Open",
