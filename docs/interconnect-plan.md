@@ -231,9 +231,19 @@ x11/wayland unproven.)
     interactive add-terminal path is remote). Small.
   - **Memory** — reading the host's `memory-workspaces` files already works via the routed file
     domain. The blocker is **extraction** (generating memories from AI sessions via an LLM),
-    which must run on the host with an **AI provider** — i.e. model routing. The product
-    decision: does the headless host get its **own** AI-provider config, or does the controller
-    forward the desktop's provider (which means sending an API key to the host)?
+    which must run on the host with an AI provider. **Decision (owner): the controller forwards
+    its provider config** (incl. API key) to the host over the iroh-encrypted transport; the
+    host uses it in memory and does not persist it. Build steps (the largest single piece, do in
+    a fresh session):
+    1. **Extract the memory engine into a shared crate** `codux-memory` (like `codux-ai-history`):
+       move `apps/desktop/runtime/src/memory/*`, replacing desktop couplings (`AISettings`,
+       `runtime_state::ProjectInfo`, `runtime_paths`, the AI-runtime bridge) with crate-local
+       params / a trait, keep the desktop re-export shim so its call sites are unchanged.
+    2. **Agent serves memory**: `memory.extract {project, providerConfig, sessions…}` runs the
+       engine with the forwarded provider; `memory.snapshot` returns the management view.
+    3. **Controller**: forward the desktop's selected provider config + trigger extraction;
+       route the `RuntimeService` memory methods for remote projects.
+    4. Validate against `codux-agent --serve` with a real provider config forwarded.
 
 ## Verification
 
