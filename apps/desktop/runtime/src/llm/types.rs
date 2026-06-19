@@ -39,32 +39,7 @@ pub struct PetIdleSpeechResponse {
     pub text: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct LLMJsonSchema {
-    pub name: String,
-    pub description: Option<String>,
-    pub schema: Value,
-}
-
-#[derive(Debug, Clone)]
-pub struct LLMProviderCompletionOptions {
-    pub max_tokens: u32,
-    pub temperature: f32,
-    pub preserve_formatting: bool,
-    pub json_response: bool,
-    pub json_schema: Option<LLMJsonSchema>,
-    pub timeout_seconds: u64,
-}
-
-impl Default for LLMProviderCompletionOptions {
-    fn default() -> Self {
-        Self {
-            max_tokens: 512,
-            temperature: 0.4,
-            preserve_formatting: false,
-            json_response: false,
-            json_schema: None,
-            timeout_seconds: 15,
-        }
-    }
-}
+// The provider-completion option/schema types live in the shared `codux-llm`
+// crate (the agent + memory crate reuse the same genai core). Alias them so the
+// desktop's call sites keep their existing names.
+pub use codux_llm::{LlmCompletionOptions as LLMProviderCompletionOptions, LlmJsonSchema as LLMJsonSchema};

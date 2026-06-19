@@ -1236,6 +1236,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codux-llm"
+version = "0.1.0"
+dependencies = [
+ "genai",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "codux-protocol"
 version = "1.8.1"
 dependencies = [
@@ -1287,6 +1297,7 @@ dependencies = [
  "bytes",
  "chrono",
  "codux-ai-history",
+ "codux-llm",
  "codux-protocol",
  "codux-remote-transport",
  "codux-runtime-core",

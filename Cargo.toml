@@ -4,6 +4,7 @@ members = [
     "apps/desktop/runtime",
     "apps/agent",
     "crates/codux-ai-history",
+    "crates/codux-llm",
     "crates/codux-protocol",
     "crates/codux-protocol-ffi",
     "crates/codux-remote-transport",

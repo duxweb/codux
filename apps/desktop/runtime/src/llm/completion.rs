@@ -61,107 +61,20 @@ async fn complete_genai(
     system_prompt: Option<&str>,
     options: LLMProviderCompletionOptions,
 ) -> Result<String, String> {
-    let adapter_kind = provider_adapter_kind(&provider.kind)
-        .ok_or_else(|| "Unsupported AI provider kind.".to_string())?;
-    let model = fallback_model(provider, default_model_for_provider_kind(&provider.kind));
-    let service_target = genai_service_target(provider, adapter_kind, &model)?;
-    runtime_trace(
-        "ai-llm",
-        &format!(
-            "request start kind={} provider_id={} model={} base_url={} prompt_chars={} system_chars={} max_tokens={} temperature={:.2} json_response={} json_schema={} json_schema_supported={}",
-            provider.kind,
-            provider.id,
-            model,
-            provider.base_url,
-            prompt.chars().count(),
-            system_prompt
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(|value| value.chars().count())
-                .unwrap_or(0),
-            options.max_tokens,
-            options.temperature,
-            options.json_response,
-            options
-                .json_schema
-                .as_ref()
-                .map(|schema| schema.name.as_str())
-                .unwrap_or(""),
-            options
-                .json_schema
-                .as_ref()
-                .is_some_and(|_| provider_supports_json_schema_response_format(provider))
-        ),
-    );
-    let mut request = ChatRequest::default();
-    if let Some(system) = system_prompt
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        request = request.with_system(system);
-    }
-    request = request.append_message(ChatMessage::user(prompt));
-    let client = Client::builder()
-        .with_web_config(
-            WebConfig::default().with_timeout(Duration::from_secs(options.timeout_seconds.max(1))),
-        )
-        .build();
-    let chat_options = ChatOptions::default()
-        .with_max_tokens(options.max_tokens)
-        .with_temperature(f64::from(options.temperature))
-        .with_capture_raw_body(true);
-    let chat_options = if let Some(json_schema) = options
-        .json_schema
-        .as_ref()
-        .filter(|_| provider_supports_json_schema_response_format(provider))
-    {
-        let mut spec = JsonSpec::new(json_schema.name.clone(), json_schema.schema.clone());
-        if let Some(description) = json_schema.description.as_deref() {
-            spec = spec.with_description(description);
-        }
-        chat_options.with_response_format(ChatResponseFormat::JsonSpec(spec))
-    } else if options.json_response {
-        chat_options.with_response_format(ChatResponseFormat::JsonMode)
-    } else {
-        chat_options
-    };
-    let response = client
-        .exec_chat(
-            ModelSpec::from_target(service_target),
-            request,
-            Some(&chat_options),
-        )
-        .await
-        .map_err(|error| provider_call_error(provider, &model, error))?;
-    let text = response.content.into_joined_texts().unwrap_or_default();
-    let text = sanitize_provider_response(&text, options.preserve_formatting);
-    if text.is_empty() {
-        runtime_trace(
-            "ai-llm",
-            &format!("request empty provider_id={} model={}", provider.id, model),
-        );
-        Err("The AI provider returned an empty response.".to_string())
-    } else {
-        runtime_trace(
-            "ai-llm",
-            &format!(
-                "request ok kind={} provider_id={} model={} text_chars={}",
-                provider.kind,
-                provider.id,
-                model,
-                text.chars().count()
-            ),
-        );
-        Ok(text)
-    }
+    // The genai integration lives in the shared `codux-llm` crate. The desktop
+    // keeps its richer `AISettings`-aware selection above and forwards the
+    // chosen provider to the shared core.
+    install_llm_trace_hook();
+    codux_llm::complete(&llm_provider_from_settings(provider), prompt, system_prompt, options).await
 }
 
-fn sanitize_provider_response(text: &str, preserve_formatting: bool) -> String {
-    if preserve_formatting {
-        text.trim()
-            .trim_matches(|ch| matches!(ch, '"' | '\'' | '“' | '”' | '‘' | '’'))
-            .to_string()
-    } else {
-        sanitize_response_line(text)
+fn llm_provider_from_settings(provider: &AIProviderSettings) -> codux_llm::LlmProvider {
+    codux_llm::LlmProvider {
+        id: provider.id.clone(),
+        kind: provider.kind.clone(),
+        display_name: provider.display_name.clone(),
+        model: provider.model.clone(),
+        base_url: provider.base_url.clone(),
+        api_key: provider.api_key.clone(),
     }
 }

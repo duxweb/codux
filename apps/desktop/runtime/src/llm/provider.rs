@@ -42,7 +42,7 @@ fn select_provider<'a>(
 }
 
 fn supports_completion(kind: &str) -> bool {
-    provider_adapter_kind(kind).is_some()
+    codux_llm::supports_completion(kind)
 }
 
 fn sanitize_test_provider(mut provider: AIProviderSettings) -> Result<AIProviderSettings, String> {
@@ -68,15 +68,6 @@ fn sanitize_test_provider(mut provider: AIProviderSettings) -> Result<AIProvider
     Ok(provider)
 }
 
-fn required_api_key(provider: &AIProviderSettings) -> Result<&str, String> {
-    let api_key = provider.api_key.trim();
-    if api_key.is_empty() && !provider_kind_allows_empty_api_key(&provider.kind) {
-        Err("The selected AI provider is missing an API key.".to_string())
-    } else {
-        Ok(api_key)
-    }
-}
-
 fn fallback_model(provider: &AIProviderSettings, fallback: &str) -> String {
     let model = provider.model.trim();
     if model.is_empty() {
@@ -84,27 +75,6 @@ fn fallback_model(provider: &AIProviderSettings, fallback: &str) -> String {
     } else {
         model.to_string()
     }
-}
-
-fn provider_adapter_kind(kind: &str) -> Option<AdapterKind> {
-    match kind {
-        "openai" | "openAICompatible" => Some(AdapterKind::OpenAI),
-        "anthropic" => Some(AdapterKind::Anthropic),
-        "deepseek" => Some(AdapterKind::DeepSeek),
-        "gemini" => Some(AdapterKind::Gemini),
-        "groq" => Some(AdapterKind::Groq),
-        "openrouter" => Some(AdapterKind::OpenRouter),
-        "ollama" | "localLlama" => Some(AdapterKind::Ollama),
-        _ => None,
-    }
-}
-
-fn provider_kind_allows_empty_api_key(kind: &str) -> bool {
-    matches!(kind, "ollama" | "localLlama")
-}
-
-fn provider_supports_json_schema_response_format(provider: &AIProviderSettings) -> bool {
-    matches!(provider.kind.as_str(), "openai" | "anthropic" | "gemini")
 }
 
 fn default_model_for_provider_kind(kind: &str) -> &'static str {
@@ -117,73 +87,6 @@ fn default_model_for_provider_kind(kind: &str) -> &'static str {
         "ollama" | "localLlama" => "llama3.2",
         _ => "gpt-4.1-mini",
     }
-}
-
-fn default_endpoint_for_provider_kind(kind: &str) -> &'static str {
-    match kind {
-        "anthropic" => "https://api.anthropic.com/v1/",
-        "deepseek" => "https://api.deepseek.com/",
-        "gemini" => "https://generativelanguage.googleapis.com/v1beta/",
-        "groq" => "https://api.groq.com/openai/v1/",
-        "openrouter" => "https://openrouter.ai/api/v1/",
-        "ollama" | "localLlama" => "http://localhost:11434",
-        _ => "https://api.openai.com/v1/",
-    }
-}
-
-fn genai_service_target(
-    provider: &AIProviderSettings,
-    adapter_kind: AdapterKind,
-    model: &str,
-) -> Result<ServiceTarget, String> {
-    let endpoint = provider_endpoint(provider)?;
-    let auth = if provider_kind_allows_empty_api_key(&provider.kind) {
-        AuthData::None
-    } else {
-        AuthData::from_single(required_api_key(provider)?.to_string())
-    };
-    Ok(ServiceTarget {
-        endpoint: Endpoint::from_owned(endpoint),
-        auth,
-        model: ModelIden::new(adapter_kind, model),
-    })
-}
-
-fn provider_endpoint(provider: &AIProviderSettings) -> Result<String, String> {
-    let endpoint = normalized_provider_base_url(
-        &provider.base_url,
-        default_endpoint_for_provider_kind(&provider.kind),
-    );
-    if !endpoint.starts_with("https://") && !endpoint.starts_with("http://") {
-        return Err("The selected AI provider has an invalid base URL.".to_string());
-    }
-    Ok(endpoint)
-}
-
-fn normalized_provider_base_url(base_url: &str, fallback: &str) -> String {
-    let trimmed = base_url.trim();
-    let value = if trimmed.is_empty() { fallback } else { trimmed };
-    if value.ends_with('/') {
-        value.to_string()
-    } else {
-        format!("{value}/")
-    }
-}
-
-fn provider_call_error(provider: &AIProviderSettings, model: &str, error: genai::Error) -> String {
-    runtime_trace(
-        "ai-llm",
-        &format!(
-            "request failed kind={} provider_id={} model={} error={}",
-            provider.kind, provider.id, model, error
-        ),
-    );
-    format!(
-        "{} request failed for model {}: {}",
-        provider.display_name,
-        model,
-        sanitize_response_line(&error.to_string())
-    )
 }
 
 fn sanitize_response_line(text: &str) -> String {

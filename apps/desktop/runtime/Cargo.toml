@@ -11,6 +11,7 @@ base64 = "0.22"
 bytes = "1.9"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 codux-ai-history = { path = "../../../crates/codux-ai-history" }
+codux-llm = { path = "../../../crates/codux-llm" }
 codux-protocol = { path = "../../../crates/codux-protocol" }
 codux-remote-transport = { path = "../../../crates/codux-remote-transport" }
 codux-runtime-core = { path = "../../../crates/codux-runtime-core" }

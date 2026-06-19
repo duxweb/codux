@@ -1,18 +1,6 @@
 use super::*;
 
 #[test]
-fn normalizes_provider_base_urls_for_genai() {
-    assert_eq!(
-        normalized_provider_base_url("https://api.openai.com/v1", "https://fallback.test/v1/"),
-        "https://api.openai.com/v1/"
-    );
-    assert_eq!(
-        normalized_provider_base_url("", "https://fallback.test/v1/"),
-        "https://fallback.test/v1/"
-    );
-}
-
-#[test]
 fn selects_memory_provider_by_priority() {
     let settings = AISettings {
         providers: vec![
@@ -79,22 +67,6 @@ fn pet_speech_decode_unwraps_json_text_in_any_shape() {
         decode_pet_speech_response("just a plain line"),
         "just a plain line"
     );
-}
-
-#[test]
-fn json_schema_response_format_is_used_only_for_known_supported_providers() {
-    let mut openai = provider("openai", 0, true);
-    openai.kind = "openai".to_string();
-    assert!(provider_supports_json_schema_response_format(&openai));
-
-    let mut compatible = provider("deepseek-compatible", 0, true);
-    compatible.base_url = "https://api.deepseek.com/v1".to_string();
-    compatible.model = "deepseek-v4-flash".to_string();
-    assert!(!provider_supports_json_schema_response_format(&compatible));
-
-    let mut deepseek = provider("deepseek", 0, true);
-    deepseek.kind = "deepseek".to_string();
-    assert!(!provider_supports_json_schema_response_format(&deepseek));
 }
 
 fn provider(id: &str, priority: i32, use_for_memory_extraction: bool) -> AIProviderSettings {
