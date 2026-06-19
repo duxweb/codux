@@ -28,6 +28,12 @@ impl RuntimeService {
         project_path: &str,
         file_path: &str,
     ) -> Result<String, String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            return self
+                .remote_controllers
+                .controller_for(&device_id)?
+                .git_diff(project_path, file_path);
+        }
         git::GitService::file_diff(project_path, file_path)
     }
 
@@ -69,6 +75,13 @@ impl RuntimeService {
         project_path: &str,
         file_path: &str,
     ) -> Result<git::GitSummary, String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let value = self
+                .remote_controllers
+                .controller_for(&device_id)?
+                .git_stage(project_path, &[file_path.to_string()])?;
+            return Ok(git_summary_from_payload(&value));
+        }
         git::GitService::stage_file(project_path, file_path)?;
         Ok(refresh_git_summary(&self.support_dir, project_path))
     }
@@ -78,6 +91,13 @@ impl RuntimeService {
         project_path: &str,
         file_paths: &[String],
     ) -> Result<git::GitSummary, String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let value = self
+                .remote_controllers
+                .controller_for(&device_id)?
+                .git_stage(project_path, file_paths)?;
+            return Ok(git_summary_from_payload(&value));
+        }
         git::GitService::stage_paths(project_path, file_paths)?;
         Ok(refresh_git_summary(&self.support_dir, project_path))
     }
@@ -87,6 +107,13 @@ impl RuntimeService {
         project_path: &str,
         file_path: &str,
     ) -> Result<git::GitSummary, String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let value = self
+                .remote_controllers
+                .controller_for(&device_id)?
+                .git_unstage(project_path, &[file_path.to_string()])?;
+            return Ok(git_summary_from_payload(&value));
+        }
         git::GitService::unstage_file(project_path, file_path)?;
         Ok(refresh_git_summary(&self.support_dir, project_path))
     }
@@ -96,6 +123,13 @@ impl RuntimeService {
         project_path: &str,
         file_paths: &[String],
     ) -> Result<git::GitSummary, String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let value = self
+                .remote_controllers
+                .controller_for(&device_id)?
+                .git_unstage(project_path, file_paths)?;
+            return Ok(git_summary_from_payload(&value));
+        }
         git::GitService::unstage_paths(project_path, file_paths)?;
         Ok(refresh_git_summary(&self.support_dir, project_path))
     }
@@ -105,6 +139,13 @@ impl RuntimeService {
         project_path: &str,
         message: &str,
     ) -> Result<git::GitSummary, String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let value = self
+                .remote_controllers
+                .controller_for(&device_id)?
+                .git_commit(project_path, message)?;
+            return Ok(git_summary_from_payload(&value));
+        }
         git::GitService::commit_staged(project_path, message)?;
         Ok(refresh_git_summary(&self.support_dir, project_path))
     }
@@ -295,6 +336,13 @@ impl RuntimeService {
         project_path: &str,
         file_path: &str,
     ) -> Result<git::GitSummary, String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let value = self
+                .remote_controllers
+                .controller_for(&device_id)?
+                .git_discard(project_path, &[file_path.to_string()])?;
+            return Ok(git_summary_from_payload(&value));
+        }
         git::GitService::discard_file(project_path, file_path)?;
         Ok(refresh_git_summary(&self.support_dir, project_path))
     }
@@ -304,6 +352,13 @@ impl RuntimeService {
         project_path: &str,
         file_paths: &[String],
     ) -> Result<git::GitSummary, String> {
+        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+            let value = self
+                .remote_controllers
+                .controller_for(&device_id)?
+                .git_discard(project_path, file_paths)?;
+            return Ok(git_summary_from_payload(&value));
+        }
         git::GitService::discard_paths(project_path, file_paths)?;
         Ok(refresh_git_summary(&self.support_dir, project_path))
     }

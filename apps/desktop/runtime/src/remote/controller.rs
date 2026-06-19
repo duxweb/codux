@@ -14,7 +14,8 @@ use codux_protocol::{
     REMOTE_AI_STATE, REMOTE_AI_STATS, REMOTE_ERROR, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DELETE,
     REMOTE_FILE_DELETED, REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_READ,
     REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITTEN,
-    REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_PAIRING_CONFIRMED, REMOTE_PAIRING_REJECTED,
+    REMOTE_GIT_COMMIT, REMOTE_GIT_DIFF, REMOTE_GIT_DISCARD, REMOTE_GIT_STAGE, REMOTE_GIT_STATUS,
+    REMOTE_GIT_UNSTAGE, REMOTE_HOST_INFO, REMOTE_PAIRING_CONFIRMED, REMOTE_PAIRING_REJECTED,
     REMOTE_PAIRING_REQUEST, REMOTE_PROJECT_LIST, REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED,
     REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_OUTPUT,
     REMOTE_TERMINAL_RESIZE, REMOTE_TRANSPORT_IROH,
@@ -510,6 +511,53 @@ impl RemoteController {
             REMOTE_GIT_STATUS,
             json!({ "projectId": project_id, "projectPath": project_path }),
         )
+    }
+
+    /// Stage/unstage/discard the given paths; the host replies with refreshed status.
+    pub fn git_paths_op(
+        &self,
+        kind: &'static str,
+        project_path: &str,
+        paths: &[String],
+    ) -> Result<Value, String> {
+        self.request(
+            REMOTE_GIT_STATUS,
+            kind,
+            json!({ "projectPath": project_path, "paths": paths }),
+        )
+    }
+
+    pub fn git_stage(&self, project_path: &str, paths: &[String]) -> Result<Value, String> {
+        self.git_paths_op(REMOTE_GIT_STAGE, project_path, paths)
+    }
+
+    pub fn git_unstage(&self, project_path: &str, paths: &[String]) -> Result<Value, String> {
+        self.git_paths_op(REMOTE_GIT_UNSTAGE, project_path, paths)
+    }
+
+    pub fn git_discard(&self, project_path: &str, paths: &[String]) -> Result<Value, String> {
+        self.git_paths_op(REMOTE_GIT_DISCARD, project_path, paths)
+    }
+
+    pub fn git_commit(&self, project_path: &str, message: &str) -> Result<Value, String> {
+        self.request(
+            REMOTE_GIT_STATUS,
+            REMOTE_GIT_COMMIT,
+            json!({ "projectPath": project_path, "message": message }),
+        )
+    }
+
+    pub fn git_diff(&self, project_path: &str, path: &str) -> Result<String, String> {
+        let value = self.request(
+            REMOTE_GIT_DIFF,
+            REMOTE_GIT_DIFF,
+            json!({ "projectPath": project_path, "path": path }),
+        )?;
+        Ok(value
+            .get("diff")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string())
     }
 
     pub fn ai_stats(&self, project_id: &str) -> Result<Value, String> {

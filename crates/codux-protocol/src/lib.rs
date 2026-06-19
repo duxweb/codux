@@ -85,6 +85,11 @@ pub const REMOTE_FILE_DELETED: &str = "file.deleted";
 pub const REMOTE_FILE_CREATE_DIRECTORY: &str = "file.createDirectory";
 pub const REMOTE_FILE_DIRECTORY_CREATED: &str = "file.directoryCreated";
 pub const REMOTE_GIT_STATUS: &str = "git.status";
+pub const REMOTE_GIT_STAGE: &str = "git.stage";
+pub const REMOTE_GIT_UNSTAGE: &str = "git.unstage";
+pub const REMOTE_GIT_COMMIT: &str = "git.commit";
+pub const REMOTE_GIT_DISCARD: &str = "git.discard";
+pub const REMOTE_GIT_DIFF: &str = "git.diff";
 pub const REMOTE_AI_STATS: &str = "ai.stats";
 /// Full `AIHistoryProjectState` (incl. the snapshot) for a desktop controller —
 /// distinct from `ai.stats`, which serves the derived baseline view to mobile.
