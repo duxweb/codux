@@ -181,12 +181,18 @@ x11/wayland unproven.)
     (`git_summary_from_payload`); aligned the agent's `changed_files` to the host's
     `GitFileStatus` shape. A remote project's files are fully usable and its git status shows.
 
-- **Next (ordered), each its own green commit — these are heavier, not thin branches:**
-  1. **Terminal** — biggest remaining: a `RemoteTerminalDriver` (TerminalDriver trait over the
-     controller: create→terminal.create, input/resize/close, and a `terminal.output`
-     subscription feeding the session buffer), with `TerminalManager` routing remote-project
-     sessions to it. Needs a controller output-stream subscription (today `terminal.output`
-     lands in `drain_events`) and live validation against the agent.
+- **Terminal transport + router (done, tested).** Correction to the earlier note: the desktop
+  `TerminalManager` is concrete local-PTY, NOT trait-based, and mobile is Dart — so a
+  `TerminalDriver` impl is the wrong abstraction. Instead the desktop mirrors mobile: the
+  `RemoteController` got a `terminal.output` subscription (`set_terminal_sink`) +
+  `create_terminal`/`terminal_input`/`terminal_resize`/`close_terminal`, and output is assembled
+  by `codux-terminal-core`'s `RemoteTerminalOutputRouter` — the same engine mobile uses via FFI.
+  A 3rd end-to-end iroh test proves it (pair → create → input → router assembles output).
+
+- **Next (ordered), each its own green commit:**
+  1. **Terminal UI wiring** — render a remote session in the desktop terminal pane on top of the
+     foundation above (route the pane's input/resize/close to the controller; render from the
+     router's screen snapshot). GPUI work that needs live validation against the agent.
   2. **AI stats** — the host serves a *derived* baseline view, but the desktop AI panel wants
      `AIHistoryProjectState{snapshot}`. Either have the host serve the richer snapshot, or add a
      remote-specific render path that consumes the baseline. Impedance, not a thin branch.
