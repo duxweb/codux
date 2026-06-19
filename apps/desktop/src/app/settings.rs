@@ -3299,25 +3299,40 @@ fn settings_remote_pane(
                         ),
                     )
                     .into_any_element(),
-                    settings_row(
-                        settings_text(language, "settings.remote.relay_mode", "Relay Network"),
-                        Some(settings_text(
-                            language,
-                            "settings.remote.relay_mode.help",
-                            "Changing the relay requires pairing again.",
-                        )),
-                        settings_select_impl(
-                            "settings-remote-relay-preset",
-                            settings.remote_relay_preset.as_str(),
-                            remote_relay_preset_options(language),
-                            _window,
-                            cx,
-                            language,
-                            |app, value, window, cx| app.set_remote_relay_preset(value, window, cx),
-                        ),
-                    )
-                    .into_any_element(),
-                    settings_remote_relay_custom_fields(settings, _window, cx, language),
+                    {
+                        // The custom URL/auth fields render as sub-content of the
+                        // relay row (one card slot), and only when "custom" — so
+                        // there's no empty slot drawing a stray separator.
+                        let custom = (settings.remote_relay_preset == "custom").then(|| {
+                            settings_remote_relay_custom_fields(settings, _window, cx, language)
+                        });
+                        let relay_row = settings_row(
+                            settings_text(language, "settings.remote.relay_mode", "Relay Network"),
+                            Some(settings_text(
+                                language,
+                                "settings.remote.relay_mode.help",
+                                "Changing the relay requires pairing again.",
+                            )),
+                            settings_select_impl(
+                                "settings-remote-relay-preset",
+                                settings.remote_relay_preset.as_str(),
+                                remote_relay_preset_options(language),
+                                _window,
+                                cx,
+                                language,
+                                |app, value, window, cx| {
+                                    app.set_remote_relay_preset(value, window, cx)
+                                },
+                            ),
+                        );
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(12.0))
+                            .child(relay_row)
+                            .children(custom)
+                            .into_any_element()
+                    },
                     div()
                         .py(px(10.0))
                         .flex()

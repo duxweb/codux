@@ -1013,7 +1013,9 @@ const REMOTE_LINK_RED: u32 = 0xE0566B;
 /// amber connecting, red broken-link disconnected, muted when not yet linked.
 /// `link` is the device's [`ControllerLinkState`], or `None` before any connect.
 fn project_remote_badge(link: Option<ControllerLinkState>) -> AnyElement {
-    let (icon, tint) = match link {
+    // A solid colored badge (state color fill + white glyph) reads clearly
+    // against the project tile, with a column-colored ring to separate it.
+    let (icon, fill) = match link {
         Some(ControllerLinkState::Connected) => (HeroIconName::Link, theme::GREEN),
         Some(ControllerLinkState::Connecting) => (HeroIconName::Link, theme::ORANGE),
         Some(ControllerLinkState::Disconnected) => (HeroIconName::LinkSlash, REMOTE_LINK_RED),
@@ -1021,16 +1023,18 @@ fn project_remote_badge(link: Option<ControllerLinkState>) -> AnyElement {
     };
     div()
         .absolute()
-        .right(px(-3.0))
-        .bottom(px(-3.0))
-        .w(px(15.0))
-        .h(px(15.0))
+        .right(px(-4.0))
+        .bottom(px(-4.0))
+        .w(px(18.0))
+        .h(px(18.0))
         .rounded_full()
-        .bg(color(theme::BG_COLUMN))
+        .border_2()
+        .border_color(color(theme::BG_COLUMN))
+        .bg(color(fill))
         .flex()
         .items_center()
         .justify_center()
-        .child(Icon::new(icon).size_2().text_color(color(tint)))
+        .child(Icon::new(icon).size_3().text_color(color(0xFFFFFF)))
         .into_any_element()
 }
 

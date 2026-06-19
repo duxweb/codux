@@ -139,7 +139,8 @@ enum CoduxTitlebarKind {
 #[cfg(target_os = "macos")]
 fn codux_traffic_light_position(kind: CoduxTitlebarKind) -> Option<gpui::Point<gpui::Pixels>> {
     match kind {
-        CoduxTitlebarKind::Main => Some(point(px(12.0), px(15.0))),
+        // Vertically center the lights in the 52px main header.
+        CoduxTitlebarKind::Main => Some(point(px(12.0), px(20.0))),
         CoduxTitlebarKind::Child => Some(point(px(12.0), px(17.0))),
     }
 }

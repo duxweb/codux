@@ -303,7 +303,7 @@ pub(in crate::app) fn column_header(
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     div()
-        .h(px(44.0))
+        .h(px(52.0))
         .w_full()
         .px(px(10.0))
         .flex_shrink_0()
