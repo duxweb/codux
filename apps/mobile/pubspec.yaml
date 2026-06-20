@@ -72,10 +72,6 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Bundled ONLY as a terminal glyph fallback (never the primary font), so it
-  # fills symbols the system monospace lacks -- e.g. Claude Code's `⏵⏵` status
-  # arrows -- on ROMs (some Android skins) that strip the system symbol fonts.
-  # Primary font is unchanged, so cell width / grid alignment are untouched.
   fonts:
     # Bundled primary terminal monospace: a complete, consistently-metricked font
     # with full coverage of Claude Code's TUI glyphs (✳ spinner, ›, box drawing,
@@ -87,9 +83,6 @@ flutter:
         - asset: assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf
         - asset: assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf
           weight: 700
-    - family: NotoSansSymbols2
-      fonts:
-        - asset: assets/fonts/NotoSansSymbols2-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
