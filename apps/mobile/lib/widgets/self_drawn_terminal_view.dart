@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -11,14 +12,16 @@ import '../services/remote_terminal_output_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/terminal_theme.dart';
 
-/// Fallback for glyphs the primary font (Maple Mono NF-CN) lacks — just color
-/// emoji via the platform font. Maple covers Latin, Nerd-Font/Powerline glyphs
-/// and CJK; a few Dingbats (e.g. ✳ U+2733) are not in it and fall through to the
-/// emoji font. Only affects glyphs the primary font is missing, so cell width
-/// and grid alignment (measured from the primary font) are untouched.
+/// Fallback for glyphs the primary font lacks. Keep emoji last so terminal
+/// symbols prefer text fonts first.
 final List<String> _terminalGlyphFallback = Platform.isIOS
-    ? const ['AppleColorEmoji']
-    : const ['Noto Color Emoji'];
+    ? const ['Menlo', 'PingFang SC', 'AppleColorEmoji']
+    : const [
+        'monospace',
+        'sans-serif',
+        'Noto Sans Symbols 2',
+        'Noto Color Emoji',
+      ];
 
 /// Self-drawn terminal that renders the shared Rust core's cell grid directly.
 /// The Rust `HeadlessTerminalScreen` is the single source of truth — the same
@@ -71,11 +74,10 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   // Zero-width space anchor in the hidden input (kept invisible and harmless if
   // ever emitted), used to detect inserts vs a backspace on an empty field.
   static final String _sentinel = String.fromCharCode(0x200b);
-  static const String _fontFamily = 'MapleMonoNFCN';
+  static final String _fontFamily = Platform.isIOS ? 'Menlo' : 'monospace';
 
-  // Per-cell paragraph cache, keyed by (text, color, style). Terminal content
-  // is highly repetitive, so this turns per-cell layout into a cache hit after
-  // warmup while keeping every glyph grid-aligned at its own column.
+  // Per-run paragraph cache, keyed by (text, color, style). Rendering whole
+  // line runs keeps one shared baseline for text and symbols in the same row.
   final Map<String, ui.Paragraph> _glyphCache = {};
 
   // Hidden anchor input that captures the soft keyboard / IME. The sentinel
@@ -228,13 +230,11 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
     // the natural paragraph at `_glyphTop` reproduces that, since a natural
     // paragraph's box top sits `ascent` above the baseline.
     final paragraph =
-        (ui.ParagraphBuilder(ui.ParagraphStyle(
-              fontFamily: _fontFamily,
-              fontSize: widget.fontSize,
-            ))
-            ..addText('M'))
-            .build()
-          ..layout(const ui.ParagraphConstraints(width: double.infinity));
+        (ui.ParagraphBuilder(
+          ui.ParagraphStyle(fontFamily: _fontFamily, fontSize: widget.fontSize),
+        )..addText('M')).build()..layout(
+          const ui.ParagraphConstraints(width: double.infinity),
+        );
     _cellWidth = paragraph.maxIntrinsicWidth;
     _cellHeight = widget.fontSize * _lineHeightMultiplier;
     final lines = paragraph.computeLineMetrics();
@@ -520,7 +520,8 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   }
 
   void _maybeAutoScroll(Offset local) {
-    final height = _termKey.currentContext?.size?.height ?? context.size?.height;
+    final height =
+        _termKey.currentContext?.size?.height ?? context.size?.height;
     const zone = 48.0;
     var dir = 0;
     if (local.dy < zone) {
@@ -583,7 +584,10 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   void _onHandlePanUpdate(DragUpdateDetails details) {
     final box = _termKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
-    _extendSelection(box.globalToLocal(details.globalPosition), moveAnchor: false);
+    _extendSelection(
+      box.globalToLocal(details.globalPosition),
+      moveAnchor: false,
+    );
   }
 
   void _onHandlePanEnd(DragEndDetails details) {
@@ -772,6 +776,8 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
 }
 
 class _TerminalGridPainter extends CustomPainter {
+  static const double _promptSymbolLiftEm = 0.22;
+
   _TerminalGridPainter({
     required this.snapshot,
     required this.cellWidth,
@@ -809,8 +815,10 @@ class _TerminalGridPainter extends CustomPainter {
     );
 
     final bgPaint = Paint();
+    final rows = SplayTreeMap<int, List<TerminalScreenCell>>();
     for (final cell in snapshot.cells) {
       if (cell.row < 0) continue;
+      rows.putIfAbsent(cell.row, () => <TerminalScreenCell>[]).add(cell);
       final colors = TerminalTheme.resolveCellColors(
         fg: cell.fg,
         bg: cell.bg,
@@ -829,31 +837,26 @@ class _TerminalGridPainter extends CustomPainter {
           bgPaint,
         );
       }
+    }
 
-      if (cell.hidden || cell.text.trim().isEmpty) continue;
-      final paragraph = _glyph(
-        cell.text,
-        colors.fg,
-        bold: cell.bold,
-        italic: cell.italic,
-        underline: cell.underline,
-        strikeout: cell.strikeout,
-      );
-      // Glyphs from the non-monospace symbol fallback (e.g. ①②, drawn when the
-      // primary font lacks them) can be wider than their cell, which would spill
-      // into and overlap the next cell. Confine an over-wide glyph to its slot by
-      // scaling it horizontally to fit; cell-width primary-font glyphs are left
-      // untouched (small tolerance avoids scaling glyphs that already fit).
-      final slotWidth = cellWidth * span;
-      final glyphWidth = paragraph.maxIntrinsicWidth;
-      if (glyphWidth > slotWidth + 0.5) {
-        canvas.save();
-        canvas.translate(x, y + glyphTop);
-        canvas.scale(slotWidth / glyphWidth, 1.0);
-        canvas.drawParagraph(paragraph, Offset.zero);
-        canvas.restore();
-      } else {
-        canvas.drawParagraph(paragraph, Offset(x, y + glyphTop));
+    for (final entry in rows.entries) {
+      entry.value.sort((left, right) => left.col.compareTo(right.col));
+      for (final run in _rowRuns(entry.value)) {
+        final paragraph = _paragraph(
+          run.text,
+          run.color,
+          bold: run.bold,
+          italic: run.italic,
+          underline: run.underline,
+          strikeout: run.strikeout,
+        );
+        canvas.drawParagraph(
+          paragraph,
+          Offset(
+            run.startCol * cellWidth,
+            entry.key * cellHeight + glyphTop + _rowRunLift(run.text),
+          ),
+        );
       }
     }
 
@@ -901,10 +904,7 @@ class _TerminalGridPainter extends CustomPainter {
       case TerminalScreenCursorShape.beam:
         canvas.drawRect(Rect.fromLTWH(x, y, 2, cellHeight), paint);
       case TerminalScreenCursorShape.underline:
-        canvas.drawRect(
-          Rect.fromLTWH(x, y + cellHeight - 2, width, 2),
-          paint,
-        );
+        canvas.drawRect(Rect.fromLTWH(x, y + cellHeight - 2, width, 2), paint);
       case TerminalScreenCursorShape.hollowBlock:
         paint
           ..style = PaintingStyle.stroke
@@ -913,7 +913,7 @@ class _TerminalGridPainter extends CustomPainter {
       case TerminalScreenCursorShape.block:
         canvas.drawRect(Rect.fromLTWH(x, y, width, cellHeight), paint);
         if (cell != null && !cell.hidden && cell.text.trim().isNotEmpty) {
-          final glyph = _glyph(
+          final glyph = _paragraph(
             cell.text,
             AppColors.bgBase,
             bold: cell.bold,
@@ -924,6 +924,75 @@ class _TerminalGridPainter extends CustomPainter {
           canvas.drawParagraph(glyph, Offset(x, y + glyphTop));
         }
     }
+  }
+
+  Iterable<_TerminalRowRun> _rowRuns(List<TerminalScreenCell> cells) sync* {
+    _TerminalRowRun? current;
+    var nextCol = 0;
+    for (final cell in cells) {
+      final span = cell.width < 1 ? 1 : cell.width;
+      if (cell.hidden || cell.text.isEmpty) {
+        if (current != null) {
+          yield current;
+          current = null;
+        }
+        nextCol = cell.col + span;
+        continue;
+      }
+      final colors = TerminalTheme.resolveCellColors(
+        fg: cell.fg,
+        bg: cell.bg,
+        inverse: cell.inverse,
+        bold: cell.bold,
+        dim: cell.dim,
+      );
+      final gap = cell.col - nextCol;
+      if (current == null ||
+          !current.canAppend(cell: cell, color: colors.fg, gap: gap)) {
+        if (current != null) yield current;
+        current = _TerminalRowRun.start(
+          startCol: cell.col,
+          text: cell.text,
+          widthCols: span,
+          color: colors.fg,
+          bold: cell.bold,
+          italic: cell.italic,
+          underline: cell.underline,
+          strikeout: cell.strikeout,
+        );
+      } else {
+        current.appendGap(gap);
+        current.appendCell(cell.text, span);
+      }
+      nextCol = cell.col + span;
+    }
+    if (current != null) yield current;
+  }
+
+  double _rowRunLift(String text) {
+    final nonWhitespaceRunes = text.runes.where(
+      (rune) => String.fromCharCode(rune).trim().isNotEmpty,
+    );
+    if (nonWhitespaceRunes.isNotEmpty &&
+        nonWhitespaceRunes.every(_isPromptSymbolRune)) {
+      return -fontSize * _promptSymbolLiftEm;
+    }
+    return 0;
+  }
+
+  bool _isPromptSymbolRune(int rune) {
+    return rune == 0x276F ||
+        rune == 0x276E ||
+        rune == 0x203A ||
+        rune == 0x2039 ||
+        rune == 0x25B8 ||
+        rune == 0x25C2 ||
+        rune == 0x25B6 ||
+        rune == 0x25C0 ||
+        rune == 0xE0B0 ||
+        rune == 0xE0B1 ||
+        rune == 0xE0B2 ||
+        rune == 0xE0B3;
   }
 
   TerminalScreenCell? _cursorCell(
@@ -937,7 +1006,7 @@ class _TerminalGridPainter extends CustomPainter {
     return null;
   }
 
-  ui.Paragraph _glyph(
+  ui.Paragraph _paragraph(
     String text,
     Color color, {
     required bool bold,
@@ -945,8 +1014,7 @@ class _TerminalGridPainter extends CustomPainter {
     required bool underline,
     required bool strikeout,
   }) {
-    final key =
-        '$text|${color.toARGB32()}|$bold|$italic|$underline|$strikeout';
+    final key = '$text|${color.toARGB32()}|$bold|$italic|$underline|$strikeout';
     final cached = glyphCache[key];
     if (cached != null) return cached;
 
@@ -955,10 +1023,9 @@ class _TerminalGridPainter extends CustomPainter {
       if (strikeout) TextDecoration.lineThrough,
     ];
     final builder =
-        ui.ParagraphBuilder(ui.ParagraphStyle(
-            fontFamily: fontFamily,
-            fontSize: fontSize,
-          ))
+        ui.ParagraphBuilder(
+            ui.ParagraphStyle(fontFamily: fontFamily, fontSize: fontSize),
+          )
           ..pushStyle(
             ui.TextStyle(
               color: color,
@@ -989,6 +1056,54 @@ class _TerminalGridPainter extends CustomPainter {
         old.cellHeight != cellHeight ||
         old.selectionStart != selectionStart ||
         old.selectionEnd != selectionEnd;
+  }
+}
+
+class _TerminalRowRun {
+  _TerminalRowRun.start({
+    required this.startCol,
+    required String text,
+    required this.widthCols,
+    required this.color,
+    required this.bold,
+    required this.italic,
+    required this.underline,
+    required this.strikeout,
+  }) : _buffer = StringBuffer(text);
+
+  final int startCol;
+  int widthCols;
+  final Color color;
+  final bool bold;
+  final bool italic;
+  final bool underline;
+  final bool strikeout;
+  final StringBuffer _buffer;
+
+  String get text => _buffer.toString();
+
+  bool canAppend({
+    required TerminalScreenCell cell,
+    required Color color,
+    required int gap,
+  }) {
+    return gap >= 0 &&
+        this.color == color &&
+        bold == cell.bold &&
+        italic == cell.italic &&
+        underline == cell.underline &&
+        strikeout == cell.strikeout;
+  }
+
+  void appendGap(int gap) {
+    if (gap <= 0) return;
+    _buffer.write(' ' * gap);
+    widthCols += gap;
+  }
+
+  void appendCell(String text, int span) {
+    _buffer.write(text);
+    widthCols += span;
   }
 }
 
