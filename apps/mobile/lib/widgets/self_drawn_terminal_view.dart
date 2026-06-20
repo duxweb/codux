@@ -221,16 +221,29 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   }
 
   void _measureCell() {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: 'M',
-        style: TextStyle(fontFamily: _fontFamily, fontSize: widget.fontSize),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    _cellWidth = painter.width;
+    // Mirror the desktop (GPUI) terminal exactly: glyphs use the font's natural
+    // line metrics, and the tight ascent+descent band is centered within the
+    // cell height. Desktop computes `padding_top = (line_height - ascent -
+    // descent) / 2` and draws the baseline at `padding_top + ascent`; drawing
+    // the natural paragraph at `_glyphTop` reproduces that, since a natural
+    // paragraph's box top sits `ascent` above the baseline.
+    final paragraph =
+        (ui.ParagraphBuilder(ui.ParagraphStyle(
+              fontFamily: _fontFamily,
+              fontSize: widget.fontSize,
+            ))
+            ..addText('M'))
+            .build()
+          ..layout(const ui.ParagraphConstraints(width: double.infinity));
+    _cellWidth = paragraph.maxIntrinsicWidth;
     _cellHeight = widget.fontSize * _lineHeightMultiplier;
-    _glyphTop = ((_cellHeight - painter.height) / 2).clamp(0.0, _cellHeight);
+    final lines = paragraph.computeLineMetrics();
+    if (lines.isNotEmpty) {
+      final m = lines.first;
+      _glyphTop = (_cellHeight - m.ascent - m.descent) / 2;
+    } else {
+      _glyphTop = (_cellHeight - widget.fontSize) / 2;
+    }
   }
 
   // ---- input ---------------------------------------------------------------
@@ -878,22 +891,27 @@ class _TerminalGridPainter extends CustomPainter {
     final y = cursor.row * cellHeight;
     final paint = Paint()..color = AppColors.textPrimary;
 
+    // The cell under the cursor may be double-width (e.g. CJK), so the cursor
+    // must span the full glyph, not a single column.
+    final cell = _cursorCell(snapshot, cursor.row, cursor.col);
+    final span = (cell != null && cell.width > 1) ? cell.width : 1;
+    final width = cellWidth * span;
+
     switch (cursor.shape) {
       case TerminalScreenCursorShape.beam:
         canvas.drawRect(Rect.fromLTWH(x, y, 2, cellHeight), paint);
       case TerminalScreenCursorShape.underline:
         canvas.drawRect(
-          Rect.fromLTWH(x, y + cellHeight - 2, cellWidth, 2),
+          Rect.fromLTWH(x, y + cellHeight - 2, width, 2),
           paint,
         );
       case TerminalScreenCursorShape.hollowBlock:
         paint
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1;
-        canvas.drawRect(Rect.fromLTWH(x, y, cellWidth, cellHeight), paint);
+        canvas.drawRect(Rect.fromLTWH(x, y, width, cellHeight), paint);
       case TerminalScreenCursorShape.block:
-        canvas.drawRect(Rect.fromLTWH(x, y, cellWidth, cellHeight), paint);
-        final cell = _cursorCell(snapshot, cursor.row, cursor.col);
+        canvas.drawRect(Rect.fromLTWH(x, y, width, cellHeight), paint);
         if (cell != null && !cell.hidden && cell.text.trim().isNotEmpty) {
           final glyph = _glyph(
             cell.text,
@@ -940,7 +958,6 @@ class _TerminalGridPainter extends CustomPainter {
         ui.ParagraphBuilder(ui.ParagraphStyle(
             fontFamily: fontFamily,
             fontSize: fontSize,
-            height: 1.0,
           ))
           ..pushStyle(
             ui.TextStyle(
