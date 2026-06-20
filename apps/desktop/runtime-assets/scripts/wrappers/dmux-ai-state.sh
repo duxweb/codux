@@ -63,7 +63,7 @@ if value:
 PY
 )"
     ;;
-  session-start|prompt-submit|pre-tool-use|before-agent|permission-request|permission-denied|elicitation|elicitation-result|pre-compact|post-compact|stop|stop-failure|session-end|idle|after-agent|codex-session-start|codex-prompt-submit|codex-pre-tool-use|codex-post-tool-use|codex-permission-request|codex-stop|codex-session-end|codewhale-session-start|codewhale-message-submit|codewhale-tool-call-before|codewhale-tool-call-after|codewhale-error|codewhale-session-end)
+  session-start|prompt-submit|pre-tool-use|post-tool-use|before-agent|permission-request|permission-denied|elicitation|elicitation-result|pre-compact|post-compact|stop|stop-failure|session-end|idle|after-agent|codex-session-start|codex-prompt-submit|codex-pre-tool-use|codex-post-tool-use|codex-permission-request|codex-stop|codex-session-end|codewhale-session-start|codewhale-message-submit|codewhale-tool-call-before|codewhale-tool-call-after|codewhale-error|codewhale-session-end)
     ;;
   *)
     exit 0
@@ -659,7 +659,7 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
       fi
       log_line "claude hook action=${action} session=${DMUX_SESSION_ID} project=${DMUX_PROJECT_ID:-} externalSession=$(resolved_claude_external_session_id || print -r -- nil)"
       ;;
-    prompt-submit|pre-tool-use|permission-request|permission-denied|notification|elicitation|elicitation-result)
+    prompt-submit|pre-tool-use|post-tool-use|permission-request|permission-denied|notification|elicitation|elicitation-result)
       write_claude_session_map
       if [[ "${action}" == "prompt-submit" ]]; then
         claude_prompt_tokens="$(extract_hook_number_field total_tokens totalTokenCount totalTokens)"
@@ -672,10 +672,10 @@ if [[ "${tool_name}" == "claude" || "${tool_name}" == "claude-code" ]]; then
           "" \
           "" \
           "user-input"
-      elif [[ "${action}" == "pre-tool-use" ]]; then
-        # The approved tool is starting: emit "responding" so a pending
-        # permission-wait (needsInput) clears immediately instead of sticking
-        # until the turn completes.
+      elif [[ "${action}" == "pre-tool-use" || "${action}" == "post-tool-use" ]]; then
+        # A tool is running/just ran: emit "responding". PostToolUse fires after
+        # an approved tool executes, so a pending permission-wait (needsInput)
+        # clears instead of sticking until the turn completes.
         write_ai_hook_event \
           "promptSubmitted" \
           "$(resolved_claude_external_session_id)" \

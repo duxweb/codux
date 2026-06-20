@@ -254,7 +254,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
   int _latencyProbeCounter = 0;
   final Map<String, DateTime> _latencyProbeSentAt = {};
   Timer? _connectionGraceTimer;
-  Timer? _aiStatsPollTimer;
 
   bool get _isConnected => _transportConnected && _transportReady;
   bool get _isHostReady =>
@@ -972,17 +971,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       if (!_terminalViewportInteractive) return;
       _claimTerminalViewport();
     });
-    // Poll AI stats so the pet/activity state stays live. The host serves AI
-    // stats request/reply only (no push), and an explicit request is sent just
-    // on opening the stats panel — so without this a state that cleared on the
-    // host (e.g. a permission approved → no longer "等待允许") never reaches the
-    // phone. Cheap payload; mirrors the desktop's ~5s probe cadence.
-    _aiStatsPollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted || !_appInForeground || !_isConnected) return;
-      final project = _selectedProject;
-      if (project == null) return;
-      _send(_projectController.aiStatsEnvelope(project));
-    });
     WidgetsBinding.instance.addObserver(this);
     _edgeBackController = AnimationController(
       vsync: this,
@@ -1054,7 +1042,6 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       _notifyHostBeforeTransportClose();
     }
     _viewportLeaseKeepalive?.cancel();
-    _aiStatsPollTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _disposing = true;
     _shouldReconnect = false;
