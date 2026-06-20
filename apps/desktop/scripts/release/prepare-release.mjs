@@ -118,31 +118,38 @@ function buildDownloadGuide() {
   const assets = [
     {
       name: `codux-${version}-macos-aarch64.dmg`,
-      usage: `Apple Silicon Mac stable release / Apple Silicon Mac 正式版本`,
+      usageEn: `Apple Silicon Mac stable release`,
+      usageZh: `Apple Silicon Mac 正式版本`,
     },
     {
       name: `codux-${version}-macos-x86_64.dmg`,
-      usage: `Intel Mac stable release / Intel Mac 正式版本`,
+      usageEn: `Intel Mac stable release`,
+      usageZh: `Intel Mac 正式版本`,
     },
     {
       name: `codux-${version}-macos-aarch64-debug.dmg`,
-      usage: `Apple Silicon Mac debug build / Apple Silicon Mac 测试版本`,
+      usageEn: `Apple Silicon Mac debug build`,
+      usageZh: `Apple Silicon Mac 测试版本`,
     },
     {
       name: `codux-${version}-macos-x86_64-debug.dmg`,
-      usage: `Intel Mac debug build / Intel Mac 测试版本`,
+      usageEn: `Intel Mac debug build`,
+      usageZh: `Intel Mac 测试版本`,
     },
     {
       name: `codux-${version}-windows-x86_64-setup.exe`,
-      usage: `Windows 64-bit installer / Windows 64 位安装包`,
+      usageEn: `Windows 64-bit installer`,
+      usageZh: `Windows 64 位安装包`,
     },
   ];
   return [
     `## Downloads / 下载说明`,
     ``,
-    `| File / 文件 | Usage / 用途 |`,
-    `| --- | --- |`,
-    ...assets.map((asset) => `| [\`${asset.name}\`](${releaseAssetUrl(asset.name)}) | ${asset.usage} |`),
+    `| File / 文件 | Usage | 用途 |`,
+    `| --- | --- | --- |`,
+    ...assets.map(
+      (asset) => `| [\`${asset.name}\`](${releaseAssetUrl(asset.name)}) | ${asset.usageEn} | ${asset.usageZh} |`,
+    ),
   ].join("\n");
 }
 
