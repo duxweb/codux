@@ -82,9 +82,6 @@ impl ManagerShared {
     /// React to a dropped link: drop the dead controller from the pool and, if
     /// not already retrying, spawn the reconnect loop.
     fn handle_disconnect(self: &Arc<Self>, device_id: &str) {
-        if let Ok(mut connections) = self.connections.lock() {
-            connections.remove(device_id);
-        }
         {
             let mut reconnecting = match self.reconnecting.lock() {
                 Ok(guard) => guard,
@@ -97,11 +94,26 @@ impl ManagerShared {
             }
             reconnecting.insert(device_id.to_string());
         }
+        // Evict AFTER marking reconnecting, so `controller_for` never observes an
+        // evicted-but-not-yet-reconnecting host — which it would try to re-dial
+        // synchronously, blocking the (possibly UI-thread) caller against the
+        // offline host.
+        if let Ok(mut connections) = self.connections.lock() {
+            connections.remove(device_id);
+        }
         let shared = Arc::clone(self);
         let device_id = device_id.to_string();
         crate::async_runtime::spawn(async move {
             shared.reconnect_loop(device_id).await;
         });
+    }
+
+    /// Whether a background reconnect loop is currently retrying this device.
+    fn is_reconnecting(&self, device_id: &str) -> bool {
+        self.reconnecting
+            .lock()
+            .map(|reconnecting| reconnecting.contains(device_id))
+            .unwrap_or(false)
     }
 
     /// Retry `connect_saved` with capped exponential backoff until the link is
@@ -199,6 +211,15 @@ impl RemoteControllerManager {
                 return Ok(controller);
             }
         }
+        // A dropped host is being retried in the background. Do NOT also dial it
+        // here: a synchronous caller (e.g. a project switch loading the offline
+        // host's worktrees/git on the UI thread or a blocking pool) would freeze
+        // until the dial times out, and many such calls exhaust the blocking
+        // pool (the "busy" indicator). Report unavailable now; the reconnect
+        // loop repopulates the connection when the host returns.
+        if self.shared.is_reconnecting(device_id) {
+            return Err(format!("Remote host {device_id} is offline (reconnecting)."));
+        }
         let host = self
             .shared
             .store
@@ -214,6 +235,10 @@ impl RemoteControllerManager {
             Err(error) => {
                 self.shared
                     .set_link(device_id, ControllerLinkState::Disconnected);
+                // Hand off to the background reconnect loop: the host is picked
+                // up when it returns, and further calls fast-fail above instead
+                // of re-dialling (and re-blocking) the offline host.
+                self.shared.handle_disconnect(device_id);
                 return Err(error);
             }
         };
