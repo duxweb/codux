@@ -11,14 +11,12 @@ import '../services/remote_terminal_output_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/terminal_theme.dart';
 
-/// Fallback for glyphs the primary monospace (JetBrains Mono Nerd Font) lacks.
-/// `NotoSansSymbols2` (subset, bundled) comes first: it renders the Dingbat
-/// symbols the Nerd Font is missing — Claude Code's ✳ spinner and ✚ ✤ ✷
-/// decorations (U+2733/271A/2724/2737…) — as monochrome TEXT glyphs that take
-/// the terminal's SGR colour and keep the right aspect. Without it they fall to
-/// the platform emoji font, which renders them squished. Emoji stays last for
-/// actual color emoji. This only affects glyphs the primary font is missing, so
-/// cell width and grid alignment (measured from the primary font) are untouched.
+/// Fallback fonts for glyphs the primary monospace lacks — e.g. Claude Code's
+/// `⏵⏵` status arrows. `NotoSansSymbols2` is bundled (see pubspec) so symbols
+/// render even on ROMs that strip the system symbol fonts; the platform emoji
+/// font covers color emoji. This only affects glyphs the primary font is
+/// missing, so cell width and grid alignment (measured from the primary font)
+/// are untouched.
 final List<String> _terminalGlyphFallback = Platform.isIOS
     ? const ['NotoSansSymbols2', 'AppleColorEmoji']
     : const ['NotoSansSymbols2', 'Noto Color Emoji'];
@@ -74,10 +72,7 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   // Zero-width space anchor in the hidden input (kept invisible and harmless if
   // ever emitted), used to detect inserts vs a backspace on an empty field.
   static final String _sentinel = String.fromCharCode(0x200b);
-  // Bundled JetBrains Mono Nerd Font (Mono variant): a consistent cross-platform
-  // monospace with full coverage of Claude Code's TUI glyphs, so symbols no
-  // longer fall back to a system font with a mismatched aspect/baseline.
-  static const String _fontFamily = 'JetBrainsMonoNF';
+  static final String _fontFamily = Platform.isIOS ? 'Menlo' : 'monospace';
 
   // Per-cell paragraph cache, keyed by (text, color, style). Terminal content
   // is highly repetitive, so this turns per-cell layout into a cache hit after
@@ -96,11 +91,6 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   double _cellWidth = 0;
   double _cellHeight = 0;
   double _glyphTop = 0;
-  // Distance from a cell's top to the shared text baseline (from the primary
-  // font). Glyphs are drawn so their own baseline lands here, so a CJK glyph
-  // from the system fallback font lines up with Latin JetBrains Mono glyphs
-  // instead of sitting lower/higher on a mixed line.
-  double _glyphBaseline = 0;
   int _cols = 0;
   int _rows = 0;
   TerminalCursorMetrics? _lastCursorMetrics;
@@ -232,27 +222,16 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   }
 
   void _measureCell() {
-    // Measure with the SAME `height: 1.0` the glyph paragraphs render with
-    // (see `_glyph`), so `painter.height` is the actual glyph-box height. With a
-    // bare style the painter reports the font's natural line height instead
-    // (~1.17x for JetBrains Mono), which made `_glyphTop` too small and pushed
-    // text above the full-cell cursor block — visibly off-centre.
     final painter = TextPainter(
       text: TextSpan(
         text: 'M',
-        style: TextStyle(
-          fontFamily: _fontFamily,
-          fontSize: widget.fontSize,
-          height: 1.0,
-        ),
+        style: TextStyle(fontFamily: _fontFamily, fontSize: widget.fontSize),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
     _cellWidth = painter.width;
     _cellHeight = widget.fontSize * _lineHeightMultiplier;
     _glyphTop = ((_cellHeight - painter.height) / 2).clamp(0.0, _cellHeight);
-    _glyphBaseline = _glyphTop +
-        painter.computeDistanceToActualBaseline(TextBaseline.alphabetic);
   }
 
   // ---- input ---------------------------------------------------------------
@@ -761,7 +740,7 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
                     snapshot: _snapshot,
                     cellWidth: _cellWidth,
                     cellHeight: _cellHeight,
-                    glyphBaseline: _glyphBaseline,
+                    glyphTop: _glyphTop,
                     fontSize: widget.fontSize,
                     fontFamily: _fontFamily,
                     glyphCache: _glyphCache,
@@ -785,7 +764,7 @@ class _TerminalGridPainter extends CustomPainter {
     required this.snapshot,
     required this.cellWidth,
     required this.cellHeight,
-    required this.glyphBaseline,
+    required this.glyphTop,
     required this.fontSize,
     required this.fontFamily,
     required this.glyphCache,
@@ -796,7 +775,7 @@ class _TerminalGridPainter extends CustomPainter {
   final TerminalScreenSnapshot? snapshot;
   final double cellWidth;
   final double cellHeight;
-  final double glyphBaseline;
+  final double glyphTop;
   final double fontSize;
   final String fontFamily;
   final Map<String, ui.Paragraph> glyphCache;
@@ -855,17 +834,14 @@ class _TerminalGridPainter extends CustomPainter {
       // untouched (small tolerance avoids scaling glyphs that already fit).
       final slotWidth = cellWidth * span;
       final glyphWidth = paragraph.maxIntrinsicWidth;
-      // Place the glyph's own baseline on the shared cell baseline so fallback
-      // (e.g. CJK) glyphs line up with the primary font instead of floating.
-      final glyphY = y + glyphBaseline - paragraph.alphabeticBaseline;
       if (glyphWidth > slotWidth + 0.5) {
         canvas.save();
-        canvas.translate(x, glyphY);
+        canvas.translate(x, y + glyphTop);
         canvas.scale(slotWidth / glyphWidth, 1.0);
         canvas.drawParagraph(paragraph, Offset.zero);
         canvas.restore();
       } else {
-        canvas.drawParagraph(paragraph, Offset(x, glyphY));
+        canvas.drawParagraph(paragraph, Offset(x, y + glyphTop));
       }
     }
 
@@ -928,7 +904,7 @@ class _TerminalGridPainter extends CustomPainter {
             underline: false,
             strikeout: false,
           );
-          canvas.drawParagraph(glyph, Offset(x, y + glyphBaseline - glyph.alphabeticBaseline));
+          canvas.drawParagraph(glyph, Offset(x, y + glyphTop));
         }
     }
   }

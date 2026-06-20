@@ -72,24 +72,14 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Bundled ONLY as a terminal glyph fallback (never the primary font), so it
+  # fills symbols the system monospace lacks -- e.g. Claude Code's `⏵⏵` status
+  # arrows -- on ROMs (some Android skins) that strip the system symbol fonts.
+  # Primary font is unchanged, so cell width / grid alignment are untouched.
   fonts:
-    # Bundled primary terminal monospace: a complete, consistently-metricked font
-    # with full coverage of Claude Code's TUI glyphs (✳ spinner, ›, box drawing,
-    # block cursor, Powerline), so they no longer fall back to a system font with
-    # a different aspect/baseline (squished + misaligned). CJK still falls back to
-    # the platform fonts automatically.
-    - family: JetBrainsMonoNF
-      fonts:
-        - asset: assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf
-        - asset: assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf
-          weight: 700
-    # Text-presentation fallback for the Dingbat/symbol glyphs JetBrains Mono NF
-    # lacks (e.g. Claude Code's ✳ spinner, ✚ ✤ ✷). Subsetted to the symbol
-    # Unicode blocks (U+2000–2BFF) -- 140KB vs the 1.2MB full font. Without it
-    # these fall to the color-emoji font, which renders them squished.
     - family: NotoSansSymbols2
       fonts:
-        - asset: assets/fonts/NotoSansSymbols2-Subset.ttf
+        - asset: assets/fonts/NotoSansSymbols2-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

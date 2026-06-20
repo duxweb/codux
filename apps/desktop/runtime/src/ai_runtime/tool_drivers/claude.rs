@@ -17,14 +17,6 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
         definitions: &[
             hook("SessionStart", "session-start", 10, false),
             hook("UserPromptSubmit", "prompt-submit", 10, false),
-            // Claude has no "permission granted" hook, so a `needsInput`
-            // (等待允许) state otherwise sticks after the user approves until the
-            // turn ends. PreToolUse fires before the prompt (keeps "responding"
-            // accurate during normal tool use); PostToolUse fires after the
-            // approved tool actually runs — the reliable post-approval signal
-            // that clears the wait back to responding.
-            hook("PreToolUse", "pre-tool-use", 10, false),
-            hook("PostToolUse", "post-tool-use", 10, false),
             hook("PreCompact", "pre-compact", 10, false),
             hook("PostCompact", "post-compact", 10, false),
             hook("Stop", "stop", 10, false),
