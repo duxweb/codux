@@ -1095,11 +1095,15 @@ fn remote_connect_overlay(
                     "Paste the codux://pair link the other device shows (its Share menu).",
                 )),
         )
-        .child(settings_text_input(
+        .child(settings_textarea(
             "settings-remote-connect-ticket",
             ticket,
-            "codux://pair?payload=…",
-            false,
+            3,
+            settings_text(
+                language,
+                "remote.connect.ticket_placeholder",
+                "codux://pair?payload=…",
+            ),
             window,
             cx,
             |app, value, window, cx| app.set_remote_connect_ticket(value, window, cx),
@@ -1107,7 +1111,11 @@ fn remote_connect_overlay(
         .child(settings_text_input(
             "settings-remote-connect-name",
             name,
-            "This device name",
+            settings_text(
+                language,
+                "remote.connect.name_placeholder",
+                "This device name",
+            ),
             false,
             window,
             cx,

@@ -4,7 +4,7 @@ use serde_json::{Map, Value, json};
 #[cfg(unix)]
 use std::ffi::CStr;
 
-pub(crate) fn remote_host_name() -> String {
+pub fn remote_host_name() -> String {
     display_host_name(platform_host_name(), platform_user_name())
         .or_else(|| std::env::var("COMPUTERNAME").ok())
         .or_else(|| std::env::var("HOSTNAME").ok())

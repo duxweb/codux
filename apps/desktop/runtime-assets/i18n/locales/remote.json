@@ -33,7 +33,10 @@
       "remote.error.cannot_connect_server": "Verbindung zum Codux-Dienst nicht möglich.",
       "remote.error.connection_lost": "Remote-Verbindung verloren.",
       "remote.error.not_connected_internet": "Netzwerk ist offline.",
-      "remote.error.timed_out": "Codux-Dienstanfrage zeitüberschritten."
+      "remote.error.timed_out": "Codux-Dienstanfrage zeitüberschritten.",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "Name, der auf dem anderen Gerät angezeigt wird (optional)",
+      "remote.connect.ticket_required": "Fügen Sie einen Kopplungslink oder ein Kopplungsticket ein."
     },
     "en": {
       "remote.status.stopped": "Remote Host stopped.",
@@ -73,6 +76,9 @@
       "remote.add.connect": "Connect to a device",
       "remote.connect.title": "Connect to a device",
       "remote.connect.hint": "Paste the codux://pair link the other device shows (its Share menu).",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "Name shown on the other device (optional)",
+      "remote.connect.ticket_required": "Paste a pairing ticket.",
       "remote.connect.submit": "Connect"
     },
     "es": {
@@ -108,7 +114,10 @@
       "remote.error.cannot_connect_server": "No se puede conectar con el servicio Codux.",
       "remote.error.connection_lost": "Se perdió la conexión remota.",
       "remote.error.not_connected_internet": "La red está desconectada.",
-      "remote.error.timed_out": "La solicitud al servicio Codux agotó el tiempo."
+      "remote.error.timed_out": "La solicitud al servicio Codux agotó el tiempo.",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "Nombre que verá el otro dispositivo (opcional)",
+      "remote.connect.ticket_required": "Pega un enlace o ticket de emparejamiento."
     },
     "fr": {
       "remote.status.stopped": "Hôte distant arrêté.",
@@ -143,7 +152,10 @@
       "remote.error.cannot_connect_server": "Impossible de se connecter au service Codux.",
       "remote.error.connection_lost": "Connexion distante perdue.",
       "remote.error.not_connected_internet": "Le réseau est hors ligne.",
-      "remote.error.timed_out": "La requête au service Codux a expiré."
+      "remote.error.timed_out": "La requête au service Codux a expiré.",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "Nom affiché sur l'autre appareil (facultatif)",
+      "remote.connect.ticket_required": "Collez un lien ou un ticket d'appairage."
     },
     "ja": {
       "remote.status.stopped": "リモートホストは停止しました。",
@@ -178,7 +190,10 @@
       "remote.error.cannot_connect_server": "Coduxサービスに接続できません。",
       "remote.error.connection_lost": "リモート接続が切断されました。",
       "remote.error.not_connected_internet": "ネットワークに接続されていません。",
-      "remote.error.timed_out": "Coduxサービス要求がタイムアウトしました。"
+      "remote.error.timed_out": "Coduxサービス要求がタイムアウトしました。",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "相手側に表示するこのデバイス名（任意）",
+      "remote.connect.ticket_required": "ペアリングリンクまたはペアリングチケットを貼り付けてください。"
     },
     "ko": {
       "remote.status.stopped": "원격 호스트가 중지되었습니다.",
@@ -213,7 +228,10 @@
       "remote.error.cannot_connect_server": "Codux 서비스에 연결할 수 없습니다.",
       "remote.error.connection_lost": "원격 연결이 끊겼습니다.",
       "remote.error.not_connected_internet": "네트워크가 연결되어 있지 않습니다.",
-      "remote.error.timed_out": "Codux 서비스 요청 시간이 초과되었습니다."
+      "remote.error.timed_out": "Codux 서비스 요청 시간이 초과되었습니다.",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "상대 기기에 표시될 이 기기 이름(선택 사항)",
+      "remote.connect.ticket_required": "페어링 링크 또는 페어링 티켓을 붙여넣으세요."
     },
     "pt-BR": {
       "remote.status.stopped": "Host remoto parado.",
@@ -248,7 +266,10 @@
       "remote.error.cannot_connect_server": "Não foi possível conectar ao serviço Codux.",
       "remote.error.connection_lost": "Conexão remota perdida.",
       "remote.error.not_connected_internet": "A rede está offline.",
-      "remote.error.timed_out": "A solicitação ao serviço Codux expirou."
+      "remote.error.timed_out": "A solicitação ao serviço Codux expirou.",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "Nome exibido no outro dispositivo (opcional)",
+      "remote.connect.ticket_required": "Cole um link ou ticket de pareamento."
     },
     "ru": {
       "remote.status.stopped": "Удаленный хост остановлен.",
@@ -283,7 +304,10 @@
       "remote.error.cannot_connect_server": "Не удалось подключиться к сервису Codux.",
       "remote.error.connection_lost": "Удаленное соединение потеряно.",
       "remote.error.not_connected_internet": "Сеть недоступна.",
-      "remote.error.timed_out": "Истекло время ожидания запроса к сервису Codux."
+      "remote.error.timed_out": "Истекло время ожидания запроса к сервису Codux.",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "Имя этого устройства, которое увидит другая сторона (необязательно)",
+      "remote.connect.ticket_required": "Вставьте ссылку или билет сопряжения."
     },
     "zh-Hans": {
       "remote.status.stopped": "远程主机已停止。",
@@ -323,6 +347,9 @@
       "remote.add.connect": "连接到设备",
       "remote.connect.title": "连接到设备",
       "remote.connect.hint": "粘贴对方设备「分享」菜单里显示的 codux://pair 链接。",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "显示给对方的本机名称（可选）",
+      "remote.connect.ticket_required": "请粘贴配对链接或配对票据。",
       "remote.connect.submit": "连接"
     },
     "zh-Hant": {
@@ -363,6 +390,9 @@
       "remote.add.connect": "連接到裝置",
       "remote.connect.title": "連接到裝置",
       "remote.connect.hint": "貼上對方裝置「分享」選單顯示的 codux://pair 連結。",
+      "remote.connect.ticket_placeholder": "codux://pair?payload=…",
+      "remote.connect.name_placeholder": "顯示給對方的本機名稱（可選）",
+      "remote.connect.ticket_required": "請貼上配對連結或配對票據。",
       "remote.connect.submit": "連接"
     }
   }

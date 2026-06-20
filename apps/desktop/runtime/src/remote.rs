@@ -24,6 +24,7 @@ pub use controller::{
 };
 pub use controller_manager::{ControllerLinkState, RemoteControllerManager};
 pub use controller_store::{RemoteControllerStore, SavedRemoteHost, SavedRemoteTransport};
+pub use crypto::remote_host_name;
 pub use host::RemoteHostRuntime;
 pub use protocol::REMOTE_PROTOCOL_VERSION;
 pub use relay::{

@@ -946,7 +946,7 @@ impl CoduxApp {
     pub(super) fn open_remote_connect(&mut self, cx: &mut Context<Self>) {
         self.remote_connect_open = true;
         self.remote_connect_ticket = String::new();
-        self.remote_connect_name = String::new();
+        self.remote_connect_name = codux_runtime::remote::remote_host_name();
         self.remote_connect_error = None;
         self.remote_connect_busy = false;
         self.invalidate_remote_panel(cx);
@@ -983,14 +983,17 @@ impl CoduxApp {
     pub(super) fn submit_remote_connect(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let ticket = self.remote_connect_ticket.trim().to_string();
         if ticket.is_empty() {
-            self.remote_connect_error = Some("Paste a pairing ticket.".to_string());
+            self.remote_connect_error = Some(self.text(
+                "remote.connect.ticket_required",
+                "Paste a pairing ticket.",
+            ));
             self.invalidate_remote_panel(cx);
             return;
         }
         let device_name = {
             let name = self.remote_connect_name.trim();
             if name.is_empty() {
-                "Codux Desktop".to_string()
+                codux_runtime::remote::remote_host_name()
             } else {
                 name.to_string()
             }
