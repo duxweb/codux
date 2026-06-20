@@ -224,10 +224,19 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
   }
 
   void _measureCell() {
+    // Measure with the SAME `height: 1.0` the glyph paragraphs render with
+    // (see `_glyph`), so `painter.height` is the actual glyph-box height. With a
+    // bare style the painter reports the font's natural line height instead
+    // (~1.17x for JetBrains Mono), which made `_glyphTop` too small and pushed
+    // text above the full-cell cursor block — visibly off-centre.
     final painter = TextPainter(
       text: TextSpan(
         text: 'M',
-        style: TextStyle(fontFamily: _fontFamily, fontSize: widget.fontSize),
+        style: TextStyle(
+          fontFamily: _fontFamily,
+          fontSize: widget.fontSize,
+          height: 1.0,
+        ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
