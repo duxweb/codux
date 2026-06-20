@@ -17,7 +17,7 @@ platform-neutral. The service installer targets launchd (macOS), `systemd --user
 
 ## Install
 
-Download the `codux-<os>-<arch>` binary from
+Download the `codux-agent-<version>-<os>-<arch>` binary from
 [Releases](https://github.com/duxweb/codux/releases), put it on your `PATH`, then:
 
 ```bash
@@ -29,7 +29,7 @@ codux qrcode     # show the pairing QR for your phone/desktop
 Build from source:
 
 ```bash
-cargo build -p codux-agent --release   # produces `codux`
+cargo build -p codux-agent --release   # produces `codux-agent`
 ```
 
 ## Commands

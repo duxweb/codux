@@ -5,8 +5,8 @@ edition = "2024"
 
 # The cargo binary is `codux-agent` to avoid colliding with the desktop app's
 # `codux` bin in the workspace. The shipped/installed command is `codux`
-# (release artifacts are named `codux-<os>-<arch>`), and clap's `bin_name`
-# already presents it as `codux` in help/usage.
+# (release artifacts are named `codux-agent-<version>-<os>-<arch>`), and clap's
+# `bin_name` already presents it as `codux` in help/usage.
 [[bin]]
 name = "codux-agent"
 path = "src/main.rs"

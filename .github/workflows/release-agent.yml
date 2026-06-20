@@ -1,0 +1,189 @@
+name: Release Agent
+
+on:
+  workflow_run:
+    workflows: ["Release GPUI Desktop"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build, for example v1.9.1."
+        required: true
+        type: string
+      channel:
+        description: "Release channel metadata to apply."
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - beta
+          - stable
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  metadata:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v')) }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
+      source_ref: ${{ steps.ref.outputs.source_ref }}
+    steps:
+      - name: Resolve source ref
+        id: ref
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+          WORKFLOW_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || '' }}
+        run: |
+          source_ref="${DISPATCH_TAG:-$WORKFLOW_TAG}"
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.source_ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        env:
+          RELEASE_NOTES_PATH: dist/release-notes.md
+        run: |
+          mkdir -p dist
+          requested_channel="${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'auto' }}"
+          node apps/desktop/scripts/release/prepare-release.mjs "${{ steps.ref.outputs.source_ref }}" "${requested_channel}"
+
+  build:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos-aarch64
+            os: macos-26
+            target: aarch64-apple-darwin
+          - id: macos-x86_64
+            os: macos-26
+            target: x86_64-apple-darwin
+          - id: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - id: linux-aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - id: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+      RELEASE_BUILD_ID: ${{ matrix.id }}
+      RELEASE_STAGE_DIR: release-artifacts
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Restore Rust cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: agent-rust-release-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            agent-rust-release-${{ runner.os }}-${{ matrix.id }}-
+            agent-rust-release-${{ runner.os }}-
+
+      - name: Apply release version
+        shell: bash
+        env:
+          RELEASE_NOTES_PATH: dist/release-notes.md
+        run: |
+          mkdir -p dist
+          node apps/desktop/scripts/release/prepare-release.mjs "${{ needs.metadata.outputs.source_ref }}" "${{ needs.metadata.outputs.channel }}"
+
+      - name: Build agent
+        shell: bash
+        run: cargo build -p codux-agent --release --target "${CARGO_BUILD_TARGET}"
+
+      - name: Package agent
+        shell: bash
+        run: node apps/agent/scripts/release/package-agent.mjs
+
+      - name: Upload agent artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-${{ matrix.id }}
+          path: release-artifacts/${{ matrix.id }}/*
+          if-no-files-found: error
+
+      - name: Save Rust cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: agent-rust-release-${{ runner.os }}-${{ matrix.id }}-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
+
+  publish:
+    needs:
+      - metadata
+      - build
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_TAG: ${{ needs.metadata.outputs.source_ref }}
+      RELEASE_ARTIFACTS_DIR: release-artifacts
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download agent artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: agent-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish agent assets
+        run: node apps/agent/scripts/release/publish-agent-release.mjs

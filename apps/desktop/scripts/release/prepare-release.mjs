@@ -16,7 +16,9 @@ const channel =
 if (!dryRun) {
   updateCargoVersion("apps/desktop/Cargo.toml", version);
   updateCargoVersion("apps/desktop/runtime/Cargo.toml", version);
+  updateCargoVersion("apps/agent/Cargo.toml", version);
   updateCargoLockPackageVersion("Cargo.lock", "codux", version);
+  updateCargoLockPackageVersion("Cargo.lock", "codux-agent", version);
   updateCargoLockPackageVersion("Cargo.lock", "codux-runtime", version);
 }
 
@@ -140,6 +142,31 @@ function buildDownloadGuide() {
       name: `codux-${version}-windows-x86_64-setup.exe`,
       usageEn: `Windows 64-bit installer`,
       usageZh: `Windows 64 位安装包`,
+    },
+    {
+      name: `codux-agent-${version}-macos-aarch64`,
+      usageEn: `Apple Silicon Mac headless agent`,
+      usageZh: `Apple Silicon Mac 被控端`,
+    },
+    {
+      name: `codux-agent-${version}-macos-x86_64`,
+      usageEn: `Intel Mac headless agent`,
+      usageZh: `Intel Mac 被控端`,
+    },
+    {
+      name: `codux-agent-${version}-linux-x86_64`,
+      usageEn: `Linux x86_64 headless agent`,
+      usageZh: `Linux x86_64 被控端`,
+    },
+    {
+      name: `codux-agent-${version}-linux-aarch64`,
+      usageEn: `Linux ARM64 headless agent`,
+      usageZh: `Linux ARM64 被控端`,
+    },
+    {
+      name: `codux-agent-${version}-windows-x86_64.exe`,
+      usageEn: `Windows 64-bit headless agent`,
+      usageZh: `Windows 64 位被控端`,
     },
   ];
   return [

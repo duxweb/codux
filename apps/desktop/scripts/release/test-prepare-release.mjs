@@ -44,6 +44,26 @@ assert.match(
   notes,
   /\| \[`codux-1\.8\.0-windows-x86_64-setup\.exe`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/download\/v1\.8\.0\/codux-1\.8\.0-windows-x86_64-setup\.exe\) \| Windows 64-bit installer \| Windows 64 位安装包 \|/,
 );
+assert.match(
+  notes,
+  /\| \[`codux-agent-1\.8\.0-macos-aarch64`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/download\/v1\.8\.0\/codux-agent-1\.8\.0-macos-aarch64\) \| Apple Silicon Mac headless agent \| Apple Silicon Mac 被控端 \|/,
+);
+assert.match(
+  notes,
+  /\| \[`codux-agent-1\.8\.0-macos-x86_64`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/download\/v1\.8\.0\/codux-agent-1\.8\.0-macos-x86_64\) \| Intel Mac headless agent \| Intel Mac 被控端 \|/,
+);
+assert.match(
+  notes,
+  /\| \[`codux-agent-1\.8\.0-linux-x86_64`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/download\/v1\.8\.0\/codux-agent-1\.8\.0-linux-x86_64\) \| Linux x86_64 headless agent \| Linux x86_64 被控端 \|/,
+);
+assert.match(
+  notes,
+  /\| \[`codux-agent-1\.8\.0-linux-aarch64`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/download\/v1\.8\.0\/codux-agent-1\.8\.0-linux-aarch64\) \| Linux ARM64 headless agent \| Linux ARM64 被控端 \|/,
+);
+assert.match(
+  notes,
+  /\| \[`codux-agent-1\.8\.0-windows-x86_64\.exe`\]\(https:\/\/github\.com\/duxweb\/codux\/releases\/download\/v1\.8\.0\/codux-agent-1\.8\.0-windows-x86_64\.exe\) \| Windows 64-bit headless agent \| Windows 64 位被控端 \|/,
+);
 assert.doesNotMatch(notes, /codux-\*/);
 assert.doesNotMatch(notes, /latest\.json/);
 assert.doesNotMatch(notes, /updater\.app\.tar\.gz/);

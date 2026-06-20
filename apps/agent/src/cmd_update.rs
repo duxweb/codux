@@ -1,12 +1,12 @@
 //! `codux update` — check GitHub Releases for a newer build, then download,
 //! verify, atomically replace this binary, and restart the host if it was up.
 
-use dialoguer::theme::ColorfulTheme;
 use dialoguer::Confirm;
+use dialoguer::theme::ColorfulTheme;
 use serde::Deserialize;
 use std::time::Duration;
 
-use crate::{cmd_start, cmd_service, runstate};
+use crate::{cmd_service, cmd_start, runstate};
 
 const RELEASES_API: &str = "https://api.github.com/repos/duxweb/codux/releases/latest";
 const USER_AGENT: &str = "codux-agent-updater";
@@ -48,7 +48,7 @@ pub fn run(current: &str) -> Result<(), String> {
     }
     println!("A newer version is available: v{latest} (current v{current}).");
 
-    let asset = pick_asset(&release.assets)?;
+    let asset = pick_asset(&release.assets, latest)?;
     let proceed = Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt(format!("Download and install {} now?", asset.name))
         .default(true)
@@ -85,9 +85,8 @@ pub fn run(current: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Choose the release asset for this OS + architecture
-/// (`codux-<os>-<arch>[.exe]`).
-fn pick_asset(assets: &[Asset]) -> Result<&Asset, String> {
+/// Choose the release asset for this OS + architecture.
+fn pick_asset<'a>(assets: &'a [Asset], version: &str) -> Result<&'a Asset, String> {
     let os = match std::env::consts::OS {
         "macos" => "macos",
         "linux" => "linux",
@@ -95,17 +94,20 @@ fn pick_asset(assets: &[Asset]) -> Result<&Asset, String> {
         other => other,
     };
     let arch = std::env::consts::ARCH; // x86_64 / aarch64
-    let prefix = format!("codux-{os}-{arch}");
+    let extension = if os == "windows" { ".exe" } else { "" };
+    let expected = format!("codux-agent-{version}-{os}-{arch}{extension}");
+    let legacy = format!("codux-{os}-{arch}{extension}");
     assets
         .iter()
-        .find(|asset| asset.name.starts_with(&prefix))
+        .find(|asset| asset.name == expected)
+        .or_else(|| assets.iter().find(|asset| asset.name == legacy))
         .ok_or_else(|| {
             let available = assets
                 .iter()
                 .map(|asset| asset.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("no release asset for {prefix} (available: {available})")
+            format!("no release asset for {expected} (available: {available})")
         })
 }
 
@@ -125,7 +127,8 @@ fn replace_self(bytes: &[u8]) -> Result<(), String> {
         perms.set_mode(0o755);
         let _ = std::fs::set_permissions(&staged, perms);
         // Renaming over the running binary is allowed on unix.
-        std::fs::rename(&staged, &exe).map_err(|error| format!("failed to replace binary: {error}"))?;
+        std::fs::rename(&staged, &exe)
+            .map_err(|error| format!("failed to replace binary: {error}"))?;
     }
 
     #[cfg(windows)]
@@ -133,8 +136,10 @@ fn replace_self(bytes: &[u8]) -> Result<(), String> {
         // A running .exe can't be overwritten, but it can be renamed aside.
         let old = dir.join(".codux.old.exe");
         let _ = std::fs::remove_file(&old);
-        std::fs::rename(&exe, &old).map_err(|error| format!("failed to move current binary: {error}"))?;
-        std::fs::rename(&staged, &exe).map_err(|error| format!("failed to install update: {error}"))?;
+        std::fs::rename(&exe, &old)
+            .map_err(|error| format!("failed to move current binary: {error}"))?;
+        std::fs::rename(&staged, &exe)
+            .map_err(|error| format!("failed to install update: {error}"))?;
     }
 
     Ok(())
@@ -157,4 +162,68 @@ fn is_newer(a: &str, b: &str) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Asset, is_newer, pick_asset};
+
+    #[test]
+    fn newer_version_compares_numeric_parts() {
+        assert!(is_newer("1.10.0", "1.9.9"));
+        assert!(!is_newer("1.9.0", "1.9.0"));
+        assert!(!is_newer("1.8.9", "1.9.0"));
+    }
+
+    #[test]
+    fn pick_asset_ignores_desktop_assets() {
+        let expected = current_agent_asset_name("1.9.1");
+        let assets = vec![
+            asset("codux-1.9.1-macos-aarch64.dmg"),
+            asset("codux-1.9.1-windows-x86_64-setup.exe"),
+            asset(&expected),
+        ];
+
+        assert_eq!(pick_asset(&assets, "1.9.1").unwrap().name, expected);
+    }
+
+    #[test]
+    fn pick_asset_falls_back_to_legacy_agent_alias() {
+        let legacy = current_legacy_agent_asset_name();
+        let assets = vec![asset(&legacy)];
+
+        assert_eq!(pick_asset(&assets, "1.9.1").unwrap().name, legacy);
+    }
+
+    fn current_agent_asset_name(version: &str) -> String {
+        let os = match std::env::consts::OS {
+            "macos" => "macos",
+            "linux" => "linux",
+            "windows" => "windows",
+            other => other,
+        };
+        let extension = if os == "windows" { ".exe" } else { "" };
+        format!(
+            "codux-agent-{version}-{os}-{}{extension}",
+            std::env::consts::ARCH
+        )
+    }
+
+    fn current_legacy_agent_asset_name() -> String {
+        let os = match std::env::consts::OS {
+            "macos" => "macos",
+            "linux" => "linux",
+            "windows" => "windows",
+            other => other,
+        };
+        let extension = if os == "windows" { ".exe" } else { "" };
+        format!("codux-{os}-{}{extension}", std::env::consts::ARCH)
+    }
+
+    fn asset(name: &str) -> Asset {
+        Asset {
+            name: name.to_string(),
+            browser_download_url: format!("https://example.com/{name}"),
+        }
+    }
 }
