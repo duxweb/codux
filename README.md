@@ -109,14 +109,44 @@ Codux is built in **Rust + GPUI** — the same native stack behind [Zed](https:/
 
 ## Download
 
-**[Download the latest release →](https://github.com/duxweb/codux/releases/latest)** &nbsp;·&nbsp; or visit [codux.dux.cn](https://codux.dux.cn)
+Every link below always resolves to the **latest release** — one click, no version to pick.
 
-| Platform | Installer (links to the latest version) |
-| :------- | :--- |
-| macOS | [`codux-*-macos.dmg`](https://github.com/duxweb/codux/releases/latest) — open and drag Codux to Applications |
-| Windows | [`codux-*-windows-x86_64-setup.exe`](https://github.com/duxweb/codux/releases/latest) — double-click to install |
+**Desktop app**
 
-Then open a project, start your AI CLI in the terminal, and go — spin up a worktree for parallel tasks, connect an SSH profile, or pair your phone when you need to.
+| Platform | Download |
+| :--- | :--- |
+| macOS · Apple Silicon | [⬇ `codux-macos-aarch64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64.dmg) |
+| macOS · Intel | [⬇ `codux-macos-x86_64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-x86_64.dmg) |
+| Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
+
+Open the macOS `.dmg` and drag Codux to Applications; double-click the Windows installer. Then open a project, start your AI CLI, and go.
+
+**Headless host (`codux-agent`)** — Beta, ships with 2.0
+
+| Platform | Download |
+| :--- | :--- |
+| macOS · Apple Silicon | [⬇ `codux-macos-aarch64`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64) |
+| macOS · Intel | [⬇ `codux-macos-x86_64`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-x86_64) |
+| Linux · arm64 | [⬇ `codux-linux-aarch64`](https://github.com/duxweb/codux/releases/latest/download/codux-linux-aarch64) |
+| Linux · x64 | [⬇ `codux-linux-x86_64`](https://github.com/duxweb/codux/releases/latest/download/codux-linux-x86_64) |
+| Windows · x64 | [⬇ `codux-windows-x86_64.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64.exe) |
+
+Put the binary on your `PATH` as `codux`, then run `codux config` → `codux install` → `codux qrcode`.
+
+## Headless host commands (`codux-agent`)
+
+| Command | What it does |
+| :--- | :--- |
+| `codux config` | Interactive setup (device name, relay). Writes `codux.toml`. |
+| `codux install` | Run as a startup service (launchd / `systemd --user` / Task Scheduler). |
+| `codux start` / `stop` | Start (foreground) or stop the host. |
+| `codux status` | Whether it's running, node id, and paired-device count. |
+| `codux qrcode` / `link` | Show the pairing QR / print the pairing ticket to paste on the desktop. |
+| `codux device` | List paired devices; `device:del <id>` / `device:rename <id>` / `device:clear` to manage. |
+| `codux update` | Download, verify, and replace this binary, then restart the host. |
+| `codux uninstall` | Stop and remove the service. |
+
+Run `codux <command> --help` for details, or see [`apps/agent/README.md`](apps/agent/README.md).
 
 ## Keyboard Shortcuts
 

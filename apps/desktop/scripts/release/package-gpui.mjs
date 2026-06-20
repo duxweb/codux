@@ -20,6 +20,10 @@ const stageRoot = process.env.RELEASE_STAGE_DIR || "release-artifacts";
 const artifactSuffix = process.env.RELEASE_ARTIFACT_SUFFIX?.trim() || "";
 const outputDir = path.join(root, stageRoot, buildId);
 const writeSha256Sidecars = process.env.RELEASE_WRITE_SHA256 === "true";
+// Stable, version-less copies of the user-facing installers so
+// `releases/latest/download/<stable-name>` always points at the newest build
+// (no per-release README edits). Only for real release builds, not debug.
+const writeStableAlias = !artifactSuffix && process.env.RELEASE_WRITE_STABLE_ALIAS !== "false";
 
 fs.rmSync(outputDir, { recursive: true, force: true });
 fs.mkdirSync(outputDir, { recursive: true });
@@ -63,6 +67,7 @@ function packageMacos() {
     notarizeMacosArtifact(dmgPath);
   }
   writeSha256(dmgPath);
+  writeStableAliasCopy(dmgPath, `${stableArtifactBaseName("macos")}.dmg`);
 
   const updaterName = `${artifactBaseName("macos")}-updater.app.tar.gz`;
   const updaterPath = path.join(outputDir, updaterName);
@@ -162,6 +167,7 @@ function packageWindows() {
     run(windowsMakensisCommand(), [installerScriptPath]);
     writeSha256(installerPath);
     signTauriUpdaterArtifact(installerPath);
+    writeStableAliasCopy(installerPath, `${stableArtifactBaseName("windows")}-setup.exe`);
   });
 }
 
@@ -218,6 +224,17 @@ function artifactBaseName(platform) {
   const version = readCargoVersion();
   const arch = targetArchLabel();
   return `codux-${version}-${platform}-${arch}${artifactSuffix}`;
+}
+
+function stableArtifactBaseName(platform) {
+  return `codux-${platform}-${targetArchLabel()}`;
+}
+
+function writeStableAliasCopy(sourcePath, stableName) {
+  if (!writeStableAlias) return;
+  const stablePath = path.join(outputDir, stableName);
+  fs.copyFileSync(sourcePath, stablePath);
+  console.log(`aliased ${path.basename(sourcePath)} -> ${stableName}`);
 }
 
 function targetArchLabel() {
