@@ -60,8 +60,14 @@ class ProjectFilesPanel extends StatelessWidget {
           Expanded(
             child: loading
                 ? Center(child: CircularProgressIndicator(color: accent))
-                : ListView.separated(
-                    physics: const BouncingScrollPhysics(),
+                : RefreshIndicator(
+                    onRefresh: () async => onRefresh(),
+                    color: accent,
+                    backgroundColor: AppColors.bgSurface,
+                    child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
                     padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
                     itemCount: entries.length + (parent == null ? 0 : 1),
                     separatorBuilder: (_, _) => const Divider(
@@ -99,6 +105,7 @@ class ProjectFilesPanel extends StatelessWidget {
                       );
                     },
                   ),
+                  ),
           ),
           if (showFooterPath) _ProjectFilesFooterPath(path: path),
         ],
@@ -110,7 +117,7 @@ class ProjectFilesPanel extends StatelessWidget {
 class ProjectFilesPanelActions extends StatelessWidget {
   const ProjectFilesPanelActions({
     super.key,
-    required this.onRefresh,
+    this.onRefresh,
     required this.onOpenHome,
     required this.onOpenRoot,
     required this.onOpenVolumes,
@@ -119,7 +126,8 @@ class ProjectFilesPanelActions extends StatelessWidget {
     this.plain = false,
   });
 
-  final VoidCallback onRefresh;
+  /// When null the refresh button is hidden (the list uses pull-to-refresh).
+  final VoidCallback? onRefresh;
   final VoidCallback onOpenHome;
   final VoidCallback onOpenRoot;
   final VoidCallback onOpenVolumes;
@@ -142,12 +150,13 @@ class ProjectFilesPanelActions extends StatelessWidget {
             color: accent,
             onTap: () => _showStorageMenu(context, prefs),
           ),
-          _PlainHeaderIconButton(
-            size: buttonSize,
-            icon: Icons.refresh,
-            color: accent,
-            onTap: onRefresh,
-          ),
+          if (onRefresh != null)
+            _PlainHeaderIconButton(
+              size: buttonSize,
+              icon: Icons.refresh,
+              color: accent,
+              onTap: onRefresh!,
+            ),
         ],
       );
     }
@@ -183,19 +192,20 @@ class ProjectFilesPanelActions extends StatelessWidget {
             ],
           ),
         ),
-        SizedBox(
-          width: buttonSize,
-          height: buttonSize,
-          child: IconButton(
-            padding: EdgeInsets.zero,
-            constraints: BoxConstraints.tightFor(
-              width: buttonSize,
-              height: buttonSize,
+        if (onRefresh != null)
+          SizedBox(
+            width: buttonSize,
+            height: buttonSize,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints.tightFor(
+                width: buttonSize,
+                height: buttonSize,
+              ),
+              onPressed: onRefresh,
+              icon: Icon(Icons.refresh, color: accent, size: 18),
             ),
-            onPressed: onRefresh,
-            icon: Icon(Icons.refresh, color: accent, size: 18),
           ),
-        ),
       ],
     );
   }

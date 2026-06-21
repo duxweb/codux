@@ -127,7 +127,6 @@ class PadRightColumn extends StatelessWidget {
           _ColumnHeader(
             title: prefs.t('workspace.files'),
             trailing: ProjectFilesPanelActions(
-              onRefresh: () => onRequestProjectFiles(projectFilesPath),
               onOpenHome: onOpenProjectHome,
               onOpenRoot: onOpenProjectRoot,
               onOpenVolumes: onOpenProjectVolumes,
