@@ -15,8 +15,6 @@ class PadRightColumn extends StatelessWidget {
   const PadRightColumn({
     super.key,
     required this.mode,
-    required this.projectRootName,
-    required this.projectRootPath,
     required this.aiStats,
     required this.aiStatsLoading,
     required this.onShowStats,
@@ -41,8 +39,6 @@ class PadRightColumn extends StatelessWidget {
   });
 
   final String mode;
-  final String projectRootName;
-  final String projectRootPath;
   final AIStatsInfo? aiStats;
   final bool aiStatsLoading;
   final VoidCallback onShowStats;
@@ -100,7 +96,6 @@ class PadRightColumn extends StatelessWidget {
             Expanded(
               child: _ReviewFileTree(
                 changes: changes,
-                rootName: projectRootName,
                 selectedPath: reviewSelectedPath,
                 onSelect: onSelectReviewFile,
                 onRefresh: onRefreshGit,
@@ -117,7 +112,6 @@ class PadRightColumn extends StatelessWidget {
     if (mode == 'git') {
       return PadGitToolPanel(
         gitStatus: gitStatus,
-        projectRootName: projectRootName,
         onAction: onGitAction,
         onRefresh: onRefreshGit,
       );
@@ -160,7 +154,7 @@ class PadRightColumn extends StatelessWidget {
           icon: Icons.arrow_upward_rounded,
           iconColor: accent,
           name: '返回上一级',
-          path: _fileLabel(projectFilesParent!, true),
+          path: _fileLabel(projectFilesParent!),
           onTap: () => onRequestProjectFiles(projectFilesParent!),
         ),
       for (final entry in projectFileEntries)
@@ -170,7 +164,7 @@ class PadRightColumn extends StatelessWidget {
               : Icons.description_outlined,
           iconColor: entry.isDirectory ? accent : PadColors.textMuted,
           name: entry.name,
-          path: _fileLabel(entry.path, entry.isDirectory),
+          path: _fileLabel(entry.path),
           onTap: entry.isDirectory
               ? () => onRequestProjectFiles(entry.path)
               : () => onOpenProjectFile(entry),
@@ -196,25 +190,18 @@ class PadRightColumn extends StatelessWidget {
     );
   }
 
-  /// Path label relative to the project root (e.g. `codux-gpui/apps/mobile`),
-  /// without a trailing slash. Falls back to the absolute parent dir when the
-  /// entry is outside the project root (e.g. while browsing `/Volumes`).
-  String _fileLabel(String absolutePath, bool isDirectory) {
-    final root = projectRootPath.trim();
-    String? rel;
-    if (root.isNotEmpty && absolutePath == root) {
-      rel = '';
-    } else if (root.isNotEmpty && absolutePath.startsWith('$root/')) {
-      rel = absolutePath.substring(root.length + 1);
+  /// Path label for a browser entry, rooted at the current directory (`/`).
+  /// Every visible item is a direct child of the current directory, so its
+  /// location reads as `/` (the current directory is the root of this view).
+  String _fileLabel(String absolutePath) {
+    final base = projectFilesPath.trim();
+    if (base.isNotEmpty && absolutePath.startsWith('$base/')) {
+      final rel = absolutePath.substring(base.length + 1);
+      final slash = rel.lastIndexOf('/');
+      final dir = slash <= 0 ? '' : rel.substring(0, slash);
+      return dir.isEmpty ? '/' : '/$dir';
     }
-    if (rel != null) {
-      return padRootRelativePath(
-        projectRootName,
-        isDirectory ? '$rel/.' : (rel.isEmpty ? '.' : rel),
-      );
-    }
-    final slash = absolutePath.lastIndexOf('/');
-    return slash <= 0 ? '/' : absolutePath.substring(0, slash);
+    return '/';
   }
 
   void _showFileActions(BuildContext context, RemoteFileEntry entry) {
@@ -277,14 +264,12 @@ class PadRightColumn extends StatelessWidget {
 class _ReviewFileTree extends StatefulWidget {
   const _ReviewFileTree({
     required this.changes,
-    required this.rootName,
     required this.selectedPath,
     required this.onSelect,
     required this.onRefresh,
   });
 
   final List<_ReviewChangeEntry> changes;
-  final String rootName;
   final String? selectedPath;
   final ValueChanged<String> onSelect;
   final VoidCallback onRefresh;
@@ -313,7 +298,7 @@ class _ReviewFileTreeState extends State<_ReviewFileTree> {
           icon: Icons.arrow_upward_rounded,
           iconColor: accent,
           name: prefs.t('project.parentDir'),
-          path: padRootRelativePath(widget.rootName, '$parentPath/.'),
+          path: padRootRelativePath('$parentPath/.'),
           onTap: () => setState(() => _currentPath = parentPath),
         ),
       for (final folder in snapshot.folders)
@@ -321,7 +306,7 @@ class _ReviewFileTreeState extends State<_ReviewFileTree> {
           icon: Icons.folder_rounded,
           iconColor: accent,
           name: folder.name,
-          path: padRootRelativePath(widget.rootName, '${folder.path}/.'),
+          path: padRootRelativePath('${folder.path}/.'),
           trailing: PadCountChip(label: '${folder.count}'),
           onTap: () => setState(() => _currentPath = folder.path),
         ),
@@ -332,7 +317,7 @@ class _ReviewFileTreeState extends State<_ReviewFileTree> {
               ? accent
               : PadColors.textMuted,
           name: file.name,
-          path: padRootRelativePath(widget.rootName, file.path),
+          path: padRootRelativePath(file.path),
           trailing: PadStatusTag(
             label: file.status,
             color: _reviewStatusColor(file.status, accent),

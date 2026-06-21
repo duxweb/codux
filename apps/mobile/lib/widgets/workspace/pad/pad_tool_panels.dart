@@ -65,13 +65,11 @@ class PadGitToolPanel extends StatefulWidget {
   const PadGitToolPanel({
     super.key,
     required this.gitStatus,
-    required this.projectRootName,
     required this.onAction,
     required this.onRefresh,
   });
 
   final RemoteGitStatusInfo? gitStatus;
-  final String projectRootName;
   final void Function(String op, Map<String, dynamic> args) onAction;
   final VoidCallback onRefresh;
 
@@ -88,11 +86,27 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
   };
   final Set<String> _selectedPaths = {};
   final TextEditingController _commitController = TextEditingController();
+  bool _syncing = false;
+
+  @override
+  void didUpdateWidget(covariant PadGitToolPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A fresh git.status reply (new object) means the sync settled.
+    if (_syncing && !identical(widget.gitStatus, oldWidget.gitStatus)) {
+      setState(() => _syncing = false);
+    }
+  }
 
   @override
   void dispose() {
     _commitController.dispose();
     super.dispose();
+  }
+
+  void _sync() {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    widget.onAction('sync', const {});
   }
 
   /// Commit the staged changes via `op` (commit / commit_push / commit_sync),
@@ -123,11 +137,27 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
               ),
             ),
           ),
-          _GitHeaderButton(
-            icon: Icons.sync_rounded,
-            color: accent,
-            onTap: () => widget.onAction('sync', const {}),
-          ),
+          if (_syncing)
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: accent,
+                  ),
+                ),
+              ),
+            )
+          else
+            _GitHeaderButton(
+              icon: Icons.sync_rounded,
+              color: accent,
+              onTap: _sync,
+            ),
           const SizedBox(width: 2),
           _GitHeaderButton(
             icon: Icons.more_horiz_rounded,
@@ -222,13 +252,16 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
         },
         onCreateBranch: () {
           Navigator.of(sheetContext).pop();
-          _promptCreateBranch(context);
+          // Defer so the sheet finishes popping before the dialog opens
+          // (showing a dialog mid-pop throws a navigator-lock red screen).
+          Future.microtask(_promptCreateBranch);
         },
       ),
     );
   }
 
-  Future<void> _promptCreateBranch(BuildContext context) async {
+  Future<void> _promptCreateBranch() async {
+    if (!mounted) return;
     final controller = TextEditingController();
     final accent = Theme.of(context).colorScheme.secondary;
     final name = await showDialog<String>(
@@ -262,6 +295,7 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
       ),
     );
     controller.dispose();
+    if (!mounted) return;
     if (name != null && name.isNotEmpty) {
       widget.onAction('create_branch', {'branch': name, 'checkout': true});
     }
@@ -341,10 +375,7 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
                       icon: Icons.arrow_upward_rounded,
                       iconColor: Theme.of(context).colorScheme.secondary,
                       name: '返回上一级',
-                      path: padRootRelativePath(
-                        widget.projectRootName,
-                        '$parentPath/.',
-                      ),
+                      path: padRootRelativePath('$parentPath/.'),
                       onTap: () => setState(() {
                         _currentPaths[_section] = parentPath;
                       }),
@@ -368,10 +399,7 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
                           icon: Icons.folder_rounded,
                           iconColor: Theme.of(context).colorScheme.secondary,
                           name: folder.name,
-                          path: padRootRelativePath(
-                            widget.projectRootName,
-                            '${folder.path}/.',
-                          ),
+                          path: padRootRelativePath('${folder.path}/.'),
                           trailing: PadCountChip(label: '${folder.count}'),
                           selected: folderSelected,
                           onTap: () => setState(() {
@@ -392,10 +420,7 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
                           ? Theme.of(context).colorScheme.secondary
                           : PadColors.textMuted,
                       name: file.name,
-                      path: padRootRelativePath(
-                        widget.projectRootName,
-                        file.path,
-                      ),
+                      path: padRootRelativePath(file.path),
                       trailing: PadStatusTag(
                         label: file.status,
                         color: _gitStatusColor(
@@ -1236,6 +1261,23 @@ class _GitBranchMenu extends StatelessWidget {
               onTap: () =>
                   onAction('checkout_branch', {'branch': branch.name}),
             ),
+          if (locals.isNotEmpty) const _GitMenuSection(label: '合并到当前分支'),
+          for (final branch in locals)
+            _GitMenuItem(
+              icon: Icons.merge_rounded,
+              label: branch.name,
+              accent: accent,
+              onTap: () => onAction('merge_branch', {'branch': branch.name}),
+            ),
+          if (locals.isNotEmpty) const _GitMenuSection(label: '删除分支'),
+          for (final branch in locals)
+            _GitMenuItem(
+              icon: Icons.delete_outline_rounded,
+              label: branch.name,
+              accent: accent,
+              danger: true,
+              onTap: () => onAction('delete_branch', {'branch': branch.name}),
+            ),
           if (remotes.isNotEmpty) const _GitMenuSection(label: '远程分支'),
           for (final branch in remotes)
             _GitMenuItem(
@@ -1278,30 +1320,33 @@ class _GitMenuItem extends StatelessWidget {
     required this.label,
     required this.accent,
     required this.onTap,
+    this.danger = false,
   });
 
   final IconData icon;
   final String label;
   final Color accent;
   final VoidCallback onTap;
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
+    final color = danger ? PadColors.danger : accent;
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: accent),
+            Icon(icon, size: 18, color: color),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: PadColors.textPrimary,
+                style: TextStyle(
+                  color: danger ? PadColors.danger : PadColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),

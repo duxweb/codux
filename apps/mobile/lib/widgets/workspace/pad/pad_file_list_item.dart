@@ -147,12 +147,12 @@ class PadFileListItem extends StatelessWidget {
   }
 }
 
-/// Format a path for display under a [PadFileListItem]: `<rootName>/<dir>` where
-/// `dir` is the directory portion relative to the project root. A file at the
-/// root shows just `<rootName>`.
-String padRootRelativePath(String rootName, String relativePath) {
-  final root = rootName.trim().isEmpty ? '.' : rootName.trim();
+/// Format a path for display under a [PadFileListItem], rooted at `/`: the
+/// directory portion of `relativePath` (relative to its context root) prefixed
+/// with `/`. An item at the root shows just `/`. Example: `apps/mobile/foo.dart`
+/// → `/apps/mobile`; a root-level file → `/`.
+String padRootRelativePath(String relativePath) {
   final slash = relativePath.lastIndexOf('/');
   final dir = slash <= 0 ? '' : relativePath.substring(0, slash);
-  return dir.isEmpty ? root : '$root/$dir';
+  return dir.isEmpty ? '/' : '/$dir';
 }

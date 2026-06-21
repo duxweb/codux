@@ -138,15 +138,14 @@ class PadWorkspaceView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // "文件" is a center view: the main area shows the editor (empty "select a
-    // file" state until one is opened) with the browser in the right column.
-    // Review shows the diff; the stats/ssh/git tools are right-column-only and
-    // keep the terminal centered.
-    final primaryWorkspaceMode = workspaceMode == 'review'
-        ? 'review'
-        : (workspaceMode == 'files' || editingFilePath != null
-              ? 'files'
-              : 'terminal');
+    // "文件" is a center view (editor + browser sidebar); review shows the diff;
+    // stats/ssh/git are right-column-only and keep the terminal centered. The
+    // open file persists in state across view switches, so returning to "文件"
+    // shows it again.
+    final primaryWorkspaceMode = switch (workspaceMode) {
+      'files' || 'review' => workspaceMode,
+      _ => 'terminal',
+    };
     final showRightColumn =
         workspaceMode == 'files' ||
         workspaceMode == 'stats' ||
@@ -239,14 +238,6 @@ class PadWorkspaceView extends StatelessWidget {
                       const SizedBox(width: 12),
                       PadRightColumn(
                         mode: workspaceMode,
-                        projectRootName:
-                            selectedProjectOf(projects, selectedProjectId)
-                                ?.name ??
-                            '',
-                        projectRootPath:
-                            selectedProjectOf(projects, selectedProjectId)
-                                ?.path ??
-                            '',
                         aiStats: aiStats,
                         aiStatsLoading: aiStatsLoading,
                         onShowStats: onShowStats,

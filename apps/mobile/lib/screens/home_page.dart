@@ -3544,11 +3544,9 @@ class _CoduxHomePageState extends State<CoduxHomePage>
   }
 
   void _showTerminalMode() {
-    // Switching to the terminal view closes any open file editor so the center
-    // pane reliably returns to the terminal (the pad editor has no close button).
-    if (_editingFilePath != null) {
-      setState(() => _editingFilePath = null);
-    }
+    // Keep any open file in state so switching back to "文件" shows it again;
+    // the center returns to the terminal because primaryWorkspaceMode follows
+    // workspaceMode, not editingFilePath.
     _workspaceModeActions.showTerminalMode();
   }
 
