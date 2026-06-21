@@ -4670,7 +4670,8 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       onCreateWorktree: _createWorktree,
       onSelectTerminal: _selectTerminal,
       onRefreshLists: _refreshLists,
-      onCreateTerminal: _createCurrentProjectTerminal,
+      // Mobile (phone + pad) "+" creates a tab; split panes are desktop-only.
+      onCreateTerminal: _createCurrentProjectTabTerminal,
       onCloseCurrentTerminal: _closeCurrentTerminal,
       onCloseTerminal: _closeTerminal,
       onRenameSession: _renameTerminalSession,

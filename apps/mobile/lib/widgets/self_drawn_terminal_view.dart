@@ -697,87 +697,152 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
     );
   }
 
+  /// Capture physical (connected) keyboard input directly so the user can type
+  /// without first summoning the soft IME. The soft IME stays controlled by the
+  /// toolbar / tap (via `_focusNode`); when it is focused we defer to it so CJK
+  /// composition keeps working.
+  KeyEventResult _handleHardwareKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (_focusNode.hasFocus) return KeyEventResult.ignored;
+    final keyboard = HardwareKeyboard.instance;
+    final ctrl = keyboard.isControlPressed;
+    final alt = keyboard.isAltPressed;
+    final shift = keyboard.isShiftPressed;
+    final appCursor = _snapshot?.applicationCursor ?? false;
+    final named = _hardwareKeyName(event.logicalKey);
+    if (named != null) {
+      final bytes = terminalKeyInput(
+        key: named,
+        shift: shift,
+        alt: alt,
+        control: ctrl,
+        applicationCursor: appCursor,
+      );
+      if (bytes.isNotEmpty) {
+        widget.onSendKey?.call(bytes);
+        return KeyEventResult.handled;
+      }
+    }
+    final ch = event.character;
+    if (ch != null && ch.isNotEmpty && ch.runes.first >= 0x20) {
+      // Ctrl+letter → control byte (Ctrl+C = 0x03, …), portable and host-safe.
+      if (ctrl && ch.length == 1) {
+        final upper = ch.toUpperCase().codeUnitAt(0);
+        if (upper >= 0x41 && upper <= 0x5A) {
+          widget.onSendKey?.call(String.fromCharCode(upper - 0x40));
+          return KeyEventResult.handled;
+        }
+      }
+      if (!ctrl && !alt) {
+        widget.onInput?.call(ch);
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
+  String? _hardwareKeyName(LogicalKeyboardKey key) {
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      return 'enter';
+    }
+    if (key == LogicalKeyboardKey.backspace) return 'backspace';
+    if (key == LogicalKeyboardKey.tab) return 'tab';
+    if (key == LogicalKeyboardKey.escape) return 'esc';
+    if (key == LogicalKeyboardKey.arrowUp) return 'up';
+    if (key == LogicalKeyboardKey.arrowDown) return 'down';
+    if (key == LogicalKeyboardKey.arrowLeft) return 'left';
+    if (key == LogicalKeyboardKey.arrowRight) return 'right';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final startHandle = _buildHandle(isStart: true);
     final endHandle = _buildHandle(isStart: false);
-    return Stack(
-      key: _termKey,
-      fit: StackFit.expand,
-      children: [
-        // Hidden input anchor for the soft keyboard / IME. It fills the area
-        // but is fully transparent and focused programmatically; the gesture
-        // layer above is opaque, so it intercepts all pointers and the anchor
-        // never shows a caret or selection of its own. EditableText (vs
-        // TextField) needs no Material ancestor.
-        EditableText(
-          controller: _inputController,
-          focusNode: _focusNode,
-          style: const TextStyle(
-            fontSize: 1,
-            height: 1,
-            color: Color(0x00000000),
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _handleHardwareKey,
+      child: Stack(
+        key: _termKey,
+        fit: StackFit.expand,
+        children: [
+          // Hidden input anchor for the soft keyboard / IME. It fills the area
+          // but is fully transparent and focused programmatically; the gesture
+          // layer above is opaque, so it intercepts all pointers and the anchor
+          // never shows a caret or selection of its own. EditableText (vs
+          // TextField) needs no Material ancestor.
+          EditableText(
+            controller: _inputController,
+            focusNode: _focusNode,
+            style: const TextStyle(
+              fontSize: 1,
+              height: 1,
+              color: Color(0x00000000),
+            ),
+            cursorColor: const Color(0x00000000),
+            backgroundCursorColor: const Color(0x00000000),
+            // A plain text field with suggestions enabled summons the user's full
+            // IME (incl. CJK composition / candidate bar) rather than MIUI's
+            // basic/secure keyboard. Autocorrect stays off for terminal input.
+            keyboardType: TextInputType.text,
+            maxLines: null,
+            autocorrect: false,
+            enableSuggestions: true,
+            showCursor: false,
+            rendererIgnoresPointer: true,
           ),
-          cursorColor: const Color(0x00000000),
-          backgroundCursorColor: const Color(0x00000000),
-          // A plain text field with suggestions enabled summons the user's full
-          // IME (incl. CJK composition / candidate bar) rather than MIUI's
-          // basic/secure keyboard. Autocorrect stays off for terminal input.
-          keyboardType: TextInputType.text,
-          maxLines: null,
-          autocorrect: false,
-          enableSuggestions: true,
-          showCursor: false,
-          rendererIgnoresPointer: true,
-        ),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          // Tapping the terminal clears any selection and brings up the keyboard
-          // (focusing the hidden input) so typing flows directly; the toolbar key
-          // button still toggles the keyboard off.
-          onTap: () {
-            _clearSelection();
-            widget.onRequestKeyboard?.call();
-          },
-          onVerticalDragStart: _onDragStart,
-          onVerticalDragUpdate: _onDragUpdate,
-          onVerticalDragEnd: _onDragEnd,
-          onLongPressStart: _onLongPressStart,
-          onLongPressMoveUpdate: _onLongPressMove,
-          onLongPressEnd: _onLongPressEnd,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              _syncGrid(constraints);
-              final selection = _normalizedSelection();
-              final selStart = selection == null
-                  ? null
-                  : (row: _lfbToRow(selection.$1.lfb), col: selection.$1.col);
-              final selEnd = selection == null
-                  ? null
-                  : (row: _lfbToRow(selection.$2.lfb), col: selection.$2.col);
-              return ColoredBox(
-                color: AppColors.bgBase,
-                child: CustomPaint(
-                  size: Size(constraints.maxWidth, constraints.maxHeight),
-                  painter: _TerminalGridPainter(
-                    snapshot: _snapshot,
-                    cellWidth: _cellWidth,
-                    cellHeight: _cellHeight,
-                    glyphTop: _glyphTop,
-                    fontSize: widget.fontSize,
-                    fontFamily: _fontFamily,
-                    glyphCache: _glyphCache,
-                    selectionStart: selStart,
-                    selectionEnd: selEnd,
-                  ),
-                ),
-              );
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            // Tapping the terminal clears any selection and brings up the keyboard
+            // (focusing the hidden input) so typing flows directly; the toolbar key
+            // button still toggles the keyboard off.
+            onTap: () {
+              _clearSelection();
+              widget.onRequestKeyboard?.call();
             },
+            onVerticalDragStart: _onDragStart,
+            onVerticalDragUpdate: _onDragUpdate,
+            onVerticalDragEnd: _onDragEnd,
+            onLongPressStart: _onLongPressStart,
+            onLongPressMoveUpdate: _onLongPressMove,
+            onLongPressEnd: _onLongPressEnd,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                _syncGrid(constraints);
+                final selection = _normalizedSelection();
+                final selStart = selection == null
+                    ? null
+                    : (row: _lfbToRow(selection.$1.lfb), col: selection.$1.col);
+                final selEnd = selection == null
+                    ? null
+                    : (row: _lfbToRow(selection.$2.lfb), col: selection.$2.col);
+                return ColoredBox(
+                  color: AppColors.bgBase,
+                  child: CustomPaint(
+                    size: Size(constraints.maxWidth, constraints.maxHeight),
+                    painter: _TerminalGridPainter(
+                      snapshot: _snapshot,
+                      cellWidth: _cellWidth,
+                      cellHeight: _cellHeight,
+                      glyphTop: _glyphTop,
+                      fontSize: widget.fontSize,
+                      fontFamily: _fontFamily,
+                      glyphCache: _glyphCache,
+                      selectionStart: selStart,
+                      selectionEnd: selEnd,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
-        ),
-        ?startHandle,
-        ?endHandle,
-      ],
+          ?startHandle,
+          ?endHandle,
+        ],
+      ),
     );
   }
 }

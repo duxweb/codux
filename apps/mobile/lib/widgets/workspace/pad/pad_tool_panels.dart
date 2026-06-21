@@ -22,7 +22,7 @@ class _PadSshToolPanelState extends State<PadSshToolPanel> {
       width: PadMetrics.rightColumnWidth,
       child: Column(
         children: [
-          const _ToolHeader(title: 'SSH', actionIcon: Icons.add_rounded),
+          const _ToolHeader(title: 'SSH'),
           Expanded(
             child: widget.profiles.isEmpty
                 ? const Center(
@@ -536,53 +536,25 @@ class _GitFolderNode {
 }
 
 class _ToolHeader extends StatelessWidget {
-  const _ToolHeader({required this.title, this.actionIcon});
+  const _ToolHeader({required this.title});
 
   final String title;
-  final IconData? actionIcon;
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.secondary;
     return Container(
       height: 48,
       color: PadColors.header,
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: PadColors.textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          if (actionIcon != null) ...[
-            _ToolIconButton(icon: actionIcon!, color: accent),
-            const SizedBox(width: 2),
-          ],
-          const _ToolIconButton(icon: Icons.more_horiz_rounded),
-        ],
+      alignment: Alignment.centerLeft,
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: PadColors.textPrimary,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+        ),
       ),
-    );
-  }
-}
-
-class _ToolIconButton extends StatelessWidget {
-  const _ToolIconButton({required this.icon, this.color});
-
-  final IconData icon;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 32,
-      height: 32,
-      child: Icon(icon, size: 18, color: color ?? PadColors.textSubtle),
     );
   }
 }
