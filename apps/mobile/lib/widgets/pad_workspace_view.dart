@@ -138,12 +138,15 @@ class PadWorkspaceView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The center pane is decoupled from the right-column tool: opening the files
-    // panel (or any tool) keeps the terminal centered; the center only switches
-    // to the editor when a file is actually open, or to the diff in review mode.
+    // "文件" is a center view: the main area shows the editor (empty "select a
+    // file" state until one is opened) with the browser in the right column.
+    // Review shows the diff; the stats/ssh/git tools are right-column-only and
+    // keep the terminal centered.
     final primaryWorkspaceMode = workspaceMode == 'review'
         ? 'review'
-        : (editingFilePath != null ? 'files' : 'terminal');
+        : (workspaceMode == 'files' || editingFilePath != null
+              ? 'files'
+              : 'terminal');
     final showRightColumn =
         workspaceMode == 'files' ||
         workspaceMode == 'stats' ||
