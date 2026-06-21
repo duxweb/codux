@@ -25,6 +25,7 @@ class WorkspaceController {
     required this.aiStatsLoading,
     required this.gitStatus,
     required this.onGitAction,
+    required this.onRefreshGit,
     required this.aiSessions,
     required this.sshProfiles,
     required this.gitDiff,
@@ -86,6 +87,7 @@ class WorkspaceController {
   final bool aiStatsLoading;
   final RemoteGitStatusInfo? gitStatus;
   final void Function(String op, Map<String, dynamic> args) onGitAction;
+  final VoidCallback onRefreshGit;
   final List<AISessionRecord> aiSessions;
   final List<RemoteSshProfile> sshProfiles;
   final RemoteGitDiff? gitDiff;

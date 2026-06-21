@@ -21,6 +21,7 @@ class PadRightColumn extends StatelessWidget {
     required this.onShowStats,
     required this.gitStatus,
     required this.onGitAction,
+    required this.onRefreshGit,
     required this.sshProfiles,
     required this.reviewSelectedPath,
     required this.onSelectReviewFile,
@@ -45,6 +46,7 @@ class PadRightColumn extends StatelessWidget {
   final VoidCallback onShowStats;
   final RemoteGitStatusInfo? gitStatus;
   final void Function(String op, Map<String, dynamic> args) onGitAction;
+  final VoidCallback onRefreshGit;
   final List<RemoteSshProfile> sshProfiles;
   final String? reviewSelectedPath;
   final ValueChanged<String> onSelectReviewFile;
@@ -99,6 +101,7 @@ class PadRightColumn extends StatelessWidget {
                 rootName: projectRootName,
                 selectedPath: reviewSelectedPath,
                 onSelect: onSelectReviewFile,
+                onRefresh: onRefreshGit,
               ),
             ),
           ],
@@ -113,6 +116,7 @@ class PadRightColumn extends StatelessWidget {
         gitStatus: gitStatus,
         projectRootName: projectRootName,
         onAction: onGitAction,
+        onRefresh: onRefreshGit,
       );
     }
     return PadPanelSurface(
@@ -165,12 +169,14 @@ class _ReviewFileTree extends StatefulWidget {
     required this.rootName,
     required this.selectedPath,
     required this.onSelect,
+    required this.onRefresh,
   });
 
   final List<_ReviewChangeEntry> changes;
   final String rootName;
   final String? selectedPath;
   final ValueChanged<String> onSelect;
+  final VoidCallback onRefresh;
 
   @override
   State<_ReviewFileTree> createState() => _ReviewFileTreeState();
@@ -227,12 +233,19 @@ class _ReviewFileTreeState extends State<_ReviewFileTree> {
 
     return ColoredBox(
       color: PadColors.panel,
-      child: ListView.separated(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-        itemCount: rows.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 6),
-        itemBuilder: (context, index) => rows[index],
+      child: RefreshIndicator(
+        onRefresh: () async => widget.onRefresh(),
+        color: accent,
+        backgroundColor: PadColors.card,
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+          itemCount: rows.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 6),
+          itemBuilder: (context, index) => rows[index],
+        ),
       ),
     );
   }

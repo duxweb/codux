@@ -67,11 +67,13 @@ class PadGitToolPanel extends StatefulWidget {
     required this.gitStatus,
     required this.projectRootName,
     required this.onAction,
+    required this.onRefresh,
   });
 
   final RemoteGitStatusInfo? gitStatus;
   final String projectRootName;
   final void Function(String op, Map<String, dynamic> args) onAction;
+  final VoidCallback onRefresh;
 
   @override
   State<PadGitToolPanel> createState() => _PadGitToolPanelState();
@@ -131,12 +133,18 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
       width: PadMetrics.rightColumnWidth,
       child: Column(
         children: [
-          const _ToolHeader(title: 'Git', actionIcon: Icons.refresh_rounded),
+          const _ToolHeader(title: 'Git'),
           Expanded(
-            child: ListView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-              children: [
+            child: RefreshIndicator(
+              onRefresh: () async => widget.onRefresh(),
+              color: Theme.of(context).colorScheme.secondary,
+              backgroundColor: PadColors.card,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+                children: [
                 _GitSummaryCard(
                   status: widget.gitStatus,
                   onAction: widget.onAction,
@@ -229,7 +237,8 @@ class _PadGitToolPanelState extends State<PadGitToolPanel> {
                       onLongPress: () => setState(() => _toggleFile(file)),
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
           _GitFooterBar(
@@ -351,10 +360,10 @@ class _GitFolderNode {
 }
 
 class _ToolHeader extends StatelessWidget {
-  const _ToolHeader({required this.title, required this.actionIcon});
+  const _ToolHeader({required this.title, this.actionIcon});
 
   final String title;
-  final IconData actionIcon;
+  final IconData? actionIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -375,8 +384,10 @@ class _ToolHeader extends StatelessWidget {
               ),
             ),
           ),
-          _ToolIconButton(icon: actionIcon, color: accent),
-          const SizedBox(width: 2),
+          if (actionIcon != null) ...[
+            _ToolIconButton(icon: actionIcon!, color: accent),
+            const SizedBox(width: 2),
+          ],
           const _ToolIconButton(icon: Icons.more_horiz_rounded),
         ],
       ),

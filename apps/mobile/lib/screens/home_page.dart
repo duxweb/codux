@@ -4644,6 +4644,7 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       onShowSsh: () => _toggleWorkspaceTool('ssh', _showSshMode),
       onShowGit: () => _toggleWorkspaceTool('git', _showGitMode),
       onGitAction: (op, args) => _gitAction(op, args: args),
+      onRefreshGit: _requestGitStatus,
       gitDiff: _gitDiff,
       reviewSelectedPath: _gitDiffPath,
       onSelectReviewFile: _requestGitDiff,
