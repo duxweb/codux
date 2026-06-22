@@ -5,35 +5,12 @@ use codux_runtime::{
     runtime_state::ProjectInfo,
 };
 
-use super::shell_utils::{shell_quote, shell_read_file_arg};
+use super::shell_utils::shell_read_file_arg;
 
 pub(in crate::app) fn ai_session_restore_command(session: &AISessionSummary) -> String {
-    let tool = session.source.to_lowercase();
-    let id = session
-        .external_session_id
-        .as_deref()
-        .filter(|id| !id.trim().is_empty())
-        .unwrap_or(&session.session_key);
-    let quoted_id = shell_quote(id);
-    if tool.contains("codex") {
-        format!("codex resume {quoted_id}")
-    } else if tool.contains("claude") {
-        format!("claude --resume {quoted_id}")
-    } else if tool.contains("agy") || tool.contains("antigravity") {
-        format!("agy resume {quoted_id}")
-    } else if tool.contains("gemini") {
-        format!("gemini resume {quoted_id}")
-    } else if tool.contains("opencode") {
-        format!("opencode run --session {quoted_id}")
-    } else if tool.contains("mimo") {
-        format!("mimo run --session {quoted_id}")
-    } else if tool.contains("codewhale") || tool.contains("deepseek") {
-        format!("codewhale resume {quoted_id}")
-    } else if tool.contains("kimi") {
-        "kimi".to_string()
-    } else {
-        format!("codex resume {quoted_id}")
-    }
+    // Single source of truth lives in the shared sessions crate so the desktop
+    // "open" action and the remote `ai.session` `restore` op never drift.
+    codux_runtime::ai_history::session_restore_command(session)
 }
 
 pub(in crate::app) const AI_SESSION_FORK_TARGETS: [AISessionForkTarget; 9] = [

@@ -293,7 +293,7 @@ class _ManualConnectOverlayState extends State<_ManualConnectOverlay> {
                   children: [
                     Text(
                       prefs.t('pair.manualConnect'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: AppTextSize.body,
                         fontWeight: FontWeight.w700,
@@ -308,7 +308,7 @@ class _ManualConnectOverlayState extends State<_ManualConnectOverlay> {
                       minLines: 3,
                       maxLines: 5,
                       onSubmitted: (_) => _submit(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: AppTextSize.body,
                         fontWeight: FontWeight.w500,
@@ -318,7 +318,7 @@ class _ManualConnectOverlayState extends State<_ManualConnectOverlay> {
                         filled: true,
                         fillColor: AppColors.bgElevated,
                         hintText: prefs.t('pair.tokenHint'),
-                        hintStyle: const TextStyle(color: AppColors.textSubtle),
+                        hintStyle: TextStyle(color: AppColors.textSubtle),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(AppRadius.sm),
                           borderSide: BorderSide.none,
@@ -328,7 +328,7 @@ class _ManualConnectOverlayState extends State<_ManualConnectOverlay> {
                     const SizedBox(height: AppSpacing.s),
                     Text(
                       prefs.t('pair.manualHelp'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.textMuted,
                         fontSize: AppTextSize.small,
                       ),

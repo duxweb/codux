@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../models/remote_models.dart';
-import '../../services/log_service.dart';
+import '../../models/workspace_mode.dart';
 import '../../services/remote_runtime_store.dart';
 import '../../services/terminal_input_batcher.dart';
-import '../../theme/app_theme.dart';
 
 class HomeTerminalActions {
   const HomeTerminalActions({
@@ -35,7 +34,7 @@ class HomeTerminalActions {
   final String Function(String key, {Map<String, String>? params}) t;
   final bool mounted;
   final String? selectedProjectId;
-  final String workspaceMode;
+  final WorkspaceMode workspaceMode;
   final void Function(String message) showToast;
   final VoidCallback showTerminalWorkspace;
   final VoidCallback focusTerminalViewSoon;
@@ -109,7 +108,7 @@ class HomeTerminalActions {
 
   Future<void> openTerminalSwitcher(bool alreadyShown) async {
     if (alreadyShown) return;
-    if (workspaceMode == 'terminal') {
+    if (workspaceMode == WorkspaceMode.terminal) {
       releaseTerminalViewport();
     }
     ensureSelectedProjectWorktrees(loading: true);
@@ -122,39 +121,5 @@ class HomeTerminalActions {
     popPage(hideTerminalSwitcher).then((_) {
       if (mounted) mountVisibleTerminal(reason: 'switcher-close');
     });
-  }
-
-  Future<String?> showRenameDialog(String initialValue) {
-    final controller = TextEditingController(text: initialValue);
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: AppColors.bgSurface,
-          title: Text(t('file.menuRename')),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            style: const TextStyle(color: AppColors.textPrimary),
-            decoration: InputDecoration(hintText: t('file.renameLabel')),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(t('app.cancel')),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-              child: Text(t('file.save')),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void logRenameNotWired(String nextName) {
-    CoduxLog.info('[codux-flutter-terminal] rename session not wired name=$nextName');
-    showToast('Session rename is not wired to host yet: $nextName');
   }
 }

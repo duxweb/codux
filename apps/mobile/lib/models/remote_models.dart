@@ -427,6 +427,7 @@ class RemoteGitStatusInfo {
     this.changedFiles = const [],
     this.branches = const [],
     this.remoteBranches = const [],
+    this.remotes = const [],
   });
 
   final String projectId;
@@ -444,6 +445,7 @@ class RemoteGitStatusInfo {
   final List<RemoteGitFileStatus> changedFiles;
   final List<RemoteGitBranch> branches;
   final List<String> remoteBranches;
+  final List<RemoteGitRemote> remotes;
 
   factory RemoteGitStatusInfo.fromJson(Map<String, dynamic> json) =>
       RemoteGitStatusInfo(
@@ -475,6 +477,12 @@ class RemoteGitStatusInfo {
         remoteBranches: (json['remoteBranches'] as List<dynamic>? ?? [])
             .map((item) => '$item')
             .toList(),
+        remotes: (json['remotes'] as List<dynamic>? ?? [])
+            .whereType<Map>()
+            .map(
+              (item) => RemoteGitRemote.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -491,6 +499,9 @@ class RemoteGitStatusInfo {
     'isRepository': isRepository,
     if (error != null) 'error': error,
     'changedFiles': changedFiles.map((item) => item.toJson()).toList(),
+    'branches': branches.map((item) => item.toJson()).toList(),
+    'remoteBranches': remoteBranches,
+    'remotes': remotes.map((item) => item.toJson()).toList(),
   };
 }
 
@@ -519,6 +530,21 @@ class RemoteGitFileStatus {
   };
 }
 
+/// One configured git remote from `git.status` — `{name, url}`.
+class RemoteGitRemote {
+  const RemoteGitRemote({required this.name, required this.url});
+
+  final String name;
+  final String url;
+
+  factory RemoteGitRemote.fromJson(Map<String, dynamic> json) => RemoteGitRemote(
+    name: '${json['name'] ?? ''}',
+    url: '${json['url'] ?? ''}',
+  );
+
+  Map<String, dynamic> toJson() => {'name': name, 'url': url};
+}
+
 class RemoteGitBranch {
   const RemoteGitBranch({required this.name, required this.isCurrent});
 
@@ -529,6 +555,8 @@ class RemoteGitBranch {
     name: '${json['name'] ?? ''}',
     isCurrent: json['isCurrent'] == true,
   );
+
+  Map<String, dynamic> toJson() => {'name': name, 'isCurrent': isCurrent};
 }
 
 /// Result of a `git.read {op: "diff"}` query — a unified diff for one path.
@@ -821,6 +849,7 @@ class MobileSettings {
     required this.localName,
     this.accentId = 'cyan',
     this.localeId = 'system',
+    this.themeModeId = 'system',
     this.logLevel = 'info',
     this.appTextScale = defaultAppTextScale,
     this.terminalFontSize = defaultTerminalFontSize,
@@ -828,6 +857,8 @@ class MobileSettings {
   final String localName;
   final String accentId;
   final String localeId;
+  // 'system' | 'light' | 'dark' — follows the OS unless overridden.
+  final String themeModeId;
   final String logLevel;
   final double appTextScale;
   final double terminalFontSize;
@@ -836,6 +867,7 @@ class MobileSettings {
     String? localName,
     String? accentId,
     String? localeId,
+    String? themeModeId,
     String? logLevel,
     double? appTextScale,
     double? terminalFontSize,
@@ -844,6 +876,7 @@ class MobileSettings {
       localName: localName ?? this.localName,
       accentId: accentId ?? this.accentId,
       localeId: localeId ?? this.localeId,
+      themeModeId: themeModeId ?? this.themeModeId,
       logLevel: logLevel ?? this.logLevel,
       appTextScale: appTextScale ?? this.appTextScale,
       terminalFontSize: terminalFontSize ?? this.terminalFontSize,
@@ -861,6 +894,7 @@ class MobileSettings {
       localName: '${json['localName'] ?? ''}',
       accentId: '${json['accentId'] ?? 'cyan'}',
       localeId: '${json['localeId'] ?? 'system'}',
+      themeModeId: '${json['themeModeId'] ?? 'system'}',
       logLevel: '${json['logLevel'] ?? 'info'}',
       appTextScale: _nearestFontStep(
         appTextScale,
@@ -879,6 +913,7 @@ class MobileSettings {
     'localName': localName,
     'accentId': accentId,
     'localeId': localeId,
+    'themeModeId': themeModeId,
     'logLevel': logLevel,
     'appTextScale': appTextScale,
     'terminalFontSize': terminalFontSize,

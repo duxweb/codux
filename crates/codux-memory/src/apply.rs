@@ -7,7 +7,7 @@ use super::{MemoryService, now_seconds, queue::MemoryExtractionTask};
 use crate::{
     MemorySettings,
     extraction::{
-        MemoryExtractionResponse, MemoryScope, MemoryTier, parse_uuid_string, valid_summary_content,
+        MemoryExtractionResponse, MemoryScope, parse_uuid_string, valid_summary_content,
     },
 };
 use helpers::*;
@@ -104,7 +104,9 @@ impl MemoryService {
                     module_key: item
                         .module_key
                         .or_else(|| Some(DEFAULT_MEMORY_MODULE.to_string())),
-                    tier: item.tier.unwrap_or(MemoryTier::Working),
+                    tier: item
+                        .tier
+                        .unwrap_or_else(|| default_tier_for_kind(&item.kind)),
                     kind: item.kind,
                     content,
                     rationale: item

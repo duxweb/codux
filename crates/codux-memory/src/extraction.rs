@@ -42,7 +42,8 @@ mod tests {
         assert_eq!(item.scope, Some(MemoryScope::Project));
         assert_eq!(item.module_key.as_deref(), Some("frontend"));
         assert_eq!(item.tier, Some(MemoryTier::Working));
-        assert_eq!(item.kind, MemoryKind::Convention);
+        // Legacy "convention" kind now folds into Decision.
+        assert_eq!(item.kind, MemoryKind::Decision);
         assert_eq!(item.merge_with, vec![merge_id.to_string()]);
         assert_eq!(item.archive, vec![archive_id.to_string()]);
     }
@@ -104,7 +105,6 @@ mod tests {
         for key in [
             "content",
             "kind",
-            "tier",
             "scope",
             "module_key",
             "rationale",
@@ -115,6 +115,8 @@ mod tests {
         ] {
             assert!(required.iter().any(|value| value.as_str() == Some(key)));
         }
+        // tier is derived from kind on apply, not requested from the model.
+        assert!(!required.iter().any(|value| value.as_str() == Some("tier")));
     }
 
     #[test]

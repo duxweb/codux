@@ -9,6 +9,7 @@
 mod dispatch;
 mod helpers;
 mod queries;
+mod restore;
 mod session_fork;
 mod sessions;
 mod summary;
@@ -17,6 +18,7 @@ mod tests;
 mod types;
 
 pub use dispatch::{session_op_payload, session_op_result};
+pub use restore::session_restore_command;
 pub use types::*;
 
 use rusqlite::Connection;

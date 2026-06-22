@@ -46,7 +46,8 @@ impl MemoryService {
             history_sessions,
         ));
         let sessions = deduplicate_manual_candidates(sessions);
-        self.enqueue_extraction_candidates(projects, &sessions)
+        // Manual extraction is user-triggered — no cooldown.
+        self.enqueue_extraction_candidates(projects, &sessions, 0)
     }
 
     pub fn enqueue_automatic_extraction_candidates(
@@ -73,7 +74,14 @@ impl MemoryService {
             history_sessions,
         ));
         let sessions = deduplicate_manual_candidates(sessions);
-        self.enqueue_extraction_candidates(projects, &sessions)
+        // Automatic extraction throttles per-session re-extraction by the
+        // configured cooldown so a long-running session isn't re-sent to the LLM
+        // on every idle gap.
+        self.enqueue_extraction_candidates(
+            projects,
+            &sessions,
+            memory_settings.session_extraction_cooldown_seconds.max(0) as i64,
+        )
     }
 
     pub async fn process_memory_sessions_now(
@@ -106,12 +114,13 @@ impl MemoryService {
         &self,
         projects: &[MemoryProjectRecord],
         sessions: &[MemorySessionSnapshot],
+        cooldown_seconds: i64,
     ) -> Result<MemoryExtractionEnqueueResult, String> {
         let checked_count = sessions.len() as i64;
         let mut enqueued_count = 0_i64;
 
         for session in sessions {
-            if self.enqueue_session_for_extraction(projects, session)? {
+            if self.enqueue_session_for_extraction(projects, session, cooldown_seconds)? {
                 enqueued_count += 1;
             }
         }
@@ -130,6 +139,7 @@ impl MemoryService {
         &self,
         projects: &[MemoryProjectRecord],
         session: &MemorySessionSnapshot,
+        cooldown_seconds: i64,
     ) -> Result<bool, String> {
         if session.state != "idle" || !session.has_completed_turn {
             return Ok(false);
@@ -142,6 +152,17 @@ impl MemoryService {
             &project.project_id,
             &session.tool,
             &session_id,
+        )? {
+            return Ok(false);
+        }
+        // Cooldown: skip if this same session already produced a completed
+        // extraction within the window. Without this a continuing session is
+        // re-extracted (full transcript -> LLM) after every idle gap.
+        if self.recent_completed_extraction_within(
+            &project.project_id,
+            &session.tool,
+            &session_id,
+            cooldown_seconds,
         )? {
             return Ok(false);
         }
@@ -181,6 +202,40 @@ impl MemoryService {
             )
             .map_err(|error| error.to_string())?;
         Ok(count > 0)
+    }
+
+    /// True if this session already produced a completed (`done`) extraction
+    /// within `cooldown_seconds`. Anchored on the most recent done task's
+    /// `enqueued_at` (the queue has no completion timestamp). `<= 0` disables it.
+    fn recent_completed_extraction_within(
+        &self,
+        project_id: &str,
+        tool: &str,
+        session_id: &str,
+        cooldown_seconds: i64,
+    ) -> Result<bool, String> {
+        if cooldown_seconds <= 0 {
+            return Ok(false);
+        }
+        let conn = self.open_or_create_connection()?;
+        let latest: Option<f64> = conn
+            .query_row(
+                r#"
+                SELECT MAX(enqueued_at)
+                FROM memory_extraction_queue
+                WHERE project_id = ?1
+                  AND tool = ?2
+                  AND session_id = ?3
+                  AND status = 'done';
+                "#,
+                rusqlite::params![project_id, tool, session_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        let Some(latest) = latest else {
+            return Ok(false);
+        };
+        Ok(now_seconds() - latest < cooldown_seconds as f64)
     }
 }
 

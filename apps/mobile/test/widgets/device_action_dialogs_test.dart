@@ -1,6 +1,6 @@
 import 'package:codux_flutter/models/remote_models.dart';
 import 'package:codux_flutter/theme/app_theme.dart';
-import 'package:codux_flutter/widgets/device_action_dialogs.dart';
+import 'package:codux_flutter/widgets/components/device_action_dialogs.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

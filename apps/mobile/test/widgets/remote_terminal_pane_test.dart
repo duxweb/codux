@@ -2,8 +2,9 @@ import 'package:codux_flutter/i18n.dart';
 import 'package:codux_flutter/services/remote_terminal_output_controller.dart';
 import 'package:codux_flutter/services/terminal_repaint_signal.dart';
 import 'package:codux_flutter/theme/app_theme.dart';
-import 'package:codux_flutter/widgets/remote_terminal_pane.dart';
-import 'package:codux_flutter/widgets/self_drawn_terminal_view.dart';
+import 'package:codux_flutter/models/workspace_mode.dart';
+import 'package:codux_flutter/widgets/components/remote_terminal_pane.dart';
+import 'package:codux_flutter/widgets/components/self_drawn_terminal_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,6 +18,7 @@ void main() {
         home: AppPreferences(
           accent: AccentChoices.cyan,
           locale: LocaleChoices.english,
+          themeMode: ThemeMode.dark,
           child: SizedBox(width: 360, height: 720, child: _pane()),
         ),
       ),
@@ -39,6 +41,7 @@ void main() {
         home: AppPreferences(
           accent: AccentChoices.cyan,
           locale: LocaleChoices.english,
+          themeMode: ThemeMode.dark,
           child: SizedBox(
             width: 360,
             height: 720,
@@ -89,7 +92,7 @@ RemoteTerminalPane _pane({ValueChanged<String>? onSendKey}) {
     showTerminal: true,
     hasDevice: true,
     status: '',
-    workspaceMode: 'terminal',
+    workspaceMode: WorkspaceMode.terminal,
     projectListLoaded: true,
     projectCount: 1,
     terminalUploadLoading: false,
@@ -111,6 +114,7 @@ RemoteTerminalPane _pane({ValueChanged<String>? onSendKey}) {
     onSelectionChanged: (_) {},
     onSendKey: onSendKey ?? (_) {},
     onToggleKeyboard: () {},
+    onRequestKeyboard: () {},
     onPaste: () {},
     onCopy: () {},
     onUpload: () {},

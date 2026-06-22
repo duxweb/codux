@@ -38,7 +38,7 @@ impl Default for SettingsSummary {
             memory_max_summary_versions: "10".to_string(),
             memory_summary_target_token_budget: "900".to_string(),
             memory_max_injected_summary_tokens: "900".to_string(),
-            memory_max_extraction_transcript_lines: "80".to_string(),
+            memory_max_extraction_transcript_lines: "160".to_string(),
             memory_max_extraction_transcript_tokens: "8000".to_string(),
             memory_allow_cross_project_user_recall: true,
             memory_default_extractor_provider_id: "automatic".to_string(),

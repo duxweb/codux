@@ -1,7 +1,7 @@
 import 'package:codux_flutter/i18n.dart';
 import 'package:codux_flutter/models/remote_models.dart';
 import 'package:codux_flutter/theme/app_theme.dart';
-import 'package:codux_flutter/widgets/terminal_switcher_screen.dart';
+import 'package:codux_flutter/widgets/components/terminal_switcher_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -59,6 +59,7 @@ Widget _wrap(Widget child) {
     home: AppPreferences(
       accent: AccentChoices.cyan,
       locale: LocaleChoices.english,
+      themeMode: ThemeMode.dark,
       child: child,
     ),
   );

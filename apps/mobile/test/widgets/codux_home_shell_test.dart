@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:codux_flutter/models/remote_models.dart';
 import 'package:codux_flutter/services/local_voice_recognition_service.dart';
 import 'package:codux_flutter/theme/app_theme.dart';
-import 'package:codux_flutter/widgets/codux_home_shell.dart';
+import 'package:codux_flutter/widgets/components/codux_home_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

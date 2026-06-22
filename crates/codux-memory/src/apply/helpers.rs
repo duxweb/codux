@@ -83,6 +83,17 @@ pub(super) fn estimate_tokens(value: &str) -> i64 {
     (value.chars().count() as i64 + 3) / 4
 }
 
+/// Derive a memory's tier from its kind. Tier is no longer chosen by the LLM
+/// (that was a redundant, error-prone decision); it only ranks recall (core
+/// surfaces first). Lessons and decisions are the memories that must not be lost
+/// or buried, so they default to core; everything else is working.
+pub(super) fn default_tier_for_kind(kind: &MemoryKind) -> MemoryTier {
+    match kind {
+        MemoryKind::BugLesson | MemoryKind::Decision => MemoryTier::Core,
+        _ => MemoryTier::Working,
+    }
+}
+
 pub(super) fn preferred_tier(existing: &MemoryTier, candidate: &MemoryTier) -> MemoryTier {
     match (existing, candidate) {
         (MemoryTier::Core, _) | (_, MemoryTier::Core) => MemoryTier::Core,

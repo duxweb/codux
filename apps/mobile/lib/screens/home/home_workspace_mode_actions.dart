@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/remote_models.dart';
+import '../../models/workspace_mode.dart';
 import '../../services/remote_project_controller.dart';
 import '../../services/remote_project_file_controller.dart';
 import '../../services/remote_runtime_store.dart';
@@ -28,7 +29,7 @@ class HomeWorkspaceModeActions {
   });
 
   final bool remoteProtocolReady;
-  final String workspaceMode;
+  final WorkspaceMode workspaceMode;
   final bool terminalDataVisible;
   final bool terminalListLoaded;
   final ProjectInfo? selectedProject;
@@ -36,7 +37,7 @@ class HomeWorkspaceModeActions {
   final String projectFilesPath;
   final VoidCallback releaseTerminalViewport;
   final void Function(String message) showToast;
-  final void Function(String mode, {bool terminalReady, bool aiStatsLoading})
+  final void Function(WorkspaceMode mode, {bool terminalReady, bool aiStatsLoading})
   setModeState;
   final void Function(String path, {required bool loading})
   setProjectFilesState;
@@ -55,10 +56,10 @@ class HomeWorkspaceModeActions {
       showToast(selectProjectMessage);
       return;
     }
-    if (workspaceMode == 'terminal') {
+    if (workspaceMode == WorkspaceMode.terminal) {
       releaseTerminalViewport();
     }
-    setModeState('stats', aiStatsLoading: true);
+    setModeState(WorkspaceMode.stats, aiStatsLoading: true);
     sendEnvelope(
       projectController.aiStatsEnvelope(
         project,
@@ -115,7 +116,7 @@ class HomeWorkspaceModeActions {
   }
 
   void showTerminalMode() {
-    setModeState('terminal', terminalReady: false);
+    setModeState(WorkspaceMode.terminal, terminalReady: false);
     syncTerminalToSelectedProject();
     mountVisibleTerminal(reason: 'mode');
     requestGitStatus();
@@ -132,10 +133,10 @@ class HomeWorkspaceModeActions {
       project,
       currentPath: projectFilesPath,
     );
-    if (workspaceMode == 'terminal') {
+    if (workspaceMode == WorkspaceMode.terminal) {
       releaseTerminalViewport();
     }
-    setModeState('files');
+    setModeState(WorkspaceMode.files);
     requestGitStatus();
     requestProjectFiles(currentNoDirMessage, path: targetPath);
   }

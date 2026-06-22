@@ -954,7 +954,7 @@ fn apply_extraction_response_writes_memory_and_summary() {
                         scope: Some(MemoryScope::Project),
                         module_key: Some("runtime".to_string()),
                         tier: Some(MemoryTier::Working),
-                        kind: MemoryKind::Convention,
+                        kind: MemoryKind::Decision,
                         content: "Runtime migration should keep backend logic in small domain modules instead of one large file.".to_string(),
                         rationale: Some("Maintains readability during the GPUI migration.".to_string()),
                         merge_with: Vec::new(),

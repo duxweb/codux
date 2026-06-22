@@ -16,6 +16,7 @@ void main() {
           body: AppPreferences(
             accent: AccentChoices.cyan,
             locale: LocaleChoices.simplifiedChinese,
+            themeMode: ThemeMode.dark,
             child: Stack(
               children: [
                 ScannerScreen(
@@ -56,6 +57,7 @@ void main() {
           body: AppPreferences(
             accent: AccentChoices.cyan,
             locale: LocaleChoices.simplifiedChinese,
+            themeMode: ThemeMode.dark,
             child: Stack(
               children: [
                 ScannerScreen(

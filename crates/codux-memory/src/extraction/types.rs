@@ -54,7 +54,6 @@ impl MemoryTier {
 #[serde(rename_all = "snake_case")]
 pub enum MemoryKind {
     Preference,
-    Convention,
     Decision,
     Fact,
     BugLesson,
@@ -64,7 +63,6 @@ impl MemoryKind {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Preference => "preference",
-            Self::Convention => "convention",
             Self::Decision => "decision",
             Self::Fact => "fact",
             Self::BugLesson => "bug_lesson",
@@ -76,8 +74,10 @@ impl MemoryKind {
             "preference" | "preferences" | "userpreference" | "style" | "workflow" => {
                 Self::Preference
             }
-            "convention" | "conventions" | "rule" | "standard" | "pattern" => Self::Convention,
-            "decision" | "decisions" | "choice" | "accepteddecision" => Self::Decision,
+            // `convention` folded into `decision`: a standing project rule is a
+            // decided standard. Legacy "convention" rows parse here too.
+            "decision" | "decisions" | "choice" | "accepteddecision" | "convention"
+            | "conventions" | "rule" | "standard" | "pattern" => Self::Decision,
             "buglesson" | "bug_lesson" | "lesson" | "bug" | "regression" | "fix" | "fixpattern"
             | "fix_pattern" => Self::BugLesson,
             _ => Self::Fact,

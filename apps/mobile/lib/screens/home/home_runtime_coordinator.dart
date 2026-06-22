@@ -149,16 +149,21 @@ class HomeRuntimeCoordinator {
     if (restored) {
       closeTerminalSwitcherAfterPendingWorktreeBuffer(bindSessionId);
     }
+    // Read the project from the live snapshot, not the construction-time
+    // `selectedProjectId`: a user-select plan updates the runtime's project via
+    // `syncRuntimeViewState()` earlier in this same apply pass, so the captured
+    // field is stale here and would bind the session to the previous project.
+    final boundProjectId = captureSnapshot().selectedProjectId ?? selectedProjectId;
     final bindResult = terminalBindingCoordinator.bindSession(
       plan: plan,
       bindSessionId: bindSessionId,
       reason: reason,
-      selectedProjectId: selectedProjectId,
+      selectedProjectId: boundProjectId,
       capability: terminalBufferCapability,
       restored: restored,
     );
     CoduxLog.info(
-      '[codux-flutter-terminal] bind session=$bindSessionId project=${selectedProjectId ?? ''} cached=${bindResult.restored}',
+      '[codux-flutter-terminal] bind session=$bindSessionId project=${boundProjectId ?? ''} cached=${bindResult.restored}',
     );
     focusTerminalViewSoon();
     final evicted = outputController.evictInactiveSessions(bindSessionId);

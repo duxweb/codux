@@ -12,11 +12,13 @@ class SettingsScreen extends StatelessWidget {
     required this.bottomInset,
     required this.currentAccent,
     required this.currentLocale,
+    required this.currentThemeMode,
     required this.currentLogLevel,
     required this.appTextScale,
     required this.terminalFontSize,
     required this.onChangeAccent,
     required this.onChangeLocale,
+    required this.onChangeThemeMode,
     required this.onChangeLogLevel,
     required this.onChangeAppTextScale,
     required this.onChangeTerminalFontSize,
@@ -31,11 +33,13 @@ class SettingsScreen extends StatelessWidget {
   final double bottomInset;
   final AccentOption currentAccent;
   final LocaleOption currentLocale;
+  final ThemeMode currentThemeMode;
   final String currentLogLevel;
   final double appTextScale;
   final double terminalFontSize;
   final ValueChanged<AccentOption> onChangeAccent;
   final ValueChanged<LocaleOption> onChangeLocale;
+  final ValueChanged<ThemeMode> onChangeThemeMode;
   final ValueChanged<String> onChangeLogLevel;
   final ValueChanged<double> onChangeAppTextScale;
   final ValueChanged<double> onChangeTerminalFontSize;
@@ -90,6 +94,12 @@ class SettingsScreen extends StatelessWidget {
                 _SectionLabel(prefs.t('settings.themeLabel')),
                 _Card(
                   children: [
+                    _ThemeModeRow(
+                      current: currentThemeMode,
+                      accent: accent,
+                      onSelect: onChangeThemeMode,
+                    ),
+                    _Divider(),
                     _AccentRow(
                       current: currentAccent,
                       onSelect: onChangeAccent,
@@ -212,14 +222,14 @@ void _showLogLevelPicker(
                     alignment: Alignment.center,
                     child: Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.textMuted,
                         fontSize: AppTextSize.body,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                  const Divider(
+                  Divider(
                     color: AppColors.border,
                     height: 0.5,
                     thickness: 0.5,
@@ -259,7 +269,7 @@ void _showLogLevelPicker(
                       ),
                     ),
                     if (level != _logLevels.last)
-                      const Divider(
+                      Divider(
                         color: AppColors.border,
                         height: 0.5,
                         thickness: 0.5,
@@ -283,7 +293,7 @@ void _showLogLevelPicker(
                   alignment: Alignment.center,
                   child: Text(
                     cancelLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: AppTextSize.title,
                       fontWeight: FontWeight.w600,
@@ -332,14 +342,14 @@ void _showLocalePicker(
                     alignment: Alignment.center,
                     child: Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.textMuted,
                         fontSize: AppTextSize.body,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                  const Divider(
+                  Divider(
                     color: AppColors.border,
                     height: 0.5,
                     thickness: 0.5,
@@ -353,7 +363,7 @@ void _showLocalePicker(
                       padding: EdgeInsets.zero,
                       physics: const BouncingScrollPhysics(),
                       itemCount: LocaleChoices.all.length,
-                      separatorBuilder: (_, _) => const Divider(
+                      separatorBuilder: (_, _) => Divider(
                         color: AppColors.border,
                         height: 0.5,
                         thickness: 0.5,
@@ -414,7 +424,7 @@ void _showLocalePicker(
                   alignment: Alignment.center,
                   child: Text(
                     cancelLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: AppTextSize.title,
                       fontWeight: FontWeight.w600,
@@ -444,7 +454,7 @@ class _LargeHeader extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     height: AppLayout.topBarHeight + topInset,
     padding: EdgeInsets.only(top: topInset),
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: AppColors.bgBase,
       border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
     ),
@@ -457,7 +467,7 @@ class _LargeHeader extends StatelessWidget {
             padding: const EdgeInsets.only(left: AppSpacing.s),
             child: IconButton(
               onPressed: onBack,
-              icon: const Icon(
+              icon: Icon(
                 Icons.chevron_left,
                 color: AppColors.textPrimary,
                 size: 28,
@@ -471,7 +481,7 @@ class _LargeHeader extends StatelessWidget {
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.textPrimary,
               fontSize: AppTextSize.title,
               fontWeight: FontWeight.w700,
@@ -496,7 +506,7 @@ class _SectionLabel extends StatelessWidget {
     ),
     child: Text(
       text.toUpperCase(),
-      style: const TextStyle(
+      style: TextStyle(
         color: AppColors.textMuted,
         fontSize: AppTextSize.small,
         fontWeight: FontWeight.w700,
@@ -523,7 +533,7 @@ class _Card extends StatelessWidget {
 
 class _Divider extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => const Padding(
+  Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.only(left: AppSpacing.l),
     child: Divider(height: 0.5, thickness: 0.5, color: AppColors.border),
   );
@@ -543,14 +553,14 @@ class _TextFieldTile extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
     child: TextField(
       controller: controller,
-      style: const TextStyle(
+      style: TextStyle(
         color: AppColors.textPrimary,
         fontSize: AppTextSize.body,
       ),
       cursorColor: accent,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textSubtle),
+        hintStyle: TextStyle(color: AppColors.textSubtle),
         border: InputBorder.none,
         focusedBorder: InputBorder.none,
         enabledBorder: InputBorder.none,
@@ -590,7 +600,7 @@ class _ActionTile extends StatelessWidget {
               style: TextStyle(color: accent, fontSize: AppTextSize.body),
             ),
           ),
-          const Icon(
+          Icon(
             Icons.chevron_right,
             size: 18,
             color: AppColors.textSubtle,
@@ -623,7 +633,7 @@ class _PickerTile extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: AppTextSize.body,
               ),
@@ -631,13 +641,13 @@ class _PickerTile extends StatelessWidget {
           ),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.textMuted,
               fontSize: AppTextSize.body,
             ),
           ),
           const SizedBox(width: AppSpacing.xs),
-          const Icon(
+          Icon(
             Icons.chevron_right,
             size: 18,
             color: AppColors.textSubtle,
@@ -692,7 +702,7 @@ class _StepSliderTile extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: AppTextSize.body,
                 ),
@@ -730,7 +740,7 @@ class _StepSliderTile extends StatelessWidget {
             for (final label in stepLabels)
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.textMuted,
                   fontSize: AppTextSize.small,
                 ),
@@ -808,6 +818,82 @@ class _AccentRow extends StatelessWidget {
   );
 }
 
+class _ThemeModeRow extends StatelessWidget {
+  const _ThemeModeRow({
+    required this.current,
+    required this.accent,
+    required this.onSelect,
+  });
+  final ThemeMode current;
+  final Color accent;
+  final ValueChanged<ThemeMode> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = AppPreferences.of(context);
+    final options = <(ThemeMode, IconData, String)>[
+      (ThemeMode.system, Icons.brightness_auto_rounded, prefs.t('settings.themeSystem')),
+      (ThemeMode.light, Icons.light_mode_rounded, prefs.t('settings.themeLight')),
+      (ThemeMode.dark, Icons.dark_mode_rounded, prefs.t('settings.themeDark')),
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.l,
+        vertical: AppSpacing.m,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: AppColors.bgElevated,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Row(
+          children: [
+            for (final (mode, icon, label) in options)
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => onSelect(mode),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: mode == current
+                          ? accent.withValues(alpha: 0.18)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 15,
+                          color: mode == current ? accent : AppColors.textMuted,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: mode == current
+                                ? accent
+                                : AppColors.textSecondary,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AccentDot extends StatelessWidget {
   const _AccentDot({
     required this.option,
@@ -843,7 +929,7 @@ class _AccentDot extends StatelessWidget {
             ),
           ),
           child: active
-              ? const Icon(Icons.check, size: 16, color: AppColors.bgBase)
+              ? Icon(Icons.check, size: 16, color: AppColors.bgBase)
               : null,
         ),
       ),

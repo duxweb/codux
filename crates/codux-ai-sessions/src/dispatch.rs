@@ -1,6 +1,7 @@
 //! Shared `ai.session` op dispatch. Both the desktop and headless remote hosts
-//! route the wire op (`list` / `detail` / `rename` / `remove` / `fork`) through
-//! this single table so neither host serves a partial set or drifts on shape.
+//! route the wire op (`list` / `detail` / `rename` / `remove` / `restore` /
+//! `fork`) through this single table so neither host serves a partial set or
+//! drifts on shape.
 //! The host resolves `project_path` (its own projectId fallback) and supplies
 //! the service; this returns the inner `result` value for `{op, result}`.
 
@@ -43,6 +44,18 @@ pub fn session_op_result(service: &AIHistoryService, project_path: &str, payload
             .remove_project_session(project_path, session_id)
             .ok()
             .and_then(|summary| serde_json::to_value(summary).ok())
+            .unwrap_or(Value::Null),
+        "restore" => service
+            .project_summary(project_path)
+            .sessions
+            .into_iter()
+            .find(|session| session.id == session_id)
+            .map(|session| {
+                json!({
+                    "command": crate::session_restore_command(&session),
+                    "title": session.title,
+                })
+            })
             .unwrap_or(Value::Null),
         "fork" => {
             let target_tool = payload

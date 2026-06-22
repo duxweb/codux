@@ -5,7 +5,7 @@ import '../../services/remote_protocol.dart';
 import '../../services/log_service.dart';
 import '../../services/remote_runtime_store.dart';
 import '../../services/worktree_utils.dart';
-import '../../widgets/worktree_create_dialog.dart';
+import '../../widgets/components/worktree_create_dialog.dart';
 
 class HomeWorktreeActions {
   const HomeWorktreeActions({
@@ -80,7 +80,7 @@ class HomeWorktreeActions {
   final RelayEnvelope Function(ProjectInfo project, RemoteWorktreeInfo worktree)
       mergeEnvelope;
 
-  void selectWorktree(RemoteWorktreeInfo worktree) {
+  void selectWorktree(RemoteWorktreeInfo worktree, {bool force = false}) {
     final project = selectedProject;
     if (project == null) {
       showToast(t('project.selectFirst'));
@@ -92,7 +92,10 @@ class HomeWorktreeActions {
       );
       return;
     }
-    if (worktree.id == selectedWorktreeId) {
+    // `force` (used right after creating a worktree) re-runs the bind even when
+    // the runtime already shows it selected, so the host actually serves the new
+    // worktree's terminal instead of leaving a blank screen.
+    if (!force && worktree.id == selectedWorktreeId) {
       closeTerminalSwitcher();
       return;
     }

@@ -40,7 +40,7 @@ impl SshProfileEditorLabels {
             port: tr("ssh.profile.port", "Port"),
             username: tr("ssh.profile.username", "Username"),
             credential: tr("ssh.profile.credential", "Credential"),
-            credential_none: tr("ssh.credential.none", "None / SSH Agent"),
+            credential_none: tr("ssh.credential.none", "None"),
             credential_password: tr("ssh.credential.password", "Password"),
             credential_private_key: tr("ssh.credential.private_key", "Private Key"),
             password: tr("ssh.profile.password", "Password"),

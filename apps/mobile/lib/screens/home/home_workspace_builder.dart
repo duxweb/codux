@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../models/remote_models.dart';
-import '../../widgets/pad_workspace_view.dart';
-import '../../widgets/remote_workspace_view.dart';
-import '../../widgets/workspace/workspace_controller.dart';
+import '../../models/workspace_mode.dart';
+import '../../widgets/pad/pad_workspace_view.dart';
+import '../../widgets/phone/remote_workspace_view.dart';
+import '../../widgets/components/workspace_controller.dart';
 import 'home_workspace_shell_data.dart';
 
 typedef ProjectOpenCallback = void Function(ProjectInfo project);
@@ -18,7 +19,7 @@ class HomeWorkspaceBuilder {
   Widget build({
     required BuildContext context,
     required double topInset,
-    required String workspaceMode,
+    required WorkspaceMode workspaceMode,
     required bool connected,
     required int? latencyMs,
     required String deviceName,
@@ -60,12 +61,13 @@ class HomeWorkspaceBuilder {
     required ProjectOpenCallback onSelectProject,
     required WorktreeOpenCallback onSelectWorktree,
     required VoidCallback onCreateWorktree,
+    required ValueChanged<RemoteWorktreeInfo> onMergeWorktree,
+    required ValueChanged<RemoteWorktreeInfo> onDeleteWorktree,
     required TerminalOpenCallback onSelectTerminal,
     required VoidCallback onRefreshLists,
     required VoidCallback onCreateTerminal,
     required VoidCallback onCloseCurrentTerminal,
     required TerminalOpenCallback onCloseTerminal,
-    required Future<void> Function(TerminalInfo terminal) onRenameSession,
     required VoidCallback onRebuildTerminal,
     required VoidCallback onOpenTerminalSwitcher,
     required ValueChanged<String> onRequestProjectFiles,
@@ -76,12 +78,16 @@ class HomeWorkspaceBuilder {
     required ValueChanged<RemoteFileEntry> onRenameProjectFile,
     required ValueChanged<RemoteFileEntry> onCopyProjectFilePath,
     required ValueChanged<RemoteFileEntry> onDeleteProjectFile,
+    required ValueChanged<AISessionRecord> onOpenSession,
+    required ValueChanged<AISessionRecord> onRenameSession,
+    required ValueChanged<AISessionRecord> onDeleteSession,
   }) {
     if (MediaQuery.of(context).size.width >= padLayoutMinWidth) {
       return PadWorkspaceView(
         controller: WorkspaceController(
           topInset: topInset,
           workspaceMode: workspaceMode,
+          onBack: onBack,
           connected: connected,
           latencyMs: latencyMs,
           deviceName: deviceName,
@@ -99,6 +105,9 @@ class HomeWorkspaceBuilder {
           onSshUpsert: onSshUpsert,
           onSshRemove: onSshRemove,
           aiSessions: shellData.aiSessions,
+          onOpenSession: onOpenSession,
+          onRenameSession: onRenameSession,
+          onDeleteSession: onDeleteSession,
           sshProfiles: shellData.sshProfiles,
           gitDiff: gitDiff,
           reviewSelectedPath: reviewSelectedPath,
@@ -130,12 +139,11 @@ class HomeWorkspaceBuilder {
           onSelectProject: onSelectProject,
           onSelectWorktree: onSelectWorktree,
           onCreateWorktree: onCreateWorktree,
+          onMergeWorktree: onMergeWorktree,
+          onDeleteWorktree: onDeleteWorktree,
           onSelectTerminal: onSelectTerminal,
           onCreateTerminal: onCreateTerminal,
           onCloseTerminal: onCloseTerminal,
-          onRenameSession: (terminal) {
-            onRenameSession(terminal);
-          },
           onRequestProjectFiles: onRequestProjectFiles,
           onOpenProjectFile: onOpenProjectFile,
           onOpenProjectHome: onOpenProjectHome,

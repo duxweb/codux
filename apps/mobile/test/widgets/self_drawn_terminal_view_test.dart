@@ -1,6 +1,6 @@
 import 'package:codux_flutter/models/remote_models.dart';
 import 'package:codux_flutter/services/remote_terminal_output_controller.dart';
-import 'package:codux_flutter/widgets/self_drawn_terminal_view.dart';
+import 'package:codux_flutter/widgets/components/self_drawn_terminal_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

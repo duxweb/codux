@@ -1,5 +1,5 @@
 import 'package:codux_flutter/services/log_service.dart';
-import 'package:codux_flutter/widgets/debug_log_dialog.dart';
+import 'package:codux_flutter/widgets/components/debug_log_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -48,6 +48,44 @@ _dmux_reset_terminal_input_modes() {
   printf '\033[<u' || true
 }
 
+# Arrow keys must work whether or not a prior full-screen program (e.g. a dev
+# server killed mid-run) left the terminal in DECCKM "application cursor" mode,
+# in which arrows send `ESC O A` instead of `ESC [ A`. zsh only binds the form
+# matching its current keypad state, so a leftover mode desync makes arrows
+# self-insert as `^[OA` at the prompt until the line editor re-syncs (today only
+# a Ctrl-C round-trip fixes it). Mirror each cursor key's normal-mode (CSI)
+# binding onto its application-mode (SS3) form so both encodings always resolve.
+# Non-destructive: existing user bindings are kept; only missing forms are added.
+_dmux_bind_cursor_keys() {
+  emulate -L zsh
+  local -a specs=(
+    '^[[A' '^[OA' up-line-or-history
+    '^[[B' '^[OB' down-line-or-history
+    '^[[C' '^[OC' forward-char
+    '^[[D' '^[OD' backward-char
+    '^[[H' '^[OH' beginning-of-line
+    '^[[F' '^[OF' end-of-line
+  )
+  local csi ss3 fallback binding widget ss3_widget i
+  for (( i = 1; i <= ${#specs}; i += 3 )); do
+    csi="${specs[i]}"; ss3="${specs[i + 1]}"; fallback="${specs[i + 2]}"
+    # Resolve the normal-mode widget (falling back to a sane default if unbound).
+    binding="$(bindkey -- "$csi" 2>/dev/null)"
+    widget="${binding##* }"
+    if [[ -z "$widget" || "$widget" == undefined-key ]]; then
+      widget="$fallback"
+      bindkey -- "$csi" "$widget"
+    fi
+    # Mirror it onto the application-mode form only when that form is unbound,
+    # so a user's own SS3 binding is never overridden.
+    binding="$(bindkey -- "$ss3" 2>/dev/null)"
+    ss3_widget="${binding##* }"
+    if [[ -z "$ss3_widget" || "$ss3_widget" == undefined-key ]]; then
+      bindkey -- "$ss3" "$widget"
+    fi
+  done
+}
+
 _dmux_is_wrapper_bin_dir() {
   local dir="$1"
   [[ -n "${dir}" ]] || return 1
@@ -161,4 +199,5 @@ add-zsh-hook precmd _dmux_ai_precmd
 add-zsh-hook zshexit _dmux_ai_zshexit
 
 _dmux_prepend_wrapper_bin
+_dmux_bind_cursor_keys
 _dmux_reset_terminal_input_modes

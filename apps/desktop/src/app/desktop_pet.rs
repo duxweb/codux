@@ -244,7 +244,11 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
         .filter(|session| session.state == "running")
         .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
     {
-        if let Some(plan_items) = desktop_pet_plan_items(session) {
+        // A fully-completed plan is not live progress — ignore it so the bubble
+        // falls through to the preview/running line instead of pinning "N/N".
+        if let Some(plan_items) = desktop_pet_plan_items(session)
+            .filter(|items| items.iter().any(|item| item.status != "completed"))
+        {
             let completed = plan_items
                 .iter()
                 .filter(|item| item.status == "completed")

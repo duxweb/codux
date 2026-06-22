@@ -10,7 +10,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTouch;
   SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
+    SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       systemNavigationBarColor: AppColors.bgSurface,
       statusBarIconBrightness: Brightness.light,

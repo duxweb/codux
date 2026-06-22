@@ -11,7 +11,7 @@ import 'package:codux_flutter/services/remote_protocol.dart';
 import 'package:codux_flutter/services/remote_protocol_service.dart';
 import 'package:codux_flutter/services/remote_transport.dart';
 import 'package:codux_flutter/theme/app_theme.dart';
-import 'package:codux_flutter/widgets/device_home_screen.dart';
+import 'package:codux_flutter/widgets/components/device_home_screen.dart';
 
 void main() {
   testWidgets('Codux app boots', (WidgetTester tester) async {
@@ -32,6 +32,7 @@ void main() {
           body: AppPreferences(
             accent: AccentChoices.cyan,
             locale: LocaleChoices.english,
+            themeMode: ThemeMode.dark,
             child: Directionality(
               textDirection: TextDirection.ltr,
               child: DeviceHomeScreen(
@@ -87,6 +88,7 @@ void main() {
           body: AppPreferences(
             accent: AccentChoices.cyan,
             locale: LocaleChoices.zhCN,
+            themeMode: ThemeMode.dark,
             child: Directionality(
               textDirection: TextDirection.ltr,
               child: DeviceHomeScreen(

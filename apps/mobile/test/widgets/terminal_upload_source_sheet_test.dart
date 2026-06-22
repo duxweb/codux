@@ -1,5 +1,5 @@
 import 'package:codux_flutter/services/terminal_upload_metadata.dart';
-import 'package:codux_flutter/widgets/terminal_upload_source_sheet.dart';
+import 'package:codux_flutter/widgets/components/terminal_upload_source_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

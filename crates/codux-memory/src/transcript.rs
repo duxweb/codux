@@ -30,6 +30,7 @@ pub(super) struct TranscriptSource {
 include!("transcript/context.rs");
 include!("transcript/source.rs");
 include!("transcript/read.rs");
+include!("transcript/parse.rs");
 include!("transcript/opencode.rs");
 include!("transcript/compact.rs");
 include!("transcript/helpers.rs");

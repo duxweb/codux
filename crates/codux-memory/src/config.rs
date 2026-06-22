@@ -272,7 +272,10 @@ fn default_memory_max_index_sessions() -> i32 {
     20
 }
 fn default_memory_max_extraction_transcript_lines() -> i32 {
-    80
+    // With structured parsing this counts conversational turns (user/assistant),
+    // not raw JSONL events, so a single tool result no longer eats the window.
+    // The token cap below is the real bound; keep enough turns to span a session.
+    160
 }
 fn default_memory_max_extraction_transcript_tokens() -> i32 {
     8000

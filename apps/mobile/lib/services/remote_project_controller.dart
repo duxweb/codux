@@ -137,6 +137,53 @@ class RemoteProjectController {
     );
   }
 
+  /// Rename a session in the host's AI history. Host replies `ai.session.result`
+  /// with op `rename`; we refresh the list afterwards.
+  RelayEnvelope aiSessionRenameEnvelope(
+    ProjectInfo project,
+    String sessionId,
+    String title,
+  ) {
+    return RelayEnvelope(
+      type: RemoteMessageType.aiSession,
+      payload: {
+        'op': 'rename',
+        'projectId': project.id,
+        if (project.path != null) 'projectPath': project.path,
+        'sessionId': sessionId,
+        'title': title,
+      },
+    );
+  }
+
+  /// Remove a session from the host's AI history. Host replies with op `remove`.
+  RelayEnvelope aiSessionRemoveEnvelope(ProjectInfo project, String sessionId) {
+    return RelayEnvelope(
+      type: RemoteMessageType.aiSession,
+      payload: {
+        'op': 'remove',
+        'projectId': project.id,
+        if (project.path != null) 'projectPath': project.path,
+        'sessionId': sessionId,
+      },
+    );
+  }
+
+  /// Ask the host for the resume command that re-opens a session in its CLI tool
+  /// (e.g. `claude --resume <id>`). Host replies with op `restore`; we write the
+  /// returned command into the active terminal.
+  RelayEnvelope aiSessionRestoreEnvelope(ProjectInfo project, String sessionId) {
+    return RelayEnvelope(
+      type: RemoteMessageType.aiSession,
+      payload: {
+        'op': 'restore',
+        'projectId': project.id,
+        if (project.path != null) 'projectPath': project.path,
+        'sessionId': sessionId,
+      },
+    );
+  }
+
   /// Request the host's saved SSH profiles (host-wide; the host owns them).
   RelayEnvelope sshListEnvelope() {
     return RelayEnvelope(type: RemoteMessageType.sshList, payload: const {});

@@ -1,7 +1,7 @@
 {
   "strings": {
     "de": {
-      "ssh.credential.none": "None / SSH Agent",
+      "ssh.credential.none": "None",
       "ssh.credential.password": "Password",
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
@@ -45,7 +45,7 @@
       "ssh.profile.validation.username": "Username cannot be empty."
     },
     "en": {
-      "ssh.credential.none": "None / SSH Agent",
+      "ssh.credential.none": "None",
       "ssh.credential.password": "Password",
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
@@ -89,7 +89,7 @@
       "ssh.profile.validation.username": "Username cannot be empty."
     },
     "es": {
-      "ssh.credential.none": "None / SSH Agent",
+      "ssh.credential.none": "None",
       "ssh.credential.password": "Password",
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
@@ -133,7 +133,7 @@
       "ssh.profile.validation.username": "Username cannot be empty."
     },
     "fr": {
-      "ssh.credential.none": "None / SSH Agent",
+      "ssh.credential.none": "None",
       "ssh.credential.password": "Password",
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
@@ -177,7 +177,7 @@
       "ssh.profile.validation.username": "Username cannot be empty."
     },
     "ja": {
-      "ssh.credential.none": "None / SSH Agent",
+      "ssh.credential.none": "None",
       "ssh.credential.password": "Password",
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
@@ -221,7 +221,7 @@
       "ssh.profile.validation.username": "Username cannot be empty."
     },
     "ko": {
-      "ssh.credential.none": "None / SSH Agent",
+      "ssh.credential.none": "None",
       "ssh.credential.password": "Password",
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
@@ -265,7 +265,7 @@
       "ssh.profile.validation.username": "Username cannot be empty."
     },
     "pt-BR": {
-      "ssh.credential.none": "None / SSH Agent",
+      "ssh.credential.none": "None",
       "ssh.credential.password": "Password",
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
@@ -309,7 +309,7 @@
       "ssh.profile.validation.username": "Username cannot be empty."
     },
     "ru": {
-      "ssh.credential.none": "None / SSH Agent",
+      "ssh.credential.none": "None",
       "ssh.credential.password": "Password",
       "ssh.credential.private_key": "Private Key",
       "ssh.panel.empty.help": "Add a global SSH profile and double-click it to connect in a terminal.",
@@ -353,7 +353,7 @@
       "ssh.profile.validation.username": "Username cannot be empty."
     },
     "zh-Hans": {
-      "ssh.credential.none": "无 / SSH Agent",
+      "ssh.credential.none": "无",
       "ssh.credential.password": "密码",
       "ssh.credential.private_key": "私钥",
       "ssh.panel.empty.help": "添加全局 SSH 配置，双击即可在终端中连接。",
@@ -397,7 +397,7 @@
       "ssh.profile.validation.username": "用户名不能为空。"
     },
     "zh-Hant": {
-      "ssh.credential.none": "無 / SSH Agent",
+      "ssh.credential.none": "無",
       "ssh.credential.password": "密碼",
       "ssh.credential.private_key": "私鑰",
       "ssh.panel.empty.help": "新增全域 SSH 設定，雙擊即可在終端中連線。",

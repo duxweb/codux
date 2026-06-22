@@ -1,3 +1,7 @@
+/// Below this many characters of cleaned conversational text there is nothing
+/// durable to extract; skip the LLM call to save tokens.
+const MIN_EXTRACTION_TRANSCRIPT_CHARS: usize = 200;
+
 impl MemoryService {
     pub fn next_pending_extraction_task(&self) -> Result<Option<MemoryExtractionTask>, String> {
         self.ensure_queue_schema()?;
@@ -154,6 +158,11 @@ impl MemoryService {
         let (response_text, response) = {
             let transcript =
                 resolve_transcript_for_task_with_settings(&task, &project, &settings.memory)?;
+            // Nothing durable can come from a near-empty conversation; skip the
+            // (paid) LLM call rather than asking it to extract from noise.
+            if transcript.trim().chars().count() < MIN_EXTRACTION_TRANSCRIPT_CHARS {
+                return Ok(());
+            }
             let (user_summary, user_memories, project_memories) =
                 self.extraction_prompt_context(&settings.memory, &task.project_id, &transcript)?;
             let prompt = make_extraction_prompt(
@@ -198,8 +207,10 @@ impl MemoryService {
         let project_profile_refresh_recommended = response.project_profile_refresh_recommended;
         self.apply_extraction_response(response, task, &settings.memory)?;
         if project_profile_refresh_recommended {
+            // Not forced: let the fingerprint / refresh-due cache short-circuit so
+            // we don't fire a second (repo-walking) LLM call on every extraction.
             let _ = self
-                .force_refresh_project_profile_with_llm_detailed(settings, &project)
+                .refresh_project_profile_detailed(settings, &project, false)
                 .await;
         }
         Ok(())

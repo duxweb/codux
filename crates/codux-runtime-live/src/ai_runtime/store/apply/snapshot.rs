@@ -173,7 +173,14 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
         has_completed_turn,
         latest_assistant_preview: normalized_string(snapshot.assistant_preview.as_deref())
             .or(session.latest_assistant_preview.clone()),
-        plan: snapshot.plan.or(session.plan.clone()),
+        // Only keep a task plan while the turn is still active; once it resolves
+        // to idle, drop it so the pet's task bubble doesn't linger on a finished
+        // (all-✓) list. Mirrors the hook path's plan handling.
+        plan: if state == "responding" || state == "needsInput" {
+            snapshot.plan.or(session.plan.clone())
+        } else {
+            None
+        },
         ..session
     };
 
