@@ -560,6 +560,37 @@ fn reconcile_without_live_terminal_silently_retires_running_session() {
     assert!(!snapshot.sessions[0].has_completed_turn);
 }
 
+#[test]
+fn reconcile_prunes_orphaned_idle_session_after_retention() {
+    let store = AIRuntimeStateStore::default();
+    assert!(
+        store
+            .apply_hook(test_hook("promptSubmitted", 1000.0))
+            .did_change
+    );
+    {
+        let mut core = store.core.lock().unwrap();
+        let session = core.sessions.get_mut("terminal-1").unwrap();
+        session.state = "idle".to_string();
+        session.updated_at = now_seconds()
+            - crate::ai_runtime::constants::IDLE_SESSION_RETENTION_SECONDS
+            - 10.0;
+    }
+    // Terminal is gone and the idle session is well past retention -> reclaimed.
+    let mutation = store.reconcile_bridge_snapshot(&[]);
+    assert!(mutation.did_change);
+    assert!(store.snapshot().sessions.is_empty());
+
+    // A recently-idled orphan is still retained (within the window).
+    assert!(
+        store
+            .apply_hook(test_hook("promptSubmitted", now_seconds()))
+            .did_change
+    );
+    store.reconcile_bridge_snapshot(&[]);
+    assert_eq!(store.snapshot().sessions.len(), 1);
+}
+
 fn responding_probe_snapshot(updated_at: f64) -> AIRuntimeContextSnapshot {
     AIRuntimeContextSnapshot {
         tool: "codex".to_string(),

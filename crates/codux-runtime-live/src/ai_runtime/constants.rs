@@ -22,3 +22,9 @@ pub const CODEX_LIVE_TRANSCRIPT_TAIL_LINES: usize = 260;
 pub const TRANSCRIPT_MONITOR_INTERVAL_MS: u64 = 3_000;
 pub const TRANSCRIPT_POLL_MINIMUM_SECONDS: f64 = 3.0;
 pub const RUNTIME_EVENT_FILE_MAX_AGE_SECONDS: f64 = 300.0;
+/// Drop an idle session whose terminal is no longer live after this long.
+/// Explicit closes evict immediately via `remove_session`; this only reclaims
+/// orphans left by crashes / abnormal terminal disappearance. Far longer than
+/// the memory-extraction idle delay so a completed turn is always enqueued
+/// before its session is reclaimed.
+pub const IDLE_SESSION_RETENTION_SECONDS: f64 = 3_600.0;

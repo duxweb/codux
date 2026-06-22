@@ -4,8 +4,6 @@ use crate::ai_runtime::snapshot::{
     AILatestCompletion, AIProjectPhase, AIProjectStateSnapshot, AIProjectTotals,
     AIRuntimeCompletionEvent, AIRuntimeStateSnapshot, AISessionSnapshot,
 };
-use std::collections::HashSet;
-
 const NEEDS_INPUT_VISIBLE_SECONDS: f64 = 30.0;
 
 pub(super) fn state_snapshot_unlocked(core: &AIRuntimeStateCore) -> AIRuntimeStateSnapshot {
@@ -17,22 +15,71 @@ pub(super) fn state_snapshot_unlocked(core: &AIRuntimeStateCore) -> AIRuntimeSta
         .map(|session| visible_session_snapshot(session, now))
         .collect::<Vec<_>>();
     sessions.sort_by(|left, right| right.updated_at.total_cmp(&left.updated_at));
-    let mut project_ids = sessions
-        .iter()
-        .map(|session| session.project_id.clone())
-        .collect::<Vec<_>>();
-    project_ids.sort();
-    project_ids.dedup();
 
-    let projects = project_ids
-        .iter()
-        .map(|project_id| AIProjectStateSnapshot {
-            project_id: project_id.clone(),
-            project_phase: project_phase_unlocked(core, project_id, now),
-            completed_phase: completed_phase_unlocked(core, project_id, now),
-            totals: project_totals_unlocked(core, Some(project_id), now),
-        })
-        .collect::<Vec<_>>();
+    // Group sessions by project in a single pass, then derive each project's
+    // phase/completed/totals from its own slice. Previously every project
+    // re-scanned the whole session map several times (phase + completed +
+    // totals, each a full scan), which is O(projects × sessions) per snapshot;
+    // this is O(sessions). Global totals and the latest completion fall out of
+    // the same loop, so neither needs an extra full scan.
+    let mut groups: std::collections::HashMap<&str, Vec<&AISessionSnapshot>> =
+        std::collections::HashMap::new();
+    for session in core.sessions.values() {
+        groups
+            .entry(session.project_id.as_str())
+            .or_default()
+            .push(session);
+    }
+    let mut project_ids = groups.keys().copied().collect::<Vec<_>>();
+    project_ids.sort_unstable();
+
+    let mut projects = Vec::with_capacity(project_ids.len());
+    let mut global_totals = AIProjectTotals::default();
+    let mut latest_completion: Option<AILatestCompletion> = None;
+    for project_id in project_ids {
+        let group = groups.get_mut(project_id).expect("grouped project");
+        group.sort_by(|left, right| right.updated_at.total_cmp(&left.updated_at));
+        let project_phase = project_phase_from(group, now);
+        let completed_phase = completed_phase_from(group, core, project_id, now);
+        let totals = project_totals_from(group, now);
+        global_totals.total_tokens += totals.total_tokens;
+        global_totals.cached_input_tokens += totals.cached_input_tokens;
+        global_totals.running += totals.running;
+        global_totals.needs_input += totals.needs_input;
+        global_totals.completed += totals.completed;
+        if let AIProjectPhase::Completed {
+            tool,
+            was_interrupted,
+            updated_at,
+        } = &completed_phase
+        {
+            let candidate = AILatestCompletion {
+                id: format!("{project_id}:{updated_at}"),
+                project_id: project_id.to_string(),
+                project_name: group
+                    .first()
+                    .map(|session| session.project_name.clone())
+                    .unwrap_or_else(|| project_id.to_string()),
+                tool: tool.clone(),
+                was_interrupted: *was_interrupted,
+                updated_at: *updated_at,
+            };
+            if latest_completion
+                .as_ref()
+                .map(|current| candidate.updated_at > current.updated_at)
+                .unwrap_or(true)
+            {
+                latest_completion = Some(candidate);
+            }
+        }
+        projects.push(AIProjectStateSnapshot {
+            project_id: project_id.to_string(),
+            project_phase,
+            completed_phase,
+            totals,
+        });
+    }
+
     let needs_input_count = projects
         .iter()
         .filter(|project| matches!(project.project_phase, AIProjectPhase::NeedsInput { .. }))
@@ -48,18 +95,17 @@ pub(super) fn state_snapshot_unlocked(core: &AIRuntimeStateCore) -> AIRuntimeSta
     AIRuntimeStateSnapshot {
         sessions,
         projects,
-        global_totals: project_totals_unlocked(core, None, now),
+        global_totals,
         needs_input_count,
         running_count,
         completion_count,
-        latest_completion: latest_completion_unlocked(core, now),
+        latest_completion,
         updated_at: now,
     }
 }
 
-fn project_phase_unlocked(core: &AIRuntimeStateCore, project_id: &str, now: f64) -> AIProjectPhase {
-    let sessions = sorted_project_sessions(core, project_id);
-    if let Some(session) = sessions
+fn project_phase_from(sorted: &[&AISessionSnapshot], now: f64) -> AIProjectPhase {
+    if let Some(session) = sorted
         .iter()
         .find(|session| session_has_active_needs_input(session, now))
     {
@@ -67,10 +113,7 @@ fn project_phase_unlocked(core: &AIRuntimeStateCore, project_id: &str, now: f64)
             tool: session.tool.clone(),
         };
     }
-    if let Some(session) = sessions
-        .iter()
-        .find(|session| session.state == "responding")
-    {
+    if let Some(session) = sorted.iter().find(|session| session.state == "responding") {
         return AIProjectPhase::Running {
             tool: session.tool.clone(),
         };
@@ -78,13 +121,13 @@ fn project_phase_unlocked(core: &AIRuntimeStateCore, project_id: &str, now: f64)
     AIProjectPhase::Idle
 }
 
-pub(super) fn completed_phase_unlocked(
+fn completed_phase_from(
+    sorted: &[&AISessionSnapshot],
     core: &AIRuntimeStateCore,
     project_id: &str,
     now: f64,
 ) -> AIProjectPhase {
-    let sessions = sorted_project_sessions(core, project_id);
-    if sessions
+    if sorted
         .iter()
         .any(|session| session_has_active_needs_input(session, now))
     {
@@ -95,7 +138,7 @@ pub(super) fn completed_phase_unlocked(
         .get(project_id)
         .copied()
         .unwrap_or(0.0);
-    let completed = sessions.iter().find(|session| {
+    let completed = sorted.iter().find(|session| {
         session.state == "idle"
             && (session.has_completed_turn || session.was_interrupted)
             && session.updated_at >= latest_active_started_at
@@ -118,18 +161,9 @@ pub(super) fn completed_phase_unlocked(
     }
 }
 
-pub(super) fn project_totals_unlocked(
-    core: &AIRuntimeStateCore,
-    project_id: Option<&str>,
-    now: f64,
-) -> AIProjectTotals {
-    core.sessions
-        .values()
-        .filter(|session| {
-            project_id
-                .map(|project_id| session.project_id == project_id)
-                .unwrap_or(true)
-        })
+fn project_totals_from(sorted: &[&AISessionSnapshot], now: f64) -> AIProjectTotals {
+    sorted
+        .iter()
         .fold(AIProjectTotals::default(), |mut total, session| {
             total.total_tokens += (session.total_tokens - session.baseline_total_tokens).max(0);
             total.cached_input_tokens +=
@@ -141,32 +175,63 @@ pub(super) fn project_totals_unlocked(
         })
 }
 
-fn latest_completion_unlocked(core: &AIRuntimeStateCore, now: f64) -> Option<AILatestCompletion> {
-    let mut latest = None;
-    for project_id in core
+pub(super) fn completed_phase_unlocked(
+    core: &AIRuntimeStateCore,
+    project_id: &str,
+    now: f64,
+) -> AIProjectPhase {
+    completed_phase_from(&sorted_project_sessions(core, project_id), core, project_id, now)
+}
+
+#[cfg(test)]
+pub(super) fn project_totals_unlocked(
+    core: &AIRuntimeStateCore,
+    project_id: Option<&str>,
+    now: f64,
+) -> AIProjectTotals {
+    let sessions = core
         .sessions
         .values()
-        .map(|session| session.project_id.clone())
-        .collect::<HashSet<_>>()
-    {
+        .filter(|session| {
+            project_id
+                .map(|project_id| session.project_id == project_id)
+                .unwrap_or(true)
+        })
+        .collect::<Vec<_>>();
+    project_totals_from(&sessions, now)
+}
+
+fn latest_completion_unlocked(core: &AIRuntimeStateCore, now: f64) -> Option<AILatestCompletion> {
+    // Group once instead of re-scanning the whole session map per project (the
+    // old path also re-scanned inside completed_phase_unlocked). next_completion
+    // runs this once per changed session in a poll cycle, so the per-call cost
+    // matters.
+    let mut groups: std::collections::HashMap<&str, Vec<&AISessionSnapshot>> =
+        std::collections::HashMap::new();
+    for session in core.sessions.values() {
+        groups
+            .entry(session.project_id.as_str())
+            .or_default()
+            .push(session);
+    }
+    let mut latest: Option<AILatestCompletion> = None;
+    for (project_id, group) in groups.iter_mut() {
+        group.sort_by(|left, right| right.updated_at.total_cmp(&left.updated_at));
         let AIProjectPhase::Completed {
             tool,
             was_interrupted,
             updated_at,
-        } = completed_phase_unlocked(core, &project_id, now)
+        } = completed_phase_from(group, core, project_id, now)
         else {
             continue;
         };
-        let project_name = core
-            .sessions
-            .values()
-            .find(|session| session.project_id == project_id)
-            .map(|session| session.project_name.clone())
-            .unwrap_or_else(|| project_id.clone());
         let candidate = AILatestCompletion {
             id: format!("{project_id}:{updated_at}"),
-            project_id,
-            project_name,
+            project_id: project_id.to_string(),
+            project_name: group
+                .first()
+                .map(|session| session.project_name.clone())
+                .unwrap_or_else(|| project_id.to_string()),
             tool,
             was_interrupted,
             updated_at,

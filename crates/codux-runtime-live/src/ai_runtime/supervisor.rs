@@ -228,8 +228,10 @@ fn after_mutation(
     events: &Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
     mutation: AIRuntimeStateMutation,
 ) {
-    refresh_transcript_monitors(transcript_monitors, &state.transcript_monitored_sessions());
+    // The monitored-session set only shifts when the state changed, so skip the
+    // lock + full codex-session clone on the (common) no-op message.
     if mutation.did_change {
+        refresh_transcript_monitors(transcript_monitors, &state.transcript_monitored_sessions());
         push_event(
             events,
             AIRuntimeSupervisorEvent::State {

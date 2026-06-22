@@ -1,5 +1,5 @@
 use super::{
-    constants::RUNNING_STALE_SECONDS,
+    constants::{IDLE_SESSION_RETENTION_SECONDS, RUNNING_STALE_SECONDS},
     payload::AIHookEventPayload,
     registry::AIRuntimeTerminalState,
     snapshot::{
@@ -337,6 +337,25 @@ impl AIRuntimeStateStore {
                     .insert(terminal_id, mark_timed_out(session, now));
                 did_change = true;
             }
+        }
+
+        // Reclaim orphans: idle sessions whose terminal is gone and that have
+        // sat untouched past the retention window. Explicit closes are handled
+        // immediately by `remove_session`; this only bounds growth from crashes
+        // / abnormal terminal disappearance so `sessions` can't leak forever.
+        let expired_ids = core
+            .sessions
+            .iter()
+            .filter_map(|(terminal_id, session)| {
+                (!live_terminal_ids.contains(terminal_id.as_str())
+                    && session.state == "idle"
+                    && now - session.updated_at > IDLE_SESSION_RETENTION_SECONDS)
+                    .then(|| terminal_id.clone())
+            })
+            .collect::<Vec<_>>();
+        for terminal_id in expired_ids {
+            core.sessions.remove(&terminal_id);
+            did_change = true;
         }
 
         AIRuntimeStateMutation {
