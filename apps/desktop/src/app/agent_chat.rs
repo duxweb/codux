@@ -1008,6 +1008,8 @@ impl Render for ChatView {
                     .id("agent-chat-scroll")
                     .flex_1()
                     .min_h_0()
+                    .min_w_0()
+                    .overflow_x_hidden()
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .p(px(12.0))
@@ -1942,13 +1944,15 @@ impl ChatView {
         let mut block = div()
             .flex()
             .flex_col()
+            .w_full()
+            .min_w_0()
             .rounded(px(8.0))
             .border_1()
             .border_color(pal.border)
             .overflow_hidden()
             .child(header);
         if open {
-            let mut body = div().flex().flex_col().px(px(4.0)).pb(px(4.0));
+            let mut body = div().flex().flex_col().w_full().min_w_0().px(px(4.0)).pb(px(4.0));
             for it in items {
                 body = body.child(self.render_activity_card(it, pal, mono.clone(), true, cx));
             }
@@ -2115,6 +2119,8 @@ impl ChatView {
         let mut card = div()
             .flex()
             .flex_col()
+            .w_full()
+            .min_w_0()
             .rounded(px(8.0))
             .overflow_hidden()
             .when(!nested, |s| s.border_1().border_color(pal.border))
@@ -2124,6 +2130,8 @@ impl ChatView {
             let mut body = div()
                 .id(SharedString::from(format!("card-body-{id}")))
                 .max_h(px(280.0))
+                .min_w_0()
+                .overflow_x_hidden()
                 .overflow_y_scroll()
                 .flex()
                 .flex_col()
