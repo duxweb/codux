@@ -379,20 +379,18 @@ impl ChatView {
     }
 
     fn handle_msg(&mut self, msg: ChatMsg, cx: &mut Context<Self>) {
+        // Only auto-scroll if the user is already following at the bottom — don't
+        // yank them down while they're reading earlier history.
+        let follow = self.near_bottom();
         match msg {
             ChatMsg::Note(note) => self.status = SharedString::from(note),
             ChatMsg::Started(session) => {
-                // Flush anything composed while connecting.
-                let busy = !self.pending_send.is_empty();
-                for parts in self.pending_send.drain(..) {
-                    let s = session.clone();
-                    std::thread::spawn(move || {
-                        let _ = s.send_user_turn(parts);
-                    });
-                }
                 self.session = Some(session);
                 self.starting = false;
-                self.status = SharedString::from(if busy { "生成中…" } else { "就绪" });
+                self.status = SharedString::from("就绪");
+                // Send the first queued turn (if anything was typed while connecting).
+                self.pump_queue();
+                self.update_queue_status();
             }
             ChatMsg::Catalog {
                 models,
@@ -440,18 +438,24 @@ impl ChatView {
                     AgentEvent::TurnCompleted => {
                         self.busy = false;
                         self.status = SharedString::from("就绪");
+                        self.pump_queue(); // send the next queued turn, if any
+                        self.update_queue_status();
                     }
                     AgentEvent::TokenUsage(u) => self.last_usage = Some(u),
                     AgentEvent::Error(err) => {
                         self.busy = false;
                         self.status = SharedString::from(format!("错误: {err}"));
+                        self.pump_queue();
+                        self.update_queue_status();
                     }
                     AgentEvent::Status(_) => {}
                     _ => self.status = SharedString::from("生成中…"),
                 }
             }
         }
-        self.scroll.scroll_to_bottom();
+        if follow {
+            self.scroll.scroll_to_bottom();
+        }
         cx.notify();
     }
 
@@ -482,20 +486,49 @@ impl ChatView {
         self.mention_query = None;
         self.mention_hits.clear();
 
-        self.busy = true;
-        if let Some(session) = &self.session {
-            let session = session.clone();
-            std::thread::spawn(move || {
-                let _ = session.send_user_turn(parts);
-            });
-            self.status = SharedString::from("生成中…");
-        } else {
-            // Session still connecting (or failed): queue, and (re)start if needed.
-            self.pending_send.push(parts);
+        // Always queue, then pump: a turn sends immediately when idle, otherwise
+        // it waits its turn (no double-send / interrupt while generating).
+        self.pending_send.push(parts);
+        if self.session.is_none() {
             self.ensure_session();
+        }
+        self.pump_queue();
+        self.update_queue_status();
+        self.scroll.scroll_to_bottom(); // user's own send always jumps to bottom
+        cx.notify();
+    }
+
+    /// True if the message list is scrolled to within ~120px of the bottom, i.e.
+    /// the user is "following" and we may auto-scroll on new content.
+    fn near_bottom(&self) -> bool {
+        let off = self.scroll.offset().y; // <= 0 as content scrolls up
+        let max = self.scroll.max_offset().y; // >= 0 total scrollable
+        (max + off) <= px(120.0)
+    }
+
+    /// Send the next queued turn if the session is idle (not busy) and connected.
+    fn pump_queue(&mut self) {
+        if self.busy || self.pending_send.is_empty() {
+            return;
+        }
+        let Some(session) = self.session.clone() else {
+            return;
+        };
+        let parts = self.pending_send.remove(0);
+        self.busy = true;
+        self.status = SharedString::from("生成中…");
+        std::thread::spawn(move || {
+            let _ = session.send_user_turn(parts);
+        });
+    }
+
+    /// Reflect queue/connection state in the status line.
+    fn update_queue_status(&mut self) {
+        if !self.pending_send.is_empty() {
+            self.status = SharedString::from(format!("已排队 {} 条", self.pending_send.len()));
+        } else if self.session.is_none() {
             self.status = SharedString::from("连接中…");
         }
-        cx.notify();
     }
 
     /// Interrupt the in-flight turn (the send button's stop state).
