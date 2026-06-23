@@ -216,6 +216,23 @@ impl ChatView {
         }
     }
 
+    /// Short label for the tab bar: a snippet of the first user message.
+    pub(in crate::app) fn title(&self) -> SharedString {
+        self.items
+            .iter()
+            .find(|i| i.kind == TimelineKind::UserPrompt && !i.text.trim().is_empty())
+            .map(|i| {
+                let line = i.text.trim().lines().next().unwrap_or_default();
+                let snippet: String = line.chars().take(16).collect();
+                if line.chars().count() > 16 {
+                    SharedString::from(format!("{snippet}…"))
+                } else {
+                    SharedString::from(snippet)
+                }
+            })
+            .unwrap_or_else(|| SharedString::from("新对话"))
+    }
+
     fn handle_msg(&mut self, msg: ChatMsg, cx: &mut Context<Self>) {
         match msg {
             ChatMsg::Note(note) => self.status = SharedString::from(note),
@@ -1201,4 +1218,162 @@ fn render_activity_card(item: &TimelineItem, pal: Pal, mono: SharedString) -> Di
                     .child(item.output.trim_end().to_string()),
             )
         })
+}
+
+/// Multi-tab host for chat sessions bound to a single worktree. Each tab is its
+/// own [`ChatView`] (its own codex session); the worktree-keyed entity lives in
+/// `WorkspaceBodyView`, so switching projects/worktrees rebuilds the whole panel
+/// — exactly like the terminal's tab strip but for AI conversations.
+pub(in crate::app) struct ChatPanel {
+    cwd: String,
+    codex_program: String,
+    tabs: Vec<Entity<ChatView>>,
+    active: usize,
+}
+
+impl ChatPanel {
+    pub(in crate::app) fn new(
+        cwd: String,
+        codex_program: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let first = Self::make_tab(&cwd, &codex_program, window, cx);
+        Self {
+            cwd,
+            codex_program,
+            tabs: vec![first],
+            active: 0,
+        }
+    }
+
+    fn make_tab(
+        cwd: &str,
+        codex_program: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<ChatView> {
+        let cwd = cwd.to_string();
+        let program = codex_program.to_string();
+        cx.new(|cx| ChatView::new(cwd, program, window, cx))
+    }
+
+    fn add_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let tab = Self::make_tab(&self.cwd, &self.codex_program, window, cx);
+        self.tabs.push(tab);
+        self.active = self.tabs.len() - 1;
+        cx.notify();
+    }
+
+    fn select(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if idx < self.tabs.len() {
+            self.active = idx;
+            cx.notify();
+        }
+    }
+
+    fn close_tab(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if idx >= self.tabs.len() {
+            return;
+        }
+        self.tabs.remove(idx);
+        if self.tabs.is_empty() {
+            self.tabs
+                .push(Self::make_tab(&self.cwd, &self.codex_program, window, cx));
+            self.active = 0;
+        } else if self.active >= self.tabs.len() {
+            self.active = self.tabs.len() - 1;
+        } else if idx < self.active {
+            self.active -= 1;
+        }
+        cx.notify();
+    }
+}
+
+impl Render for ChatPanel {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let fg = theme.foreground;
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let secondary = theme.secondary;
+        let active = self.active;
+        let multiple = self.tabs.len() > 1;
+
+        let mut strip = div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_1()
+            .h(px(32.0))
+            .px(px(6.0))
+            .border_b_1()
+            .border_color(border)
+            .overflow_x_hidden();
+
+        for (i, tab) in self.tabs.iter().enumerate() {
+            let is_active = i == active;
+            let title = tab.read(cx).title();
+            let mut chip = div()
+                .id(SharedString::from(format!("chat-tab-{i}")))
+                .flex()
+                .items_center()
+                .gap_1()
+                .px(px(8.0))
+                .py(px(3.0))
+                .rounded(px(6.0))
+                .cursor_pointer()
+                .text_size(rems(0.74))
+                .text_color(if is_active { fg } else { muted })
+                .when(is_active, |s| s.bg(secondary))
+                .when(!is_active, |s| s.hover(|s| s.bg(secondary)))
+                .on_click(cx.listener(move |panel, _e, _w, cx| panel.select(i, cx)))
+                .child(div().child(title));
+            if multiple {
+                chip = chip.child(
+                    div()
+                        .id(SharedString::from(format!("chat-tab-close-{i}")))
+                        .p(px(1.0))
+                        .rounded(px(3.0))
+                        .text_color(muted)
+                        .hover(|s| s.bg(border))
+                        .on_click(cx.listener(move |panel, _e, window, cx| {
+                            panel.close_tab(i, window, cx)
+                        }))
+                        .child(Icon::new(HeroIconName::XMark).size_3()),
+                );
+            }
+            strip = strip.child(chip);
+        }
+
+        strip = strip.child(
+            div()
+                .id("chat-tab-add")
+                .ml_1()
+                .p(px(3.0))
+                .rounded(px(4.0))
+                .text_color(muted)
+                .cursor_pointer()
+                .hover(|s| s.bg(secondary))
+                .on_click(cx.listener(|panel, _e, window, cx| panel.add_tab(window, cx)))
+                .child(Icon::new(HeroIconName::Plus).size_4()),
+        );
+
+        let body = self
+            .tabs
+            .get(active)
+            .cloned()
+            .map(gpui::AnyView::from);
+
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .min_w_0()
+            .min_h_0()
+            .child(strip)
+            .when_some(body, |this, view| {
+                this.child(div().flex_1().min_h_0().child(view))
+            })
+    }
 }

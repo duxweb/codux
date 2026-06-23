@@ -129,7 +129,7 @@ pub(in crate::app) struct WorkspaceBodyView {
     /// Chat panel paired with the worktree path it was created for, so it is
     /// rebuilt when the active project/worktree changes (sessions are ephemeral).
     pub(in crate::app) chat_workspace_view:
-        Option<(String, gpui::Entity<super::agent_chat::ChatView>)>,
+        Option<(String, gpui::Entity<super::agent_chat::ChatPanel>)>,
 }
 
 impl WorkspaceBodyView {
@@ -185,7 +185,7 @@ impl Render for WorkspaceBodyView {
                         _ => {
                             let cwd_for_view = cwd.clone();
                             let view = app_cx.new(|cx| {
-                                super::agent_chat::ChatView::new(cwd_for_view, codex_program, window, cx)
+                                super::agent_chat::ChatPanel::new(cwd_for_view, codex_program, window, cx)
                             });
                             self.chat_workspace_view = Some((cwd, view.clone()));
                             view
