@@ -113,4 +113,21 @@ impl Timeline {
             .output
             .push_str(delta);
     }
+
+    /// Count items of a given kind (e.g. user turns).
+    pub fn count_kind(&self, kind: TimelineKind) -> usize {
+        self.items.iter().filter(|it| it.kind == kind).count()
+    }
+
+    /// Drop the item with `id` and everything after it, rebuilding the index.
+    /// Used to mirror a `thread/rollback` when editing a past message.
+    pub fn truncate_before(&mut self, id: &str) {
+        if let Some(&pos) = self.index.get(id) {
+            self.items.truncate(pos);
+            self.index.clear();
+            for (i, item) in self.items.iter().enumerate() {
+                self.index.insert(item.id.clone(), i);
+            }
+        }
+    }
 }

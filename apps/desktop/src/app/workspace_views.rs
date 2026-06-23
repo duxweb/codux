@@ -126,10 +126,11 @@ pub(in crate::app) struct WorkspaceBodyView {
     pub(in crate::app) file_editor_workspace_view:
         Option<gpui::Entity<file_editor::FileEditorWorkspaceView>>,
     pub(in crate::app) review_workspace_view: Option<gpui::Entity<ReviewWorkspaceView>>,
-    /// Chat panel paired with the worktree path it was created for, so it is
-    /// rebuilt when the active project/worktree changes (sessions are ephemeral).
-    pub(in crate::app) chat_workspace_view:
-        Option<(String, gpui::Entity<super::agent_chat::ChatPanel>)>,
+    /// Chat panels kept alive per worktree path (like terminals): switching
+    /// worktrees and back re-mounts the same live panel instead of rebuilding,
+    /// so conversations/sessions survive. The view only mounts; state persists.
+    pub(in crate::app) chat_panels:
+        std::collections::HashMap<String, gpui::Entity<super::agent_chat::ChatPanel>>,
 }
 
 impl WorkspaceBodyView {
@@ -139,9 +140,8 @@ impl WorkspaceBodyView {
             terminal_workspace_view: None,
             file_editor_workspace_view: None,
             review_workspace_view: None,
-            chat_workspace_view: None,
+            chat_panels: std::collections::HashMap::new(),
         }
-        // chat_workspace_view holds (worktree_cwd, ChatView)
     }
 }
 
@@ -180,14 +180,14 @@ impl Render for WorkspaceBodyView {
                         .join("scripts/wrappers/bin/codex")
                         .to_string_lossy()
                         .to_string();
-                    let chat_view = match &self.chat_workspace_view {
-                        Some((existing_cwd, view)) if *existing_cwd == cwd => view.clone(),
-                        _ => {
+                    let chat_view = match self.chat_panels.get(&cwd) {
+                        Some(view) => view.clone(),
+                        None => {
                             let cwd_for_view = cwd.clone();
                             let view = app_cx.new(|cx| {
                                 super::agent_chat::ChatPanel::new(cwd_for_view, codex_program, window, cx)
                             });
-                            self.chat_workspace_view = Some((cwd, view.clone()));
+                            self.chat_panels.insert(cwd, view.clone());
                             view
                         }
                     };

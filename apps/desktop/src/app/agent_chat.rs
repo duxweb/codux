@@ -278,6 +278,8 @@ pub(in crate::app) struct ChatView {
     /// Active @-mention query and its current hits (drives the file picker).
     mention_query: Option<String>,
     mention_hits: Vec<FileHit>,
+    /// Inline edit in progress: (user item id, its edit input).
+    editing: Option<(String, Entity<InputState>)>,
     tx: Sender<ChatMsg>,
     _drain: Task<()>,
 }
@@ -345,6 +347,7 @@ impl ChatView {
             last_usage: None,
             mention_query: None,
             mention_hits: Vec::new(),
+            editing: None,
             tx,
             _drain: drain,
         }
@@ -497,6 +500,63 @@ impl ChatView {
         self.pending_send.clear();
         self.busy = false;
         self.status = SharedString::from("已中断");
+        cx.notify();
+    }
+
+    /// Turn a past user message into an inline editor (codex-style). Enter
+    /// rewinds the thread to before it and resends; Esc/取消 cancels.
+    fn begin_edit(&mut self, id: String, text: String, window: &mut Window, cx: &mut Context<Self>) {
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .submit_on_enter(true)
+        });
+        input.update(cx, |s, cx| s.set_value(&text, window, cx));
+        cx.subscribe_in(&input, window, |view, _i, ev, window, cx| {
+            if let InputEvent::PressEnter { shift, .. } = ev
+                && !*shift
+            {
+                view.commit_edit(window, cx);
+            }
+        })
+        .detach();
+        input.update(cx, |s, cx| s.focus(window, cx));
+        self.editing = Some((id, input));
+        cx.notify();
+    }
+
+    fn cancel_edit(&mut self, cx: &mut Context<Self>) {
+        self.editing = None;
+        cx.notify();
+    }
+
+    /// Commit an inline edit: rollback to before the message, then resend it —
+    /// which drops every later message, exactly like codex.
+    fn commit_edit(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some((id, input)) = self.editing.take() else {
+            return;
+        };
+        let text = input.read(cx).value().trim().to_string();
+        let Some(session) = self.session.clone() else {
+            cx.notify();
+            return;
+        };
+        if text.is_empty() {
+            cx.notify();
+            return;
+        }
+        let num_turns = session.turns_from(&id);
+        // Truncate the local view immediately for snappy feedback.
+        if let Some(pos) = self.items.iter().position(|it| it.id == id) {
+            self.items.truncate(pos);
+        }
+        self.busy = true;
+        self.status = SharedString::from("重发中…");
+        std::thread::spawn(move || {
+            let _ = session.rollback(num_turns);
+            session.truncate_timeline_before(&id);
+            let _ = session.send_user_message(&text);
+        });
         cx.notify();
     }
 
@@ -888,9 +948,17 @@ impl ChatView {
         pal: Pal,
         cx: &mut Context<Self>,
     ) -> Div {
+        // If this message is being edited, render the inline editor instead.
+        if let Some((eid, input)) = &self.editing
+            && eid == &item.id
+        {
+            return self.render_user_edit(input.clone(), pal, cx);
+        }
+
         let text = item.text.clone();
         let copy_text = text.clone();
         let edit_text = text.clone();
+        let edit_id = item.id.clone();
         div()
             .flex()
             .w_full()
@@ -927,9 +995,71 @@ impl ChatView {
                                 HeroIconName::PencilSquare,
                                 pal,
                                 cx.listener(move |view, _, window, cx| {
-                                    view.set_input(&edit_text, window, cx);
+                                    view.begin_edit(edit_id.clone(), edit_text.clone(), window, cx);
                                 }),
                             )),
+                    ),
+            )
+    }
+
+    fn render_user_edit(
+        &self,
+        input: Entity<InputState>,
+        pal: Pal,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        div()
+            .flex()
+            .w_full()
+            .justify_end()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .w_full()
+                    .max_w(relative_w())
+                    .child(
+                        div()
+                            .rounded(px(12.0))
+                            .p(px(8.0))
+                            .bg(pal.secondary)
+                            .border_1()
+                            .border_color(pal.primary)
+                            .child(
+                                div()
+                                    .max_h(px(160.0))
+                                    .child(Input::new(&input).appearance(false)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(rems(0.62))
+                                    .text_color(pal.muted)
+                                    .child("回车保存并重发，会清除后续消息"),
+                            )
+                            .child(
+                                Button::new("edit-cancel")
+                                    .ghost()
+                                    .with_size(Size::Small)
+                                    .child("取消")
+                                    .on_click(cx.listener(|view, _e, _w, cx| view.cancel_edit(cx))),
+                            )
+                            .child(
+                                Button::new("edit-resend")
+                                    .primary()
+                                    .with_size(Size::Small)
+                                    .child("重发")
+                                    .on_click(cx.listener(|view, _e, window, cx| {
+                                        view.commit_edit(window, cx)
+                                    })),
+                            ),
                     ),
             )
     }

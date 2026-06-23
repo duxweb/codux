@@ -269,6 +269,42 @@ impl CodexSession {
             .unwrap_or_default())
     }
 
+    /// Rewind the thread by dropping the last `num_turns` turns
+    /// (`thread/rollback`) — the server side of editing a past message.
+    /// Does NOT revert file changes the agent already made.
+    pub fn rollback(&self, num_turns: u32) -> Result<(), String> {
+        if num_turns == 0 {
+            return Ok(());
+        }
+        self.inner.client.request(
+            "thread/rollback",
+            json!({ "threadId": self.inner.thread_id, "numTurns": num_turns }),
+        )?;
+        Ok(())
+    }
+
+    /// How many user turns exist at-or-after the given timeline item id (i.e. the
+    /// number of turns a `thread/rollback` must drop to rewind to before it).
+    pub fn turns_from(&self, item_id: &str) -> u32 {
+        let tl = self.inner.timeline.lock();
+        let mut seen_target = false;
+        let mut count = 0u32;
+        for it in tl.items() {
+            if it.id == item_id {
+                seen_target = true;
+            }
+            if seen_target && it.kind == TimelineKind::UserPrompt {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Mirror a rollback in the local timeline: drop the edited item and after.
+    pub fn truncate_timeline_before(&self, item_id: &str) {
+        self.inner.timeline.lock().truncate_before(item_id);
+    }
+
     /// Start a code review of the working tree's uncommitted changes
     /// (`review/start`, target = uncommittedChanges).
     pub fn review_uncommitted(&self) -> Result<(), String> {
