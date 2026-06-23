@@ -7,6 +7,7 @@
 //! `cx.spawn` loop so the UI thread never blocks.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use chrono::Local;
 use codux_agent_driver::{
@@ -257,6 +258,8 @@ pub(in crate::app) struct ChatView {
     starting: bool,
     /// A turn is in flight (drives the send/stop button state).
     busy: bool,
+    /// When the current turn started (for the "Working (Ns)" elapsed counter).
+    turn_started: Option<Instant>,
     /// Turns composed before the session finished connecting; flushed on Started.
     pending_send: Vec<Vec<UserInputPart>>,
     items: Vec<TimelineItem>,
@@ -288,6 +291,8 @@ pub(in crate::app) struct ChatView {
     group_open: std::collections::HashMap<String, bool>,
     tx: Sender<ChatMsg>,
     _drain: Task<()>,
+    /// 1s heartbeat that repaints the elapsed "Working (Ns)" counter while busy.
+    _tick: Task<()>,
 }
 
 impl EventEmitter<ChatViewEvent> for ChatView {}
@@ -320,6 +325,23 @@ impl ChatView {
                 }
             }
         });
+        // 1s heartbeat: repaint the elapsed "Working (Ns)" counter while a turn runs.
+        let timer = cx.background_executor().clone();
+        let tick = cx.spawn(async move |this: WeakEntity<Self>, cx| {
+            loop {
+                timer.timer(Duration::from_secs(1)).await;
+                let alive = this
+                    .update(cx, |view, cx| {
+                        if view.busy {
+                            cx.notify();
+                        }
+                    })
+                    .is_ok();
+                if !alive {
+                    break;
+                }
+            }
+        });
         // Connect eagerly so the model/effort/access dropdowns and the `/` palette
         // populate from the server before the user types anything.
         spawn_session(
@@ -336,6 +358,7 @@ impl ChatView {
             session: None,
             starting: true,
             busy: false,
+            turn_started: None,
             pending_send: Vec::new(),
             items: Vec::new(),
             pending_approvals: Vec::new(),
@@ -358,6 +381,7 @@ impl ChatView {
             group_open: std::collections::HashMap::new(),
             tx,
             _drain: drain,
+            _tick: tick,
         }
     }
 
@@ -421,6 +445,7 @@ impl ChatView {
             ChatMsg::Failed(err) => {
                 self.starting = false;
                 self.busy = false;
+                self.turn_started = None;
                 self.status = SharedString::from(format!("错误: {err}"));
             }
             ChatMsg::Event(ev) => {
@@ -437,6 +462,7 @@ impl ChatView {
                     AgentEvent::ApprovalRequest(req) => self.pending_approvals.push(req),
                     AgentEvent::TurnCompleted => {
                         self.busy = false;
+                        self.turn_started = None;
                         self.status = SharedString::from("就绪");
                         self.pump_queue(); // send the next queued turn, if any
                         self.update_queue_status();
@@ -444,6 +470,7 @@ impl ChatView {
                     AgentEvent::TokenUsage(u) => self.last_usage = Some(u),
                     AgentEvent::Error(err) => {
                         self.busy = false;
+                        self.turn_started = None;
                         self.status = SharedString::from(format!("错误: {err}"));
                         self.pump_queue();
                         self.update_queue_status();
@@ -516,6 +543,7 @@ impl ChatView {
         };
         let parts = self.pending_send.remove(0);
         self.busy = true;
+        self.turn_started = Some(Instant::now());
         self.status = SharedString::from("生成中…");
         std::thread::spawn(move || {
             let _ = session.send_user_turn(parts);
@@ -540,6 +568,7 @@ impl ChatView {
         }
         self.pending_send.clear();
         self.busy = false;
+        self.turn_started = None;
         self.status = SharedString::from("已中断");
         cx.notify();
     }
@@ -710,9 +739,9 @@ impl ChatView {
         });
     }
 
-    /// Show the "thinking…" indicator while a turn is in flight, except while the
+    /// Show the "Working" indicator while a turn is in flight, except while the
     /// assistant is already streaming visible text (the text itself is the cue).
-    fn show_thinking(&self) -> bool {
+    fn show_working(&self) -> bool {
         self.busy
             && !self.items.last().is_some_and(|it| {
                 it.kind == TimelineKind::AssistantMessage
@@ -932,40 +961,12 @@ impl Render for ChatView {
             .map(|req| self.render_approval(req, pal, cx))
             .collect();
 
-        let worktree = std::path::Path::new(&self.cwd)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-
         div()
             .flex()
             .flex_col()
             .size_full()
             .min_w_0()
             .min_h_0()
-            .child(
-                div()
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(34.0))
-                    .px(px(12.0))
-                    .border_b_1()
-                    .border_color(pal.border)
-                    .child(
-                        div()
-                            .text_size(rems(0.82))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(pal.fg)
-                            .child("Codex"),
-                    )
-                    .when(!worktree.is_empty(), |this| {
-                        this.child(div().text_size(rems(0.7)).text_color(pal.muted).child(worktree))
-                    })
-                    .child(div().flex_1())
-                    .child(div().text_size(rems(0.7)).text_color(pal.muted).child(self.status.clone())),
-            )
             .child(
                 div()
                     .id("agent-chat-scroll")
@@ -987,8 +988,12 @@ impl Render for ChatView {
                     })
                     .children(rows)
                     .children(approvals)
-                    .when(self.show_thinking(), |this| {
-                        this.child(render_thinking(pal))
+                    .when(self.show_working(), |this| {
+                        let secs = self
+                            .turn_started
+                            .map(|t| t.elapsed().as_secs())
+                            .unwrap_or(0);
+                        this.child(render_working(pal, secs))
                     }),
             )
             .child(self.render_composer(pal, input_bg, &input_value, cx))
@@ -1743,8 +1748,8 @@ fn strip_active_mention(value: &str) -> String {
     }
 }
 
-/// Animated "thinking…" placeholder shown while the agent works.
-fn render_thinking(pal: Pal) -> Div {
+/// Animated "Working (Ns)" indicator shown while the agent works (codex style).
+fn render_working(pal: Pal, secs: u64) -> Div {
     div().flex().w_full().justify_start().child(
         div()
             .flex()
@@ -1757,8 +1762,15 @@ fn render_thinking(pal: Pal) -> Div {
             .child(
                 div()
                     .text_size(rems(0.8))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(pal.fg)
+                    .child("Working"),
+            )
+            .child(
+                div()
+                    .text_size(rems(0.74))
                     .text_color(pal.muted)
-                    .child("思考中…"),
+                    .child(format!("({secs}s · 点 ■ 可停止)")),
             ),
     )
 }
@@ -2362,9 +2374,10 @@ impl Render for ChatPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let fg = theme.foreground;
-        let muted = theme.muted_foreground;
+        let secondary_fg = theme.secondary_foreground;
         let border = theme.border;
-        let secondary = theme.secondary;
+        let hover = theme.secondary_hover;
+        let transparent = theme.transparent;
         let active = self.active;
         let multiple = self.tabs.len() > 1;
 
@@ -2373,39 +2386,49 @@ impl Render for ChatPanel {
             .flex()
             .items_center()
             .gap_1()
-            .h(px(32.0))
+            .h(px(38.0))
             .px(px(6.0))
             .border_b_1()
             .border_color(border)
             .overflow_x_hidden();
 
+        // Tabs match the terminal split's bottom tab style.
         for (i, tab) in self.tabs.iter().enumerate() {
             let is_active = i == active;
             let title = tab.read(cx).title();
             let mut chip = div()
                 .id(SharedString::from(format!("chat-tab-{i}")))
+                .h(px(30.0))
+                .px_3()
                 .flex()
                 .items_center()
-                .gap_1()
-                .px(px(8.0))
-                .py(px(3.0))
-                .rounded(px(6.0))
+                .gap_2()
+                .rounded_md()
                 .cursor_pointer()
-                .text_size(rems(0.74))
-                .text_color(if is_active { fg } else { muted })
-                .when(is_active, |s| s.bg(secondary))
-                .when(!is_active, |s| s.hover(|s| s.bg(secondary)))
+                .text_color(if is_active { fg } else { secondary_fg })
+                .bg(if is_active { hover } else { transparent })
+                .hover(|s| s.bg(hover))
                 .on_click(cx.listener(move |panel, _e, _w, cx| panel.select(i, cx)))
-                .child(div().child(title));
+                .child(
+                    div()
+                        .text_size(rems(0.75))
+                        .line_height(rems(0.875))
+                        .child(title),
+                );
             if multiple {
                 chip = chip.child(
                     div()
                         .id(SharedString::from(format!("chat-tab-close-{i}")))
-                        .p(px(1.0))
-                        .rounded(px(3.0))
-                        .text_color(muted)
-                        .hover(|s| s.bg(border))
+                        .size(px(20.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_sm()
+                        .text_color(secondary_fg)
+                        .hover(|s| s.bg(hover))
                         .on_click(cx.listener(move |panel, _e, window, cx| {
+                            cx.stop_propagation();
+                            window.prevent_default();
                             panel.close_tab(i, window, cx)
                         }))
                         .child(Icon::new(HeroIconName::XMark).size_3()),
@@ -2417,14 +2440,17 @@ impl Render for ChatPanel {
         strip = strip.child(
             div()
                 .id("chat-tab-add")
-                .ml_1()
-                .p(px(3.0))
-                .rounded(px(4.0))
-                .text_color(muted)
+                .size(px(26.0))
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .rounded_sm()
                 .cursor_pointer()
-                .hover(|s| s.bg(secondary))
+                .text_color(secondary_fg)
+                .hover(|s| s.bg(hover))
                 .on_click(cx.listener(|panel, _e, window, cx| panel.add_tab(window, cx)))
-                .child(Icon::new(HeroIconName::Plus).size_4()),
+                .child(Icon::new(HeroIconName::Plus).size_3p5()),
         );
 
         let body = self
@@ -2439,6 +2465,10 @@ impl Render for ChatPanel {
             .size_full()
             .min_w_0()
             .min_h_0()
+            // Match the terminal area's translucent backing.
+            .bg(crate::theme::terminal_fill(crate::theme::color(
+                crate::theme::BG_TERMINAL,
+            )))
             .child(strip)
             .when_some(body, |this, view| {
                 this.child(div().flex_1().min_h_0().child(view))
