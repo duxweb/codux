@@ -63,6 +63,32 @@ impl AgentDriver for CodexAgentDriver {
 
 type Sink = Box<dyn Fn(&AgentEvent) + Send + Sync>;
 
+/// A selectable model from the server's `model/list` (not hardcoded). Each model
+/// advertises its own supported reasoning efforts and a default.
+#[derive(Clone, Debug)]
+pub struct CodexModel {
+    pub id: String,
+    pub display_name: String,
+    pub is_default: bool,
+    pub supported_efforts: Vec<String>,
+    pub default_effort: String,
+}
+
+/// A user/project skill from `skills/list` (scoped to the session cwd).
+#[derive(Clone, Debug)]
+pub struct CodexSkill {
+    pub name: String,
+    pub description: String,
+}
+
+/// A permission/sandbox profile from `permissionProfile/list` (e.g. `:read-only`,
+/// `:workspace`, `:danger-full-access`).
+#[derive(Clone, Debug)]
+pub struct CodexPermissionProfile {
+    pub id: String,
+    pub description: Option<String>,
+}
+
 struct Pending {
     id: Value,
     method: String,
@@ -219,6 +245,115 @@ impl CodexSession {
             json!({ "threadId": self.inner.thread_id, "turnId": turn_id }),
         )?;
         Ok(())
+    }
+
+    /// Fetch the server's model catalog (`model/list`). Blocking; call off-thread.
+    pub fn list_models(&self) -> Result<Vec<CodexModel>, String> {
+        let res = self.inner.client.request("model/list", json!({}))?;
+        let data = res
+            .get("data")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        Ok(data
+            .iter()
+            .filter(|m| !m.get("hidden").and_then(Value::as_bool).unwrap_or(false))
+            .map(|m| {
+                let id = m
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let display_name = m
+                    .get("displayName")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(&id)
+                    .to_string();
+                let supported_efforts = m
+                    .get("supportedReasoningEfforts")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|e| {
+                                e.get("reasoningEffort").and_then(Value::as_str).map(String::from)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                CodexModel {
+                    is_default: m.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
+                    default_effort: m
+                        .get("defaultReasoningEffort")
+                        .and_then(Value::as_str)
+                        .unwrap_or("medium")
+                        .to_string(),
+                    supported_efforts,
+                    display_name,
+                    id,
+                }
+            })
+            .collect())
+    }
+
+    /// Fetch the user/project skills visible for `cwd` (`skills/list`). Blocking.
+    pub fn list_skills(&self, cwd: &str) -> Result<Vec<CodexSkill>, String> {
+        let res = self
+            .inner
+            .client
+            .request("skills/list", json!({ "cwds": [cwd] }))?;
+        let mut out = Vec::new();
+        if let Some(groups) = res.get("data").and_then(Value::as_array) {
+            for group in groups {
+                if let Some(skills) = group.get("skills").and_then(Value::as_array) {
+                    for s in skills {
+                        if !s.get("enabled").and_then(Value::as_bool).unwrap_or(true) {
+                            continue;
+                        }
+                        if let Some(name) = s.get("name").and_then(Value::as_str) {
+                            out.push(CodexSkill {
+                                name: name.to_string(),
+                                description: s
+                                    .get("description")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Fetch the available permission/sandbox profiles (`permissionProfile/list`).
+    pub fn list_permission_profiles(
+        &self,
+        cwd: &str,
+    ) -> Result<Vec<CodexPermissionProfile>, String> {
+        let res = self
+            .inner
+            .client
+            .request("permissionProfile/list", json!({ "cwd": cwd }))?;
+        let data = res
+            .get("data")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        Ok(data
+            .iter()
+            .filter_map(|p| {
+                let id = p.get("id").and_then(Value::as_str)?.to_string();
+                Some(CodexPermissionProfile {
+                    id,
+                    description: p
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .map(String::from),
+                })
+            })
+            .collect())
     }
 
     /// Snapshot of the merged timeline (clones the items).

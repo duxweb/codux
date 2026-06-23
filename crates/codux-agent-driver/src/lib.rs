@@ -11,7 +11,9 @@ pub mod event;
 pub mod jsonrpc;
 pub mod timeline;
 
-pub use codex::{CodexAgentDriver, CodexSession};
+pub use codex::{
+    CodexAgentDriver, CodexModel, CodexPermissionProfile, CodexSession, CodexSkill,
+};
 pub use event::{AgentEvent, ApprovalDecision, ApprovalRequest, TokenUsage};
 pub use timeline::{ItemStatus, Timeline, TimelineItem, TimelineKind};
 

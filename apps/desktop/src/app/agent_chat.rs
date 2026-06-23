@@ -10,8 +10,9 @@ use std::collections::HashMap;
 
 use chrono::Local;
 use codux_agent_driver::{
-    AgentEvent, ApprovalDecision, ApprovalRequest, CodexAgentDriver, CodexSession, ItemStatus,
-    SessionConfig, TimelineItem, TimelineKind,
+    AgentEvent, ApprovalDecision, ApprovalRequest, CodexAgentDriver, CodexModel,
+    CodexPermissionProfile, CodexSession, CodexSkill, ItemStatus, SessionConfig, TimelineItem,
+    TimelineKind,
 };
 use flume::Sender;
 use gpui::{
@@ -71,6 +72,14 @@ impl Access {
             _ => "on-request",
         }
     }
+    /// Map a server permission-profile id (e.g. `:workspace`) to our posture.
+    fn from_profile_id(id: &str) -> Access {
+        match id {
+            s if s.contains("read-only") => Access::ReadOnly,
+            s if s.contains("full-access") || s.contains("danger") => Access::FullAccess,
+            _ => Access::WorkspaceWrite,
+        }
+    }
 }
 
 /// One slash command (also shown in the `+` menu and the `/` palette).
@@ -95,6 +104,14 @@ fn commands() -> Vec<Command> {
 enum ChatMsg {
     Note(String),
     Started(CodexSession),
+    /// The server's dynamic catalog (models / skills / permission profiles),
+    /// fetched after the session starts — these drive the composer dropdowns and
+    /// the `/` palette instead of a hardcoded list.
+    Catalog {
+        models: Vec<CodexModel>,
+        skills: Vec<CodexSkill>,
+        profiles: Vec<CodexPermissionProfile>,
+    },
     Failed(String),
     Event(AgentEvent),
 }
@@ -139,6 +156,10 @@ pub(in crate::app) struct ChatView {
     access: Access,
     model: Option<String>,
     effort: SharedString,
+    /// Server catalog (empty until the session reports it).
+    models: Vec<CodexModel>,
+    skills: Vec<CodexSkill>,
+    profiles: Vec<CodexPermissionProfile>,
     tx: Sender<ChatMsg>,
     _drain: Task<()>,
 }
@@ -187,6 +208,9 @@ impl ChatView {
             access: Access::WorkspaceWrite,
             model: None,
             effort: SharedString::from("medium"),
+            models: Vec::new(),
+            skills: Vec::new(),
+            profiles: Vec::new(),
             tx,
             _drain: drain,
         }
@@ -199,6 +223,26 @@ impl ChatView {
                 self.session = Some(session);
                 self.starting = false;
                 self.status = SharedString::from("就绪");
+            }
+            ChatMsg::Catalog {
+                models,
+                skills,
+                profiles,
+            } => {
+                // Default the model selection to the server's default if the user
+                // hasn't picked one, and align effort to that model's default.
+                if self.model.is_none()
+                    && let Some(def) = models.iter().find(|m| m.is_default)
+                {
+                    self.model = Some(def.id.clone());
+                    self.effort = SharedString::from(def.default_effort.clone());
+                    if let Some(session) = &self.session {
+                        session.set_effort(Some(def.default_effort.clone()));
+                    }
+                }
+                self.models = models;
+                self.skills = skills;
+                self.profiles = profiles;
             }
             ChatMsg::Failed(err) => {
                 self.starting = false;
@@ -290,6 +334,16 @@ impl ChatView {
                 Ok(session) => {
                     session.set_effort(Some(effort));
                     let _ = tx.send(ChatMsg::Started(session.clone()));
+                    // Pull the dynamic catalog before the first turn so the
+                    // composer shows real models/efforts/skills, not a guess.
+                    let models = session.list_models().unwrap_or_default();
+                    let skills = session.list_skills(&cfg.cwd).unwrap_or_default();
+                    let profiles = session.list_permission_profiles(&cfg.cwd).unwrap_or_default();
+                    let _ = tx.send(ChatMsg::Catalog {
+                        models,
+                        skills,
+                        profiles,
+                    });
                     let _ = session.send_user_message(&first_prompt);
                 }
                 Err(err) => {
@@ -392,13 +446,24 @@ impl ChatView {
         if let Some(session) = &self.session {
             session.set_model(model.clone());
         }
+        // Switching model retargets effort to that model's default if the current
+        // effort isn't one it supports.
+        if let Some(id) = &model
+            && let Some(m) = self.models.iter().find(|m| &m.id == id)
+            && !m.supported_efforts.iter().any(|e| e == self.effort.as_ref())
+        {
+            self.effort = SharedString::from(m.default_effort.clone());
+            if let Some(session) = &self.session {
+                session.set_effort(Some(m.default_effort.clone()));
+            }
+        }
         self.model = model;
         cx.notify();
     }
 
-    fn set_effort_value(&mut self, effort: &'static str, cx: &mut Context<Self>) {
+    fn set_effort_value(&mut self, effort: String, cx: &mut Context<Self>) {
         if let Some(session) = &self.session {
-            session.set_effort(Some(effort.to_string()));
+            session.set_effort(Some(effort.clone()));
         }
         self.effort = SharedString::from(effort);
         cx.notify();
@@ -671,7 +736,13 @@ impl ChatView {
     ) -> Div {
         let access = self.access;
         let access_color = if access == Access::FullAccess { pal.danger } else { pal.muted };
-        let model_label = self.model.clone().unwrap_or_else(|| "默认模型".into());
+        let model_label = self
+            .model
+            .as_deref()
+            .and_then(|id| self.models.iter().find(|m| m.id == id))
+            .map(|m| m.display_name.clone())
+            .or_else(|| self.model.clone())
+            .unwrap_or_else(|| "默认模型".into());
         let effort_label = self.effort.clone();
         let plus_entity = cx.entity();
 
@@ -754,6 +825,24 @@ impl ChatView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let entity = cx.entity();
+        // Prefer the server's permission profiles; fall back to the built-in three
+        // (which are exactly codex's defaults) before the catalog arrives.
+        let opts: Vec<(Access, String)> = if self.profiles.is_empty() {
+            vec![
+                (Access::ReadOnly, Access::ReadOnly.label().to_string()),
+                (Access::WorkspaceWrite, Access::WorkspaceWrite.label().to_string()),
+                (Access::FullAccess, Access::FullAccess.label().to_string()),
+            ]
+        } else {
+            self.profiles
+                .iter()
+                .map(|p| {
+                    let a = Access::from_profile_id(&p.id);
+                    let label = p.description.clone().unwrap_or_else(|| a.label().to_string());
+                    (a, label)
+                })
+                .collect()
+        };
         Button::new("composer-access")
             .ghost()
             .with_size(Size::Small)
@@ -768,12 +857,7 @@ impl ChatView {
                     .child(Icon::new(HeroIconName::ChevronDown).size_3()),
             )
             .dropdown_menu(move |menu, _window, _cx| {
-                let opts = [
-                    (Access::ReadOnly, "只读"),
-                    (Access::WorkspaceWrite, "工作区写入"),
-                    (Access::FullAccess, "完全访问"),
-                ];
-                opts.into_iter().fold(menu, |menu, (a, label)| {
+                opts.clone().into_iter().fold(menu, |menu, (a, label)| {
                     let e = entity.clone();
                     menu.item(PopupMenuItem::new(label).on_click(move |_, _window, cx| {
                         cx.update_entity(&e, |view, cx| view.set_access(a, cx));
@@ -790,6 +874,8 @@ impl ChatView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let entity = cx.entity();
+        let models = self.models.clone();
+        let selected = self.model.clone();
         Button::new("composer-model")
             .ghost()
             .with_size(Size::Small)
@@ -803,15 +889,33 @@ impl ChatView {
                     .child(div().text_size(rems(0.72)).child(label))
                     .child(Icon::new(HeroIconName::ChevronDown).size_3()),
             )
-            .dropdown_menu(move |menu, _window, _cx| {
-                let e1 = entity.clone();
-                let e2 = entity.clone();
-                menu.item(PopupMenuItem::new("默认模型").on_click(move |_, _w, cx| {
-                    cx.update_entity(&e1, |view, cx| view.set_model_value(None, cx));
-                }))
-                .item(PopupMenuItem::new("自定义… (/model)").on_click(move |_, window, cx| {
-                    cx.update_entity(&e2, |view, cx| view.set_input("/model ", window, cx));
-                }))
+            .dropdown_menu(move |mut menu, _window, _cx| {
+                if models.is_empty() {
+                    // No catalog yet (session not started): offer the manual route.
+                    let e = entity.clone();
+                    return menu.item(
+                        PopupMenuItem::new("自定义… (/model)").on_click(move |_, window, cx| {
+                            cx.update_entity(&e, |view, cx| view.set_input("/model ", window, cx));
+                        }),
+                    );
+                }
+                for m in &models {
+                    let e = entity.clone();
+                    let id = m.id.clone();
+                    let mark = if selected.as_deref() == Some(m.id.as_str()) {
+                        "  ✓"
+                    } else if selected.is_none() && m.is_default {
+                        "  ✓"
+                    } else {
+                        ""
+                    };
+                    let title = format!("{}{}", m.display_name, mark);
+                    menu = menu.item(PopupMenuItem::new(title).on_click(move |_, _w, cx| {
+                        let id = id.clone();
+                        cx.update_entity(&e, |view, cx| view.set_model_value(Some(id), cx));
+                    }));
+                }
+                menu
             })
             .into_any_element()
     }
@@ -823,6 +927,7 @@ impl ChatView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let entity = cx.entity();
+        let efforts = self.current_efforts();
         Button::new("composer-effort")
             .ghost()
             .with_size(Size::Small)
@@ -837,16 +942,33 @@ impl ChatView {
                     .child(Icon::new(HeroIconName::ChevronDown).size_3()),
             )
             .dropdown_menu(move |menu, _window, _cx| {
-                ["minimal", "low", "medium", "high", "xhigh"]
-                    .into_iter()
-                    .fold(menu, |menu, level| {
-                        let e = entity.clone();
-                        menu.item(PopupMenuItem::new(level).on_click(move |_, _w, cx| {
-                            cx.update_entity(&e, |view, cx| view.set_effort_value(level, cx));
-                        }))
-                    })
+                efforts.clone().into_iter().fold(menu, |menu, level| {
+                    let e = entity.clone();
+                    menu.item(PopupMenuItem::new(level.clone()).on_click(move |_, _w, cx| {
+                        let level = level.clone();
+                        cx.update_entity(&e, |view, cx| view.set_effort_value(level, cx));
+                    }))
+                })
             })
             .into_any_element()
+    }
+
+    /// Reasoning efforts supported by the currently-selected model (falls back to
+    /// the server default model, then a generic ladder if the catalog is empty).
+    fn current_efforts(&self) -> Vec<String> {
+        let chosen = self
+            .model
+            .as_deref()
+            .and_then(|id| self.models.iter().find(|m| m.id == id))
+            .or_else(|| self.models.iter().find(|m| m.is_default))
+            .or_else(|| self.models.first());
+        match chosen {
+            Some(m) if !m.supported_efforts.is_empty() => m.supported_efforts.clone(),
+            _ => ["minimal", "low", "medium", "high", "xhigh"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        }
     }
 
     fn send_button(&self, pal: Pal, cx: &mut Context<Self>) -> impl IntoElement {
@@ -868,20 +990,33 @@ impl ChatView {
             )
     }
 
-    fn render_slash_menu(&self, filter: &str, pal: Pal, cx: &mut Context<Self>) -> Div {
-        let matches: Vec<Command> = commands()
+    fn render_slash_menu(&self, filter: &str, pal: Pal, cx: &mut Context<Self>) -> impl IntoElement {
+        // The query after the leading `/` (e.g. "/com" -> "com").
+        let term = filter.trim().trim_start_matches('/').to_lowercase();
+        let cmd_matches: Vec<Command> = commands()
             .into_iter()
-            .filter(|c| c.name.starts_with(filter.trim_end()) || filter.trim() == "/")
+            .filter(|c| term.is_empty() || c.name[1..].to_lowercase().starts_with(&term))
             .collect();
+        // Skills come from the server (`skills/list`), not a hardcoded list.
+        let skill_matches: Vec<&CodexSkill> = self
+            .skills
+            .iter()
+            .filter(|s| term.is_empty() || s.name.to_lowercase().contains(&term))
+            .collect();
+
         let mut menu = div()
+            .id("agent-slash-menu")
             .flex()
             .flex_col()
+            .max_h(px(280.0))
+            .overflow_y_scroll()
             .rounded(px(10.0))
             .border_1()
             .border_color(pal.border)
             .bg(pal.secondary)
             .p(px(4.0));
-        if matches.is_empty() {
+
+        if cmd_matches.is_empty() && skill_matches.is_empty() {
             return menu.child(
                 div()
                     .p(px(8.0))
@@ -890,36 +1025,46 @@ impl ChatView {
                     .child("无匹配命令"),
             );
         }
-        for c in matches {
+
+        for c in cmd_matches {
             let token = c.token;
             menu = menu.child(
-                div()
-                    .id(SharedString::from(format!("slash-{}", c.name)))
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .rounded(px(6.0))
-                    .px(px(8.0))
-                    .py(px(6.0))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(pal.bubble))
-                    .on_click(cx.listener(move |view, _e, window, cx| {
+                slash_row(
+                    SharedString::from(format!("slash-{}", c.name)),
+                    Some(c.icon),
+                    c.name.to_string(),
+                    c.desc.to_string(),
+                    pal,
+                    cx.listener(move |view, _e, window, cx| {
                         view.command_clicked(token, window, cx)
-                    }))
-                    .child(Icon::new(c.icon).size_4().text_color(pal.muted))
-                    .child(
-                        div()
-                            .text_size(rems(0.8))
-                            .text_color(pal.fg)
-                            .child(c.name),
-                    )
-                    .child(
-                        div()
-                            .text_size(rems(0.72))
-                            .text_color(pal.muted)
-                            .child(c.desc),
-                    ),
+                    }),
+                ),
             );
+        }
+
+        if !skill_matches.is_empty() {
+            menu = menu.child(
+                div()
+                    .px(px(8.0))
+                    .pt(px(6.0))
+                    .pb(px(2.0))
+                    .text_size(rems(0.62))
+                    .text_color(pal.muted)
+                    .child("技能 (skills)"),
+            );
+            for s in skill_matches {
+                let name = s.name.clone();
+                menu = menu.child(slash_row(
+                    SharedString::from(format!("skill-{}", s.name)),
+                    Some(HeroIconName::Sparkles),
+                    s.name.clone(),
+                    s.description.clone(),
+                    pal,
+                    cx.listener(move |view, _e, window, cx| {
+                        view.set_input(&format!("{name} "), window, cx);
+                    }),
+                ));
+            }
         }
         menu
     }
@@ -927,6 +1072,48 @@ impl ChatView {
 
 fn relative_w() -> gpui::DefiniteLength {
     gpui::relative(0.9)
+}
+
+/// One row in the `/` palette: icon + name + (truncated) description.
+fn slash_row(
+    id: SharedString,
+    icon: Option<HeroIconName>,
+    name: String,
+    desc: String,
+    pal: Pal,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+) -> impl IntoElement {
+    let desc = if desc.chars().count() > 84 {
+        let mut s: String = desc.chars().take(84).collect();
+        s.push('…');
+        s
+    } else {
+        desc
+    };
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap_2()
+        .rounded(px(6.0))
+        .px(px(8.0))
+        .py(px(6.0))
+        .cursor_pointer()
+        .hover(|s| s.bg(pal.bubble))
+        .on_click(on_click)
+        .when_some(icon, |this, ic| {
+            this.child(Icon::new(ic).size_4().text_color(pal.muted))
+        })
+        .child(div().flex_none().text_size(rems(0.8)).text_color(pal.fg).child(name))
+        .when(!desc.is_empty(), |this| {
+            this.child(
+                div()
+                    .min_w_0()
+                    .text_size(rems(0.72))
+                    .text_color(pal.muted)
+                    .child(desc),
+            )
+        })
 }
 
 fn meta_row(time: SharedString, pal: Pal) -> Div {
