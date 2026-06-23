@@ -14,10 +14,12 @@ pub mod timeline;
 
 pub use codex::{
     AgentModel, AgentPermissionProfile, AgentSkill, CodexAgentDriver, CodexSession, FileHit,
-    UserInputPart,
+    ThreadInfo, UserInputPart,
 };
 pub use event::{AgentEvent, ApprovalDecision, ApprovalRequest, TokenUsage};
-pub use session::{AgentKind, AgentSession, AgentSink, SessionCapabilities, start_session};
+pub use session::{
+    AgentKind, AgentSession, AgentSink, SessionCapabilities, resume_session, start_session,
+};
 pub use timeline::{ItemStatus, Timeline, TimelineItem, TimelineKind};
 
 use serde::Serialize;

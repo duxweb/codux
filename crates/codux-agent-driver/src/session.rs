@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::codex::{
     AgentModel, AgentPermissionProfile, AgentSkill, CodexAgentDriver, CodexSession, FileHit,
-    UserInputPart,
+    ThreadInfo, UserInputPart,
 };
 use crate::event::{AgentEvent, ApprovalDecision};
 use crate::timeline::TimelineItem;
@@ -31,6 +31,7 @@ pub struct SessionCapabilities {
     pub rollback: bool,
     pub review: bool,
     pub compact: bool,
+    pub history: bool,
 }
 
 impl SessionCapabilities {
@@ -44,6 +45,7 @@ impl SessionCapabilities {
         rollback: false,
         review: false,
         compact: false,
+        history: false,
     };
 }
 
@@ -93,6 +95,9 @@ pub trait AgentSession: Send + Sync {
     fn search_files(&self, _query: &str, _roots: Vec<String>) -> Result<Vec<FileHit>, String> {
         Ok(Vec::new())
     }
+    fn list_threads(&self, _cwd: &str) -> Result<Vec<ThreadInfo>, String> {
+        Ok(Vec::new())
+    }
 
     fn timeline_snapshot(&self) -> Vec<TimelineItem>;
     fn shutdown(&self);
@@ -129,6 +134,27 @@ pub fn start_session(
         AgentKind::Codex => {
             let driver = CodexAgentDriver { program, env };
             let session = CodexSession::start(&driver, cfg, sink)?;
+            Ok(Arc::new(session))
+        }
+        AgentKind::Claude => Err("Claude 驱动尚未实现".into()),
+        AgentKind::OpenCode => Err("OpenCode 驱动尚未实现".into()),
+    }
+}
+
+/// Resume a prior thread by id, hydrating its history. Same driver switch as
+/// [`start_session`].
+pub fn resume_session(
+    kind: AgentKind,
+    program: String,
+    env: Vec<(String, String)>,
+    cfg: &SessionConfig,
+    thread_id: &str,
+    sink: AgentSink,
+) -> Result<Arc<dyn AgentSession>, String> {
+    match kind {
+        AgentKind::Codex => {
+            let driver = CodexAgentDriver { program, env };
+            let session = CodexSession::resume(&driver, cfg, thread_id, sink)?;
             Ok(Arc::new(session))
         }
         AgentKind::Claude => Err("Claude 驱动尚未实现".into()),

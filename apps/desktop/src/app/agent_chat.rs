@@ -14,8 +14,8 @@ use std::sync::Arc;
 use chrono::Local;
 use codux_agent_driver::{
     AgentEvent, AgentKind, AgentModel, AgentPermissionProfile, AgentSession, AgentSkill,
-    ApprovalDecision, ApprovalRequest, FileHit, ItemStatus, SessionConfig, TimelineItem,
-    TimelineKind, TokenUsage, UserInputPart, start_session,
+    ApprovalDecision, ApprovalRequest, FileHit, ItemStatus, SessionConfig, ThreadInfo, TimelineItem,
+    TimelineKind, TokenUsage, UserInputPart, resume_session, start_session,
 };
 use flume::Sender;
 use gpui::{
@@ -101,6 +101,7 @@ fn commands() -> Vec<Command> {
     // skills are listed dynamically below these.
     vec![
         Command { icon: HeroIconName::PlusCircle, name: "/new", desc: "新建一个对话标签", token: "/new" },
+        Command { icon: HeroIconName::Clock, name: "/resume", desc: "恢复本项目的历史会话", token: "/resume" },
         Command { icon: HeroIconName::ShieldCheck, name: "/review", desc: "审查工作区未提交的改动", token: "/review" },
         Command { icon: HeroIconName::ArchiveBoxArrowDown, name: "/compact", desc: "压缩此对话的上下文", token: "/compact" },
         Command { icon: HeroIconName::StopCircle, name: "/interrupt", desc: "中断当前回合", token: "/interrupt" },
@@ -168,6 +169,8 @@ enum ChatMsg {
     },
     /// Results of an @-mention fuzzy file search (query echoed to ignore stale).
     FileHits { query: String, hits: Vec<FileHit> },
+    /// Prior threads for this cwd (for the resume picker).
+    Threads(Vec<ThreadInfo>),
     Failed(String),
     Event(AgentEvent),
 }
@@ -209,6 +212,7 @@ fn spawn_session(
     access: Access,
     model: Option<String>,
     effort: String,
+    resume: Option<String>,
 ) {
     std::thread::spawn(move || {
         let _ = tx.send(ChatMsg::Note("解析 codex…".into()));
@@ -230,7 +234,11 @@ fn spawn_session(
         });
         let _ = tx.send(ChatMsg::Note("握手中…".into()));
         // The driver kind is the single switch point for codex / claude / opencode.
-        match start_session(AgentKind::Codex, program, env, &cfg, sink) {
+        let started = match &resume {
+            Some(tid) => resume_session(AgentKind::Codex, program, env, &cfg, tid, sink),
+            None => start_session(AgentKind::Codex, program, env, &cfg, sink),
+        };
+        match started {
             Ok(session) => {
                 session.set_effort(Some(effort));
                 let _ = tx.send(ChatMsg::Started(session.clone()));
@@ -295,6 +303,9 @@ pub(in crate::app) struct ChatView {
     /// Explicit open/closed state for consecutive-activity groups (keyed by the
     /// group's first item id); absent = default (open while running, else closed).
     group_open: std::collections::HashMap<String, bool>,
+    /// Prior threads + whether the resume picker is open.
+    threads: Vec<ThreadInfo>,
+    show_threads: bool,
     tx: Sender<ChatMsg>,
     _drain: Task<()>,
     /// 1s heartbeat that repaints the elapsed "Working (Ns)" counter while busy.
@@ -365,6 +376,7 @@ impl ChatView {
             Access::WorkspaceWrite,
             None,
             "medium".to_string(),
+            None,
         );
         Self {
             cwd,
@@ -395,6 +407,8 @@ impl ChatView {
             editing: None,
             expanded: std::collections::HashSet::new(),
             group_open: std::collections::HashMap::new(),
+            threads: Vec::new(),
+            show_threads: false,
             tx,
             _drain: drain,
             _tick: tick,
@@ -484,6 +498,10 @@ impl ChatView {
                 if self.mention_query.as_deref() == Some(query.as_str()) {
                     self.mention_hits = hits;
                 }
+                false
+            }
+            ChatMsg::Threads(threads) => {
+                self.threads = threads;
                 false
             }
             ChatMsg::Failed(err) => {
@@ -603,6 +621,45 @@ impl ChatView {
         }
     }
 
+    /// Fetch prior threads for this cwd (uses the live session's connection).
+    fn load_threads(&mut self) {
+        let Some(session) = self.session.clone() else {
+            return;
+        };
+        let tx = self.tx.clone();
+        let cwd = self.cwd.clone();
+        std::thread::spawn(move || {
+            let threads = session.list_threads(&cwd).unwrap_or_default();
+            let _ = tx.send(ChatMsg::Threads(threads));
+        });
+    }
+
+    /// Resume a prior thread in place: tear down the current session and start a
+    /// resumed one whose timeline is hydrated with the thread's history.
+    fn do_resume(&mut self, thread_id: String, cx: &mut Context<Self>) {
+        self.show_threads = false;
+        if let Some(old) = self.session.take() {
+            std::thread::spawn(move || old.shutdown());
+        }
+        self.items.clear();
+        self.item_times.clear();
+        self.pending_approvals.clear();
+        self.last_completed = None;
+        self.busy = false;
+        self.starting = true;
+        self.status = SharedString::from("恢复会话…");
+        spawn_session(
+            self.tx.clone(),
+            self.cwd.clone(),
+            self.codex_program.clone(),
+            self.access,
+            self.model.clone(),
+            self.effort.to_string(),
+            Some(thread_id),
+        );
+        cx.notify();
+    }
+
     /// Interrupt the in-flight turn (the send button's stop state).
     fn stop(&mut self, cx: &mut Context<Self>) {
         if let Some(session) = self.session.clone() {
@@ -702,6 +759,7 @@ impl ChatView {
             self.access,
             self.model.clone(),
             self.effort.to_string(),
+            None,
         );
     }
 
@@ -719,6 +777,12 @@ impl ChatView {
             }
             "/status" => {
                 self.status = self.usage_summary();
+                cx.notify();
+                return;
+            }
+            "/resume" => {
+                self.show_threads = true;
+                self.load_threads();
                 cx.notify();
                 return;
             }
@@ -1342,6 +1406,7 @@ impl ChatView {
             .p(px(10.0))
             .when(show_slash, |this| this.child(self.render_slash_menu(input_value, pal, cx)))
             .when(show_mention, |this| this.child(self.render_mention_menu(pal, cx)))
+            .when(self.show_threads, |this| this.child(self.render_threads_menu(pal, cx)))
             .child(
                 div()
                     .flex()
@@ -1484,6 +1549,97 @@ impl ChatView {
                 pal,
                 cx.listener(move |view, _e, window, cx| view.add_mention(h.clone(), window, cx)),
             ));
+        }
+        menu
+    }
+
+    /// Resume picker: prior threads for this cwd (preview + relative time).
+    fn render_threads_menu(&self, pal: Pal, cx: &mut Context<Self>) -> impl IntoElement {
+        let now = Local::now().timestamp();
+        let mut menu = div()
+            .id("agent-threads-menu")
+            .flex()
+            .flex_col()
+            .max_h(px(320.0))
+            .overflow_y_scroll()
+            .rounded(px(10.0))
+            .border_1()
+            .border_color(pal.border)
+            .bg(pal.secondary)
+            .p(px(4.0));
+        // Header with a close affordance.
+        menu = menu.child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .px(px(8.0))
+                .py(px(4.0))
+                .child(
+                    div()
+                        .text_size(rems(0.66))
+                        .text_color(pal.muted)
+                        .child("历史会话"),
+                )
+                .child(
+                    div()
+                        .id("threads-close")
+                        .p(px(2.0))
+                        .rounded(px(4.0))
+                        .text_color(pal.muted)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(pal.bubble))
+                        .on_click(cx.listener(|view, _e, _w, cx| {
+                            view.show_threads = false;
+                            cx.notify();
+                        }))
+                        .child(Icon::new(HeroIconName::XMark).size_3()),
+                ),
+        );
+        if self.threads.is_empty() {
+            return menu.child(
+                div()
+                    .p(px(8.0))
+                    .text_size(rems(0.75))
+                    .text_color(pal.muted)
+                    .child("没有历史会话"),
+            );
+        }
+        for t in &self.threads {
+            let id = t.id.clone();
+            let when = relative_time(now, t.updated_at);
+            menu = menu.child(
+                div()
+                    .id(SharedString::from(format!("thread-{}", t.id)))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .rounded(px(6.0))
+                    .px(px(8.0))
+                    .py(px(6.0))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(pal.bubble))
+                    .on_click(cx.listener(move |view, _e, _w, cx| {
+                        view.do_resume(id.clone(), cx)
+                    }))
+                    .child(Icon::new(HeroIconName::Clock).size_3().text_color(pal.muted))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(rems(0.78))
+                            .text_color(pal.fg)
+                            .child(t.preview.clone()),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(rems(0.66))
+                            .text_color(pal.muted)
+                            .child(when),
+                    ),
+            );
         }
         menu
     }
@@ -2298,6 +2454,20 @@ impl ChatView {
 
 fn first_line(s: &str) -> String {
     s.trim().lines().next().unwrap_or("").to_string()
+}
+
+/// Coarse "刚刚 / N 分钟前 / N 小时前 / N 天前" from two unix timestamps.
+fn relative_time(now: i64, then: i64) -> String {
+    let d = (now - then).max(0);
+    if d < 60 {
+        "刚刚".into()
+    } else if d < 3600 {
+        format!("{} 分钟前", d / 60)
+    } else if d < 86400 {
+        format!("{} 小时前", d / 3600)
+    } else {
+        format!("{} 天前", d / 86400)
+    }
 }
 
 /// If this item is an image (imageView / imageGeneration), return its file path.

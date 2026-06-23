@@ -109,6 +109,14 @@ pub struct FileHit {
     pub score: i64,
 }
 
+/// A prior conversation thread for this cwd (`thread/list`), for the resume picker.
+#[derive(Clone, Debug)]
+pub struct ThreadInfo {
+    pub id: String,
+    pub preview: String,
+    pub updated_at: i64,
+}
+
 struct Pending {
     id: Value,
     method: String,
@@ -199,6 +207,77 @@ impl CodexSession {
         Ok(Self { inner })
     }
 
+    /// Resume a prior thread by id (`thread/resume`): hydrate the timeline from
+    /// the returned history turns, then stream live events as usual.
+    pub fn resume(
+        driver: &CodexAgentDriver,
+        cfg: &SessionConfig,
+        thread_id: &str,
+        sink: Sink,
+    ) -> Result<Self, String> {
+        let inv = driver.invocation(cfg);
+        let mut cmd = Command::new(&inv.program);
+        cmd.args(&inv.args);
+        for (k, v) in &inv.env {
+            cmd.env(k, v);
+        }
+        cmd.current_dir(&cfg.cwd);
+
+        let (client, inbound) = JsonRpcClient::spawn(cmd).map_err(|e| e.to_string())?;
+        client.request(
+            "initialize",
+            json!({ "clientInfo": { "name": "codux", "version": env!("CARGO_PKG_VERSION") } }),
+        )?;
+        client.notify("initialized", Value::Null)?;
+        let mut params = json!({
+            "threadId": thread_id,
+            "cwd": cfg.cwd,
+            "approvalPolicy": cfg.approval_policy,
+            "sandbox": cfg.sandbox,
+        });
+        if let Some(model) = &cfg.model {
+            params["model"] = json!(model);
+        }
+        let res = client.request("thread/resume", params)?;
+        let thread = res.get("thread");
+        let tid = thread
+            .and_then(|t| t.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or(thread_id)
+            .to_string();
+
+        // Hydrate the merged timeline from the thread's history turns.
+        let mut timeline = Timeline::default();
+        if let Some(turns) = thread.and_then(|t| t.get("turns")).and_then(Value::as_array) {
+            for turn in turns {
+                if let Some(items) = turn.get("items").and_then(Value::as_array) {
+                    for it in items {
+                        timeline.upsert(build_item(it, true));
+                    }
+                }
+            }
+        }
+
+        let inner = Arc::new(Inner {
+            client,
+            timeline: Mutex::new(timeline),
+            thread_id: tid.clone(),
+            current_turn: Mutex::new(None),
+            pending_approvals: Mutex::new(std::collections::HashMap::new()),
+            model: Mutex::new(cfg.model.clone()),
+            effort: Mutex::new(None),
+            sink,
+        });
+        (inner.sink)(&AgentEvent::ThreadStarted {
+            thread_id: tid.clone(),
+        });
+        {
+            let inner = inner.clone();
+            thread::spawn(move || consume(inner, inbound));
+        }
+        Ok(Self { inner })
+    }
+
     pub fn thread_id(&self) -> &str {
         &self.inner.thread_id
     }
@@ -262,6 +341,39 @@ impl CodexSession {
                                 .unwrap_or_default()
                                 .to_string(),
                             score: f.get("score").and_then(Value::as_i64).unwrap_or(0),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// List prior threads recorded for `cwd` (`thread/list`), newest first.
+    pub fn list_threads(&self, cwd: &str) -> Result<Vec<ThreadInfo>, String> {
+        let res = self
+            .inner
+            .client
+            .request("thread/list", json!({ "cwd": cwd, "limit": 40 }))?;
+        Ok(res
+            .get("data")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| {
+                        let id = t.get("id").and_then(Value::as_str)?.to_string();
+                        Some(ThreadInfo {
+                            id,
+                            preview: t
+                                .get("preview")
+                                .and_then(Value::as_str)
+                                .or_else(|| t.get("name").and_then(Value::as_str))
+                                .unwrap_or("(无标题)")
+                                .to_string(),
+                            updated_at: t
+                                .get("updatedAt")
+                                .or_else(|| t.get("recencyAt"))
+                                .and_then(Value::as_i64)
+                                .unwrap_or(0),
                         })
                     })
                     .collect()
@@ -735,6 +847,7 @@ impl crate::session::AgentSession for CodexSession {
             rollback: true,
             review: true,
             compact: true,
+            history: true,
         }
     }
     fn send_user_turn(&self, parts: Vec<UserInputPart>) -> Result<(), String> {
@@ -778,6 +891,9 @@ impl crate::session::AgentSession for CodexSession {
     }
     fn search_files(&self, query: &str, roots: Vec<String>) -> Result<Vec<FileHit>, String> {
         CodexSession::search_files(self, query, roots)
+    }
+    fn list_threads(&self, cwd: &str) -> Result<Vec<crate::codex::ThreadInfo>, String> {
+        CodexSession::list_threads(self, cwd)
     }
     fn timeline_snapshot(&self) -> Vec<TimelineItem> {
         CodexSession::timeline_snapshot(self)
