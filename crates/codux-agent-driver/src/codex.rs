@@ -17,15 +17,22 @@ use crate::jsonrpc::{Inbound, JsonRpcClient};
 use crate::timeline::{ItemStatus, Timeline, TimelineItem, TimelineKind};
 use crate::{AgentDriver, AgentInvocation, AgentTransport, SessionConfig};
 
-/// Registered driver. `program` is the codex executable (path or name on PATH).
+/// Registered driver. `program` is the codex executable — ideally the *real*
+/// codex binary (not the codux wrapper), spawned directly over pipes. `env`
+/// supplies extra environment (notably `PATH`, so codex's `env node` shebang and
+/// its own subprocesses resolve). Spawning the real binary directly avoids both
+/// interactive-shell init and the codux wrapper's PATH re-resolution (which can
+/// ping-pong between two codux installs' wrappers).
 pub struct CodexAgentDriver {
     pub program: String,
+    pub env: Vec<(String, String)>,
 }
 
 impl Default for CodexAgentDriver {
     fn default() -> Self {
         Self {
             program: "codex".to_string(),
+            env: Vec::new(),
         }
     }
 }
@@ -40,18 +47,16 @@ impl AgentDriver for CodexAgentDriver {
     }
 
     fn invocation(&self, _cfg: &SessionConfig) -> AgentInvocation {
+        // Keep the child non-interactive; it must not try to drive a TTY.
+        let mut env = vec![
+            ("TERM".into(), "dumb".into()),
+            ("TERM_PROGRAM".into(), "codux-agent".into()),
+        ];
+        env.extend(self.env.iter().cloned());
         AgentInvocation {
             program: self.program.clone(),
-            args: vec![
-                "app-server".into(),
-                "--listen".into(),
-                "stdio://".into(),
-            ],
-            // Keep the child non-interactive; it must not try to drive a TTY.
-            env: vec![
-                ("TERM".into(), "dumb".into()),
-                ("TERM_PROGRAM".into(), "codux-agent".into()),
-            ],
+            args: vec!["app-server".into(), "--listen".into(), "stdio://".into()],
+            env,
         }
     }
 }
@@ -77,6 +82,8 @@ struct Inner {
     pending_approvals: Mutex<std::collections::HashMap<String, Pending>>,
     /// Model override applied to subsequent turns (set via `/model`).
     model: Mutex<Option<String>>,
+    /// Reasoning effort applied to subsequent turns (set via `/effort`).
+    effort: Mutex<Option<String>>,
     sink: Sink,
 }
 
@@ -129,6 +136,7 @@ impl CodexSession {
             current_turn: Mutex::new(None),
             pending_approvals: Mutex::new(std::collections::HashMap::new()),
             model: Mutex::new(cfg.model.clone()),
+            effort: Mutex::new(None),
             sink,
         });
 
@@ -159,6 +167,9 @@ impl CodexSession {
         if let Some(model) = self.inner.model.lock().clone() {
             params["model"] = json!(model);
         }
+        if let Some(effort) = self.inner.effort.lock().clone() {
+            params["effort"] = json!(effort);
+        }
         self.inner.client.request("turn/start", params)?;
         Ok(())
     }
@@ -166,6 +177,11 @@ impl CodexSession {
     /// Set the model used for subsequent turns (the `/model` command).
     pub fn set_model(&self, model: Option<String>) {
         *self.inner.model.lock() = model;
+    }
+
+    /// Set the reasoning effort for subsequent turns (the `/effort` command).
+    pub fn set_effort(&self, effort: Option<String>) {
+        *self.inner.effort.lock() = effort;
     }
 
     /// Compact the thread's context (the `/compact` command).

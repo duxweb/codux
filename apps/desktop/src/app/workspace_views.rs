@@ -126,7 +126,10 @@ pub(in crate::app) struct WorkspaceBodyView {
     pub(in crate::app) file_editor_workspace_view:
         Option<gpui::Entity<file_editor::FileEditorWorkspaceView>>,
     pub(in crate::app) review_workspace_view: Option<gpui::Entity<ReviewWorkspaceView>>,
-    pub(in crate::app) chat_workspace_view: Option<gpui::Entity<super::agent_chat::ChatView>>,
+    /// Chat panel paired with the worktree path it was created for, so it is
+    /// rebuilt when the active project/worktree changes (sessions are ephemeral).
+    pub(in crate::app) chat_workspace_view:
+        Option<(String, gpui::Entity<super::agent_chat::ChatView>)>,
 }
 
 impl WorkspaceBodyView {
@@ -138,6 +141,7 @@ impl WorkspaceBodyView {
             review_workspace_view: None,
             chat_workspace_view: None,
         }
+        // chat_workspace_view holds (worktree_cwd, ChatView)
     }
 }
 
@@ -165,25 +169,27 @@ impl Render for WorkspaceBodyView {
                     view
                 };
                 // Chat split: terminal on the left, a protocol-driven Codex
-                // conversation on the right (mirrors the file-editor split).
+                // conversation in a resizable right sidebar. The chat is bound to
+                // the active worktree path and rebuilt when it changes.
                 if app.workspace_split == Some(WorkspaceSplitKind::Chat)
-                    && let Some(project) = app.state.selected_project.as_ref()
+                    && let Some(cwd) = app.selected_worktree_path()
                 {
-                    let cwd = project.path.clone();
                     let codex_program = app
                         .runtime
                         .root
                         .join("scripts/wrappers/bin/codex")
                         .to_string_lossy()
                         .to_string();
-                    let chat_view = if let Some(view) = &self.chat_workspace_view {
-                        view.clone()
-                    } else {
-                        let view = app_cx.new(|cx| {
-                            super::agent_chat::ChatView::new(cwd, codex_program, window, cx)
-                        });
-                        self.chat_workspace_view = Some(view.clone());
-                        view
+                    let chat_view = match &self.chat_workspace_view {
+                        Some((existing_cwd, view)) if *existing_cwd == cwd => view.clone(),
+                        _ => {
+                            let cwd_for_view = cwd.clone();
+                            let view = app_cx.new(|cx| {
+                                super::agent_chat::ChatView::new(cwd_for_view, codex_program, window, cx)
+                            });
+                            self.chat_workspace_view = Some((cwd, view.clone()));
+                            view
+                        }
                     };
                     return h_resizable("workspace-body-chat-split")
                         .child(
@@ -193,7 +199,8 @@ impl Render for WorkspaceBodyView {
                         )
                         .child(
                             resizable_panel()
-                                .size_range(px(320.0)..Pixels::MAX)
+                                .size(px(460.0))
+                                .size_range(px(320.0)..px(960.0))
                                 .child(gpui::AnyView::from(chat_view)),
                         )
                         .into_any_element();

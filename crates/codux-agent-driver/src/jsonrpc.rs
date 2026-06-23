@@ -40,6 +40,7 @@ pub struct JsonRpcClient {
     next_id: AtomicI64,
     pending: PendingMap,
     child: Mutex<Child>,
+    stderr_tail: Arc<Mutex<Vec<String>>>,
 }
 
 impl JsonRpcClient {
@@ -56,10 +57,34 @@ impl JsonRpcClient {
 
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         let (inbound_tx, inbound_rx) = channel();
+        // Keep the tail of stderr so a child that dies mid-handshake reports a
+        // useful reason instead of a bare timeout.
+        let stderr_tail: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        // Drain stderr so the child never blocks on a full pipe, retaining a tail.
+        {
+            let stderr_tail = stderr_tail.clone();
+            thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    eprintln!("[agent stderr] {line}");
+                    let mut tail = stderr_tail.lock();
+                    tail.push(line);
+                    let len = tail.len();
+                    if len > 40 {
+                        tail.drain(0..len - 40);
+                    }
+                }
+            });
+        }
 
         // Reader: route every line to the right place.
         {
             let pending = pending.clone();
+            let stderr_tail = stderr_tail.clone();
             thread::spawn(move || {
                 let reader = BufReader::new(stdout);
                 for line in reader.lines() {
@@ -97,24 +122,27 @@ impl JsonRpcClient {
                         });
                     }
                 }
+                // stdout closed → the child is gone. Fail every in-flight request
+                // immediately with the stderr tail, instead of waiting for the
+                // per-request timeout.
+                let tail = stderr_tail.lock().join("\n");
+                let reason = if tail.is_empty() {
+                    "codex app-server exited before responding".to_string()
+                } else {
+                    format!("codex app-server exited before responding; stderr:\n{tail}")
+                };
+                for (_, tx) in pending.lock().drain() {
+                    let _ = tx.send(Err(reason.clone()));
+                }
             });
         }
-
-        // Drain stderr so the child never blocks on a full pipe.
-        thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines().map_while(Result::ok) {
-                if !line.is_empty() {
-                    eprintln!("[agent stderr] {line}");
-                }
-            }
-        });
 
         let client = Arc::new(Self {
             stdin: Mutex::new(stdin),
             next_id: AtomicI64::new(0),
             pending,
             child: Mutex::new(child),
+            stderr_tail,
         });
         Ok((client, inbound_rx))
     }
@@ -137,11 +165,16 @@ impl JsonRpcClient {
             msg["params"] = params;
         }
         self.write(&msg)?;
-        match rx.recv_timeout(Duration::from_secs(120)) {
+        match rx.recv_timeout(Duration::from_secs(30)) {
             Ok(res) => res,
             Err(_) => {
                 self.pending.lock().remove(&id);
-                Err(format!("request `{method}` timed out"))
+                let tail = self.stderr_tail.lock().join("\n");
+                if tail.is_empty() {
+                    Err(format!("request `{method}` timed out (no stderr)"))
+                } else {
+                    Err(format!("request `{method}` timed out; stderr:\n{tail}"))
+                }
             }
         }
     }

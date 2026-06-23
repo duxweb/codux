@@ -26,7 +26,10 @@ fn main() -> Result<(), String> {
             .to_string()
     });
 
-    let driver = CodexAgentDriver { program };
+    let driver = CodexAgentDriver {
+        program,
+        env: Vec::new(),
+    };
     let cfg = SessionConfig::read_only(&cwd);
 
     let done = Arc::new(AtomicBool::new(false));
