@@ -167,8 +167,12 @@ class RemoteTerminalOutputController {
     RelayEnvelope message, {
     required String? activeSessionId,
   }) {
+    // Prefer the raw wire JSON when present: the router re-parses the envelope
+    // anyway, so re-serializing `toJson()` (which copies a up-to-16 KB payload)
+    // on the UI isolate per output frame is pure waste. `rawJson` is only set on
+    // the receive path; fall back for any in-app envelope.
     final effects = _router.accept(
-      jsonEncode(message.toJson()),
+      message.rawJson ?? jsonEncode(message.toJson()),
       activeSessionId,
     );
     return effects

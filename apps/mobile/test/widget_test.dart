@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -2237,7 +2238,8 @@ final class _FakeRemoteTransport implements RemoteTransport {
   Future<void> close() async {}
 
   void emit(RelayEnvelope envelope) {
-    _onEnvelope?.call(envelope.toJson());
+    final json = envelope.toJson();
+    _onEnvelope?.call(json, jsonEncode(json));
   }
 
   void emitState(String state) {

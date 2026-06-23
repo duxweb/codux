@@ -253,7 +253,22 @@ class _SelfDrawnTerminalViewState extends State<SelfDrawnTerminalView>
     super.dispose();
   }
 
-  void _onSignal() => _refresh();
+  bool _signalRefreshScheduled = false;
+
+  // Coalesce repaint signals to at most one snapshot read per frame. A burst of
+  // live-output frames -- a high-latency relay flushing its backlog, or the
+  // baseline replay during a project / relay<->direct switch -- used to drive a
+  // full FFI snapshot decode + setState for EVERY message, starving the frame
+  // budget and stalling scroll and the whole UI. Reading once per frame collapses
+  // the burst into a single decode without losing the latest state.
+  void _onSignal() {
+    if (_signalRefreshScheduled) return;
+    _signalRefreshScheduled = true;
+    WidgetsBinding.instance.scheduleFrameCallback((_) {
+      _signalRefreshScheduled = false;
+      if (mounted) _refresh();
+    });
+  }
 
   /// Refresh after the current frame. Used from `didUpdateWidget` so the
   /// snapshot read and its `onCursorMetrics` callback never call `setState`

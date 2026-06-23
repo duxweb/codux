@@ -80,6 +80,9 @@ final String _remoteProtocolVersion = remoteProtocolVersion;
 const Duration _remoteStartupProbeTimeout = Duration(seconds: 15);
 const Duration _remoteLatencyProbeInterval = Duration(seconds: 3);
 const Duration _remoteLatencyProbeTimeout = Duration(seconds: 8);
+// Minimum gap between viewport.claim sends on the high-frequency input/scroll
+// path. Below the host lease TTL so the lease never lapses mid-interaction.
+const Duration _viewportClaimThrottle = Duration(seconds: 2);
 
 class CoduxHomePage extends StatefulWidget {
   const CoduxHomePage({

@@ -9,8 +9,12 @@ import '../models/remote_models.dart';
 import 'log_service.dart';
 
 typedef RemoteTransportStateHandler = void Function(String state);
+// [raw] is the exact wire JSON the envelope was decoded from. It is carried
+// alongside the parsed map so the hot terminal-output path can hand it straight
+// to the Rust router without re-serializing a (potentially 16 KB) payload that
+// was just parsed off the wire.
 typedef RemoteTransportEnvelopeHandler =
-    void Function(Map<String, dynamic> envelope);
+    void Function(Map<String, dynamic> envelope, String raw);
 typedef RemoteTransportFactory = RemoteTransport Function(StoredDevice device);
 typedef ControllerTransportHandleFactory =
     ControllerTransportEventHandle? Function(Map<String, dynamic> config);
@@ -243,9 +247,9 @@ class RustControllerTransport implements RemoteTransport {
         final data = '${event['data'] ?? ''}';
         final decoded = jsonDecode(data);
         if (decoded is Map<String, dynamic>) {
-          _onEnvelope?.call(decoded);
+          _onEnvelope?.call(decoded, data);
         } else if (decoded is Map) {
-          _onEnvelope?.call(Map<String, dynamic>.from(decoded));
+          _onEnvelope?.call(Map<String, dynamic>.from(decoded), data);
         }
       } else if (kind == 'log') {
         CoduxLog.info('[codux-flutter-transport] ${event['message'] ?? ''}');

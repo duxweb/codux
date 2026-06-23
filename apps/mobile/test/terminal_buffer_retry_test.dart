@@ -145,38 +145,49 @@ void main() {
     expect(timers.last.isActive, isTrue);
   });
 
-  test('baseline retry waits while the active request is still pending', () {
-    final timers = <_FakeTimer>[];
-    final sent = <String>[];
-    var pending = true;
-    final retry = TerminalBufferRetryCoordinator(
-      timerFactory: (delay, callback) {
-        final timer = _FakeTimer(callback);
-        timers.add(timer);
-        return timer;
-      },
-    );
+  test(
+    'baseline retry waits while the transfer progresses, re-issues on stall',
+    () {
+      final timers = <_FakeTimer>[];
+      final sent = <String>[];
+      // The host keeps the request flagged pending for the whole transfer,
+      // including a stalled (incomplete) one -- so pending alone must NOT gate
+      // re-issue; only the absence of progress does.
+      final retry = TerminalBufferRetryCoordinator(
+        timerFactory: (delay, callback) {
+          final timer = _FakeTimer(callback);
+          timers.add(timer);
+          return timer;
+        },
+      );
 
-    retry.trackWhilePending(
-      'session-1',
-      send: (sessionId) {
-        sent.add(sessionId);
-        return true;
-      },
-      hasPendingRequest: (_) => pending,
-    );
+      retry.trackWhilePending(
+        'session-1',
+        send: (sessionId) {
+          sent.add(sessionId);
+          return true;
+        },
+        hasPendingRequest: (_) => true,
+      );
 
-    timers[0].fire();
-    timers[1].fire();
-    expect(sent, isEmpty);
-    expect(retry.pendingSessionId, 'session-1');
+      // A live (slow) transfer reports progress between ticks: never re-issued.
+      retry.noteProgress('session-1');
+      timers[0].fire();
+      retry.noteProgress('session-1');
+      timers[1].fire();
+      expect(sent, isEmpty);
+      expect(retry.pendingSessionId, 'session-1');
 
-    pending = false;
-    timers[2].fire();
+      // Chunks stop arriving. One grace tick is tolerated...
+      timers[2].fire();
+      expect(sent, isEmpty);
 
-    expect(sent, ['session-1']);
-    expect(retry.pendingSessionId, 'session-1');
-  });
+      // ...then the stalled transfer is re-issued instead of spinning forever.
+      timers[3].fire();
+      expect(sent, ['session-1']);
+      expect(retry.pendingSessionId, 'session-1');
+    },
+  );
 }
 
 final class _FakeTimer implements Timer {

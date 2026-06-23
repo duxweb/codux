@@ -182,6 +182,7 @@ extension _HomePageTransport on HomeController {
       _status = _t('app.reconnecting');
       _leaveTerminalUi();
       _terminalBufferRetry.reset();
+      _cancelTerminalBaselineRearm();
       _setTerminalBufferLoading(false);
     });
     if (_lastConnectedAt == null) {

@@ -173,6 +173,7 @@ class RelayEnvelope {
     this.payload,
     this.error,
     this.at,
+    this.rawJson,
   });
   final String type;
   final String? id;
@@ -184,17 +185,27 @@ class RelayEnvelope {
   final String? error;
   final int? at;
 
-  factory RelayEnvelope.fromJson(Map<String, dynamic> json) => RelayEnvelope(
-    type: '${json['type'] ?? ''}',
-    id: json['id']?.toString(),
-    hostId: json['hostId']?.toString(),
-    deviceId: json['deviceId']?.toString(),
-    sessionId: json['sessionId']?.toString(),
-    seq: json['seq'] is num ? (json['seq'] as num).toInt() : null,
-    payload: json['payload'],
-    error: json['error']?.toString(),
-    at: json['at'] is num ? (json['at'] as num).toInt() : null,
-  );
+  /// The exact wire JSON this envelope was decoded from, set only on the
+  /// receive path. Lets the terminal-output hot path forward it to the native
+  /// router without re-serializing a payload that was just parsed off the wire.
+  /// Null for in-app (outgoing) envelopes, and intentionally excluded from
+  /// [toJson]/[copyWith] -- any field change would make a retained raw string
+  /// stale.
+  final String? rawJson;
+
+  factory RelayEnvelope.fromJson(Map<String, dynamic> json, {String? rawJson}) =>
+      RelayEnvelope(
+        type: '${json['type'] ?? ''}',
+        id: json['id']?.toString(),
+        hostId: json['hostId']?.toString(),
+        deviceId: json['deviceId']?.toString(),
+        sessionId: json['sessionId']?.toString(),
+        seq: json['seq'] is num ? (json['seq'] as num).toInt() : null,
+        payload: json['payload'],
+        error: json['error']?.toString(),
+        at: json['at'] is num ? (json['at'] as num).toInt() : null,
+        rawJson: rawJson,
+      );
 
   Map<String, dynamic> toJson() => {
     'type': type,

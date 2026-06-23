@@ -86,6 +86,14 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   bool _showTerminalSwitcher = false;
   bool _terminalReady = false;
   bool _terminalViewportInteractive = false;
+  // When we last sent a viewport.claim, used to throttle the per-input claim so
+  // a fling over a mouse-tracking TUI (which forwards a wheel event -- and used
+  // to re-claim -- every cell-height) does not flood the transport with claims
+  // and spike measured latency. A claim only renews the lease / asserts
+  // ownership, so one per window is enough; a desktop steal still reclaims
+  // reactively via the viewport-state broadcast.
+  DateTime? _lastViewportClaimAt;
+  String? _lastViewportClaimSession;
   RemoteTerminalBufferPhase _terminalBufferPhase =
       RemoteTerminalBufferPhase.idle;
   double? _terminalBufferProgress;
@@ -183,6 +191,10 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   int _latencyProbeCounter = 0;
   final Map<String, DateTime> _latencyProbeSentAt = {};
   Timer? _connectionGraceTimer;
+  // After the fast retry burst gives up on a baseline, a slow heartbeat keeps
+  // re-requesting it so a still-connected (merely slow) link heals on its own
+  // instead of staying truncated until a manual project switch / reconnect.
+  Timer? _terminalBaselineRearmTimer;
 
   bool get _isConnected => _transportConnected && _transportReady;
   bool get _isHostReady =>
@@ -348,9 +360,14 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       duration: const Duration(milliseconds: 220),
     );
     _terminalBufferRetry = TerminalBufferRetryCoordinator(
-      // Chunked baselines over a slow relay can take seconds; retrying
-      // mid-transfer would wipe the assembler and restart the download.
+      // Chunked baselines over a slow relay can take seconds; a transfer that is
+      // still making progress (chunks arriving) is never re-issued -- only one
+      // whose chunks actually stopped (a dropped chunk under high latency) is.
       retryDelay: const Duration(milliseconds: 2500),
+      // More attempts than the old 3: each re-issue restarts the whole chunked
+      // download, so under sustained latency we need a longer window to catch a
+      // run where every chunk lands before the next stall check.
+      maxRetries: 6,
       onRetryExhausted: (sessionId) {
         if (!mounted || _sessionId != sessionId) return;
         _terminalOutputController.resetSessionTransient(
@@ -358,7 +375,11 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
           resetSequence: true,
         );
         _terminalBufferRetry.resetLastBuffered();
+        // Unfreeze: stop blocking on the spinner and show whatever arrived, but
+        // keep trying in the background so the session heals when the link
+        // recovers instead of staying truncated until a manual switch.
         _applyState(() => _setTerminalBufferLoading(false));
+        _scheduleTerminalBaselineRearm(sessionId);
       },
     );
     _terminalInputBatcher = TerminalInputBatcher(
@@ -412,6 +433,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       _notifyHostBeforeTransportClose();
     }
     _viewportLeaseKeepalive?.cancel();
+    _terminalBaselineRearmTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _disposing = true;
     _shouldReconnect = false;

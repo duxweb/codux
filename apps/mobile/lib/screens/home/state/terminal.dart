@@ -70,6 +70,15 @@ extension _HomePageTerminal on HomeController {
     for (final effect in effects) {
       switch (effect.kind) {
         case RemoteTerminalOutputEffectKind.loading:
+          // A `receiving` loading tick means a baseline chunk just assembled --
+          // proof the transfer is advancing. Tell the retry coordinator so a
+          // slow but live high-latency transfer is not mistaken for a stall and
+          // wiped. (The effect carries no session id; it is only emitted for the
+          // active session, so the pending id is the active one.)
+          if (effect.loading &&
+              effect.phase == RemoteTerminalBufferPhase.receiving) {
+            _terminalBufferRetry.noteProgress(_sessionId);
+          }
           if (mounted) {
             _applyState(
               () => _setTerminalBufferLoading(
@@ -199,6 +208,36 @@ extension _HomePageTerminal on HomeController {
     );
   }
 
+  /// Slow heartbeat after the fast retry burst gave up. Re-requests the baseline
+  /// for the still-visible session; if it lands the retry coordinator stops, if
+  /// it gives up again this re-arms, so a merely-slow (still connected) link
+  /// heals on its own without a manual project switch / reconnect.
+  void _scheduleTerminalBaselineRearm(String sessionId) {
+    _terminalBaselineRearmTimer?.cancel();
+    _terminalBaselineRearmTimer = Timer(const Duration(seconds: 10), () {
+      _terminalBaselineRearmTimer = null;
+      if (!mounted || _disposing) return;
+      if (_sessionId != sessionId || !_transportConnected) return;
+      final requested = _terminalBindingCoordinator.subscribeSessionBaseline(
+        sessionId: sessionId,
+        reason: 'baseline-rearm',
+        capability: _terminalBufferCapability,
+        replaceActive: true,
+      );
+      if (requested) {
+        _trackTerminalBaselineRequest(sessionId);
+      } else {
+        // Transport busy right now -- check back on the next heartbeat.
+        _scheduleTerminalBaselineRearm(sessionId);
+      }
+    });
+  }
+
+  void _cancelTerminalBaselineRearm() {
+    _terminalBaselineRearmTimer?.cancel();
+    _terminalBaselineRearmTimer = null;
+  }
+
   String _nextTerminalBufferRequestId(String sessionId) {
     _terminalBufferRequestCounter += 1;
     return '${DateTime.now().microsecondsSinceEpoch}-$_terminalBufferRequestCounter-$sessionId';
@@ -209,6 +248,10 @@ extension _HomePageTerminal on HomeController {
       sessionId: sessionId,
       activeSessionId: _sessionId,
     );
+    // A complete baseline landed: stop the slow heal heartbeat for it.
+    if (sessionId == null || sessionId == _sessionId) {
+      _cancelTerminalBaselineRearm();
+    }
     if (_terminalBufferLoading && mounted) {
       _applyState(() => _setTerminalBufferLoading(false));
     }
@@ -324,13 +367,29 @@ extension _HomePageTerminal on HomeController {
     _terminalViewportController.markSent(id, resize);
   }
 
-  void _claimTerminalViewport({String? sessionId}) {
+  void _claimTerminalViewport({String? sessionId, bool throttled = false}) {
     final id = sessionId ?? _sessionId;
     if (id == null || id.trim().isEmpty) return;
     if (!_terminalViewportClaimable) return;
     final terminal = _terminalById(id);
     if (terminal == null || !_canResizeTerminal(terminal)) return;
+    // High-frequency input/scroll claims are throttled: we already own the
+    // viewport interactively, so re-asserting it on every keystroke / fling tick
+    // just floods the wire. Skip the network send (but keep the interactive
+    // flag) when we claimed this same session very recently. Non-throttled
+    // callers (keyboard keepalive, reactive reclaim after a desktop steal,
+    // resize) always send.
+    if (throttled &&
+        _terminalViewportInteractive &&
+        _lastViewportClaimSession == id &&
+        _lastViewportClaimAt != null &&
+        DateTime.now().difference(_lastViewportClaimAt!) <
+            _viewportClaimThrottle) {
+      return;
+    }
     _terminalViewportInteractive = true;
+    _lastViewportClaimAt = DateTime.now();
+    _lastViewportClaimSession = id;
     _sendTerminalEnvelope(
       RelayEnvelope(
         type: RemoteMessageType.terminalViewportClaim,
@@ -389,7 +448,7 @@ extension _HomePageTerminal on HomeController {
       _applyState(() => _status = _t('terminal.createOrSelectFirst'));
       return;
     }
-    _claimTerminalViewport(sessionId: id);
+    _claimTerminalViewport(sessionId: id, throttled: true);
     _flushPendingTerminalResize(force: true, sessionId: id);
     _terminalInputSender.send(
       sessionId: id,

@@ -68,6 +68,7 @@ extension _HomePageProtocol on HomeController {
             _resetRemoteSyncState();
             _status = messageText;
             _terminalBufferRetry.reset();
+            _cancelTerminalBaselineRearm();
             _terminalOutputController.resetTransient();
             _setTerminalBufferLoading(false);
           });

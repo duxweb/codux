@@ -607,7 +607,7 @@ extension _HomePageConnection on HomeController {
         }
         _handleTransportState(rawState);
       }
-      ..onEnvelope = (envelope) {
+      ..onEnvelope = (envelope, raw) {
         if (generation != _transportGeneration ||
             !identical(_activeTransport, transport)) {
           CoduxLog.debug(
@@ -616,7 +616,7 @@ extension _HomePageConnection on HomeController {
           return;
         }
         _handleTransportEnvelopeQueued(
-          RelayEnvelope.fromJson(envelope),
+          RelayEnvelope.fromJson(envelope, rawJson: raw),
           generation: generation,
           transport: transport,
         );

@@ -192,7 +192,7 @@ Future<StoredDevice> confirmPairingOverIroh({
   final pendingDevice = pendingPairingDevice(payload: payload, name: name);
   final pairingTransport = createRemoteTransport(pendingDevice);
   final completer = Completer<RelayEnvelope>();
-  pairingTransport.onEnvelope = (envelope) {
+  pairingTransport.onEnvelope = (envelope, _) {
     final message = RelayEnvelope.fromJson(envelope);
     if (message.type == RemoteMessageType.pairingConfirmed ||
         message.type == RemoteMessageType.pairingRejected) {

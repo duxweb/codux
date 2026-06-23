@@ -8,12 +8,23 @@ class TerminalBufferRetryCoordinator {
   TerminalBufferRetryCoordinator({
     this.retryDelay = const Duration(milliseconds: 900),
     this.maxRetries = 3,
+    this.stallTolerance = 1,
     this.onRetryExhausted,
     TerminalBufferTimerFactory? timerFactory,
   }) : _timerFactory = timerFactory ?? Timer.new;
 
   final Duration retryDelay;
   final int maxRetries;
+
+  /// How many quiet retry ticks (no [noteProgress]) to tolerate before a still-
+  /// "pending" request is treated as stalled and re-issued. A slow but live
+  /// chunked transfer keeps calling [noteProgress] as chunks arrive, so it is
+  /// never wiped mid-flight; only a transfer whose chunks actually stopped
+  /// arriving (a dropped chunk under high latency) is re-requested. This is the
+  /// auto-recovery that the old `hasPendingRequest`-only gate could never do:
+  /// the host leaves the active-request flag set for an incomplete assembly, so
+  /// the timer used to reschedule forever without ever re-sending.
+  final int stallTolerance;
   final void Function(String sessionId)? onRetryExhausted;
   final TerminalBufferTimerFactory _timerFactory;
 
@@ -22,9 +33,24 @@ class TerminalBufferRetryCoordinator {
   String? _pendingSessionId;
   int _retryAttempt = 0;
 
+  /// Monotonic counter bumped by [noteProgress] whenever a baseline chunk lands
+  /// for the pending session. The retry timer snapshots it per tick to tell an
+  /// advancing transfer from a stalled one.
+  int _progressGen = 0;
+  int _stallTicks = 0;
+
   String get lastBufferedSessionId => _lastBufferedSessionId;
   String? get pendingSessionId => _pendingSessionId;
   int get retryAttempt => _retryAttempt;
+
+  /// Report that the pending baseline transfer advanced (a chunk arrived). Keeps
+  /// a slow high-latency transfer from being mistaken for a stalled one.
+  void noteProgress(String? sessionId) {
+    if (sessionId == null || sessionId.isEmpty) return;
+    if (_pendingSessionId != sessionId) return;
+    _progressGen += 1;
+    _stallTicks = 0;
+  }
 
   void resetLastBuffered() {
     _lastBufferedSessionId = '';
@@ -36,6 +62,7 @@ class TerminalBufferRetryCoordinator {
     _lastBufferedSessionId = '';
     _pendingSessionId = null;
     _retryAttempt = 0;
+    _stallTicks = 0;
   }
 
   void resetSession(String sessionId) {
@@ -44,6 +71,7 @@ class TerminalBufferRetryCoordinator {
       _retryTimer = null;
       _pendingSessionId = null;
       _retryAttempt = 0;
+      _stallTicks = 0;
     }
     if (_lastBufferedSessionId == sessionId) {
       _lastBufferedSessionId = '';
@@ -84,6 +112,7 @@ class TerminalBufferRetryCoordinator {
     _retryTimer?.cancel();
     _pendingSessionId = sessionId;
     _retryAttempt = 0;
+    _stallTicks = 0;
     _lastBufferedSessionId = sessionId;
     _scheduleRetry(sessionId, send);
   }
@@ -96,6 +125,7 @@ class TerminalBufferRetryCoordinator {
     _retryTimer?.cancel();
     _pendingSessionId = sessionId;
     _retryAttempt = 0;
+    _stallTicks = 0;
     _lastBufferedSessionId = sessionId;
     _scheduleRetry(sessionId, send, hasPendingRequest: hasPendingRequest);
   }
@@ -110,6 +140,7 @@ class TerminalBufferRetryCoordinator {
     _retryTimer = null;
     _pendingSessionId = null;
     _retryAttempt = 0;
+    _stallTicks = 0;
     _lastBufferedSessionId = id;
   }
 
@@ -128,12 +159,29 @@ class TerminalBufferRetryCoordinator {
       onRetryExhausted?.call(sessionId);
       return;
     }
+    final progressAtSchedule = _progressGen;
     _retryTimer = _timerFactory(retryDelay, () {
       if (_pendingSessionId != sessionId) return;
-      if (hasPendingRequest?.call(sessionId) == true) {
+      final progressed = _progressGen != progressAtSchedule;
+      final stillActive = hasPendingRequest?.call(sessionId) ?? false;
+      if (progressed) {
+        // The transfer advanced since the last tick (a chunk landed): keep
+        // waiting, burn no attempt -- even a very slow link makes progress.
+        _stallTicks = 0;
         _scheduleRetry(sessionId, send, hasPendingRequest: hasPendingRequest);
         return;
       }
+      if (stillActive && _stallTicks < stallTolerance) {
+        // The host still has the request open but this tick was quiet. Give a
+        // few grace ticks before declaring a stall so a high-latency transfer
+        // with gaps between chunks is not wiped and restarted.
+        _stallTicks += 1;
+        _scheduleRetry(sessionId, send, hasPendingRequest: hasPendingRequest);
+        return;
+      }
+      // Stalled (no progress past the tolerance), or the request was dropped
+      // without ever delivering a baseline: re-issue a fresh one.
+      _stallTicks = 0;
       _retryAttempt += 1;
       _lastBufferedSessionId = '';
       _sendAndTrack(sessionId, send, hasPendingRequest: hasPendingRequest);
