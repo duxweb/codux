@@ -253,6 +253,8 @@ pub(in crate::app) struct ChatView {
     codex_program: String,
     session: Option<CodexSession>,
     starting: bool,
+    /// A turn is in flight (drives the send/stop button state).
+    busy: bool,
     /// Turns composed before the session finished connecting; flushed on Started.
     pending_send: Vec<Vec<UserInputPart>>,
     items: Vec<TimelineItem>,
@@ -324,6 +326,7 @@ impl ChatView {
             codex_program,
             session: None,
             starting: true,
+            busy: false,
             pending_send: Vec::new(),
             items: Vec::new(),
             pending_approvals: Vec::new(),
@@ -407,6 +410,7 @@ impl ChatView {
             }
             ChatMsg::Failed(err) => {
                 self.starting = false;
+                self.busy = false;
                 self.status = SharedString::from(format!("错误: {err}"));
             }
             ChatMsg::Event(ev) => {
@@ -421,10 +425,14 @@ impl ChatView {
                 }
                 match ev {
                     AgentEvent::ApprovalRequest(req) => self.pending_approvals.push(req),
-                    AgentEvent::TurnCompleted => self.status = SharedString::from("就绪"),
+                    AgentEvent::TurnCompleted => {
+                        self.busy = false;
+                        self.status = SharedString::from("就绪");
+                    }
                     AgentEvent::TokenUsage(u) => self.last_usage = Some(u),
                     AgentEvent::Error(err) => {
-                        self.status = SharedString::from(format!("错误: {err}"))
+                        self.busy = false;
+                        self.status = SharedString::from(format!("错误: {err}"));
                     }
                     AgentEvent::Status(_) => {}
                     _ => self.status = SharedString::from("生成中…"),
@@ -462,6 +470,7 @@ impl ChatView {
         self.mention_query = None;
         self.mention_hits.clear();
 
+        self.busy = true;
         if let Some(session) = &self.session {
             let session = session.clone();
             std::thread::spawn(move || {
@@ -474,6 +483,19 @@ impl ChatView {
             self.ensure_session();
             self.status = SharedString::from("连接中…");
         }
+        cx.notify();
+    }
+
+    /// Interrupt the in-flight turn (the send button's stop state).
+    fn stop(&mut self, cx: &mut Context<Self>) {
+        if let Some(session) = self.session.clone() {
+            std::thread::spawn(move || {
+                let _ = session.interrupt();
+            });
+        }
+        self.pending_send.clear();
+        self.busy = false;
+        self.status = SharedString::from("已中断");
         cx.notify();
     }
 
@@ -730,6 +752,7 @@ struct Pal {
     border: gpui::Hsla,
     secondary: gpui::Hsla,
     primary: gpui::Hsla,
+    primary_fg: gpui::Hsla,
     danger: gpui::Hsla,
     bubble: gpui::Hsla,
 }
@@ -743,6 +766,7 @@ impl Render for ChatView {
             border: theme.border,
             secondary: theme.secondary,
             primary: theme.primary,
+            primary_fg: theme.primary_foreground,
             danger: theme.danger,
             bubble: theme.secondary,
         };
@@ -1316,21 +1340,34 @@ impl ChatView {
     }
 
     fn send_button(&self, pal: Pal, cx: &mut Context<Self>) -> impl IntoElement {
+        // Two states: idle = send (arrow), in-flight = stop (square).
+        let busy = self.busy;
+        let (icon, bg) = if busy {
+            (HeroIconName::Stop, pal.danger)
+        } else {
+            (HeroIconName::ArrowUp, pal.primary)
+        };
         div()
             .id("composer-send")
             .size(px(30.0))
             .rounded_full()
-            .bg(pal.primary)
+            .bg(bg)
             .flex()
             .items_center()
             .justify_center()
             .cursor_pointer()
             .hover(|s| s.opacity(0.85))
-            .on_click(cx.listener(|view, _e, window, cx| view.submit(window, cx)))
+            .on_click(cx.listener(move |view, _e, window, cx| {
+                if busy {
+                    view.stop(cx);
+                } else {
+                    view.submit(window, cx);
+                }
+            }))
             .child(
-                Icon::new(HeroIconName::ArrowUp)
+                Icon::new(icon)
                     .size_4()
-                    .text_color(pal.secondary),
+                    .text_color(pal.primary_fg),
             )
     }
 
