@@ -1895,6 +1895,10 @@ impl ChatView {
         let is_reasoning = item.kind == TimelineKind::Reasoning;
         let is_filechange = item.kind == TimelineKind::FileChange;
         let changes = if is_filechange { file_changes(item) } else { Vec::new() };
+        let (agg_add, agg_del) = changes
+            .iter()
+            .map(|(_, d)| diff_stats(d))
+            .fold((0usize, 0usize), |(a, b), (c, d)| (a + c, b + d));
 
         // Single-line summary for the collapsed header.
         let primary = match item.kind {
@@ -1955,6 +1959,9 @@ impl ChatView {
                     .when(is_cmd, |s| s.font_family(mono.clone()))
                     .child(primary),
             )
+            .when(is_filechange && (agg_add > 0 || agg_del > 0), |s| {
+                s.child(diff_badges(agg_add, agg_del, pal))
+            })
             .when(has_body, |s| {
                 let chev = if expanded {
                     HeroIconName::ChevronDown
@@ -1990,17 +1997,50 @@ impl ChatView {
                         .child(body_text),
                 );
             }
-            // File changes: render each file's unified diff with +/- coloring.
+            // File changes: a row per file (path + ±stats), click to reveal its
+            // diff — codux.app style.
             for (path, diff) in &changes {
+                let (a, d) = diff_stats(diff);
+                let fkey = format!("{}::{}", item.id, path);
+                let fopen = self.expanded.contains(&fkey);
+                let fkey2 = fkey.clone();
                 body = body.child(
                     div()
-                        .font_family(mono.clone())
-                        .text_size(rems(0.7))
-                        .text_color(pal.fg)
-                        .pt(px(2.0))
-                        .child(path.clone()),
+                        .id(SharedString::from(format!("frow-{fkey}")))
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .py(px(3.0))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(pal.bubble))
+                        .on_click(cx.listener(move |view, _e, _w, cx| {
+                            view.toggle_expand(fkey2.clone(), cx)
+                        }))
+                        .child(
+                            Icon::new(if fopen {
+                                HeroIconName::ChevronDown
+                            } else {
+                                HeroIconName::ChevronRight
+                            })
+                            .size_3()
+                            .text_color(pal.muted),
+                        )
+                        .child(Icon::new(HeroIconName::DocumentText).size_3().text_color(pal.muted))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .font_family(mono.clone())
+                                .text_size(rems(0.72))
+                                .text_color(pal.fg)
+                                .child(short_path(path)),
+                        )
+                        .child(diff_badges(a, d, pal)),
                 );
-                body = body.child(render_diff(diff, pal, mono.clone()));
+                if fopen {
+                    body = body.child(render_diff(diff, pal, mono.clone()));
+                }
             }
             if !item.output.is_empty() {
                 body = body.child(
@@ -2046,14 +2086,57 @@ fn file_changes(item: &TimelineItem) -> Vec<(String, String)> {
 fn filechange_summary(changes: &[(String, String)]) -> String {
     match changes {
         [] => "文件改动".into(),
-        [(p, _)] => p.clone(),
-        _ => format!("{} 个文件改动", changes.len()),
+        [(p, _)] => format!("编辑了 {}", short_path(p)),
+        _ => format!("已编辑 {} 个文件", changes.len()),
     }
+}
+
+/// Last two path segments (codux.app shows compact paths).
+fn short_path(path: &str) -> String {
+    let parts: Vec<&str> = path.rsplit('/').take(2).collect();
+    parts.into_iter().rev().collect::<Vec<_>>().join("/")
+}
+
+/// Count added / removed lines in a unified diff (ignoring +++/--- headers).
+fn diff_stats(diff: &str) -> (usize, usize) {
+    let mut add = 0;
+    let mut del = 0;
+    for l in diff.lines() {
+        if l.starts_with("+++") || l.starts_with("---") {
+            continue;
+        }
+        if l.starts_with('+') {
+            add += 1;
+        } else if l.starts_with('-') {
+            del += 1;
+        }
+    }
+    (add, del)
+}
+
+fn diff_green() -> gpui::Hsla {
+    gpui::hsla(140.0 / 360.0, 0.5, 0.55, 1.0)
+}
+
+/// Green +N / red -M badges (codux.app diff stats).
+fn diff_badges(add: usize, del: usize, pal: Pal) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap_2()
+        .text_size(rems(0.68))
+        .when(add > 0, |s| {
+            s.child(div().text_color(diff_green()).child(format!("+{add}")))
+        })
+        .when(del > 0, |s| {
+            s.child(div().text_color(pal.danger).child(format!("-{del}")))
+        })
 }
 
 /// Render a unified diff with +/- line coloring (green add, red remove).
 fn render_diff(diff: &str, pal: Pal, mono: SharedString) -> Div {
-    let add = gpui::hsla(140.0 / 360.0, 0.5, 0.55, 1.0);
+    let add = diff_green();
     let del = pal.danger;
     let mut block = div().flex().flex_col().font_family(mono).text_size(rems(0.7));
     for line in diff.lines() {
