@@ -9,11 +9,13 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use std::sync::Arc;
+
 use chrono::Local;
 use codux_agent_driver::{
-    AgentEvent, ApprovalDecision, ApprovalRequest, CodexAgentDriver, CodexModel,
-    CodexPermissionProfile, CodexSession, CodexSkill, FileHit, ItemStatus, SessionConfig,
-    TimelineItem, TimelineKind, TokenUsage, UserInputPart,
+    AgentEvent, AgentKind, AgentModel, AgentPermissionProfile, AgentSession, AgentSkill,
+    ApprovalDecision, ApprovalRequest, FileHit, ItemStatus, SessionConfig, TimelineItem,
+    TimelineKind, TokenUsage, UserInputPart, start_session,
 };
 use flume::Sender;
 use gpui::{
@@ -156,14 +158,14 @@ pub(in crate::app) enum ChatViewEvent {
 /// Messages from the off-thread session machinery into the view.
 enum ChatMsg {
     Note(String),
-    Started(CodexSession),
+    Started(Arc<dyn AgentSession>),
     /// The server's dynamic catalog (models / skills / permission profiles),
     /// fetched after the session starts — these drive the composer dropdowns and
     /// the `/` palette instead of a hardcoded list.
     Catalog {
-        models: Vec<CodexModel>,
-        skills: Vec<CodexSkill>,
-        profiles: Vec<CodexPermissionProfile>,
+        models: Vec<AgentModel>,
+        skills: Vec<AgentSkill>,
+        profiles: Vec<AgentPermissionProfile>,
     },
     /// Results of an @-mention fuzzy file search (query echoed to ignore stale).
     FileHits { query: String, hits: Vec<FileHit> },
@@ -217,7 +219,6 @@ fn spawn_session(
         if !path_env.is_empty() {
             env.push(("PATH".to_string(), path_env));
         }
-        let driver = CodexAgentDriver { program, env };
         let cfg = SessionConfig {
             cwd,
             model,
@@ -229,7 +230,8 @@ fn spawn_session(
             let _ = sink_tx.send(ChatMsg::Event(ev.clone()));
         });
         let _ = tx.send(ChatMsg::Note("握手中…".into()));
-        match CodexSession::start(&driver, &cfg, sink) {
+        // The driver kind is the single switch point for codex / claude / opencode.
+        match start_session(AgentKind::Codex, program, env, &cfg, sink) {
             Ok(session) => {
                 session.set_effort(Some(effort));
                 let _ = tx.send(ChatMsg::Started(session.clone()));
@@ -254,7 +256,7 @@ fn spawn_session(
 pub(in crate::app) struct ChatView {
     cwd: String,
     codex_program: String,
-    session: Option<CodexSession>,
+    session: Option<Arc<dyn AgentSession>>,
     starting: bool,
     /// A turn is in flight (drives the send/stop button state).
     busy: bool,
@@ -272,9 +274,9 @@ pub(in crate::app) struct ChatView {
     model: Option<String>,
     effort: SharedString,
     /// Server catalog (empty until the session reports it).
-    models: Vec<CodexModel>,
-    skills: Vec<CodexSkill>,
-    profiles: Vec<CodexPermissionProfile>,
+    models: Vec<AgentModel>,
+    skills: Vec<AgentSkill>,
+    profiles: Vec<AgentPermissionProfile>,
     /// Structured input parts staged for the next turn (skills, @-files, images).
     attachments: Vec<Attachment>,
     /// Last token usage seen, surfaced by /status.
@@ -1174,40 +1176,38 @@ impl ChatView {
         let text = item.text.clone();
         let copy_text = text.clone();
         let group = SharedString::from(format!("m-{}", item.id));
+        // Assistant messages span the full column width (like codex/claude) so
+        // markdown wraps at the panel width instead of collapsing to min-content.
         div()
+            .group(group.clone())
             .flex()
+            .flex_col()
             .w_full()
-            .justify_start()
+            .min_w_0()
+            .gap_1()
             .child(
                 div()
-                    .group(group.clone())
-                    .flex()
-                    .flex_col()
-                    .items_start()
-                    .gap_1()
-                    .max_w(relative_w())
-                    .child(
-                        div()
-                            .text_size(rems(0.85))
-                            .text_color(pal.fg)
-                            .child(TextView::markdown(
-                                SharedString::from(format!("md-{}", item.id)),
-                                text,
-                            )),
-                    )
-                    .child(
-                        meta_row(time.clone(), pal)
-                            .opacity(0.0)
-                            .group_hover(group, |s| s.opacity(1.0))
-                            .child(icon_action(
-                                SharedString::from(format!("copy-{}", item.id)),
-                                HeroIconName::ClipboardDocument,
-                                pal,
-                                cx.listener(move |_, _, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(copy_text.clone()));
-                                }),
-                            )),
-                    ),
+                    .w_full()
+                    .min_w_0()
+                    .text_size(rems(0.85))
+                    .text_color(pal.fg)
+                    .child(TextView::markdown(
+                        SharedString::from(format!("md-{}", item.id)),
+                        text,
+                    )),
+            )
+            .child(
+                meta_row(time.clone(), pal)
+                    .opacity(0.0)
+                    .group_hover(group, |s| s.opacity(1.0))
+                    .child(icon_action(
+                        SharedString::from(format!("copy-{}", item.id)),
+                        HeroIconName::ClipboardDocument,
+                        pal,
+                        cx.listener(move |_, _, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(copy_text.clone()));
+                        }),
+                    )),
             )
     }
 
@@ -1632,7 +1632,7 @@ impl ChatView {
             .filter(|c| term.is_empty() || c.name[1..].to_lowercase().starts_with(&term))
             .collect();
         // Skills come from the server (`skills/list`), not a hardcoded list.
-        let skill_matches: Vec<&CodexSkill> = self
+        let skill_matches: Vec<&AgentSkill> = self
             .skills
             .iter()
             .filter(|s| term.is_empty() || s.name.to_lowercase().contains(&term))

@@ -66,7 +66,7 @@ type Sink = Box<dyn Fn(&AgentEvent) + Send + Sync>;
 /// A selectable model from the server's `model/list` (not hardcoded). Each model
 /// advertises its own supported reasoning efforts and a default.
 #[derive(Clone, Debug)]
-pub struct CodexModel {
+pub struct AgentModel {
     pub id: String,
     pub display_name: String,
     pub is_default: bool,
@@ -76,7 +76,7 @@ pub struct CodexModel {
 
 /// A user/project skill from `skills/list` (scoped to the session cwd).
 #[derive(Clone, Debug)]
-pub struct CodexSkill {
+pub struct AgentSkill {
     pub name: String,
     pub description: String,
     pub path: String,
@@ -85,7 +85,7 @@ pub struct CodexSkill {
 /// A permission/sandbox profile from `permissionProfile/list` (e.g. `:read-only`,
 /// `:workspace`, `:danger-full-access`).
 #[derive(Clone, Debug)]
-pub struct CodexPermissionProfile {
+pub struct AgentPermissionProfile {
     pub id: String,
     pub description: Option<String>,
 }
@@ -366,7 +366,7 @@ impl CodexSession {
     }
 
     /// Fetch the server's model catalog (`model/list`). Blocking; call off-thread.
-    pub fn list_models(&self) -> Result<Vec<CodexModel>, String> {
+    pub fn list_models(&self) -> Result<Vec<AgentModel>, String> {
         let res = self.inner.client.request("model/list", json!({}))?;
         let data = res
             .get("data")
@@ -399,7 +399,7 @@ impl CodexSession {
                             .collect()
                     })
                     .unwrap_or_default();
-                CodexModel {
+                AgentModel {
                     is_default: m.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
                     default_effort: m
                         .get("defaultReasoningEffort")
@@ -415,7 +415,7 @@ impl CodexSession {
     }
 
     /// Fetch the user/project skills visible for `cwd` (`skills/list`). Blocking.
-    pub fn list_skills(&self, cwd: &str) -> Result<Vec<CodexSkill>, String> {
+    pub fn list_skills(&self, cwd: &str) -> Result<Vec<AgentSkill>, String> {
         let res = self
             .inner
             .client
@@ -429,7 +429,7 @@ impl CodexSession {
                             continue;
                         }
                         if let Some(name) = s.get("name").and_then(Value::as_str) {
-                            out.push(CodexSkill {
+                            out.push(AgentSkill {
                                 name: name.to_string(),
                                 description: s
                                     .get("description")
@@ -454,7 +454,7 @@ impl CodexSession {
     pub fn list_permission_profiles(
         &self,
         cwd: &str,
-    ) -> Result<Vec<CodexPermissionProfile>, String> {
+    ) -> Result<Vec<AgentPermissionProfile>, String> {
         let res = self
             .inner
             .client
@@ -468,7 +468,7 @@ impl CodexSession {
             .iter()
             .filter_map(|p| {
                 let id = p.get("id").and_then(Value::as_str)?.to_string();
-                Some(CodexPermissionProfile {
+                Some(AgentPermissionProfile {
                     id,
                     description: p
                         .get("description")
@@ -720,5 +720,69 @@ fn build_item(item: &Value, completed: bool) -> TimelineItem {
             .to_string(),
         status,
         raw: item.clone(),
+    }
+}
+
+impl crate::session::AgentSession for CodexSession {
+    fn capabilities(&self) -> crate::session::SessionCapabilities {
+        // codex app-server supports the full feature set.
+        crate::session::SessionCapabilities {
+            models: true,
+            efforts: true,
+            skills: true,
+            permission_profiles: true,
+            file_search: true,
+            rollback: true,
+            review: true,
+            compact: true,
+        }
+    }
+    fn send_user_turn(&self, parts: Vec<UserInputPart>) -> Result<(), String> {
+        CodexSession::send_user_turn(self, parts)
+    }
+    fn set_model(&self, model: Option<String>) {
+        CodexSession::set_model(self, model)
+    }
+    fn set_effort(&self, effort: Option<String>) {
+        CodexSession::set_effort(self, effort)
+    }
+    fn compact(&self) -> Result<(), String> {
+        CodexSession::compact(self)
+    }
+    fn interrupt(&self) -> Result<(), String> {
+        CodexSession::interrupt(self)
+    }
+    fn rollback(&self, num_turns: u32) -> Result<(), String> {
+        CodexSession::rollback(self, num_turns)
+    }
+    fn turns_from(&self, item_id: &str) -> u32 {
+        CodexSession::turns_from(self, item_id)
+    }
+    fn truncate_timeline_before(&self, item_id: &str) {
+        CodexSession::truncate_timeline_before(self, item_id)
+    }
+    fn review_uncommitted(&self) -> Result<(), String> {
+        CodexSession::review_uncommitted(self)
+    }
+    fn respond_approval(&self, token: &str, decision: ApprovalDecision) -> Result<(), String> {
+        CodexSession::respond_approval(self, token, decision)
+    }
+    fn list_models(&self) -> Result<Vec<AgentModel>, String> {
+        CodexSession::list_models(self)
+    }
+    fn list_skills(&self, cwd: &str) -> Result<Vec<AgentSkill>, String> {
+        CodexSession::list_skills(self, cwd)
+    }
+    fn list_permission_profiles(&self, cwd: &str) -> Result<Vec<AgentPermissionProfile>, String> {
+        CodexSession::list_permission_profiles(self, cwd)
+    }
+    fn search_files(&self, query: &str, roots: Vec<String>) -> Result<Vec<FileHit>, String> {
+        CodexSession::search_files(self, query, roots)
+    }
+    fn timeline_snapshot(&self) -> Vec<TimelineItem> {
+        CodexSession::timeline_snapshot(self)
+    }
+    fn shutdown(&self) {
+        CodexSession::shutdown(self)
     }
 }

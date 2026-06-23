@@ -9,13 +9,15 @@
 pub mod codex;
 pub mod event;
 pub mod jsonrpc;
+pub mod session;
 pub mod timeline;
 
 pub use codex::{
-    CodexAgentDriver, CodexModel, CodexPermissionProfile, CodexSession, CodexSkill, FileHit,
+    AgentModel, AgentPermissionProfile, AgentSkill, CodexAgentDriver, CodexSession, FileHit,
     UserInputPart,
 };
 pub use event::{AgentEvent, ApprovalDecision, ApprovalRequest, TokenUsage};
+pub use session::{AgentKind, AgentSession, AgentSink, SessionCapabilities, start_session};
 pub use timeline::{ItemStatus, Timeline, TimelineItem, TimelineKind};
 
 use serde::Serialize;
