@@ -183,6 +183,7 @@ impl CoduxApp {
                 let close_id = SharedString::from(format!("terminal-pane-close-{index}"));
                 let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
                 let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
+                let chat_id = SharedString::from(format!("terminal-pane-chat-{index}"));
                 div()
                     .relative()
                     .group("terminal-pane")
@@ -233,10 +234,18 @@ impl CoduxApp {
                             .child(terminal_pane_control_button(
                                 add_id,
                                 HeroIconName::Plus,
-                                "新建分屏",
+                                "新建终端分屏",
                                 true,
                                 cx,
                                 |app, _event, window, cx| app.split_terminal(window, cx),
+                            ))
+                            .child(terminal_pane_control_button(
+                                chat_id,
+                                HeroIconName::Sparkles,
+                                "AI 对话分屏",
+                                true,
+                                cx,
+                                |app, _event, window, cx| app.toggle_chat_split(window, cx),
                             ))
                             .child(terminal_pane_control_button(
                                 close_id,
