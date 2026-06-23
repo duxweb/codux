@@ -16,8 +16,8 @@ use codux_agent_driver::{
 };
 use flume::Sender;
 use gpui::{
-    AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, InteractiveElement, IntoElement,
-    ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
+    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, InteractiveElement,
+    IntoElement, ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div,
     prelude::FluentBuilder as _, px, rems,
 };
@@ -280,6 +280,8 @@ pub(in crate::app) struct ChatView {
     mention_hits: Vec<FileHit>,
     /// Inline edit in progress: (user item id, its edit input).
     editing: Option<(String, Entity<InputState>)>,
+    /// Activity cards (commands/reasoning/tools) the user has expanded.
+    expanded: std::collections::HashSet<String>,
     tx: Sender<ChatMsg>,
     _drain: Task<()>,
 }
@@ -348,6 +350,7 @@ impl ChatView {
             mention_query: None,
             mention_hits: Vec::new(),
             editing: None,
+            expanded: std::collections::HashSet::new(),
             tx,
             _drain: drain,
         }
@@ -527,6 +530,13 @@ impl ChatView {
 
     fn cancel_edit(&mut self, cx: &mut Context<Self>) {
         self.editing = None;
+        cx.notify();
+    }
+
+    fn toggle_expand(&mut self, id: String, cx: &mut Context<Self>) {
+        if !self.expanded.remove(&id) {
+            self.expanded.insert(id);
+        }
         cx.notify();
     }
 
@@ -937,7 +947,7 @@ impl ChatView {
         match item.kind {
             TimelineKind::UserPrompt => self.render_user_message(item, &time, pal, cx),
             TimelineKind::AssistantMessage => self.render_assistant_message(item, &time, pal, cx),
-            _ => render_activity_card(item, pal, mono),
+            _ => self.render_activity_card(item, pal, mono, cx),
         }
     }
 
@@ -959,12 +969,14 @@ impl ChatView {
         let copy_text = text.clone();
         let edit_text = text.clone();
         let edit_id = item.id.clone();
+        let group = SharedString::from(format!("m-{}", item.id));
         div()
             .flex()
             .w_full()
             .justify_end()
             .child(
                 div()
+                    .group(group.clone())
                     .flex()
                     .flex_col()
                     .items_end()
@@ -982,6 +994,8 @@ impl ChatView {
                     )
                     .child(
                         meta_row(time.clone(), pal)
+                            .opacity(0.0)
+                            .group_hover(group, |s| s.opacity(1.0))
                             .child(icon_action(
                                 SharedString::from(format!("copy-{}", item.id)),
                                 HeroIconName::ClipboardDocument,
@@ -1073,12 +1087,14 @@ impl ChatView {
     ) -> Div {
         let text = item.text.clone();
         let copy_text = text.clone();
+        let group = SharedString::from(format!("m-{}", item.id));
         div()
             .flex()
             .w_full()
             .justify_start()
             .child(
                 div()
+                    .group(group.clone())
                     .flex()
                     .flex_col()
                     .items_start()
@@ -1091,14 +1107,17 @@ impl ChatView {
                             .child(text),
                     )
                     .child(
-                        meta_row(time.clone(), pal).child(icon_action(
-                            SharedString::from(format!("copy-{}", item.id)),
-                            HeroIconName::ClipboardDocument,
-                            pal,
-                            cx.listener(move |_, _, _, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(copy_text.clone()));
-                            }),
-                        )),
+                        meta_row(time.clone(), pal)
+                            .opacity(0.0)
+                            .group_hover(group, |s| s.opacity(1.0))
+                            .child(icon_action(
+                                SharedString::from(format!("copy-{}", item.id)),
+                                HeroIconName::ClipboardDocument,
+                                pal,
+                                cx.listener(move |_, _, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(copy_text.clone()));
+                                }),
+                            )),
                     ),
             )
     }
@@ -1706,66 +1725,138 @@ fn icon_action(
         .child(Icon::new(icon).size_3())
 }
 
-/// Reasoning / command / file-change / tool items render as subtle left cards.
-fn render_activity_card(item: &TimelineItem, pal: Pal, mono: SharedString) -> Div {
-    let (label, label_color) = match item.kind {
-        TimelineKind::Reasoning => ("思考", pal.muted),
-        TimelineKind::Command => ("命令", pal.fg),
-        TimelineKind::FileChange => ("文件", pal.fg),
-        TimelineKind::Plan => ("计划", pal.fg),
-        _ => ("工具", pal.fg),
-    };
-    let status_mark = match item.status {
-        ItemStatus::Completed => "",
-        ItemStatus::Failed => " ✗",
-        ItemStatus::InProgress => " …",
-    };
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .rounded(px(8.0))
-        .p(px(8.0))
-        .border_1()
-        .border_color(pal.border)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_size(rems(0.68))
-                .text_color(label_color)
-                .child(format!("{label}{status_mark}"))
-                .when(item.kind == TimelineKind::ToolCall && !item.title.is_empty(), |this| {
-                    this.child(div().text_color(pal.muted).child(item.title.clone()))
-                }),
-        )
-        .when(item.kind == TimelineKind::Command, |this| {
-            this.child(
+impl ChatView {
+    /// Reasoning / command / file-change / tool items render as a compact,
+    /// single-line card that expands on click (codex-desktop style): header shows
+    /// status + label + a truncated summary; the body (output/long text) is hidden
+    /// until expanded and then capped to a scrollable max height.
+    fn render_activity_card(
+        &self,
+        item: &TimelineItem,
+        pal: Pal,
+        mono: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let (label, icon) = match item.kind {
+            TimelineKind::Reasoning => ("思考", HeroIconName::LightBulb),
+            TimelineKind::Command => ("命令", HeroIconName::CommandLine),
+            TimelineKind::FileChange => ("文件", HeroIconName::DocumentText),
+            TimelineKind::Plan => ("计划", HeroIconName::Bars3),
+            _ => ("工具", HeroIconName::Cog6Tooth),
+        };
+        let is_cmd = item.kind == TimelineKind::Command;
+        let is_reasoning = item.kind == TimelineKind::Reasoning;
+
+        // Single-line summary for the collapsed header.
+        let primary = match item.kind {
+            TimelineKind::Command => item.command.clone().unwrap_or_else(|| item.title.clone()),
+            TimelineKind::Reasoning => first_line(&item.text),
+            _ if !item.title.is_empty() => item.title.clone(),
+            _ => first_line(&item.text),
+        };
+        let body_text = if is_cmd { String::new() } else { item.text.clone() };
+        let has_body = !item.output.is_empty()
+            || (is_reasoning && (item.text.lines().count() > 1 || item.text.chars().count() > 64))
+            || (!is_cmd && !is_reasoning && !item.text.is_empty());
+        let expanded = self.expanded.contains(&item.id);
+        let id = item.id.clone();
+
+        let status: AnyElement = match item.status {
+            ItemStatus::InProgress => Spinner::new()
+                .with_size(Size::Small)
+                .color(pal.muted)
+                .into_any_element(),
+            ItemStatus::Completed => Icon::new(HeroIconName::Check)
+                .size_3()
+                .text_color(pal.muted)
+                .into_any_element(),
+            ItemStatus::Failed => Icon::new(HeroIconName::ExclamationTriangle)
+                .size_3()
+                .text_color(pal.danger)
+                .into_any_element(),
+        };
+
+        let header = div()
+            .id(SharedString::from(format!("card-{id}")))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px(px(8.0))
+            .py(px(6.0))
+            .when(has_body, |s| {
+                let id2 = id.clone();
+                s.cursor_pointer()
+                    .hover(|s| s.bg(pal.bubble))
+                    .on_click(cx.listener(move |view, _e, _w, cx| {
+                        view.toggle_expand(id2.clone(), cx)
+                    }))
+            })
+            .child(status)
+            .child(Icon::new(icon).size_3().text_color(pal.muted))
+            .child(div().flex_none().text_size(rems(0.66)).text_color(pal.muted).child(label))
+            .child(
                 div()
-                    .font_family(mono.clone())
-                    .text_size(rems(0.72))
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(rems(if is_cmd { 0.72 } else { 0.78 }))
                     .text_color(pal.fg)
-                    .child(item.command.clone().unwrap_or_else(|| item.title.clone())),
+                    .when(is_cmd, |s| s.font_family(mono.clone()))
+                    .child(primary),
             )
-        })
-        .when(!item.text.is_empty(), |this| {
-            this.child(
-                div()
-                    .text_size(rems(0.78))
-                    .text_color(if item.kind == TimelineKind::Reasoning { pal.muted } else { pal.fg })
-                    .child(item.text.clone()),
-            )
-        })
-        .when(!item.output.is_empty(), |this| {
-            this.child(
-                div()
-                    .font_family(mono)
-                    .text_size(rems(0.7))
-                    .text_color(pal.muted)
-                    .child(item.output.trim_end().to_string()),
-            )
-        })
+            .when(has_body, |s| {
+                let chev = if expanded {
+                    HeroIconName::ChevronDown
+                } else {
+                    HeroIconName::ChevronRight
+                };
+                s.child(Icon::new(chev).size_3().text_color(pal.muted))
+            });
+
+        let mut card = div()
+            .flex()
+            .flex_col()
+            .rounded(px(8.0))
+            .border_1()
+            .border_color(pal.border)
+            .overflow_hidden()
+            .child(header);
+
+        if expanded && has_body {
+            let mut body = div()
+                .id(SharedString::from(format!("card-body-{id}")))
+                .max_h(px(260.0))
+                .overflow_y_scroll()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .px(px(8.0))
+                .pb(px(8.0));
+            if !body_text.is_empty() {
+                body = body.child(
+                    div()
+                        .text_size(rems(0.78))
+                        .text_color(if is_reasoning { pal.muted } else { pal.fg })
+                        .child(body_text),
+                );
+            }
+            if !item.output.is_empty() {
+                body = body.child(
+                    div()
+                        .font_family(mono)
+                        .text_size(rems(0.7))
+                        .text_color(pal.muted)
+                        .child(item.output.trim_end().to_string()),
+                );
+            }
+            card = card.child(body);
+        }
+        card
+    }
+}
+
+fn first_line(s: &str) -> String {
+    s.trim().lines().next().unwrap_or("").to_string()
 }
 
 /// Multi-tab host for chat sessions bound to a single worktree. Each tab is its
