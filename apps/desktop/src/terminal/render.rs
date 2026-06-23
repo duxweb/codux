@@ -63,7 +63,13 @@ impl Render for TerminalView {
         );
         let terminal = if remote_viewer {
             terminal.child(
+                // Remote-viewer badge: a phone (the mobile client) currently owns
+                // the viewport, so the host renders at its grid. Click to take the
+                // viewport back to this desktop immediately -- handy when the phone
+                // dropped off (e.g. USB/Wi-Fi blip) and its lease has not lapsed
+                // yet, leaving the desktop stuck at the phone's grid.
                 div()
+                    .id("terminal-remote-release")
                     .absolute()
                     .right(px(10.0))
                     .bottom(px(10.0))
@@ -75,6 +81,18 @@ impl Render for TerminalView {
                     .flex()
                     .items_center()
                     .justify_center()
+                    .cursor_pointer()
+                    .hover(|style| {
+                        style.border_color(self.config.colors.foreground().opacity(0.4))
+                    })
+                    .on_click(cx.listener(|view, _event, _window, cx| {
+                        if let Err(error) = view.session.restore_local_viewport() {
+                            eprintln!(
+                                "failed to reclaim desktop terminal viewport: {error}"
+                            );
+                        }
+                        cx.notify();
+                    }))
                     .child(
                         Icon::new(HeroIconName::PhoneArrowUpRight)
                             .size_4()

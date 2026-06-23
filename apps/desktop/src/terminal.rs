@@ -16,9 +16,9 @@ use gpui::{
     GlobalElementId, Hsla, ImageFormat, InputHandler, InspectorElementId, InteractiveElement,
     IntoElement, KeyDownEvent, Keystroke, LayoutId, Modifiers, ModifiersChangedEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection, ParentElement, Pixels,
-    Point, Render, ScrollWheelEvent, SharedString, Size, Style, Styled, Subscription, Task,
-    TextAlign, TextRun, TouchPhase, UTF16Selection, UnderlineStyle, WeakEntity, Window, div, px,
-    quad, rgb, transparent_black,
+    Point, Render, ScrollWheelEvent, SharedString, Size, StatefulInteractiveElement, Style, Styled,
+    Subscription, Task, TextAlign, TextRun, TouchPhase, UTF16Selection, UnderlineStyle, WeakEntity,
+    Window, div, px, quad, rgb, transparent_black,
 };
 use gpui_component::Icon;
 use gpui_component::scroll::{Scrollbar, ScrollbarAxis, ScrollbarHandle, ScrollbarShow};
