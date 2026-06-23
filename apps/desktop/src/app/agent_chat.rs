@@ -142,11 +142,67 @@ fn resolve_codex(wrapper_fallback: &str) -> (String, String) {
     (program, path_env)
 }
 
+/// Spawn the codex session off-thread: resolve the binary, handshake, fetch the
+/// dynamic catalog (models/skills/profiles), and report each step back over `tx`.
+/// No first prompt is sent — the session waits idle for user input, so the
+/// composer can populate before anything is typed.
+fn spawn_session(
+    tx: Sender<ChatMsg>,
+    cwd: String,
+    wrapper: String,
+    access: Access,
+    model: Option<String>,
+    effort: String,
+) {
+    std::thread::spawn(move || {
+        let _ = tx.send(ChatMsg::Note("解析 codex…".into()));
+        let (program, path_env) = resolve_codex(&wrapper);
+        let _ = tx.send(ChatMsg::Note("启动 app-server…".into()));
+        let mut env = Vec::new();
+        if !path_env.is_empty() {
+            env.push(("PATH".to_string(), path_env));
+        }
+        let driver = CodexAgentDriver { program, env };
+        let cfg = SessionConfig {
+            cwd,
+            model,
+            approval_policy: access.approval().to_string(),
+            sandbox: access.sandbox().to_string(),
+        };
+        let sink_tx = tx.clone();
+        let sink = Box::new(move |ev: &AgentEvent| {
+            let _ = sink_tx.send(ChatMsg::Event(ev.clone()));
+        });
+        let _ = tx.send(ChatMsg::Note("握手中…".into()));
+        match CodexSession::start(&driver, &cfg, sink) {
+            Ok(session) => {
+                session.set_effort(Some(effort));
+                let _ = tx.send(ChatMsg::Started(session.clone()));
+                // Pull the dynamic catalog so the composer shows real
+                // models/efforts/skills, not a hardcoded guess.
+                let models = session.list_models().unwrap_or_default();
+                let skills = session.list_skills(&cfg.cwd).unwrap_or_default();
+                let profiles = session.list_permission_profiles(&cfg.cwd).unwrap_or_default();
+                let _ = tx.send(ChatMsg::Catalog {
+                    models,
+                    skills,
+                    profiles,
+                });
+            }
+            Err(err) => {
+                let _ = tx.send(ChatMsg::Failed(err));
+            }
+        }
+    });
+}
+
 pub(in crate::app) struct ChatView {
     cwd: String,
     codex_program: String,
     session: Option<CodexSession>,
     starting: bool,
+    /// Messages typed before the session finished connecting; flushed on Started.
+    pending_send: Vec<String>,
     items: Vec<TimelineItem>,
     pending_approvals: Vec<ApprovalRequest>,
     item_times: HashMap<String, SharedString>,
@@ -194,11 +250,22 @@ impl ChatView {
                 }
             }
         });
+        // Connect eagerly so the model/effort/access dropdowns and the `/` palette
+        // populate from the server before the user types anything.
+        spawn_session(
+            tx.clone(),
+            cwd.clone(),
+            codex_program.clone(),
+            Access::WorkspaceWrite,
+            None,
+            "medium".to_string(),
+        );
         Self {
             cwd,
             codex_program,
             session: None,
-            starting: false,
+            starting: true,
+            pending_send: Vec::new(),
             items: Vec::new(),
             pending_approvals: Vec::new(),
             item_times: HashMap::new(),
@@ -237,9 +304,17 @@ impl ChatView {
         match msg {
             ChatMsg::Note(note) => self.status = SharedString::from(note),
             ChatMsg::Started(session) => {
+                // Flush anything typed while connecting.
+                let busy = !self.pending_send.is_empty();
+                for text in self.pending_send.drain(..) {
+                    let s = session.clone();
+                    std::thread::spawn(move || {
+                        let _ = s.send_user_message(&text);
+                    });
+                }
                 self.session = Some(session);
                 self.starting = false;
-                self.status = SharedString::from("就绪");
+                self.status = SharedString::from(if busy { "生成中…" } else { "就绪" });
             }
             ChatMsg::Catalog {
                 models,
@@ -310,64 +385,31 @@ impl ChatView {
             });
             self.status = SharedString::from("生成中…");
         } else {
-            self.start_session(text);
+            // Session still connecting (or failed): queue, and (re)start if needed.
+            self.pending_send.push(text);
+            self.ensure_session();
+            self.status = SharedString::from("连接中…");
         }
         cx.notify();
     }
 
-    fn start_session(&mut self, first_prompt: String) {
-        if self.starting {
+    /// Start the codex session if it isn't already up. Called eagerly when the
+    /// view is created so the composer's model/effort/access dropdowns and the `/`
+    /// palette's skills populate from the server *before* the first message.
+    fn ensure_session(&mut self) {
+        if self.session.is_some() || self.starting {
             return;
         }
         self.starting = true;
         self.status = SharedString::from("连接中…");
-        let tx = self.tx.clone();
-        let cwd = self.cwd.clone();
-        let wrapper = self.codex_program.clone();
-        let access = self.access;
-        let model = self.model.clone();
-        let effort = self.effort.to_string();
-        std::thread::spawn(move || {
-            let _ = tx.send(ChatMsg::Note("解析 codex…".into()));
-            let (program, path_env) = resolve_codex(&wrapper);
-            let _ = tx.send(ChatMsg::Note("启动 app-server…".into()));
-            let mut env = Vec::new();
-            if !path_env.is_empty() {
-                env.push(("PATH".to_string(), path_env));
-            }
-            let driver = CodexAgentDriver { program, env };
-            let cfg = SessionConfig {
-                cwd,
-                model,
-                approval_policy: access.approval().to_string(),
-                sandbox: access.sandbox().to_string(),
-            };
-            let sink_tx = tx.clone();
-            let sink = Box::new(move |ev: &AgentEvent| {
-                let _ = sink_tx.send(ChatMsg::Event(ev.clone()));
-            });
-            let _ = tx.send(ChatMsg::Note("握手中…".into()));
-            match CodexSession::start(&driver, &cfg, sink) {
-                Ok(session) => {
-                    session.set_effort(Some(effort));
-                    let _ = tx.send(ChatMsg::Started(session.clone()));
-                    // Pull the dynamic catalog before the first turn so the
-                    // composer shows real models/efforts/skills, not a guess.
-                    let models = session.list_models().unwrap_or_default();
-                    let skills = session.list_skills(&cfg.cwd).unwrap_or_default();
-                    let profiles = session.list_permission_profiles(&cfg.cwd).unwrap_or_default();
-                    let _ = tx.send(ChatMsg::Catalog {
-                        models,
-                        skills,
-                        profiles,
-                    });
-                    let _ = session.send_user_message(&first_prompt);
-                }
-                Err(err) => {
-                    let _ = tx.send(ChatMsg::Failed(err));
-                }
-            }
-        });
+        spawn_session(
+            self.tx.clone(),
+            self.cwd.clone(),
+            self.codex_program.clone(),
+            self.access,
+            self.model.clone(),
+            self.effort.to_string(),
+        );
     }
 
     fn run_command(&mut self, line: &str, window: &mut Window, cx: &mut Context<Self>) {

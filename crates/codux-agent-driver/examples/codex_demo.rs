@@ -71,7 +71,31 @@ fn main() -> Result<(), String> {
     println!("=== starting codex session (cwd={cwd}) ===");
     let session = CodexSession::start(&driver, &cfg, sink)?;
     let _ = session_for_sink.set(session.clone());
-    println!("thread_id = {}\nprompt: {prompt}\n", session.thread_id());
+    println!("thread_id = {}\n", session.thread_id());
+
+    // Dynamic catalog (proves the composer dropdowns/palette aren't hardcoded).
+    match session.list_models() {
+        Ok(models) => {
+            println!("📦 models ({}):", models.len());
+            for m in &models {
+                let def = if m.is_default { " [default]" } else { "" };
+                println!(
+                    "   - {} ({}){}  efforts={:?} default={}",
+                    m.display_name, m.id, def, m.supported_efforts, m.default_effort
+                );
+            }
+        }
+        Err(e) => println!("📦 models ERR: {e}"),
+    }
+    match session.list_permission_profiles(&cwd) {
+        Ok(p) => println!("🔒 profiles: {:?}", p.iter().map(|p| &p.id).collect::<Vec<_>>()),
+        Err(e) => println!("🔒 profiles ERR: {e}"),
+    }
+    match session.list_skills(&cwd) {
+        Ok(s) => println!("🧩 skills ({}): {:?}", s.len(), s.iter().take(8).map(|s| &s.name).collect::<Vec<_>>()),
+        Err(e) => println!("🧩 skills ERR: {e}"),
+    }
+    println!("\nprompt: {prompt}\n");
 
     session.send_user_message(&prompt)?;
 
