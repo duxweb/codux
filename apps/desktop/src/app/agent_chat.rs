@@ -261,6 +261,11 @@ pub(in crate::app) struct ChatView {
     busy: bool,
     /// When the current turn started (for the "Working (Ns)" elapsed counter).
     turn_started: Option<Instant>,
+    /// Output-token count at the current turn's start (to show the per-turn delta).
+    tokens_at_turn_start: u64,
+    /// Summary of the last finished turn: (elapsed secs, output tokens) — shown as
+    /// a "完成" footer after generation ends.
+    last_completed: Option<(u64, u64)>,
     /// Turns composed before the session finished connecting; flushed on Started.
     pending_send: Vec<Vec<UserInputPart>>,
     items: Vec<TimelineItem>,
@@ -368,6 +373,8 @@ impl ChatView {
             starting: true,
             busy: false,
             turn_started: None,
+            tokens_at_turn_start: 0,
+            last_completed: None,
             pending_send: Vec::new(),
             items: Vec::new(),
             pending_approvals: Vec::new(),
@@ -490,6 +497,15 @@ impl ChatView {
                 match ev {
                     AgentEvent::ApprovalRequest(req) => self.pending_approvals.push(req),
                     AgentEvent::TurnCompleted => {
+                        // Freeze a "完成" summary for the turn that just ended.
+                        let secs = self.turn_started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
+                        let tokens = self
+                            .last_usage
+                            .as_ref()
+                            .map(|u| u.output_tokens)
+                            .unwrap_or(0)
+                            .saturating_sub(self.tokens_at_turn_start);
+                        self.last_completed = Some((secs, tokens));
                         self.busy = false;
                         self.turn_started = None;
                         self.status = SharedString::from("就绪");
@@ -570,6 +586,8 @@ impl ChatView {
         let parts = self.pending_send.remove(0);
         self.busy = true;
         self.turn_started = Some(Instant::now());
+        self.tokens_at_turn_start = self.last_usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
+        self.last_completed = None; // clear previous footer while this turn runs
         self.status = SharedString::from("生成中…");
         std::thread::spawn(move || {
             let _ = session.send_user_turn(parts);
@@ -1043,6 +1061,11 @@ impl Render for ChatView {
                             format!("已执行 {elapsed}")
                         };
                         this.child(render_working(pal, self.working_word(), meta, secs % 2 == 0))
+                    })
+                    // After a turn finishes, leave a "完成" footer with its time/tokens.
+                    .when(!self.busy && self.last_completed.is_some(), |this| {
+                        let (secs, tokens) = self.last_completed.unwrap();
+                        this.child(render_done(pal, secs, tokens))
                     }),
             )
             .child(self.render_composer(pal, input_bg, &input_value, cx))
@@ -1830,6 +1853,29 @@ fn render_working(pal: Pal, word: &str, meta: String, pulse: bool) -> Div {
                 .child(format!("{word}…")),
         )
         .child(div().text_size(rems(0.74)).text_color(pal.muted).child(meta))
+}
+
+/// "完成" footer after a turn: a check + elapsed time + output tokens. Derived
+/// from the turn's metrics — not a stored/fabricated message.
+fn render_done(pal: Pal, secs: u64, tokens: u64) -> Div {
+    let elapsed = if secs >= 60 {
+        format!("{}m {}s", secs / 60, secs % 60)
+    } else {
+        format!("{secs}s")
+    };
+    let meta = if tokens > 0 {
+        format!("完成 · 用时 {elapsed} · ↓ {}", fmt_tokens(tokens))
+    } else {
+        format!("完成 · 用时 {elapsed}")
+    };
+    div()
+        .flex()
+        .w_full()
+        .items_center()
+        .gap_2()
+        .py(px(2.0))
+        .child(Icon::new(HeroIconName::Check).size_3().text_color(pal.muted))
+        .child(div().text_size(rems(0.72)).text_color(pal.muted).child(meta))
 }
 
 fn meta_row(time: SharedString, pal: Pal) -> Div {
