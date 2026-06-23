@@ -27,6 +27,7 @@ use gpui_component::{
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu, PopupMenuItem},
     spinner::Spinner,
+    text::TextView,
 };
 
 use crate::app::types::{WorkspaceSplitKind, WorkspaceView};
@@ -282,6 +283,9 @@ pub(in crate::app) struct ChatView {
     editing: Option<(String, Entity<InputState>)>,
     /// Activity cards (commands/reasoning/tools) the user has expanded.
     expanded: std::collections::HashSet<String>,
+    /// Explicit open/closed state for consecutive-activity groups (keyed by the
+    /// group's first item id); absent = default (open while running, else closed).
+    group_open: std::collections::HashMap<String, bool>,
     tx: Sender<ChatMsg>,
     _drain: Task<()>,
 }
@@ -351,6 +355,7 @@ impl ChatView {
             mention_hits: Vec::new(),
             editing: None,
             expanded: std::collections::HashSet::new(),
+            group_open: std::collections::HashMap::new(),
             tx,
             _drain: drain,
         }
@@ -537,6 +542,11 @@ impl ChatView {
         if !self.expanded.remove(&id) {
             self.expanded.insert(id);
         }
+        cx.notify();
+    }
+
+    fn toggle_group(&mut self, key: String, currently_open: bool, cx: &mut Context<Self>) {
+        self.group_open.insert(key, !currently_open);
         cx.notify();
     }
 
@@ -857,15 +867,32 @@ impl Render for ChatView {
 
         let input_value = self.input.read(cx).value().to_string();
 
-        let rows: Vec<Div> = self
-            .items
-            .iter()
-            .filter(|it| {
-                // Skip empty reasoning placeholders that have no text yet.
-                !(it.kind == TimelineKind::Reasoning && it.text.is_empty())
-            })
-            .map(|item| self.render_row(item, pal, mono.clone(), cx))
-            .collect();
+        // Build display blocks: messages render standalone; runs of consecutive
+        // activity items (commands/reasoning/tools/files) coalesce into one
+        // collapsible group, like the codex desktop transcript.
+        let mut rows: Vec<Div> = Vec::new();
+        let mut group: Vec<&TimelineItem> = Vec::new();
+        for it in &self.items {
+            if it.kind == TimelineKind::Reasoning && it.text.is_empty() {
+                continue; // skip empty reasoning placeholders
+            }
+            let is_msg = matches!(
+                it.kind,
+                TimelineKind::UserPrompt | TimelineKind::AssistantMessage
+            );
+            if is_msg {
+                if !group.is_empty() {
+                    rows.push(self.render_activity_block(&group, pal, mono.clone(), cx));
+                    group.clear();
+                }
+                rows.push(self.render_row(it, pal, mono.clone(), cx));
+            } else {
+                group.push(it);
+            }
+        }
+        if !group.is_empty() {
+            rows.push(self.render_activity_block(&group, pal, mono.clone(), cx));
+        }
         let approvals: Vec<Div> = self
             .pending_approvals
             .iter()
@@ -947,7 +974,7 @@ impl ChatView {
         match item.kind {
             TimelineKind::UserPrompt => self.render_user_message(item, &time, pal, cx),
             TimelineKind::AssistantMessage => self.render_assistant_message(item, &time, pal, cx),
-            _ => self.render_activity_card(item, pal, mono, cx),
+            _ => self.render_activity_card(item, pal, mono, false, cx),
         }
     }
 
@@ -1104,7 +1131,10 @@ impl ChatView {
                         div()
                             .text_size(rems(0.85))
                             .text_color(pal.fg)
-                            .child(text),
+                            .child(TextView::markdown(
+                                SharedString::from(format!("md-{}", item.id)),
+                                text,
+                            )),
                     )
                     .child(
                         meta_row(time.clone(), pal)
@@ -1726,15 +1756,99 @@ fn icon_action(
 }
 
 impl ChatView {
-    /// Reasoning / command / file-change / tool items render as a compact,
-    /// single-line card that expands on click (codex-desktop style): header shows
-    /// status + label + a truncated summary; the body (output/long text) is hidden
-    /// until expanded and then capped to a scrollable max height.
+    /// Render a run of consecutive activity items. A single item is just its card;
+    /// multiple coalesce into one collapsible group ("已执行 N 步"), open while
+    /// running and collapsed once done (codex-desktop style), toggleable.
+    fn render_activity_block(
+        &self,
+        items: &[&TimelineItem],
+        pal: Pal,
+        mono: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        if items.len() == 1 {
+            return self.render_activity_card(items[0], pal, mono, false, cx);
+        }
+        let key = items[0].id.clone();
+        let running = items.iter().any(|it| it.status == ItemStatus::InProgress);
+        let failed = items.iter().any(|it| it.status == ItemStatus::Failed);
+        let open = self.group_open.get(&key).copied().unwrap_or(running);
+
+        let status: AnyElement = if running {
+            Spinner::new().with_size(Size::Small).color(pal.muted).into_any_element()
+        } else if failed {
+            Icon::new(HeroIconName::ExclamationTriangle)
+                .size_3()
+                .text_color(pal.danger)
+                .into_any_element()
+        } else {
+            Icon::new(HeroIconName::Check).size_3().text_color(pal.muted).into_any_element()
+        };
+        let summary = if running {
+            format!("执行中… {} 步", items.len())
+        } else {
+            format!("已执行 {} 步", items.len())
+        };
+        let key2 = key.clone();
+        let header = div()
+            .id(SharedString::from(format!("grp-{key}")))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px(px(8.0))
+            .py(px(6.0))
+            .cursor_pointer()
+            .hover(|s| s.bg(pal.bubble))
+            .on_click(cx.listener(move |view, _e, _w, cx| {
+                view.toggle_group(key2.clone(), open, cx)
+            }))
+            .child(status)
+            .child(Icon::new(HeroIconName::Bars3).size_3().text_color(pal.muted))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(rems(0.72))
+                    .text_color(pal.fg)
+                    .child(summary),
+            )
+            .child(
+                Icon::new(if open {
+                    HeroIconName::ChevronDown
+                } else {
+                    HeroIconName::ChevronRight
+                })
+                .size_3()
+                .text_color(pal.muted),
+            );
+
+        let mut block = div()
+            .flex()
+            .flex_col()
+            .rounded(px(8.0))
+            .border_1()
+            .border_color(pal.border)
+            .overflow_hidden()
+            .child(header);
+        if open {
+            let mut body = div().flex().flex_col().px(px(4.0)).pb(px(4.0));
+            for it in items {
+                body = body.child(self.render_activity_card(it, pal, mono.clone(), true, cx));
+            }
+            block = block.child(body);
+        }
+        block
+    }
+
+    /// One activity item as a compact, single-line card that expands on click.
+    /// `nested` drops the outer border (it sits inside a group).
     fn render_activity_card(
         &self,
         item: &TimelineItem,
         pal: Pal,
         mono: SharedString,
+        nested: bool,
         cx: &mut Context<Self>,
     ) -> Div {
         let (label, icon) = match item.kind {
@@ -1746,18 +1860,22 @@ impl ChatView {
         };
         let is_cmd = item.kind == TimelineKind::Command;
         let is_reasoning = item.kind == TimelineKind::Reasoning;
+        let is_filechange = item.kind == TimelineKind::FileChange;
+        let changes = if is_filechange { file_changes(item) } else { Vec::new() };
 
         // Single-line summary for the collapsed header.
         let primary = match item.kind {
             TimelineKind::Command => item.command.clone().unwrap_or_else(|| item.title.clone()),
             TimelineKind::Reasoning => first_line(&item.text),
+            TimelineKind::FileChange => filechange_summary(&changes),
             _ if !item.title.is_empty() => item.title.clone(),
             _ => first_line(&item.text),
         };
-        let body_text = if is_cmd { String::new() } else { item.text.clone() };
-        let has_body = !item.output.is_empty()
+        let body_text = if is_cmd || is_filechange { String::new() } else { item.text.clone() };
+        let has_body = !changes.is_empty()
+            || !item.output.is_empty()
             || (is_reasoning && (item.text.lines().count() > 1 || item.text.chars().count() > 64))
-            || (!is_cmd && !is_reasoning && !item.text.is_empty());
+            || (!is_cmd && !is_reasoning && !is_filechange && !item.text.is_empty());
         let expanded = self.expanded.contains(&item.id);
         let id = item.id.clone();
 
@@ -1817,15 +1935,14 @@ impl ChatView {
             .flex()
             .flex_col()
             .rounded(px(8.0))
-            .border_1()
-            .border_color(pal.border)
             .overflow_hidden()
+            .when(!nested, |s| s.border_1().border_color(pal.border))
             .child(header);
 
         if expanded && has_body {
             let mut body = div()
                 .id(SharedString::from(format!("card-body-{id}")))
-                .max_h(px(260.0))
+                .max_h(px(280.0))
                 .overflow_y_scroll()
                 .flex()
                 .flex_col()
@@ -1839,6 +1956,18 @@ impl ChatView {
                         .text_color(if is_reasoning { pal.muted } else { pal.fg })
                         .child(body_text),
                 );
+            }
+            // File changes: render each file's unified diff with +/- coloring.
+            for (path, diff) in &changes {
+                body = body.child(
+                    div()
+                        .font_family(mono.clone())
+                        .text_size(rems(0.7))
+                        .text_color(pal.fg)
+                        .pt(px(2.0))
+                        .child(path.clone()),
+                );
+                body = body.child(render_diff(diff, pal, mono.clone()));
             }
             if !item.output.is_empty() {
                 body = body.child(
@@ -1857,6 +1986,56 @@ impl ChatView {
 
 fn first_line(s: &str) -> String {
     s.trim().lines().next().unwrap_or("").to_string()
+}
+
+/// Extract (path, unified_diff) pairs from a fileChange item's raw `changes`.
+fn file_changes(item: &TimelineItem) -> Vec<(String, String)> {
+    item.raw
+        .get("changes")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| {
+                    let path = c.get("path").and_then(|p| p.as_str())?.to_string();
+                    let diff = c
+                        .get("diff")
+                        .and_then(|d| d.as_str())
+                        .or_else(|| c.get("unified_diff").and_then(|d| d.as_str()))
+                        .unwrap_or_default()
+                        .to_string();
+                    Some((path, diff))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn filechange_summary(changes: &[(String, String)]) -> String {
+    match changes {
+        [] => "文件改动".into(),
+        [(p, _)] => p.clone(),
+        _ => format!("{} 个文件改动", changes.len()),
+    }
+}
+
+/// Render a unified diff with +/- line coloring (green add, red remove).
+fn render_diff(diff: &str, pal: Pal, mono: SharedString) -> Div {
+    let add = gpui::hsla(140.0 / 360.0, 0.5, 0.55, 1.0);
+    let del = pal.danger;
+    let mut block = div().flex().flex_col().font_family(mono).text_size(rems(0.7));
+    for line in diff.lines() {
+        let color = if line.starts_with("@@") {
+            pal.primary
+        } else if line.starts_with('+') && !line.starts_with("+++") {
+            add
+        } else if line.starts_with('-') && !line.starts_with("---") {
+            del
+        } else {
+            pal.muted
+        };
+        block = block.child(div().text_color(color).child(line.to_string()));
+    }
+    block
 }
 
 /// Multi-tab host for chat sessions bound to a single worktree. Each tab is its
