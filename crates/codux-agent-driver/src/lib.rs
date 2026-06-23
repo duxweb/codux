@@ -57,6 +57,17 @@ impl SessionConfig {
             sandbox: "read-only".into(),
         }
     }
+
+    /// Codex's default interactive posture: edits within the workspace are
+    /// allowed, anything riskier asks for approval.
+    pub fn workspace_write(cwd: impl Into<String>) -> Self {
+        Self {
+            cwd: cwd.into(),
+            model: None,
+            approval_policy: "on-request".into(),
+            sandbox: "workspace-write".into(),
+        }
+    }
 }
 
 /// A registered AI-CLI driver: how to launch it and what protocol it speaks.

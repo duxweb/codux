@@ -75,6 +75,8 @@ struct Inner {
     thread_id: String,
     current_turn: Mutex<Option<String>>,
     pending_approvals: Mutex<std::collections::HashMap<String, Pending>>,
+    /// Model override applied to subsequent turns (set via `/model`).
+    model: Mutex<Option<String>>,
     sink: Sink,
 }
 
@@ -126,6 +128,7 @@ impl CodexSession {
             thread_id: thread_id.clone(),
             current_turn: Mutex::new(None),
             pending_approvals: Mutex::new(std::collections::HashMap::new()),
+            model: Mutex::new(cfg.model.clone()),
             sink,
         });
 
@@ -149,12 +152,27 @@ impl CodexSession {
     /// Send a user turn. Returns once the server acks; completion arrives as
     /// events (TurnCompleted).
     pub fn send_user_message(&self, text: &str) -> Result<(), String> {
+        let mut params = json!({
+            "threadId": self.inner.thread_id,
+            "input": [{ "type": "text", "text": text }],
+        });
+        if let Some(model) = self.inner.model.lock().clone() {
+            params["model"] = json!(model);
+        }
+        self.inner.client.request("turn/start", params)?;
+        Ok(())
+    }
+
+    /// Set the model used for subsequent turns (the `/model` command).
+    pub fn set_model(&self, model: Option<String>) {
+        *self.inner.model.lock() = model;
+    }
+
+    /// Compact the thread's context (the `/compact` command).
+    pub fn compact(&self) -> Result<(), String> {
         self.inner.client.request(
-            "turn/start",
-            json!({
-                "threadId": self.inner.thread_id,
-                "input": [{ "type": "text", "text": text }],
-            }),
+            "thread/compact/start",
+            json!({ "threadId": self.inner.thread_id }),
         )?;
         Ok(())
     }
