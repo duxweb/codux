@@ -17,10 +17,10 @@ use codux_agent_driver::{
 };
 use flume::Sender;
 use gpui::{
-    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, InteractiveElement,
-    IntoElement, ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div, img,
-    prelude::FluentBuilder as _, px, rems,
+    Animation, AnimationExt as _, AnyElement, AppContext, ClipboardItem, Context, Div, Entity,
+    EventEmitter, InteractiveElement, IntoElement, ParentElement, PathPromptOptions, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div,
+    img, prelude::FluentBuilder as _, px, rems,
 };
 use gpui_component::{
     ActiveTheme, Icon, Sizable, Size,
@@ -739,15 +739,25 @@ impl ChatView {
         });
     }
 
-    /// Show the "Working" indicator while a turn is in flight, except while the
-    /// assistant is already streaming visible text (the text itself is the cue).
+    /// The indicator stays up for the entire turn (until completion), never
+    /// disappearing mid-turn.
     fn show_working(&self) -> bool {
         self.busy
-            && !self.items.last().is_some_and(|it| {
-                it.kind == TimelineKind::AssistantMessage
-                    && !it.text.is_empty()
-                    && it.status == ItemStatus::InProgress
-            })
+    }
+
+    /// State-dependent verb for the working indicator.
+    fn working_word(&self) -> &'static str {
+        match self.items.last() {
+            Some(it) => match it.kind {
+                TimelineKind::Reasoning => "思考中",
+                TimelineKind::Command => "执行命令",
+                TimelineKind::FileChange => "修改文件",
+                TimelineKind::ToolCall => "调用工具",
+                TimelineKind::AssistantMessage if it.status == ItemStatus::InProgress => "撰写回复",
+                _ => "工作中",
+            },
+            None => "工作中",
+        }
     }
 
     fn usage_summary(&self) -> SharedString {
@@ -993,7 +1003,18 @@ impl Render for ChatView {
                             .turn_started
                             .map(|t| t.elapsed().as_secs())
                             .unwrap_or(0);
-                        this.child(render_working(pal, secs))
+                        let elapsed = if secs >= 60 {
+                            format!("{}m {}s", secs / 60, secs % 60)
+                        } else {
+                            format!("{secs}s")
+                        };
+                        let tokens = self.last_usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
+                        let meta = if tokens > 0 {
+                            format!("已执行 {elapsed} · ↓ {}", fmt_tokens(tokens))
+                        } else {
+                            format!("已执行 {elapsed}")
+                        };
+                        this.child(render_working(pal, self.working_word(), meta))
                     }),
             )
             .child(self.render_composer(pal, input_bg, &input_value, cx))
@@ -1748,30 +1769,39 @@ fn strip_active_mention(value: &str) -> String {
     }
 }
 
-/// Animated "Working (Ns)" indicator shown while the agent works (codex style).
-fn render_working(pal: Pal, secs: u64) -> Div {
-    div().flex().w_full().justify_start().child(
+fn fmt_tokens(t: u64) -> String {
+    if t >= 1000 {
+        format!("{:.1}k tokens", t as f64 / 1000.0)
+    } else {
+        format!("{t} tokens")
+    }
+}
+
+/// Working indicator shown for the whole turn: theme-color shimmering verb +
+/// elapsed time / token meta (codex CLI style, e.g. "执行命令… 已执行 2m 18s · ↓ 5.8k").
+fn render_working(pal: Pal, word: &str, meta: String) -> Div {
+    div().flex().w_full().items_center().gap_2().py(px(4.0)).child(
+        // Shimmering verb in the theme color.
         div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .rounded(px(8.0))
-            .px(px(10.0))
-            .py(px(6.0))
-            .child(Spinner::new().with_size(Size::Small).color(pal.muted))
-            .child(
-                div()
-                    .text_size(rems(0.8))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(pal.fg)
-                    .child("Working"),
-            )
-            .child(
-                div()
-                    .text_size(rems(0.74))
-                    .text_color(pal.muted)
-                    .child(format!("({secs}s · 点 ■ 可停止)")),
+            .text_size(rems(0.85))
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .text_color(pal.primary)
+            .child(format!("{word}…"))
+            .with_animation(
+                "working-shimmer",
+                Animation::new(Duration::from_millis(1300)).repeat(),
+                |el, delta| {
+                    // Triangle 0→1→0 so the glow breathes both ways.
+                    let t = 1.0 - (delta * 2.0 - 1.0).abs();
+                    el.opacity(0.45 + 0.55 * t)
+                },
             ),
+    )
+    .child(
+        div()
+            .text_size(rems(0.74))
+            .text_color(pal.muted)
+            .child(meta),
     )
 }
 
@@ -2386,8 +2416,8 @@ impl Render for ChatPanel {
             .flex()
             .items_center()
             .gap_1()
-            .h(px(38.0))
-            .px(px(6.0))
+            .h(px(44.0))
+            .px(px(8.0))
             .border_b_1()
             .border_color(border)
             .overflow_x_hidden();
