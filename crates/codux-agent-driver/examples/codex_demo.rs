@@ -95,6 +95,10 @@ fn main() -> Result<(), String> {
         Ok(s) => println!("🧩 skills ({}): {:?}", s.len(), s.iter().take(8).map(|s| &s.name).collect::<Vec<_>>()),
         Err(e) => println!("🧩 skills ERR: {e}"),
     }
+    match session.search_files("agent_chat", vec![cwd.clone()]) {
+        Ok(f) => println!("🔎 file search 'agent_chat' ({}): {:?}", f.len(), f.iter().take(3).map(|f| &f.path).collect::<Vec<_>>()),
+        Err(e) => println!("🔎 file search ERR: {e}"),
+    }
     println!("\nprompt: {prompt}\n");
 
     session.send_user_message(&prompt)?;

@@ -79,6 +79,7 @@ pub struct CodexModel {
 pub struct CodexSkill {
     pub name: String,
     pub description: String,
+    pub path: String,
 }
 
 /// A permission/sandbox profile from `permissionProfile/list` (e.g. `:read-only`,
@@ -87,6 +88,25 @@ pub struct CodexSkill {
 pub struct CodexPermissionProfile {
     pub id: String,
     pub description: Option<String>,
+}
+
+/// One part of a user turn. Mirrors codex's `UserInput` union: plain text, an
+/// explicit skill invocation, an @-file mention, or an attached local image.
+#[derive(Clone, Debug)]
+pub enum UserInputPart {
+    Text(String),
+    Skill { name: String, path: String },
+    Mention { name: String, path: String },
+    LocalImage { path: String },
+}
+
+/// A fuzzy file-search hit (`fuzzyFileSearch`), used to back the @-mention picker.
+#[derive(Clone, Debug)]
+pub struct FileHit {
+    pub root: String,
+    pub path: String,
+    pub file_name: String,
+    pub score: i64,
 }
 
 struct Pending {
@@ -183,12 +203,32 @@ impl CodexSession {
         &self.inner.thread_id
     }
 
-    /// Send a user turn. Returns once the server acks; completion arrives as
-    /// events (TurnCompleted).
+    /// Send a plain-text user turn (convenience over [`Self::send_user_turn`]).
     pub fn send_user_message(&self, text: &str) -> Result<(), String> {
+        self.send_user_turn(vec![UserInputPart::Text(text.to_string())])
+    }
+
+    /// Send a user turn made of mixed input parts (text + skills + mentions +
+    /// images). Returns once the server acks; completion arrives as events.
+    pub fn send_user_turn(&self, parts: Vec<UserInputPart>) -> Result<(), String> {
+        let input: Vec<Value> = parts
+            .iter()
+            .map(|p| match p {
+                UserInputPart::Text(text) => json!({ "type": "text", "text": text }),
+                UserInputPart::Skill { name, path } => {
+                    json!({ "type": "skill", "name": name, "path": path })
+                }
+                UserInputPart::Mention { name, path } => {
+                    json!({ "type": "mention", "name": name, "path": path })
+                }
+                UserInputPart::LocalImage { path } => {
+                    json!({ "type": "localImage", "path": path })
+                }
+            })
+            .collect();
         let mut params = json!({
             "threadId": self.inner.thread_id,
-            "input": [{ "type": "text", "text": text }],
+            "input": input,
         });
         if let Some(model) = self.inner.model.lock().clone() {
             params["model"] = json!(model);
@@ -197,6 +237,48 @@ impl CodexSession {
             params["effort"] = json!(effort);
         }
         self.inner.client.request("turn/start", params)?;
+        Ok(())
+    }
+
+    /// Fuzzy file search for the @-mention picker (`fuzzyFileSearch`). Blocking.
+    pub fn search_files(&self, query: &str, roots: Vec<String>) -> Result<Vec<FileHit>, String> {
+        let res = self.inner.client.request(
+            "fuzzyFileSearch",
+            json!({ "query": query, "roots": roots, "cancellationToken": null }),
+        )?;
+        Ok(res
+            .get("files")
+            .and_then(Value::as_array)
+            .map(|files| {
+                files
+                    .iter()
+                    .filter_map(|f| {
+                        Some(FileHit {
+                            root: f.get("root").and_then(Value::as_str)?.to_string(),
+                            path: f.get("path").and_then(Value::as_str)?.to_string(),
+                            file_name: f
+                                .get("file_name")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string(),
+                            score: f.get("score").and_then(Value::as_i64).unwrap_or(0),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// Start a code review of the working tree's uncommitted changes
+    /// (`review/start`, target = uncommittedChanges).
+    pub fn review_uncommitted(&self) -> Result<(), String> {
+        self.inner.client.request(
+            "review/start",
+            json!({
+                "threadId": self.inner.thread_id,
+                "target": { "type": "uncommittedChanges" },
+            }),
+        )?;
         Ok(())
     }
 
@@ -315,6 +397,11 @@ impl CodexSession {
                                 name: name.to_string(),
                                 description: s
                                     .get("description")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_string(),
+                                path: s
+                                    .get("path")
                                     .and_then(Value::as_str)
                                     .unwrap_or_default()
                                     .to_string(),

@@ -11,14 +11,15 @@ use std::collections::HashMap;
 use chrono::Local;
 use codux_agent_driver::{
     AgentEvent, ApprovalDecision, ApprovalRequest, CodexAgentDriver, CodexModel,
-    CodexPermissionProfile, CodexSession, CodexSkill, ItemStatus, SessionConfig, TimelineItem,
-    TimelineKind,
+    CodexPermissionProfile, CodexSession, CodexSkill, FileHit, ItemStatus, SessionConfig,
+    TimelineItem, TimelineKind, TokenUsage, UserInputPart,
 };
 use flume::Sender;
 use gpui::{
-    AppContext, ClipboardItem, Context, Div, Entity, InteractiveElement, IntoElement,
-    ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task,
-    WeakEntity, Window, div, prelude::FluentBuilder as _, px, rems,
+    AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, InteractiveElement, IntoElement,
+    ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div,
+    prelude::FluentBuilder as _, px, rems,
 };
 use gpui_component::{
     ActiveTheme, Icon, Sizable, Size,
@@ -92,12 +93,61 @@ struct Command {
 }
 
 fn commands() -> Vec<Command> {
+    // Action verbs only — model/effort/access live in the composer dropdowns, and
+    // skills are listed dynamically below these.
     vec![
-        Command { icon: HeroIconName::StopCircle, name: "/interrupt", desc: "中断当前回合", token: "/interrupt" },
+        Command { icon: HeroIconName::PlusCircle, name: "/new", desc: "新建一个对话标签", token: "/new" },
+        Command { icon: HeroIconName::ShieldCheck, name: "/review", desc: "审查工作区未提交的改动", token: "/review" },
         Command { icon: HeroIconName::ArchiveBoxArrowDown, name: "/compact", desc: "压缩此对话的上下文", token: "/compact" },
-        Command { icon: HeroIconName::CubeTransparent, name: "/model", desc: "设置模型", token: "/model " },
-        Command { icon: HeroIconName::CpuChip, name: "/effort", desc: "设置推理强度 (low/medium/high/xhigh)", token: "/effort " },
+        Command { icon: HeroIconName::StopCircle, name: "/interrupt", desc: "中断当前回合", token: "/interrupt" },
+        Command { icon: HeroIconName::ChartBar, name: "/status", desc: "查看本会话 token 用量", token: "/status" },
     ]
+}
+
+/// An attachment chip shown above the composer; sent as a structured input part.
+#[derive(Clone)]
+enum Attachment {
+    Skill { name: String, path: String },
+    Mention { name: String, path: String },
+    Image { path: String },
+}
+
+impl Attachment {
+    fn label(&self) -> String {
+        match self {
+            Attachment::Skill { name, .. } => format!("技能 {name}"),
+            Attachment::Mention { name, .. } => format!("@{name}"),
+            Attachment::Image { path } => std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "图片".into()),
+        }
+    }
+    fn icon(&self) -> HeroIconName {
+        match self {
+            Attachment::Skill { .. } => HeroIconName::Sparkles,
+            Attachment::Mention { .. } => HeroIconName::Document,
+            Attachment::Image { .. } => HeroIconName::Photo,
+        }
+    }
+    fn to_part(&self) -> UserInputPart {
+        match self {
+            Attachment::Skill { name, path } => UserInputPart::Skill {
+                name: name.clone(),
+                path: path.clone(),
+            },
+            Attachment::Mention { name, path } => UserInputPart::Mention {
+                name: name.clone(),
+                path: path.clone(),
+            },
+            Attachment::Image { path } => UserInputPart::LocalImage { path: path.clone() },
+        }
+    }
+}
+
+/// Event from a chat tab up to its panel (for tab-level actions like /new).
+pub(in crate::app) enum ChatViewEvent {
+    NewTab,
 }
 
 /// Messages from the off-thread session machinery into the view.
@@ -112,6 +162,8 @@ enum ChatMsg {
         skills: Vec<CodexSkill>,
         profiles: Vec<CodexPermissionProfile>,
     },
+    /// Results of an @-mention fuzzy file search (query echoed to ignore stale).
+    FileHits { query: String, hits: Vec<FileHit> },
     Failed(String),
     Event(AgentEvent),
 }
@@ -201,8 +253,8 @@ pub(in crate::app) struct ChatView {
     codex_program: String,
     session: Option<CodexSession>,
     starting: bool,
-    /// Messages typed before the session finished connecting; flushed on Started.
-    pending_send: Vec<String>,
+    /// Turns composed before the session finished connecting; flushed on Started.
+    pending_send: Vec<Vec<UserInputPart>>,
     items: Vec<TimelineItem>,
     pending_approvals: Vec<ApprovalRequest>,
     item_times: HashMap<String, SharedString>,
@@ -216,9 +268,18 @@ pub(in crate::app) struct ChatView {
     models: Vec<CodexModel>,
     skills: Vec<CodexSkill>,
     profiles: Vec<CodexPermissionProfile>,
+    /// Structured input parts staged for the next turn (skills, @-files, images).
+    attachments: Vec<Attachment>,
+    /// Last token usage seen, surfaced by /status.
+    last_usage: Option<TokenUsage>,
+    /// Active @-mention query and its current hits (drives the file picker).
+    mention_query: Option<String>,
+    mention_hits: Vec<FileHit>,
     tx: Sender<ChatMsg>,
     _drain: Task<()>,
 }
+
+impl EventEmitter<ChatViewEvent> for ChatView {}
 
 impl ChatView {
     pub(in crate::app) fn new(
@@ -234,12 +295,10 @@ impl ChatView {
                 .multi_line(true)
                 .submit_on_enter(true)
         });
-        cx.subscribe_in(&input, window, |view, _input, event, window, cx| {
-            if let InputEvent::PressEnter { shift, .. } = event
-                && !*shift
-            {
-                view.submit(window, cx);
-            }
+        cx.subscribe_in(&input, window, |view, _input, event, window, cx| match event {
+            InputEvent::PressEnter { shift, .. } if !*shift => view.submit(window, cx),
+            InputEvent::Change => view.on_input_changed(cx),
+            _ => {}
         })
         .detach();
 
@@ -278,6 +337,10 @@ impl ChatView {
             models: Vec::new(),
             skills: Vec::new(),
             profiles: Vec::new(),
+            attachments: Vec::new(),
+            last_usage: None,
+            mention_query: None,
+            mention_hits: Vec::new(),
             tx,
             _drain: drain,
         }
@@ -304,12 +367,12 @@ impl ChatView {
         match msg {
             ChatMsg::Note(note) => self.status = SharedString::from(note),
             ChatMsg::Started(session) => {
-                // Flush anything typed while connecting.
+                // Flush anything composed while connecting.
                 let busy = !self.pending_send.is_empty();
-                for text in self.pending_send.drain(..) {
+                for parts in self.pending_send.drain(..) {
                     let s = session.clone();
                     std::thread::spawn(move || {
-                        let _ = s.send_user_message(&text);
+                        let _ = s.send_user_turn(parts);
                     });
                 }
                 self.session = Some(session);
@@ -336,6 +399,12 @@ impl ChatView {
                 self.skills = skills;
                 self.profiles = profiles;
             }
+            ChatMsg::FileHits { query, hits } => {
+                // Ignore results for a query the user has since changed past.
+                if self.mention_query.as_deref() == Some(query.as_str()) {
+                    self.mention_hits = hits;
+                }
+            }
             ChatMsg::Failed(err) => {
                 self.starting = false;
                 self.status = SharedString::from(format!("错误: {err}"));
@@ -353,6 +422,7 @@ impl ChatView {
                 match ev {
                     AgentEvent::ApprovalRequest(req) => self.pending_approvals.push(req),
                     AgentEvent::TurnCompleted => self.status = SharedString::from("就绪"),
+                    AgentEvent::TokenUsage(u) => self.last_usage = Some(u),
                     AgentEvent::Error(err) => {
                         self.status = SharedString::from(format!("错误: {err}"))
                     }
@@ -367,26 +437,40 @@ impl ChatView {
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.input.read(cx).value().trim().to_string();
-        if text.is_empty() {
-            return;
-        }
-        self.input
-            .update(cx, |state, cx| state.set_value("", window, cx));
 
-        if text.starts_with('/') {
+        // A bare slash line (no attachments) is a command, not a message.
+        if self.attachments.is_empty() && text.starts_with('/') {
+            self.input
+                .update(cx, |state, cx| state.set_value("", window, cx));
             self.run_command(&text, window, cx);
             return;
         }
 
+        // Build the turn from the typed text plus any staged attachments.
+        let mut parts: Vec<UserInputPart> = Vec::new();
+        if !text.is_empty() {
+            parts.push(UserInputPart::Text(text));
+        }
+        parts.extend(self.attachments.iter().map(Attachment::to_part));
+        if parts.is_empty() {
+            return;
+        }
+
+        self.input
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.attachments.clear();
+        self.mention_query = None;
+        self.mention_hits.clear();
+
         if let Some(session) = &self.session {
             let session = session.clone();
             std::thread::spawn(move || {
-                let _ = session.send_user_message(&text);
+                let _ = session.send_user_turn(parts);
             });
             self.status = SharedString::from("生成中…");
         } else {
             // Session still connecting (or failed): queue, and (re)start if needed.
-            self.pending_send.push(text);
+            self.pending_send.push(parts);
             self.ensure_session();
             self.status = SharedString::from("连接中…");
         }
@@ -418,8 +502,23 @@ impl ChatView {
         let cmd = parts.next().unwrap_or("");
         let arg = parts.next().unwrap_or("").trim();
 
+        // Commands that don't require a live session.
+        match cmd {
+            "/new" => {
+                cx.emit(ChatViewEvent::NewTab);
+                return;
+            }
+            "/status" => {
+                self.status = self.usage_summary();
+                cx.notify();
+                return;
+            }
+            _ => {}
+        }
+
         let Some(session) = self.session.clone() else {
-            self.status = SharedString::from("先发一条消息以启动会话");
+            self.status = SharedString::from("正在连接 Codex…");
+            self.ensure_session();
             cx.notify();
             return;
         };
@@ -436,6 +535,12 @@ impl ChatView {
                     let _ = session.compact();
                 });
                 self.status = SharedString::from("压缩中…");
+            }
+            "/review" => {
+                std::thread::spawn(move || {
+                    let _ = session.review_uncommitted();
+                });
+                self.status = SharedString::from("审查未提交改动中…");
             }
             "/model" => {
                 if arg.is_empty() {
@@ -467,6 +572,95 @@ impl ChatView {
             state.set_value(text, window, cx);
             state.focus(window, cx);
         });
+    }
+
+    fn usage_summary(&self) -> SharedString {
+        match &self.last_usage {
+            Some(u) => SharedString::from(format!(
+                "用量 · 合计 {} (输入 {} / 输出 {} / 缓存 {})",
+                u.total_tokens, u.input_tokens, u.output_tokens, u.cached_input_tokens
+            )),
+            None => SharedString::from("暂无 token 用量数据"),
+        }
+    }
+
+    /// React to input edits: extract the active `@mention` token (a trailing
+    /// `@word` with no whitespace) and kick a fuzzy file search for it.
+    fn on_input_changed(&mut self, cx: &mut Context<Self>) {
+        let value = self.input.read(cx).value().to_string();
+        let query = active_mention(&value);
+        if query == self.mention_query {
+            return;
+        }
+        self.mention_query = query.clone();
+        if let Some(q) = query {
+            if let Some(session) = self.session.clone() {
+                let tx = self.tx.clone();
+                let root = self.cwd.clone();
+                let q2 = q.clone();
+                std::thread::spawn(move || {
+                    let hits = session.search_files(&q2, vec![root]).unwrap_or_default();
+                    let _ = tx.send(ChatMsg::FileHits { query: q2, hits });
+                });
+            }
+        } else {
+            self.mention_hits.clear();
+        }
+        cx.notify();
+    }
+
+    /// Add a skill attachment (from the `/` palette) to the next turn.
+    fn add_skill(&mut self, name: String, path: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.attachments.push(Attachment::Skill { name, path });
+        // Clear the leading `/` filter from the box.
+        self.input
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        cx.notify();
+    }
+
+    /// Resolve a chosen @-file into a Mention attachment and strip the `@token`.
+    fn add_mention(&mut self, hit: FileHit, window: &mut Window, cx: &mut Context<Self>) {
+        let value = self.input.read(cx).value().to_string();
+        let stripped = strip_active_mention(&value);
+        self.input
+            .update(cx, |state, cx| state.set_value(&stripped, window, cx));
+        self.attachments.push(Attachment::Mention {
+            name: hit.file_name.clone(),
+            path: hit.path.clone(),
+        });
+        self.mention_query = None;
+        self.mention_hits.clear();
+        cx.notify();
+    }
+
+    fn remove_attachment(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if idx < self.attachments.len() {
+            self.attachments.remove(idx);
+            cx.notify();
+        }
+    }
+
+    /// Open a native picker to attach one or more local images.
+    fn pick_images(&mut self, cx: &mut Context<Self>) {
+        let rx = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: true,
+            prompt: Some(SharedString::from("选择图片")),
+        });
+        cx.spawn(async move |this: WeakEntity<Self>, cx| {
+            if let Ok(Ok(Some(paths))) = rx.await {
+                let _ = this.update(cx, |view, cx| {
+                    for p in paths {
+                        view.attachments.push(Attachment::Image {
+                            path: p.to_string_lossy().to_string(),
+                        });
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
     }
 
     /// A command chosen from the `/` palette or `+` menu.
@@ -556,7 +750,6 @@ impl Render for ChatView {
         let mono = theme.mono_font_family.clone();
 
         let input_value = self.input.read(cx).value().to_string();
-        let show_menu = input_value.starts_with('/');
 
         let rows: Vec<Div> = self
             .items
@@ -629,7 +822,7 @@ impl Render for ChatView {
                     .children(rows)
                     .children(approvals),
             )
-            .child(self.render_composer(pal, input_bg, show_menu, &input_value, cx))
+            .child(self.render_composer(pal, input_bg, &input_value, cx))
     }
 }
 
@@ -789,7 +982,6 @@ impl ChatView {
         &self,
         pal: Pal,
         input_bg: gpui::Hsla,
-        show_menu: bool,
         input_value: &str,
         cx: &mut Context<Self>,
     ) -> Div {
@@ -805,13 +997,25 @@ impl ChatView {
         let effort_label = self.effort.clone();
         let plus_entity = cx.entity();
 
+        // The @-mention picker preempts the `/` palette while a mention is active.
+        let show_mention = self.mention_query.is_some();
+        let show_slash = !show_mention && input_value.starts_with('/');
+
+        let chips: Vec<Div> = self
+            .attachments
+            .iter()
+            .enumerate()
+            .map(|(i, a)| self.render_attachment_chip(i, a, pal, cx))
+            .collect();
+
         div()
             .flex_none()
             .flex()
             .flex_col()
             .gap_2()
             .p(px(10.0))
-            .when(show_menu, |this| this.child(self.render_slash_menu(input_value, pal, cx)))
+            .when(show_slash, |this| this.child(self.render_slash_menu(input_value, pal, cx)))
+            .when(show_mention, |this| this.child(self.render_mention_menu(pal, cx)))
             .child(
                 div()
                     .flex()
@@ -822,6 +1026,9 @@ impl ChatView {
                     .bg(input_bg)
                     .border_1()
                     .border_color(pal.border)
+                    .when(!chips.is_empty(), |this| {
+                        this.child(div().flex().flex_wrap().gap_1().children(chips))
+                    })
                     .child(
                         div()
                             .max_h(px(180.0))
@@ -833,7 +1040,7 @@ impl ChatView {
                             .items_center()
                             .justify_between()
                             .gap_2()
-                            // Left cluster: commands (+) and access mode.
+                            // Left cluster: add-context (+) and access mode.
                             .child(
                                 div()
                                     .flex()
@@ -844,21 +1051,32 @@ impl ChatView {
                                             .ghost()
                                             .with_size(Size::Small)
                                             .child(Icon::new(HeroIconName::Plus).size_4())
-                                            .dropdown_menu(move |mut menu, _window, _cx| {
-                                                for c in commands() {
-                                                    let e = plus_entity.clone();
-                                                    let token = c.token;
-                                                    menu = menu.item(
-                                                        PopupMenuItem::new(c.name)
-                                                            .icon(c.icon)
-                                                            .on_click(move |_, window, cx| {
-                                                                cx.update_entity(&e, |view, cx| {
-                                                                    view.command_clicked(token, window, cx)
-                                                                });
-                                                            }),
-                                                    );
-                                                }
-                                                menu
+                                            .dropdown_menu(move |menu, _window, _cx| {
+                                                let e1 = plus_entity.clone();
+                                                let e2 = plus_entity.clone();
+                                                menu.item(
+                                                    PopupMenuItem::new("添加文件 (@)")
+                                                        .icon(HeroIconName::Document)
+                                                        .on_click(move |_, window, cx| {
+                                                            cx.update_entity(&e1, |view, cx| {
+                                                                let v = format!(
+                                                                    "{}@",
+                                                                    view.input.read(cx).value()
+                                                                );
+                                                                view.set_input(&v, window, cx);
+                                                                view.on_input_changed(cx);
+                                                            });
+                                                        }),
+                                                )
+                                                .item(
+                                                    PopupMenuItem::new("添加图片")
+                                                        .icon(HeroIconName::Photo)
+                                                        .on_click(move |_, _window, cx| {
+                                                            cx.update_entity(&e2, |view, cx| {
+                                                                view.pick_images(cx)
+                                                            });
+                                                        }),
+                                                )
                                             }),
                                     )
                                     .child(self.access_button(access, access_color, cx)),
@@ -875,6 +1093,73 @@ impl ChatView {
                             ),
                     ),
             )
+    }
+
+    fn render_attachment_chip(
+        &self,
+        idx: usize,
+        att: &Attachment,
+        pal: Pal,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .px(px(6.0))
+            .py(px(2.0))
+            .rounded(px(6.0))
+            .bg(pal.secondary)
+            .child(Icon::new(att.icon()).size_3().text_color(pal.muted))
+            .child(
+                div()
+                    .max_w(px(160.0))
+                    .truncate()
+                    .text_size(rems(0.72))
+                    .text_color(pal.fg)
+                    .child(att.label()),
+            )
+            .child(icon_action(
+                SharedString::from(format!("chip-x-{idx}")),
+                HeroIconName::XMark,
+                pal,
+                cx.listener(move |view, _e, _w, cx| view.remove_attachment(idx, cx)),
+            ))
+    }
+
+    fn render_mention_menu(&self, pal: Pal, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut menu = div()
+            .id("agent-mention-menu")
+            .flex()
+            .flex_col()
+            .max_h(px(280.0))
+            .overflow_y_scroll()
+            .rounded(px(10.0))
+            .border_1()
+            .border_color(pal.border)
+            .bg(pal.secondary)
+            .p(px(4.0));
+        if self.mention_hits.is_empty() {
+            return menu.child(
+                div()
+                    .p(px(8.0))
+                    .text_size(rems(0.75))
+                    .text_color(pal.muted)
+                    .child("输入以搜索文件…"),
+            );
+        }
+        for hit in self.mention_hits.iter().take(20) {
+            let h = hit.clone();
+            menu = menu.child(slash_row(
+                SharedString::from(format!("mention-{}", hit.path)),
+                Some(HeroIconName::Document),
+                hit.file_name.clone(),
+                hit.path.clone(),
+                pal,
+                cx.listener(move |view, _e, window, cx| view.add_mention(h.clone(), window, cx)),
+            ));
+        }
+        menu
     }
 
     fn access_button(
@@ -1113,6 +1398,7 @@ impl ChatView {
             );
             for s in skill_matches {
                 let name = s.name.clone();
+                let path = s.path.clone();
                 menu = menu.child(slash_row(
                     SharedString::from(format!("skill-{}", s.name)),
                     Some(HeroIconName::Sparkles),
@@ -1120,7 +1406,7 @@ impl ChatView {
                     s.description.clone(),
                     pal,
                     cx.listener(move |view, _e, window, cx| {
-                        view.set_input(&format!("{name} "), window, cx);
+                        view.add_skill(name.clone(), path.clone(), window, cx);
                     }),
                 ));
             }
@@ -1173,6 +1459,24 @@ fn slash_row(
                     .child(desc),
             )
         })
+}
+
+/// The active trailing `@mention` query (text after a leading-`@` last token),
+/// or None if the caret isn't in a mention.
+fn active_mention(value: &str) -> Option<String> {
+    let last = value
+        .rsplit(|c: char| c.is_whitespace())
+        .next()
+        .unwrap_or("");
+    last.strip_prefix('@').map(|q| q.to_string())
+}
+
+/// Drop the active trailing `@…` token from the input text.
+fn strip_active_mention(value: &str) -> String {
+    match value.rfind('@') {
+        Some(idx) => value[..idx].to_string(),
+        None => value.to_string(),
+    }
 }
 
 fn meta_row(time: SharedString, pal: Pal) -> Div {
@@ -1297,7 +1601,13 @@ impl ChatPanel {
     ) -> Entity<ChatView> {
         let cwd = cwd.to_string();
         let program = codex_program.to_string();
-        cx.new(|cx| ChatView::new(cwd, program, window, cx))
+        let tab = cx.new(|cx| ChatView::new(cwd, program, window, cx));
+        // A /new from inside a tab opens another tab in this panel.
+        cx.subscribe_in(&tab, window, |panel, _tab, event, window, cx| match event {
+            ChatViewEvent::NewTab => panel.add_tab(window, cx),
+        })
+        .detach();
+        tab
     }
 
     fn add_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
