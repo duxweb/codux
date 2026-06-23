@@ -321,8 +321,16 @@ impl ChatView {
         .detach();
 
         let drain = cx.spawn(async move |this: WeakEntity<Self>, cx| {
-            while let Ok(msg) = rx.recv_async().await {
-                if this.update(cx, |view, cx| view.handle_msg(msg, cx)).is_err() {
+            while let Ok(first) = rx.recv_async().await {
+                // Coalesce everything already queued into one render pass.
+                let mut batch = vec![first];
+                while let Ok(more) = rx.try_recv() {
+                    batch.push(more);
+                }
+                if this
+                    .update(cx, |view, cx| view.handle_batch(batch, cx))
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -404,27 +412,54 @@ impl ChatView {
             .unwrap_or_else(|| SharedString::from("新对话"))
     }
 
-    fn handle_msg(&mut self, msg: ChatMsg, cx: &mut Context<Self>) {
-        // Only auto-scroll if the user is already following at the bottom — don't
-        // yank them down while they're reading earlier history.
+    /// Apply a burst of messages with a SINGLE snapshot + render. Streaming emits
+    /// many delta events per second; cloning the timeline and re-rendering per
+    /// event is what made it lag, so we coalesce a whole batch into one update.
+    fn handle_batch(&mut self, batch: Vec<ChatMsg>, cx: &mut Context<Self>) {
+        // Decide follow BEFORE adding content (reflects the pre-batch scroll pos).
         let follow = self.near_bottom();
+        let mut refresh = false;
+        for msg in batch {
+            refresh |= self.apply_msg(msg);
+        }
+        if refresh {
+            if let Some(session) = &self.session {
+                self.items = session.timeline_snapshot();
+            }
+            let now = Local::now().format("%H:%M").to_string();
+            for item in &self.items {
+                self.item_times
+                    .entry(item.id.clone())
+                    .or_insert_with(|| SharedString::from(now.clone()));
+            }
+        }
+        if follow {
+            self.scroll.scroll_to_bottom();
+        }
+        cx.notify();
+    }
+
+    /// Apply one message to state (no snapshot / notify). Returns true if the
+    /// timeline may have changed (so the batch refreshes items once at the end).
+    fn apply_msg(&mut self, msg: ChatMsg) -> bool {
         match msg {
-            ChatMsg::Note(note) => self.status = SharedString::from(note),
+            ChatMsg::Note(note) => {
+                self.status = SharedString::from(note);
+                false
+            }
             ChatMsg::Started(session) => {
                 self.session = Some(session);
                 self.starting = false;
                 self.status = SharedString::from("就绪");
-                // Send the first queued turn (if anything was typed while connecting).
                 self.pump_queue();
                 self.update_queue_status();
+                true
             }
             ChatMsg::Catalog {
                 models,
                 skills,
                 profiles,
             } => {
-                // Default the model selection to the server's default if the user
-                // hasn't picked one, and align effort to that model's default.
                 if self.model.is_none()
                     && let Some(def) = models.iter().find(|m| m.is_default)
                 {
@@ -437,36 +472,29 @@ impl ChatView {
                 self.models = models;
                 self.skills = skills;
                 self.profiles = profiles;
+                false
             }
             ChatMsg::FileHits { query, hits } => {
-                // Ignore results for a query the user has since changed past.
                 if self.mention_query.as_deref() == Some(query.as_str()) {
                     self.mention_hits = hits;
                 }
+                false
             }
             ChatMsg::Failed(err) => {
                 self.starting = false;
                 self.busy = false;
                 self.turn_started = None;
                 self.status = SharedString::from(format!("错误: {err}"));
+                false
             }
             ChatMsg::Event(ev) => {
-                if let Some(session) = &self.session {
-                    self.items = session.timeline_snapshot();
-                }
-                let now = Local::now().format("%H:%M").to_string();
-                for item in &self.items {
-                    self.item_times
-                        .entry(item.id.clone())
-                        .or_insert_with(|| SharedString::from(now.clone()));
-                }
                 match ev {
                     AgentEvent::ApprovalRequest(req) => self.pending_approvals.push(req),
                     AgentEvent::TurnCompleted => {
                         self.busy = false;
                         self.turn_started = None;
                         self.status = SharedString::from("就绪");
-                        self.pump_queue(); // send the next queued turn, if any
+                        self.pump_queue();
                         self.update_queue_status();
                     }
                     AgentEvent::TokenUsage(u) => self.last_usage = Some(u),
@@ -480,12 +508,9 @@ impl ChatView {
                     AgentEvent::Status(_) => {}
                     _ => self.status = SharedString::from("生成中…"),
                 }
+                true
             }
         }
-        if follow {
-            self.scroll.scroll_to_bottom();
-        }
-        cx.notify();
     }
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
