@@ -113,7 +113,9 @@ pub(in crate::app) enum WorkspaceView {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::app) enum WorkspaceSplitKind {
     FileEditor,
-    // Chat,  // future: chat session panel hosted in the body split
+    /// AI chat session panel hosted in the body split (terminal on the left,
+    /// a protocol-driven Codex conversation on the right).
+    Chat,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -126,6 +126,7 @@ pub(in crate::app) struct WorkspaceBodyView {
     pub(in crate::app) file_editor_workspace_view:
         Option<gpui::Entity<file_editor::FileEditorWorkspaceView>>,
     pub(in crate::app) review_workspace_view: Option<gpui::Entity<ReviewWorkspaceView>>,
+    pub(in crate::app) chat_workspace_view: Option<gpui::Entity<super::agent_chat::ChatView>>,
 }
 
 impl WorkspaceBodyView {
@@ -135,6 +136,7 @@ impl WorkspaceBodyView {
             terminal_workspace_view: None,
             file_editor_workspace_view: None,
             review_workspace_view: None,
+            chat_workspace_view: None,
         }
     }
 }
@@ -162,6 +164,40 @@ impl Render for WorkspaceBodyView {
                     self.terminal_workspace_view = Some(view.clone());
                     view
                 };
+                // Chat split: terminal on the left, a protocol-driven Codex
+                // conversation on the right (mirrors the file-editor split).
+                if app.workspace_split == Some(WorkspaceSplitKind::Chat)
+                    && let Some(project) = app.state.selected_project.as_ref()
+                {
+                    let cwd = project.path.clone();
+                    let codex_program = app
+                        .runtime
+                        .root
+                        .join("scripts/wrappers/bin/codex")
+                        .to_string_lossy()
+                        .to_string();
+                    let chat_view = if let Some(view) = &self.chat_workspace_view {
+                        view.clone()
+                    } else {
+                        let view = app_cx.new(|cx| {
+                            super::agent_chat::ChatView::new(cwd, codex_program, window, cx)
+                        });
+                        self.chat_workspace_view = Some(view.clone());
+                        view
+                    };
+                    return h_resizable("workspace-body-chat-split")
+                        .child(
+                            resizable_panel()
+                                .size_range(px(320.0)..Pixels::MAX)
+                                .child(gpui::AnyView::from(terminal_view)),
+                        )
+                        .child(
+                            resizable_panel()
+                                .size_range(px(320.0)..Pixels::MAX)
+                                .child(gpui::AnyView::from(chat_view)),
+                        )
+                        .into_any_element();
+                }
                 let split_file_editor = app.workspace_split == Some(WorkspaceSplitKind::FileEditor)
                     && !app.file_editor_tabs.is_empty();
                 if !split_file_editor {

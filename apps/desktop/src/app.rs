@@ -93,6 +93,7 @@ use std::{
 };
 
 mod about;
+mod agent_chat;
 mod ai_history_mapping;
 mod ai_memory_actions;
 mod ai_runtime_status;

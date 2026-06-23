@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+codux-agent-driver = { path = "../../crates/codux-agent-driver" }
 codux-runtime = { path = "runtime" }
 codux-terminal-core = { path = "../../crates/codux-terminal-core" }
 flume = "0.12"

@@ -1273,6 +1273,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "cocoa 0.26.0",
+ "codux-agent-driver",
  "codux-runtime",
  "codux-terminal-core",
  "core-foundation-sys",

@@ -94,6 +94,11 @@ impl CoduxApp {
                             &self.state.settings.language,
                             cx,
                         ))
+                        .child(workspace_chat_split_button(
+                            self.workspace_split == Some(WorkspaceSplitKind::Chat),
+                            has_project_context,
+                            cx,
+                        ))
                         .child(workspace_assistant_button(
                             "AI",
                             AssistantPanel::AIStats,
@@ -267,6 +272,30 @@ fn workspace_window_control_button(
         .text_color(cx.theme().muted_foreground)
         .window_control_area(area)
         .child(Icon::new(icon).size_3())
+}
+
+fn workspace_chat_split_button(
+    active: bool,
+    enabled: bool,
+    cx: &mut Context<CoduxApp>,
+) -> impl IntoElement {
+    let entity = cx.entity();
+    let color = if active {
+        cx.theme().primary
+    } else {
+        cx.theme().muted_foreground
+    };
+    Button::new("workspace-chat-split")
+        .compact()
+        .ghost()
+        .h(px(28.0))
+        .w(px(34.0))
+        .text_color(color)
+        .disabled(!enabled)
+        .child(Icon::new(HeroIconName::Sparkles).size_3())
+        .on_click(move |_, window, cx| {
+            cx.update_entity(&entity, |app, cx| app.toggle_chat_split(window, cx));
+        })
 }
 
 fn workspace_assistant_button(
