@@ -19,17 +19,16 @@ use codux_agent_driver::{
 };
 use flume::Sender;
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, AppContext, ClipboardItem, Context, Div, Entity,
-    EventEmitter, InteractiveElement, IntoElement, ParentElement, PathPromptOptions, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div,
-    img, prelude::FluentBuilder as _, px, rems,
+    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, InteractiveElement,
+    IntoElement, ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div, img,
+    prelude::FluentBuilder as _, px, rems,
 };
 use gpui_component::{
     ActiveTheme, Icon, Sizable, Size,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu, PopupMenuItem},
-    spinner::Spinner,
     text::TextView,
 };
 
@@ -1041,7 +1040,7 @@ impl Render for ChatView {
                         } else {
                             format!("已执行 {elapsed}")
                         };
-                        this.child(render_working(pal, self.working_word(), meta))
+                        this.child(render_working(pal, self.working_word(), meta, secs % 2 == 0))
                     }),
             )
             .child(self.render_composer(pal, input_bg, &input_value, cx))
@@ -1802,32 +1801,33 @@ fn fmt_tokens(t: u64) -> String {
     }
 }
 
-/// Working indicator shown for the whole turn: theme-color shimmering verb +
-/// elapsed time / token meta (codex CLI style, e.g. "执行命令… 已执行 2m 18s · ↓ 5.8k").
-fn render_working(pal: Pal, word: &str, meta: String) -> Div {
-    div().flex().w_full().items_center().gap_2().py(px(4.0)).child(
-        // Shimmering verb in the theme color.
-        div()
-            .text_size(rems(0.85))
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(pal.primary)
-            .child(format!("{word}…"))
-            .with_animation(
-                "working-shimmer",
-                Animation::new(Duration::from_millis(1300)).repeat(),
-                |el, delta| {
-                    // Triangle 0→1→0 so the glow breathes both ways.
-                    let t = 1.0 - (delta * 2.0 - 1.0).abs();
-                    el.opacity(0.45 + 0.55 * t)
-                },
-            ),
-    )
-    .child(
-        div()
-            .text_size(rems(0.74))
-            .text_color(pal.muted)
-            .child(meta),
-    )
+/// Working indicator shown for the whole turn: theme-color verb + elapsed time /
+/// token meta (codex CLI style, e.g. "执行命令… 已执行 2m 18s · ↓ 5.8k"). Updated
+/// once a second by the heartbeat — intentionally NOT a 60fps animation, which
+/// would force the whole transcript to re-render every frame.
+fn render_working(pal: Pal, word: &str, meta: String, pulse: bool) -> Div {
+    div()
+        .flex()
+        .w_full()
+        .items_center()
+        .gap_2()
+        .py(px(4.0))
+        // A small dot that blinks once a second (cheap, no per-frame animation).
+        .child(
+            div()
+                .size(px(7.0))
+                .rounded_full()
+                .bg(pal.primary)
+                .opacity(if pulse { 1.0 } else { 0.4 }),
+        )
+        .child(
+            div()
+                .text_size(rems(0.85))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(pal.primary)
+                .child(format!("{word}…")),
+        )
+        .child(div().text_size(rems(0.74)).text_color(pal.muted).child(meta))
 }
 
 fn meta_row(time: SharedString, pal: Pal) -> Div {
@@ -1887,7 +1887,11 @@ impl ChatView {
         let open = self.group_open.get(&key).copied().unwrap_or(running);
 
         let status: AnyElement = if running {
-            Spinner::new().with_size(Size::Small).color(pal.muted).into_any_element()
+            div()
+                .size(px(7.0))
+                .rounded_full()
+                .bg(pal.primary)
+                .into_any_element()
         } else if failed {
             Icon::new(HeroIconName::ExclamationTriangle)
                 .size_3()
@@ -2053,9 +2057,10 @@ impl ChatView {
         let id = item.id.clone();
 
         let status: AnyElement = match item.status {
-            ItemStatus::InProgress => Spinner::new()
-                .with_size(Size::Small)
-                .color(pal.muted)
+            ItemStatus::InProgress => div()
+                .size(px(7.0))
+                .rounded_full()
+                .bg(pal.primary)
                 .into_any_element(),
             ItemStatus::Completed => Icon::new(HeroIconName::Check)
                 .size_3()
