@@ -1326,6 +1326,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "codux-agent-driver"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "codux-ai-history"
 version = "0.1.0"
 dependencies = [
