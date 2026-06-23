@@ -26,6 +26,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu, PopupMenuItem},
+    spinner::Spinner,
 };
 
 use crate::app::types::{WorkspaceSplitKind, WorkspaceView};
@@ -596,6 +597,17 @@ impl ChatView {
         });
     }
 
+    /// Show the "thinking…" indicator while a turn is in flight, except while the
+    /// assistant is already streaming visible text (the text itself is the cue).
+    fn show_thinking(&self) -> bool {
+        self.busy
+            && !self.items.last().is_some_and(|it| {
+                it.kind == TimelineKind::AssistantMessage
+                    && !it.text.is_empty()
+                    && it.status == ItemStatus::InProgress
+            })
+    }
+
     fn usage_summary(&self) -> SharedString {
         match &self.last_usage {
             Some(u) => SharedString::from(format!(
@@ -844,7 +856,10 @@ impl Render for ChatView {
                         )
                     })
                     .children(rows)
-                    .children(approvals),
+                    .children(approvals)
+                    .when(self.show_thinking(), |this| {
+                        this.child(render_thinking(pal))
+                    }),
             )
             .child(self.render_composer(pal, input_bg, &input_value, cx))
     }
@@ -1514,6 +1529,26 @@ fn strip_active_mention(value: &str) -> String {
         Some(idx) => value[..idx].to_string(),
         None => value.to_string(),
     }
+}
+
+/// Animated "thinking…" placeholder shown while the agent works.
+fn render_thinking(pal: Pal) -> Div {
+    div().flex().w_full().justify_start().child(
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .rounded(px(8.0))
+            .px(px(10.0))
+            .py(px(6.0))
+            .child(Spinner::new().with_size(Size::Small).color(pal.muted))
+            .child(
+                div()
+                    .text_size(rems(0.8))
+                    .text_color(pal.muted)
+                    .child("思考中…"),
+            ),
+    )
 }
 
 fn meta_row(time: SharedString, pal: Pal) -> Div {
