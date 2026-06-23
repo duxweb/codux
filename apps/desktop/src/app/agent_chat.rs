@@ -18,7 +18,7 @@ use flume::Sender;
 use gpui::{
     AnyElement, AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, InteractiveElement,
     IntoElement, ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div,
+    StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div, img,
     prelude::FluentBuilder as _, px, rems,
 };
 use gpui_component::{
@@ -1799,6 +1799,18 @@ impl ChatView {
         mono: SharedString,
         cx: &mut Context<Self>,
     ) -> Div {
+        // A run made entirely of images renders as a thumbnail grid (codux.app).
+        let imgs: Vec<(&TimelineItem, String)> = items
+            .iter()
+            .filter_map(|it| image_path(it).map(|p| (*it, p)))
+            .collect();
+        if !imgs.is_empty() && imgs.len() == items.len() {
+            let mut grid = div().flex().flex_wrap().gap_2();
+            for (it, p) in imgs {
+                grid = grid.child(self.render_image(it, p, pal, cx));
+            }
+            return grid;
+        }
         if items.len() == 1 {
             return self.render_activity_card(items[0], pal, mono, false, cx);
         }
@@ -1874,6 +1886,59 @@ impl ChatView {
         block
     }
 
+    /// Resolve a possibly-relative path against the session worktree.
+    fn abs_path(&self, p: &str) -> std::path::PathBuf {
+        let path = std::path::Path::new(p);
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::path::Path::new(&self.cwd).join(path)
+        }
+    }
+
+    /// An image item (generated/viewed): clickable thumbnail that opens with the
+    /// system viewer, with its file name beneath.
+    fn render_image(
+        &self,
+        item: &TimelineItem,
+        path: String,
+        pal: Pal,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let abs = self.abs_path(&path);
+        let abs_open = abs.clone();
+        let name = std::path::Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .id(SharedString::from(format!("img-{}", item.id)))
+                    .rounded(px(8.0))
+                    .overflow_hidden()
+                    .border_1()
+                    .border_color(pal.border)
+                    .cursor_pointer()
+                    .hover(|s| s.opacity(0.85))
+                    .on_click(cx.listener(move |_v, _e, _w, cx| {
+                        cx.open_with_system(&abs_open);
+                    }))
+                    .child(img(abs).max_w(px(220.0)).max_h(px(220.0))),
+            )
+            .child(
+                div()
+                    .max_w(px(220.0))
+                    .truncate()
+                    .text_size(rems(0.66))
+                    .text_color(pal.muted)
+                    .child(name),
+            )
+    }
+
     /// One activity item as a compact, single-line card that expands on click.
     /// `nested` drops the outer border (it sits inside a group).
     fn render_activity_card(
@@ -1884,6 +1949,10 @@ impl ChatView {
         nested: bool,
         cx: &mut Context<Self>,
     ) -> Div {
+        // Images render as a thumbnail, not a text card.
+        if let Some(p) = image_path(item) {
+            return self.render_image(item, p, pal, cx);
+        }
         let (label, icon) = match item.kind {
             TimelineKind::Reasoning => ("思考", HeroIconName::LightBulb),
             TimelineKind::Command => ("命令", HeroIconName::CommandLine),
@@ -2004,39 +2073,83 @@ impl ChatView {
                 let fkey = format!("{}::{}", item.id, path);
                 let fopen = self.expanded.contains(&fkey);
                 let fkey2 = fkey.clone();
+                let abs = self.abs_path(path);
                 body = body.child(
                     div()
-                        .id(SharedString::from(format!("frow-{fkey}")))
                         .flex()
                         .items_center()
-                        .gap_2()
+                        .gap_1()
                         .py(px(3.0))
-                        .cursor_pointer()
-                        .hover(|s| s.bg(pal.bubble))
-                        .on_click(cx.listener(move |view, _e, _w, cx| {
-                            view.toggle_expand(fkey2.clone(), cx)
-                        }))
-                        .child(
-                            Icon::new(if fopen {
-                                HeroIconName::ChevronDown
-                            } else {
-                                HeroIconName::ChevronRight
-                            })
-                            .size_3()
-                            .text_color(pal.muted),
-                        )
-                        .child(Icon::new(HeroIconName::DocumentText).size_3().text_color(pal.muted))
+                        // Left: click to expand this file's diff.
                         .child(
                             div()
+                                .id(SharedString::from(format!("frow-{fkey}")))
+                                .flex()
                                 .flex_1()
                                 .min_w_0()
-                                .truncate()
-                                .font_family(mono.clone())
-                                .text_size(rems(0.72))
-                                .text_color(pal.fg)
-                                .child(short_path(path)),
+                                .items_center()
+                                .gap_2()
+                                .cursor_pointer()
+                                .rounded(px(4.0))
+                                .hover(|s| s.bg(pal.bubble))
+                                .on_click(cx.listener(move |view, _e, _w, cx| {
+                                    view.toggle_expand(fkey2.clone(), cx)
+                                }))
+                                .child(
+                                    Icon::new(if fopen {
+                                        HeroIconName::ChevronDown
+                                    } else {
+                                        HeroIconName::ChevronRight
+                                    })
+                                    .size_3()
+                                    .text_color(pal.muted),
+                                )
+                                .child(
+                                    Icon::new(HeroIconName::DocumentText)
+                                        .size_3()
+                                        .text_color(pal.muted),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .truncate()
+                                        .font_family(mono.clone())
+                                        .text_size(rems(0.72))
+                                        .text_color(pal.fg)
+                                        .child(short_path(path)),
+                                )
+                                .child(diff_badges(a, d, pal)),
                         )
-                        .child(diff_badges(a, d, pal)),
+                        // Right: "打开方式 ▼" — open with system app or reveal in Finder.
+                        .child(
+                            Button::new(SharedString::from(format!("fopen-{fkey}")))
+                                .ghost()
+                                .with_size(Size::Small)
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_1()
+                                        .text_color(pal.muted)
+                                        .child(div().text_size(rems(0.68)).child("打开方式"))
+                                        .child(Icon::new(HeroIconName::ChevronDown).size_3()),
+                                )
+                                .dropdown_menu(move |menu, _window, _cx| {
+                                    let open = abs.clone();
+                                    let reveal = abs.clone();
+                                    menu.item(
+                                        PopupMenuItem::new("打开")
+                                            .icon(HeroIconName::ArrowTopRightOnSquare)
+                                            .on_click(move |_, _w, cx| cx.open_with_system(&open)),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new("在 Finder 中显示")
+                                            .icon(HeroIconName::Folder)
+                                            .on_click(move |_, _w, cx| cx.reveal_path(&reveal)),
+                                    )
+                                }),
+                        ),
                 );
                 if fopen {
                     body = body.child(render_diff(diff, pal, mono.clone()));
@@ -2059,6 +2172,21 @@ impl ChatView {
 
 fn first_line(s: &str) -> String {
     s.trim().lines().next().unwrap_or("").to_string()
+}
+
+/// If this item is an image (imageView / imageGeneration), return its file path.
+fn image_path(item: &TimelineItem) -> Option<String> {
+    match item.item_type.as_str() {
+        "imageView" => item.raw.get("path").and_then(|v| v.as_str()).map(String::from),
+        "imageGeneration" => item
+            .raw
+            .get("savedPath")
+            .and_then(|v| v.as_str())
+            .or_else(|| item.raw.get("result").and_then(|v| v.as_str()))
+            .filter(|p| p.contains('/'))
+            .map(String::from),
+        _ => None,
+    }
 }
 
 /// Extract (path, unified_diff) pairs from a fileChange item's raw `changes`.
