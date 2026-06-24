@@ -4136,16 +4136,6 @@ impl RemoteHostRuntime {
             return;
         }
         let viewers = self.terminal_output_viewers(&session_id);
-        crate::runtime_trace::runtime_trace(
-            "terminal-probe",
-            &format!(
-                "host_output session={} bytes={} viewers={} dropped={}",
-                session_id,
-                text.len(),
-                viewers.len(),
-                viewers.is_empty()
-            ),
-        );
         if viewers.is_empty() {
             return;
         }

@@ -32,7 +32,7 @@ use codux_remote_transport::{
     RemoteTransportStateHandler,
 };
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -214,12 +214,6 @@ struct ControllerInner {
     // Per-session byte forwarders for terminal.output — the desktop terminal UI
     // registers one per remote session and the model parses the bytes itself.
     terminal_outputs: Mutex<HashMap<String, TerminalOutputForwarder>>,
-    // Sessions whose initial screen hasn't been painted yet (set on attach).
-    // The host delivers the current screen as a self-contained ANSI repaint in a
-    // frame's `screenData`; we paint that once so the pane isn't blank (the live
-    // `data` stream can start mid-session or drop the prompt during the host's
-    // create→subscribe window), then switch to incremental `data`.
-    terminal_pending_paint: Mutex<HashSet<String>>,
 }
 
 impl ControllerInner {
@@ -252,42 +246,24 @@ impl ControllerInner {
                 .get("screenData")
                 .and_then(Value::as_str)
                 .filter(|value| !value.is_empty());
-            let mut matched = false;
-            let mut painted = false;
             if let Some(session_id) = session_id {
                 if let Ok(forwarders) = self.terminal_outputs.lock() {
                     if let Some(forwarder) = forwarders.get(session_id) {
-                        matched = true;
-                        // First post-attach frame carrying a screen keyframe wins
-                        // the initial paint (a full clear+repaint), so the prompt
-                        // shows even though the desktop emulator otherwise renders
-                        // only the live byte stream. Afterwards: incremental data.
-                        let paint = self
-                            .terminal_pending_paint
-                            .lock()
-                            .ok()
-                            .map(|mut pending| {
-                                screen_data.is_some() && pending.remove(session_id)
-                            })
-                            .unwrap_or(false);
-                        if let (true, Some(screen)) = (paint, screen_data) {
-                            forwarder(screen.as_bytes().to_vec());
-                            painted = true;
-                        } else if !data.is_empty() {
+                        // ALWAYS feed the live `data` stream: it carries the
+                        // shell's output AND its VT query requests (e.g. `\e[6n`
+                        // cursor-position report) that the terminal engine must
+                        // answer — dropping it hangs the remote shell before its
+                        // first prompt. Fall back to the screen keyframe only when
+                        // there is no live data (a pure re-attach keyframe) so the
+                        // pane isn't blank after reconnecting to a live session.
+                        if !data.is_empty() {
                             forwarder(data.as_bytes().to_vec());
+                        } else if let Some(screen) = screen_data {
+                            forwarder(screen.as_bytes().to_vec());
                         }
                     }
                 }
             }
-            crate::runtime_trace::runtime_trace(
-                "remote",
-                &format!(
-                    "ctrl_recv terminal.output session={} bytes={} screen={} matched={matched} painted={painted}",
-                    session_id.unwrap_or("<none>"),
-                    data.len(),
-                    screen_data.map(|value| value.len()).unwrap_or(0),
-                ),
-            );
             return;
         }
         {
@@ -867,15 +843,6 @@ impl RemoteController {
     /// Forward this session's `terminal.output` bytes to `forwarder` (the desktop
     /// terminal model's byte channel).
     pub fn register_terminal_output(&self, session_id: &str, forwarder: TerminalOutputForwarder) {
-        crate::runtime_trace::runtime_trace(
-            "remote",
-            &format!("ctrl_register_forwarder session={session_id}"),
-        );
-        // Arm the initial-screen paint for this (re)attach: the next frame that
-        // carries `screenData` repaints the pane before incremental data resumes.
-        if let Ok(mut pending) = self.inner.terminal_pending_paint.lock() {
-            pending.insert(session_id.to_string());
-        }
         if let Ok(mut guard) = self.inner.terminal_outputs.lock() {
             guard.insert(session_id.to_string(), forwarder);
         }
@@ -884,9 +851,6 @@ impl RemoteController {
     pub fn unregister_terminal_output(&self, session_id: &str) {
         if let Ok(mut guard) = self.inner.terminal_outputs.lock() {
             guard.remove(session_id);
-        }
-        if let Ok(mut pending) = self.inner.terminal_pending_paint.lock() {
-            pending.remove(session_id);
         }
     }
 
@@ -951,7 +915,21 @@ impl RemoteController {
 
     /// Send an envelope without awaiting a reply.
     fn fire(&self, kind: &str, payload: Value) -> bool {
-        let envelope = json!({ "type": kind, "deviceId": self.device_id, "payload": payload });
+        let mut envelope =
+            json!({ "type": kind, "deviceId": self.device_id, "payload": payload });
+        // The host reads the session id from the envelope top level (`sessionId`,
+        // see RemoteEnvelope), NOT from the payload. Lift it so session-keyed ops
+        // (terminal.input / terminal.resize) actually target their session instead
+        // of being rejected with "Terminal session is required" — this is what
+        // blocked the shell's reply to its own `\e[6n` cursor query (and typing,
+        // and resize).
+        if let Some(session_id) = envelope
+            .get("payload")
+            .and_then(|payload| payload.get("sessionId"))
+            .cloned()
+        {
+            envelope["sessionId"] = session_id;
+        }
         match serde_json::to_vec(&envelope) {
             Ok(bytes) => self.transport.send(bytes, None),
             Err(_) => false,
