@@ -8,20 +8,6 @@ class TerminalViewportResize {
   final int rows;
 }
 
-class TerminalViewportScrollRequest {
-  const TerminalViewportScrollRequest({
-    required this.requestId,
-    required this.displayOffset,
-    required this.maxLines,
-    required this.overscanRows,
-  });
-
-  final int requestId;
-  final int displayOffset;
-  final int maxLines;
-  final int overscanRows;
-}
-
 class _ViewportSize {
   const _ViewportSize(this.cols, this.rows);
 
@@ -38,13 +24,8 @@ class TerminalViewportController {
   int? _pendingRows;
   final Map<String, _ViewportSize> _sentBySession = {};
   final Map<String, int> _generationBySession = {};
-  final Map<String, int> _confirmedOffsetBySession = {};
-  final Map<String, int> _desiredOffsetBySession = {};
-  final Map<String, int> _latestScrollRequestBySession = {};
-  final Map<String, double> _scrollPixelRemainderBySession = {};
   String? _owner;
   int _generation = 0;
-  int _scrollRequestCounter = 0;
 
   String? get owner => _owner;
   int get generation => _generation;
@@ -67,13 +48,6 @@ class TerminalViewportController {
     _pendingCols = null;
     _pendingRows = null;
     _sentBySession.clear();
-  }
-
-  void resetScroll() {
-    _confirmedOffsetBySession.clear();
-    _desiredOffsetBySession.clear();
-    _latestScrollRequestBySession.clear();
-    _scrollPixelRemainderBySession.clear();
   }
 
   bool applyRemoteState(RelayEnvelope message) {
@@ -151,108 +125,10 @@ class TerminalViewportController {
     _lastRows = resize.rows;
     _sentBySession[id] = _ViewportSize(resize.cols, resize.rows);
   }
-
-  TerminalViewportScrollRequest? requestScrollPixels({
-    required String sessionId,
-    required double pixels,
-    required double cellHeight,
-    required int maxLines,
-    required int viewportRows,
-    required int overscanRows,
-  }) {
-    final id = sessionId.trim();
-    if (id.isEmpty || pixels == 0 || cellHeight <= 0) return null;
-    final accumulated =
-        (_scrollPixelRemainderBySession[id] ?? 0) + (pixels / cellHeight);
-    final delta = accumulated.truncate();
-    _scrollPixelRemainderBySession[id] = accumulated - delta;
-    if (delta == 0) return null;
-    final current =
-        _desiredOffsetBySession[id] ?? _confirmedOffsetBySession[id] ?? 0;
-    return _requestAbsoluteOffset(
-      sessionId: id,
-      displayOffset: current + delta,
-      maxLines: maxLines,
-      viewportRows: viewportRows,
-      overscanRows: overscanRows,
-      resetPixelRemainder: false,
-    );
-  }
-
-  TerminalViewportScrollRequest requestAbsoluteScroll({
-    required String sessionId,
-    required int displayOffset,
-    required int maxLines,
-    required int viewportRows,
-    required int overscanRows,
-  }) {
-    return _requestAbsoluteOffset(
-      sessionId: sessionId.trim(),
-      displayOffset: displayOffset,
-      maxLines: maxLines,
-      viewportRows: viewportRows,
-      overscanRows: overscanRows,
-      resetPixelRemainder: true,
-    );
-  }
-
-  bool acceptScrollResponse({
-    required String sessionId,
-    required int requestId,
-    required int displayOffset,
-  }) {
-    final id = sessionId.trim();
-    if (id.isEmpty) return false;
-    final latest = _latestScrollRequestBySession[id] ?? 0;
-    if (requestId < latest) return false;
-    _latestScrollRequestBySession[id] = requestId;
-    _confirmedOffsetBySession[id] = displayOffset;
-    _desiredOffsetBySession[id] = displayOffset;
-    return true;
-  }
-
-  TerminalViewportScrollRequest _requestAbsoluteOffset({
-    required String sessionId,
-    required int displayOffset,
-    required int maxLines,
-    required int viewportRows,
-    required int overscanRows,
-    required bool resetPixelRemainder,
-  }) {
-    final id = sessionId.trim();
-    if (id.isEmpty) {
-      return const TerminalViewportScrollRequest(
-        requestId: 0,
-        displayOffset: 0,
-        maxLines: 1,
-        overscanRows: 0,
-      );
-    }
-    _scrollRequestCounter += 1;
-    final maxOffset = _maxDisplayOffset(maxLines, viewportRows);
-    final clampedOffset = displayOffset.clamp(0, maxOffset);
-    if (resetPixelRemainder) {
-      _scrollPixelRemainderBySession.remove(id);
-    }
-    _desiredOffsetBySession[id] = clampedOffset;
-    _latestScrollRequestBySession[id] = _scrollRequestCounter;
-    return TerminalViewportScrollRequest(
-      requestId: _scrollRequestCounter,
-      displayOffset: clampedOffset,
-      maxLines: maxLines < 1 ? 1 : maxLines,
-      overscanRows: overscanRows < 0 ? 0 : overscanRows,
-    );
-  }
 }
 
 int? _intValue(Object? value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
   return int.tryParse('${value ?? ''}');
-}
-
-int _maxDisplayOffset(int maxLines, int viewportRows) {
-  final total = maxLines < 1 ? 1 : maxLines;
-  final rows = viewportRows < 1 ? 1 : viewportRows;
-  return total > rows ? total - rows : 0;
 }
