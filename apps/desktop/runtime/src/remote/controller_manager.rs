@@ -51,6 +51,10 @@ struct ManagerShared {
     connections: Mutex<HashMap<String, Arc<RemoteController>>>,
     links: Mutex<HashMap<String, ControllerLinkState>>,
     reconnecting: Mutex<HashSet<String>>,
+    // Last failure from the background reconnect loop per device, so
+    // `controller_for` can surface *why* a host stays "not ready" (offline host,
+    // relay unreachable, dial timeout) instead of a generic message.
+    last_errors: Mutex<HashMap<String, String>>,
 }
 
 impl ManagerShared {
@@ -58,6 +62,13 @@ impl ManagerShared {
         if let Ok(mut links) = self.links.lock() {
             links.insert(device_id.to_string(), state);
         }
+    }
+
+    fn last_error(&self, device_id: &str) -> Option<String> {
+        self.last_errors
+            .lock()
+            .ok()
+            .and_then(|errors| errors.get(device_id).cloned())
     }
 
     /// Build the transport state handler for `device_id`: it records every link
@@ -144,12 +155,19 @@ impl ManagerShared {
                     if let Ok(mut connections) = self.connections.lock() {
                         connections.insert(device_id.clone(), Arc::new(controller));
                     }
+                    if let Ok(mut errors) = self.last_errors.lock() {
+                        errors.remove(&device_id);
+                    }
                     self.set_link(&device_id, ControllerLinkState::Connected);
                     break;
                 }
-                Err(_) => {
-                    // Surface the outage on the badge during backoff (the
-                    // attempt above flipped it to Connecting).
+                Err(error) => {
+                    // Record why the reconnect failed so `controller_for` can
+                    // surface it (offline host, relay unreachable, dial timeout);
+                    // otherwise the UI only ever sees the generic "not ready".
+                    if let Ok(mut errors) = self.last_errors.lock() {
+                        errors.insert(device_id.clone(), error);
+                    }
                     self.set_link(&device_id, ControllerLinkState::Disconnected);
                     tokio::time::sleep(delay).await;
                     delay = (delay * 2).min(max_delay);
@@ -174,6 +192,7 @@ impl RemoteControllerManager {
                 connections: Mutex::new(HashMap::new()),
                 links: Mutex::new(HashMap::new()),
                 reconnecting: Mutex::new(HashSet::new()),
+                last_errors: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -230,7 +249,12 @@ impl RemoteControllerManager {
             }
         }
         if self.shared.ensure_reconnect_loop(device_id) {
-            Err(format!("Remote host {device_id} is connecting; not ready yet."))
+            match self.shared.last_error(device_id) {
+                Some(error) => Err(format!(
+                    "Remote host {device_id} is connecting; not ready yet (last attempt failed: {error})."
+                )),
+                None => Err(format!("Remote host {device_id} is connecting; not ready yet.")),
+            }
         } else {
             Err(format!("No saved remote host for device {device_id}."))
         }
