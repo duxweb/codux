@@ -22,7 +22,7 @@ use codux_protocol::{
     REMOTE_TERMINAL_VIEWPORT_STATE, REMOTE_TRANSPORT_IROH, REMOTE_TRANSPORT_PING,
     REMOTE_TRANSPORT_PONG, REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_DELETE, REMOTE_WORKTREE_LIST,
     REMOTE_WORKTREE_MERGE, REMOTE_WORKTREE_SELECT, REMOTE_WORKTREE_UPDATED,
-    relay_blocks_message_type,
+    is_terminal_stream_message, relay_blocks_message_type,
 };
 use serde_json::json;
 use std::ffi::c_char;
@@ -63,6 +63,14 @@ pub extern "C" fn codux_protocol_relay_blocks_message(kind: *const c_char) -> bo
         return false;
     };
     relay_blocks_message_type(&kind)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn codux_protocol_is_terminal_stream_message(kind: *const c_char) -> bool {
+    let Some(kind) = c_to_string(kind) else {
+        return false;
+    };
+    is_terminal_stream_message(&kind)
 }
 
 #[unsafe(no_mangle)]

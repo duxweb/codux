@@ -200,6 +200,10 @@ final _relayBlocks = _dylib
     .lookupFunction<Bool Function(Pointer<Utf8>), bool Function(Pointer<Utf8>)>(
       'codux_protocol_relay_blocks_message',
     );
+final _isTerminalStreamMessage = _dylib
+    .lookupFunction<Bool Function(Pointer<Utf8>), bool Function(Pointer<Utf8>)>(
+      'codux_protocol_is_terminal_stream_message',
+    );
 final _transportRelayUrl = _dylib
     .lookupFunction<
       Pointer<Utf8> Function(Pointer<Utf8>),
@@ -560,6 +564,18 @@ bool relayBlocksMessage(String kind) {
   final pointer = kind.toNativeUtf8();
   try {
     return _relayBlocks(pointer);
+  } finally {
+    malloc.free(pointer);
+  }
+}
+
+/// True for terminal messages that travel on the dedicated terminal-stream lane
+/// (PTY I/O), mirroring the host. Backed by `codux-protocol` so the controller
+/// never keeps its own copy of the lane classification.
+bool isTerminalStreamMessage(String kind) {
+  final pointer = kind.toNativeUtf8();
+  try {
+    return _isTerminalStreamMessage(pointer);
   } finally {
     malloc.free(pointer);
   }

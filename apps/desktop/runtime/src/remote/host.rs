@@ -14,11 +14,10 @@ use super::protocol::{
     REMOTE_PROJECT_UPDATED, REMOTE_RESOURCE_AI_STATS, REMOTE_RESOURCE_GIT_STATUS,
     REMOTE_RESOURCE_PROJECTS, REMOTE_RESOURCE_SUBSCRIBE, REMOTE_RESOURCE_TERMINALS,
     REMOTE_RESOURCE_UNSUBSCRIBE, REMOTE_RESOURCE_WORKTREES, REMOTE_SSH_LIST,
-    REMOTE_SSH_LIST_RESULT, REMOTE_SSH_REMOVE, REMOTE_SSH_UPSERT, REMOTE_TERMINAL_BUFFER,
+    REMOTE_SSH_LIST_RESULT, REMOTE_SSH_REMOVE, REMOTE_SSH_UPSERT,
     REMOTE_TERMINAL_BUFFER_MAX_CHARS, REMOTE_TERMINAL_CLOSED, REMOTE_TERMINAL_CREATED,
-    REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_INPUT_ACK, REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT,
-    REMOTE_TERMINAL_OUTPUT_ACK, REMOTE_TERMINAL_SIGNAL, REMOTE_TERMINAL_UPLOADED,
-    REMOTE_TERMINAL_VIEWPORT_STATE, REMOTE_TRANSPORT_PING,
+    REMOTE_TERMINAL_INPUT_ACK, REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT,
+    REMOTE_TERMINAL_UPLOADED, REMOTE_TERMINAL_VIEWPORT_STATE, REMOTE_TRANSPORT_PING,
     REMOTE_TRANSPORT_PONG, REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_DELETE, REMOTE_WORKTREE_LIST,
     REMOTE_WORKTREE_MERGE, REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_SELECT, REMOTE_WORKTREE_UPDATED,
     RemoteTerminalBufferWindow, RemoteTerminalSubscriptionTarget, RemoteTerminalSubscriptions,
@@ -411,7 +410,7 @@ impl RemoteHostRuntime {
             return false;
         };
         let bytes = data.into_bytes();
-        let ok = if is_terminal_stream_kind(kind) {
+        let ok = if codux_protocol::is_terminal_stream_message(kind) {
             transport.send_terminal(bytes, device_id)
         } else {
             transport.send(bytes, device_id)
@@ -4181,18 +4180,6 @@ pub(crate) fn terminal_upload_path_input(path: &Path) -> String {
 
 pub(crate) fn unique_remote_upload_path(directory: &Path, file_name: &str) -> PathBuf {
     runtime_upload::unique_upload_path(directory, file_name)
-}
-
-fn is_terminal_stream_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        REMOTE_TERMINAL_OUTPUT
-            | REMOTE_TERMINAL_OUTPUT_ACK
-            | REMOTE_TERMINAL_INPUT
-            | REMOTE_TERMINAL_INPUT_ACK
-            | REMOTE_TERMINAL_SIGNAL
-            | REMOTE_TERMINAL_BUFFER
-    )
 }
 
 pub(crate) fn remote_git_status_payload(

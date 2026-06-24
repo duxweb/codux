@@ -779,12 +779,11 @@ extension _HomePageConnection on HomeController {
   }
 
   bool _isTerminalStreamEnvelope(RelayEnvelope message) {
-    return message.type == RemoteMessageType.terminalInput ||
-        message.type == RemoteMessageType.terminalInputAck ||
-        message.type == RemoteMessageType.terminalOutput ||
-        message.type == RemoteMessageType.terminalOutputAck ||
-        message.type == RemoteMessageType.terminalSignal ||
-        message.type == RemoteMessageType.terminalBuffer;
+    // The host classifies the terminal-stream lane through `codux-protocol`;
+    // route the controller through the same FFI predicate so neither end keeps
+    // its own copy of the message-class list (and they can never disagree on
+    // which frames take the low-latency stream path).
+    return remoteIsTerminalStreamMessage(message.type);
   }
 
   /// `setState` is `@protected`, so the protocol handlers in the

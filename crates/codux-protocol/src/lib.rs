@@ -549,6 +549,22 @@ pub fn relay_blocks_message_type(kind: &str) -> bool {
     matches!(kind, REMOTE_FILE_WRITE)
 }
 
+/// True for the terminal messages that travel on the dedicated terminal-stream
+/// lane (low-latency PTY I/O) rather than the control lane. Both the desktop
+/// host and the mobile controller classify the lane through this one predicate
+/// so the two ends can never disagree on which frames take the stream path.
+pub fn is_terminal_stream_message(kind: &str) -> bool {
+    matches!(
+        kind,
+        REMOTE_TERMINAL_OUTPUT
+            | REMOTE_TERMINAL_OUTPUT_ACK
+            | REMOTE_TERMINAL_INPUT
+            | REMOTE_TERMINAL_INPUT_ACK
+            | REMOTE_TERMINAL_SIGNAL
+            | REMOTE_TERMINAL_BUFFER
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RemoteRelayPolicy {
     pub max_message_bytes: usize,

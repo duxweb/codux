@@ -181,6 +181,10 @@ bool remoteRelayBlocksMessage(String kind) {
   return codux_protocol_ffi.relayBlocksMessage(kind);
 }
 
+bool remoteIsTerminalStreamMessage(String kind) {
+  return codux_protocol_ffi.isTerminalStreamMessage(kind);
+}
+
 String remoteTransportRelayUrl(String base) {
   return codux_protocol_ffi.transportRelayUrl(base);
 }
