@@ -2175,11 +2175,12 @@ impl CoduxApp {
         if name.is_empty() || self.project_editor_browse_path.trim().is_empty() {
             return;
         }
-        let parent = self
-            .project_editor_browse_path
-            .trim_end_matches(['/', '\\'])
-            .to_string();
-        let target = codux_runtime::path::join_path(&parent, &name);
+        // Reload the directory the folder is created in using the *untrimmed*
+        // browse path, so a Windows drive root stays `F:\` — trimming it to `F:`
+        // makes the host re-list the drive's current dir, not its root, and the
+        // new folder appears to vanish. `join_path` trims internally for `target`.
+        let browse_path = self.project_editor_browse_path.trim().to_string();
+        let target = codux_runtime::path::join_path(&browse_path, &name);
         let runtime_service = self.runtime_service.clone();
         let window_handle = window.window_handle();
         self.project_editor_browse_busy = true;
@@ -2194,7 +2195,7 @@ impl CoduxApp {
                         .map(|_| ()),
                     None => runtime_service.create_local_directory(&target),
                 }
-                .map(|_| (device_id, parent))
+                .map(|_| (device_id, browse_path))
             })
             .await
             .unwrap_or_else(|error| Err(format!("failed to join create directory: {error}")));
@@ -2204,10 +2205,10 @@ impl CoduxApp {
             let _ = this.update(cx, |app, cx| {
                 app.project_editor_browse_busy = false;
                 match result {
-                    Ok((device_id, parent)) => {
+                    Ok((device_id, reload_path)) => {
                         app.project_editor_browse_new_folder.clear();
                         app.file_picker_new_folder_active = false;
-                        app.load_project_editor_browse(device_id, Some(parent), window_handle, cx);
+                        app.load_project_editor_browse(device_id, Some(reload_path), window_handle, cx);
                     }
                     Err(error) => {
                         app.project_editor_browse_error = Some(error);
@@ -2337,10 +2338,15 @@ impl CoduxApp {
             .await
             .unwrap_or_else(|error| Err(format!("failed to join project save: {error}")));
 
-            let _ = window_handle.update(cx, |_root, window, cx| {
-                let _ = this.update(cx, |app, cx| {
+            // Apply the result on the entity directly (not nested inside a
+            // `window_handle.update`, whose swallowed Err would otherwise leave
+            // `project_editor_saving` stuck true — making the Create/Save button
+            // silently do nothing on the next click). Only the window removal,
+            // which genuinely needs the window, stays on the window handle.
+            let should_close = this
+                .update(cx, |app, cx| {
                     app.project_editor_saving = false;
-                    match result {
+                    let close = match result {
                         Ok((state, name)) => {
                             let was_editing = app.project_editor_project_id.is_some();
                             app.state = state;
@@ -2351,7 +2357,7 @@ impl CoduxApp {
                                 format!("project created: {name}")
                             };
                             publish_child_window_update(ChildWindowUpdateKind::Project);
-                            window.remove_window();
+                            true
                         }
                         Err(error) => {
                             app.status_message = if app.project_editor_project_id.is_some() {
@@ -2359,11 +2365,16 @@ impl CoduxApp {
                             } else {
                                 format!("failed to create project: {error}")
                             };
+                            false
                         }
-                    }
+                    };
                     app.invalidate_project_management(cx);
-                });
-            });
+                    close
+                })
+                .unwrap_or(false);
+            if should_close {
+                let _ = window_handle.update(cx, |_root, window, _cx| window.remove_window());
+            }
         })
         .detach();
     }
