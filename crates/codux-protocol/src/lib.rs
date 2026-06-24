@@ -286,6 +286,56 @@ pub fn iroh_transport_candidate_with_ticket_and_authentication(
     }
 }
 
+/// One transport entry for a pairing QR / `codux://pair?payload=` URL. Encodes
+/// the MINIMUM needed to dial — `nodeId` + `relayUrl` (+ relay auth) — and
+/// deliberately omits the bulky iroh endpoint `ticket` (it ~doubles QR density
+/// and hurts scan reliability); the host re-sends the full transport set on
+/// `pairing.confirmed` once the controller connects. THE single definition of
+/// the pairing-QR transport shape — shared by every Rust host so a format change
+/// happens in one place, not once per host.
+pub fn pairing_transport_entry(candidate: &RemoteTransportCandidate) -> Value {
+    let mut item = serde_json::Map::new();
+    item.insert("kind".to_string(), json!(candidate.kind));
+    let non_empty = |value: &Option<String>| {
+        value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    if let Some(node_id) = non_empty(&candidate.node_id) {
+        item.insert("nodeId".to_string(), json!(node_id));
+    }
+    if let Some(relay_url) = non_empty(&candidate.relay_url) {
+        item.insert("relayUrl".to_string(), json!(relay_url));
+    }
+    if let Some(authentication) = non_empty(&candidate.relay_authentication) {
+        item.insert("relayAuthentication".to_string(), json!(authentication));
+    }
+    Value::Object(item)
+}
+
+/// The full pairing payload (`code` / `secret` / `pairingId` / `transports`)
+/// embedded in the pairing QR and the `codux://pair?payload=` URL. Shared by the
+/// desktop and headless agent hosts so the wire format lives in exactly one
+/// place (the mobile client is Dart and parses the same shape).
+pub fn pairing_payload(
+    code: &str,
+    secret: &str,
+    pairing_id: &str,
+    candidates: &[RemoteTransportCandidate],
+) -> Value {
+    json!({
+        "code": code,
+        "secret": secret,
+        "pairingId": pairing_id,
+        "transports": candidates
+            .iter()
+            .map(pairing_transport_entry)
+            .collect::<Vec<_>>(),
+    })
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct RemoteEnvelope {
     #[serde(rename = "type")]

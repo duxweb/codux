@@ -1,6 +1,6 @@
 use super::types::{RemotePairingInfo, RemoteSettings, RemoteTransportCandidate};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 #[cfg(unix)]
 use std::ffi::CStr;
 
@@ -123,38 +123,13 @@ pub(crate) fn remote_pairing_payload(
     pairing: &RemotePairingInfo,
     transports: Vec<RemoteTransportCandidate>,
 ) -> Value {
-    let transports = transports
-        .into_iter()
-        .map(|transport| {
-            let mut item = Map::new();
-            item.insert("kind".to_string(), json!(transport.kind));
-            // Keep the QR small enough for phones to scan reliably: encode only
-            // the minimum needed to dial (node id + relay url) rather than the
-            // full iroh endpoint ticket. The ticket bundles every direct socket
-            // address and roughly doubles the QR density. The controller's
-            // `candidate_endpoint_addr` already accepts `node_id` + `relay_url`,
-            // and the host re-sends the complete transport set (ticket, addrs,
-            // host metadata) on the `pairing.confirmed` reply once connected.
-            if let Some(node_id) = transport.node_id.filter(|value| !value.trim().is_empty()) {
-                item.insert("nodeId".to_string(), json!(node_id));
-            }
-            if let Some(relay_url) = transport.relay_url.filter(|value| !value.trim().is_empty()) {
-                item.insert("relayUrl".to_string(), json!(relay_url));
-            }
-            if let Some(authentication) = transport
-                .relay_authentication
-                .filter(|value| !value.trim().is_empty())
-            {
-                item.insert("relayAuthentication".to_string(), json!(authentication));
-            }
-            Value::Object(item)
-        })
-        .collect::<Vec<_>>();
-
-    json!({
-        "code": pairing.code,
-        "secret": pairing.secret,
-        "pairingId": pairing.pairing_id,
-        "transports": transports,
-    })
+    // The QR format (ticket-free: nodeId + relayUrl, the minimum to dial) lives
+    // in codux_protocol so the desktop and headless agent hosts share ONE
+    // definition instead of each keeping a copy.
+    codux_protocol::pairing_payload(
+        &pairing.code,
+        &pairing.secret,
+        &pairing.pairing_id,
+        &transports,
+    )
 }

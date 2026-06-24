@@ -866,13 +866,18 @@ pub async fn run_host(cfg: AgentHostConfig) -> Result<(), String> {
     if !node_id.is_empty() {
         println!("nodeId={node_id}");
         println!("relay={relay}");
+        // The pairing QR carries nodeId + relayUrl (NOT the bulky iroh endpoint
+        // ticket) so it stays small and phone-scannable — matching the desktop
+        // host's format. The controller dials from nodeId + relayUrl and the full
+        // ticket is exchanged after it connects.
+        let pairing =
+            pairing_ticket_url(&cfg.host_id, &node_id, &relay, &cfg.relay_authentication);
+        println!("pairingTicket={pairing}");
+        // Publish for `codux link` / `codux qrcode` to read.
+        crate::runstate::write_ticket(&pairing);
     }
     if let Some(ticket) = host.iroh_endpoint_ticket() {
-        let pairing = pairing_ticket_url(&cfg.host_id, &ticket);
         println!("ticket={ticket}");
-        println!("pairingTicket={pairing}");
-        // Publish the ticket for `codux link` / `codux qrcode` to read.
-        crate::runstate::write_ticket(&pairing);
     }
     // Publish status for `codux status` / `codux stop`.
     crate::runstate::write_status(&crate::runstate::DaemonStatus {
@@ -888,18 +893,35 @@ pub async fn run_host(cfg: AgentHostConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Build the `codux://pair?payload=<base64url>` ticket the desktop controller
-/// pastes. The iroh endpoint ticket is the real access gate; the code/secret/
-/// pairingId are present only because the controller parser requires them (the
-/// headless host auto-confirms without validating them).
-fn pairing_ticket_url(host_id: &str, endpoint_ticket: &str) -> String {
+/// Build the `codux://pair?payload=<base64url>` pairing URL the desktop
+/// controller pastes / the phone scans. Carries the minimum needed to dial —
+/// nodeId + relayUrl (+ relay auth) — NOT the bulky iroh endpoint ticket, so the
+/// QR stays small and scannable (the ticket ~doubles QR density). The code/
+/// secret/pairingId are present only because the controller parser requires
+/// them (the headless host auto-confirms without validating them).
+fn pairing_ticket_url(
+    host_id: &str,
+    node_id: &str,
+    relay_url: &str,
+    relay_authentication: &str,
+) -> String {
     use base64::Engine;
-    let payload = json!({
-        "code": short_token(host_id, 1),
-        "secret": short_token(host_id, 2),
-        "pairingId": format!("{host_id}-pairing"),
-        "transports": [{ "kind": REMOTE_TRANSPORT_IROH, "ticket": endpoint_ticket }],
-    });
+    // Build the dial candidate and serialize it through the SHARED payload
+    // builder so the desktop and agent hosts emit byte-identical QR transports —
+    // the ticket-free shape (nodeId + relayUrl) is defined once in codux_protocol.
+    let candidate = codux_protocol::iroh_transport_candidate_with_ticket_and_authentication(
+        relay_url,
+        node_id,
+        relay_url,
+        "",
+        relay_authentication,
+    );
+    let payload = codux_protocol::pairing_payload(
+        &short_token(host_id, 1),
+        &short_token(host_id, 2),
+        &format!("{host_id}-pairing"),
+        &[candidate],
+    );
     let bytes = serde_json::to_vec(&payload).unwrap_or_default();
     let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
     format!("codux://pair?payload={encoded}")
