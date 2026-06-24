@@ -30,6 +30,11 @@ const STREAM_KIND_CONTROL: u8 = 0;
 const STREAM_KIND_TERMINAL: u8 = 1;
 const IROH_RELAY_URL_ENV: &str = "CODUX_IROH_RELAY_URL";
 const IROH_ONLINE_TIMEOUT: Duration = Duration::from_secs(12);
+/// Upper bound on a single controller→host dial. Without this, an unreachable
+/// peer (offline, on a relay we can't reach, no path) makes `endpoint.connect`
+/// hang forever, wedging the reconnect loop on one await with no retry, no
+/// backoff, and no recorded error.
+const IROH_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 type IrohSender = mpsc::UnboundedSender<Vec<u8>>;
 
@@ -482,10 +487,38 @@ impl RemoteIrohControllerTransport {
             .await
             .map_err(|error| format!("iroh controller bind failed: {error}"))?;
         on_state(String::new(), "connecting".to_string());
-        let connection = endpoint
-            .connect(endpoint_addr, CODUX_REMOTE_ALPN)
+        // Mirror the host path: wait for our own endpoint to register with its
+        // relay before dialling. A relay-routed connect cannot complete until we
+        // have a relay home; without this the dial below can block forever
+        // instead of failing fast (and reveals "can't reach the peer's relay" as
+        // a distinct, fast error).
+        if tokio::time::timeout(IROH_ONLINE_TIMEOUT, endpoint.online())
             .await
-            .map_err(|error| format!("iroh controller connect failed: {error}"))?;
+            .is_err()
+        {
+            endpoint.close().await;
+            return Err("iroh controller relay online timeout".to_string());
+        }
+        // Bound the dial itself. A peer that is offline, on a relay we can't
+        // reach, or otherwise unreachable would hang this connect indefinitely —
+        // wedging the reconnect loop with no retry/backoff/error. On timeout we
+        // surface a real error so the loop records it, backs off, and retries.
+        let connection = match tokio::time::timeout(
+            IROH_CONNECT_TIMEOUT,
+            endpoint.connect(endpoint_addr, CODUX_REMOTE_ALPN),
+        )
+        .await
+        {
+            Ok(Ok(connection)) => connection,
+            Ok(Err(error)) => {
+                endpoint.close().await;
+                return Err(format!("iroh controller connect failed: {error}"));
+            }
+            Err(_) => {
+                endpoint.close().await;
+                return Err("iroh controller connect timeout".to_string());
+            }
+        };
         let (send, recv) = connection
             .open_bi()
             .await

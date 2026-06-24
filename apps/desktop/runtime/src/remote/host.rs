@@ -2290,10 +2290,22 @@ impl RemoteHostRuntime {
             .device_id
             .as_deref()
             .filter(|id| !id.trim().is_empty())
-            && !plan.scope.project_id.trim().is_empty()
         {
-            self.terminal_subscriptions
-                .add_project_subscriber(&plan.scope.project_id, device_id);
+            // Subscribe BEFORE the shell starts so its first prompt isn't dropped
+            // (`queue_terminal_output_batch` drops output with no viewers). The
+            // terminal is stored with `project_id = scope.worktree_id` (see
+            // `remote_terminal_pty_config`), and `terminal_output_viewers` resolves
+            // viewers by THAT id — so subscribing only under `scope.project_id`
+            // misses the window when project_id != worktree_id. Cover both.
+            for id in [
+                plan.scope.project_id.as_str(),
+                plan.scope.worktree_id.as_str(),
+            ] {
+                if !id.trim().is_empty() {
+                    self.terminal_subscriptions
+                        .add_project_subscriber(id, device_id);
+                }
+            }
         }
         match self.terminals.create(plan.config, emit) {
             Ok(session_id) => {
@@ -4124,6 +4136,16 @@ impl RemoteHostRuntime {
             return;
         }
         let viewers = self.terminal_output_viewers(&session_id);
+        crate::runtime_trace::runtime_trace(
+            "terminal-probe",
+            &format!(
+                "host_output session={} bytes={} viewers={} dropped={}",
+                session_id,
+                text.len(),
+                viewers.len(),
+                viewers.is_empty()
+            ),
+        );
         if viewers.is_empty() {
             return;
         }

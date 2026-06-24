@@ -168,6 +168,21 @@ impl TerminalModel {
     }
 
     fn receive_output(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
+        {
+            let preview: String = bytes
+                .iter()
+                .take(40)
+                .map(|b| match b {
+                    0x1b => "\\e".to_string(),
+                    0x20..=0x7e => (*b as char).to_string(),
+                    other => format!("\\x{other:02x}"),
+                })
+                .collect();
+            codux_runtime::runtime_trace::runtime_trace(
+                "terminal-probe",
+                &format!("model_recv bytes={} first=\"{preview}\"", bytes.len()),
+            );
+        }
         if self.output_flush_pending {
             self.pending_output_bytes.extend(bytes);
             return;

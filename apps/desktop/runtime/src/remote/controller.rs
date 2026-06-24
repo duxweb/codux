@@ -32,7 +32,7 @@ use codux_remote_transport::{
     RemoteTransportStateHandler,
 };
 use serde_json::{json, Value};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -42,6 +42,12 @@ use super::controller_store::{SavedRemoteHost, SavedRemoteTransport};
 use super::transport_factory::RemoteTransportFactory;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+/// Memory reads run inside the project-switch load on the single blocking
+/// worker. A host that doesn't implement memory (e.g. a desktop host) never
+/// replies, so the default 20s wait would freeze that worker — starving every
+/// other project's terminal load. Bound it tightly: memory is non-critical for
+/// a switch, fall back to local/empty fast.
+const MEMORY_READ_TIMEOUT: Duration = Duration::from_secs(3);
 /// The host operator must accept the pairing; allow a generous window.
 const PAIRING_TIMEOUT: Duration = Duration::from_secs(90);
 
@@ -208,6 +214,12 @@ struct ControllerInner {
     // Per-session byte forwarders for terminal.output — the desktop terminal UI
     // registers one per remote session and the model parses the bytes itself.
     terminal_outputs: Mutex<HashMap<String, TerminalOutputForwarder>>,
+    // Sessions whose initial screen hasn't been painted yet (set on attach).
+    // The host delivers the current screen as a self-contained ANSI repaint in a
+    // frame's `screenData`; we paint that once so the pane isn't blank (the live
+    // `data` stream can start mid-session or drop the prompt during the host's
+    // create→subscribe window), then switch to incremental `data`.
+    terminal_pending_paint: Mutex<HashSet<String>>,
 }
 
 impl ControllerInner {
@@ -235,14 +247,47 @@ impl ControllerInner {
                 }
             }
             let session_id = envelope.get("sessionId").and_then(Value::as_str);
-            let data = payload.get("data").and_then(Value::as_str);
-            if let (Some(session_id), Some(data)) = (session_id, data) {
+            let data = payload.get("data").and_then(Value::as_str).unwrap_or("");
+            let screen_data = payload
+                .get("screenData")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty());
+            let mut matched = false;
+            let mut painted = false;
+            if let Some(session_id) = session_id {
                 if let Ok(forwarders) = self.terminal_outputs.lock() {
                     if let Some(forwarder) = forwarders.get(session_id) {
-                        forwarder(data.as_bytes().to_vec());
+                        matched = true;
+                        // First post-attach frame carrying a screen keyframe wins
+                        // the initial paint (a full clear+repaint), so the prompt
+                        // shows even though the desktop emulator otherwise renders
+                        // only the live byte stream. Afterwards: incremental data.
+                        let paint = self
+                            .terminal_pending_paint
+                            .lock()
+                            .ok()
+                            .map(|mut pending| {
+                                screen_data.is_some() && pending.remove(session_id)
+                            })
+                            .unwrap_or(false);
+                        if let (true, Some(screen)) = (paint, screen_data) {
+                            forwarder(screen.as_bytes().to_vec());
+                            painted = true;
+                        } else if !data.is_empty() {
+                            forwarder(data.as_bytes().to_vec());
+                        }
                     }
                 }
             }
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                &format!(
+                    "ctrl_recv terminal.output session={} bytes={} screen={} matched={matched} painted={painted}",
+                    session_id.unwrap_or("<none>"),
+                    data.len(),
+                    screen_data.map(|value| value.len()).unwrap_or(0),
+                ),
+            );
             return;
         }
         {
@@ -698,10 +743,11 @@ impl RemoteController {
             _ => serde_json::Map::new(),
         };
         payload.insert("op".to_string(), Value::String(op.to_string()));
-        let value = self.request(
+        let value = self.request_with_timeout(
             REMOTE_MEMORY_READ,
             REMOTE_MEMORY_RESULT,
             Value::Object(payload),
+            MEMORY_READ_TIMEOUT,
         )?;
         Ok(value.get("result").cloned().unwrap_or(Value::Null))
     }
@@ -821,6 +867,15 @@ impl RemoteController {
     /// Forward this session's `terminal.output` bytes to `forwarder` (the desktop
     /// terminal model's byte channel).
     pub fn register_terminal_output(&self, session_id: &str, forwarder: TerminalOutputForwarder) {
+        crate::runtime_trace::runtime_trace(
+            "remote",
+            &format!("ctrl_register_forwarder session={session_id}"),
+        );
+        // Arm the initial-screen paint for this (re)attach: the next frame that
+        // carries `screenData` repaints the pane before incremental data resumes.
+        if let Ok(mut pending) = self.inner.terminal_pending_paint.lock() {
+            pending.insert(session_id.to_string());
+        }
         if let Ok(mut guard) = self.inner.terminal_outputs.lock() {
             guard.insert(session_id.to_string(), forwarder);
         }
@@ -829,6 +884,9 @@ impl RemoteController {
     pub fn unregister_terminal_output(&self, session_id: &str) {
         if let Ok(mut guard) = self.inner.terminal_outputs.lock() {
             guard.remove(session_id);
+        }
+        if let Ok(mut pending) = self.inner.terminal_pending_paint.lock() {
+            pending.remove(session_id);
         }
     }
 

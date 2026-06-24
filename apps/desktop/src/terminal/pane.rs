@@ -363,10 +363,19 @@ fn register_remote_output(
     output_tx: &flume::Sender<Vec<u8>>,
 ) {
     let output_tx = output_tx.clone();
+    let probe_session = session_id.to_string();
     controller.register_terminal_output(
         session_id,
         Box::new(move |bytes| {
-            let _ = output_tx.send(bytes);
+            let n = bytes.len();
+            if output_tx.send(bytes).is_err() {
+                codux_runtime::runtime_trace::runtime_trace(
+                    "terminal-probe",
+                    &format!(
+                        "forwarder_send_DROPPED session={probe_session} bytes={n} (model channel closed — stale/dead model)"
+                    ),
+                );
+            }
         }),
     );
 }

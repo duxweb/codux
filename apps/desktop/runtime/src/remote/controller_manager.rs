@@ -140,6 +140,7 @@ impl ManagerShared {
     async fn reconnect_loop(self: Arc<Self>, device_id: String) {
         let mut delay = Duration::from_secs(1);
         let max_delay = Duration::from_secs(15);
+        let mut attempt: u32 = 0;
         loop {
             let Some(host) = self.store.find(&device_id) else {
                 // Forgotten while retrying: stop and forget the link state too.
@@ -148,7 +149,16 @@ impl ManagerShared {
                 }
                 break;
             };
+            attempt += 1;
             self.set_link(&device_id, ControllerLinkState::Connecting);
+            // Trace every attempt: a stuck/looping reconnect was previously
+            // invisible in the runtime log (one hung dial looked identical to
+            // "never tried"). The error string from `connect_saved` names the
+            // real failure (relay online timeout, dial timeout, offline host).
+            crate::runtime_trace::runtime_trace(
+                "remote",
+                &format!("controller_connect attempt device={device_id} n={attempt}"),
+            );
             let on_state = self.state_handler(&device_id);
             match RemoteController::connect_saved(&host, on_state).await {
                 Ok(controller) => {
@@ -159,9 +169,20 @@ impl ManagerShared {
                         errors.remove(&device_id);
                     }
                     self.set_link(&device_id, ControllerLinkState::Connected);
+                    crate::runtime_trace::runtime_trace(
+                        "remote",
+                        &format!("controller_connect ok device={device_id} n={attempt}"),
+                    );
                     break;
                 }
                 Err(error) => {
+                    crate::runtime_trace::runtime_trace(
+                        "remote",
+                        &format!(
+                            "controller_connect failed device={device_id} n={attempt} retry_in_ms={} error={error}",
+                            delay.as_millis()
+                        ),
+                    );
                     // Record why the reconnect failed so `controller_for` can
                     // surface it (offline host, relay unreachable, dial timeout);
                     // otherwise the UI only ever sees the generic "not ready".
