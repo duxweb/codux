@@ -106,7 +106,7 @@ impl CoduxApp {
                 .max(0),
             memory_error: self.state.memory_manager.extraction.last_error.clone(),
             remote_status: self.remote_status_label(),
-            remote_devices: self.state.remote.devices + self.remote_link_states.len(),
+            remote_devices: self.state.remote.devices + self.remote_saved_host_ids.len(),
             remote_online_devices: self.state.remote.online_devices
                 + self.remote_outbound_connected_count(),
             git: self.status_git_summary(),
@@ -121,11 +121,18 @@ impl CoduxApp {
     /// summary only tracks inbound paired controllers, so a live host link —
     /// e.g. a desktop/Windows peer we drive — is invisible to it. The status bar
     /// folds this in so the count reflects every managed device, not just mobile.
+    /// Counted over the saved-host registry (not the link-states map) so the
+    /// denominator matches the device list even for hosts not yet reached.
     fn remote_outbound_connected_count(&self) -> usize {
         use codux_runtime::remote::ControllerLinkState;
-        self.remote_link_states
-            .values()
-            .filter(|state| matches!(state, ControllerLinkState::Connected))
+        self.remote_saved_host_ids
+            .iter()
+            .filter(|id| {
+                matches!(
+                    self.remote_link_states.get(id.as_str()),
+                    Some(ControllerLinkState::Connected)
+                )
+            })
             .count()
     }
 
@@ -141,10 +148,12 @@ impl CoduxApp {
         {
             return "connected".to_string();
         }
-        let outbound_connecting = self
-            .remote_link_states
-            .values()
-            .any(|state| matches!(state, ControllerLinkState::Connecting));
+        let outbound_connecting = self.remote_saved_host_ids.iter().any(|id| {
+            matches!(
+                self.remote_link_states.get(id.as_str()),
+                Some(ControllerLinkState::Connecting)
+            )
+        });
         if host_status == "connecting" || outbound_connecting {
             return "connecting".to_string();
         }

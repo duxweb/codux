@@ -54,29 +54,50 @@ impl CoduxApp {
     /// re-attach that host's terminals so a dropped remote shell recovers.
     pub(super) fn refresh_remote_link_states(&mut self, cx: &mut Context<Self>) {
         let links = self.runtime_service.remote_controller_link_states();
-        if links == self.remote_link_states {
+        // Persistent outbound-host registry (disk-backed) for the status-bar
+        // count. Read here on the slow tick — never from a render path — because
+        // link states are transient runtime data that undercounts saved hosts
+        // not yet reached (and reset to empty on every app restart).
+        let saved_host_ids: Vec<String> = self
+            .runtime_service
+            .saved_remote_hosts()
+            .into_iter()
+            .map(|host| host.device_id)
+            .collect();
+        let links_changed = links != self.remote_link_states;
+        let saved_changed = saved_host_ids != self.remote_saved_host_ids;
+        if !links_changed && !saved_changed {
             return;
         }
-        let reconnected: Vec<String> = links
-            .iter()
-            .filter(|(device_id, state)| {
-                **state == ControllerLinkState::Connected
-                    && self
-                        .remote_link_states
-                        .get(device_id.as_str())
-                        .copied()
-                        // Absent previous = a host we've never seen up: a
-                        // first-launch connect counts as "newly connected" too,
-                        // so its project (loaded empty while connecting) refreshes.
-                        .map(|previous| previous != ControllerLinkState::Connected)
-                        .unwrap_or(true)
-            })
-            .map(|(device_id, _)| device_id.clone())
-            .collect();
+        let reconnected: Vec<String> = if links_changed {
+            links
+                .iter()
+                .filter(|(device_id, state)| {
+                    **state == ControllerLinkState::Connected
+                        && self
+                            .remote_link_states
+                            .get(device_id.as_str())
+                            .copied()
+                            // Absent previous = a host we've never seen up: a
+                            // first-launch connect counts as "newly connected"
+                            // too, so its project (loaded empty while connecting)
+                            // refreshes.
+                            .map(|previous| previous != ControllerLinkState::Connected)
+                            .unwrap_or(true)
+                })
+                .map(|(device_id, _)| device_id.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
         self.remote_link_states = links.clone();
+        self.remote_saved_host_ids = saved_host_ids;
         let state = self.ensure_project_list_state(cx);
         state.update(cx, |state, cx| state.set_links(links, cx));
         self.invalidate_ui(cx, [UiRegion::ProjectColumn]);
+        // The status-bar "N/M" count derives from both the link states and the
+        // saved-host registry, so refresh it whenever either changes.
+        self.invalidate_status_bar(cx);
         if !reconnected.is_empty() {
             self.reattach_terminals_for_reconnected_hosts(&reconnected, cx);
             self.reload_selected_project_for_reconnected_hosts(&reconnected, cx);

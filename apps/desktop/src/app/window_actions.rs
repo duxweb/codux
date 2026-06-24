@@ -348,6 +348,7 @@ impl CoduxApp {
             task_column_collapsed: false,
             project_list_state: None,
             remote_link_states: std::collections::HashMap::new(),
+            remote_saved_host_ids: Vec::new(),
             project_column_view: None,
             task_column_view: None,
             task_column_header_view: None,

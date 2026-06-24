@@ -37,6 +37,13 @@ impl CoduxApp {
         let tool_permissions = state.tool_permissions.clone();
         let ready_snapshot = runtime_service.app_runtime_ready(true, window.is_window_active());
         state.remote = ready_snapshot.remote.clone();
+        // Seed the outbound saved-host registry up front so the status-bar device
+        // count is correct on the first frame (the slow tick refreshes it after).
+        let remote_saved_host_ids: Vec<String> = runtime_service
+            .saved_remote_hosts()
+            .into_iter()
+            .map(|host| host.device_id)
+            .collect();
         let (terminal_layout, terminal_runtime) = normalize_terminal_restore_state(
             super::ai_runtime_status::terminal_layout_owner_id(&state).as_deref(),
             state.terminal_layout.clone(),
@@ -386,6 +393,7 @@ impl CoduxApp {
             task_column_collapsed: false,
             project_list_state: None,
             remote_link_states: std::collections::HashMap::new(),
+            remote_saved_host_ids,
             project_column_view: None,
             task_column_view: None,
             task_column_header_view: None,
