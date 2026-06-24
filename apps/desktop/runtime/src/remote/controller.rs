@@ -855,8 +855,14 @@ impl RemoteController {
     /// Create a terminal on the host; returns its session id.
     pub fn create_terminal(&self, config: Value) -> Result<String, String> {
         let reply = self.request(REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_CREATE, config)?;
+        // The host carries the session id at the envelope top level, but the
+        // waiter only sees `payload` — where the host puts the new terminal object
+        // keyed by `id` (and the bare fallback is `{ "id": … }`). Accept `id` as
+        // well as `sessionId` so the attach doesn't fail with "missing sessionId"
+        // even though the host did create the terminal.
         reply
             .get("sessionId")
+            .or_else(|| reply.get("id"))
             .and_then(Value::as_str)
             .map(str::to_string)
             .ok_or_else(|| "terminal.created reply missing sessionId".to_string())
