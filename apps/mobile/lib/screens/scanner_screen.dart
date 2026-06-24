@@ -37,12 +37,11 @@ class _ScannerScreenState extends State<ScannerScreen>
     _controller = MobileScannerController(
       autoStart: false,
       formats: const [BarcodeFormat.qrCode],
-      // Larger analysis resolution + autoZoom so a small or slightly distant
-      // pairing QR is still recognized; noDuplicates keeps onDetect from
-      // re-firing on the same code.
+      // High analysis resolution so a small or dense pairing QR has enough pixels
+      // per module to decode. NO autoZoom: it predicted an off-centre area and
+      // zoomed the (centred) QR out of frame, so nothing ever decoded.
       cameraResolution: const Size(1920, 1080),
       detectionSpeed: DetectionSpeed.noDuplicates,
-      autoZoom: true,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _startScanner();
@@ -137,6 +136,13 @@ class _ScannerScreenState extends State<ScannerScreen>
                   useAppLifecycleState: false,
                   onDetect: (capture) {
                     final value = capture.barcodes.firstOrNull?.rawValue;
+                    // Diagnostic: confirm the DECODER actually fires (vs the
+                    // camera merely running). If `[codux-scanner] onDetect` never
+                    // logs, the QR isn't being decoded at all (a camera/format
+                    // problem, not pairing).
+                    debugPrint(
+                      '[codux-scanner] onDetect barcodes=${capture.barcodes.length} len=${value?.length ?? 0}',
+                    );
                     _handleDetected(value);
                   },
                 ),
