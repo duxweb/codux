@@ -15,14 +15,10 @@ use super::protocol::{
     REMOTE_RESOURCE_PROJECTS, REMOTE_RESOURCE_SUBSCRIBE, REMOTE_RESOURCE_TERMINALS,
     REMOTE_RESOURCE_UNSUBSCRIBE, REMOTE_RESOURCE_WORKTREES, REMOTE_SSH_LIST,
     REMOTE_SSH_LIST_RESULT, REMOTE_SSH_REMOVE, REMOTE_SSH_UPSERT, REMOTE_TERMINAL_BUFFER,
-    REMOTE_TERMINAL_BUFFER_MAX_CHARS,
-    REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED, REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED,
+    REMOTE_TERMINAL_BUFFER_MAX_CHARS, REMOTE_TERMINAL_CLOSED, REMOTE_TERMINAL_CREATED,
     REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_INPUT_ACK, REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT,
-    REMOTE_TERMINAL_OUTPUT_ACK, REMOTE_TERMINAL_RESIZE, REMOTE_TERMINAL_SIGNAL,
-    REMOTE_TERMINAL_SUBSCRIBE, REMOTE_TERMINAL_UNSUBSCRIBE, REMOTE_TERMINAL_UPLOADED,
-    REMOTE_TERMINAL_VIEWPORT_CLAIM, REMOTE_TERMINAL_VIEWPORT_RELEASE,
-    REMOTE_TERMINAL_VIEWPORT_RESIZE, REMOTE_TERMINAL_VIEWPORT_SCROLL,
-    REMOTE_TERMINAL_VIEWPORT_SCROLLED, REMOTE_TERMINAL_VIEWPORT_STATE, REMOTE_TRANSPORT_PING,
+    REMOTE_TERMINAL_OUTPUT_ACK, REMOTE_TERMINAL_SIGNAL, REMOTE_TERMINAL_UPLOADED,
+    REMOTE_TERMINAL_VIEWPORT_STATE, REMOTE_TRANSPORT_PING,
     REMOTE_TRANSPORT_PONG, REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_DELETE, REMOTE_WORKTREE_LIST,
     REMOTE_WORKTREE_MERGE, REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_SELECT, REMOTE_WORKTREE_UPDATED,
     RemoteTerminalBufferWindow, RemoteTerminalSubscriptionTarget, RemoteTerminalSubscriptions,
@@ -54,6 +50,9 @@ use codux_runtime_core::{
     ai_stats as runtime_ai_stats, file as runtime_file, git as runtime_git, host as runtime_host,
     project as runtime_project, subscription::RuntimeSubscriptionRouter,
     terminal as runtime_terminal, upload as runtime_upload, worktree as runtime_worktree,
+};
+use codux_runtime_live::remote_terminal_dispatch::{
+    RemoteTerminalDispatch, TerminalMessage, is_terminal_kind,
 };
 use codux_terminal_core::{
     RemoteSequenceGuard, TerminalDriver, TerminalSequence, TerminalSessionHandle,
@@ -842,28 +841,26 @@ impl RemoteHostRuntime {
             REMOTE_WORKTREE_DELETE | REMOTE_WORKTREE_REMOVE => {
                 self.handle_worktree_remove(&envelope)
             }
-            REMOTE_TERMINAL_LIST => self.send_terminal_list(envelope.device_id.as_deref()),
-            REMOTE_TERMINAL_SUBSCRIBE => self.handle_terminal_subscribe(&envelope),
-            REMOTE_TERMINAL_UNSUBSCRIBE => self.handle_terminal_unsubscribe(&envelope),
-            REMOTE_TERMINAL_CREATE => self.handle_terminal_create(&envelope),
-            REMOTE_TERMINAL_BUFFER => self.handle_terminal_buffer(&envelope),
-            REMOTE_TERMINAL_OUTPUT_ACK => {
-                // Steady output acks prove the remote client is still
-                // actively viewing; keep its viewport lease alive so the
-                // desktop's passive claim cannot reclaim mid-session.
-                if let Some(session_id) = envelope.session_id.as_deref() {
-                    let owner = self.remote_viewport_owner(&envelope);
-                    self.terminals.touch_viewport_lease(session_id, &owner);
-                }
+            // Every terminal-protocol message routes through the shared dispatch
+            // in `codux-runtime-live`, so the desktop and the headless agent
+            // enumerate the protocol surface in ONE place and cannot drift apart.
+            // The desktop's host-specific arms (create/list/input/subscribe/...
+            // which touch its terminal layout, output batching and baseline
+            // cache) are supplied by the `DesktopTerminalCtx` impl below; the
+            // arms that are identical across hosts (signal, output-ack, viewport
+            // release/scroll) come from the trait's default methods.
+            kind if is_terminal_kind(kind) => {
+                let ctx = DesktopTerminalCtx {
+                    host: Arc::clone(self),
+                    envelope: &envelope,
+                };
+                ctx.dispatch_terminal(&TerminalMessage {
+                    kind,
+                    device_id: envelope.device_id.as_deref(),
+                    session_id: envelope.session_id.as_deref(),
+                    payload: &envelope.payload,
+                });
             }
-            REMOTE_TERMINAL_INPUT => self.handle_terminal_input(&envelope),
-            REMOTE_TERMINAL_VIEWPORT_CLAIM => self.handle_terminal_viewport_claim(&envelope),
-            REMOTE_TERMINAL_VIEWPORT_RESIZE => self.handle_terminal_viewport_resize(&envelope),
-            REMOTE_TERMINAL_VIEWPORT_RELEASE => self.handle_terminal_viewport_release(&envelope),
-            REMOTE_TERMINAL_VIEWPORT_SCROLL => self.handle_terminal_viewport_scroll(&envelope),
-            REMOTE_TERMINAL_RESIZE => self.handle_terminal_resize(&envelope),
-            REMOTE_TERMINAL_CLOSE => self.handle_terminal_close(&envelope),
-            REMOTE_TERMINAL_SIGNAL => self.handle_terminal_signal(&envelope),
             REMOTE_FILE_LIST => {
                 let path = envelope.payload.get("path").and_then(Value::as_str);
                 let purpose = envelope.payload.get("purpose").and_then(Value::as_str);
@@ -2496,120 +2493,6 @@ impl RemoteHostRuntime {
         self.resize_terminal_viewport_from_envelope(session_id, envelope, cols, rows);
     }
 
-    // Serves remote scrollback from the host screen: the authoritative
-    // scrollback lives here at the current grid size, so the client never
-    // has to rebuild history by replaying raw bytes recorded at other
-    // grid sizes (which corrupts TUI repaints).
-    fn handle_terminal_viewport_scroll(self: &Arc<Self>, envelope: &RemoteEnvelope) {
-        let Some(session_id) = envelope.session_id.as_deref() else {
-            return;
-        };
-        let owner = self.remote_viewport_owner(envelope);
-        self.terminals.touch_viewport_lease(session_id, &owner);
-        let viewport_request_id = envelope.payload.get("viewportRequestId").and_then(|value| {
-            value
-                .as_str()
-                .map(str::to_string)
-                .or_else(|| value.as_u64().map(|number| number.to_string()))
-        });
-        let max_lines = envelope
-            .payload
-            .get("maxLines")
-            .and_then(Value::as_u64)
-            .map(|value| value as usize)
-            .unwrap_or(0);
-        let overscan_rows = envelope
-            .payload
-            .get("overscanRows")
-            .and_then(Value::as_u64)
-            .map(|value| value as usize)
-            .unwrap_or(0);
-        if let Some(display_offset) = envelope
-            .payload
-            .get("displayOffset")
-            .and_then(Value::as_u64)
-            .map(|value| value as usize)
-        {
-            let Ok(snapshot) = self.terminals.remote_viewport_snapshot(
-                session_id,
-                display_offset,
-                overscan_rows,
-                max_lines,
-            ) else {
-                return;
-            };
-            let mut payload = json!({
-                "displayOffset": snapshot.display_offset,
-                "totalLines": snapshot.total_lines,
-                "cols": snapshot.cols,
-                "rows": snapshot.rows,
-                "marginRows": snapshot.margin_rows,
-                "marginRowsBelow": snapshot.margin_rows_below,
-                "screenData": snapshot.data,
-            });
-            if let Some(request_id) = viewport_request_id {
-                payload["viewportRequestId"] = Value::String(request_id);
-            }
-            self.send_terminal_data(
-                REMOTE_TERMINAL_VIEWPORT_SCROLLED,
-                envelope.device_id.as_deref(),
-                Some(session_id),
-                payload,
-            );
-            return;
-        }
-        let to_bottom = envelope
-            .payload
-            .get("toBottom")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let lines = envelope
-            .payload
-            .get("lines")
-            .and_then(Value::as_i64)
-            .unwrap_or(0)
-            .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
-        let snapshot = if to_bottom {
-            self.terminals.scroll_screen_to_bottom(session_id)
-        } else {
-            // lines == 0 is a sync request: reply with the current viewport
-            // (plus overscan) so the client learns totalLines and seeds its
-            // scroll range before the first gesture.
-            self.terminals.scroll_screen_lines(session_id, lines)
-        };
-        let Ok(snapshot) = snapshot else {
-            return;
-        };
-        self.send_terminal_data(
-            REMOTE_TERMINAL_VIEWPORT_SCROLLED,
-            envelope.device_id.as_deref(),
-            Some(session_id),
-            json!({
-                "displayOffset": snapshot.display_offset,
-                "totalLines": snapshot.total_lines,
-                "cols": snapshot.cols,
-                "rows": snapshot.rows,
-                "marginRows": snapshot.margin_rows,
-                "marginRowsBelow": snapshot.margin_rows_below,
-                "screenData": snapshot.data,
-            }),
-        );
-    }
-
-    fn handle_terminal_viewport_release(self: &Arc<Self>, envelope: &RemoteEnvelope) {
-        let Some(session_id) = envelope.session_id.as_deref() else {
-            return;
-        };
-        let owner = self.remote_viewport_owner(envelope);
-        if let Ok(Some(state)) = self.terminals.release_viewport(session_id, &owner) {
-            self.send_terminal_viewport_state_payload(
-                session_id,
-                envelope.device_id.as_deref(),
-                &state,
-            );
-        }
-    }
-
     fn resize_terminal_viewport_from_envelope(
         self: &Arc<Self>,
         session_id: &str,
@@ -2670,26 +2553,6 @@ impl RemoteHostRuntime {
                 self.send_terminal_list(envelope.device_id.as_deref());
             }
             Err(error) => self.send_error(envelope, &error.to_string()),
-        }
-    }
-
-    fn handle_terminal_signal(&self, envelope: &RemoteEnvelope) {
-        let Some(session_id) = envelope.session_id.as_deref() else {
-            return;
-        };
-        let signal = envelope
-            .payload
-            .get("signal")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        match signal {
-            "interrupt" => {
-                let _ = self.terminals.write(session_id, &[0x03]);
-            }
-            "escape" => {
-                let _ = self.terminals.write(session_id, &[0x1b]);
-            }
-            _ => {}
         }
     }
 
@@ -4202,6 +4065,76 @@ impl RemoteHostRuntime {
                 }
             }
         }
+    }
+}
+
+/// Adapts the desktop host to the shared remote-terminal router
+/// ([`RemoteTerminalDispatch`]). It holds the host (so the create arm can clone
+/// an `Arc` for its output-event closure) and the inbound envelope (so each
+/// host-specific arm keeps reading its existing `RemoteEnvelope` fields,
+/// unchanged from before the router was introduced). The arms that are
+/// identical across hosts -- signal, output-ack, viewport release/scroll -- are
+/// served by the trait's default methods against the two primitives below.
+struct DesktopTerminalCtx<'a> {
+    host: Arc<RemoteHostRuntime>,
+    envelope: &'a RemoteEnvelope,
+}
+
+impl RemoteTerminalDispatch for DesktopTerminalCtx<'_> {
+    fn terminal_manager(&self) -> &TerminalManager {
+        self.host.terminals.as_ref()
+    }
+
+    fn reply_terminal(
+        &self,
+        device_id: Option<&str>,
+        session_id: Option<&str>,
+        kind: &str,
+        payload: Value,
+    ) {
+        self.host
+            .send_terminal_data(kind, device_id, session_id, payload);
+    }
+
+    fn handle_terminal_list_msg(&self, _msg: &TerminalMessage) {
+        self.host
+            .send_terminal_list(self.envelope.device_id.as_deref());
+    }
+
+    fn handle_terminal_subscribe_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_subscribe(self.envelope);
+    }
+
+    fn handle_terminal_unsubscribe_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_unsubscribe(self.envelope);
+    }
+
+    fn handle_terminal_create_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_create(self.envelope);
+    }
+
+    fn handle_terminal_buffer_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_buffer(self.envelope);
+    }
+
+    fn handle_terminal_input_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_input(self.envelope);
+    }
+
+    fn handle_terminal_resize_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_resize(self.envelope);
+    }
+
+    fn handle_terminal_close_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_close(self.envelope);
+    }
+
+    fn handle_terminal_viewport_claim_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_viewport_claim(self.envelope);
+    }
+
+    fn handle_terminal_viewport_resize_msg(&self, _msg: &TerminalMessage) {
+        self.host.handle_terminal_viewport_resize(self.envelope);
     }
 }
 
