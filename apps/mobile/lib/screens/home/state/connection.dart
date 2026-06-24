@@ -375,14 +375,16 @@ extension _HomePageConnection on HomeController {
     _cancelRemoteSyncTimers();
     _remoteSyncController.resetSyncForCurrentGeneration();
     _remoteRuntime.reset();
-    _terminalBindingCoordinator.reset();    _terminalViewportInteractive = false;
+    _terminalBindingCoordinator.reset();
+    _terminalViewportInteractive = false;
     _syncRuntimeViewState();
   }
 
   void _resetRemoteRuntime({bool keepProjects = false}) {
     _remoteRuntimeEpoch += 1;
     _remoteRuntime.reset(keepProjects: keepProjects);
-    _terminalBindingCoordinator.reset();    _terminalViewportInteractive = false;
+    _terminalBindingCoordinator.reset();
+    _terminalViewportInteractive = false;
     _syncRuntimeViewState();
   }
 
@@ -397,7 +399,8 @@ extension _HomePageConnection on HomeController {
     _terminalInputSender.clear();
     _terminalBufferRetry.reset();
     _terminalOutputController.resetAll();
-    _terminalRepaint.tick();    _terminalViewportInteractive = false;
+    _terminalRepaint.tick();
+    _terminalViewportInteractive = false;
     _receiveSequenceGuard.reset();
     _receiveChain = Future<void>.value();
     _hostResponsive = false;
