@@ -2329,9 +2329,20 @@ fn captured_shell_environment(
         if let Some(value) = cache.lock().get(&key) {
             return value.clone();
         }
-        let value = capture_shell_environment_uncached(shell, cwd, home, user).unwrap_or_default();
-        cache.lock().insert(key, value.clone());
-        value
+        match capture_shell_environment_uncached(shell, cwd, home, user) {
+            // Only cache a healthy capture — a real login env always carries
+            // PATH. A momentary failure (e.g. the project's external drive
+            // blipped, so `cd <cwd>` failed and no env was emitted) must NOT be
+            // cached for the whole process lifetime, or codex stays "command not
+            // found" even after the drive is back. Leaving it uncached lets the
+            // next launch retry and self-heal once the path returns.
+            Some(value) if value.contains_key("PATH") => {
+                cache.lock().insert(key, value.clone());
+                value
+            }
+            Some(value) => value,
+            None => HashMap::new(),
+        }
     }
 }
 
@@ -2344,8 +2355,13 @@ fn capture_shell_environment_uncached(
 ) -> Option<HashMap<String, String>> {
     let begin_marker = "__CODUX_SHELL_ENV_BEGIN__";
     let end_marker = "__CODUX_SHELL_ENV_END__";
+    // Emit the env block only if `cd` into the project cwd actually succeeds
+    // (`&&`, not `;`). If the cwd's inode is momentarily gone (an external drive
+    // blipped), `cd` fails, nothing is printed, parsing returns None, and the
+    // caller declines to cache it — so the next launch retries instead of being
+    // stuck with a broken, PATH-less env for the whole process lifetime.
     let command = format!(
-        "cd {}; printf '%s\\000' '{}'; command env -0; printf '%s\\000' '{}'",
+        "cd {} && {{ printf '%s\\000' '{}'; command env -0; printf '%s\\000' '{}'; }}",
         shell_quote(cwd),
         begin_marker,
         end_marker
@@ -2353,6 +2369,9 @@ fn capture_shell_environment_uncached(
     let mut capture = Command::new(shell);
     capture
         .args(["-l", "-i", "-c", &command])
+        // Run the capture process itself from $HOME, never the (possibly dead)
+        // project cwd, so a stale inode can't stop the capture from starting.
+        .current_dir(home)
         .env_clear()
         .env("HOME", home)
         .env("USER", user)
