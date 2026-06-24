@@ -36,14 +36,19 @@ class _ScannerScreenState extends State<ScannerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Keep the controller MINIMAL: no forced cameraResolution (it starved the
-    // analysis stream on some MTK/OPLUS devices, so onDetect never fired) and no
-    // autoZoom (it zoomed the centred QR out of frame). Let the device pick its
-    // own compatible resolution; the ticket-free QR is small enough to decode.
+    // Without an explicit resolution mobile_scanner defaults to 640x480 on
+    // Android (see its `cameraResolution` doc) — too few pixels for a desktop QR
+    // seen from arm's length on a tablet, which is why the live scan couldn't
+    // lock on. Request 720p: ~2.25x the pixels (enough to decode a small QR)
+    // while staying a standard CameraX ImageAnalysis size, so it shouldn't
+    // starve the analysis stream the way a forced max resolution did before.
+    // autoZoom stays off (it zoomed the centred QR out of frame); the photo
+    // import button is the guaranteed fallback when the live scan still misses.
     _controller = MobileScannerController(
       autoStart: false,
       formats: const [BarcodeFormat.qrCode],
       detectionSpeed: DetectionSpeed.noDuplicates,
+      cameraResolution: const Size(1280, 720),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _startScanner();
