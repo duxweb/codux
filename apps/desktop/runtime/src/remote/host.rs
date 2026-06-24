@@ -73,13 +73,6 @@ use std::{
 
 const REMOTE_TERMINAL_OUTPUT_BATCH_MS: u64 = 32;
 const REMOTE_TERMINAL_BUFFER_BASELINE_TTL: Duration = Duration::from_secs(60);
-// A viewport resize keyframe is captured the instant the grid is resized, which
-// is before the TUI has processed the SIGWINCH and repainted into the new
-// geometry -- so it can capture a half-painted frame (e.g. an input box drawn
-// without its text). Push a second keyframe once the repaint has settled so the
-// viewer adopts the final screen. Generous enough to cover an alt-screen TUI's
-// full redraw.
-const REMOTE_TERMINAL_VIEWPORT_KEYFRAME_SETTLE_MS: u64 = 200;
 
 struct RemoteProjectScope {
     project_id: String,
@@ -107,7 +100,6 @@ struct RemoteTerminalLayoutScope {
 struct RemoteTerminalOutputBatch {
     data: String,
     buffer_length: usize,
-    screen_data: Option<String>,
     viewers: HashSet<String>,
 }
 
@@ -1591,7 +1583,6 @@ impl RemoteHostRuntime {
             Ok(RemoteTerminalSubscriptionTarget::Session { session_id }) => {
                 self.register_terminal_viewer(&session_id, Some(device_id));
                 self.send_terminal_viewport_state(&session_id, Some(device_id));
-                self.send_terminal_viewport_keyframe(&session_id, Some(device_id));
                 if RemoteTerminalSubscriptionTarget::baseline_requested(&envelope.payload) {
                     self.send_terminal_baseline(&session_id, Some(device_id), envelope);
                 }
@@ -1644,7 +1635,6 @@ impl RemoteHostRuntime {
                 } else if let Some(session_id) = change.session_id.as_deref() {
                     self.register_terminal_viewer(session_id, envelope.device_id.as_deref());
                     self.send_terminal_viewport_state(session_id, envelope.device_id.as_deref());
-                    self.send_terminal_viewport_keyframe(session_id, envelope.device_id.as_deref());
                     if change.baseline {
                         self.send_terminal_baseline(
                             session_id,
@@ -2659,21 +2649,6 @@ impl RemoteHostRuntime {
                     envelope.device_id.as_deref(),
                     &state,
                 );
-                self.send_terminal_viewport_keyframe(session_id, envelope.device_id.as_deref());
-                // The keyframe above is captured before the TUI repaints into
-                // the new geometry, so it may be half-painted. Re-send once the
-                // repaint settles; the viewer treats a keyframe as authoritative
-                // and reconciles its grid to the final screen.
-                let runtime = Arc::clone(self);
-                let session_id = session_id.to_string();
-                let device_id = envelope.device_id.clone();
-                crate::async_runtime::spawn(async move {
-                    tokio::time::sleep(Duration::from_millis(
-                        REMOTE_TERMINAL_VIEWPORT_KEYFRAME_SETTLE_MS,
-                    ))
-                    .await;
-                    runtime.send_terminal_viewport_keyframe(&session_id, device_id.as_deref());
-                });
             }
             Ok(None) => {
                 self.send_terminal_viewport_state(session_id, envelope.device_id.as_deref())
@@ -2685,27 +2660,6 @@ impl RemoteHostRuntime {
                 json!({ "message": error.to_string() }),
             ),
         }
-    }
-
-    fn send_terminal_viewport_keyframe(&self, session_id: &str, device_id: Option<&str>) {
-        let Some(screen_data) = self
-            .terminals
-            .screen_snapshot(session_id)
-            .ok()
-            .map(|snapshot| snapshot.data)
-            .filter(|data| !data.is_empty())
-        else {
-            return;
-        };
-        let buffer_length = self.terminals.buffer_characters(session_id).unwrap_or(0);
-        let output_seq = self.next_terminal_output_seq(session_id);
-        let payload = terminal_live_output_payload(
-            String::new(),
-            buffer_length,
-            output_seq,
-            Some(screen_data),
-        );
-        self.send_terminal_data(REMOTE_TERMINAL_OUTPUT, device_id, Some(session_id), payload);
     }
 
     fn remote_viewport_owner(&self, envelope: &RemoteEnvelope) -> String {
@@ -4162,12 +4116,6 @@ impl RemoteHostRuntime {
             return;
         }
         let buffer_length = self.terminals.buffer_characters(&session_id).unwrap_or(0);
-        let screen_data = self
-            .terminals
-            .screen_snapshot(&session_id)
-            .ok()
-            .map(|snapshot| snapshot.data)
-            .filter(|data| !data.is_empty());
         let should_spawn = {
             let Ok(mut batches) = self.terminal_output_batches.lock() else {
                 return;
@@ -4178,13 +4126,11 @@ impl RemoteHostRuntime {
                     .or_insert_with(|| RemoteTerminalOutputBatch {
                         data: String::new(),
                         buffer_length,
-                        screen_data: None,
                         viewers: HashSet::new(),
                     });
             let was_empty = batch.data.is_empty();
             batch.data.push_str(&text);
             batch.buffer_length = buffer_length;
-            batch.screen_data = screen_data;
             batch.viewers.extend(viewers);
             was_empty
         };
@@ -4222,12 +4168,7 @@ impl RemoteHostRuntime {
             return;
         }
         let output_seq = self.next_terminal_output_seq(session_id);
-        let payload = terminal_live_output_payload(
-            batch.data,
-            batch.buffer_length,
-            output_seq,
-            batch.screen_data,
-        );
+        let payload = terminal_live_output_payload(batch.data, batch.buffer_length, output_seq);
         // Serialize the payload once and fan it out raw, so N subscribers of the
         // same terminal don't each clone + re-serialize the whole batch. Falls
         // back to the per-device path if the payload can't be pre-serialized.
@@ -6202,7 +6143,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_terminal_live_output_includes_headless_screen_keyframe() {
+    fn remote_terminal_live_output_is_data_only_without_screen_keyframe() {
         let support_dir = temp_support_dir("codux-remote-terminal-live-screen-keyframe");
         write_paired_remote_settings(&support_dir);
         let terminals = Arc::new(TerminalManager::new());
@@ -6263,23 +6204,12 @@ mod tests {
 
         assert_eq!(live["data"], "partial live raw");
         assert_eq!(live["outputSeq"], 1);
+        // Live output is a pure byte stream now — NO screen keyframe. Replaying a
+        // whole-screen keyframe on top of the emulator's own scrollback duplicated
+        // the screen (badly on resize bursts), so the host no longer sends one.
         assert!(
-            live["screenData"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("restored tui")
-        );
-        assert!(
-            live["screenData"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("input box")
-        );
-        assert!(
-            !live["screenData"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("partial live raw")
+            live.get("screenData").is_none(),
+            "live terminal output must not carry a screen keyframe"
         );
 
         fs::remove_dir_all(support_dir).ok();
@@ -6444,7 +6374,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_viewport_resize_pushes_screen_keyframe() {
+    fn terminal_viewport_resize_pushes_state_without_screen_keyframe() {
         let support_dir = temp_support_dir("codux-remote-terminal-viewport-keyframe");
         write_paired_remote_settings(&support_dir);
         let terminals = Arc::new(TerminalManager::new());
@@ -6528,23 +6458,20 @@ mod tests {
             }
         }
 
-        assert!(saw_state);
-        let keyframe = keyframe.expect("viewport keyframe");
-        assert_eq!(keyframe["data"], "");
-        assert_eq!(keyframe["bufferLength"], 5);
-        assert_eq!(keyframe["outputSeq"], 1);
+        assert!(saw_state, "resize must still push viewport state");
+        // No screen keyframe: the desktop emulator handles resize via the shell's
+        // own repaint in the live byte stream (like a local terminal). Pushing a
+        // whole-screen keyframe duplicated the screen on every resize event.
         assert!(
-            keyframe["screenData"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("ready")
+            keyframe.is_none(),
+            "resize must not push a screen keyframe (it duplicated on resize)"
         );
 
         fs::remove_dir_all(support_dir).ok();
     }
 
     #[test]
-    fn terminal_subscribe_pushes_screen_keyframe() {
+    fn terminal_subscribe_does_not_push_screen_keyframe() {
         let support_dir = temp_support_dir("codux-remote-terminal-subscribe-keyframe");
         write_paired_remote_settings(&support_dir);
         let terminals = Arc::new(TerminalManager::new());
@@ -6606,13 +6533,12 @@ mod tests {
                 break;
             }
         }
-        let keyframe = keyframe.expect("subscribe keyframe");
-        assert_eq!(keyframe["data"], "");
+        // A plain subscribe (no baseline requested) pushes viewport state only —
+        // no screen keyframe. The keyframe duplicated the screen in the desktop's
+        // own scrollback; the re-attach seed rides the baseline buffer instead.
         assert!(
-            keyframe["screenData"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("ready")
+            keyframe.is_none(),
+            "subscribe must not push a screen keyframe (it duplicated the screen)"
         );
 
         fs::remove_dir_all(support_dir).ok();

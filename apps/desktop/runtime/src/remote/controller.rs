@@ -1247,7 +1247,7 @@ mod e2e {
                         "type": REMOTE_TERMINAL_OUTPUT,
                         "sessionId": "t1",
                         "deviceId": device_id,
-                        "payload": terminal_live_output_payload(text.clone(), text.len(), 1, Some(text)),
+                        "payload": terminal_live_output_payload(text.clone(), text.len(), 1),
                     }));
                 }
                 _ => {}
@@ -1372,7 +1372,7 @@ mod e2e {
                         "type": REMOTE_TERMINAL_OUTPUT,
                         "sessionId": "t1",
                         "deviceId": device_id,
-                        "payload": terminal_live_output_payload(text.clone(), text.len(), 1, Some(text)),
+                        "payload": terminal_live_output_payload(text.clone(), text.len(), 1),
                     }));
                 }
                 _ => {}

@@ -863,21 +863,12 @@ fn terminal_buffer_payload(
     payload
 }
 
-pub fn terminal_live_output_payload(
-    data: String,
-    buffer_length: usize,
-    output_seq: i64,
-    screen_data: Option<String>,
-) -> Value {
-    let mut payload = json!({
+pub fn terminal_live_output_payload(data: String, buffer_length: usize, output_seq: i64) -> Value {
+    json!({
         "data": data,
         "bufferLength": buffer_length,
         "outputSeq": output_seq,
-    });
-    if let Some(screen_data) = screen_data.filter(|data| !data.is_empty()) {
-        payload["screenData"] = json!(screen_data);
-    }
-    payload
+    })
 }
 
 fn split_text_chunks(text: &str, chunk_chars: usize) -> Vec<String> {
@@ -968,14 +959,16 @@ mod tests {
     }
 
     #[test]
-    fn terminal_live_output_payload_includes_screen_keyframe() {
-        let payload =
-            terminal_live_output_payload("raw".to_string(), 128, 9, Some("\x1b[Hscreen".into()));
+    fn terminal_live_output_payload_carries_data_only() {
+        // Live output is a pure byte stream now — no screen keyframe. The desktop
+        // emulator keeps its own scrollback from `data`; replaying a whole-screen
+        // keyframe on top of it duplicated the screen (notably on resize bursts).
+        let payload = terminal_live_output_payload("raw".to_string(), 128, 9);
 
         assert_eq!(payload["data"], "raw");
         assert_eq!(payload["bufferLength"], 128);
         assert_eq!(payload["outputSeq"], 9);
-        assert_eq!(payload["screenData"], "\x1b[Hscreen");
+        assert!(payload.get("screenData").is_none());
         assert!(payload.get("buffer").is_none());
     }
 
