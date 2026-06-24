@@ -2277,6 +2277,24 @@ impl RemoteHostRuntime {
             }
         };
         self.set_remote_project_scope(envelope.device_id.as_deref(), &plan.scope.project_id);
+        // Subscribe the creating device to this project's terminal output BEFORE
+        // the shell starts. `queue_terminal_output_batch` drops output while a
+        // session has no viewers, and the per-session viewer is only registered
+        // after `create` + the layout persist below — a window during which the
+        // freshly spawned shell prints its prompt. The desktop renders only the
+        // live byte stream (it ignores the screen keyframe and the host's initial
+        // buffer push), so a prompt dropped in that window is lost forever and the
+        // terminal looks blank until the user types. A project-scoped subscription
+        // added up front covers the new session the instant it first emits.
+        if let Some(device_id) = envelope
+            .device_id
+            .as_deref()
+            .filter(|id| !id.trim().is_empty())
+            && !plan.scope.project_id.trim().is_empty()
+        {
+            self.terminal_subscriptions
+                .add_project_subscriber(&plan.scope.project_id, device_id);
+        }
         match self.terminals.create(plan.config, emit) {
             Ok(session_id) => {
                 self.persist_remote_terminal_layout(
