@@ -34,7 +34,7 @@ Future<PairingPayload> _pairingPayloadFromJson(
     if (code == null || code.isEmpty) 'code',
     if (secret == null || secret.isEmpty) 'secret',
     if (parsed['pairingId']?.toString().trim().isEmpty != false) 'pairingId',
-    if (!hasSupportedTransport) 'transports.iroh.ticket',
+    if (!hasSupportedTransport) 'transports.iroh',
   ];
   if (missingFields.isNotEmpty) {
     throw Exception(
@@ -140,9 +140,12 @@ _FetchedPairingPayload _decodeEmbeddedPairingPayload(String encodedPayload) {
     final payload = Map<String, dynamic>.from(value);
     final transports = remoteTransportCandidatesFromJson(payload['transports']);
     final iroh = _irohTransport(transports);
-    final server = (iroh?.url.trim().isNotEmpty == true)
-        ? iroh!.url.trim()
-        : '';
+    // Slim QR codes carry only `relayUrl` (no full `url`/ticket); fall back to it
+    // so the relay server is still resolved. The host re-sends the canonical
+    // transports on the pairing.confirmed reply once connected.
+    final candidateUrl = iroh?.url.trim() ?? '';
+    final candidateRelay = iroh?.relayUrl.trim() ?? '';
+    final server = candidateUrl.isNotEmpty ? candidateUrl : candidateRelay;
     return _FetchedPairingPayload(server: server, payload: payload);
   } catch (_) {
     throw Exception(tr('remote.qrInvalid', LocaleChoices.system.id));

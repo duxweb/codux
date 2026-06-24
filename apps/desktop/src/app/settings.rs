@@ -29,7 +29,7 @@ use gpui_component::{
     spinner::Spinner,
     switch::Switch,
 };
-use qrcode::{QrCode, types::Color as QrColor};
+use qrcode::{EcLevel, QrCode, types::Color as QrColor};
 
 const CODUX_MOBILE_DOWNLOAD_URL: &str = "https://codux.dux.cn/features/mobile/";
 
@@ -1515,7 +1515,11 @@ fn remote_pending_pairing_row(
 fn remote_pairing_qr(payload: &str) -> AnyElement {
     const OUTER_SIZE: f32 = 242.0;
     const QR_SIZE: f32 = 220.0;
-    let Ok(code) = QrCode::new(payload.as_bytes()) else {
+    // Pair the trimmed payload with the lowest error-correction level: the QR is
+    // shown on a clean screen at close range, so error-correction redundancy buys
+    // little and a lower level keeps the version (and module count) down, making
+    // the code larger-celled and easier for phones to scan.
+    let Ok(code) = QrCode::with_error_correction_level(payload.as_bytes(), EcLevel::L) else {
         return div()
             .size(px(OUTER_SIZE))
             .rounded(px(14.0))
@@ -3218,10 +3222,28 @@ fn settings_remote_pane(
                             .flex_col()
                             .child(
                                 div()
-                                    .text_size(rems(0.9375))
-                                    .line_height(rems(1.25))
-                                    .text_color(color(theme::TEXT))
-                                    .child(empty_label(&device.name)),
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    // Devices in this segment paired INTO this
+                                    // machine, so the peer is a controller.
+                                    .child(settings_status_tag(
+                                        settings_text(
+                                            language,
+                                            "settings.remote.role.controller",
+                                            "Controller",
+                                        ),
+                                        theme::ACCENT,
+                                    ))
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .text_size(rems(0.9375))
+                                            .line_height(rems(1.25))
+                                            .text_color(color(theme::TEXT))
+                                            .truncate()
+                                            .child(empty_label(&device.name)),
+                                    ),
                             )
                             .child(
                                 div()
@@ -3297,10 +3319,24 @@ fn settings_remote_pane(
                         .flex_col()
                         .child(
                             div()
-                                .text_size(rems(0.9375))
-                                .line_height(rems(1.25))
-                                .text_color(color(theme::TEXT))
-                                .child(empty_label(&name)),
+                                .flex()
+                                .items_center()
+                                .gap(px(6.0))
+                                // This machine paired INTO these as a controller,
+                                // so the peer is a host.
+                                .child(settings_status_tag(
+                                    settings_text(language, "settings.remote.role.host", "Host"),
+                                    theme::TEXT_DIM,
+                                ))
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .text_size(rems(0.9375))
+                                        .line_height(rems(1.25))
+                                        .text_color(color(theme::TEXT))
+                                        .truncate()
+                                        .child(empty_label(&name)),
+                                ),
                         )
                         .child(
                             div()

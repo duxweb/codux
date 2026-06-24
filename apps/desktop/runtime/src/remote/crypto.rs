@@ -128,8 +128,18 @@ pub(crate) fn remote_pairing_payload(
         .map(|transport| {
             let mut item = Map::new();
             item.insert("kind".to_string(), json!(transport.kind));
-            if let Some(ticket) = transport.ticket.filter(|value| !value.trim().is_empty()) {
-                item.insert("ticket".to_string(), json!(ticket));
+            // Keep the QR small enough for phones to scan reliably: encode only
+            // the minimum needed to dial (node id + relay url) rather than the
+            // full iroh endpoint ticket. The ticket bundles every direct socket
+            // address and roughly doubles the QR density. The controller's
+            // `candidate_endpoint_addr` already accepts `node_id` + `relay_url`,
+            // and the host re-sends the complete transport set (ticket, addrs,
+            // host metadata) on the `pairing.confirmed` reply once connected.
+            if let Some(node_id) = transport.node_id.filter(|value| !value.trim().is_empty()) {
+                item.insert("nodeId".to_string(), json!(node_id));
+            }
+            if let Some(relay_url) = transport.relay_url.filter(|value| !value.trim().is_empty()) {
+                item.insert("relayUrl".to_string(), json!(relay_url));
             }
             if let Some(authentication) = transport
                 .relay_authentication
