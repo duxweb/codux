@@ -315,6 +315,25 @@ pub fn pairing_transport_entry(candidate: &RemoteTransportCandidate) -> Value {
     Value::Object(item)
 }
 
+/// One transport entry for a `pairing.confirmed` reply: the slim QR form (from
+/// [`pairing_transport_entry`]) PLUS the dial `url` the controller persists after
+/// connecting. Shared so the desktop and agent hosts emit IDENTICAL confirm
+/// transports instead of each hand-rolling the same object.
+pub fn confirmed_transport_entry(candidate: &RemoteTransportCandidate) -> Value {
+    let mut entry = pairing_transport_entry(candidate);
+    if let (Some(map), Some(url)) = (
+        entry.as_object_mut(),
+        candidate
+            .url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty()),
+    ) {
+        map.insert("url".to_string(), json!(url));
+    }
+    entry
+}
+
 /// The full pairing payload (`code` / `secret` / `pairingId` / `transports`)
 /// embedded in the pairing QR and the `codux://pair?payload=` URL. Shared by the
 /// desktop and headless agent hosts so the wire format lives in exactly one
@@ -456,13 +475,6 @@ pub struct RemoteEnvelope {
     pub seq: Option<i64>,
     #[serde(default)]
     pub payload: Value,
-}
-
-impl RemoteEnvelope {
-    pub fn with_device_id(mut self, device_id: String) -> Self {
-        self.device_id = Some(device_id);
-        self
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -935,7 +947,6 @@ pub fn host_capabilities() -> Value {
         },
         "terminalOutput": {
             "sequence": true,
-            "screenData": true,
         },
         "terminalViewport": {
             "ownership": true,
@@ -1112,7 +1123,10 @@ mod tests {
         assert_eq!(capabilities["terminalBuffer"]["requestId"], true);
         assert_eq!(capabilities["terminalBuffer"]["screenData"], true);
         assert_eq!(capabilities["terminalOutput"]["sequence"], true);
-        assert_eq!(capabilities["terminalOutput"]["screenData"], true);
+        // Live `terminal.output` no longer carries a screen keyframe (it
+        // duplicated the screen in the viewer's scrollback); the baseline buffer
+        // still does — hence terminalBuffer.screenData above but not here.
+        assert!(capabilities["terminalOutput"].get("screenData").is_none());
         assert_eq!(capabilities["terminalViewport"]["ownership"], true);
     }
 

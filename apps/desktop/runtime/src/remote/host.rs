@@ -59,7 +59,7 @@ use codux_terminal_core::{
     RemoteSequenceGuard, TerminalDriver, TerminalSequence, TerminalSessionHandle,
     runtime_scope_parts,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
@@ -1194,29 +1194,8 @@ impl RemoteHostRuntime {
         }
         let transports = self
             .transport_candidates_snapshot()
-            .into_iter()
-            .map(|transport| {
-                let mut item = Map::new();
-                item.insert("kind".to_string(), json!(transport.kind));
-                if let Some(url) = transport.url.filter(|value| !value.trim().is_empty()) {
-                    item.insert("url".to_string(), json!(url));
-                }
-                if let Some(node_id) = transport.node_id.filter(|value| !value.trim().is_empty()) {
-                    item.insert("nodeId".to_string(), json!(node_id));
-                }
-                if let Some(relay_url) =
-                    transport.relay_url.filter(|value| !value.trim().is_empty())
-                {
-                    item.insert("relayUrl".to_string(), json!(relay_url));
-                }
-                if let Some(authentication) = transport
-                    .relay_authentication
-                    .filter(|value| !value.trim().is_empty())
-                {
-                    item.insert("relayAuthentication".to_string(), json!(authentication));
-                }
-                Value::Object(item)
-            })
+            .iter()
+            .map(codux_protocol::confirmed_transport_entry)
             .collect::<Vec<_>>();
         self.send_plain(
             REMOTE_PAIRING_CONFIRMED,

@@ -78,6 +78,7 @@ fn make_handler(
     candidate: CandidateSlot,
     host_id: String,
     name: String,
+    relay_authentication: String,
 ) -> codux_remote_transport::RemoteTransportMessageHandler {
     Arc::new(move |_source: String, data: Vec<u8>| {
         let Ok(envelope) = serde_json::from_slice::<Value>(&data) else {
@@ -265,12 +266,19 @@ fn make_handler(
                 let mut transports = Vec::new();
                 if let Ok(guard) = candidate.lock() {
                     if let Some((node_id, relay_url)) = guard.as_ref() {
-                        transports.push(json!({
-                            "kind": REMOTE_TRANSPORT_IROH,
-                            "nodeId": node_id,
-                            "relayUrl": relay_url,
-                            "relayAuthentication": "",
-                        }));
+                        // Carry the relay auth (the QR already does) through the
+                        // SHARED builder, so a custom-relay agent can be
+                        // reconnected from the confirm transports — not only the
+                        // QR — instead of dropping the token here.
+                        let transport =
+                            codux_protocol::iroh_transport_candidate_with_ticket_and_authentication(
+                                relay_url,
+                                node_id,
+                                relay_url,
+                                "",
+                                &relay_authentication,
+                            );
+                        transports.push(codux_protocol::confirmed_transport_entry(&transport));
                     }
                 }
                 Some((
@@ -751,6 +759,7 @@ async fn connect_serving_host(
             Arc::clone(&candidate),
             cfg.host_id.clone(),
             cfg.name.clone(),
+            cfg.relay_authentication.clone(),
         ),
         Arc::new(|_| Ok(())),
         Arc::new(|_, _| {}),
@@ -1178,11 +1187,7 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
                     .ok_or_else(|| "channel closed waiting for terminal output".to_string())?;
             if kind == REMOTE_TERMINAL_OUTPUT {
                 let data = payload.get("data").and_then(Value::as_str).unwrap_or("");
-                let screen = payload
-                    .get("screenData")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                if data.contains(marker) || screen.contains(marker) {
+                if data.contains(marker) {
                     break;
                 }
             }
