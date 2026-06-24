@@ -9,74 +9,63 @@ import 'remote_transport.dart';
 export 'remote_protocol.dart';
 
 Future<PairingPayload> parsePairingPayload(String input) async {
-  final parsed = _parsePairingTokenPayload(input);
-  return _pairingPayloadFromJson(parsed.payload, server: parsed.server);
-}
-
-class _FetchedPairingPayload {
-  const _FetchedPairingPayload({required this.server, required this.payload});
-
-  final String server;
-  final Map<String, dynamic> payload;
-}
-
-Future<PairingPayload> _pairingPayloadFromJson(
-  Map<String, dynamic> parsed, {
-  required String server,
-}) async {
-  final normalizedServer = remoteTransportRelayUrl(server);
-  final code = parsed['code']?.toString();
-  final secret = parsed['secret']?.toString();
-  final hostId = parsed['hostId']?.toString();
-  final transports = _normalizedPairingTransports(parsed, normalizedServer);
-  final hasSupportedTransport = _irohTransport(transports) != null;
-  final missingFields = <String>[
-    if (code == null || code.isEmpty) 'code',
-    if (secret == null || secret.isEmpty) 'secret',
-    if (parsed['pairingId']?.toString().trim().isEmpty != false) 'pairingId',
-    if (!hasSupportedTransport) 'transports.iroh',
-  ];
-  if (missingFields.isNotEmpty) {
+  // Decode the codux://pair URL / base64url token to its JSON object (stable
+  // transport encoding), then VALIDATE + normalize through the shared Rust
+  // parser via FFI — the same format the desktop and agent hosts emit, so the
+  // client no longer re-implements the pairing format in Dart.
+  final payload = _decodePairingPayloadJson(input);
+  final result = remoteParsePairingPayload(payload);
+  final missing = result['missingFields'];
+  if (missing is List && missing.isNotEmpty) {
     throw Exception(
-      '${tr('remote.qrMissingFields', LocaleChoices.system.id)} (${missingFields.join(', ')})',
+      '${tr('remote.qrMissingFields', LocaleChoices.system.id)} (${missing.join(', ')})',
     );
   }
-  final pairingCode = code!;
-  final pairingSecret = secret!;
-  final deviceId = _newDeviceId();
+  final ok = result['ok'];
+  if (ok is! Map) {
+    throw Exception(tr('remote.qrInvalid', LocaleChoices.system.id));
+  }
+  final parsed = Map<String, dynamic>.from(ok);
+  final transports = remoteTransportCandidatesFromJson(parsed['transports']);
   CoduxLog.info(
-    '[codux-flutter-pairing] payload ready server=$normalizedServer host=${hostId ?? ''} pair=${parsed['pairingId']?.toString() ?? ''} transports=${_transportLogSummary(transports)}',
+    '[codux-flutter-pairing] payload ready server=${parsed['server'] ?? ''} host=${parsed['hostId'] ?? ''} pair=${parsed['pairingId'] ?? ''} transports=${_transportLogSummary(transports)}',
   );
   return PairingPayload(
-    server: normalizedServer,
-    code: pairingCode,
-    secret: pairingSecret,
-    deviceId: deviceId,
+    server: parsed['server']?.toString() ?? '',
+    code: parsed['code']?.toString() ?? '',
+    secret: parsed['secret']?.toString() ?? '',
+    deviceId: _newDeviceId(),
     hostName: parsed['hostName']?.toString(),
-    hostId: hostId,
+    hostId: parsed['hostId']?.toString(),
     transports: transports,
     pairingId: parsed['pairingId']?.toString(),
   );
 }
 
-List<RemoteTransportCandidate> _normalizedPairingTransports(
-  Map<String, dynamic> parsed,
-  String server,
-) {
-  return remoteTransportCandidatesFromJson(parsed['transports']).map((
-    candidate,
-  ) {
-    if (candidate.kind != RemoteTransportKind.iroh) return candidate;
-    return RemoteTransportCandidate(
-      kind: candidate.kind,
-      role: candidate.role,
-      url: server,
-      nodeId: candidate.nodeId,
-      relayUrl: candidate.relayUrl,
-      ticket: candidate.ticket,
-      relayAuthentication: candidate.relayAuthentication,
-    );
-  }).toList();
+/// Decode the pairing input — a `codux://pair?payload=<base64url>` URL or a bare
+/// base64url token — to its JSON object. Stable transport encoding only; the
+/// format validation lives in the shared Rust parser (via FFI).
+Map<String, dynamic> _decodePairingPayloadJson(String input) {
+  final value = input.trim();
+  if (value.isEmpty) {
+    throw Exception(tr('remote.qrEmpty', LocaleChoices.system.id));
+  }
+  var encoded = value;
+  final uri = Uri.tryParse(value);
+  if (uri != null && uri.scheme == 'codux' && uri.host == 'pair') {
+    final embedded = uri.queryParameters['payload']?.trim() ?? '';
+    if (embedded.isNotEmpty) encoded = embedded;
+  }
+  try {
+    final decoded = utf8.decode(base64Url.decode(base64Url.normalize(encoded)));
+    final parsed = jsonDecode(decoded);
+    if (parsed is! Map) {
+      throw const FormatException('pairing payload must be an object');
+    }
+    return Map<String, dynamic>.from(parsed);
+  } catch (_) {
+    throw Exception(tr('remote.qrInvalid', LocaleChoices.system.id));
+  }
 }
 
 List<RemoteTransportCandidate> _confirmedTransports(
@@ -98,58 +87,6 @@ List<RemoteTransportCandidate> _confirmedTransports(
       relayAuthentication: candidate.relayAuthentication,
     );
   }).toList();
-}
-
-RemoteTransportCandidate? _irohTransport(
-  List<RemoteTransportCandidate> transports,
-) {
-  for (final candidate in transports) {
-    if (candidate.kind == RemoteTransportKind.iroh &&
-        (candidate.ticket.trim().isNotEmpty ||
-            (candidate.nodeId.trim().isNotEmpty &&
-                candidate.relayUrl.trim().isNotEmpty))) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-_FetchedPairingPayload _parsePairingTokenPayload(String input) {
-  final value = input.trim();
-  if (value.isEmpty) {
-    throw Exception(tr('remote.qrEmpty', LocaleChoices.system.id));
-  }
-  final uri = Uri.tryParse(value);
-  if (uri != null && uri.scheme == 'codux' && uri.host == 'pair') {
-    final encodedPayload = uri.queryParameters['payload']?.trim() ?? '';
-    if (encodedPayload.isNotEmpty) {
-      return _decodeEmbeddedPairingPayload(encodedPayload);
-    }
-  }
-  return _decodeEmbeddedPairingPayload(value);
-}
-
-_FetchedPairingPayload _decodeEmbeddedPairingPayload(String encodedPayload) {
-  try {
-    final normalized = base64Url.normalize(encodedPayload);
-    final decoded = utf8.decode(base64Url.decode(normalized));
-    final value = jsonDecode(decoded);
-    if (value is! Map) {
-      throw const FormatException('pairing payload must be an object');
-    }
-    final payload = Map<String, dynamic>.from(value);
-    final transports = remoteTransportCandidatesFromJson(payload['transports']);
-    final iroh = _irohTransport(transports);
-    // Slim QR codes carry only `relayUrl` (no full `url`/ticket); fall back to it
-    // so the relay server is still resolved. The host re-sends the canonical
-    // transports on the pairing.confirmed reply once connected.
-    final candidateUrl = iroh?.url.trim() ?? '';
-    final candidateRelay = iroh?.relayUrl.trim() ?? '';
-    final server = candidateUrl.isNotEmpty ? candidateUrl : candidateRelay;
-    return _FetchedPairingPayload(server: server, payload: payload);
-  } catch (_) {
-    throw Exception(tr('remote.qrInvalid', LocaleChoices.system.id));
-  }
 }
 
 RelayEnvelope pairingRequestEnvelope(PairingPayload payload, String name) {

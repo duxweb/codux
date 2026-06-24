@@ -41,6 +41,43 @@ pub extern "C" fn codux_transport_relay_presets_json() -> *mut c_char {
     string_to_c(remote_relay_presets_json())
 }
 
+/// Validate a DECODED pairing-payload JSON object (the caller does the stable
+/// base64url/URL decode) through the SINGLE shared parser in `codux_protocol`,
+/// then relay-normalize the server and stamp it onto the iroh transports. Returns
+/// `{"ok": {...ParsedPairingPayload...}}` or `{"missingFields": [...]}` so the
+/// mobile client stops re-implementing the format in Dart and can't drift from
+/// the hosts that emit it.
+#[unsafe(no_mangle)]
+pub extern "C" fn codux_parse_pairing_payload(payload_json: *const c_char) -> *mut c_char {
+    let Some(payload_json) = c_to_string(payload_json) else {
+        return ptr::null_mut();
+    };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let value = serde_json::from_str::<serde_json::Value>(&payload_json)
+            .unwrap_or(serde_json::Value::Null);
+        match codux_protocol::parse_pairing_payload(&value) {
+            Ok(mut parsed) => {
+                let server = remote_relay_url(&parsed.server);
+                parsed.server = server.clone();
+                for candidate in &mut parsed.transports {
+                    if candidate.kind == codux_protocol::REMOTE_TRANSPORT_IROH {
+                        candidate.url = Some(server.clone());
+                    }
+                }
+                json!({ "ok": parsed })
+            }
+            Err(missing_fields) => json!({ "missingFields": missing_fields }),
+        }
+    }));
+    match result {
+        Ok(value) => string_to_c(value.to_string()),
+        Err(payload) => {
+            set_last_error(panic_payload_message(&payload));
+            string_to_c(json!({ "missingFields": ["invalid"] }).to_string())
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn codux_transport_preferred_kind(
     transports_json: *const c_char,

@@ -318,7 +318,7 @@ pub fn pairing_transport_entry(candidate: &RemoteTransportCandidate) -> Value {
 /// The full pairing payload (`code` / `secret` / `pairingId` / `transports`)
 /// embedded in the pairing QR and the `codux://pair?payload=` URL. Shared by the
 /// desktop and headless agent hosts so the wire format lives in exactly one
-/// place (the mobile client is Dart and parses the same shape).
+/// place (the mobile client parses the same shape via [`parse_pairing_payload`]).
 pub fn pairing_payload(
     code: &str,
     secret: &str,
@@ -333,6 +333,114 @@ pub fn pairing_payload(
             .iter()
             .map(pairing_transport_entry)
             .collect::<Vec<_>>(),
+    })
+}
+
+/// Whether `candidate` is a usable iroh transport for pairing: it must be an
+/// iroh kind AND carry enough to dial — either the full `ticket` OR both
+/// `nodeId` and `relayUrl` (the slim QR form). THE single rule, shared by the
+/// hosts that emit the QR and the clients that parse it, so "valid" never drifts
+/// between sender and receiver.
+pub fn is_valid_iroh_pairing_candidate(candidate: &RemoteTransportCandidate) -> bool {
+    if candidate.kind != REMOTE_TRANSPORT_IROH {
+        return false;
+    }
+    let present = |value: &Option<String>| {
+        value
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+    };
+    present(&candidate.ticket) || (present(&candidate.node_id) && present(&candidate.relay_url))
+}
+
+/// A pairing payload parsed and VALIDATED from its decoded JSON. The relay
+/// `server` is taken from the chosen iroh candidate (its `url`, else `relayUrl`)
+/// but NOT relay-normalized here — that lives in the transport layer; callers
+/// normalize it. `transports` are returned as-parsed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedPairingPayload {
+    pub server: String,
+    pub code: String,
+    pub secret: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_name: Option<String>,
+    pub pairing_id: String,
+    pub transports: Vec<RemoteTransportCandidate>,
+}
+
+/// Validate and extract a decoded pairing-payload JSON object (the desktop and
+/// agent hosts emit it via [`pairing_payload`]; the base64url/URL decoding is the
+/// caller's stable plumbing). Returns the names of any missing/invalid required
+/// fields on failure (`code`, `secret`, `pairingId`, `transports.iroh`) so the
+/// caller can render a localized message. THE single parse/validate definition,
+/// shared by every client via the FFI.
+pub fn parse_pairing_payload(value: &Value) -> Result<ParsedPairingPayload, Vec<String>> {
+    let field = |key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    let code = field("code");
+    let secret = field("secret");
+    let pairing_id = field("pairingId");
+    let transports: Vec<RemoteTransportCandidate> = value
+        .get("transports")
+        .cloned()
+        .and_then(|transports| serde_json::from_value(transports).ok())
+        .unwrap_or_default();
+    let iroh = transports
+        .iter()
+        .find(|candidate| is_valid_iroh_pairing_candidate(candidate));
+    let server = iroh
+        .and_then(|candidate| {
+            candidate
+                .url
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .or_else(|| {
+                    candidate
+                        .relay_url
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                })
+        })
+        .unwrap_or_default()
+        .to_string();
+
+    let mut missing = Vec::new();
+    if code.is_none() {
+        missing.push("code".to_string());
+    }
+    if secret.is_none() {
+        missing.push("secret".to_string());
+    }
+    if pairing_id.is_none() {
+        missing.push("pairingId".to_string());
+    }
+    if iroh.is_none() {
+        missing.push("transports.iroh".to_string());
+    }
+    if !missing.is_empty() {
+        return Err(missing);
+    }
+
+    Ok(ParsedPairingPayload {
+        server,
+        code: code.expect("checked above"),
+        secret: secret.expect("checked above"),
+        host_id: field("hostId"),
+        host_name: field("hostName"),
+        pairing_id: pairing_id.expect("checked above"),
+        transports,
     })
 }
 
@@ -1020,6 +1128,45 @@ mod tests {
         assert_eq!(payload["outputSeq"], 9);
         assert!(payload.get("screenData").is_none());
         assert!(payload.get("buffer").is_none());
+    }
+
+    #[test]
+    fn pairing_payload_round_trips_through_parse() {
+        // Generate the QR payload exactly as a host does, then parse it back: the
+        // ticket-free slim form (nodeId + relayUrl) must survive and validate, so
+        // the one generate/parse pair never disagrees.
+        let candidate = iroh_transport_candidate_with_ticket_and_authentication(
+            "https://relay.example",
+            "node-1",
+            "https://relay.example",
+            "", // ticket-free slim QR
+            "relay-token",
+        );
+        let payload = pairing_payload("123456", "secret", "pair-1", &[candidate]);
+        // Round-trips the wire shape (host emits it, client parses it).
+        assert!(payload["transports"][0].get("ticket").is_none());
+
+        let parsed = parse_pairing_payload(&payload).expect("valid pairing payload");
+        assert_eq!(parsed.code, "123456");
+        assert_eq!(parsed.secret, "secret");
+        assert_eq!(parsed.pairing_id, "pair-1");
+        // No `url` in the slim QR → server falls back to the relay url.
+        assert_eq!(parsed.server, "https://relay.example");
+        assert_eq!(parsed.transports.len(), 1);
+        assert!(is_valid_iroh_pairing_candidate(&parsed.transports[0]));
+    }
+
+    #[test]
+    fn parse_pairing_payload_reports_missing_iroh_transport() {
+        // A candidate with neither ticket nor nodeId+relayUrl isn't dialable.
+        let payload = json!({
+            "code": "123456",
+            "secret": "secret",
+            "pairingId": "pair-1",
+            "transports": [{ "kind": REMOTE_TRANSPORT_IROH }],
+        });
+        let err = parse_pairing_payload(&payload).expect_err("no dialable transport");
+        assert!(err.contains(&"transports.iroh".to_string()));
     }
 
     #[test]

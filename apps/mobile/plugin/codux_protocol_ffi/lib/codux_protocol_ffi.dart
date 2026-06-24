@@ -219,6 +219,11 @@ final _transportPreferredKind = _dylib
       Pointer<Utf8> Function(Pointer<Utf8>, Bool),
       Pointer<Utf8> Function(Pointer<Utf8>, bool)
     >('codux_transport_preferred_kind');
+final _parsePairingPayload = _dylib
+    .lookupFunction<
+      Pointer<Utf8> Function(Pointer<Utf8>),
+      Pointer<Utf8> Function(Pointer<Utf8>)
+    >('codux_parse_pairing_payload');
 final _controllerTransportConfigSummaryJson = _dylib
     .lookupFunction<
       Pointer<Utf8> Function(Pointer<Utf8>),
@@ -601,6 +606,22 @@ String preferredTransportKind(
     return _takeString(_transportPreferredKind(transportsPtr, pairing));
   } finally {
     malloc.free(transportsPtr);
+  }
+}
+
+/// Validate a DECODED pairing-payload object through the SHARED Rust parser
+/// (codux_protocol) — the same format the desktop and agent hosts emit, so the
+/// client no longer re-implements it in Dart. The caller does the stable
+/// base64url/URL decode and passes the JSON object. Returns either
+/// `{'ok': {server, code, secret, pairingId, hostId?, hostName?, transports}}`
+/// or `{'missingFields': [...]}`.
+Map<String, dynamic> parsePairingPayload(Map<String, dynamic> payload) {
+  final payloadPtr = jsonEncode(payload).toNativeUtf8();
+  try {
+    final decoded = _takeString(_parsePairingPayload(payloadPtr));
+    return Map<String, dynamic>.from(jsonDecode(decoded) as Map);
+  } finally {
+    malloc.free(payloadPtr);
   }
 }
 

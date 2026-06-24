@@ -208,3 +208,9 @@ String remotePreferredTransportKind(
     pairing: pairing,
   );
 }
+
+/// Validate a decoded pairing-payload object through the SHARED Rust parser, so
+/// the client uses the same format definition as the hosts (no Dart re-impl).
+Map<String, dynamic> remoteParsePairingPayload(Map<String, dynamic> payload) {
+  return codux_protocol_ffi.parsePairingPayload(payload);
+}
