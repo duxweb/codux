@@ -27,6 +27,7 @@ class _ScannerScreenState extends State<ScannerScreen>
   final _pairingTokenController = TextEditingController();
   bool _startPending = false;
   bool _handledPayload = false;
+  bool _recognized = false;
   bool _showManualConnect = false;
 
   @override
@@ -36,6 +37,12 @@ class _ScannerScreenState extends State<ScannerScreen>
     _controller = MobileScannerController(
       autoStart: false,
       formats: const [BarcodeFormat.qrCode],
+      // Larger analysis resolution + autoZoom so a small or slightly distant
+      // pairing QR is still recognized; noDuplicates keeps onDetect from
+      // re-firing on the same code.
+      cameraResolution: const Size(1920, 1080),
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      autoZoom: true,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _startScanner();
@@ -63,6 +70,11 @@ class _ScannerScreenState extends State<ScannerScreen>
     final payload = value?.trim();
     if (payload == null || payload.isEmpty || _handledPayload) return;
     _handledPayload = true;
+    // Surface a loading state the INSTANT a code is recognized — before handing
+    // off to pairing. If this spinner appears, scanning worked and any failure is
+    // in pairing; if it never appears, the QR was never recognized. Removes the
+    // "nothing happened" ambiguity between a scan miss and a pairing failure.
+    if (mounted) setState(() => _recognized = true);
     _stopScanner();
     widget.onDetected(payload);
   }
@@ -187,6 +199,32 @@ class _ScannerScreenState extends State<ScannerScreen>
                 tokenController: _pairingTokenController,
                 onSubmit: _submitManualPayload,
                 onCancel: () => setState(() => _showManualConnect = false),
+              ),
+            // Shown the moment a code is recognized, on top of everything, so the
+            // user sees recognition succeeded before the pairing handoff resolves.
+            if (_recognized)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: AppColors.backdrop,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: accent),
+                        const SizedBox(height: AppSpacing.l),
+                        Text(
+                          prefs.t('pair.recognized'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: AppTextSize.body,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
           ],
         ),
