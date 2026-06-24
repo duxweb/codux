@@ -105,15 +105,50 @@ impl CoduxApp {
                 - self.memory_status_seen_failed_count)
                 .max(0),
             memory_error: self.state.memory_manager.extraction.last_error.clone(),
-            remote_status: self.state.remote.status.clone(),
-            remote_devices: self.state.remote.devices,
-            remote_online_devices: self.state.remote.online_devices,
+            remote_status: self.remote_status_label(),
+            remote_devices: self.state.remote.devices + self.remote_link_states.len(),
+            remote_online_devices: self.state.remote.online_devices
+                + self.remote_outbound_connected_count(),
             git: self.status_git_summary(),
             git_running_label: self
                 .git_running_operation
                 .as_ref()
                 .map(|operation| operation.label.clone()),
         }
+    }
+
+    /// Connected outbound hosts (the peers this machine controls). The remote
+    /// summary only tracks inbound paired controllers, so a live host link —
+    /// e.g. a desktop/Windows peer we drive — is invisible to it. The status bar
+    /// folds this in so the count reflects every managed device, not just mobile.
+    fn remote_outbound_connected_count(&self) -> usize {
+        use codux_runtime::remote::ControllerLinkState;
+        self.remote_link_states
+            .values()
+            .filter(|state| matches!(state, ControllerLinkState::Connected))
+            .count()
+    }
+
+    /// The status word driving the bottom-bar label/color. Upgrades the host
+    /// summary's status when an outbound host link is live (or dialing), so a
+    /// controller-only machine still reads "connected" while it drives a host.
+    fn remote_status_label(&self) -> String {
+        use codux_runtime::remote::ControllerLinkState;
+        let host_status = self.state.remote.status.as_str();
+        if host_status == "connected"
+            || self.state.remote.online_devices > 0
+            || self.remote_outbound_connected_count() > 0
+        {
+            return "connected".to_string();
+        }
+        let outbound_connecting = self
+            .remote_link_states
+            .values()
+            .any(|state| matches!(state, ControllerLinkState::Connecting));
+        if host_status == "connecting" || outbound_connecting {
+            return "connecting".to_string();
+        }
+        host_status.to_string()
     }
 
     fn status_git_summary(&self) -> StatusGitSummary {
