@@ -2170,6 +2170,12 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Guard against a fast double Enter creating the folder twice — the first
+        // succeeds, the second then hits "already exists" while the listing is
+        // still reloading.
+        if self.project_editor_browse_busy {
+            return;
+        }
         let name = self.project_editor_browse_new_folder.trim().to_string();
         let device_id = self.project_editor_host_device_id.clone();
         if name.is_empty() || self.project_editor_browse_path.trim().is_empty() {
@@ -2233,6 +2239,12 @@ impl CoduxApp {
         let path_for_call = path.clone();
         self.project_editor_browse_busy = true;
         self.project_editor_browse_error = None;
+        // Clear the previous device/dir's listing immediately, so switching to a
+        // not-yet-ready remote host shows a loading/empty state instead of the
+        // stale entries (and path) from the last device.
+        self.project_editor_browse_path = String::new();
+        self.project_editor_browse_parent = None;
+        self.project_editor_browse_entries = Vec::new();
         self.invalidate_project_management(cx);
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
