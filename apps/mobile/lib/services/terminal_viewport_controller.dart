@@ -50,6 +50,19 @@ class TerminalViewportController {
     _sentBySession.clear();
   }
 
+  /// Record the phone's freshly measured grid even when there is no session to
+  /// resize yet (the terminal pane is laid out and measured BEFORE the first
+  /// `terminal.create` is issued). Caching it here lets `_createTerminal` spawn
+  /// the host PTY at the phone's width up front, so the shell draws its prompt
+  /// once at the final size instead of drawing at the host's default 100 cols
+  /// and then redrawing on the first viewport.resize -- which left a duplicate
+  /// (ghost) first prompt line on connect.
+  void recordMeasured(int cols, int rows) {
+    if (cols <= 0 || rows <= 0) return;
+    _pendingCols = cols;
+    _pendingRows = rows;
+  }
+
   bool applyRemoteState(RelayEnvelope message) {
     final payload = message.payload;
     if (payload is! Map) return false;

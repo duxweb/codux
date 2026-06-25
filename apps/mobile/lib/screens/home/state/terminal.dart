@@ -302,6 +302,11 @@ extension _HomePageTerminal on HomeController {
   }
 
   void _sendTerminalResize(int cols, int rows, {String? sessionId}) {
+    // Cache the measured grid up front -- the very first measurement arrives
+    // before any session exists (the pane is laid out, then create is issued),
+    // so recording it here lets `_createTerminal` seed the host PTY with the
+    // phone's width and avoid the connect-time duplicate prompt line.
+    _terminalViewportController.recordMeasured(cols, rows);
     final id = sessionId ?? _sessionId;
     if (id == null) return;
     final resize = _terminalViewportController.resize(
@@ -506,6 +511,14 @@ extension _HomePageTerminal on HomeController {
     );
     _creatingTerminalLayoutKind = normalizedLayoutKind;
     _applyState(_syncRuntimeViewState);
+    // Spawn the host PTY at the phone's measured grid (when known) so the shell
+    // draws its prompt once at the final width. Without this the host spawns at
+    // its 100x32 default, prints the prompt, then the phone's first
+    // viewport.resize triggers a SIGWINCH redraw -> a duplicate/ghost first
+    // prompt line. The follow-up resize then matches the spawn size and the
+    // host short-circuits it (no redraw).
+    final spawnCols = _terminalViewportController.pendingCols;
+    final spawnRows = _terminalViewportController.pendingRows;
     _send(
       RelayEnvelope(
         type: RemoteMessageType.terminalCreate,
@@ -518,6 +531,11 @@ extension _HomePageTerminal on HomeController {
             'projectPath': scope.projectPath!,
           'command': '',
           'layoutKind': layoutKind,
+          if (spawnCols != null && spawnRows != null &&
+              spawnCols > 0 && spawnRows > 0) ...{
+            'cols': spawnCols,
+            'rows': spawnRows,
+          },
         },
       ),
     );
