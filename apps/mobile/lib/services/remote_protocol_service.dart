@@ -130,49 +130,84 @@ Future<StoredDevice> confirmPairingOverIroh({
     '[codux-flutter-pairing] iroh confirm start relay=${payload.server} transport=${transport.kind} url=${transport.url} host=${payload.hostId ?? ''} pair=${payload.pairingId ?? ''}',
   );
   final pendingDevice = pendingPairingDevice(payload: payload, name: name);
-  final pairingTransport = createRemoteTransport(pendingDevice);
-  final completer = Completer<RelayEnvelope>();
-  pairingTransport.onEnvelope = (envelope, _) {
-    final message = RelayEnvelope.fromJson(envelope);
-    if (message.type == RemoteMessageType.pairingConfirmed ||
-        message.type == RemoteMessageType.pairingRejected) {
-      if (!completer.isCompleted) completer.complete(message);
-    }
-  };
-  pairingTransport.onState = (state) {
-    if (RemoteTransportStateEvent.parse(state).isClosed &&
-        !completer.isCompleted) {
-      completer.completeError(
-        Exception(tr('remote.waitTimeout', LocaleChoices.system.id)),
+
+  // iroh connection setup over a relay (and especially USB-tethered) paths is
+  // flaky: a single QUIC handshake can stall past the 15s connect window even
+  // though the next dial succeeds. Retry the CONNECT phase with fresh transports
+  // so one transient timeout doesn't doom the whole pairing. This is safe
+  // because the pairing.request is only sent AFTER connect succeeds — a failed
+  // connect never put a request on the wire, so there is no double-request or
+  // stale-active_pairing rejection risk. Once connected, send + confirm-wait run
+  // exactly once (no retry) to keep that guarantee.
+  const maxConnectAttempts = 3;
+  Object? lastError;
+  for (var attempt = 1; attempt <= maxConnectAttempts; attempt++) {
+    final pairingTransport = createRemoteTransport(pendingDevice);
+    final completer = Completer<RelayEnvelope>();
+    var connected = false;
+    pairingTransport.onEnvelope = (envelope, _) {
+      final message = RelayEnvelope.fromJson(envelope);
+      if (message.type == RemoteMessageType.pairingConfirmed ||
+          message.type == RemoteMessageType.pairingRejected) {
+        if (!completer.isCompleted) completer.complete(message);
+      }
+    };
+    pairingTransport.onState = (state) {
+      // Only treat a drop as fatal once we are past connect — a close during the
+      // connect retries is expected churn, not a confirm-wait failure.
+      if (connected &&
+          RemoteTransportStateEvent.parse(state).isClosed &&
+          !completer.isCompleted) {
+        completer.completeError(
+          Exception(tr('remote.waitTimeout', LocaleChoices.system.id)),
+        );
+      }
+    };
+    try {
+      await pairingTransport.connect(pendingDevice);
+      connected = true;
+      final sent = await pairingTransport.send(
+        pairingRequestEnvelope(payload, name).toJson(),
       );
+      if (!sent) {
+        throw Exception(tr('remote.waitTimeout', LocaleChoices.system.id));
+      }
+      final message = await completer.future.timeout(timeout);
+      if (message.type == RemoteMessageType.pairingRejected) {
+        throw const PairingRejectedException();
+      }
+      final device = confirmedDevice(
+        payload: payload,
+        name: name,
+        confirmed: message,
+      );
+      CoduxLog.info(
+        '[codux-flutter-pairing] iroh confirm accepted relay=${device.server} host=${device.hostId} device=${device.deviceId} transports=${_transportLogSummary(device.transports)}',
+      );
+      return device;
+    } on PairingRejectedException {
+      await pairingTransport.close();
+      rethrow;
+    } catch (error) {
+      await pairingTransport.close();
+      lastError = error;
+      // Connected then failed later (send/confirm) is terminal — retrying would
+      // re-send against an already-consumed pairing. Only retry pure connect
+      // failures, and only while attempts remain.
+      if (connected || attempt >= maxConnectAttempts) {
+        break;
+      }
+      CoduxLog.info(
+        '[codux-flutter-pairing] iroh connect attempt $attempt failed, retrying: $error',
+      );
+      await Future<void>.delayed(Duration(milliseconds: 600 * attempt));
     }
-  };
-  try {
-    await pairingTransport.connect(pendingDevice);
-    final sent = await pairingTransport.send(
-      pairingRequestEnvelope(payload, name).toJson(),
-    );
-    if (!sent) {
-      throw Exception(tr('remote.waitTimeout', LocaleChoices.system.id));
-    }
-    final message = await completer.future.timeout(timeout);
-    if (message.type == RemoteMessageType.pairingRejected) {
-      throw const PairingRejectedException();
-    }
-    final device = confirmedDevice(
-      payload: payload,
-      name: name,
-      confirmed: message,
-    );
-    CoduxLog.info(
-      '[codux-flutter-pairing] iroh confirm accepted relay=${device.server} host=${device.hostId} device=${device.deviceId} transports=${_transportLogSummary(device.transports)}',
-    );
-    return device;
-  } on TimeoutException {
-    throw Exception(tr('remote.waitTimeout', LocaleChoices.system.id));
-  } finally {
-    await pairingTransport.close();
   }
+  if (lastError is TimeoutException) {
+    throw Exception(tr('remote.waitTimeout', LocaleChoices.system.id));
+  }
+  throw lastError ??
+      Exception(tr('remote.waitTimeout', LocaleChoices.system.id));
 }
 
 StoredDevice pendingPairingDevice({

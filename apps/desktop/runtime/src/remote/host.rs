@@ -999,11 +999,27 @@ impl RemoteHostRuntime {
         if !self.snapshot().enabled {
             return Err("Remote Host is disabled.".to_string());
         }
-        let (transport, generation) = self.prepare_transport_for_pairing()?;
-        if let Some(transport) = transport {
-            transport.shutdown().await;
+        // Reuse the already-connected transport instead of tearing it down and
+        // rebuilding it. A fresh endpoint gets new direct addresses and must
+        // re-establish its home relay, so a mobile peer that scans the QR and
+        // dials in that settling window hits a QUIC handshake timeout
+        // (iroh_host_connect timed out) and its pairing.request never lands. The
+        // NodeId + relay URL are stable across restarts, so a live endpoint
+        // already advertises everything the QR needs — only spin up a transport
+        // when the host has none (e.g. it was just enabled).
+        let has_live_transport = self
+            .transport
+            .lock()
+            .ok()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false);
+        if !has_live_transport {
+            let (transport, generation) = self.prepare_transport_for_pairing()?;
+            if let Some(transport) = transport {
+                transport.shutdown().await;
+            }
+            self.start_remote_transport(generation).await?;
         }
-        self.start_remote_transport(generation).await?;
         let raw = self.service().raw_settings();
         let settings = super::remote_settings_from_raw(&raw);
         let mut pairing = RemotePairingInfo {
