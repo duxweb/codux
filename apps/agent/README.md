@@ -25,11 +25,19 @@ curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/script
 ```
 
 Flags: `--beta` (newest pre-release), `--version <x.y.z>` (pin a version),
-`--dir <path>` (install location), `--setup` (run `config` + `install` after).
+`--dir <path>` (install location), `--setup` (run `config` + `install` after),
+`--mirror <prefix>` (prepend a download mirror if GitHub is slow where you are).
 Pass them after `sh -s --`, e.g. install the beta and set it up as a service:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh -s -- --beta --setup
+```
+
+Uninstall — stops the host, removes its OS service, deletes the binary (add
+`--purge` to also wipe `~/.codux-agent` config + pairings):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh -s -- --uninstall
 ```
 
 Or do it by hand — download the `codux-agent-<version>-<os>-<arch>` binary from
