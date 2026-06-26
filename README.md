@@ -89,6 +89,14 @@ Any controller — a **desktop** or a **phone** — can connect to any host — 
 
 **Desktop app**
 
+macOS — install with [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask duxweb/tap/codux
+```
+
+Or download directly:
+
 | Platform | Download |
 | :--- | :--- |
 | macOS · Apple Silicon | [⬇ `codux-macos-aarch64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64.dmg) |
@@ -98,6 +106,14 @@ Any controller — a **desktop** or a **phone** — can connect to any host — 
 Open the macOS `.dmg` and drag Codux to Applications; double-click the Windows installer. Then open a project, start your AI CLI, and go.
 
 **Headless host (`codux-agent`)** — Beta, ships with 2.0
+
+macOS / Linux — one line (auto-detects OS/arch, installs as `codux` on your `PATH`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh
+```
+
+Flags: `--beta` · `--version <x.y.z>` · `--dir <path>` · `--setup` · `--mirror <prefix>` (if GitHub is slow where you are) · `--uninstall`. Or download the binary directly:
 
 | Platform | Download |
 | :--- | :--- |

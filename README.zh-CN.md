@@ -89,6 +89,14 @@ flowchart LR
 
 **桌面端**
 
+macOS —— 用 [Homebrew](https://brew.sh) 安装：
+
+```bash
+brew install --cask duxweb/tap/codux
+```
+
+或直接下载：
+
 | 平台 | 下载 |
 | :--- | :--- |
 | macOS · Apple 芯片 | [⬇ `codux-macos-aarch64.dmg`](https://github.com/duxweb/codux/releases/latest/download/codux-macos-aarch64.dmg) |
@@ -98,6 +106,14 @@ flowchart LR
 macOS 打开 `.dmg` 拖进「应用程序」；Windows 双击安装。装好后打开一个项目、在终端启动 AI CLI 就行。
 
 **主机端（无界面 · `codux-agent`）** —— Beta，随 2.0 发布
+
+macOS / Linux —— 一行装好（自动识别系统/架构，装成 `codux` 放进 `PATH`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh
+```
+
+参数：`--beta` · `--version <x.y.z>` · `--dir <路径>` · `--setup` · `--mirror <前缀>`（GitHub 慢时走镜像）· `--uninstall`。或直接下载二进制：
 
 | 平台 | 下载 |
 | :--- | :--- |
