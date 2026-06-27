@@ -22,7 +22,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::Duration;
-use tokio::sync::{Mutex as AsyncMutex, Notify, mpsc};
+use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
 pub const CODUX_REMOTE_ALPN: &[u8] = b"/codux/remote/1";
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
@@ -461,6 +461,15 @@ impl RemoteTransport for RemoteIrohHostTransport {
 struct SharedControllerEndpoint {
     relay_key: String,
     endpoint: Endpoint,
+    // One blob store + Router shared by every controller transport on this
+    // pooled endpoint: a single accept loop (the Router) serves iroh-blobs for
+    // all of them from one store, so an incoming fetch always hits the store the
+    // blob was published to. (The old per-transport accept loops raced on the
+    // shared endpoint and could serve from the wrong store.) Held here so they
+    // live as long as the pooled endpoint; dropping the entry aborts the Router.
+    blob_store: MemStore,
+    #[allow(dead_code)]
+    router: Router,
     // Identity of THIS pooled build. A connect that fails its dials carries the
     // generation it dialed on and only retires the pool entry when it still
     // matches — so a late evict from an ABANDONED reconnect (the Dart layer gave
@@ -485,7 +494,7 @@ async fn acquire_controller_endpoint(
     relay_url: Option<&RelayUrl>,
     relay_authentication: &str,
     on_log: &Option<RemoteTransportLogHandler>,
-) -> Result<(Endpoint, u64), String> {
+) -> Result<(Endpoint, MemStore, u64), String> {
     let key = controller_endpoint_key(relay_url, relay_authentication);
     let mut guard = SHARED_CONTROLLER_ENDPOINT
         .get_or_init(|| AsyncMutex::new(None))
@@ -494,7 +503,11 @@ async fn acquire_controller_endpoint(
     if let Some(shared) = guard.as_ref() {
         if shared.relay_key == key {
             log_transport(on_log, "iroh_controller endpoint reused".to_string());
-            return Ok((shared.endpoint.clone(), shared.generation));
+            return Ok((
+                shared.endpoint.clone(),
+                shared.blob_store.clone(),
+                shared.generation,
+            ));
         }
         // Relay changed under us — drop the old entry and build for the new one.
         // Don't close(): a concurrent connect may still hold a clone of it, and
@@ -526,13 +539,22 @@ async fn acquire_controller_endpoint(
             online_started.elapsed().as_millis()
         ),
     );
+    // One blob store + Router for every transport that shares this endpoint, so
+    // iroh-blobs is served by a single accept loop instead of per-transport
+    // loops racing on the shared endpoint.
+    let blob_store = MemStore::new();
+    let router = Router::builder(endpoint.clone())
+        .accept(iroh_blobs::ALPN, BlobsProtocol::new(blob_store.as_ref(), None))
+        .spawn();
     let generation = SHARED_CONTROLLER_ENDPOINT_GENERATION.fetch_add(1, Ordering::Relaxed);
     *guard = Some(SharedControllerEndpoint {
         relay_key: key,
         endpoint: endpoint.clone(),
+        blob_store: blob_store.clone(),
+        router,
         generation,
     });
-    Ok((endpoint, generation))
+    Ok((endpoint, blob_store, generation))
 }
 
 /// Retire the pooled endpoint so the next connection rebuilds a fresh one — used
@@ -570,7 +592,6 @@ pub struct RemoteIrohControllerTransport {
     terminal_tx: Mutex<Option<IrohSender>>,
     upload_tx: Mutex<Option<mpsc::UnboundedSender<RemoteTransportUpload>>>,
     closed: Arc<AtomicBool>,
-    close_notify: Arc<Notify>,
 }
 
 impl RemoteIrohControllerTransport {
@@ -602,7 +623,7 @@ impl RemoteIrohControllerTransport {
         // connection warms it (relay registration + route priming), every later
         // one — the control link after pairing, reconnects — skips straight to the
         // dial on the warmed path.
-        let (endpoint, endpoint_generation) =
+        let (endpoint, blob_store, endpoint_generation) =
             acquire_controller_endpoint(relay_url.as_ref(), &relay_authentication, &on_log).await?;
         // Dial with a short timeout and retry on the SAME, already-online
         // endpoint. The first relay-routed dial routinely stalls while the relay
@@ -670,7 +691,6 @@ impl RemoteIrohControllerTransport {
         let (tx, rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let (terminal_tx, terminal_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let (upload_tx, upload_rx) = mpsc::unbounded_channel::<RemoteTransportUpload>();
-        let blob_store = MemStore::new();
         let upload_control_tx = tx.clone();
         let transport = Arc::new(Self {
             endpoint,
@@ -680,17 +700,11 @@ impl RemoteIrohControllerTransport {
             terminal_tx: Mutex::new(Some(terminal_tx)),
             upload_tx: Mutex::new(Some(upload_tx)),
             closed: Arc::new(AtomicBool::new(false)),
-            close_notify: Arc::new(Notify::new()),
         });
         publish_path_state(&connection, &on_state);
         spawn_path_watcher(connection.clone(), Arc::clone(&on_state));
-        spawn_blob_accept_loop(
-            transport.endpoint.clone(),
-            BlobsProtocol::new(blob_store.as_ref(), None),
-            Arc::clone(&transport.closed),
-            Arc::clone(&transport.close_notify),
-            on_log.clone(),
-        );
+        // Blobs are now served by the pool-level Router (see
+        // acquire_controller_endpoint), so there's no per-transport accept loop.
         spawn_upload_writer(
             blob_store,
             transport.endpoint.clone(),
@@ -730,11 +744,6 @@ impl RemoteIrohControllerTransport {
         if let Ok(mut connection) = self.connection.lock() {
             *connection = None;
         }
-        // Wake the blob-accept loop so it stops awaiting accept() on the shared
-        // endpoint and exits — the endpoint outlives this transport now, so it
-        // would otherwise linger forever. notify_one stores a permit if the loop
-        // is mid-iteration, so the signal is never lost.
-        self.close_notify.notify_one();
     }
 }
 
@@ -795,69 +804,6 @@ impl RemoteTransport for RemoteIrohControllerTransport {
         // connection (close_sender) is enough; the pool keeps the endpoint warm.
         self.close_sender();
     }
-}
-
-fn spawn_blob_accept_loop(
-    endpoint: Endpoint,
-    blobs: BlobsProtocol,
-    closed: Arc<AtomicBool>,
-    close_notify: Arc<Notify>,
-    on_log: Option<RemoteTransportLogHandler>,
-) {
-    tokio::spawn(async move {
-        while !closed.load(Ordering::SeqCst) {
-            // The endpoint is process-shared and outlives this transport, so
-            // accept() never returns None on our own close — race it against the
-            // close signal so this loop exits instead of lingering on the shared
-            // endpoint (and racing the next transport's loop for incoming blobs).
-            let incoming = tokio::select! {
-                biased;
-                _ = close_notify.notified() => break,
-                incoming = endpoint.accept() => incoming,
-            };
-            let Some(incoming) = incoming else {
-                break;
-            };
-            let blobs = blobs.clone();
-            let on_log = on_log.clone();
-            tokio::spawn(async move {
-                let mut accepting = match incoming.accept() {
-                    Ok(accepting) => accepting,
-                    Err(error) => {
-                        log_transport(&on_log, format!("iroh_blob_accept failed error={error}"));
-                        return;
-                    }
-                };
-                let alpn = match accepting.alpn().await {
-                    Ok(alpn) => alpn,
-                    Err(error) => {
-                        log_transport(&on_log, format!("iroh_blob_alpn failed error={error}"));
-                        return;
-                    }
-                };
-                let connection = match accepting.await {
-                    Ok(connection) => connection,
-                    Err(error) => {
-                        log_transport(&on_log, format!("iroh_blob_connect failed error={error}"));
-                        return;
-                    }
-                };
-                if alpn == iroh_blobs::ALPN {
-                    if let Err(error) = blobs.accept(connection).await {
-                        log_transport(&on_log, format!("iroh_blob_accept failed error={error}"));
-                    }
-                } else {
-                    log_transport(
-                        &on_log,
-                        format!(
-                            "iroh_blob_unsupported_alpn alpn={}",
-                            String::from_utf8_lossy(&alpn)
-                        ),
-                    );
-                }
-            });
-        }
-    });
 }
 
 fn log_transport(on_log: &Option<RemoteTransportLogHandler>, message: String) {
