@@ -66,7 +66,6 @@ pub struct RemoteIrohHostTransport {
     node_id: String,
     relay_url: String,
     peers: Mutex<HashMap<String, PeerSenders>>,
-    closed: AtomicBool,
     on_message: RemoteTransportMessageHandler,
     on_upload: RemoteTransportUploadHandler,
     on_state: RemoteTransportStateHandler,
@@ -137,7 +136,6 @@ impl RemoteIrohHostTransport {
             blob_store: blob_store.clone(),
             relay_url: relay_url.to_string(),
             peers: Mutex::new(HashMap::new()),
-            closed: AtomicBool::new(false),
             on_message,
             on_upload,
             on_state,
@@ -438,7 +436,6 @@ impl RemoteTransport for RemoteIrohHostTransport {
     }
 
     async fn shutdown(&self) {
-        self.closed.store(true, Ordering::SeqCst);
         if let Ok(mut peers) = self.peers.lock() {
             peers.clear();
         }

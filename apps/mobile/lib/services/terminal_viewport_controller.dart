@@ -25,15 +25,11 @@ class TerminalViewportController {
   final Map<String, _ViewportSize> _sentBySession = {};
   final Map<String, int> _generationBySession = {};
   final Map<String, String?> _ownerBySession = {};
-  String? _owner;
   int _generation = 0;
 
-  String? get owner => _owner;
-
-  /// The last-reported owner for [sessionId] specifically. Prefer this over
-  /// [owner] (which is just the last-applied across any session): with several
-  /// sessions switching quickly, the global field can momentarily reflect a
-  /// different session's owner.
+  /// The last-reported owner for [sessionId]. Owner is tracked per-session: with
+  /// several sessions switching quickly, a single global field could momentarily
+  /// reflect a different session's owner.
   String? ownerFor(String sessionId) => _ownerBySession[sessionId.trim()];
   int get generation => _generation;
   int? get pendingCols => _pendingCols;
@@ -84,7 +80,6 @@ class TerminalViewportController {
       _generationBySession[sessionId] = nextGeneration;
     }
     final owner = payload['owner']?.toString();
-    _owner = owner;
     if (sessionId.isNotEmpty) {
       _ownerBySession[sessionId] = owner;
     }
@@ -98,7 +93,7 @@ class TerminalViewportController {
       _sentBySession[sessionId] = _ViewportSize(cols, rows);
     }
     CoduxLog.debug(
-      '[codux-flutter-terminal] viewport owner=${_owner ?? ''} size=${cols ?? 0}x${rows ?? 0} generation=$_generation session=${message.sessionId ?? ''}',
+      '[codux-flutter-terminal] viewport owner=${owner ?? ''} size=${cols ?? 0}x${rows ?? 0} generation=$_generation session=${message.sessionId ?? ''}',
     );
     return true;
   }

@@ -2966,9 +2966,7 @@ impl RemoteHostRuntime {
         let version = self
             .resource_subscriptions
             .next_version(resource, project_id, session_id);
-        if let Some(object) = payload.as_object_mut() {
-            object.insert("version".to_string(), json!(version));
-        }
+        payload = with_resource_version(payload, version);
         let mut device_ids = self
             .resource_subscriptions
             .devices_for(resource, project_id, session_id);
