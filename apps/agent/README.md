@@ -126,6 +126,10 @@ computer this still tests the same tunnel path, but it does not prove
 cross-machine network reachability; for that, run the Codux host on a different
 machine and connect to it from the desktop.
 
+For real app previews, use the same browser window and enter the host-local URL
+of your dev server, such as `http://127.0.0.1:5173/`; DNS and loopback are
+resolved on the host side.
+
 ## Boundary
 
 Keep the agent thin. Shared host behavior belongs in

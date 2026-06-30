@@ -140,6 +140,20 @@ curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/script
 
 运行 `codux <命令> --help` 查看详情，或见 [`apps/agent/README.md`](apps/agent/README.md)。
 
+## Web 隧道浏览器
+
+当桌面端连接到已配对的主机端后，工具栏里的地球图标 **Web Tunnel
+Browser** 会打开一个独立代理的 Chromium 浏览器，用来访问运行在主机端的 Web
+服务。
+
+- `localhost` 等地址会在主机端解析，而不是在当前桌面端解析。比如主机端跑着
+  Vite `http://127.0.0.1:5173/`，在隧道浏览器里输入这个地址，就会通过加密的
+  Codux 链路打开。
+- 隧道支持 HTTPS、WebSocket、HMR、局域网地址、`.local`、VPN 路由，以及主机端能访问到的开发域名。
+- 每个 `codux-agent` 都内置诊断页 `http://127.0.0.1:8765/`。通过 Web
+  隧道浏览器打开它，可以检查隧道健康状态和实时往返延迟。
+- 在同一台电脑上测试也会走同一套隧道链路；但要验证跨机器网络可达性，仍应把 Codux 主机端跑在另一台机器上。
+
 ## 快捷键
 
 | 操作 | 快捷键 |

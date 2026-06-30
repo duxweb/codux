@@ -140,6 +140,24 @@ Put the binary on your `PATH` as `codux`, then run `codux config` → `codux ins
 
 Run `codux <command> --help` for details, or see [`apps/agent/README.md`](apps/agent/README.md).
 
+## Web Tunnel Browser
+
+When you control a paired headless host from Codux Desktop, the globe **Web
+Tunnel Browser** button opens a proxy-isolated Chromium browser for web apps
+running on that host.
+
+- Host-local URLs are resolved on the host, not on your controller machine. If
+  the host runs Vite at `http://127.0.0.1:5173/`, type that URL in the tunnel
+  browser and it opens through the encrypted Codux link.
+- The tunnel also covers HTTPS, WebSocket, HMR, LAN addresses, `.local` names,
+  VPN routes, and host-bound development domains reachable from the host.
+- Every `codux-agent` serves a built-in diagnostic page at
+  `http://127.0.0.1:8765/`. Open it through the Web Tunnel Browser to verify the
+  tunnel health and live round-trip latency.
+- Testing on one computer still exercises the same tunnel path, but true
+  cross-machine reachability should be verified with the Codux host running on a
+  different machine.
+
 ## Keyboard Shortcuts
 
 | Action | Shortcut |
