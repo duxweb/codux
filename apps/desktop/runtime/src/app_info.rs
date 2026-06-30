@@ -309,10 +309,6 @@ pub fn open_url_with_http_proxy(
     }
 }
 
-pub fn open_blank_with_http_proxy(proxy_host: &str, proxy_port: u16) -> Result<(), String> {
-    open_target_with_http_proxy("about:blank", proxy_host, proxy_port)
-}
-
 fn open_or_create_text_file(path: &Path, initial_content: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -816,6 +812,16 @@ fn open_target_with_http_proxy(
     let proxy_bypass_arg = "--proxy-bypass-list=<-loopback>";
     let user_data_dir = runtime_temp_dir().join(format!("web-tunnel-browser-{proxy_port}"));
     let user_data_arg = format!("--user-data-dir={}", user_data_dir.to_string_lossy());
+    let browser_args = [
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-default-apps",
+        "--disable-features=DialMediaRouteProvider",
+        &proxy_arg,
+        proxy_bypass_arg,
+        &user_data_arg,
+        target,
+    ];
     #[cfg(target_os = "macos")]
     {
         let browsers = [
@@ -825,11 +831,7 @@ fn open_target_with_http_proxy(
             "Brave Browser",
         ];
         for browser in browsers {
-            if open_macos_app_with_args(
-                browser,
-                &[&proxy_arg, proxy_bypass_arg, &user_data_arg, target],
-            )
-            .is_ok()
+            if open_macos_app_with_args(browser, &browser_args).is_ok()
             {
                 return Ok(());
             }
@@ -840,11 +842,7 @@ fn open_target_with_http_proxy(
     {
         let browsers = ["chrome", "msedge", "chromium", "brave"];
         for browser in browsers {
-            if spawn_open_command(
-                browser,
-                &[&proxy_arg, proxy_bypass_arg, &user_data_arg, target],
-            )
-            .is_ok()
+            if spawn_open_command(browser, &browser_args).is_ok()
             {
                 return Ok(());
             }
@@ -861,11 +859,7 @@ fn open_target_with_http_proxy(
             "brave-browser",
         ];
         for browser in browsers {
-            if spawn_open_command(
-                browser,
-                &[&proxy_arg, proxy_bypass_arg, &user_data_arg, target],
-            )
-            .is_ok()
+            if spawn_open_command(browser, &browser_args).is_ok()
             {
                 return Ok(());
             }

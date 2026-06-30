@@ -113,14 +113,6 @@ impl RuntimeService {
         crate::app_info::open_url_with_http_proxy(url, proxy_host, proxy_port)
     }
 
-    pub fn open_blank_with_http_proxy(
-        &self,
-        proxy_host: &str,
-        proxy_port: u16,
-    ) -> Result<(), String> {
-        crate::app_info::open_blank_with_http_proxy(proxy_host, proxy_port)
-    }
-
     pub fn dispatch_notification_channels(
         &self,
         request: NotificationDispatchRequest,

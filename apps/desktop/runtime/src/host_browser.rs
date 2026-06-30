@@ -16,6 +16,7 @@ use url::Url;
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
 const MAX_HEADER_BYTES: usize = 64 * 1024;
+const DEFAULT_WEB_TUNNEL_URL: &str = "http://127.0.0.1:8765/";
 
 #[derive(Clone)]
 pub struct HostBrowserProxy {
@@ -105,7 +106,7 @@ impl HostBrowserProxy {
         )?;
         let port = spawn_tunnel_proxy_listener(listener, Arc::clone(&self.shared), token)?;
         Ok(HostBrowserOpenResult {
-            original_url: "about:blank".to_string(),
+            original_url: DEFAULT_WEB_TUNNEL_URL.to_string(),
             proxy_host: "127.0.0.1".to_string(),
             proxy_port: port,
         })

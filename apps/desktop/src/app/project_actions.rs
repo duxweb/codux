@@ -1522,12 +1522,14 @@ impl CoduxApp {
     ) {
         match self.runtime_service.open_host_browser_session(&device_id) {
             Ok(opened) => {
-                match self
-                    .runtime_service
-                    .open_blank_with_http_proxy(&opened.proxy_host, opened.proxy_port)
-                {
+                match self.runtime_service.open_url_with_http_proxy(
+                    &opened.original_url,
+                    &opened.proxy_host,
+                    opened.proxy_port,
+                ) {
                     Ok(()) => {
-                        self.status_message = "opened web tunnel browser".to_string();
+                        self.status_message =
+                            format!("opened web tunnel browser: {}", opened.original_url);
                     }
                     Err(error) => {
                         self.status_message = "failed to open web tunnel browser".to_string();

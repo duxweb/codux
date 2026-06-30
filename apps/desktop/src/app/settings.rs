@@ -3358,6 +3358,7 @@ fn settings_remote_pane(
                         .flex_col()
                         .child(
                             div()
+                                .min_w_0()
                                 .flex()
                                 .items_center()
                                 .gap(px(6.0))
@@ -3373,7 +3374,8 @@ fn settings_remote_pane(
                                 ))
                                 .child(
                                     div()
-                                        .min_w_0()
+                                        .min_w(px(64.0))
+                                        .flex_1()
                                         .text_size(rems(0.9375))
                                         .line_height(rems(1.25))
                                         .text_color(color(theme::TEXT))
@@ -3393,6 +3395,7 @@ fn settings_remote_pane(
                 )
                 .child(
                     div()
+                        .flex_shrink_0()
                         .flex()
                         .items_center()
                         .gap(px(12.0))
@@ -3459,6 +3462,7 @@ fn settings_remote_pane(
                         .flex_col()
                         .child(
                             div()
+                                .min_w_0()
                                 .flex()
                                 .items_center()
                                 .gap(px(6.0))
@@ -3470,7 +3474,8 @@ fn settings_remote_pane(
                                 ))
                                 .child(
                                     div()
-                                        .min_w_0()
+                                        .min_w(px(64.0))
+                                        .flex_1()
                                         .text_size(rems(0.9375))
                                         .line_height(rems(1.25))
                                         .text_color(color(theme::TEXT))
@@ -3490,6 +3495,7 @@ fn settings_remote_pane(
                 )
                 .child(
                     div()
+                        .flex_shrink_0()
                         .flex()
                         .items_center()
                         .gap(px(12.0))
