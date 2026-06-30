@@ -75,7 +75,7 @@ void main() {
       inverse: false,
     );
 
-    expect(colors.bg, AppColors.bgElevated);
+    expect(colors.bg, AppColors.terminalElevated);
     expect(colors.fg, AppColors.textPrimary);
     expect(colors.drawBackground, isTrue);
   });
