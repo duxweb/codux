@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-beta.4] - 2026-06-30
+
+### Added
+
+- Added a full-page AI usage dashboard with global usage KPIs, cached/uncached token views, charts, heatmap, and project summaries.
+- Added a built-in agent diagnostics web page at `http://127.0.0.1:8765/` with health and latency checks for connection testing.
+
+### Changed
+
+- Refined desktop UI consistency by migrating more buttons, tabs, settings cards, and statistics controls onto shared GPUI components and shared text sizing.
+- Simplified agent pairing and task-column empty states so worktrees, sessions, and empty repositories present cleaner first-run UI.
+
+### Fixed
+
+- Fixed AI runtime helper dispatch on headless agent hosts, keeping wrapper-based settings, memory injection, SSH profiles, and hook parsing available remotely.
+- Fixed CodeWhale/Kiro runtime lifecycle and token accounting edge cases, including interrupted loading state and restored-session live usage.
+- Fixed terminal focus routing, file-sidebar keyboard behavior, and responsive workspace sizing for statistics/review/sidebar layouts.
+
 ## [2.0.0-beta.3] - 2026-06-25
 
 ### Added
