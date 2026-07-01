@@ -291,6 +291,18 @@ pub(super) fn load_global_project_totals(
     } else {
         "l.project_path"
     };
+    let input_tokens_expr =
+        if table_has_column(conn, "ai_history_file_usage_bucket", "input_tokens") {
+            "COALESCE(SUM(b.input_tokens), 0)"
+        } else {
+            "0"
+        };
+    let output_tokens_expr =
+        if table_has_column(conn, "ai_history_file_usage_bucket", "output_tokens") {
+            "COALESCE(SUM(b.output_tokens), 0)"
+        } else {
+            "0"
+        };
     let sql = format!(
         r#"
         SELECT
@@ -298,8 +310,8 @@ pub(super) fn load_global_project_totals(
             l.project_path,
             {project_name_expr} AS project_name,
             COUNT(DISTINCT l.source || ':' || l.session_key) AS session_count,
-            COALESCE(SUM(b.input_tokens), 0) AS input_tokens,
-            COALESCE(SUM(b.output_tokens), 0) AS output_tokens,
+            {input_tokens_expr} AS input_tokens,
+            {output_tokens_expr} AS output_tokens,
             COALESCE(SUM(b.total_tokens), 0) AS total_tokens,
             COALESCE(SUM(b.cached_input_tokens), 0) AS cached_input_tokens,
             COALESCE(SUM(b.request_count), 0) AS request_count,
@@ -507,11 +519,25 @@ pub(super) struct ProjectHistoryAggregates {
 }
 
 fn load_heatmap(conn: &Connection, project_path: &str) -> Result<Vec<AIHeatmapDay>, String> {
+    let input_tokens_expr =
+        if table_has_column(conn, "ai_history_file_usage_bucket", "input_tokens") {
+            "COALESCE(SUM(input_tokens), 0)"
+        } else {
+            "0"
+        };
+    let output_tokens_expr =
+        if table_has_column(conn, "ai_history_file_usage_bucket", "output_tokens") {
+            "COALESCE(SUM(output_tokens), 0)"
+        } else {
+            "0"
+        };
     let mut statement = conn
-        .prepare(
+        .prepare(&format!(
             r#"
             SELECT
                 bucket_start,
+                {input_tokens_expr} AS input_tokens,
+                {output_tokens_expr} AS output_tokens,
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
                 COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
                 COALESCE(SUM(request_count), 0) AS request_count
@@ -520,7 +546,7 @@ fn load_heatmap(conn: &Connection, project_path: &str) -> Result<Vec<AIHeatmapDa
             GROUP BY bucket_start
             ORDER BY bucket_start ASC
             "#,
-        )
+        ))
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([project_path], |row| {
@@ -529,6 +555,8 @@ fn load_heatmap(conn: &Connection, project_path: &str) -> Result<Vec<AIHeatmapDa
                 row.get::<_, i64>(1)?.max(0),
                 row.get::<_, i64>(2)?.max(0),
                 row.get::<_, i64>(3)?.max(0),
+                row.get::<_, i64>(4)?.max(0),
+                row.get::<_, i64>(5)?.max(0),
             ))
         })
         .map_err(|error| error.to_string())?;
@@ -725,16 +753,28 @@ fn load_breakdown(
         .map_err(|error| error.to_string())
 }
 
-fn heatmap_days_from_buckets(rows: Vec<(f64, i64, i64, i64)>) -> Vec<AIHeatmapDay> {
+fn heatmap_days_from_buckets(rows: Vec<(f64, i64, i64, i64, i64, i64)>) -> Vec<AIHeatmapDay> {
     let mut days = BTreeMap::<i64, AIHeatmapDay>::new();
-    for (bucket_start, total_tokens, cached_input_tokens, request_count) in rows {
+    for (
+        bucket_start,
+        input_tokens,
+        output_tokens,
+        total_tokens,
+        cached_input_tokens,
+        request_count,
+    ) in rows
+    {
         let day = codux_ai_history::normalized::local_day_start_seconds(bucket_start);
         let item = days.entry(day as i64).or_insert(AIHeatmapDay {
             day,
+            input_tokens: 0,
+            output_tokens: 0,
             total_tokens: 0,
             cached_input_tokens: 0,
             request_count: 0,
         });
+        item.input_tokens += input_tokens;
+        item.output_tokens += output_tokens;
         item.total_tokens += total_tokens;
         item.cached_input_tokens += cached_input_tokens;
         item.request_count += request_count;

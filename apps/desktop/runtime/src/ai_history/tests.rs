@@ -3,7 +3,7 @@
 //! session/summary DB tests live in the `codux-ai-sessions` crate.
 
 use super::*;
-use crate::ai_history_normalized::{AITimeBucket, AIUsageBreakdownItem};
+use crate::ai_history_normalized::{AIHeatmapDay, AITimeBucket, AIUsageBreakdownItem};
 use crate::ai_runtime_state::{AIRuntimeSessionSummary, AIRuntimeStateSummary};
 
 #[test]
@@ -17,6 +17,14 @@ fn stats_view_owns_display_token_mode_and_project_filtering() {
         today_time_buckets: vec![AITimeBucket {
             start: today_start,
             end: today_start + 1800.0,
+            input_tokens: 20,
+            output_tokens: 10,
+            total_tokens: 30,
+            cached_input_tokens: 10,
+            request_count: 2,
+        }],
+        heatmap: vec![AIHeatmapDay {
+            day: today_start,
             input_tokens: 20,
             output_tokens: 10,
             total_tokens: 30,
@@ -64,6 +72,16 @@ fn stats_view_owns_display_token_mode_and_project_filtering() {
     assert_eq!(normalized.project_total_tokens, 100);
     assert_eq!(normalized.today_total_tokens, 30);
     assert_eq!(normalized.today_buckets[0].value, 30);
+    let normalized_heatmap_day = normalized
+        .heatmap
+        .iter()
+        .find(|cell| cell.is_known)
+        .expect("known heatmap day");
+    assert_eq!(normalized_heatmap_day.value, 30);
+    assert_eq!(normalized_heatmap_day.input_tokens, 20);
+    assert_eq!(normalized_heatmap_day.output_tokens, 10);
+    assert_eq!(normalized_heatmap_day.total_tokens, 30);
+    assert_eq!(normalized_heatmap_day.cached_input_tokens, 10);
     assert_eq!(normalized.current_sessions.len(), 1);
     assert_eq!(normalized.current_sessions[0].session_id, "term-a");
     assert_eq!(
@@ -86,6 +104,16 @@ fn stats_view_owns_display_token_mode_and_project_filtering() {
     assert_eq!(with_cache.project_total_tokens, 140);
     assert_eq!(with_cache.today_total_tokens, 40);
     assert_eq!(with_cache.today_buckets[0].value, 40);
+    let with_cache_heatmap_day = with_cache
+        .heatmap
+        .iter()
+        .find(|cell| cell.is_known)
+        .expect("known heatmap day");
+    assert_eq!(with_cache_heatmap_day.value, 40);
+    assert_eq!(with_cache_heatmap_day.input_tokens, 20);
+    assert_eq!(with_cache_heatmap_day.output_tokens, 10);
+    assert_eq!(with_cache_heatmap_day.total_tokens, 30);
+    assert_eq!(with_cache_heatmap_day.cached_input_tokens, 10);
     assert_eq!(with_cache.current_sessions[0].total_tokens, 8);
     assert_eq!(with_cache.tool_rows[0].value, 140);
     assert_eq!(with_cache.model_rows[0].value, 100);

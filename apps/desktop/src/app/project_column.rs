@@ -1066,6 +1066,9 @@ fn project_activity_badge(
 /// Disconnected-link badge color (no theme constant — danger red is local here).
 const REMOTE_LINK_RED: u32 = 0xE0566B;
 
+/// Dim non-current project icons so the current one reads as selected.
+const INACTIVE_PROJECT_ICON_OPACITY: f32 = 0.45;
+
 /// A small connection badge overlaid on the bottom-right of a remote project's
 /// icon: a link glyph tinted by the client→host link state — green connected,
 /// amber connecting, red broken-link disconnected, muted when not yet linked.
@@ -1125,6 +1128,7 @@ fn project_icon(project: &ProjectInfo, active: bool, collapsed: bool) -> impl In
         .line_height(rems(0.875))
         .text_color(color(text))
         .font_weight(FontWeight::BOLD)
+        .when(!active, |this| this.opacity(INACTIVE_PROJECT_ICON_OPACITY))
         .child(match symbol_icon {
             Some(icon) => Icon::new(icon)
                 .size_4()

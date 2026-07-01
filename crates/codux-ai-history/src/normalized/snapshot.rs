@@ -104,10 +104,14 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
         let day_key = day as i64;
         let day_item = heatmap.entry(day_key).or_insert(AIHeatmapDay {
             day,
+            input_tokens: 0,
+            output_tokens: 0,
             total_tokens: 0,
             cached_input_tokens: 0,
             request_count: 0,
         });
+        day_item.input_tokens += entry.input_tokens;
+        day_item.output_tokens += entry.output_tokens + entry.reasoning_output_tokens;
         day_item.total_tokens += total_tokens;
         day_item.cached_input_tokens += entry.cached_input_tokens;
 
@@ -141,6 +145,8 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
                     day as i64,
                     AIHeatmapDay {
                         day,
+                        input_tokens: 0,
+                        output_tokens: 0,
                         total_tokens: 0,
                         cached_input_tokens: 0,
                         request_count: 1,

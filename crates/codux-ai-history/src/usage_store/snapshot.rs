@@ -124,10 +124,14 @@ fn build_snapshot_from_rows(
         let day = local_day_start_seconds(bucket.bucket_start);
         let heatmap_day = heatmap.entry(day as i64).or_insert(AIHeatmapDay {
             day,
+            input_tokens: 0,
+            output_tokens: 0,
             total_tokens: 0,
             cached_input_tokens: 0,
             request_count: 0,
         });
+        heatmap_day.input_tokens += bucket.input_tokens;
+        heatmap_day.output_tokens += bucket.output_tokens;
         heatmap_day.total_tokens += bucket.total_tokens;
         heatmap_day.cached_input_tokens += bucket.cached_input_tokens;
         heatmap_day.request_count += bucket.request_count;

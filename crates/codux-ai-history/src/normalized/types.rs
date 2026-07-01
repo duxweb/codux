@@ -149,6 +149,10 @@ pub struct AISessionSummary {
 #[serde(rename_all = "camelCase")]
 pub struct AIHeatmapDay {
     pub day: f64,
+    #[serde(default)]
+    pub input_tokens: i64,
+    #[serde(default)]
+    pub output_tokens: i64,
     pub total_tokens: i64,
     pub cached_input_tokens: i64,
     pub request_count: i64,

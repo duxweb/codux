@@ -405,7 +405,7 @@ fn workspace_segmented_tabs(
     let review_label = translate(&locale, "titlebar.review", "Review");
     let stats_label = translate(&locale, "titlebar.stats", "Stats");
     div()
-        .rounded(px(8.0))
+        .rounded_full()
         .bg(cx.theme().tab_bar_segmented)
         .p(px(2.0))
         .child(

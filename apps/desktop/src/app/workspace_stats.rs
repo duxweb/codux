@@ -142,11 +142,8 @@ impl CoduxApp {
                     .map(|project| project.cached_input_tokens.max(0))
                     .sum()
             });
-        let range_total_tokens = codux_runtime::ai_history::display_tokens(
-            range_no_cache_tokens,
-            range_cached_input_tokens,
-            include_cached,
-        );
+        let range_total_tokens =
+            stats_total_tokens(range_no_cache_tokens, range_cached_input_tokens);
         let range_request_count = range
             .map(|range| range.request_count.max(0))
             .unwrap_or_else(|| {
@@ -168,7 +165,7 @@ impl CoduxApp {
                     .map(|project| project.active_duration_seconds.max(0))
                     .sum()
             });
-        let project_rows = stats_project_table_rows(global, range, include_cached);
+        let project_rows = stats_project_table_rows(global, range);
         let tool_rows = stats_tool_rows(global, range, include_cached);
         let model_rows = stats_model_rows(global, range, include_cached);
         let heatmap = stats_global_heatmap(global, include_cached);
@@ -308,7 +305,7 @@ pub(in crate::app) fn stats_workspace_body(
                                             stats_text(
                                                 &snapshot.language,
                                                 "stats.by_model",
-                                                "模型排名",
+                                                "Model Ranking",
                                             ),
                                             snapshot.model_rows.clone(),
                                             &snapshot.language,
@@ -318,7 +315,7 @@ pub(in crate::app) fn stats_workspace_body(
                                             stats_text(
                                                 &snapshot.language,
                                                 "stats.by_tool",
-                                                "工具排名",
+                                                "Tool Ranking",
                                             ),
                                             snapshot.tool_rows.clone(),
                                             &snapshot.language,
@@ -382,12 +379,12 @@ fn stats_control_row(
                 .child(stats_cache_mode_tab(stats_text(
                     &snapshot.language,
                     "stats.cache_mode.normalized",
-                    "无缓存",
+                    "No Cache",
                 )))
                 .child(stats_cache_mode_tab(stats_text(
                     &snapshot.language,
                     "stats.cache_mode.including_cache",
-                    "有缓存",
+                    "With Cache",
                 )))
                 .on_click(move |index, window, cx| {
                     let mode = if *index == 1 {
@@ -446,62 +443,82 @@ fn stats_kpi_grid(
         .grid_cols(4)
         .gap(px(12.0))
         .child(stats_kpi_card(
-            stats_text(&snapshot.language, "stats.kpi.total", "总计 token"),
+            stats_text(&snapshot.language, "stats.kpi.total", "Total Tokens"),
             compact_number(snapshot.range_total_tokens),
             stats_time_range_label(snapshot.time_range, &snapshot.language),
             HeroIconName::ChartBarSquare,
             cx,
         ))
         .child(stats_kpi_card(
-            stats_text(&snapshot.language, "stats.kpi.no_cache", "无缓存 token"),
+            stats_text(&snapshot.language, "stats.kpi.no_cache", "No-Cache Tokens"),
             compact_number(snapshot.range_no_cache_tokens),
             stats_text(
                 &snapshot.language,
                 "stats.kpi.no_cache_hint",
-                "不含缓存读取",
+                "Excludes cache reads",
             ),
             HeroIconName::Bolt,
             cx,
         ))
         .child(stats_kpi_card(
-            stats_text(&snapshot.language, "stats.kpi.input", "输入"),
+            stats_text(&snapshot.language, "stats.kpi.input", "Input"),
             compact_number(snapshot.range_input_tokens),
-            stats_text(&snapshot.language, "stats.kpi.input_hint", "输入 token"),
+            stats_text(&snapshot.language, "stats.kpi.input_hint", "Input tokens"),
             HeroIconName::ArrowDownTray,
             cx,
         ))
         .child(stats_kpi_card(
-            stats_text(&snapshot.language, "stats.kpi.output", "输出"),
+            stats_text(&snapshot.language, "stats.kpi.output", "Output"),
             compact_number(snapshot.range_output_tokens),
-            stats_text(&snapshot.language, "stats.kpi.output_hint", "输出含思考"),
+            stats_text(
+                &snapshot.language,
+                "stats.kpi.output_hint",
+                "Output includes reasoning",
+            ),
             HeroIconName::ArrowUpTray,
             cx,
         ))
         .child(stats_kpi_card(
-            stats_text(&snapshot.language, "stats.kpi.cache", "缓存"),
+            stats_text(&snapshot.language, "stats.kpi.cache", "Cache"),
             compact_number(snapshot.range_cached_input_tokens),
-            stats_text(&snapshot.language, "stats.kpi.cache_hint", "缓存读取 token"),
+            stats_text(
+                &snapshot.language,
+                "stats.kpi.cache_hint",
+                "Cache read tokens",
+            ),
             HeroIconName::CircleStack,
             cx,
         ))
         .child(stats_kpi_card(
-            stats_text(&snapshot.language, "stats.kpi.requests", "请求次数"),
+            stats_text(&snapshot.language, "stats.kpi.requests", "Requests"),
             compact_number(snapshot.range_request_count),
-            stats_text(&snapshot.language, "stats.kpi.requests_hint", "选定范围"),
+            stats_text(
+                &snapshot.language,
+                "stats.kpi.requests_hint",
+                "Selected range",
+            ),
             HeroIconName::NumberedList,
             cx,
         ))
         .child(stats_kpi_card(
-            stats_text(&snapshot.language, "stats.kpi.active_duration", "运行时间"),
+            stats_text(&snapshot.language, "stats.kpi.active_duration", "Runtime"),
             format_duration_short(snapshot.range_active_duration_seconds),
-            stats_text(&snapshot.language, "stats.kpi.active_time", "执行总计时间"),
+            stats_text(
+                &snapshot.language,
+                "stats.kpi.active_time",
+                "Total execution time",
+            ),
             HeroIconName::Clock,
             cx,
         ))
         .child(stats_kpi_card(
-            stats_text(&snapshot.language, "stats.kpi.sessions", "会话数"),
+            stats_text(&snapshot.language, "stats.kpi.sessions", "Sessions"),
             compact_number(snapshot.range_session_count as i64),
-            stats_text(&snapshot.language, "stats.kpi.sessions_hint", "选定范围"),
+            stats_text(
+                &snapshot.language,
+                "stats.kpi.sessions_hint",
+                "Selected range",
+            ),
             HeroIconName::UserCircle,
             cx,
         ))
@@ -575,11 +592,7 @@ fn stats_recent_trend_card(
     container_width: Option<Pixels>,
     cx: &mut Context<workspace_views::StatsWorkspaceView>,
 ) -> impl IntoElement {
-    let title = stats_text(
-        &snapshot.language,
-        "stats.recent_trend",
-        "用量趋势",
-    );
+    let title = stats_text(&snapshot.language, "stats.recent_trend", "Usage Trend");
     let has_usage = snapshot
         .trend_buckets
         .iter()
@@ -605,27 +618,20 @@ fn stats_recent_trend_card(
                 stats_text(
                     &snapshot.language,
                     "stats.recent_trend.empty",
-                    "暂无用量数据",
+                    "No usage data yet",
                 ),
                 cx,
             )
             .into_any_element()
         } else {
-            stats_trend_bars(
-                app_entity,
-                data,
-                snapshot.include_cached,
-                max_value,
-                snapshot.language.clone(),
-            )
-            .into_any_element()
+            stats_trend_bars(app_entity, data, max_value, snapshot.language.clone())
+                .into_any_element()
         })
 }
 
 fn stats_trend_bars(
     app_entity: gpui::Entity<CoduxApp>,
     buckets: Vec<StatsTrendBucket>,
-    include_cached: bool,
     max_value: i64,
     language: String,
 ) -> impl IntoElement {
@@ -646,7 +652,7 @@ fn stats_trend_bars(
             codux_tooltip_container(
                 app_entity.clone(),
                 SharedString::from(format!("stats-trend-bucket-{index}")),
-                trend_bucket_tooltip(&language, bucket, include_cached),
+                trend_bucket_tooltip(&language, bucket),
             )
             .flex_1()
             .min_w(px(0.0))
@@ -658,7 +664,9 @@ fn stats_trend_bars(
                 div()
                     .w_full()
                     .max_w(px(STATS_TREND_MAX_BAR_WIDTH))
-                    .h(px(8.0 + ratio.clamp(0.0, 1.0) * (STATS_CHART_BODY_HEIGHT - 8.0)))
+                    .h(px(
+                        8.0 + ratio.clamp(0.0, 1.0) * (STATS_CHART_BODY_HEIGHT - 8.0)
+                    ))
                     .rounded(px(3.0))
                     .bg(color(theme::ACCENT))
                     .opacity(if value > 0 { 0.95 } else { 0.14 }),
@@ -675,7 +683,7 @@ fn stats_rank_card(
 ) -> impl IntoElement {
     stats_section_card(title, cx).child(if rows.is_empty() {
         stats_empty(
-            stats_text(language, "stats.empty.usage", "暂无用量数据"),
+            stats_text(language, "stats.empty.usage", "No usage data yet"),
             cx,
         )
         .into_any_element()
@@ -790,7 +798,7 @@ fn stats_heatmap_card(
     container_width: Option<Pixels>,
     cx: &mut Context<workspace_views::StatsWorkspaceView>,
 ) -> impl IntoElement {
-    let title = stats_text(&snapshot.language, "stats.recent_usage", "活跃热力图");
+    let title = stats_text(&snapshot.language, "stats.recent_usage", "Activity Heatmap");
     let inactive = color(theme::TEXT_DIM).opacity(0.36);
     let total_columns = snapshot.heatmap.len() / STATS_HEATMAP_ROWS;
     let visible_columns = stats_heatmap_visible_columns(container_width).min(total_columns);
@@ -824,22 +832,8 @@ fn stats_heatmap_card(
                                 .gap(px(STATS_HEATMAP_GAP))
                                 .children(days.iter().cloned().enumerate().map(
                                     move |(row, cell)| {
-                                        let tooltip = format!(
-                                            "{}\n{}: {}\n{}: {}",
-                                            stats_date_label(Some(cell.day)),
-                                            stats_text(
-                                                &snapshot.language,
-                                                "stats.tooltip.token",
-                                                "Token"
-                                            ),
-                                            compact_number(cell.value),
-                                            stats_text(
-                                                &snapshot.language,
-                                                "stats.tooltip.requests",
-                                                "请求"
-                                            ),
-                                            compact_number(cell.request_count)
-                                        );
+                                        let tooltip =
+                                            heatmap_cell_tooltip(&snapshot.language, &cell);
                                         codux_tooltip_container(
                                             app_entity.clone(),
                                             SharedString::from(format!(
@@ -870,7 +864,7 @@ fn stats_project_table_card(
     container_width: Option<Pixels>,
     cx: &mut Context<workspace_views::StatsWorkspaceView>,
 ) -> impl IntoElement {
-    let title = stats_text(&snapshot.language, "stats.projects", "项目统计");
+    let title = stats_text(&snapshot.language, "stats.projects", "Project Stats");
     let table_width = stats_project_table_width(container_width);
     project_table.update(cx, |table, cx| {
         if table
@@ -884,7 +878,11 @@ fn stats_project_table_card(
         .h(px(430.0))
         .child(if snapshot.project_rows.is_empty() {
             stats_empty(
-                stats_text(&snapshot.language, "stats.projects.empty", "暂无项目统计"),
+                stats_text(
+                    &snapshot.language,
+                    "stats.projects.empty",
+                    "No project stats yet",
+                ),
                 cx,
             )
             .into_any_element()
@@ -950,10 +948,10 @@ fn stats_text(language: &str, key: &str, fallback: &str) -> String {
 
 fn stats_time_range_label(range: StatsTimeRange, language: &str) -> String {
     match range {
-        StatsTimeRange::Today => stats_text(language, "stats.range.today", "今天"),
-        StatsTimeRange::SevenDays => stats_text(language, "stats.range.7d", "7 天"),
-        StatsTimeRange::ThirtyDays => stats_text(language, "stats.range.30d", "30 天"),
-        StatsTimeRange::All => stats_text(language, "stats.range.all", "全部"),
+        StatsTimeRange::Today => stats_text(language, "stats.range.today", "Today"),
+        StatsTimeRange::SevenDays => stats_text(language, "stats.range.7d", "7 Days"),
+        StatsTimeRange::ThirtyDays => stats_text(language, "stats.range.30d", "30 Days"),
+        StatsTimeRange::All => stats_text(language, "stats.range.all", "All"),
     }
 }
 
@@ -1030,23 +1028,40 @@ fn trend_bucket_time_range(bucket: StatsTrendBucket) -> String {
     }
 }
 
-fn trend_bucket_tooltip(language: &str, bucket: StatsTrendBucket, include_cached: bool) -> String {
-    let total = if include_cached {
-        bucket.total_tokens
-    } else {
-        bucket.no_cache_tokens
-    };
+fn trend_bucket_tooltip(language: &str, bucket: StatsTrendBucket) -> String {
+    let total = stats_total_tokens(bucket.no_cache_tokens, bucket.cached_input_tokens);
     format!(
         "{}\n{} {}\n{} {}\n{} {}\n{} {}",
         trend_bucket_time_range(bucket),
-        stats_text(language, "stats.tooltip.input", "输入"),
+        stats_text(language, "stats.tooltip.input", "Input"),
         compact_number(bucket.input_tokens),
-        stats_text(language, "stats.tooltip.output", "输出"),
+        stats_text(language, "stats.tooltip.output", "Output"),
         compact_number(bucket.output_tokens),
-        stats_text(language, "stats.tooltip.cache", "缓存"),
+        stats_text(language, "stats.tooltip.cache", "Cache"),
         compact_number(bucket.cached_input_tokens),
-        stats_text(language, "stats.tooltip.total", "总计"),
+        stats_text(language, "stats.tooltip.total", "Total"),
         compact_number(total)
+    )
+}
+
+fn heatmap_cell_tooltip(
+    language: &str,
+    cell: &codux_runtime::ai_history::AIHistoryHeatmapCellView,
+) -> String {
+    let total = stats_total_tokens(cell.total_tokens, cell.cached_input_tokens);
+    format!(
+        "{}\n{} {}\n{} {}\n{} {}\n{} {}\n{} {}",
+        stats_date_label(Some(cell.day)),
+        stats_text(language, "stats.tooltip.input", "Input"),
+        compact_number(cell.input_tokens),
+        stats_text(language, "stats.tooltip.output", "Output"),
+        compact_number(cell.output_tokens),
+        stats_text(language, "stats.tooltip.cache", "Cache"),
+        compact_number(cell.cached_input_tokens),
+        stats_text(language, "stats.tooltip.total", "Total"),
+        compact_number(total),
+        stats_text(language, "stats.tooltip.requests", "Requests"),
+        compact_number(cell.request_count),
     )
 }
 
@@ -1155,7 +1170,6 @@ fn rank_rows_from_values(rows: Vec<(String, i64, i64)>, limit: usize) -> Vec<Sta
 fn stats_project_table_rows(
     global: &codux_runtime::ai_history::AIGlobalHistorySummary,
     range: Option<&codux_runtime::ai_history::AIGlobalHistoryRangeSummary>,
-    include_cached: bool,
 ) -> Vec<StatsProjectRow> {
     let projects = range
         .map(|range| range.project_totals.as_slice())
@@ -1164,11 +1178,8 @@ fn stats_project_table_rows(
         .iter()
         .map(|project| {
             let no_cache_tokens = project.total_tokens.max(0);
-            let total_tokens = codux_runtime::ai_history::display_tokens(
-                no_cache_tokens,
-                project.cached_input_tokens.max(0),
-                include_cached,
-            );
+            let cached_input_tokens = project.cached_input_tokens.max(0);
+            let total_tokens = stats_total_tokens(no_cache_tokens, cached_input_tokens);
             let project_label = if project.project_name.trim().is_empty() {
                 project.project_path.clone()
             } else {
@@ -1181,7 +1192,7 @@ fn stats_project_table_rows(
                 no_cache_tokens,
                 input_tokens: project.input_tokens.max(0),
                 output_tokens: project.output_tokens.max(0),
-                cached_input_tokens: project.cached_input_tokens.max(0),
+                cached_input_tokens,
                 request_count: project.request_count.max(0),
                 active_duration_seconds: project.active_duration_seconds.max(0),
             }
@@ -1199,6 +1210,10 @@ fn stats_project_table_rows(
     rows
 }
 
+fn stats_total_tokens(no_cache_tokens: i64, cached_input_tokens: i64) -> i64 {
+    no_cache_tokens.max(0) + cached_input_tokens.max(0)
+}
+
 fn stats_global_heatmap(
     global: &codux_runtime::ai_history::AIGlobalHistorySummary,
     include_cached: bool,
@@ -1212,6 +1227,10 @@ fn stats_global_heatmap(
                 codux_runtime::ai_history::AIHistoryHeatmapCellView {
                     day,
                     value: 0,
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    total_tokens: 0,
+                    cached_input_tokens: 0,
                     request_count: 0,
                     is_known: false,
                     opacity: 1.0,
@@ -1230,6 +1249,10 @@ fn stats_global_heatmap(
                 day.cached_input_tokens,
                 include_cached,
             );
+            values[index].input_tokens += day.input_tokens.max(0);
+            values[index].output_tokens += day.output_tokens.max(0);
+            values[index].total_tokens += day.total_tokens.max(0);
+            values[index].cached_input_tokens += day.cached_input_tokens.max(0);
             values[index].request_count += day.request_count.max(0);
             values[index].is_known = true;
         }
@@ -1333,6 +1356,8 @@ fn global_fingerprint(global: &codux_runtime::ai_history::AIGlobalHistorySummary
             .map(|day| {
                 (
                     day.day.to_bits(),
+                    day.input_tokens,
+                    day.output_tokens,
                     day.total_tokens,
                     day.cached_input_tokens,
                     day.request_count,
@@ -1419,6 +1444,10 @@ fn heatmap_fingerprint(rows: &[codux_runtime::ai_history::AIHistoryHeatmapCellVi
                 (
                     cell.day.to_bits(),
                     cell.value,
+                    cell.input_tokens,
+                    cell.output_tokens,
+                    cell.total_tokens,
+                    cell.cached_input_tokens,
                     cell.request_count,
                     cell.is_known,
                     (cell.opacity * 10_000.0) as i64,
@@ -1615,7 +1644,7 @@ impl TableDelegate for StatsProjectTableDelegate {
             .child(stats_text(
                 &self.language,
                 "stats.projects.empty",
-                "暂无项目统计",
+                "No project stats yet",
             ))
             .into_any_element()
     }
@@ -1623,55 +1652,194 @@ impl TableDelegate for StatsProjectTableDelegate {
 
 fn stats_project_table_columns(language: &str, layout_width: f32) -> Vec<Column> {
     let project_width = 414.0 + (layout_width - STATS_TABLE_BASE_WIDTH).max(0.0) * 0.34;
-    let metric_ratio =
-        ((layout_width - project_width) / (STATS_TABLE_BASE_WIDTH - 414.0)).max(1.0);
+    let metric_ratio = ((layout_width - project_width) / (STATS_TABLE_BASE_WIDTH - 414.0)).max(1.0);
     vec![
         Column::new(
             "project",
-            stats_text(language, "stats.table.project", "项目"),
+            stats_text(language, "stats.table.project", "Project"),
         )
         .width(px(project_width))
         .min_width(px(220.0))
         .sortable(),
         Column::new(
             "total",
-            stats_text(language, "stats.table.total", "总计 token"),
+            stats_text(language, "stats.table.total", "Total Tokens"),
         )
         .width(px(126.0 * metric_ratio))
         .text_right()
         .sortable(),
         Column::new(
             "no_cache",
-            stats_text(language, "stats.table.no_cache", "无缓存 token"),
+            stats_text(language, "stats.table.no_cache", "No-Cache Tokens"),
         )
         .width(px(132.0 * metric_ratio))
         .text_right()
         .sortable(),
-        Column::new("input", stats_text(language, "stats.table.input", "输入"))
+        Column::new("input", stats_text(language, "stats.table.input", "Input"))
             .width(px(104.0 * metric_ratio))
             .text_right()
             .sortable(),
-        Column::new("output", stats_text(language, "stats.table.output", "输出"))
-            .width(px(104.0 * metric_ratio))
-            .text_right()
-            .sortable(),
-        Column::new("cache", stats_text(language, "stats.table.cache", "缓存"))
+        Column::new(
+            "output",
+            stats_text(language, "stats.table.output", "Output"),
+        )
+        .width(px(104.0 * metric_ratio))
+        .text_right()
+        .sortable(),
+        Column::new("cache", stats_text(language, "stats.table.cache", "Cache"))
             .width(px(104.0 * metric_ratio))
             .text_right()
             .sortable(),
         Column::new(
             "requests",
-            stats_text(language, "stats.table.requests", "请求次数"),
+            stats_text(language, "stats.table.requests", "Requests"),
         )
         .width(px(106.0 * metric_ratio))
         .text_right()
         .sortable(),
         Column::new(
             "duration",
-            stats_text(language, "stats.table.duration", "运行时间"),
+            stats_text(language, "stats.table.duration", "Runtime"),
         )
         .width(px(110.0 * metric_ratio))
         .text_right()
         .sortable(),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_table_total_tokens_always_include_cache() {
+        let mut global = codux_runtime::ai_history::AIGlobalHistorySummary::default();
+        global
+            .project_totals
+            .push(codux_runtime::ai_history::AIProjectUsageSummary {
+                project_path: "/tmp/project".to_string(),
+                project_name: "Project".to_string(),
+                input_tokens: 80,
+                output_tokens: 20,
+                total_tokens: 100,
+                cached_input_tokens: 40,
+                request_count: 2,
+                ..Default::default()
+            });
+
+        let rows = stats_project_table_rows(&global, None);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].no_cache_tokens, 100);
+        assert_eq!(rows[0].cached_input_tokens, 40);
+        assert_eq!(rows[0].total_tokens, 140);
+    }
+
+    #[test]
+    fn range_project_table_total_tokens_always_include_cache() {
+        let mut global = codux_runtime::ai_history::AIGlobalHistorySummary::default();
+        global
+            .project_totals
+            .push(codux_runtime::ai_history::AIProjectUsageSummary {
+                project_path: "/tmp/all".to_string(),
+                project_name: "All".to_string(),
+                total_tokens: 10,
+                cached_input_tokens: 90,
+                request_count: 1,
+                ..Default::default()
+            });
+        let mut range = codux_runtime::ai_history::AIGlobalHistoryRangeSummary {
+            key: "today".to_string(),
+            ..Default::default()
+        };
+        range
+            .project_totals
+            .push(codux_runtime::ai_history::AIProjectUsageSummary {
+                project_path: "/tmp/range".to_string(),
+                project_name: "Range".to_string(),
+                total_tokens: 30,
+                cached_input_tokens: 12,
+                request_count: 1,
+                ..Default::default()
+            });
+
+        let rows = stats_project_table_rows(&global, Some(&range));
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].project, "Range");
+        assert_eq!(rows[0].no_cache_tokens, 30);
+        assert_eq!(rows[0].cached_input_tokens, 12);
+        assert_eq!(rows[0].total_tokens, 42);
+    }
+
+    #[test]
+    fn trend_bucket_tooltip_total_always_includes_cache() {
+        let tooltip = trend_bucket_tooltip(
+            "english",
+            StatsTrendBucket {
+                start_bits: 0.0f64.to_bits(),
+                input_tokens: 80,
+                output_tokens: 20,
+                cached_input_tokens: 40,
+                total_tokens: 100,
+                no_cache_tokens: 100,
+                request_count: 2,
+            },
+        );
+
+        assert!(tooltip.contains("Input 80"));
+        assert!(tooltip.contains("Output 20"));
+        assert!(tooltip.contains("Cache 40"));
+        assert!(tooltip.contains("Total 140"));
+    }
+
+    #[test]
+    fn trend_bucket_visual_total_respects_cache_mode() {
+        let mut global = codux_runtime::ai_history::AIGlobalHistorySummary::default();
+        global
+            .recent_time_buckets
+            .push(codux_runtime::ai_history_normalized::AITimeBucket {
+                start: 0.0,
+                end: 1800.0,
+                input_tokens: 80,
+                output_tokens: 20,
+                total_tokens: 100,
+                cached_input_tokens: 40,
+                request_count: 2,
+            });
+
+        let no_cache = stats_trend_buckets(&global, false);
+        let with_cache = stats_trend_buckets(&global, true);
+
+        assert_eq!(no_cache[0].total_tokens, 100);
+        assert_eq!(with_cache[0].total_tokens, 140);
+        assert_eq!(no_cache[0].no_cache_tokens, 100);
+        assert_eq!(with_cache[0].no_cache_tokens, 100);
+        assert_eq!(no_cache[0].cached_input_tokens, 40);
+        assert_eq!(with_cache[0].cached_input_tokens, 40);
+    }
+
+    #[test]
+    fn heatmap_cell_tooltip_includes_token_breakdown() {
+        let tooltip = heatmap_cell_tooltip(
+            "english",
+            &codux_runtime::ai_history::AIHistoryHeatmapCellView {
+                day: 0.0,
+                value: 100,
+                input_tokens: 80,
+                output_tokens: 20,
+                total_tokens: 100,
+                cached_input_tokens: 40,
+                request_count: 2,
+                is_known: true,
+                opacity: 1.0,
+            },
+        );
+
+        assert!(tooltip.contains("Input 80"));
+        assert!(tooltip.contains("Output 20"));
+        assert!(tooltip.contains("Cache 40"));
+        assert!(tooltip.contains("Total 140"));
+        assert!(tooltip.contains("Requests 2"));
+    }
 }

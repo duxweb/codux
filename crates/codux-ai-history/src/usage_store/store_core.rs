@@ -132,10 +132,24 @@ impl AIUsageStore {
     }
 
     pub fn indexed_global_heatmap(&self, conn: &Connection) -> Result<Vec<AIHeatmapDay>> {
-        let mut statement = conn.prepare(
+        let input_tokens_expr =
+            if usage_bucket_table_has_column(conn, "input_tokens")? {
+                "COALESCE(SUM(input_tokens), 0)"
+            } else {
+                "0"
+            };
+        let output_tokens_expr =
+            if usage_bucket_table_has_column(conn, "output_tokens")? {
+                "COALESCE(SUM(output_tokens), 0)"
+            } else {
+                "0"
+            };
+        let mut statement = conn.prepare(&format!(
             r#"
             SELECT
                 bucket_start,
+                {input_tokens_expr} AS input_tokens,
+                {output_tokens_expr} AS output_tokens,
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
                 COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
                 COALESCE(SUM(request_count), 0) AS request_count
@@ -143,7 +157,7 @@ impl AIUsageStore {
             GROUP BY bucket_start
             ORDER BY bucket_start ASC;
             "#,
-        )?;
+        ))?;
         let rows = statement
             .query_map([], |row| {
                 Ok((
@@ -151,6 +165,8 @@ impl AIUsageStore {
                     row.get::<_, i64>(1)?.max(0),
                     row.get::<_, i64>(2)?.max(0),
                     row.get::<_, i64>(3)?.max(0),
+                    row.get::<_, i64>(4)?.max(0),
+                    row.get::<_, i64>(5)?.max(0),
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -663,16 +679,31 @@ impl AIUsageStore {
     }
 }
 
-fn heatmap_days_from_buckets(rows: Vec<(f64, i64, i64, i64)>) -> Vec<AIHeatmapDay> {
+fn usage_bucket_table_has_column(conn: &Connection, column: &str) -> Result<bool> {
+    let mut statement = conn.prepare("PRAGMA table_info(ai_history_file_usage_bucket)")?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+    for row in rows {
+        if row?.eq_ignore_ascii_case(column) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn heatmap_days_from_buckets(rows: Vec<(f64, i64, i64, i64, i64, i64)>) -> Vec<AIHeatmapDay> {
     let mut days = HashMap::<i64, AIHeatmapDay>::new();
-    for (bucket_start, total_tokens, cached_input_tokens, request_count) in rows {
+    for (bucket_start, input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count) in rows {
         let day = local_day_start_seconds(bucket_start);
         let item = days.entry(day as i64).or_insert(AIHeatmapDay {
             day,
+            input_tokens: 0,
+            output_tokens: 0,
             total_tokens: 0,
             cached_input_tokens: 0,
             request_count: 0,
         });
+        item.input_tokens += input_tokens;
+        item.output_tokens += output_tokens;
         item.total_tokens += total_tokens;
         item.cached_input_tokens += cached_input_tokens;
         item.request_count += request_count;

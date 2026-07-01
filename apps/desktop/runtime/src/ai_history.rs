@@ -151,6 +151,10 @@ fn stats_heatmap(
                 AIHistoryHeatmapCellView {
                     day,
                     value: 0,
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    total_tokens: 0,
+                    cached_input_tokens: 0,
                     request_count: 0,
                     is_known: false,
                     opacity: 1.0,
@@ -166,6 +170,10 @@ fn stats_heatmap(
             let index = values.len() - 1 - day_offset as usize;
             values[index].value +=
                 display_tokens(day.total_tokens, day.cached_input_tokens, include_cached);
+            values[index].input_tokens += day.input_tokens.max(0);
+            values[index].output_tokens += day.output_tokens.max(0);
+            values[index].total_tokens += day.total_tokens.max(0);
+            values[index].cached_input_tokens += day.cached_input_tokens.max(0);
             values[index].request_count += day.request_count.max(0);
             values[index].is_known = true;
         }

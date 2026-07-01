@@ -352,6 +352,14 @@ pub struct AIHistoryUsageBucketView {
 pub struct AIHistoryHeatmapCellView {
     pub day: f64,
     pub value: i64,
+    #[serde(default)]
+    pub input_tokens: i64,
+    #[serde(default)]
+    pub output_tokens: i64,
+    #[serde(default)]
+    pub total_tokens: i64,
+    #[serde(default)]
+    pub cached_input_tokens: i64,
     pub request_count: i64,
     pub is_known: bool,
     pub opacity: f32,
