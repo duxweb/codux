@@ -892,7 +892,10 @@ mod tests {
             .env("DMUX_SESSION_ID", "terminal-1")
             .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
             .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
-            .env("DMUX_ORIGINAL_PATH", format!("{}:/usr/bin:/bin", real_bin.display()))
+            .env(
+                "DMUX_ORIGINAL_PATH",
+                format!("{}:/usr/bin:/bin", real_bin.display()),
+            )
             .output()
             .unwrap();
 
@@ -908,7 +911,10 @@ mod tests {
                 .any(|line| line == "--dangerously-bypass-approvals-and-sandbox"),
             "{stdout}"
         );
-        assert!(stdout.lines().any(|line| line == "--model=gpt-5.9"), "{stdout}");
+        assert!(
+            stdout.lines().any(|line| line == "--model=gpt-5.9"),
+            "{stdout}"
+        );
         assert!(
             stdout
                 .lines()
@@ -916,7 +922,10 @@ mod tests {
             "{stdout}"
         );
         let expected_histfile = format!("HISTFILE={}", home.join(".zsh_history").display());
-        assert!(stdout.lines().any(|line| line == expected_histfile), "{stdout}");
+        assert!(
+            stdout.lines().any(|line| line == expected_histfile),
+            "{stdout}"
+        );
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -979,7 +988,10 @@ mod tests {
             .env("DMUX_SESSION_ID", "terminal-1")
             .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
             .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
-            .env("DMUX_ORIGINAL_PATH", format!("{}:/usr/bin:/bin", real_bin.display()))
+            .env(
+                "DMUX_ORIGINAL_PATH",
+                format!("{}:/usr/bin:/bin", real_bin.display()),
+            )
             .output()
             .unwrap();
 
@@ -995,7 +1007,10 @@ mod tests {
                 .any(|line| line == "--dangerously-bypass-approvals-and-sandbox"),
             "{stdout}"
         );
-        assert!(stdout.lines().any(|line| line == "--model=gpt-5.9"), "{stdout}");
+        assert!(
+            stdout.lines().any(|line| line == "--model=gpt-5.9"),
+            "{stdout}"
+        );
         assert!(
             stdout
                 .lines()
@@ -1064,7 +1079,10 @@ mod tests {
             .env("DMUX_SESSION_ID", "terminal-1")
             .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
             .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
-            .env("DMUX_ORIGINAL_PATH", format!("{}:/usr/bin:/bin", real_bin.display()))
+            .env(
+                "DMUX_ORIGINAL_PATH",
+                format!("{}:/usr/bin:/bin", real_bin.display()),
+            )
             .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
             .output()
             .unwrap();
@@ -1096,10 +1114,8 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         use std::process::Command;
 
-        let dir = std::env::temp_dir().join(format!(
-            "codux-zsh-terminal-integration-{}",
-            Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("codux-zsh-terminal-integration-{}", Uuid::new_v4()));
         let bridge =
             AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
         bridge.stage_assets().unwrap();
@@ -1165,7 +1181,10 @@ fi
             .env("DMUX_SESSION_ID", "terminal-1")
             .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
             .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
-            .env("DMUX_ORIGINAL_PATH", format!("{}:/usr/bin:/bin", real_bin.display()))
+            .env(
+                "DMUX_ORIGINAL_PATH",
+                format!("{}:/usr/bin:/bin", real_bin.display()),
+            )
             .env_remove("PROCESS_LAUNCHED_BY_Q")
             .env_remove("Q_TERM")
             .output()
@@ -1199,7 +1218,10 @@ fi
                 .any(|line| line == "REAL model_reasoning_effort=\"medium\""),
             "{stdout}"
         );
-        assert!(stdout.lines().any(|line| line == "REAL --model=gpt-5.9"), "{stdout}");
+        assert!(
+            stdout.lines().any(|line| line == "REAL --model=gpt-5.9"),
+            "{stdout}"
+        );
         fs::remove_dir_all(dir).unwrap();
     }
 

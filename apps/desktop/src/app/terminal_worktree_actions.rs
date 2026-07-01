@@ -644,10 +644,15 @@ impl CoduxApp {
             .as_ref()
             .and_then(|project| project.host_device_id.clone());
         if let Some(device_id) = remote_device {
+            let locale = locale_from_language_setting(&self.state.settings.language);
             self.open_remote_project_web_url(
                 device_id,
                 url,
-                "Open Web Tunnel Failed".to_string(),
+                translate(
+                    &locale,
+                    "workspace.web_tunnel.open_failed",
+                    "Open Web Tunnel Failed",
+                ),
                 cx,
             );
             return;
@@ -934,7 +939,7 @@ impl CoduxApp {
                         if app.terminals.len() == 1 { "" } else { "s" }
                     );
                 }
-                app.invalidate_terminal_workspace_rebuild(cx);
+                app.invalidate_terminal_workspace(cx);
             });
         })
         .detach();

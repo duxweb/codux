@@ -279,15 +279,27 @@ impl TerminalPane {
                 remote_config.terminal_id.as_deref(),
             )
             .map_err(anyhow::Error::msg)?;
+        // Register the live-session forwarder BEFORE dropping the stale
+        // pre-registration. If the host assigned a different id than we proposed,
+        // unregistering first would leave a window with NO forwarder for the live
+        // session, and the host's baseline (sent right after `terminal.created`,
+        // keyed by session_id) would be dropped — the "sometimes blank" outcome.
+        pending
+            .session
+            .attach_remote(controller.clone(), session_id.clone(), pending.output_tx.clone());
         if let Some(terminal_id) = pre_registered_terminal_id
             .as_deref()
             .filter(|terminal_id| *terminal_id != session_id)
         {
             controller.unregister_terminal_output(terminal_id);
         }
-        pending
-            .session
-            .attach_remote(controller, session_id.clone(), pending.output_tx.clone());
+        // The host is the single seed authority: on reattach it pushes the
+        // baseline right after `terminal.created` (caught by the forwarder we
+        // registered above); on a fresh create it sends nothing and the shell's
+        // live prompt is the content. We must NOT also request `terminal_buffer_tail`
+        // here — that raced the host baseline (both replay the same snapshot tail
+        // into our emulator's live stream, which has no seq-dedup), so a switch
+        // showed the prompt twice, once, or not at all depending on timing.
         Ok(session_id)
     }
 
@@ -545,6 +557,7 @@ impl TerminalSessionBinding {
         if let Some((cols, rows)) = last_resize {
             controller.terminal_resize(&session_id, cols, rows);
         }
+        controller.terminal_buffer_tail(&session_id);
         true
     }
 
@@ -714,6 +727,18 @@ impl TerminalSessionBinding {
         let inner = self.inner.lock();
         if let Some(session) = inner.session.as_ref() {
             return session.matches_config(config, None);
+        }
+        if let Some(remote) = inner.remote.as_ref() {
+            // A live remote pane is the same host session iff the stable terminal
+            // id matches. Without this it matches nothing (no local session,
+            // `pending_match_config` cleared on attach), so every project switch
+            // fails the reuse gate, re-creates the pane and re-attaches it — each
+            // reattach re-triggers the host's baseline, and overlapping switches
+            // race those baselines onto the wrong pane (the duplicate/blank).
+            return config
+                .terminal_id
+                .as_deref()
+                .is_some_and(|terminal_id| terminal_id == remote.session_id);
         }
         inner
             .pending_match_config

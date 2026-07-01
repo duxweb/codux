@@ -109,7 +109,11 @@ impl CoduxApp {
                             cx,
                         ))
                         .when_some(remote_project_device_id, |this, device_id| {
-                            this.child(workspace_remote_browser_button(device_id, cx))
+                            this.child(workspace_remote_browser_button(
+                                device_id,
+                                &self.state.settings.language,
+                                cx,
+                            ))
                         })
                         .child(workspace_assistant_button(
                             "AI",
@@ -150,10 +154,16 @@ impl CoduxApp {
 
 fn workspace_remote_browser_button(
     device_id: String,
+    language: &str,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let app_entity = cx.entity();
     let tooltip_entity = app_entity.clone();
+    let tooltip = workspace_i18n(
+        language,
+        "workspace.web_tunnel.browser.open",
+        "Open Web Tunnel Browser",
+    );
 
     let button = Button::new("workspace-open-remote-browser")
         .compact()
@@ -173,7 +183,7 @@ fn workspace_remote_browser_button(
         tooltip_entity,
         "workspace-open-remote-browser-tooltip",
         button,
-        "Open Web Tunnel Browser",
+        tooltip,
     )
 }
 

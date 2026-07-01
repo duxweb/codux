@@ -2465,7 +2465,7 @@ impl RemoteHostRuntime {
                         REMOTE_TERMINAL_BUFFER_MAX_CHARS,
                         None,
                         None,
-                        false,
+                        true,
                     );
                 }
             }

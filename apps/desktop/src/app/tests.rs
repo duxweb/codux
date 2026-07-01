@@ -13,7 +13,7 @@ mod tests {
             terminal_state::{
                 normalize_terminal_restore_state, restore_terminal_tabs_skeleton,
                 should_mount_restored_terminal_slot, structural_terminal_layout,
-                terminal_pane_terminal_id, terminal_restore_plan,
+                terminal_pane_terminal_id, terminal_restore_mount_target, terminal_restore_plan,
                 terminal_restore_plan_for_language,
             },
             terminal_worktree_actions::active_terminal_slot_indices,
@@ -154,7 +154,62 @@ mod tests {
 
     #[test]
     fn restore_mounts_all_visible_top_panes_but_only_active_bottom_tab() {
-        let target = Some((2, 0));
+        let plan = TerminalRestorePlan {
+            active_index: 0,
+            active_terminal_id: Some("top-2".to_string()),
+            active_bottom_terminal_id: Some("bottom-2".to_string()),
+            tabs: vec![
+                TerminalTabPlan {
+                    placement: TerminalTabPlacement::Top,
+                    terminal_id: None,
+                    label: "Main".to_string(),
+                    panes: vec![
+                        TerminalPanePlan {
+                            terminal_id: Some("top-1".to_string()),
+                            title: "Split 1".to_string(),
+                            restored_output_bytes: 0,
+                            restored_output_tail: String::new(),
+                        },
+                        TerminalPanePlan {
+                            terminal_id: Some("top-2".to_string()),
+                            title: "Split 2".to_string(),
+                            restored_output_bytes: 0,
+                            restored_output_tail: String::new(),
+                        },
+                    ],
+                },
+                TerminalTabPlan {
+                    placement: TerminalTabPlacement::Bottom,
+                    terminal_id: Some("bottom-1".to_string()),
+                    label: "Tab 1".to_string(),
+                    panes: vec![TerminalPanePlan {
+                        terminal_id: Some("bottom-1".to_string()),
+                        title: "Tab 1".to_string(),
+                        restored_output_bytes: 0,
+                        restored_output_tail: String::new(),
+                    }],
+                },
+                TerminalTabPlan {
+                    placement: TerminalTabPlacement::Bottom,
+                    terminal_id: Some("bottom-2".to_string()),
+                    label: "Tab 2".to_string(),
+                    panes: vec![TerminalPanePlan {
+                        terminal_id: Some("bottom-2".to_string()),
+                        title: "Tab 2".to_string(),
+                        restored_output_bytes: 0,
+                        restored_output_tail: String::new(),
+                    }],
+                },
+            ],
+        };
+        let (tabs, _, _) = restore_terminal_tabs_skeleton(&plan, None);
+        let target = terminal_restore_mount_target(&plan, &tabs);
+
+        assert_eq!(
+            target,
+            Some((2, 0)),
+            "bottom mount target must use the active bottom tab, not the focused top pane"
+        );
 
         assert!(should_mount_restored_terminal_slot(
             TerminalTabPlacement::Top,

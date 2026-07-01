@@ -12,14 +12,22 @@ use gpui_component::{
     table::{Column, ColumnSort, DataTable, TableDelegate, TableState},
 };
 
-const STATS_TREND_BUCKET_COUNT: usize = 96;
+const STATS_TREND_DEFAULT_BUCKET_COUNT: usize = 72;
+const STATS_TREND_MAX_BUCKET_COUNT: usize = 96;
 const STATS_TREND_BUCKET_SECONDS: f64 = 30.0 * 60.0;
 const STATS_TREND_MAX_BAR_WIDTH: f32 = 7.0;
+const STATS_TREND_BUCKET_MIN_WIDTH: f32 = 12.0;
 const STATS_HEATMAP_ROWS: usize = 7;
-const STATS_HEATMAP_COLUMNS: usize = 52;
+const STATS_HEATMAP_DEFAULT_COLUMNS: usize = 52;
+const STATS_HEATMAP_MIN_COLUMNS: usize = 8;
+const STATS_HEATMAP_MAX_COLUMNS: usize = 260;
+const STATS_HEATMAP_CELL_SIZE: f32 = 13.0;
 const STATS_HEATMAP_GAP: f32 = 3.0;
+const STATS_CHART_CARD_HEIGHT: f32 = 174.0;
+const STATS_CHART_BODY_HEIGHT: f32 = 112.0;
 const STATS_FILTER_TEXT_SIZE: Rems = Rems(0.75);
 const STATS_FILTER_LINE_HEIGHT: Rems = Rems(1.0);
+const STATS_TABLE_BASE_WIDTH: f32 = 1200.0;
 
 #[derive(Clone)]
 pub(in crate::app) struct StatsWorkspaceSnapshot {
@@ -220,8 +228,9 @@ pub(in crate::app) fn stats_workspace_body(
     project_table: gpui::Entity<TableState<StatsProjectTableDelegate>>,
     scroll_handle: gpui::ScrollHandle,
     snapshot: StatsWorkspaceSnapshot,
+    container_width: Option<Pixels>,
     cx: &mut Context<workspace_views::StatsWorkspaceView>,
-) -> impl IntoElement {
+) -> gpui::Div {
     div()
         .flex()
         .flex_col()
@@ -258,7 +267,37 @@ pub(in crate::app) fn stats_workspace_body(
                                 .gap(px(16.0))
                                 .child(stats_control_row(app_entity.clone(), &snapshot))
                                 .child(stats_kpi_grid(&snapshot, cx))
-                                .child(stats_recent_trend_card(app_entity.clone(), &snapshot, cx))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_wrap()
+                                        .gap(px(16.0))
+                                        .min_w_0()
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .flex_basis(px(0.0))
+                                                .min_w(px(360.0))
+                                                .child(stats_recent_trend_card(
+                                                    app_entity.clone(),
+                                                    &snapshot,
+                                                    container_width,
+                                                    cx,
+                                                )),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .flex_basis(px(0.0))
+                                                .min_w(px(360.0))
+                                                .child(stats_heatmap_card(
+                                                    app_entity.clone(),
+                                                    &snapshot,
+                                                    container_width,
+                                                    cx,
+                                                )),
+                                        ),
+                                )
                                 .child(
                                     div()
                                         .grid()
@@ -286,8 +325,12 @@ pub(in crate::app) fn stats_workspace_body(
                                             cx,
                                         )),
                                 )
-                                .child(stats_heatmap_card(app_entity.clone(), &snapshot, cx))
-                                .child(stats_project_table_card(project_table, &snapshot, cx)),
+                                .child(stats_project_table_card(
+                                    project_table,
+                                    &snapshot,
+                                    container_width,
+                                    cx,
+                                )),
                         ),
                 )
                 .vertical_scrollbar(&scroll_handle),
@@ -364,15 +407,24 @@ fn stats_filter_button(
     active: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    Button::new(SharedString::from(format!("stats-filter-{label}")))
-        .secondary()
+    let button = Button::new(SharedString::from(format!("stats-filter-{label}")));
+    let button = if active {
+        button.primary()
+    } else {
+        button.secondary()
+    };
+
+    button
         .with_size(Size::Small)
         .compact()
         .rounded(px(999.0))
         .selected(active)
-        .text_size(STATS_FILTER_TEXT_SIZE)
-        .line_height(STATS_FILTER_LINE_HEIGHT)
-        .label(label)
+        .child(
+            div()
+                .text_size(STATS_FILTER_TEXT_SIZE)
+                .line_height(STATS_FILTER_LINE_HEIGHT)
+                .child(label),
+        )
         .on_click(on_click)
 }
 
@@ -520,18 +572,25 @@ fn stats_kpi_card(
 fn stats_recent_trend_card(
     app_entity: gpui::Entity<CoduxApp>,
     snapshot: &StatsWorkspaceSnapshot,
+    container_width: Option<Pixels>,
     cx: &mut Context<workspace_views::StatsWorkspaceView>,
 ) -> impl IntoElement {
     let title = stats_text(
         &snapshot.language,
         "stats.recent_trend",
-        "用量趋势 · 最近 48 小时",
+        "用量趋势",
     );
     let has_usage = snapshot
         .trend_buckets
         .iter()
         .any(|bucket| bucket.total_tokens > 0 || bucket.cached_input_tokens > 0);
-    let data = snapshot.trend_buckets.clone();
+    let visible_buckets = stats_trend_visible_buckets(container_width);
+    let data = snapshot
+        .trend_buckets
+        .iter()
+        .skip(snapshot.trend_buckets.len().saturating_sub(visible_buckets))
+        .copied()
+        .collect::<Vec<_>>();
     let max_value = data
         .iter()
         .map(|bucket| bucket.total_tokens.max(0))
@@ -540,7 +599,7 @@ fn stats_recent_trend_card(
         .max(1);
 
     stats_section_card(title, cx)
-        .min_h(px(214.0))
+        .min_h(px(STATS_CHART_CARD_HEIGHT))
         .child(if !has_usage {
             stats_empty(
                 stats_text(
@@ -561,30 +620,6 @@ fn stats_recent_trend_card(
             )
             .into_any_element()
         })
-        .child(
-            div()
-                .mt(px(12.0))
-                .flex()
-                .items_center()
-                .justify_between()
-                .text_size(rems(0.75))
-                .line_height(rems(1.0))
-                .text_color(color(theme::TEXT_MUTED))
-                .child(stats_text(
-                    &snapshot.language,
-                    "stats.recent_trend.hint",
-                    "30 分钟一个柱，柱体按当前缓存口径显示总计",
-                ))
-                .child(if snapshot.include_cached {
-                    stats_text(
-                        &snapshot.language,
-                        "stats.cache_mode.including_cache",
-                        "有缓存",
-                    )
-                } else {
-                    stats_text(&snapshot.language, "stats.cache_mode.normalized", "无缓存")
-                }),
-        )
 }
 
 fn stats_trend_bars(
@@ -600,7 +635,7 @@ fn stats_trend_bars(
         .items_end()
         .justify_between()
         .w_full()
-        .h(px(118.0))
+        .h(px(STATS_CHART_BODY_HEIGHT))
         .children(buckets.into_iter().enumerate().map(move |(index, bucket)| {
             let value = bucket.total_tokens.max(0);
             let ratio = if max_value <= 0 {
@@ -623,7 +658,7 @@ fn stats_trend_bars(
                 div()
                     .w_full()
                     .max_w(px(STATS_TREND_MAX_BAR_WIDTH))
-                    .h(px(10.0 + ratio.clamp(0.0, 1.0) * 108.0))
+                    .h(px(8.0 + ratio.clamp(0.0, 1.0) * (STATS_CHART_BODY_HEIGHT - 8.0)))
                     .rounded(px(3.0))
                     .bg(color(theme::ACCENT))
                     .opacity(if value > 0 { 0.95 } else { 0.14 }),
@@ -752,23 +787,29 @@ fn stats_rank_row(
 fn stats_heatmap_card(
     app_entity: gpui::Entity<CoduxApp>,
     snapshot: &StatsWorkspaceSnapshot,
+    container_width: Option<Pixels>,
     cx: &mut Context<workspace_views::StatsWorkspaceView>,
 ) -> impl IntoElement {
-    let title = stats_text(
-        &snapshot.language,
-        "stats.recent_usage",
-        "活跃热力图 · 全局",
-    );
-    let inactive = cx.theme().secondary;
-    let cells = snapshot.heatmap.clone();
+    let title = stats_text(&snapshot.language, "stats.recent_usage", "活跃热力图");
+    let inactive = color(theme::TEXT_DIM).opacity(0.36);
+    let total_columns = snapshot.heatmap.len() / STATS_HEATMAP_ROWS;
+    let visible_columns = stats_heatmap_visible_columns(container_width).min(total_columns);
+    let first_column = total_columns.saturating_sub(visible_columns);
+    let cells = snapshot
+        .heatmap
+        .chunks(STATS_HEATMAP_ROWS)
+        .skip(first_column)
+        .flat_map(|column| column.iter().cloned())
+        .collect::<Vec<_>>();
     stats_section_card(title, cx)
+        .min_h(px(STATS_CHART_CARD_HEIGHT))
         .child(
             div()
-                .mt(px(16.0))
+                .mt(px(12.0))
                 .w_full()
-                .max_h(px(190.0))
                 .flex()
                 .gap(px(STATS_HEATMAP_GAP))
+                .overflow_hidden()
                 .children(
                     cells
                         .chunks(STATS_HEATMAP_ROWS)
@@ -776,8 +817,8 @@ fn stats_heatmap_card(
                         .map(|(column, days)| {
                             let app_entity = app_entity.clone();
                             div()
-                                .flex_1()
-                                .min_w(px(5.0))
+                                .w(px(STATS_HEATMAP_CELL_SIZE))
+                                .flex_none()
                                 .flex()
                                 .flex_col()
                                 .gap(px(STATS_HEATMAP_GAP))
@@ -806,9 +847,7 @@ fn stats_heatmap_card(
                                             )),
                                             tooltip,
                                         )
-                                        .aspect_square()
-                                        .w_full()
-                                        .max_w(px(13.0))
+                                        .size(px(STATS_HEATMAP_CELL_SIZE))
                                         .rounded(px(4.0))
                                         .bg(if cell.is_known {
                                             color(theme::ACCENT)
@@ -823,30 +862,24 @@ fn stats_heatmap_card(
                         }),
                 ),
         )
-        .child(
-            div()
-                .mt(px(12.0))
-                .flex()
-                .items_center()
-                .justify_between()
-                .text_size(rems(0.75))
-                .line_height(rems(1.0))
-                .text_color(color(theme::TEXT_MUTED))
-                .child(stats_date_label(
-                    snapshot.heatmap.first().map(|cell| cell.day),
-                ))
-                .child(stats_date_label(
-                    snapshot.heatmap.last().map(|cell| cell.day),
-                )),
-        )
 }
 
 fn stats_project_table_card(
     project_table: gpui::Entity<TableState<StatsProjectTableDelegate>>,
     snapshot: &StatsWorkspaceSnapshot,
+    container_width: Option<Pixels>,
     cx: &mut Context<workspace_views::StatsWorkspaceView>,
 ) -> impl IntoElement {
     let title = stats_text(&snapshot.language, "stats.projects", "项目统计");
+    let table_width = stats_project_table_width(container_width);
+    project_table.update(cx, |table, cx| {
+        if table
+            .delegate_mut()
+            .set_layout_width(table_width, snapshot.language().to_string())
+        {
+            table.refresh(cx);
+        }
+    });
     stats_section_card(title, cx)
         .h(px(430.0))
         .child(if snapshot.project_rows.is_empty() {
@@ -932,6 +965,49 @@ fn stats_date_label(day: Option<f64>) -> String {
         Some(time) => format!("{}-{:02}-{:02}", time.year(), time.month(), time.day()),
         None => String::new(),
     }
+}
+
+fn stats_heatmap_visible_columns(container_width: Option<Pixels>) -> usize {
+    let Some(width) = container_width else {
+        return STATS_HEATMAP_DEFAULT_COLUMNS;
+    };
+    let content_width = (width.as_f32() - 40.0).max(0.0);
+    let two_column_min_width = 360.0 * 2.0 + 16.0;
+    let card_width = if content_width >= two_column_min_width {
+        (content_width - 16.0) / 2.0
+    } else {
+        content_width
+    };
+    let inner_width = (card_width - 28.0).max(STATS_HEATMAP_CELL_SIZE);
+    let column_width = STATS_HEATMAP_CELL_SIZE + STATS_HEATMAP_GAP;
+    ((inner_width + STATS_HEATMAP_GAP) / column_width)
+        .floor()
+        .max(STATS_HEATMAP_MIN_COLUMNS as f32)
+        .min(STATS_HEATMAP_MAX_COLUMNS as f32) as usize
+}
+
+fn stats_trend_visible_buckets(container_width: Option<Pixels>) -> usize {
+    let Some(width) = container_width else {
+        return STATS_TREND_DEFAULT_BUCKET_COUNT;
+    };
+    let content_width = (width.as_f32() - 40.0).max(0.0);
+    let two_column_min_width = 360.0 * 2.0 + 16.0;
+    let card_width = if content_width >= two_column_min_width {
+        (content_width - 16.0) / 2.0
+    } else {
+        content_width
+    };
+    let inner_width = (card_width - 28.0).max(STATS_TREND_BUCKET_MIN_WIDTH);
+    (inner_width / STATS_TREND_BUCKET_MIN_WIDTH)
+        .floor()
+        .max(12.0)
+        .min(STATS_TREND_MAX_BUCKET_COUNT as f32) as usize
+}
+
+fn stats_project_table_width(container_width: Option<Pixels>) -> f32 {
+    container_width
+        .map(|width| (width.as_f32() - 40.0 - 28.0).max(STATS_TABLE_BASE_WIDTH))
+        .unwrap_or(STATS_TABLE_BASE_WIDTH)
 }
 
 fn trend_bucket_time_range(bucket: StatsTrendBucket) -> String {
@@ -1128,8 +1204,8 @@ fn stats_global_heatmap(
     include_cached: bool,
 ) -> Vec<codux_runtime::ai_history::AIHistoryHeatmapCellView> {
     let today = codux_runtime::ai_history_normalized::local_day_start_seconds(app_now_seconds());
-    let first_day = today - (STATS_HEATMAP_COLUMNS * STATS_HEATMAP_ROWS - 1) as f64 * 86_400.0;
-    let mut values = (0..STATS_HEATMAP_COLUMNS)
+    let first_day = today - (STATS_HEATMAP_MAX_COLUMNS * STATS_HEATMAP_ROWS - 1) as f64 * 86_400.0;
+    let mut values = (0..STATS_HEATMAP_MAX_COLUMNS)
         .flat_map(|column| {
             (0..STATS_HEATMAP_ROWS).map(move |row| {
                 let day = first_day + (column * STATS_HEATMAP_ROWS + row) as f64 * 86_400.0;
@@ -1203,8 +1279,8 @@ fn stats_trend_buckets(
             request_count: bucket.request_count.max(0),
         })
         .collect::<Vec<_>>();
-    if rows.len() > STATS_TREND_BUCKET_COUNT {
-        rows = rows.split_off(rows.len() - STATS_TREND_BUCKET_COUNT);
+    if rows.len() > STATS_TREND_MAX_BUCKET_COUNT {
+        rows = rows.split_off(rows.len() - STATS_TREND_MAX_BUCKET_COUNT);
     }
     rows
 }
@@ -1356,15 +1432,17 @@ fn heatmap_fingerprint(rows: &[codux_runtime::ai_history::AIHistoryHeatmapCellVi
 pub(in crate::app) struct StatsProjectTableDelegate {
     rows: Vec<StatsProjectRow>,
     language: String,
+    layout_width: f32,
     columns: Vec<Column>,
 }
 
 impl StatsProjectTableDelegate {
     pub(in crate::app) fn new(rows: Vec<StatsProjectRow>, language: String) -> Self {
-        let columns = stats_project_table_columns(&language);
+        let columns = stats_project_table_columns(&language, STATS_TABLE_BASE_WIDTH);
         Self {
             rows,
             language,
+            layout_width: STATS_TABLE_BASE_WIDTH,
             columns,
         }
     }
@@ -1372,9 +1450,20 @@ impl StatsProjectTableDelegate {
     pub(in crate::app) fn set_rows(&mut self, rows: Vec<StatsProjectRow>, language: String) {
         self.rows = rows;
         if self.language != language {
-            self.columns = stats_project_table_columns(&language);
+            self.columns = stats_project_table_columns(&language, self.layout_width);
             self.language = language;
         }
+    }
+
+    pub(in crate::app) fn set_layout_width(&mut self, layout_width: f32, language: String) -> bool {
+        let layout_width = layout_width.max(STATS_TABLE_BASE_WIDTH);
+        if self.language == language && (self.layout_width - layout_width).abs() < 1.0 {
+            return false;
+        }
+        self.language = language;
+        self.layout_width = layout_width;
+        self.columns = stats_project_table_columns(&self.language, self.layout_width);
+        true
     }
 
     fn sort_rows(&mut self, col_ix: usize, sort: ColumnSort) {
@@ -1532,53 +1621,56 @@ impl TableDelegate for StatsProjectTableDelegate {
     }
 }
 
-fn stats_project_table_columns(language: &str) -> Vec<Column> {
+fn stats_project_table_columns(language: &str, layout_width: f32) -> Vec<Column> {
+    let project_width = 414.0 + (layout_width - STATS_TABLE_BASE_WIDTH).max(0.0) * 0.34;
+    let metric_ratio =
+        ((layout_width - project_width) / (STATS_TABLE_BASE_WIDTH - 414.0)).max(1.0);
     vec![
         Column::new(
             "project",
             stats_text(language, "stats.table.project", "项目"),
         )
-        .width(px(260.0))
-        .min_width(px(180.0))
+        .width(px(project_width))
+        .min_width(px(220.0))
         .sortable(),
         Column::new(
             "total",
             stats_text(language, "stats.table.total", "总计 token"),
         )
-        .width(px(126.0))
+        .width(px(126.0 * metric_ratio))
         .text_right()
         .sortable(),
         Column::new(
             "no_cache",
             stats_text(language, "stats.table.no_cache", "无缓存 token"),
         )
-        .width(px(132.0))
+        .width(px(132.0 * metric_ratio))
         .text_right()
         .sortable(),
         Column::new("input", stats_text(language, "stats.table.input", "输入"))
-            .width(px(104.0))
+            .width(px(104.0 * metric_ratio))
             .text_right()
             .sortable(),
         Column::new("output", stats_text(language, "stats.table.output", "输出"))
-            .width(px(104.0))
+            .width(px(104.0 * metric_ratio))
             .text_right()
             .sortable(),
         Column::new("cache", stats_text(language, "stats.table.cache", "缓存"))
-            .width(px(104.0))
+            .width(px(104.0 * metric_ratio))
             .text_right()
             .sortable(),
         Column::new(
             "requests",
             stats_text(language, "stats.table.requests", "请求次数"),
         )
-        .width(px(106.0))
+        .width(px(106.0 * metric_ratio))
         .text_right()
         .sortable(),
         Column::new(
             "duration",
             stats_text(language, "stats.table.duration", "运行时间"),
         )
-        .width(px(110.0))
+        .width(px(110.0 * metric_ratio))
         .text_right()
         .sortable(),
     ]

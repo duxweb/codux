@@ -287,7 +287,11 @@ mod tests {
                 .join("scripts/shell-hooks/dmux-ai-hook.zsh")
                 .is_file()
         );
-        assert!(target.join("scripts/wrappers/codux-wrapper-helper").exists());
+        assert!(
+            target
+                .join("scripts/wrappers/codux-wrapper-helper")
+                .exists()
+        );
 
         fs::remove_dir_all(temp).unwrap();
     }

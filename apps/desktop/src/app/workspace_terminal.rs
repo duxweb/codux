@@ -208,6 +208,7 @@ impl CoduxApp {
                                 .items_center()
                                 .justify_center()
                                 .cursor_pointer()
+                                .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
                                 .text_color(color(theme::TEXT_DIM))
                                 .on_click(cx.listener(move |app, _event, window, cx| {
                                     app.select_terminal_pane(index, window, cx);
@@ -296,6 +297,7 @@ fn terminal_bottom_content(tab: &TerminalTab) -> impl IntoElement {
                 .flex()
                 .items_center()
                 .justify_center()
+                .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
                 .text_color(color(theme::TEXT_DIM))
                 .child("Terminal mounting...")
                 .into_any_element(),

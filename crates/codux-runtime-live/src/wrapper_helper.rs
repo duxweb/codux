@@ -308,7 +308,11 @@ fn ssh_control_path(profile_id: &str) -> Option<String> {
     let base_dir = env::var("XDG_RUNTIME_DIR")
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .or_else(|| env::var("TMPDIR").ok().filter(|value| !value.trim().is_empty()))
+        .or_else(|| {
+            env::var("TMPDIR")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
         .unwrap_or_else(|| "/tmp".to_string());
     let dir = Path::new(&base_dir).join("codux-ssh");
     if fs::create_dir_all(&dir).is_err() {

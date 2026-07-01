@@ -831,8 +831,7 @@ fn open_target_with_http_proxy(
             "Brave Browser",
         ];
         for browser in browsers {
-            if open_macos_app_with_args(browser, &browser_args).is_ok()
-            {
+            if open_macos_app_with_args(browser, &browser_args).is_ok() {
                 return Ok(());
             }
         }
@@ -842,8 +841,7 @@ fn open_target_with_http_proxy(
     {
         let browsers = ["chrome", "msedge", "chromium", "brave"];
         for browser in browsers {
-            if spawn_open_command(browser, &browser_args).is_ok()
-            {
+            if spawn_open_command(browser, &browser_args).is_ok() {
                 return Ok(());
             }
         }
@@ -859,8 +857,7 @@ fn open_target_with_http_proxy(
             "brave-browser",
         ];
         for browser in browsers {
-            if spawn_open_command(browser, &browser_args).is_ok()
-            {
+            if spawn_open_command(browser, &browser_args).is_ok() {
                 return Ok(());
             }
         }

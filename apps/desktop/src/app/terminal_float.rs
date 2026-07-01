@@ -72,6 +72,7 @@ impl Render for TerminalFloatWindow {
                             .flex()
                             .items_center()
                             .justify_center()
+                            .bg(crate::theme::terminal_fill(color(crate::theme::BG_TERMINAL)))
                             .text_color(cx.theme().muted_foreground)
                             .child("Terminal mounting...")
                             .into_any_element(),

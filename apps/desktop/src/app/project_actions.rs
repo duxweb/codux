@@ -1575,6 +1575,12 @@ impl CoduxApp {
         device_id: String,
         cx: &mut Context<Self>,
     ) {
+        let locale = locale_from_language_setting(&self.state.settings.language);
+        let title = translate(
+            &locale,
+            "workspace.web_tunnel.browser.open",
+            "Open Web Tunnel Browser",
+        );
         match self.runtime_service.open_host_browser_session(&device_id) {
             Ok(opened) => {
                 match self.runtime_service.open_url_with_http_proxy(
@@ -1588,17 +1594,13 @@ impl CoduxApp {
                     }
                     Err(error) => {
                         self.status_message = "failed to open web tunnel browser".to_string();
-                        self.show_system_error_alert(
-                            "Open Web Tunnel Browser".to_string(),
-                            error,
-                            cx,
-                        );
+                        self.show_system_error_alert(title.clone(), error, cx);
                     }
                 }
             }
             Err(error) => {
                 self.status_message = "web tunnel unavailable".to_string();
-                self.show_system_error_alert("Open Web Tunnel Browser".to_string(), error, cx);
+                self.show_system_error_alert(title, error, cx);
             }
         }
         self.invalidate_status_bar(cx);

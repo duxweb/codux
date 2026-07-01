@@ -15,7 +15,7 @@ use codux_runtime::{
     runtime_state::{RuntimeService, RuntimeState},
     settings::{SettingsSummary, locale_from_language_setting},
     terminal_layout::{TerminalLayoutSummary, TerminalPaneSummary, TerminalTabSummary},
-    terminal_pty::{TerminalManager, TerminalPtyConfig},
+    terminal_pty::{TerminalManager, TerminalOutputSnapshot, TerminalPtyConfig},
     terminal_runtime::{TerminalRuntimeSessionSummary, TerminalRuntimeSummary},
     tool_permissions::ToolPermissionsSummary,
     worktree::WorktreeInfo,
@@ -510,10 +510,14 @@ where
         // no pending sink yet) spawn the PTY synchronously as before.
         if pty_config.host_device_id.is_some() {
             if let Some(out) = pending_out.as_deref_mut() {
-                let (pane, attach) = TerminalPane::pending_with_pty_config(
+                let (pane, attach) = TerminalPane::pending_with_restored_output(
                     cx,
                     pty_config.clone(),
                     terminal_config.clone(),
+                    Some(TerminalOutputSnapshot {
+                        bytes: slot.restored_output_bytes,
+                        tail: slot.restored_output_tail.clone(),
+                    }),
                 );
                 slot.pane = Some(pane);
                 out.push((pty_config, attach));
@@ -534,25 +538,53 @@ pub(in crate::app) fn terminal_restore_mount_target(
     plan: &TerminalRestorePlan,
     tabs: &[TerminalTab],
 ) -> Option<(usize, usize)> {
-    let active_terminal_id = plan
-        .active_terminal_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|terminal_id| !terminal_id.is_empty());
-    if let Some(active_terminal_id) = active_terminal_id {
-        if let Some(target) = tabs.iter().enumerate().find_map(|(tab_index, tab)| {
-            tab.panes
-                .iter()
-                .position(|slot| slot.terminal_id.as_deref() == Some(active_terminal_id))
-                .map(|slot_index| (tab_index, slot_index))
-        }) {
-            return Some(target);
+    let bottom_target_for_terminal_id = |terminal_id: &str| {
+        let terminal_id = terminal_id.trim();
+        if terminal_id.is_empty() {
+            return None;
         }
+        tabs.iter().enumerate().find_map(|(tab_index, tab)| {
+            if tab.placement != TerminalTabPlacement::Bottom {
+                return None;
+            }
+            let slot_index = tab
+                .panes
+                .iter()
+                .position(|slot| slot.terminal_id.as_deref() == Some(terminal_id))
+                .or_else(|| {
+                    (tab.terminal_id.as_deref() == Some(terminal_id) && !tab.panes.is_empty())
+                        .then_some(0)
+                })?;
+            Some((tab_index, slot_index))
+        })
+    };
+
+    if let Some(active_bottom_terminal_id) = plan.active_bottom_terminal_id.as_deref()
+        && let Some(target) = bottom_target_for_terminal_id(active_bottom_terminal_id)
+    {
+        return Some(target);
     }
 
-    let tab_index = plan.active_index.min(tabs.len().saturating_sub(1));
-    tabs.get(tab_index)
-        .and_then(|tab| (!tab.panes.is_empty()).then_some((tab_index, 0)))
+    if let Some(active_terminal_id) = plan.active_terminal_id.as_deref()
+        && let Some(target) = bottom_target_for_terminal_id(active_terminal_id)
+    {
+        return Some(target);
+    }
+
+    if let Some(tab) = tabs.get(plan.active_index)
+        && tab.placement == TerminalTabPlacement::Bottom
+        && !tab.panes.is_empty()
+    {
+        return Some((plan.active_index, 0));
+    }
+
+    tabs.iter().enumerate().find_map(|(tab_index, tab)| {
+        if tab.placement == TerminalTabPlacement::Bottom && !tab.panes.is_empty() {
+            Some((tab_index, 0))
+        } else {
+            None
+        }
+    })
 }
 
 pub(in crate::app) fn should_mount_restored_terminal_slot(
@@ -676,7 +708,6 @@ pub(in crate::app) fn restore_terminal_tabs_skeleton(
         .unwrap_or(1);
     (tabs, active_terminal_id, next_id)
 }
-
 pub(in crate::app) fn terminal_launch_context(
     state: &RuntimeState,
     runtime: &RuntimeInventory,

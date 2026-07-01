@@ -23,7 +23,9 @@
       "workspace.create_split.terminal": "Terminal",
       "workspace.create_split.title": "Split erstellen",
       "workspace.split_format": "Split %@",
-      "workspace.open.installed_apps_empty": "No installed apps"
+      "workspace.open.installed_apps_empty": "No installed apps",
+      "workspace.web_tunnel.browser.open": "Web-Tunnel-Browser öffnen",
+      "workspace.web_tunnel.open_failed": "Web-Tunnel konnte nicht geöffnet werden"
     },
     "en": {
       "workspace.bottom_terminal.title": "Terminal",
@@ -48,7 +50,9 @@
       "workspace.create_split.terminal": "Terminal",
       "workspace.create_split.title": "Create Split",
       "workspace.split_format": "Split %@",
-      "workspace.open.installed_apps_empty": "No installed apps"
+      "workspace.open.installed_apps_empty": "No installed apps",
+      "workspace.web_tunnel.browser.open": "Open Web Tunnel Browser",
+      "workspace.web_tunnel.open_failed": "Open Web Tunnel Failed"
     },
     "es": {
       "workspace.bottom_terminal.title": "Terminal",
@@ -73,7 +77,9 @@
       "workspace.create_split.terminal": "Terminal",
       "workspace.create_split.title": "Crear división",
       "workspace.split_format": "División %@",
-      "workspace.open.installed_apps_empty": "No installed apps"
+      "workspace.open.installed_apps_empty": "No installed apps",
+      "workspace.web_tunnel.browser.open": "Abrir navegador de túnel web",
+      "workspace.web_tunnel.open_failed": "No se pudo abrir el túnel web"
     },
     "fr": {
       "workspace.bottom_terminal.title": "Terminal",
@@ -98,7 +104,9 @@
       "workspace.create_split.terminal": "Terminal",
       "workspace.create_split.title": "Créer un split",
       "workspace.split_format": "Split %@",
-      "workspace.open.installed_apps_empty": "No installed apps"
+      "workspace.open.installed_apps_empty": "No installed apps",
+      "workspace.web_tunnel.browser.open": "Ouvrir le navigateur du tunnel web",
+      "workspace.web_tunnel.open_failed": "Échec de l’ouverture du tunnel web"
     },
     "ja": {
       "workspace.bottom_terminal.title": "ターミナル",
@@ -123,7 +131,9 @@
       "workspace.create_split.terminal": "ターミナル",
       "workspace.create_split.title": "分割を作成",
       "workspace.split_format": "分割 %@",
-      "workspace.open.installed_apps_empty": "No installed apps"
+      "workspace.open.installed_apps_empty": "No installed apps",
+      "workspace.web_tunnel.browser.open": "Web トンネルブラウザを開く",
+      "workspace.web_tunnel.open_failed": "Web トンネルを開けませんでした"
     },
     "ko": {
       "workspace.bottom_terminal.title": "터미널",
@@ -148,7 +158,9 @@
       "workspace.create_split.terminal": "터미널",
       "workspace.create_split.title": "분할 만들기",
       "workspace.split_format": "분할 %@",
-      "workspace.open.installed_apps_empty": "No installed apps"
+      "workspace.open.installed_apps_empty": "No installed apps",
+      "workspace.web_tunnel.browser.open": "웹 터널 브라우저 열기",
+      "workspace.web_tunnel.open_failed": "웹 터널 열기 실패"
     },
     "pt-BR": {
       "workspace.bottom_terminal.title": "Terminal",
@@ -173,7 +185,9 @@
       "workspace.create_split.terminal": "Terminal",
       "workspace.create_split.title": "Criar divisão",
       "workspace.split_format": "Divisão %@",
-      "workspace.open.installed_apps_empty": "No installed apps"
+      "workspace.open.installed_apps_empty": "No installed apps",
+      "workspace.web_tunnel.browser.open": "Abrir navegador do túnel web",
+      "workspace.web_tunnel.open_failed": "Falha ao abrir o túnel web"
     },
     "ru": {
       "workspace.bottom_terminal.title": "Терминал",
@@ -198,7 +212,9 @@
       "workspace.create_split.terminal": "Терминал",
       "workspace.create_split.title": "Создать разделение",
       "workspace.split_format": "Разделение %@",
-      "workspace.open.installed_apps_empty": "No installed apps"
+      "workspace.open.installed_apps_empty": "No installed apps",
+      "workspace.web_tunnel.browser.open": "Открыть браузер веб-туннеля",
+      "workspace.web_tunnel.open_failed": "Не удалось открыть веб-туннель"
     },
     "zh-Hans": {
       "workspace.bottom_terminal.title": "终端",
@@ -223,7 +239,9 @@
       "workspace.create_split.terminal": "终端",
       "workspace.create_split.title": "创建分屏",
       "workspace.split_format": "分屏 %@",
-      "workspace.open.installed_apps_empty": "暂无已安装应用"
+      "workspace.open.installed_apps_empty": "暂无已安装应用",
+      "workspace.web_tunnel.browser.open": "打开 Web 隧道浏览器",
+      "workspace.web_tunnel.open_failed": "打开 Web 隧道失败"
     },
     "zh-Hant": {
       "workspace.bottom_terminal.title": "終端",
@@ -248,7 +266,9 @@
       "workspace.create_split.terminal": "終端",
       "workspace.create_split.title": "建立分屏",
       "workspace.split_format": "分屏 %@",
-      "workspace.open.installed_apps_empty": "暫無已安裝應用"
+      "workspace.open.installed_apps_empty": "暫無已安裝應用",
+      "workspace.web_tunnel.browser.open": "開啟 Web 隧道瀏覽器",
+      "workspace.web_tunnel.open_failed": "開啟 Web 隧道失敗"
     }
   }
 }

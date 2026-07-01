@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-beta.6] - 2026-07-01
+
+### Fixed
+
+- Fixed local and remote terminal attach rendering so startup, project switches, and new panes no longer leave bottom tabs or split panes stuck in the mounting state.
+- Fixed AI CLI wrapper injection in integrated terminals so permission mode, model, reasoning effort, and other runtime settings survive third-party shell integration changes.
+- Fixed Web Tunnel Browser localization coverage and related error titles across supported languages.
+
+### Changed
+
+- Refined the AI usage dashboard layout: responsive trend and heatmap charts, cleaner chart titles, tighter chart cards, adaptive project table widths, and consistent 12px range controls.
+- Improved remote controller and host terminal lifecycle handling to reduce stale terminal state during reconnects and project switches.
+
 ## [2.0.0-beta.5] - 2026-07-01
 
 ### Fixed

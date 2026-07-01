@@ -416,6 +416,7 @@ pub(in crate::app) struct StatsWorkspaceView {
     app_entity: gpui::Entity<CoduxApp>,
     snapshot: super::workspace_stats::StatsWorkspaceSnapshot,
     scroll_handle: gpui::ScrollHandle,
+    container_width: Option<Pixels>,
     project_table: gpui::Entity<
         gpui_component::table::TableState<super::workspace_stats::StatsProjectTableDelegate>,
     >,
@@ -444,6 +445,7 @@ impl StatsWorkspaceView {
             app_entity,
             snapshot,
             scroll_handle: gpui::ScrollHandle::default(),
+            container_width: None,
             project_table,
         }
     }
@@ -475,8 +477,24 @@ impl Render for StatsWorkspaceView {
             self.project_table.clone(),
             self.scroll_handle.clone(),
             self.snapshot.clone(),
+            self.container_width,
             cx,
         )
+        .on_prepaint({
+            let view = cx.entity();
+            move |bounds, _, cx| {
+                view.update(cx, |view, cx| {
+                    let width = bounds.size.width;
+                    if view
+                        .container_width
+                        .is_none_or(|recorded| (recorded - width).abs() > px(1.0))
+                    {
+                        view.container_width = Some(width);
+                        cx.notify();
+                    }
+                });
+            }
+        })
         .into_any_element()
     }
 }
@@ -1135,17 +1153,6 @@ impl CoduxApp {
         true
     }
 
-    pub(in crate::app) fn rebuild_terminal_workspace_view(&mut self, cx: &mut Context<Self>) {
-        if let Some(body_view) = self.workspace_body_view.as_ref().cloned() {
-            body_view.update(cx, |view, cx| {
-                view.terminal_workspace_view = None;
-                cx.notify();
-            });
-        } else {
-            cx.notify();
-        }
-    }
-
     pub(in crate::app) fn terminal_workspace_snapshot(&self) -> TerminalWorkspaceSnapshot {
         let main_panes = self
             .main_terminal()
@@ -1363,6 +1370,7 @@ fn terminal_pane(
                         .flex()
                         .items_center()
                         .justify_center()
+                        .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
                         .text_color(color(theme::TEXT_DIM))
                         .child("Terminal mounting...")
                         .into_any_element(),
@@ -1508,6 +1516,7 @@ fn terminal_bottom_content(tab: TerminalPaneViewSnapshot) -> AnyElement {
                 .flex()
                 .items_center()
                 .justify_center()
+                .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
                 .text_color(color(theme::TEXT_DIM))
                 .child("Terminal mounting...")
                 .into_any_element(),

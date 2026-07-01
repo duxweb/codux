@@ -3571,9 +3571,21 @@ mod tests {
         ));
         let runtime_root = temp.join("runtime-root");
         fs::create_dir_all(runtime_root.join("scripts/shell-hooks/zsh")).unwrap();
-        fs::write(runtime_root.join("scripts/shell-hooks/zsh/.zshenv"), "# test\n").unwrap();
-        fs::write(runtime_root.join("scripts/shell-hooks/zsh/.zprofile"), "# test\n").unwrap();
-        fs::write(runtime_root.join("scripts/shell-hooks/zsh/.zshrc"), "# test\n").unwrap();
+        fs::write(
+            runtime_root.join("scripts/shell-hooks/zsh/.zshenv"),
+            "# test\n",
+        )
+        .unwrap();
+        fs::write(
+            runtime_root.join("scripts/shell-hooks/zsh/.zprofile"),
+            "# test\n",
+        )
+        .unwrap();
+        fs::write(
+            runtime_root.join("scripts/shell-hooks/zsh/.zshrc"),
+            "# test\n",
+        )
+        .unwrap();
         fs::write(
             runtime_root.join("scripts/shell-hooks/dmux-ai-hook.zsh"),
             "# test\n",
