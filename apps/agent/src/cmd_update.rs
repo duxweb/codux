@@ -8,12 +8,15 @@ use std::time::Duration;
 
 use crate::{cmd_service, cmd_start, runstate};
 
-const RELEASES_API: &str = "https://api.github.com/repos/duxweb/codux/releases/latest";
+const LATEST_RELEASE_API: &str = "https://api.github.com/repos/duxweb/codux/releases/latest";
+const RELEASES_API: &str = "https://api.github.com/repos/duxweb/codux/releases";
 const USER_AGENT: &str = "codux-agent-updater";
 
 #[derive(Deserialize)]
 struct Release {
     tag_name: String,
+    #[serde(default)]
+    prerelease: bool,
     #[serde(default)]
     assets: Vec<Asset>,
 }
@@ -24,22 +27,15 @@ struct Asset {
     browser_download_url: String,
 }
 
-pub fn run(current: &str) -> Result<(), String> {
+pub fn run(current: &str, beta: bool) -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
         .user_agent(USER_AGENT)
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|error| error.to_string())?;
 
-    println!("Checking for updates…");
-    let release: Release = client
-        .get(RELEASES_API)
-        .send()
-        .map_err(|error| format!("failed to reach GitHub: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("release lookup failed: {error}"))?
-        .json()
-        .map_err(|error| format!("invalid release payload: {error}"))?;
+    println!("Checking for {}updates…", if beta { "beta " } else { "" });
+    let release = fetch_release(&client, beta)?;
 
     let latest = release.tag_name.trim_start_matches('v');
     if !is_newer(latest, current) {
@@ -64,7 +60,7 @@ pub fn run(current: &str) -> Result<(), String> {
     let bytes = client
         .get(&asset.browser_download_url)
         .send()
-        .map_err(|error| format!("download failed: {error}"))?
+        .map_err(|error| format!("failed to reach GitHub: {error}"))?
         .error_for_status()
         .map_err(|error| format!("download failed: {error}"))?
         .bytes()
@@ -83,6 +79,36 @@ pub fn run(current: &str) -> Result<(), String> {
         cmd_start::run(true)?;
     }
     Ok(())
+}
+
+fn fetch_release(client: &reqwest::blocking::Client, beta: bool) -> Result<Release, String> {
+    if !beta {
+        return client
+            .get(LATEST_RELEASE_API)
+            .send()
+            .map_err(|error| format!("failed to reach GitHub: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("release lookup failed: {error}"))?
+            .json()
+            .map_err(|error| format!("invalid release payload: {error}"));
+    }
+
+    let releases = client
+        .get(RELEASES_API)
+        .send()
+        .map_err(|error| format!("failed to reach GitHub: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("release lookup failed: {error}"))?
+        .json::<Vec<Release>>()
+        .map_err(|error| format!("invalid release payload: {error}"))?;
+    select_beta_release(releases)
+}
+
+fn select_beta_release(releases: Vec<Release>) -> Result<Release, String> {
+    releases
+        .into_iter()
+        .find(|release| release.prerelease)
+        .ok_or_else(|| "no beta release found".to_string())
 }
 
 /// Choose the release asset for this OS + architecture.
@@ -166,7 +192,7 @@ fn is_newer(a: &str, b: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Asset, is_newer, pick_asset};
+    use super::{Asset, Release, is_newer, pick_asset, select_beta_release};
 
     #[test]
     fn newer_version_compares_numeric_parts() {
@@ -193,6 +219,27 @@ mod tests {
         let assets = vec![asset(&legacy)];
 
         assert_eq!(pick_asset(&assets, "1.9.1").unwrap().name, legacy);
+    }
+
+    #[test]
+    fn select_beta_release_uses_first_prerelease() {
+        let stable = release("v2.0.0", false);
+        let beta = release("v2.1.0-beta.1", true);
+        let older_beta = release("v2.0.0-beta.5", true);
+
+        let selected = select_beta_release(vec![stable, beta, older_beta]).unwrap();
+
+        assert_eq!(selected.tag_name, "v2.1.0-beta.1");
+    }
+
+    #[test]
+    fn select_beta_release_requires_prerelease() {
+        let error = match select_beta_release(vec![release("v2.0.0", false)]) {
+            Ok(_) => panic!("expected missing beta release to fail"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, "no beta release found");
     }
 
     fn current_agent_asset_name(version: &str) -> String {
@@ -224,6 +271,14 @@ mod tests {
         Asset {
             name: name.to_string(),
             browser_download_url: format!("https://example.com/{name}"),
+        }
+    }
+
+    fn release(tag_name: &str, prerelease: bool) -> Release {
+        Release {
+            tag_name: tag_name.to_string(),
+            prerelease,
+            assets: Vec::new(),
         }
     }
 }

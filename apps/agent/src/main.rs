@@ -61,7 +61,11 @@ enum Command {
     /// Print the pairing ticket for the desktop to paste (starts the host if needed).
     Link,
     /// Check for a newer release and update in place.
-    Update,
+    Update {
+        /// Include beta pre-releases in the update channel.
+        #[arg(long)]
+        beta: bool,
+    },
     /// List paired devices.
     Device,
     /// Remove a paired device by id.
@@ -109,7 +113,7 @@ fn main() {
         Some(Command::Status) => cmd_service::status(),
         Some(Command::Qrcode) => cmd_pair::qrcode(),
         Some(Command::Link) => cmd_pair::link(),
-        Some(Command::Update) => cmd_update::run(VERSION),
+        Some(Command::Update { beta }) => cmd_update::run(VERSION, beta),
         Some(Command::Device) => cmd_device::list(),
         Some(Command::DeviceDel { id }) => cmd_device::del(&id),
         Some(Command::DeviceRename { id }) => cmd_device::rename(&id),
