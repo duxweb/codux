@@ -186,10 +186,41 @@ function stageRuntimeAssets(destination) {
   fs.rmSync(destination, { recursive: true, force: true });
   fs.cpSync(desktopAssetsRoot, destination, {
     recursive: true,
+    dereference: true,
     preserveTimestamps: true,
-    verbatimSymlinks: true,
   });
+  materializeSymlinks(destination);
   assertRuntimeBootstrapAssets(destination);
+}
+
+function materializeSymlinks(rootPath) {
+  for (const entry of fs.readdirSync(rootPath, { withFileTypes: true })) {
+    const entryPath = path.join(rootPath, entry.name);
+    if (entry.isSymbolicLink()) {
+      materializeSymlink(entryPath);
+      continue;
+    }
+    if (entry.isDirectory()) {
+      materializeSymlinks(entryPath);
+    }
+  }
+}
+
+function materializeSymlink(linkPath) {
+  const targetPath = fs.realpathSync(linkPath);
+  const targetStat = fs.statSync(targetPath);
+  fs.rmSync(linkPath, { recursive: true, force: true });
+  if (targetStat.isDirectory()) {
+    fs.cpSync(targetPath, linkPath, {
+      recursive: true,
+      dereference: true,
+      preserveTimestamps: true,
+    });
+    materializeSymlinks(linkPath);
+    return;
+  }
+  fs.copyFileSync(targetPath, linkPath);
+  fs.chmodSync(linkPath, targetStat.mode);
 }
 
 function assertRuntimeBootstrapAssets(runtimeRoot) {

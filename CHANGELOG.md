@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-beta.9] - 2026-07-02
+
+### Fixed
+
+- Reduced long-running Claude runtime CPU and disk usage by parsing transcript logs incrementally and reusing the same probe cache for hook events.
+- Fixed hidden terminal panes forcing full-window repaints while they are in background tabs, inactive workspace views, or closed bottom tabs.
+- Reduced terminal memory growth by lowering default scrollback limits, shrinking idle remote sessions, and restoring full history only while a remote viewer is attached.
+- Reduced AI history indexing memory usage by bounding oversized JSON transcript reads.
+
+### Changed
+
+- Kept visible terminal panes at the original frame cadence while suppressing repaint notifications only for panes that are not currently rendered.
+
 ## [2.0.0-beta.8] - 2026-07-02
 
 ### Added
