@@ -109,6 +109,8 @@ pub enum AIRuntimeMemoryInjectionDriver {
     None,
     CodexDeveloperInstructions,
     ClaudeAppendSystemPrompt,
+    #[serde(rename = "opencodeSystemTransform")]
+    OpenCodeSystemTransform,
 }
 
 #[derive(Debug, Clone, Serialize)]

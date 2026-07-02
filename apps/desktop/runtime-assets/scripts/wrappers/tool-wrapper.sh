@@ -825,7 +825,11 @@ if [[ "$tool_name" == "opencode" || "$tool_name" == "mimo" ]]; then
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
   opencode_config_dir="${wrapper_dir}/opencode-config"
   write_runtime_binding "${resume_target}" "${launch_model}" ""
-  run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" OPENCODE_CONFIG_DIR="${opencode_config_dir}" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" DMUX_ACTIVE_AI_TOOL="${tool_name}" "$real_bin" "${launch_args[@]}"
+  if [[ "$tool_name" == "mimo" ]]; then
+    run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" XDG_CONFIG_HOME="${opencode_config_dir}/xdg" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" DMUX_ACTIVE_AI_TOOL="${tool_name}" "$real_bin" "${launch_args[@]}"
+  else
+    run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" OPENCODE_CONFIG_DIR="${opencode_config_dir}" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" DMUX_ACTIVE_AI_TOOL="${tool_name}" "$real_bin" "${launch_args[@]}"
+  fi
   exit $?
 fi
 

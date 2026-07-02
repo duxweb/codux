@@ -175,6 +175,18 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         ),
     ),
     (
+        "scripts/wrappers/opencode-config/xdg/mimocode/package.json",
+        include_bytes!(
+            "../../../../apps/desktop/runtime-assets/scripts/wrappers/opencode-config/xdg/mimocode/package.json"
+        ),
+    ),
+    (
+        "scripts/wrappers/opencode-config/xdg/mimocode/plugins/dmux-runtime.js",
+        include_bytes!(
+            "../../../../apps/desktop/runtime-assets/scripts/wrappers/opencode-config/xdg/mimocode/plugins/dmux-runtime.js"
+        ),
+    ),
+    (
         "scripts/wrappers/tool-wrapper.ps1",
         include_bytes!("../../../../apps/desktop/runtime-assets/scripts/wrappers/tool-wrapper.ps1"),
     ),

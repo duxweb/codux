@@ -19,6 +19,19 @@ function nowSeconds() {
   return Date.now() / 1000
 }
 
+
+function readManagedPrompt() {
+  const path = process.env.DMUX_AI_MEMORY_PROMPT_FILE
+  if (!path || typeof path !== "string") return null
+  try {
+    const text = fs.readFileSync(path, "utf8").trim()
+    return text.length ? text : null
+  } catch (error) {
+    log("prompt-read-error", { message: error instanceof Error ? error.message : String(error), path })
+    return null
+  }
+}
+
 function sessionMapPath() {
   if (!opencodeSessionMapDir || !runtimeSessionID) return null
   return `${opencodeSessionMapDir}/opencode-session-${runtimeSessionID}.json`
@@ -266,6 +279,22 @@ export const DmuxRuntimePlugin = async ({ client }) => {
   }
 
   return {
+    "experimental.chat.system.transform": async (_input, output) => {
+      const prompt = readManagedPrompt()
+      if (!prompt) {
+        log("system-transform-skip", { reason: "missing-prompt" })
+        return
+      }
+      if (!Array.isArray(output.system)) {
+        output.system = []
+      }
+      if (output.system.includes(prompt)) {
+        return
+      }
+      output.system.unshift(prompt)
+      log("system-transform-injected", { chars: prompt.length })
+    },
+
     event: async ({ event }) => {
       const type = event?.type
       const properties = readObject(event?.properties) ?? {}

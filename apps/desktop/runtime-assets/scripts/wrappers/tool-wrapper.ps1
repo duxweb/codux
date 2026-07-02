@@ -542,7 +542,12 @@ if (-not [string]::IsNullOrWhiteSpace($resumeTarget)) {
 }
 
 if ($Tool -eq "opencode" -or $Tool -eq "mimo") {
-  $env:OPENCODE_CONFIG_DIR = Join-Path $wrapperDir "opencode-config"
+  $openCodeConfigDir = Join-Path $wrapperDir "opencode-config"
+  if ($Tool -eq "mimo") {
+    $env:XDG_CONFIG_HOME = Join-Path $openCodeConfigDir "xdg"
+  } else {
+    $env:OPENCODE_CONFIG_DIR = $openCodeConfigDir
+  }
   $env:DMUX_ACTIVE_AI_TOOL = $Tool
 }
 

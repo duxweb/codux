@@ -79,6 +79,7 @@ fn tool_memory_injection_strategy(tool: &str) -> Option<&'static str> {
         AIRuntimeMemoryInjectionDriver::ClaudeAppendSystemPrompt => {
             Some("claudeAppendSystemPrompt")
         }
+        AIRuntimeMemoryInjectionDriver::OpenCodeSystemTransform => Some("opencodeSystemTransform"),
     }
 }
 
@@ -1155,6 +1156,14 @@ mod tests {
         assert_eq!(
             tool_memory_injection_strategy("claude-code"),
             Some("claudeAppendSystemPrompt")
+        );
+        assert_eq!(
+            tool_memory_injection_strategy("opencode"),
+            Some("opencodeSystemTransform")
+        );
+        assert_eq!(
+            tool_memory_injection_strategy("mimo"),
+            Some("opencodeSystemTransform")
         );
         assert_eq!(tool_memory_injection_strategy("codewhale"), None);
         assert_eq!(tool_memory_injection_strategy("unknown"), None);

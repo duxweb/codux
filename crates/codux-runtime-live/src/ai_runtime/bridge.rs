@@ -548,6 +548,7 @@ case "$cmd" in
     case "${TOOL_NAME:-}" in
       codex) printf '%s\n' codexDeveloperInstructions ;;
       claude|claude-code|reclaude) printf '%s\n' claudeAppendSystemPrompt ;;
+      opencode|mimo) printf '%s\n' opencodeSystemTransform ;;
     esac
     ;;
   json-string-key)
@@ -708,6 +709,16 @@ mod tests {
                 .join("scripts/wrappers/opencode-config/package.json")
                 .is_file()
         );
+        assert!(
+            dir.join("root")
+                .join("scripts/wrappers/opencode-config/xdg/mimocode/package.json")
+                .is_file()
+        );
+        assert!(
+            dir.join("root")
+                .join("scripts/wrappers/opencode-config/xdg/mimocode/plugins/dmux-runtime.js")
+                .is_file()
+        );
         let codewhale_config = dir
             .join("root")
             .join("scripts/wrappers/managed-config/codewhale.toml");
@@ -741,6 +752,17 @@ mod tests {
                 .any(|tool| tool["id"] == "claude"
                     && tool["memoryInjection"] == "claudeAppendSystemPrompt")
         );
+        assert!(
+            launch_config["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|tool| tool["id"] == "opencode"
+                    && tool["memoryInjection"] == "opencodeSystemTransform")
+        );
+        assert!(launch_config["tools"].as_array().unwrap().iter().any(
+            |tool| tool["id"] == "mimo" && tool["memoryInjection"] == "opencodeSystemTransform"
+        ));
         let codewhale_driver = launch_config["tools"]
             .as_array()
             .unwrap()
@@ -1350,6 +1372,72 @@ fi
         );
         assert!(args.contains("# Codux Environment Directive"));
         assert!(args.contains("codux-ssh list"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn mimo_wrapper_uses_managed_xdg_config_for_system_transform() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        let dir = std::env::temp_dir().join(format!("codux-mimo-wrapper-{}", Uuid::new_v4()));
+        let bridge =
+            AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+        bridge.stage_assets().unwrap();
+
+        let real_bin = dir.join("real-bin");
+        fs::create_dir_all(&real_bin).unwrap();
+        let fake_mimo = real_bin.join("mimo");
+        fs::write(
+            &fake_mimo,
+            r#"#!/bin/sh
+printf 'XDG_CONFIG_HOME=%s
+' "${XDG_CONFIG_HOME:-}"
+printf 'OPENCODE_CONFIG_DIR=%s
+' "${OPENCODE_CONFIG_DIR:-}"
+printf 'PROMPT=%s
+' "${DMUX_AI_MEMORY_PROMPT_FILE:-}"
+printf 'TOOL=%s
+' "${DMUX_ACTIVE_AI_TOOL:-}"
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&fake_mimo).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_mimo, permissions).unwrap();
+
+        let prompt_file = dir.join("memory-prompt.txt");
+        fs::write(&prompt_file, "Codux directive").unwrap();
+        let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+        let output = Command::new(bridge.wrapper_bin_dir().join("mimo"))
+            .env("PATH", &search_path)
+            .env("DMUX_ORIGINAL_PATH", &search_path)
+            .env("DMUX_SESSION_ID", "terminal-1")
+            .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+            .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+            .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "wrapper should execute fake mimo, stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains(&format!(
+            "XDG_CONFIG_HOME={}",
+            dir.join("root")
+                .join("scripts/wrappers/opencode-config/xdg")
+                .display()
+        )));
+        assert!(stdout.contains(
+            "OPENCODE_CONFIG_DIR=
+"
+        ));
+        assert!(stdout.contains(&format!("PROMPT={}", prompt_file.display())));
+        assert!(stdout.contains("TOOL=mimo"));
         fs::remove_dir_all(dir).unwrap();
     }
 
