@@ -23,7 +23,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     hook: AIRuntimeToolHookDriver::CodeWhaleToml,
     probe: Some(probe_codewhale_runtime),
     resource_paths: Some(codewhale_resource_paths),
-    memory_injection: AIRuntimeMemoryInjectionDriver::None,
+    memory_injection: AIRuntimeMemoryInjectionDriver::CodeWhaleExecAppendSystemPrompt,
     lifecycle_hook_format: AIRuntimeLifecycleHookFormat::CodeWhaleToml,
     lifecycle_hooks: &[
         lifecycle_hook("message_submit", "codewhale-message-submit", 1, false),

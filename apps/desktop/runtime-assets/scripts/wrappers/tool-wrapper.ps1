@@ -305,6 +305,124 @@ function Write-Codex-Developer-Instructions-Profile([string]$Content, [string]$S
   }
 }
 
+function Get-Memory-Prompt-File {
+  $promptFile = $env:DMUX_AI_MEMORY_PROMPT_FILE
+  if ([string]::IsNullOrWhiteSpace($promptFile) -or -not (Test-Path -LiteralPath $promptFile)) {
+    return ""
+  }
+  return $promptFile
+}
+
+function Apply-Kimi-Memory-Agent-File([string[]]$Args) {
+  if ($memoryInjectionStrategy -ne "kimiAgentFile") { return $Args }
+  if ($Args.Count -gt 0) {
+    switch -Regex ($Args[0]) {
+      '^(login|logout|info|export|mcp|plugin|vis|web|term|acp|__background-task-worker|__web-worker)$' {
+        Write-Live-Log "kimi instructions skipped: subcommand=$($Args[0])"
+        return $Args
+      }
+    }
+  }
+  if ($Args.Count -gt 0 -and ($Args[0] -eq "--help" -or $Args[0] -eq "-h" -or $Args[0] -eq "--version" -or $Args[0] -eq "-V")) {
+    Write-Live-Log "kimi instructions skipped: metadata invocation"
+    return $Args
+  }
+  if ((Has-Option-Value $Args @("--agent-file")) -or (Has-Option-Value $Args @("--agent"))) {
+    Write-Live-Log "kimi instructions skipped: agent override already provided"
+    return $Args
+  }
+  $promptFile = Get-Memory-Prompt-File
+  if ([string]::IsNullOrWhiteSpace($promptFile)) {
+    Write-Live-Log "kimi instructions skipped: prompt file missing"
+    return $Args
+  }
+  try {
+    $prompt = Get-Content -LiteralPath $promptFile -Raw
+    if ([string]::IsNullOrWhiteSpace($prompt)) {
+      Write-Live-Log "kimi instructions skipped: prompt empty path=$promptFile"
+      return $Args
+    }
+    $agentKey = if ([string]::IsNullOrWhiteSpace($env:DMUX_SESSION_ID)) { "default" } else { $env:DMUX_SESSION_ID }
+    $agentKey = [Regex]::Replace($agentKey, "[^A-Za-z0-9_.-]", "_")
+    $agentDir = Join-Path (Join-Path $wrapperDir "managed-kimi-agent") $agentKey
+    $agentFile = Join-Path $agentDir "agent.yaml"
+    New-Item -ItemType Directory -Force -Path $agentDir | Out-Null
+    $lines = @(
+      "version: 1",
+      "agent:",
+      "  extend: default",
+      "  name: `"`"",
+      "  system_prompt_args:",
+      "    ROLE_ADDITIONAL: |"
+    )
+    foreach ($line in ($prompt -split "`r?`n", -1)) {
+      $lines += "      $line"
+    }
+    [System.IO.File]::WriteAllText($agentFile, ($lines -join "`n"), [System.Text.UTF8Encoding]::new($false))
+    Write-Live-Log "kimi instructions injected path=$promptFile agent=$agentFile chars=$($prompt.Length)"
+    return @("--agent-file", $agentFile) + $Args
+  } catch {
+    Write-Live-Log "kimi instructions skipped: failed to write agent file error=$($_.Exception.Message)"
+    return $Args
+  }
+}
+
+function Apply-Append-System-Prompt([string[]]$Args, [string]$Strategy, [string]$Label) {
+  if ($memoryInjectionStrategy -ne $Strategy) { return $Args }
+  if (Has-Option-Value $Args @("--append-system-prompt")) {
+    Write-Live-Log "$Label instructions skipped: append-system-prompt already provided"
+    return $Args
+  }
+  $promptFile = Get-Memory-Prompt-File
+  if ([string]::IsNullOrWhiteSpace($promptFile)) {
+    Write-Live-Log "$Label instructions skipped: prompt file missing"
+    return $Args
+  }
+  try {
+    $prompt = Get-Content -LiteralPath $promptFile -Raw
+    if ([string]::IsNullOrWhiteSpace($prompt)) {
+      Write-Live-Log "$Label instructions skipped: prompt empty path=$promptFile"
+      return $Args
+    }
+    Write-Live-Log "$Label instructions injected path=$promptFile chars=$($prompt.Length)"
+    return @("--append-system-prompt", $prompt) + $Args
+  } catch {
+    Write-Live-Log "$Label instructions skipped: failed to read prompt path=$promptFile error=$($_.Exception.Message)"
+    return $Args
+  }
+}
+
+function Apply-CodeWhale-Memory-Instructions([string[]]$Args) {
+  if ($memoryInjectionStrategy -ne "codewhaleExecAppendSystemPrompt") { return $Args }
+  if ($Args.Count -lt 1 -or $Args[0] -ne "exec") {
+    Write-Live-Log "codewhale instructions skipped: append-system-prompt only supported by exec"
+    return $Args
+  }
+  if (Has-Option-Value $Args @("--append-system-prompt")) {
+    Write-Live-Log "codewhale instructions skipped: append-system-prompt already provided"
+    return $Args
+  }
+  $promptFile = Get-Memory-Prompt-File
+  if ([string]::IsNullOrWhiteSpace($promptFile)) {
+    Write-Live-Log "codewhale instructions skipped: prompt file missing"
+    return $Args
+  }
+  try {
+    $prompt = Get-Content -LiteralPath $promptFile -Raw
+    if ([string]::IsNullOrWhiteSpace($prompt)) {
+      Write-Live-Log "codewhale instructions skipped: prompt empty path=$promptFile"
+      return $Args
+    }
+    $remaining = @()
+    if ($Args.Count -gt 1) { $remaining = @($Args[1..($Args.Count - 1)]) }
+    Write-Live-Log "codewhale instructions injected path=$promptFile chars=$($prompt.Length)"
+    return @("exec", "--append-system-prompt", $prompt) + $remaining
+  } catch {
+    Write-Live-Log "codewhale instructions skipped: failed to read prompt path=$promptFile error=$($_.Exception.Message)"
+    return $Args
+  }
+}
+
 function Codex-Hooks-Feature-Flag([string]$Binary, [string]$SearchPath) {
   $previousPath = $env:PATH
   try {
@@ -513,6 +631,14 @@ if ($permissionMode -eq "fullAccess") {
       $launchArgs = @("--yolo") + $launchArgs
     }
   }
+}
+
+if ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
+  $launchArgs = Apply-Kimi-Memory-Agent-File $launchArgs
+}
+
+if ($Tool -eq "codewhale") {
+  $launchArgs = Apply-CodeWhale-Memory-Instructions $launchArgs
 }
 
 if ($memoryInjectionStrategy -eq "claudeAppendSystemPrompt" -and
