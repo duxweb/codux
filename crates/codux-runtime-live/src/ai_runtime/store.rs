@@ -32,7 +32,6 @@ use helpers::{
 pub use helpers::{probe_request_for_session, should_poll_runtime_session};
 #[cfg(test)]
 use resolve::merge_snapshot_into_hook;
-use resolve::resolve_hook_event;
 use summary::{completed_phase_unlocked, next_completion_event_unlocked, state_snapshot_unlocked};
 
 #[derive(Default)]
@@ -173,6 +172,14 @@ impl AIRuntimeStateStore {
     }
 
     pub fn apply_hook(&self, event: AIHookEventPayload) -> AIRuntimeStateMutation {
+        self.apply_hook_with_claude_cache(event, None)
+    }
+
+    pub(crate) fn apply_hook_with_claude_cache(
+        &self,
+        event: AIHookEventPayload,
+        claude_cache: Option<&mut super::probe::claude::ClaudeProbeCache>,
+    ) -> AIRuntimeStateMutation {
         let raw_kind = event.kind.clone();
         let raw_terminal_id = event.terminal_id.clone();
         let previous = self
@@ -180,7 +187,12 @@ impl AIRuntimeStateStore {
             .lock()
             .ok()
             .and_then(|core| core.sessions.get(event.terminal_id.trim()).cloned());
-        let event = resolve_hook_event(event, previous.as_ref());
+        let event = match claude_cache {
+            Some(cache) => {
+                resolve::resolve_hook_event_with_claude_cache(event, previous.as_ref(), Some(cache))
+            }
+            None => resolve::resolve_hook_event(event, previous.as_ref()),
+        };
         if raw_kind != event.kind {
             super::runtime_log_line(
                 "runtime-ingress",

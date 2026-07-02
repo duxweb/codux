@@ -1,7 +1,7 @@
 use crate::ai_runtime::{
     constants::COMPLETION_TIMESTAMP_SKEW_SECONDS,
     payload::{AIHookEventMetadata, AIHookEventPayload},
-    probe::probe_runtime,
+    probe::{claude::ClaudeProbeCache, probe_runtime, probe_runtime_with_claude_cache},
     runtime_log_line,
     snapshot::{AIRuntimeContextSnapshot, AIRuntimeProbeRequest, AISessionSnapshot},
     state::{canonical_tool_name, normalized_string},
@@ -13,9 +13,19 @@ pub(super) fn resolve_hook_event(
     event: AIHookEventPayload,
     current_session: Option<&AISessionSnapshot>,
 ) -> AIHookEventPayload {
+    resolve_hook_event_with_claude_cache(event, current_session, None)
+}
+
+pub(super) fn resolve_hook_event_with_claude_cache(
+    event: AIHookEventPayload,
+    current_session: Option<&AISessionSnapshot>,
+    mut claude_cache: Option<&mut ClaudeProbeCache>,
+) -> AIHookEventPayload {
     match canonical_tool_name(&event.tool).as_deref() {
         Some("codex") => resolve_codex_hook_event(event, current_session),
-        Some("claude") => resolve_claude_hook_event(event, current_session),
+        Some("claude") => {
+            resolve_claude_hook_event(event, current_session, claude_cache.as_deref_mut())
+        }
         Some("kiro") => resolve_project_probe_hook_event(event, current_session, "kiro"),
         Some("codewhale") => resolve_project_probe_hook_event(event, current_session, "codewhale"),
         _ => {
@@ -65,6 +75,7 @@ fn resolve_codex_hook_event(
 fn resolve_claude_hook_event(
     event: AIHookEventPayload,
     current_session: Option<&AISessionSnapshot>,
+    claude_cache: Option<&mut ClaudeProbeCache>,
 ) -> AIHookEventPayload {
     let fallback = matching_fallback_session(&event, current_session);
     let resolved = with_fallback(event, fallback);
@@ -91,7 +102,7 @@ fn resolve_claude_hook_event(
             .or(Some(resolved.updated_at)),
         updated_at: resolved.updated_at,
     };
-    probe_runtime(&request)
+    probe_claude_hook_runtime(&request, claude_cache)
         .map(|snapshot| {
             merge_snapshot_into_hook(
                 AIHookEventPayload {
@@ -104,6 +115,16 @@ fn resolve_claude_hook_event(
             )
         })
         .unwrap_or(resolved)
+}
+
+fn probe_claude_hook_runtime(
+    request: &AIRuntimeProbeRequest,
+    claude_cache: Option<&mut ClaudeProbeCache>,
+) -> Option<AIRuntimeContextSnapshot> {
+    if let Some(cache) = claude_cache {
+        return probe_runtime_with_claude_cache(request, cache);
+    }
+    probe_runtime(request)
 }
 
 fn resolve_project_probe_hook_event(

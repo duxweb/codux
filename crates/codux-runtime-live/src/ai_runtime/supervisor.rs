@@ -180,14 +180,26 @@ fn supervisor_loop(
     while let Ok(message) = rx.recv() {
         match message {
             AIRuntimeSupervisorMessage::HookFrame(frame) => {
-                handle_hook_frame(&frame, &state, &transcript_monitors, &events);
+                handle_hook_frame(
+                    &frame,
+                    &state,
+                    &transcript_monitors,
+                    &events,
+                    &mut claude_cache,
+                );
             }
             AIRuntimeSupervisorMessage::DrainEventDir => {
                 // Single-threaded drain: both the FS watcher and the periodic
                 // fallback funnel here, so files are read+deleted exactly once
                 // (no cross-thread double-read / duplicate hooks).
                 for frame in drain_runtime_event_dir(&runtime_event_dir, now_seconds()) {
-                    handle_hook_frame(&frame, &state, &transcript_monitors, &events);
+                    handle_hook_frame(
+                        &frame,
+                        &state,
+                        &transcript_monitors,
+                        &events,
+                        &mut claude_cache,
+                    );
                 }
             }
             AIRuntimeSupervisorMessage::ScanBindings => {
@@ -282,6 +294,7 @@ fn handle_hook_frame(
     state: &AIRuntimeStateStore,
     transcript_monitors: &TranscriptMonitorMap,
     events: &Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
+    claude_cache: &mut ClaudeProbeCache,
 ) {
     let Some(payload) = runtime_frame_to_hook(frame) else {
         runtime_log_line(
@@ -315,7 +328,7 @@ fn handle_hook_frame(
             },
         },
     );
-    let mutation = state.apply_hook(payload);
+    let mutation = state.apply_hook_with_claude_cache(payload, Some(claude_cache));
     runtime_log_line(
         "runtime-ingress",
         if mutation.did_change {
