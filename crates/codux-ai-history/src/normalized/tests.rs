@@ -3,6 +3,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn skips_oversized_single_json_history_files() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("large.json");
+        let file = fs::File::create(&file_path).unwrap();
+        file.set_len(MAX_SINGLE_JSON_HISTORY_BYTES + 1).unwrap();
+
+        assert!(read_small_json_value(&file_path).is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn aggregates_claude_history() {
         let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
         let project_path = "/tmp/project-a";

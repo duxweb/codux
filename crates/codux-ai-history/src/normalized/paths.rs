@@ -150,8 +150,7 @@ fn kimi_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
 
 fn kimi_wire_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
     kimi_state_for_wire(file_path)
-        .and_then(|state_path| fs::read_to_string(state_path).ok())
-        .and_then(|data| serde_json::from_str::<Value>(&data).ok())
+        .and_then(|state_path| read_small_json_value(&state_path))
         .and_then(|value| kimi_project_path(&value))
         .map(|path| paths_equivalent(Some(&path), project_path))
         .unwrap_or(false)
@@ -166,10 +165,7 @@ fn kimi_state_for_wire(file_path: &Path) -> Option<PathBuf> {
 }
 
 fn codewhale_file_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
-    let Ok(data) = fs::read_to_string(file_path) else {
-        return false;
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+    let Some(value) = read_small_json_value(file_path) else {
         return false;
     };
     codewhale_project_path(&value)
@@ -178,10 +174,7 @@ fn codewhale_file_belongs_to_project(file_path: &Path, project_path: &str) -> bo
 }
 
 fn kiro_file_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
-    let Ok(data) = fs::read_to_string(file_path) else {
-        return false;
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+    let Some(value) = read_small_json_value(file_path) else {
         return false;
     };
     kiro_project_path(&value)

@@ -1,8 +1,5 @@
 fn parse_kiro_history_file(project: &AIHistoryProjectRequest, file_path: &Path) -> ParsedHistory {
-    let Ok(data) = fs::read_to_string(file_path) else {
-        return ParsedHistory::default();
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+    let Some(value) = read_small_json_value(file_path) else {
         return ParsedHistory::default();
     };
     let Some(session_id) = kiro_session_id(&value, file_path) else {
@@ -119,10 +116,7 @@ fn parse_kimi_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
     let Some(state_path) = kimi_state_for_wire(file_path) else {
         return ParsedHistory::default();
     };
-    let state = fs::read_to_string(&state_path)
-        .ok()
-        .and_then(|data| serde_json::from_str::<Value>(&data).ok())
-        .unwrap_or(Value::Null);
+    let state = read_small_json_value(&state_path).unwrap_or(Value::Null);
     let Some(project_path) = kimi_project_path(&state) else {
         return ParsedHistory::default();
     };
@@ -754,10 +748,7 @@ fn parse_opencode_legacy_message_file(
     file_path: &Path,
 ) -> ParsedHistory {
     let mut result = ParsedHistory::default();
-    let Ok(data) = fs::read(file_path) else {
-        return result;
-    };
-    let Ok(payload) = serde_json::from_slice::<Value>(&data) else {
+    let Some(payload) = read_small_json_value(file_path) else {
         return result;
     };
     let Some(root_path) = payload

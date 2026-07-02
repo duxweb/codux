@@ -1,3 +1,5 @@
+const MAX_SINGLE_JSON_HISTORY_BYTES: u64 = 16 * 1024 * 1024;
+
 fn directory_files(dir: &Path, extension: &str) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
@@ -30,6 +32,23 @@ fn collect_recursive_files(dir: &Path, extension: &str, files: &mut Vec<PathBuf>
             files.push(path);
         }
     }
+}
+
+fn read_small_json_value(file_path: &Path) -> Option<Value> {
+    let metadata = fs::metadata(file_path).ok()?;
+    if metadata.len() > MAX_SINGLE_JSON_HISTORY_BYTES {
+        crate::trace::runtime_trace(
+            "ai-history",
+            &format!(
+                "skip_large_json_history path={} bytes={}",
+                file_path.display(),
+                metadata.len()
+            ),
+        );
+        return None;
+    }
+    let data = fs::read_to_string(file_path).ok()?;
+    serde_json::from_str::<Value>(&data).ok()
 }
 
 fn for_each_jsonl_line<F>(file_path: &Path, starting_at: i64, mut body: F) -> std::io::Result<()>

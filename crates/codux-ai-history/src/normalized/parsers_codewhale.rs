@@ -2,10 +2,7 @@ fn parse_codewhale_history_file(
     project: &AIHistoryProjectRequest,
     file_path: &Path,
 ) -> ParsedHistory {
-    let Ok(data) = fs::read_to_string(file_path) else {
-        return ParsedHistory::default();
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+    let Some(value) = read_small_json_value(file_path) else {
         return ParsedHistory::default();
     };
     let Some(project_path) = codewhale_project_path(&value) else {
