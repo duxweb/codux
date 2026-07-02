@@ -42,7 +42,7 @@ pub fn terminal_config() -> TerminalConfig {
         font_size: px(14.0),
         cols: 100,
         rows: 32,
-        scrollback: 10_000,
+        scrollback: 3_000,
         line_height_multiplier: DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER,
         padding: Edges::all(px(10.0)),
         colors,
