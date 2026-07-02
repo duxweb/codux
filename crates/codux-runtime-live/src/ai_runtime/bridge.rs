@@ -548,7 +548,6 @@ case "$cmd" in
     case "${TOOL_NAME:-}" in
       codex) printf '%s\n' codexDeveloperInstructions ;;
       claude|claude-code|reclaude) printf '%s\n' claudeAppendSystemPrompt ;;
-      codewhale) printf '%s\n' codewhaleExecAppendSystemPrompt ;;
       kimi|kimi-code) printf '%s\n' kimiAgentFile ;;
       opencode|mimo) printf '%s\n' opencodeSystemTransform ;;
     esac
@@ -774,10 +773,7 @@ mod tests {
             .iter()
             .find(|tool| tool["id"] == "codewhale")
             .unwrap();
-        assert_eq!(
-            codewhale_driver["memoryInjection"].as_str(),
-            Some("codewhaleExecAppendSystemPrompt")
-        );
+        assert_eq!(codewhale_driver["memoryInjection"].as_str(), Some("none"));
         assert_eq!(
             codewhale_driver["lifecycleConfig"]["envVar"].as_str(),
             Some("DEEPSEEK_MANAGED_CONFIG_PATH")
@@ -1756,60 +1752,6 @@ printf 'TOOL=%s
         )
         .unwrap();
         assert_eq!(binding["externalSessionId"].as_str(), Some("session-1"));
-        fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn codewhale_exec_wrapper_injects_memory_prompt() {
-        use std::os::unix::fs::PermissionsExt;
-        use std::process::Command;
-
-        let dir = std::env::temp_dir().join(format!(
-            "codux-codewhale-wrapper-memory-{}",
-            Uuid::new_v4()
-        ));
-        let bridge =
-            AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
-        bridge.stage_assets().unwrap();
-
-        let real_bin = dir.join("real-bin");
-        fs::create_dir_all(&real_bin).unwrap();
-        let fake_codewhale = real_bin.join("codewhale");
-        fs::write(&fake_codewhale, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
-        let mut permissions = fs::metadata(&fake_codewhale).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&fake_codewhale, permissions).unwrap();
-
-        let prompt_file = dir.join("memory-prompt.txt");
-        fs::write(&prompt_file, "Use CodeWhale memory.").unwrap();
-
-        let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
-        let output = Command::new(bridge.wrapper_bin_dir().join("codewhale"))
-            .args(["exec", "do work"])
-            .env("PATH", &search_path)
-            .env("DMUX_ORIGINAL_PATH", &search_path)
-            .env("DMUX_SESSION_ID", "terminal-1")
-            .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
-            .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
-            .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
-            .output()
-            .unwrap();
-
-        assert!(
-            output.status.success(),
-            "wrapper should execute fake codewhale, stderr={}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let args = String::from_utf8_lossy(&output.stdout);
-        let lines = args.lines().collect::<Vec<_>>();
-        let exec_index = lines.iter().position(|arg| *arg == "exec").unwrap();
-        assert_eq!(
-            lines.get(exec_index + 1).copied(),
-            Some("--append-system-prompt")
-        );
-        assert!(args.lines().any(|arg| arg == "Use CodeWhale memory."));
-        assert!(args.lines().any(|arg| arg == "do work"));
         fs::remove_dir_all(dir).unwrap();
     }
 

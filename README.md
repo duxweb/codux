@@ -53,6 +53,23 @@ Codux keeps AI coding work readable, recoverable, and connected across devices.
 - Continue long-running work from your desktop, your phone, or a headless host running `codux`.
 - Keep terminals, files, memory, and AI sessions on the machine that owns the work.
 
+## AI CLI Support
+
+Codux uses non-invasive wrappers and per-tool adapters. It does not write project prompt files or mutate your global AI CLI configuration just to inject Codux context.
+
+| AI CLI | Live status | Token usage | Model setting | Full-access mode | Environment directives |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| Codex | ✓ | ✓ | ✓ | ✓ | ✓ via developer instructions |
+| Claude Code / reclaude | ✓ | ✓ | ✓ | ✓ | ✓ via `--append-system-prompt` |
+| OpenCode | ✓ | ✓ | ✓ | ✓ | ✓ via managed plugin config |
+| MiMo Code | ✓ | ✓ | ✓ | ✓ | ✓ via managed plugin config |
+| Kimi Code | ✓ | ✓ | ✓ | — | ✓ via managed `--agent-file` |
+| Kiro CLI | ✓ | ✓ | ✓ | ✓ | Not injected; no confirmed non-invasive prompt channel |
+| CodeWhale | ✓ | ✓ | ✓ | ✓ | Not injected for interactive sessions |
+| Agy | ✓ | ✓ | ✓ | ✓ | Not injected; no confirmed non-invasive prompt channel |
+
+Environment directives include Codux memory plus runtime commands such as `codux-ssh` and `codux-db`. For unsupported tools, Codux still tracks sessions where possible, but it will not force prompt injection through project files or user-level config.
+
 ## One Workspace, Every Device
 
 > **Beta.** Connecting to a headless host ships first as a beta in this release — the connection, pairing, and host-side data flow are still under active testing, so expect rough edges. Feedback is very welcome.

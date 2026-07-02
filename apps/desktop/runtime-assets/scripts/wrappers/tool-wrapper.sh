@@ -551,32 +551,6 @@ apply_append_system_prompt_memory_instructions() {
   log_line "${label} instructions injected path=${prompt_file} chars=${#prompt}"
 }
 
-apply_codewhale_memory_instructions() {
-  tool_uses_memory_injection "codewhaleExecAppendSystemPrompt" || return 0
-  if [[ "${launch_args[1]:-}" != "exec" ]]; then
-    log_line "codewhale instructions skipped: append-system-prompt only supported by exec"
-    return 0
-  fi
-  if has_exact_arg "--append-system-prompt" "${launch_args[@]}" || has_prefix_arg "--append-system-prompt=" "${launch_args[@]}"; then
-    log_line "codewhale instructions skipped: append-system-prompt already provided"
-    return 0
-  fi
-  local prompt_file
-  prompt_file="$(memory_prompt_file || true)"
-  if [[ -z "${prompt_file}" ]]; then
-    log_line "codewhale instructions skipped: prompt file missing"
-    return 0
-  fi
-  local prompt
-  prompt="$(<"${prompt_file}")"
-  if [[ -z "${prompt}" ]]; then
-    log_line "codewhale instructions skipped: prompt empty path=${prompt_file}"
-    return 0
-  fi
-  launch_args=(exec --append-system-prompt "${prompt}" "${launch_args[@]:1}")
-  log_line "codewhale instructions injected path=${prompt_file} chars=${#prompt}"
-}
-
 has_exact_arg() {
   local target="$1"
   shift
@@ -939,7 +913,6 @@ if [[ "$tool_name" == "codewhale" ]]; then
   local_permission_mode="$(configured_permission_mode || true)"
   launch_args=("$@")
   apply_configured_model_arg
-  apply_codewhale_memory_instructions
   if [[ "${local_permission_mode}" == "fullAccess" ]] \
     && ! has_exact_arg "--yolo" "${launch_args[@]}"; then
     launch_args=(--yolo "${launch_args[@]}")

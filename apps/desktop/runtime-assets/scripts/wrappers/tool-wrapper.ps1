@@ -392,37 +392,6 @@ function Apply-Append-System-Prompt([string[]]$Args, [string]$Strategy, [string]
   }
 }
 
-function Apply-CodeWhale-Memory-Instructions([string[]]$Args) {
-  if ($memoryInjectionStrategy -ne "codewhaleExecAppendSystemPrompt") { return $Args }
-  if ($Args.Count -lt 1 -or $Args[0] -ne "exec") {
-    Write-Live-Log "codewhale instructions skipped: append-system-prompt only supported by exec"
-    return $Args
-  }
-  if (Has-Option-Value $Args @("--append-system-prompt")) {
-    Write-Live-Log "codewhale instructions skipped: append-system-prompt already provided"
-    return $Args
-  }
-  $promptFile = Get-Memory-Prompt-File
-  if ([string]::IsNullOrWhiteSpace($promptFile)) {
-    Write-Live-Log "codewhale instructions skipped: prompt file missing"
-    return $Args
-  }
-  try {
-    $prompt = Get-Content -LiteralPath $promptFile -Raw
-    if ([string]::IsNullOrWhiteSpace($prompt)) {
-      Write-Live-Log "codewhale instructions skipped: prompt empty path=$promptFile"
-      return $Args
-    }
-    $remaining = @()
-    if ($Args.Count -gt 1) { $remaining = @($Args[1..($Args.Count - 1)]) }
-    Write-Live-Log "codewhale instructions injected path=$promptFile chars=$($prompt.Length)"
-    return @("exec", "--append-system-prompt", $prompt) + $remaining
-  } catch {
-    Write-Live-Log "codewhale instructions skipped: failed to read prompt path=$promptFile error=$($_.Exception.Message)"
-    return $Args
-  }
-}
-
 function Codex-Hooks-Feature-Flag([string]$Binary, [string]$SearchPath) {
   $previousPath = $env:PATH
   try {
@@ -635,10 +604,6 @@ if ($permissionMode -eq "fullAccess") {
 
 if ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
   $launchArgs = Apply-Kimi-Memory-Agent-File $launchArgs
-}
-
-if ($Tool -eq "codewhale") {
-  $launchArgs = Apply-CodeWhale-Memory-Instructions $launchArgs
 }
 
 if ($memoryInjectionStrategy -eq "claudeAppendSystemPrompt" -and

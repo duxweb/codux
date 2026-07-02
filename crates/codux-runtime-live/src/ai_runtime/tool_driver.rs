@@ -109,8 +109,6 @@ pub enum AIRuntimeMemoryInjectionDriver {
     None,
     CodexDeveloperInstructions,
     ClaudeAppendSystemPrompt,
-    #[serde(rename = "codewhaleExecAppendSystemPrompt")]
-    CodeWhaleExecAppendSystemPrompt,
     #[serde(rename = "kimiAgentFile")]
     KimiAgentFile,
     #[serde(rename = "opencodeSystemTransform")]
@@ -509,7 +507,7 @@ mod tests {
         );
         assert_eq!(
             codewhale.memory_injection,
-            AIRuntimeMemoryInjectionDriver::CodeWhaleExecAppendSystemPrompt
+            AIRuntimeMemoryInjectionDriver::None
         );
         assert_eq!(
             kimi.memory_injection,
