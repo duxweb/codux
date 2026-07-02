@@ -21,6 +21,7 @@ const UPDATE_DIALOG_DEFAULT_HEIGHT: f32 = 210.0;
 const UPDATE_DIALOG_AVAILABLE_HEIGHT: f32 = 362.0;
 const UPDATE_DIALOG_DOWNLOADING_HEIGHT: f32 = 200.0;
 const UPDATE_DIALOG_RESULT_HEIGHT: f32 = 262.0;
+const UPDATE_DIALOG_FINISHED_HEIGHT: f32 = 282.0;
 const UPDATE_DIALOG_MIN_HEIGHT: f32 = 210.0;
 const UPDATE_DIALOG_NOTES_HEIGHT: f32 = 130.0;
 
@@ -919,7 +920,8 @@ fn resize_update_dialog_window(window: &mut Window, phase: UpdateDialogPhase) {
     let height = match phase {
         UpdateDialogPhase::Available => UPDATE_DIALOG_AVAILABLE_HEIGHT,
         UpdateDialogPhase::Downloading => UPDATE_DIALOG_DOWNLOADING_HEIGHT,
-        UpdateDialogPhase::Finished | UpdateDialogPhase::Error => UPDATE_DIALOG_RESULT_HEIGHT,
+        UpdateDialogPhase::Finished => UPDATE_DIALOG_FINISHED_HEIGHT,
+        UpdateDialogPhase::Error => UPDATE_DIALOG_RESULT_HEIGHT,
         _ => UPDATE_DIALOG_DEFAULT_HEIGHT,
     };
     window.resize(size(px(UPDATE_DIALOG_WIDTH), px(height)));
