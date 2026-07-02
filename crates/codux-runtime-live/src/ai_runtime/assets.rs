@@ -269,6 +269,12 @@ mod tests {
         stage_runtime_dir("scripts/wrappers/opencode-config", &config_dir).unwrap();
         assert!(config_dir.join("package.json").is_file());
         assert!(config_dir.join("plugins/dmux-runtime.js").is_file());
+        assert!(config_dir.join("xdg/mimocode/package.json").is_file());
+        assert!(
+            config_dir
+                .join("xdg/mimocode/plugins/dmux-runtime.js")
+                .is_file()
+        );
 
         fs::remove_dir_all(dir).unwrap();
     }

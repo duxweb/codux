@@ -259,6 +259,9 @@ fn parse_claude_log_runtime_state(
             }
         }
         matched = true;
+        if is_claude_control_command_row(&row) {
+            continue;
+        }
         let timestamp = row
             .get("timestamp")
             .and_then(|value| value.as_str())
@@ -511,6 +514,18 @@ fn is_claude_interrupted_row(row: &Value) -> bool {
         .unwrap_or(false)
 }
 
+fn is_claude_control_command_row(row: &Value) -> bool {
+    if row.get("type").and_then(Value::as_str) != Some("user") {
+        return false;
+    }
+    claude_user_message_text(row)
+        .map(|text| {
+            let text = text.trim_start();
+            text.starts_with("<local-command-") || text.starts_with("<command-name>")
+        })
+        .unwrap_or(false)
+}
+
 /// The user message's plain text (string content, or the concatenated `text`
 /// blocks of array content). Tool results carry `tool_result` blocks rather than
 /// `text`, so they never contribute here -- exactly what keeps their incidental
@@ -645,6 +660,43 @@ mod tests {
         let aggregate = parse_claude_log_runtime_state(&path, "/tmp/p", "s1").expect("aggregate");
         assert_eq!(aggregate.response_state().as_deref(), Some("responding"));
         assert!(!aggregate.was_interrupted());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn local_slash_commands_do_not_start_a_runtime_turn() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("codux-claude-local-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("session.jsonl");
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"permission-mode","permissionMode":"bypassPermissions","sessionId":"s1"}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:00Z","type":"user","message":{{"role":"user","content":"<local-command-caveat>Caveat: local command</local-command-caveat>"}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:00Z","type":"user","message":{{"role":"user","content":"<command-name>/effort</command-name>\n<command-message>effort</command-message>"}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:00Z","type":"user","message":{{"role":"user","content":"<local-command-stdout>Set effort level to xhigh</local-command-stdout>"}}}}"#
+        )
+        .unwrap();
+        drop(file);
+
+        let aggregate = parse_claude_log_runtime_state(&path, "/tmp/p", "s1").expect("aggregate");
+
+        assert_eq!(aggregate.response_state(), None);
+        assert_eq!(aggregate.last_user_at, 0.0);
+        assert_eq!(aggregate.last_completion_at, 0.0);
         let _ = std::fs::remove_dir_all(dir);
     }
 
