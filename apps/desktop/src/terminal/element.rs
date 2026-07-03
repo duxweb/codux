@@ -119,7 +119,7 @@ impl Element for TerminalElement {
             .update(&snapshot, self.renderer.cell_height.max(px(1.0)));
         trace_terminal_paint_snapshot(&snapshot, self.cursor_visible);
         let selection = self.model.read(cx).selection_range();
-        self.renderer.prepare_paint(
+        let paint_state = self.renderer.prepare_paint(
             bounds,
             self.padding,
             &snapshot,
@@ -128,7 +128,11 @@ impl Element for TerminalElement {
             self.cursor_visible,
             self.cursor_focused,
             window,
-        )
+        );
+        self.layout
+            .lock()
+            .record_ime_cursor_bounds(paint_state.ime_cursor_bounds);
+        paint_state
     }
 
     fn paint(
@@ -152,7 +156,6 @@ impl Element for TerminalElement {
                 model: self.model.clone(),
                 layout: self.layout.clone(),
                 terminal_view: self.terminal_view.clone(),
-                fallback_cursor_bounds: paint_state.ime_cursor_bounds,
             },
             cx,
         );
@@ -638,6 +641,7 @@ struct TerminalLayoutMetrics {
     cols: usize,
     rows: usize,
     row_shift: usize,
+    last_ime_cursor_bounds: Option<Bounds<Pixels>>,
 }
 
 impl Default for TerminalLayoutMetrics {
@@ -659,6 +663,7 @@ impl Default for TerminalLayoutMetrics {
             cols: 0,
             rows: 0,
             row_shift: 0,
+            last_ime_cursor_bounds: None,
         }
     }
 }
@@ -683,6 +688,44 @@ impl TerminalLayoutMetrics {
 
     fn set_row_shift(&mut self, row_shift: usize) {
         self.row_shift = row_shift;
+    }
+
+    fn record_ime_cursor_bounds(&mut self, bounds: Option<Bounds<Pixels>>) {
+        if let Some(bounds) = bounds {
+            self.last_ime_cursor_bounds = Some(bounds);
+        }
+    }
+
+    fn last_ime_cursor_bounds(&self) -> Option<Bounds<Pixels>> {
+        self.last_ime_cursor_bounds
+            .filter(|bounds| self.contains_ime_bounds(*bounds))
+    }
+
+    fn first_cell_ime_bounds(&self) -> Option<Bounds<Pixels>> {
+        if self.bounds.size.width <= px(0.0) || self.bounds.size.height <= px(0.0) {
+            return None;
+        }
+        Some(Bounds {
+            origin: Point {
+                x: self.bounds.origin.x + self.padding.left,
+                y: self.bounds.origin.y + self.padding.top,
+            },
+            size: Size {
+                width: self.cell_width.max(px(1.0)),
+                height: self.cell_height.max(px(1.0)),
+            },
+        })
+    }
+
+    fn contains_ime_bounds(&self, bounds: Bounds<Pixels>) -> bool {
+        let left = self.bounds.origin.x;
+        let top = self.bounds.origin.y;
+        let right = self.bounds.origin.x + self.bounds.size.width;
+        let bottom = self.bounds.origin.y + self.bounds.size.height;
+        bounds.origin.x >= left
+            && bounds.origin.y >= top
+            && bounds.origin.x < right
+            && bounds.origin.y < bottom
     }
 
     fn model_row(&self, row: usize) -> usize {

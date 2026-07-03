@@ -2064,13 +2064,30 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some((_, slot)) = self.active_terminal_slot() else {
+        let active_slot = self.active_terminal_slot().and_then(|(_, slot)| {
+            slot.pane
+                .as_ref()
+                .map(|pane| (slot.terminal_id.clone(), pane))
+        });
+        let fallback_slot = || {
+            self.terminals
+                .iter()
+                .filter(|tab| tab.placement == TerminalTabPlacement::Top)
+                .chain(
+                    self.terminals
+                        .iter()
+                        .filter(|tab| tab.placement == TerminalTabPlacement::Bottom),
+                )
+                .flat_map(|tab| tab.panes.iter())
+                .find_map(|slot| {
+                    slot.pane
+                        .as_ref()
+                        .map(|pane| (slot.terminal_id.clone(), pane))
+                })
+        };
+        let Some((terminal_id, pane)) = active_slot.or_else(fallback_slot) else {
             return false;
         };
-        let Some(pane) = slot.pane.as_ref() else {
-            return false;
-        };
-        let terminal_id = slot.terminal_id.clone();
         let view = pane.view.clone();
         view.read(cx).focus_handle().focus(window, cx);
         if let Some(terminal_id) = terminal_id {

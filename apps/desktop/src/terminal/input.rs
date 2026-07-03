@@ -3,7 +3,6 @@ struct TerminalInputHandler {
     model: Entity<TerminalModel>,
     layout: Arc<Mutex<TerminalLayoutMetrics>>,
     terminal_view: WeakEntity<TerminalView>,
-    fallback_cursor_bounds: Option<Bounds<Pixels>>,
 }
 
 impl TerminalInputHandler {
@@ -118,7 +117,8 @@ impl InputHandler for TerminalInputHandler {
             .model
             .read(cx)
             .current_ime_cursor_bounds(&layout)
-            .or(self.fallback_cursor_bounds);
+            .or_else(|| layout.last_ime_cursor_bounds())
+            .or_else(|| layout.first_cell_ime_bounds());
         ime_bounds_for_range(cursor_bounds, &layout, range_utf16)
     }
 
