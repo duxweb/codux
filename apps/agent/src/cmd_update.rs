@@ -10,6 +10,9 @@ use crate::{cmd_service, cmd_start, runstate};
 
 const LATEST_RELEASE_API: &str = "https://api.github.com/repos/duxweb/codux/releases/latest";
 const RELEASES_API: &str = "https://api.github.com/repos/duxweb/codux/releases";
+const BETA_MANIFEST_URL: &str =
+    "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json";
+const REPO_DOWNLOAD_BASE: &str = "https://github.com/duxweb/codux/releases/download";
 const USER_AGENT: &str = "codux-agent-updater";
 
 #[derive(Deserialize)]
@@ -25,6 +28,11 @@ struct Release {
 struct Asset {
     name: String,
     browser_download_url: String,
+}
+
+#[derive(Deserialize)]
+struct UpdateManifest {
+    version: String,
 }
 
 pub fn run(current: &str, beta: bool) -> Result<(), String> {
@@ -93,6 +101,13 @@ fn fetch_release(client: &reqwest::blocking::Client, beta: bool) -> Result<Relea
             .map_err(|error| format!("invalid release payload: {error}"));
     }
 
+    match fetch_beta_manifest_release(client) {
+        Ok(release) => return Ok(release),
+        Err(error) => eprintln!(
+            "warning: beta manifest lookup failed: {error}; falling back to GitHub releases API"
+        ),
+    }
+
     let releases = client
         .get(RELEASES_API)
         .send()
@@ -102,6 +117,59 @@ fn fetch_release(client: &reqwest::blocking::Client, beta: bool) -> Result<Relea
         .json::<Vec<Release>>()
         .map_err(|error| format!("invalid release payload: {error}"))?;
     select_beta_release(releases)
+}
+
+fn fetch_beta_manifest_release(client: &reqwest::blocking::Client) -> Result<Release, String> {
+    let manifest = client
+        .get(BETA_MANIFEST_URL)
+        .send()
+        .map_err(|error| format!("failed to reach beta manifest: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("beta manifest lookup failed: {error}"))?
+        .json::<UpdateManifest>()
+        .map_err(|error| format!("invalid beta manifest payload: {error}"))?;
+    release_from_manifest_version(&manifest.version)
+}
+
+fn release_from_manifest_version(version: &str) -> Result<Release, String> {
+    let version = version.trim().trim_start_matches('v');
+    if !version.contains("-beta") {
+        return Err(format!("manifest version is not a beta: {version}"));
+    }
+    let tag_name = format!("v{version}");
+    Ok(Release {
+        tag_name: tag_name.clone(),
+        prerelease: false,
+        assets: agent_assets_for_version(version, &tag_name),
+    })
+}
+
+fn agent_assets_for_version(version: &str, tag_name: &str) -> Vec<Asset> {
+    ["macos", "linux", "windows"]
+        .into_iter()
+        .flat_map(|os| {
+            ["aarch64", "x86_64"]
+                .into_iter()
+                .filter(move |arch| !(os == "windows" && *arch == "aarch64"))
+                .flat_map(move |arch| agent_asset_names(version, os, arch))
+        })
+        .map(|name| Asset {
+            browser_download_url: release_asset_url(tag_name, &name),
+            name,
+        })
+        .collect()
+}
+
+fn agent_asset_names(version: &str, os: &str, arch: &str) -> Vec<String> {
+    let extension = if os == "windows" { ".exe" } else { "" };
+    vec![
+        format!("codux-agent-{version}-{os}-{arch}{extension}"),
+        format!("codux-{os}-{arch}{extension}"),
+    ]
+}
+
+fn release_asset_url(tag_name: &str, asset_name: &str) -> String {
+    format!("{REPO_DOWNLOAD_BASE}/{tag_name}/{asset_name}")
 }
 
 fn select_beta_release(releases: Vec<Release>) -> Result<Release, String> {
@@ -196,7 +264,10 @@ fn is_newer(a: &str, b: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Asset, Release, is_newer, pick_asset, release_tag_is_beta, select_beta_release};
+    use super::{
+        Asset, Release, is_newer, pick_asset, release_from_manifest_version, release_tag_is_beta,
+        select_beta_release,
+    };
 
     #[test]
     fn newer_version_compares_numeric_parts() {
@@ -223,6 +294,31 @@ mod tests {
         let assets = vec![asset(&legacy)];
 
         assert_eq!(pick_asset(&assets, "1.9.1").unwrap().name, legacy);
+    }
+
+    #[test]
+    fn manifest_release_synthesizes_agent_assets() {
+        let release = release_from_manifest_version("2.0.0-beta.10").unwrap();
+        let expected = current_agent_asset_name("2.0.0-beta.10");
+
+        assert_eq!(release.tag_name, "v2.0.0-beta.10");
+        assert!(release.assets.iter().any(|asset| asset.name == expected));
+        assert!(release.assets.iter().any(|asset| {
+            asset.browser_download_url
+                == format!(
+                    "https://github.com/duxweb/codux/releases/download/v2.0.0-beta.10/{expected}"
+                )
+        }));
+    }
+
+    #[test]
+    fn manifest_release_rejects_stable_versions() {
+        let error = match release_from_manifest_version("2.0.0") {
+            Ok(_) => panic!("expected stable manifest version to fail"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, "manifest version is not a beta: 2.0.0");
     }
 
     #[test]
