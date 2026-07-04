@@ -16,6 +16,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
+
 /// Liveness of the client→host iroh link for a paired device.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ControllerLinkState {
@@ -92,6 +94,12 @@ impl ManagerShared {
         }
     }
 
+    fn set_connecting_link(&self, device_id: &str) {
+        if self.last_error(device_id).is_none() {
+            self.set_link(device_id, ControllerLinkState::Connecting);
+        }
+    }
+
     fn set_path(&self, device_id: &str, path: ControllerLinkPath) {
         if let Ok(mut paths) = self.paths.lock() {
             paths.insert(device_id.to_string(), path);
@@ -147,7 +155,11 @@ impl ManagerShared {
                 return;
             }
             let mapped = ControllerLinkState::from_transport_state(&state);
-            shared.set_link(&device_id, mapped);
+            if mapped == ControllerLinkState::Connecting {
+                shared.set_connecting_link(&device_id);
+            } else {
+                shared.set_link(&device_id, mapped);
+            }
             if let Some(path) = ControllerLinkPath::from_transport_state(&state) {
                 shared.set_path(&device_id, path);
             }
@@ -221,7 +233,6 @@ impl ManagerShared {
     /// the same state handler, so a later drop is caught again.
     async fn reconnect_loop(self: Arc<Self>, device_id: String) {
         let mut delay = Duration::from_secs(1);
-        let max_delay = Duration::from_secs(15);
         let mut attempt: u32 = 0;
         loop {
             let Some(host) = self.store.find(&device_id) else {
@@ -233,7 +244,7 @@ impl ManagerShared {
                 break;
             };
             attempt += 1;
-            self.set_link(&device_id, ControllerLinkState::Connecting);
+            self.set_connecting_link(&device_id);
             // No path while dialing — clear the stale direct/relay marker so the
             // badge doesn't claim a route the (dropped) link no longer has.
             self.clear_path(&device_id);
@@ -283,7 +294,7 @@ impl ManagerShared {
                     }
                     self.set_link(&device_id, ControllerLinkState::Disconnected);
                     tokio::time::sleep(delay).await;
-                    delay = (delay * 2).min(max_delay);
+                    delay = next_reconnect_delay(delay);
                 }
             }
         }
@@ -291,6 +302,10 @@ impl ManagerShared {
             reconnecting.remove(&device_id);
         }
     }
+}
+
+fn next_reconnect_delay(delay: Duration) -> Duration {
+    (delay * 2).min(RECONNECT_MAX_DELAY)
 }
 
 pub struct RemoteControllerManager {
@@ -461,5 +476,19 @@ impl RemoteControllerManager {
             links.remove(device_id);
         }
         self.shared.store.remove(device_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconnect_delay_caps_at_background_ceiling() {
+        let mut delay = Duration::from_secs(1);
+        for _ in 0..10 {
+            delay = next_reconnect_delay(delay);
+        }
+        assert_eq!(delay, RECONNECT_MAX_DELAY);
     }
 }

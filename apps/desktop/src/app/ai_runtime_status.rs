@@ -52,7 +52,32 @@ pub(in crate::app) fn ai_activity_project_states_changed(
     previous: &[AIRuntimeProjectStateSummary],
     next: &[AIRuntimeProjectStateSummary],
 ) -> bool {
-    previous != next
+    previous.len() != next.len()
+        || previous
+            .iter()
+            .zip(next)
+            .any(|(previous, next)| ai_activity_project_state_changed(previous, next))
+}
+
+fn ai_activity_project_state_changed(
+    previous: &AIRuntimeProjectStateSummary,
+    next: &AIRuntimeProjectStateSummary,
+) -> bool {
+    previous.project_id != next.project_id
+        || ai_activity_phase_changed(&previous.project_phase, &next.project_phase)
+        || ai_activity_phase_changed(&previous.completed_phase, &next.completed_phase)
+        || previous.totals != next.totals
+}
+
+fn ai_activity_phase_changed(
+    previous: &AIRuntimeProjectPhaseSummary,
+    next: &AIRuntimeProjectPhaseSummary,
+) -> bool {
+    previous.kind != next.kind
+        || previous.tool != next.tool
+        || previous.was_interrupted != next.was_interrupted
+        || ((previous.kind == "completed" || next.kind == "completed")
+            && previous.updated_at != next.updated_at)
 }
 
 impl CoduxApp {
@@ -228,6 +253,28 @@ mod tests {
         let next = previous.clone();
 
         assert!(!ai_activity_project_states_changed(&previous, &next));
+    }
+
+    #[test]
+    fn ai_activity_project_states_changed_ignores_timestamp_heartbeats() {
+        let previous = vec![project_state("project-a", "running")];
+        let mut next = previous.clone();
+        next[0].project_phase.updated_at = 20.0;
+
+        assert!(!ai_activity_project_states_changed(&previous, &next));
+    }
+
+    #[test]
+    fn ai_activity_project_states_changed_tracks_completed_timestamp() {
+        let previous = vec![project_state("project-a", "idle")];
+        let mut next = previous.clone();
+        next[0].completed_phase = AIRuntimeProjectPhaseSummary {
+            kind: "completed".to_string(),
+            updated_at: 20.0,
+            ..Default::default()
+        };
+
+        assert!(ai_activity_project_states_changed(&previous, &next));
     }
 
     #[test]

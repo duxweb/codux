@@ -241,10 +241,6 @@ impl ControllerInner {
             }
             let session_id = envelope.get("sessionId").and_then(Value::as_str);
             let data = payload.get("data").and_then(Value::as_str).unwrap_or("");
-            let screen_data = payload
-                .get("screenData")
-                .and_then(Value::as_str)
-                .unwrap_or("");
             // Feed ONLY the live byte stream into the emulator — exactly like a
             // local PTY relay. The host also emits full-screen `screenData`
             // keyframes (on attach and on every resize), but our desktop emulator
@@ -255,14 +251,7 @@ impl ControllerInner {
             // live stream, just as it is for a local terminal. (The keyframe stays
             // in the protocol for grid-reconciling clients; this emulator isn't
             // one — see the tmux-style notes in the remote terminal design.)
-            let bytes = if !data.is_empty() || !screen_data.is_empty() {
-                let mut bytes = Vec::with_capacity(data.len() + screen_data.len());
-                bytes.extend_from_slice(data.as_bytes());
-                bytes.extend_from_slice(screen_data.as_bytes());
-                Some(bytes)
-            } else {
-                None
-            };
+            let bytes = (!data.is_empty()).then(|| data.as_bytes().to_vec());
             if let (Some(session_id), Some(bytes)) = (session_id, bytes) {
                 if let Ok(forwarders) = self.terminal_outputs.lock() {
                     if let Some(forwarder) = forwarders.get(session_id) {
@@ -1675,7 +1664,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_output_forwards_screen_data_when_live_data_is_empty() {
+    fn terminal_output_ignores_screen_data_when_live_data_is_empty() {
         let inner = Arc::new(ControllerInner::default());
         let controller = RemoteController {
             transport: Arc::new(NoopTransport),
@@ -1695,14 +1684,11 @@ mod tests {
             br#"{"type":"terminal.output","sessionId":"session-1","payload":{"data":"","screenData":"\u001b[2J\u001b[Hready"}}"#,
         );
 
-        assert_eq!(
-            rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            b"\x1b[2J\x1b[Hready"
-        );
+        assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
     }
 
     #[test]
-    fn terminal_output_appends_screen_data_after_history_data() {
+    fn terminal_output_forwards_live_data_without_screen_data() {
         let inner = Arc::new(ControllerInner::default());
         let controller = RemoteController {
             transport: Arc::new(NoopTransport),
@@ -1724,7 +1710,7 @@ mod tests {
 
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            b"history\n\x1b[2J\x1b[Htui"
+            b"history\n"
         );
     }
 

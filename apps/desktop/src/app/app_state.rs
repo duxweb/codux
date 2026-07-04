@@ -167,6 +167,7 @@ pub struct CoduxApp {
     pub(in crate::app) file_selection_anchor: Option<String>,
     pub(in crate::app) file_name_draft_kind: Option<FileNameDraftKind>,
     pub(in crate::app) file_name_draft_target: Option<String>,
+    pub(in crate::app) file_name_draft_parent: Option<String>,
     pub(in crate::app) file_name_draft_value: String,
     pub(in crate::app) file_name_draft_select_all: bool,
     pub(in crate::app) file_tree_expanded_dirs: HashSet<String>,

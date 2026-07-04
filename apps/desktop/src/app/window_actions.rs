@@ -204,6 +204,7 @@ impl CoduxApp {
             file_selection_anchor: None,
             file_name_draft_kind: None,
             file_name_draft_target: None,
+            file_name_draft_parent: None,
             file_name_draft_value: String::new(),
             file_name_draft_select_all: false,
             file_tree_expanded_dirs: HashSet::new(),

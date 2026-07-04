@@ -617,6 +617,7 @@ impl CoduxApp {
         let draft_fingerprint = hash_sidebar_value(&(
             file_name_draft_kind_key(self.file_name_draft_kind),
             self.file_name_draft_target.clone(),
+            self.file_name_draft_parent.clone(),
             self.file_name_draft_value.clone(),
             self.file_name_draft_select_all,
         ));
@@ -628,6 +629,7 @@ impl CoduxApp {
             &self.selected_file_entries,
             self.file_name_draft_kind,
             self.file_name_draft_target.as_deref(),
+            self.file_name_draft_parent.as_deref(),
             &self.file_name_draft_value,
             0,
         ));
@@ -644,6 +646,7 @@ impl CoduxApp {
             language: self.state.settings.language.clone(),
             refreshing: self.file_panel_refreshing,
             draft_kind: self.file_name_draft_kind,
+            draft_parent: self.file_name_draft_parent.clone(),
             draft_value: self.file_name_draft_value.clone(),
             draft_select_all: self.file_name_draft_select_all,
             fingerprint: combine_sidebar_hashes(&[
@@ -668,6 +671,7 @@ pub(in crate::app) struct FileSidebarSnapshot {
     language: String,
     refreshing: bool,
     draft_kind: Option<FileNameDraftKind>,
+    draft_parent: Option<String>,
     draft_value: String,
     draft_select_all: bool,
     fingerprint: u64,
@@ -718,6 +722,7 @@ impl Render for FileSidebarView {
             &snapshot.project_name,
             snapshot.files_empty,
             snapshot.draft_kind,
+            snapshot.draft_parent.as_deref(),
             &snapshot.draft_value,
             snapshot.draft_select_all,
             snapshot.rows.clone(),

@@ -953,6 +953,12 @@ fn is_claude_control_command_row(row: &Value) -> bool {
     if row.get("type").and_then(Value::as_str) != Some("user") {
         return false;
     }
+    // Compact summaries and meta rows are machine-written context, not prompts.
+    if row.get("isCompactSummary").and_then(Value::as_bool) == Some(true)
+        || row.get("isMeta").and_then(Value::as_bool) == Some(true)
+    {
+        return true;
+    }
     claude_user_message_text(row)
         .map(|text| {
             let text = text.trim_start();
@@ -1392,6 +1398,38 @@ mod tests {
         assert_eq!(aggregate.response_state(), None);
         assert_eq!(aggregate.last_user_at, 0.0);
         assert_eq!(aggregate.last_completion_at, 0.0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn compact_summary_rows_do_not_start_a_runtime_turn() {
+        use std::io::Write;
+        let dir =
+            std::env::temp_dir().join(format!("codux-claude-compact-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("session.jsonl");
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(
+            file,
+            r#"{{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:00Z","type":"system","subtype":"compact_boundary"}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:01Z","type":"user","isCompactSummary":true,"message":{{"role":"user","content":"This session is being continued from a previous conversation."}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"sessionId":"s1","cwd":"/tmp/p","timestamp":"2026-01-01T00:00:02Z","type":"user","isMeta":true,"message":{{"role":"user","content":"injected meta context"}}}}"#
+        )
+        .unwrap();
+        drop(file);
+
+        let aggregate = parse_claude_log_runtime_state(&path, "/tmp/p", "s1").expect("aggregate");
+
+        assert_eq!(aggregate.response_state(), None);
+        assert_eq!(aggregate.last_user_at, 0.0);
         let _ = std::fs::remove_dir_all(dir);
     }
 

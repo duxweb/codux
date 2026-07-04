@@ -17,6 +17,8 @@ pub(in crate::app) enum FileSidebarKeyAction {
 struct FileSidebarLabels {
     title: String,
     empty: String,
+    new_file: String,
+    new_folder: String,
     open: String,
     preview: String,
     reveal: String,
@@ -36,6 +38,8 @@ fn file_sidebar_labels(language: &str) -> FileSidebarLabels {
     FileSidebarLabels {
         title: tr("files.panel.title", "Files"),
         empty: tr("files.panel.empty", "No files"),
+        new_file: tr("files.panel.new_file", "New File"),
+        new_folder: tr("files.panel.new_folder", "New Folder"),
         open: tr("files.panel.open", "Open"),
         preview: tr("files.panel.open_preview", "Preview"),
         reveal: tr("files.panel.reveal_finder", "Show in File Manager"),
@@ -76,6 +80,7 @@ pub(in crate::app) fn file_section(
     _project_name: &str,
     files_empty: bool,
     draft_kind: Option<FileNameDraftKind>,
+    draft_parent: Option<&str>,
     draft_value: &str,
     draft_select_all: bool,
     rows: Rc<Vec<FileTreeRow>>,
@@ -87,7 +92,8 @@ pub(in crate::app) fn file_section(
 ) -> impl IntoElement {
     let labels = file_sidebar_labels(language);
     let row_count = rows.len();
-    let draft_at_top = draft_kind.is_some_and(|kind| kind != FileNameDraftKind::Rename);
+    let draft_at_top =
+        draft_kind.is_some_and(|kind| kind != FileNameDraftKind::Rename) && draft_parent.is_none();
 
     div()
         .flex()
@@ -277,22 +283,17 @@ pub(in crate::app) fn file_section(
                                 .flex_col()
                                 .size_full()
                                 .min_h_0()
-                                .when(
-                                    draft_kind
-                                        .is_some_and(|kind| kind != FileNameDraftKind::Rename),
-                                    |this| {
-                                        let kind =
-                                            draft_kind.unwrap_or(FileNameDraftKind::CreateFile);
-                                        this.child(file_name_draft_row(
-                                            app_entity.clone(),
-                                            kind,
-                                            draft_value,
-                                            draft_select_all,
-                                            window,
-                                            cx,
-                                        ))
-                                    },
-                                )
+                                .when(draft_at_top, |this| {
+                                    let kind = draft_kind.unwrap_or(FileNameDraftKind::CreateFile);
+                                    this.child(file_name_draft_row(
+                                        app_entity.clone(),
+                                        kind,
+                                        draft_value,
+                                        draft_select_all,
+                                        window,
+                                        cx,
+                                    ))
+                                })
                                 .child(if files_empty && !draft_at_top {
                                     file_empty_state(labels.empty.clone()).into_any_element()
                                 } else if row_count == 0 && !draft_at_top {
@@ -558,6 +559,7 @@ pub(in crate::app) struct FileTreeRow {
     active: bool,
     expanded: bool,
     editing: bool,
+    synthetic: bool,
     editing_value: String,
     drag_paths: Vec<String>,
     depth: usize,
@@ -598,6 +600,7 @@ pub(in crate::app) fn file_tree_rows(
     selected_entries: &HashSet<String>,
     draft_kind: Option<FileNameDraftKind>,
     draft_target: Option<&str>,
+    draft_parent: Option<&str>,
     draft_value: &str,
     depth: usize,
 ) -> Vec<FileTreeRow> {
@@ -622,6 +625,7 @@ pub(in crate::app) fn file_tree_rows(
             active,
             expanded,
             editing,
+            synthetic: false,
             editing_value: if editing {
                 draft_value.to_string()
             } else {
@@ -631,6 +635,29 @@ pub(in crate::app) fn file_tree_rows(
             depth,
         });
         if expanded {
+            if draft_kind.is_some_and(|kind| kind != FileNameDraftKind::Rename)
+                && draft_parent == Some(file.relative_path.as_str())
+            {
+                rows.push(FileTreeRow {
+                    file: FileEntry {
+                        name: draft_value.to_string(),
+                        relative_path: join_relative_child_path(&file.relative_path, draft_value),
+                        kind: if draft_kind == Some(FileNameDraftKind::CreateDirectory) {
+                            FileKind::Directory
+                        } else {
+                            FileKind::File
+                        },
+                        size: 0,
+                    },
+                    active: false,
+                    expanded: false,
+                    editing: true,
+                    synthetic: true,
+                    editing_value: draft_value.to_string(),
+                    drag_paths: vec![join_relative_child_path(&file.relative_path, draft_value)],
+                    depth: depth + 1,
+                });
+            }
             if let Some(children) = tree_children.get(&file.relative_path) {
                 rows.extend(file_tree_rows(
                     children,
@@ -640,6 +667,7 @@ pub(in crate::app) fn file_tree_rows(
                     selected_entries,
                     draft_kind,
                     draft_target,
+                    draft_parent,
                     draft_value,
                     depth + 1,
                 ));
@@ -663,6 +691,7 @@ fn file_tree_entry_row(
         active,
         expanded,
         editing,
+        synthetic,
         editing_value,
         drag_paths,
         depth,
@@ -708,7 +737,7 @@ fn file_tree_entry_row(
                 app.select_file_entry_from_click(entry, extend, toggle, open, window, cx);
             });
         }))
-        .when(FILE_TREE_DRAG_AND_DROP, |this| {
+        .when(FILE_TREE_DRAG_AND_DROP && !synthetic, |this| {
             let drag_payload = drag_paths.clone();
             let drag_items_count_format = items_count_format.clone();
             this.on_drag(
@@ -724,7 +753,7 @@ fn file_tree_entry_row(
                 },
             )
         })
-        .when(FILE_TREE_DRAG_AND_DROP && is_dir, |this| {
+        .when(FILE_TREE_DRAG_AND_DROP && is_dir && !synthetic, |this| {
             this.drag_over::<FileTreeDrag>(|this, _drag, _window, cx| {
                 this.bg(cx.theme().drop_target)
                     .border_1()
@@ -742,6 +771,9 @@ fn file_tree_entry_row(
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(move |view, _event, window, cx| {
+                if synthetic {
+                    return;
+                }
                 let relative_path = right_click_entry.relative_path.clone();
                 view.defer_app_update(window, cx, move |app, _window, cx| {
                     app.prepare_file_context_menu_selection(relative_path, cx);
@@ -751,6 +783,9 @@ fn file_tree_entry_row(
         .context_menu({
             let app_entity = app_entity.clone();
             move |menu, _window, cx| {
+                if synthetic {
+                    return menu;
+                }
                 file_tree_context_menu(
                     menu,
                     app_entity.clone(),
@@ -768,7 +803,7 @@ fn file_tree_entry_row(
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(if is_dir {
+                .child(if is_dir && !synthetic {
                     Icon::new(if expanded {
                         HeroIconName::ChevronDown
                     } else {
@@ -792,14 +827,16 @@ fn file_tree_entry_row(
                 })),
         )
         .child(if editing {
-            let input_state = file_name_draft_input_state(
-                app_entity,
-                FileNameDraftKind::Rename,
-                &editing_value,
-                true,
-                window,
-                cx,
-            );
+            // Synthetic rows are in-folder create drafts; real rows edit as renames.
+            let kind = if !synthetic {
+                FileNameDraftKind::Rename
+            } else if is_dir {
+                FileNameDraftKind::CreateDirectory
+            } else {
+                FileNameDraftKind::CreateFile
+            };
+            let input_state =
+                file_name_draft_input_state(app_entity, kind, &editing_value, true, window, cx);
             div()
                 .ml(px(8.0))
                 .flex_1()
@@ -848,6 +885,8 @@ fn file_tree_context_menu(
     let copy_entity = app_entity.clone();
     let save_as_entity = app_entity.clone();
     let paste_entity = app_entity.clone();
+    let new_file_entity = app_entity.clone();
+    let new_folder_entity = app_entity.clone();
     let rename_entity = app_entity.clone();
     let terminal_entity = app_entity.clone();
     let delete_entity = app_entity;
@@ -923,6 +962,33 @@ fn file_tree_context_menu(
                         app.paste_external_file_entries(payload, entry, window, cx);
                     }
                 });
+            }),
+    )
+    .separator()
+    .item(
+        PopupMenuItem::new(labels.new_file.clone())
+            .icon(HeroIconName::Document)
+            .disabled(!matches!(entry.kind, FileKind::Directory))
+            .on_click({
+                let parent = entry.relative_path.clone();
+                move |_, window, cx| {
+                    cx.update_entity(&new_file_entity, |app, cx| {
+                        app.create_project_file_in_directory(parent.clone(), window, cx);
+                    });
+                }
+            }),
+    )
+    .item(
+        PopupMenuItem::new(labels.new_folder.clone())
+            .icon(HeroIconName::Folder)
+            .disabled(!matches!(entry.kind, FileKind::Directory))
+            .on_click({
+                let parent = entry.relative_path.clone();
+                move |_, window, cx| {
+                    cx.update_entity(&new_folder_entity, |app, cx| {
+                        app.create_project_directory_in_directory(parent.clone(), window, cx);
+                    });
+                }
             }),
     )
     .item(
@@ -1039,8 +1105,11 @@ fn clipboard_text_line_may_be_file_path(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{clipboard_image_extension, clipboard_text_line_may_be_file_path};
+    use super::{clipboard_image_extension, clipboard_text_line_may_be_file_path, file_tree_rows};
+    use crate::app::FileNameDraftKind;
+    use codux_runtime::runtime_state::{FileEntry, FileKind};
     use gpui::ImageFormat;
+    use std::collections::{HashMap, HashSet};
 
     #[test]
     fn clipboard_text_line_filter_rejects_browser_image_payloads() {
@@ -1058,5 +1127,34 @@ mod tests {
         assert_eq!(clipboard_image_extension(ImageFormat::Png), "png");
         assert_eq!(clipboard_image_extension(ImageFormat::Jpeg), "jpg");
         assert_eq!(clipboard_image_extension(ImageFormat::Webp), "webp");
+    }
+
+    #[test]
+    fn file_tree_rows_puts_create_draft_under_expanded_parent() {
+        let files = vec![FileEntry {
+            name: "src".to_string(),
+            relative_path: "src".to_string(),
+            kind: FileKind::Directory,
+            size: 0,
+        }];
+        let expanded_dirs = HashSet::from(["src".to_string()]);
+
+        let rows = file_tree_rows(
+            &files,
+            &HashMap::new(),
+            &expanded_dirs,
+            None,
+            &HashSet::new(),
+            Some(FileNameDraftKind::CreateFile),
+            None,
+            Some("src"),
+            "main.rs",
+            0,
+        );
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1].file.relative_path, "src/main.rs");
+        assert!(rows[1].editing);
+        assert_eq!(rows[1].depth, 1);
     }
 }

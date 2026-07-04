@@ -38,6 +38,7 @@ struct FileMutationSelectionState {
 struct FileMutationDraftState {
     kind: Option<FileNameDraftKind>,
     target: Option<String>,
+    parent: Option<String>,
     value: String,
 }
 
@@ -163,6 +164,7 @@ impl CoduxApp {
         FileMutationDraftState {
             kind: self.file_name_draft_kind,
             target: self.file_name_draft_target.clone(),
+            parent: self.file_name_draft_parent.clone(),
             value: self.file_name_draft_value.clone(),
         }
     }
@@ -170,6 +172,7 @@ impl CoduxApp {
     pub(super) fn clear_file_name_draft(&mut self) {
         self.file_name_draft_kind = None;
         self.file_name_draft_target = None;
+        self.file_name_draft_parent = None;
         self.file_name_draft_value.clear();
         self.file_name_draft_select_all = false;
     }
@@ -1291,7 +1294,21 @@ impl CoduxApp {
     pub(super) fn create_project_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         // Start with an empty field (the input shows its own placeholder) rather
         // than a pre-filled value the user has to clear first.
-        self.start_file_name_draft(FileNameDraftKind::CreateFile, Some(String::new()), cx);
+        self.start_file_name_draft(FileNameDraftKind::CreateFile, None, Some(String::new()), cx);
+    }
+
+    pub(super) fn create_project_file_in_directory(
+        &mut self,
+        parent: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.start_file_name_draft(
+            FileNameDraftKind::CreateFile,
+            Some(parent),
+            Some(String::new()),
+            cx,
+        );
     }
 
     pub(super) fn create_project_directory(
@@ -1299,12 +1316,32 @@ impl CoduxApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.start_file_name_draft(FileNameDraftKind::CreateDirectory, Some(String::new()), cx);
+        self.start_file_name_draft(
+            FileNameDraftKind::CreateDirectory,
+            None,
+            Some(String::new()),
+            cx,
+        );
+    }
+
+    pub(super) fn create_project_directory_in_directory(
+        &mut self,
+        parent: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.start_file_name_draft(
+            FileNameDraftKind::CreateDirectory,
+            Some(parent),
+            Some(String::new()),
+            cx,
+        );
     }
 
     pub(super) fn start_file_name_draft(
         &mut self,
         kind: FileNameDraftKind,
+        parent: Option<String>,
         value: Option<String>,
         cx: &mut Context<Self>,
     ) {
@@ -1326,10 +1363,17 @@ impl CoduxApp {
         } else {
             None
         };
+        self.file_name_draft_parent = if kind == FileNameDraftKind::Rename {
+            None
+        } else {
+            parent.filter(|path| !path.trim().is_empty())
+        };
+        if let Some(parent) = self.file_name_draft_parent.clone() {
+            self.file_tree_expanded_dirs.insert(parent.clone());
+            self.reload_file_tree_directory(&parent);
+        }
         self.file_name_draft_select_all = true;
         self.file_name_draft_value = value;
-        self.workspace_view = WorkspaceView::Files;
-        self.assistant_panel = Some(AssistantPanel::FileManager);
         self.status_message = match kind {
             FileNameDraftKind::CreateFile => "enter file name".to_string(),
             FileNameDraftKind::CreateDirectory => "enter folder name".to_string(),
@@ -1416,6 +1460,7 @@ impl CoduxApp {
             return;
         };
         let name = self.file_name_draft_value.trim().to_string();
+        let parent = self.file_name_draft_parent.clone();
         self.clear_file_name_draft();
         if name.is_empty()
             || name.eq_ignore_ascii_case("undefined")
@@ -1430,8 +1475,12 @@ impl CoduxApp {
         }
 
         match kind {
-            FileNameDraftKind::CreateFile => self.create_project_file_entry(false, name, cx),
-            FileNameDraftKind::CreateDirectory => self.create_project_file_entry(true, name, cx),
+            FileNameDraftKind::CreateFile => {
+                self.create_project_file_entry(false, parent, name, cx)
+            }
+            FileNameDraftKind::CreateDirectory => {
+                self.create_project_file_entry(true, parent, name, cx)
+            }
             FileNameDraftKind::Rename => self.rename_selected_file_entry_to(name, cx),
         }
     }
@@ -1439,6 +1488,7 @@ impl CoduxApp {
     pub(super) fn create_project_file_entry(
         &mut self,
         directory: bool,
+        parent: Option<String>,
         name: String,
         cx: &mut Context<Self>,
     ) {
@@ -1448,13 +1498,19 @@ impl CoduxApp {
             return;
         };
         let project_path = project.path.clone();
-        let parent = file_directory_option(&self.file_directory).map(str::to_string);
+        let parent =
+            parent.or_else(|| file_directory_option(&self.file_directory).map(str::to_string));
         let file_directory = self.file_directory.clone();
-        let expanded_dirs = self
+        let mut expanded_dirs = self
             .file_tree_expanded_dirs
             .iter()
             .cloned()
             .collect::<Vec<_>>();
+        if let Some(parent) = &parent {
+            expanded_dirs.push(parent.clone());
+            expanded_dirs.sort();
+            expanded_dirs.dedup();
+        }
         let runtime_service = self.runtime_service.clone();
         let item_label = if directory { "directory" } else { "file" };
         self.spawn_file_mutation(
@@ -1462,7 +1518,7 @@ impl CoduxApp {
             "file creation task failed",
             cx,
             move || {
-                let files = if directory {
+                if directory {
                     runtime_service.create_project_directory(
                         &project_path,
                         parent.as_deref(),
@@ -1471,10 +1527,15 @@ impl CoduxApp {
                 } else {
                     runtime_service.create_project_file(&project_path, parent.as_deref(), &name)?
                 };
-                let relative_path = join_relative_child_path(&file_directory, &name);
-                let file_tree_children =
-                    load_file_mutation_children(&runtime_service, &project_path, &expanded_dirs)
-                        .map_err(|error| file_mutation_refresh_error("file created", error))?;
+                let (files, file_tree_children) = load_file_mutation_tree(
+                    &runtime_service,
+                    &project_path,
+                    file_directory_option(&file_directory),
+                    &expanded_dirs,
+                )
+                .map_err(|error| file_mutation_refresh_error("file created", error))?;
+                let relative_path =
+                    join_relative_child_path(parent.as_deref().unwrap_or_default(), &name);
                 let git = runtime_service.reload_project_git(&project_path);
                 Ok(FileMutationResult {
                     files,
@@ -1814,7 +1875,7 @@ impl CoduxApp {
             self.invalidate_file_panel(cx);
             return;
         }
-        self.start_file_name_draft(FileNameDraftKind::Rename, None, cx);
+        self.start_file_name_draft(FileNameDraftKind::Rename, None, None, cx);
     }
 
     pub(super) fn rename_selected_file_entry_to(
