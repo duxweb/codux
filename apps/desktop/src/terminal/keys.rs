@@ -16,6 +16,15 @@ fn is_paste_keystroke(keystroke: &Keystroke) -> bool {
     ))
 }
 
+fn is_select_all_keystroke(keystroke: &Keystroke) -> bool {
+    let modifiers = &keystroke.modifiers;
+    keystroke.key.eq_ignore_ascii_case("a")
+        && modifiers.platform
+        && !modifiers.control
+        && !modifiers.alt
+        && !modifiers.shift
+}
+
 fn core_key_input(
     keystroke: &Keystroke,
     mode: TerminalInputMode,

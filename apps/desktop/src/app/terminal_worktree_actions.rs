@@ -486,6 +486,8 @@ impl CoduxApp {
 
     pub(super) fn remove_registered_terminal_pane(&mut self, terminal_id: &str) {
         self.terminal_pane_registry.remove(terminal_id);
+        self.terminal_osc_titles.remove(terminal_id);
+        self.terminal_search_open.remove(terminal_id);
     }
 
     pub(super) fn register_terminal_pane(
@@ -499,13 +501,36 @@ impl CoduxApp {
         };
         let app = cx.entity().downgrade();
         let app_for_link = app.clone();
+        let app_for_title = app.clone();
+        let app_for_search = app.clone();
         let terminal_id = terminal_id.to_string();
         let observer_terminal_id = terminal_id.clone();
+        let title_terminal_id = terminal_id.clone();
+        let search_terminal_id = terminal_id.clone();
         pane.view.update(cx, |terminal, _| {
             terminal.set_focus_observer(move |_window, cx| {
                 let terminal_id = observer_terminal_id.clone();
                 let _ = app.update(cx, |app, cx| {
                     app.record_focused_terminal_runtime_id(&terminal_id, cx);
+                });
+            });
+            let title_terminal_id = title_terminal_id.clone();
+            terminal.set_title_observer(move |title, cx| {
+                let terminal_id = title_terminal_id.clone();
+                let _ = app_for_title.update(cx, |app, cx| {
+                    app.set_terminal_osc_title(&terminal_id, title, cx);
+                });
+            });
+            let search_terminal_id = search_terminal_id.clone();
+            terminal.set_search_observer(move |open, cx| {
+                let terminal_id = search_terminal_id.clone();
+                let app = app_for_search.clone();
+                // open_search may run inside a CoduxApp update (cmd-f action
+                // handler) — updating it inline would re-enter; defer instead.
+                cx.defer(move |cx| {
+                    let _ = app.update(cx, |app, cx| {
+                        app.set_terminal_search_open(&terminal_id, open, cx);
+                    });
                 });
             });
             terminal.set_link_opener(move |url, _window, cx| {
@@ -514,8 +539,64 @@ impl CoduxApp {
                 });
             });
         });
+        // Seed from the view's cached title: registration may follow output
+        // that already carried an OSC title.
+        let seeded_title = pane
+            .view
+            .read(cx)
+            .osc_title()
+            .and_then(normalized_terminal_osc_title);
+        if let Some(title) = seeded_title {
+            self.terminal_osc_titles.insert(terminal_id.clone(), title);
+        }
+        if pane.view.read(cx).search_is_open() {
+            self.terminal_search_open.insert(terminal_id.clone());
+        } else {
+            self.terminal_search_open.remove(&terminal_id);
+        }
         self.terminal_pane_registry
             .insert(terminal_id, pane.clone());
+    }
+
+    /// Called by the pane's title observer while that view is mid-update; only
+    /// stores the value and invalidates — must never read the view back.
+    pub(super) fn set_terminal_osc_title(
+        &mut self,
+        terminal_id: &str,
+        title: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let title = title.as_deref().and_then(normalized_terminal_osc_title);
+        let changed = match title {
+            Some(title) => {
+                self.terminal_osc_titles
+                    .insert(terminal_id.to_string(), title.clone())
+                    .as_ref()
+                    != Some(&title)
+            }
+            None => self.terminal_osc_titles.remove(terminal_id).is_some(),
+        };
+        if changed {
+            self.invalidate_ui(cx, [UiRegion::TaskColumn, UiRegion::WorkspaceBody]);
+        }
+    }
+
+    /// Called by the pane's search observer while that view is mid-update; only
+    /// stores the value and invalidates — must never read the view back.
+    pub(super) fn set_terminal_search_open(
+        &mut self,
+        terminal_id: &str,
+        open: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = if open {
+            self.terminal_search_open.insert(terminal_id.to_string())
+        } else {
+            self.terminal_search_open.remove(terminal_id)
+        };
+        if changed {
+            self.invalidate_ui(cx, [UiRegion::WorkspaceBody]);
+        }
     }
 
     pub(super) fn record_focused_terminal_runtime_id(
@@ -2070,6 +2151,23 @@ pub(in crate::app) fn restored_live_active_terminal_id(
         .map(str::to_string)
 }
 
+// Shell prompts commonly set "user@host[:path]" or a bare cwd path as the OSC
+// title; both are prompt noise — drop them so the shell-name default shows.
+fn normalized_terminal_osc_title(title: &str) -> Option<String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return None;
+    }
+    let head = title.split([':', ' ']).next().unwrap_or(title);
+    if head.contains('@') && !head.contains('/') {
+        return None;
+    }
+    if title.starts_with('/') || title.starts_with('~') {
+        return None;
+    }
+    Some(title.to_string())
+}
+
 fn worktree_confirm_display_name(worktree: &WorktreeInfo) -> String {
     let name = worktree.name.trim();
     if !name.is_empty() {
@@ -2133,5 +2231,44 @@ fn terminal_runtime_summary_from_inputs(
         closed_count: 0,
         sessions,
         error: None,
+    }
+}
+
+#[cfg(test)]
+mod osc_title_tests {
+    use super::normalized_terminal_osc_title;
+
+    #[test]
+    fn normalized_osc_title_strips_prompt_noise() {
+        assert_eq!(
+            normalized_terminal_osc_title("lixinhua@MacBook-Pro.local:~/project"),
+            None
+        );
+        assert_eq!(
+            normalized_terminal_osc_title("lixinhua@MacBook-Pro.local ~"),
+            None
+        );
+        assert_eq!(
+            normalized_terminal_osc_title("/Volumes/Data/Projects/demo"),
+            None
+        );
+        assert_eq!(normalized_terminal_osc_title("~/project"), None);
+        assert_eq!(
+            normalized_terminal_osc_title("lixinhua@MacBook-Pro.local:"),
+            None
+        );
+        assert_eq!(
+            normalized_terminal_osc_title("lixinhua@MacBook-Pro.local"),
+            None
+        );
+        assert_eq!(normalized_terminal_osc_title("  "), None);
+        assert_eq!(
+            normalized_terminal_osc_title("vim: notes.txt"),
+            Some("vim: notes.txt".to_string())
+        );
+        assert_eq!(
+            normalized_terminal_osc_title("dartvm"),
+            Some("dartvm".to_string())
+        );
     }
 }

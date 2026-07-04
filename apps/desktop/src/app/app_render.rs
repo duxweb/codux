@@ -296,6 +296,7 @@ impl Render for CoduxApp {
             self.task_column_header_view = None;
             self.task_worktree_list_view = None;
             self.task_session_list_view = None;
+            self.task_terminal_list_view = None;
         }
         let workspace_column_view = self.workspace_column_view(cx);
         let status_bar_view = self.status_bar_view(cx);

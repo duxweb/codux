@@ -978,6 +978,7 @@ struct TerminalPaneViewSnapshot {
     view: Option<gpui::Entity<TerminalView>>,
     title: String,
     subtitle: Option<String>,
+    search_open: bool,
 }
 
 impl PartialEq for TerminalPaneViewSnapshot {
@@ -985,6 +986,7 @@ impl PartialEq for TerminalPaneViewSnapshot {
         if self.terminal_id != other.terminal_id
             || self.title != other.title
             || self.subtitle != other.subtitle
+            || self.search_open != other.search_open
         {
             return false;
         }
@@ -1217,12 +1219,25 @@ impl CoduxApp {
                     .iter()
                     .enumerate()
                     .map(|(index, slot)| {
-                        let (title, subtitle) = terminal_pane_display_title(slot, &ai_titles);
+                        let terminal_id = Self::terminal_slot_terminal_id(tab, index, slot);
+                        let osc_title = terminal_id
+                            .as_deref()
+                            .and_then(|id| self.terminal_osc_titles.get(id));
+                        let (title, subtitle) = terminal_pane_display_title(
+                            slot,
+                            &ai_titles,
+                            osc_title.map(String::as_str),
+                            &self.state.settings.language,
+                        );
+                        let search_open = terminal_id
+                            .as_deref()
+                            .is_some_and(|id| self.terminal_search_open.contains(id));
                         TerminalPaneViewSnapshot {
-                            terminal_id: Self::terminal_slot_terminal_id(tab, index, slot),
+                            terminal_id,
                             view: slot.pane.as_ref().map(|pane| pane.view.clone()),
                             title,
                             subtitle,
+                            search_open,
                         }
                     })
                     .collect::<Vec<_>>()
@@ -1257,7 +1272,7 @@ impl CoduxApp {
     }
 }
 
-fn terminal_ai_titles_by_terminal_id(
+pub(in crate::app) fn terminal_ai_titles_by_terminal_id(
     sessions: &[codux_runtime::ai_runtime_state::AIRuntimeSessionSummary],
 ) -> HashMap<String, (String, Option<String>)> {
     let mut titles = HashMap::new();
@@ -1298,9 +1313,28 @@ fn terminal_ai_tool_title(tool: &str) -> String {
     tool.to_string()
 }
 
-fn terminal_pane_display_title(
+// Local terminals spawn the user's login shell; its basename ("zsh") is the
+// default label when nothing set a meaningful title.
+fn default_shell_display_name() -> Option<&'static str> {
+    static NAME: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| {
+        if cfg!(windows) {
+            return Some("powershell".to_string());
+        }
+        let shell = std::env::var("SHELL").ok()?;
+        let name = std::path::Path::new(shell.trim()).file_stem()?;
+        let name = name.to_string_lossy().trim().to_string();
+        if name.is_empty() { None } else { Some(name) }
+    })
+    .as_deref()
+}
+
+// Title precedence: AI tool (+model subtitle) > custom pane label > shell OSC title > shell name > default label.
+pub(in crate::app) fn terminal_pane_display_title(
     slot: &TerminalPaneSlot,
     ai_titles: &HashMap<String, (String, Option<String>)>,
+    osc_title: Option<&str>,
+    language: &str,
 ) -> (String, Option<String>) {
     if let Some((title, subtitle)) = slot
         .terminal_id
@@ -1310,10 +1344,43 @@ fn terminal_pane_display_title(
         return (title.clone(), subtitle.clone());
     }
     let title = slot.title.trim();
-    if title.is_empty() || title.starts_with("Split ") || title.starts_with("Terminal ") {
-        return ("Terminal".to_string(), None);
+    if !title.is_empty() && !terminal_slot_title_is_generic(title, language) {
+        return (title.to_string(), None);
     }
-    (title.to_string(), None)
+    if let Some(osc_title) = osc_title.map(str::trim).filter(|title| !title.is_empty()) {
+        return (osc_title.to_string(), None);
+    }
+    if let Some(shell) = default_shell_display_name() {
+        return (shell.to_string(), None);
+    }
+    if !title.is_empty() {
+        return (title.to_string(), None);
+    }
+    let locale = locale_from_language_setting(language);
+    (translate(&locale, "terminal.title", "Terminal"), None)
+}
+
+// Auto-minted pane labels ("Terminal %d"/"Split %d", localized) are placeholders, not user titles.
+fn terminal_slot_title_is_generic(title: &str, language: &str) -> bool {
+    let locale = locale_from_language_setting(language);
+    [
+        translate(&locale, "terminal.default_format", "Terminal %d"),
+        translate(&locale, "terminal.split.default_format", "Split %d"),
+        "Terminal %d".to_string(),
+        "Split %d".to_string(),
+    ]
+    .iter()
+    .any(|format| title_matches_numbered_format(title, format))
+}
+
+fn title_matches_numbered_format(title: &str, format: &str) -> bool {
+    let Some((prefix, suffix)) = format.split_once("%d") else {
+        return title == format;
+    };
+    title
+        .strip_prefix(prefix)
+        .and_then(|rest| rest.strip_suffix(suffix))
+        .is_some_and(|digits| !digits.is_empty() && digits.chars().all(|ch| ch.is_ascii_digit()))
 }
 
 const TERMINAL_SPLIT_BASE_SIZE: Pixels = px(640.0);
@@ -1854,6 +1921,8 @@ fn terminal_pane(
     let session_drop_entity = app_entity.clone();
     let pane_view = slot.view.clone();
     let drop_terminal_id = slot.terminal_id.clone();
+    // The search bar floats over the same top-right corner as the controls.
+    let search_open = slot.search_open;
 
     // Flat pane: hairline divider against the previous column, controls float
     // over the terminal's top-right corner and appear on hover.
@@ -1894,59 +1963,61 @@ fn terminal_pane(
                         .into_any_element(),
                 }),
         )
-        .child(
-            div()
-                .absolute()
-                .top(px(6.0))
-                .right(px(8.0))
-                .flex()
-                .items_center()
-                .gap_1()
-                .rounded(px(6.0))
-                .p(px(2.0))
-                .bg(theme::elevate(color(theme::BG_TERMINAL), 0.08).opacity(0.92))
-                .opacity(0.0)
-                .group_hover("terminal-pane", |style| style.opacity(1.0))
-                // The popover overlay lives outside the group, so hovering the
-                // menu would fade the controls out — pin them while it's open.
-                .when(open_split_menu_pane == Some(index), |style| {
-                    style.opacity(1.0)
-                })
-                .child(terminal_pane_drag_handle(app_entity.clone(), index, cx))
-                .child(terminal_pane_control_button(
-                    app_entity.clone(),
-                    float_id,
-                    HeroIconName::ArrowTopRightOnSquare,
-                    SharedString::from(workspace_i18n(
-                        language,
-                        "terminal.detach",
-                        "Open in Separate Window",
+        .when(!search_open, |pane| {
+            pane.child(
+                div()
+                    .absolute()
+                    .top(px(6.0))
+                    .right(px(8.0))
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .rounded(px(6.0))
+                    .p(px(2.0))
+                    .bg(theme::elevate(color(theme::BG_TERMINAL), 0.08).opacity(0.92))
+                    .opacity(0.0)
+                    .group_hover("terminal-pane", |style| style.opacity(1.0))
+                    // The popover overlay lives outside the group, so hovering the
+                    // menu would fade the controls out — pin them while it's open.
+                    .when(open_split_menu_pane == Some(index), |style| {
+                        style.opacity(1.0)
+                    })
+                    .child(terminal_pane_drag_handle(app_entity.clone(), index, cx))
+                    .child(terminal_pane_control_button(
+                        app_entity.clone(),
+                        float_id,
+                        HeroIconName::ArrowTopRightOnSquare,
+                        SharedString::from(workspace_i18n(
+                            language,
+                            "terminal.detach",
+                            "Open in Separate Window",
+                        )),
+                        pane_count > 1,
+                        cx,
+                        move |app, window, cx| app.float_terminal_pane(index, window, cx),
+                    ))
+                    .child(terminal_pane_split_button(
+                        app_entity.clone(),
+                        add_id,
+                        index,
+                        open_split_menu_pane,
+                        cx,
+                    ))
+                    .child(terminal_pane_control_button(
+                        app_entity,
+                        close_id,
+                        HeroIconName::XMark,
+                        SharedString::from(workspace_i18n(
+                            language,
+                            "terminal.split.close",
+                            "Close Split",
+                        )),
+                        pane_count > 1,
+                        cx,
+                        move |app, window, cx| app.close_terminal_pane(index, window, cx),
                     )),
-                    pane_count > 1,
-                    cx,
-                    move |app, window, cx| app.float_terminal_pane(index, window, cx),
-                ))
-                .child(terminal_pane_split_button(
-                    app_entity.clone(),
-                    add_id,
-                    index,
-                    open_split_menu_pane,
-                    cx,
-                ))
-                .child(terminal_pane_control_button(
-                    app_entity,
-                    close_id,
-                    HeroIconName::XMark,
-                    SharedString::from(workspace_i18n(
-                        language,
-                        "terminal.split.close",
-                        "Close Split",
-                    )),
-                    pane_count > 1,
-                    cx,
-                    move |app, window, cx| app.close_terminal_pane(index, window, cx),
-                )),
-        )
+            )
+        })
         .child(
             div()
                 .absolute()

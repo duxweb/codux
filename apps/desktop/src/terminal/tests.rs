@@ -268,6 +268,46 @@ mod tests {
     }
 
     #[test]
+    fn search_buffer_finds_case_insensitive_matches_across_scrollback() {
+        let mut state = TerminalModel::new_for_test(10, 3, 100);
+        state.process_bytes(b"alpha\r\nbeta\r\nALPHA x\r\ngamma\r\nalphabet\r\n1\r\n2\r\n3");
+        state.handle.publish_snapshot();
+
+        let matches = state.search_buffer("alpha", 100);
+
+        assert_eq!(matches.len(), 3);
+        assert_eq!(matches[0].start.line, 0);
+        assert_eq!(matches[0].start.col, 0);
+        assert_eq!(matches[0].end.col, 5);
+        assert!(
+            matches
+                .windows(2)
+                .all(|pair| pair[0].start.line < pair[1].start.line)
+        );
+
+        assert!(state.search_buffer("nothing-here", 100).is_empty());
+        assert_eq!(state.search_buffer("alpha", 2).len(), 2);
+    }
+
+    #[test]
+    fn select_all_covers_scrollback_and_viewport() {
+        let mut state = TerminalModel::new_for_test(10, 3, 100);
+        state.process_bytes(b"one\r\ntwo\r\nthree\r\nfour");
+        state.handle.publish_snapshot();
+
+        let range = state.select_all();
+        let content = state.snapshot();
+
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.col, 0);
+        assert_eq!(range.end.line, content.total_lines as i32 - 1);
+
+        let text = state.selected_text().expect("select-all yields text");
+        assert!(text.contains("one"));
+        assert!(text.contains("four"));
+    }
+
+    #[test]
     fn processed_output_updates_live_terminal_before_paint_snapshot() {
         let mut state = TerminalModel::new_for_test(10, 4, 100);
         state.process_bytes(b"before");

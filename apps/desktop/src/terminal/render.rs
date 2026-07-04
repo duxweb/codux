@@ -159,7 +159,7 @@ impl Render for TerminalView {
                     ),
             )
         } else {
-            terminal.child(element).child(
+            let terminal = terminal.child(element).child(
                 div()
                     .absolute()
                     .top_0()
@@ -172,7 +172,12 @@ impl Render for TerminalView {
                             .axis(ScrollbarAxis::Vertical)
                             .scrollbar_show(ScrollbarShow::Scrolling),
                     ),
-            )
+            );
+            if self.search_open {
+                terminal.child(self.render_search_bar(cx))
+            } else {
+                terminal
+            }
         };
         if self.hover_link.is_some() {
             terminal.cursor(CursorStyle::PointingHand)

@@ -767,6 +767,10 @@ impl TerminalModel {
         self.handle.snapshot()
     }
 
+    fn osc_title(&self) -> Option<String> {
+        self.handle.snapshot.lock().title.clone()
+    }
+
     fn current_ime_cursor_bounds(&self, layout: &TerminalLayoutMetrics) -> Option<Bounds<Pixels>> {
         let content = self.handle.snapshot();
         ime_cursor_bounds_from_content(&content, layout)
@@ -819,6 +823,42 @@ impl TerminalModel {
 
     fn clear_selection(&mut self) {
         self.selection.clear();
+    }
+
+    /// Case-insensitive single-line substring search over the whole buffer
+    /// including scrollback, in buffer order.
+    fn search_buffer(&self, query: &str, max_matches: usize) -> Vec<SelectionRange> {
+        let query: Vec<char> = query.chars().collect();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let content = self.snapshot();
+        search_content_ranges(&self.handle.screen, &content, &query, max_matches)
+    }
+
+    fn scroll_line_to_center(&mut self, line: i32) {
+        let content = self.snapshot();
+        let rows = content.screen_lines;
+        let total = content.total_lines;
+        let max_offset = total.saturating_sub(rows) as i64;
+        let offset = (total as i64 - rows as i64 - line as i64 + (rows / 2) as i64)
+            .clamp(0, max_offset) as usize;
+        self.scroll_to_display_offset(offset);
+    }
+
+    /// Select the whole buffer including scrollback; returns the range so the
+    /// view can mirror it into its render-side selection state.
+    fn select_all(&mut self) -> SelectionRange {
+        let content = self.snapshot();
+        let range = SelectionRange {
+            start: TerminalSelectionPoint { line: 0, col: 0 },
+            end: TerminalSelectionPoint {
+                line: content.total_lines.saturating_sub(1) as i32,
+                col: content.columns,
+            },
+        };
+        self.selection.set_range(range);
+        range
     }
 
     fn selected_text(&self) -> Option<String> {
@@ -1159,6 +1199,92 @@ fn selected_text_from_screen_range(
 
 fn content_covers_selection_range(content: &TerminalContent, range: SelectionRange) -> bool {
     content.line_in_snapshot(range.start.line) && content.line_in_snapshot(range.end.line)
+}
+
+// Walks the buffer chunk-wise like `selected_text_from_screen_range`, pulling
+// scrollback snapshots on demand.
+fn search_content_ranges(
+    screen: &Arc<Mutex<HeadlessTerminalScreen>>,
+    fallback_content: &TerminalContent,
+    query: &[char],
+    max_matches: usize,
+) -> Vec<SelectionRange> {
+    let mut matches = Vec::new();
+    let total_lines = fallback_content.total_lines as i32;
+    let mut line: i32 = 0;
+    let mut content = fallback_content.clone();
+    while line < total_lines && matches.len() < max_matches {
+        if !content.line_in_snapshot(line) {
+            let offset = display_offset_for_line(line, content.total_lines, content.screen_lines);
+            let request = { screen.lock().snapshot_at_offset_request(offset) };
+            content = TerminalContent::from_screen_snapshot(request.snapshot());
+        }
+        if !content.line_in_snapshot(line) {
+            line = line.saturating_add(1);
+            continue;
+        }
+        let chunk_end = content
+            .last_snapshot_line()
+            .unwrap_or(line)
+            .min(total_lines - 1);
+        for search_line in line..=chunk_end {
+            search_line_ranges(&content, search_line, query, max_matches, &mut matches);
+            if matches.len() >= max_matches {
+                break;
+            }
+        }
+        line = chunk_end.saturating_add(1);
+    }
+    matches
+}
+
+fn search_line_ranges(
+    content: &TerminalContent,
+    line: i32,
+    query: &[char],
+    max_matches: usize,
+    matches: &mut Vec<SelectionRange>,
+) {
+    let row_cells = content
+        .cells
+        .iter()
+        .filter(|cell| cell.line() == line)
+        .collect::<Vec<_>>();
+    let row_text = terminal_row_text(&row_cells);
+    if row_text.len() < query.len() {
+        return;
+    }
+    let mut start = 0;
+    while start + query.len() <= row_text.len() {
+        let hit = query
+            .iter()
+            .enumerate()
+            .all(|(offset, query_char)| chars_eq_fold(row_text[start + offset].1, *query_char));
+        if !hit {
+            start += 1;
+            continue;
+        }
+        let start_col = row_text[start].0;
+        let (last_col, last_char) = row_text[start + query.len() - 1];
+        matches.push(SelectionRange {
+            start: TerminalSelectionPoint {
+                line,
+                col: start_col,
+            },
+            end: TerminalSelectionPoint {
+                line,
+                col: last_col.saturating_add(terminal_char_width(last_char)),
+            },
+        });
+        if matches.len() >= max_matches {
+            return;
+        }
+        start += query.len();
+    }
+}
+
+fn chars_eq_fold(a: char, b: char) -> bool {
+    a == b || a.to_lowercase().eq(b.to_lowercase())
 }
 
 fn display_offset_for_line(line: i32, total_lines: usize, rows: usize) -> usize {

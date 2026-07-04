@@ -25,7 +25,8 @@
       "terminal.ai_restore.restore_send_failed_format": "Split erstellt; Senden des Wiederherstellungsbefehls fehlgeschlagen: %@",
       "terminal.ai_restore.restored": "AI-Sitzung im Hauptsplit wiederhergestellt.",
       "terminal.ai_restore.paste_failed_format": "Wiederherstellungsbefehl konnte nicht eingefügt werden: %@",
-      "terminal.split.not_found": "Terminal-Split nicht gefunden."
+      "terminal.split.not_found": "Terminal-Split nicht gefunden.",
+      "terminal.search.placeholder": "Suchen"
     },
     "en": {
       "terminal.closed": "Closed terminal.",
@@ -56,7 +57,8 @@
       "terminal.ai_restore.restore_send_failed_format": "AI session split created; restore send failed: %@",
       "terminal.ai_restore.restored": "AI session restored in the main split.",
       "terminal.ai_restore.paste_failed_format": "Failed to paste restore command: %@",
-      "terminal.split.not_found": "Terminal split not found."
+      "terminal.split.not_found": "Terminal split not found.",
+      "terminal.search.placeholder": "Search"
     },
     "es": {
       "terminal.closed": "Closed terminal.",
@@ -83,7 +85,8 @@
       "terminal.ai_restore.restore_send_failed_format": "División creada; falló el envío del comando de restauración: %@",
       "terminal.ai_restore.restored": "Sesión de IA restaurada en la división principal.",
       "terminal.ai_restore.paste_failed_format": "No se pudo pegar el comando de restauración: %@",
-      "terminal.split.not_found": "No se encontró la división de terminal."
+      "terminal.split.not_found": "No se encontró la división de terminal.",
+      "terminal.search.placeholder": "Buscar"
     },
     "fr": {
       "terminal.closed": "Closed terminal.",
@@ -110,7 +113,8 @@
       "terminal.ai_restore.restore_send_failed_format": "Division créée ; échec de l'envoi de la commande de restauration : %@",
       "terminal.ai_restore.restored": "Session IA restaurée dans la division principale.",
       "terminal.ai_restore.paste_failed_format": "Impossible de coller la commande de restauration : %@",
-      "terminal.split.not_found": "Split de terminal introuvable."
+      "terminal.split.not_found": "Split de terminal introuvable.",
+      "terminal.search.placeholder": "Rechercher"
     },
     "ja": {
       "terminal.closed": "Closed terminal.",
@@ -137,7 +141,8 @@
       "terminal.ai_restore.restore_send_failed_format": "分割を作成しましたが、復元コマンドの送信に失敗しました: %@",
       "terminal.ai_restore.restored": "メイン分割で AI セッションを復元しました。",
       "terminal.ai_restore.paste_failed_format": "復元コマンドを貼り付けられませんでした: %@",
-      "terminal.split.not_found": "ターミナル分割が見つかりません。"
+      "terminal.split.not_found": "ターミナル分割が見つかりません。",
+      "terminal.search.placeholder": "検索"
     },
     "ko": {
       "terminal.closed": "Closed terminal.",
@@ -164,7 +169,8 @@
       "terminal.ai_restore.restore_send_failed_format": "분할을 생성했지만 복원 명령 전송에 실패했습니다: %@",
       "terminal.ai_restore.restored": "메인 분할에서 AI 세션을 복원했습니다.",
       "terminal.ai_restore.paste_failed_format": "복원 명령을 붙여넣지 못했습니다: %@",
-      "terminal.split.not_found": "터미널 분할을 찾을 수 없습니다."
+      "terminal.split.not_found": "터미널 분할을 찾을 수 없습니다.",
+      "terminal.search.placeholder": "검색"
     },
     "pt-BR": {
       "terminal.closed": "Closed terminal.",
@@ -191,7 +197,8 @@
       "terminal.ai_restore.restore_send_failed_format": "Divisão criada; falha ao enviar o comando de restauração: %@",
       "terminal.ai_restore.restored": "Sessão de IA restaurada na divisão principal.",
       "terminal.ai_restore.paste_failed_format": "Falha ao colar o comando de restauração: %@",
-      "terminal.split.not_found": "Divisão do terminal não encontrada."
+      "terminal.split.not_found": "Divisão do terminal não encontrada.",
+      "terminal.search.placeholder": "Pesquisar"
     },
     "ru": {
       "terminal.closed": "Closed terminal.",
@@ -218,7 +225,8 @@
       "terminal.ai_restore.restore_send_failed_format": "Разделение создано; не удалось отправить команду восстановления: %@",
       "terminal.ai_restore.restored": "Сессия ИИ восстановлена в основном разделении.",
       "terminal.ai_restore.paste_failed_format": "Не удалось вставить команду восстановления: %@",
-      "terminal.split.not_found": "Сплит терминала не найден."
+      "terminal.split.not_found": "Сплит терминала не найден.",
+      "terminal.search.placeholder": "Поиск"
     },
     "zh-Hans": {
       "terminal.closed": "已关闭终端。",
@@ -249,7 +257,8 @@
       "terminal.ai_restore.restore_send_failed_format": "已创建分屏，但恢复命令发送失败：%@",
       "terminal.ai_restore.restored": "已在主分屏恢复 AI 会话。",
       "terminal.ai_restore.paste_failed_format": "粘贴恢复命令失败：%@",
-      "terminal.split.not_found": "找不到终端分屏。"
+      "terminal.split.not_found": "找不到终端分屏。",
+      "terminal.search.placeholder": "搜索"
     },
     "zh-Hant": {
       "terminal.closed": "已關閉終端機。",
@@ -280,7 +289,8 @@
       "terminal.ai_restore.restore_send_failed_format": "已建立分割，但還原命令傳送失敗：%@",
       "terminal.ai_restore.restored": "已在主分割還原 AI 工作階段。",
       "terminal.ai_restore.paste_failed_format": "貼上復原命令失敗：%@",
-      "terminal.split.not_found": "找不到終端機分屏。"
+      "terminal.split.not_found": "找不到終端機分屏。",
+      "terminal.search.placeholder": "搜尋"
     }
   }
 }

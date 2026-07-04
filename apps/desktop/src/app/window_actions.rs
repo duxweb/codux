@@ -114,6 +114,8 @@ impl CoduxApp {
             root_focus_handle: None,
             terminals: Vec::new(),
             terminal_pane_registry: HashMap::new(),
+            terminal_osc_titles: HashMap::new(),
+            terminal_search_open: std::collections::HashSet::new(),
             terminal_attach_in_flight: std::collections::HashSet::new(),
             terminal_manager: Arc::new(TerminalManager::with_ai_runtime(
                 runtime_service.ai_runtime_bridge(),
@@ -378,6 +380,7 @@ impl CoduxApp {
             task_column_header_view: None,
             task_worktree_list_view: None,
             task_session_list_view: None,
+            task_terminal_list_view: None,
             workspace_column_view: None,
             workspace_toolbar_view: None,
             workspace_body_view: None,
@@ -1067,18 +1070,32 @@ impl CoduxApp {
         if self.window_mode != AppWindowMode::Main {
             return false;
         }
-        let view = self.focused_terminal_view(window, cx).or_else(|| {
-            (self.workspace_view == WorkspaceView::Terminal
-                && !self.file_sidebar_contains_focused(window, cx))
-            .then(|| self.active_terminal_view())
-            .flatten()
-        });
-        let Some(view) = view else {
+        let Some(view) = self.focused_or_active_terminal_view(window, cx) else {
             return false;
         };
         view.update(cx, |terminal, cx| {
-            terminal.handle_terminal_keystroke(&event.keystroke, cx)
+            terminal.handle_app_terminal_keystroke(&event.keystroke, window, cx)
         })
+    }
+
+    pub(super) fn focused_or_active_terminal_view(
+        &self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::Entity<TerminalView>> {
+        self.focused_terminal_view(window, cx).or_else(|| {
+            (self.workspace_view == WorkspaceView::Terminal
+                && !self.file_sidebar_contains_focused(window, cx)
+                && !self.terminal_search_contains_focused(window, cx))
+            .then(|| self.active_terminal_view())
+            .flatten()
+        })
+    }
+
+    fn terminal_search_contains_focused(&self, window: &Window, cx: &mut Context<Self>) -> bool {
+        self.terminal_pane_registry
+            .values()
+            .any(|pane| pane.view.read(cx).search_contains_focused(window, cx))
     }
 
     fn file_sidebar_contains_focused(&self, window: &Window, cx: &mut Context<Self>) -> bool {
@@ -1955,6 +1972,15 @@ impl CoduxApp {
         register!(
             native_menu::EditorSearch,
             |app: &mut CoduxApp, window: &mut Window, cx: &mut Context<CoduxApp>| {
+                // The global cmd-f binding consumes the keystroke before the
+                // terminal's key handler sees it — route to terminal search here.
+                if app.terminal_search_contains_focused(window, cx) {
+                    return;
+                }
+                if let Some(terminal) = app.focused_or_active_terminal_view(window, cx) {
+                    terminal.update(cx, |terminal, cx| terminal.open_search(window, cx));
+                    return;
+                }
                 if let Some(editor) = app.active_file_editor_state() {
                     editor.update(cx, |state, cx| state.focus(window, cx));
                     window.dispatch_action(Box::new(gpui_component::input::Search), cx);

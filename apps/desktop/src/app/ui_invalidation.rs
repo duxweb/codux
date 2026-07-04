@@ -241,7 +241,15 @@ impl CoduxApp {
             self.invalidate_ui_region(cx, UiRegion::Root);
             return;
         }
-        self.invalidate_ui(cx, [UiRegion::WorkspaceBody, UiRegion::StatusBar]);
+        // TaskColumn hosts the terminal list; layout/focus changes move its rows.
+        self.invalidate_ui(
+            cx,
+            [
+                UiRegion::WorkspaceBody,
+                UiRegion::StatusBar,
+                UiRegion::TaskColumn,
+            ],
+        );
     }
 
     pub(in crate::app) fn invalidate_file_panel(&mut self, cx: &mut Context<Self>) {

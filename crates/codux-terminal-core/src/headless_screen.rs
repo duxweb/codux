@@ -42,6 +42,9 @@ pub struct TerminalScreenSnapshot {
     pub scroll_pixel_offset: f64,
     pub application_cursor: bool,
     pub input_mode: TerminalInputMode,
+    /// Window title set by the shell via OSC 0/2; None until one arrives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub cells: Vec<TerminalScreenCellSnapshot>,
     pub cursor: TerminalScreenCursorSnapshot,
 }
@@ -481,6 +484,7 @@ struct TerminalScreenWorker {
     rows: usize,
     scrollback: usize,
     responder: Option<TerminalPtyResponder>,
+    title: Option<String>,
 }
 
 impl TerminalScreenWorker {
@@ -513,6 +517,7 @@ impl TerminalScreenWorker {
             rows,
             scrollback,
             responder,
+            title: None,
         }
     }
 
@@ -522,6 +527,15 @@ impl TerminalScreenWorker {
     fn feed(&mut self, bytes: &[u8], answer_queries: bool) {
         self.parser.advance(&mut self.term, bytes);
         let events: Vec<Event> = self.events.borrow_mut().drain(..).collect();
+        // Titles apply for replayed history too: restored output re-sets the
+        // title the shell had established before the restore.
+        for event in &events {
+            match event {
+                Event::Title(title) => self.title = Some(title.clone()),
+                Event::ResetTitle => self.title = None,
+                _ => {}
+            }
+        }
         let Some(responder) = self.responder.as_ref() else {
             return;
         };
@@ -845,6 +859,7 @@ impl TerminalScreenWorker {
             scroll_pixel_offset,
             application_cursor,
             input_mode,
+            title: self.title.clone(),
             cells,
             cursor,
         }
@@ -1220,6 +1235,7 @@ pub fn stack_scrolled_snapshots(
         scroll_pixel_offset: viewport.scroll_pixel_offset,
         application_cursor: viewport.application_cursor,
         input_mode: viewport.input_mode,
+        title: viewport.title.clone(),
         cells,
         cursor,
     }
@@ -1242,6 +1258,19 @@ mod tests {
         assert!(snapshot.data.contains("bottom"));
         assert!(!snapshot.data.contains("old line"));
         assert!(snapshot.cells.iter().any(|cell| cell.text == "t"));
+    }
+
+    #[test]
+    fn captures_osc_title_into_snapshot() {
+        let mut screen = HeadlessTerminalScreen::new(20, 4, 100);
+        assert_eq!(screen.snapshot().title, None);
+
+        screen.process(b"\x1b]2;dartvm\x07hello");
+        assert_eq!(screen.snapshot().title.as_deref(), Some("dartvm"));
+
+        // Replayed history applies titles too (restore path).
+        screen.process_replay(b"\x1b]0;zsh\x07");
+        assert_eq!(screen.snapshot().title.as_deref(), Some("zsh"));
     }
 
     #[test]

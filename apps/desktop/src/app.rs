@@ -222,7 +222,7 @@ use self::{
     status_bar::StatusBarView,
     task_column::{
         TaskColumnHeaderView, TaskColumnView, TaskSessionDrag, TaskSessionListView,
-        TaskWorktreeListView,
+        TaskTerminalListView, TaskWorktreeListView,
     },
     terminal_float::terminal_float_window,
     terminal_state::{
@@ -247,5 +247,7 @@ use self::{
     ui_invalidation::UiRegion,
     window_shell::child_window_shell,
     work_scheduler::ScheduledWorkPolicy,
-    workspace_views::WorkspaceColumnView,
+    workspace_views::{
+        WorkspaceColumnView, terminal_ai_titles_by_terminal_id, terminal_pane_display_title,
+    },
 };

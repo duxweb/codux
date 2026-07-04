@@ -12,16 +12,18 @@ use codux_terminal_core::{
 };
 use gpui::{
     App, AppContext, Bounds, ClipboardEntry, ClipboardItem, Context, CursorStyle, Edges, Element,
-    ElementId, Entity, ExternalPaths, FocusHandle, Font, FontFeatures, FontStyle, FontWeight,
-    GlobalElementId, Hsla, ImageFormat, InputHandler, InspectorElementId, InteractiveElement,
-    IntoElement, KeyDownEvent, Keystroke, LayoutId, Modifiers, ModifiersChangedEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection, ParentElement, Pixels,
-    Point, Render, ScrollWheelEvent, SharedString, Size, StatefulInteractiveElement, Style, Styled,
-    Subscription, Task, TextAlign, TextRun, TouchPhase, UTF16Selection, UnderlineStyle, WeakEntity,
-    Window, div, px, quad, rgb, transparent_black,
+    ElementId, Entity, ExternalPaths, FocusHandle, Focusable, Font, FontFeatures, FontStyle,
+    FontWeight, GlobalElementId, Hsla, ImageFormat, InputHandler, InspectorElementId,
+    InteractiveElement, IntoElement, KeyDownEvent, Keystroke, LayoutId, Modifiers,
+    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    NavigationDirection, ParentElement, Pixels, Point, Render, ScrollWheelEvent, SharedString,
+    Size, StatefulInteractiveElement, Style, Styled, Subscription, Task, TextAlign, TextRun,
+    TouchPhase, UTF16Selection, UnderlineStyle, WeakEntity, Window, div, px, quad, rgb,
+    transparent_black,
 };
+use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::{Scrollbar, ScrollbarAxis, ScrollbarHandle, ScrollbarShow};
-use gpui_component::{ActiveTheme, Icon};
+use gpui_component::{ActiveTheme, Icon, Sizable, Size as ComponentSize};
 use parking_lot::Mutex;
 use regex::Regex;
 use std::{

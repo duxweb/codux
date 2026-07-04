@@ -19,6 +19,14 @@ pub struct TerminalView {
     focus_in_subscription: Option<Subscription>,
     focus_out_subscription: Option<Subscription>,
     focus_observer: Option<Arc<dyn Fn(&mut Window, &mut Context<TerminalView>)>>,
+    title_observer: Option<Arc<dyn Fn(Option<String>, &mut Context<TerminalView>)>>,
+    search_observer: Option<Arc<dyn Fn(bool, &mut Context<TerminalView>)>>,
+    osc_title: Option<String>,
+    search_open: bool,
+    search_input: Option<Entity<InputState>>,
+    search_matches: Vec<SelectionRange>,
+    search_match_index: usize,
+    _search_input_subscription: Option<Subscription>,
     link_opener: Option<Arc<dyn Fn(String, &mut Window, &mut Context<TerminalView>)>>,
     selection_autoscroll: Option<SelectionAutoScroll>,
     _observe_model: Subscription,
@@ -39,6 +47,8 @@ struct TerminalSuppressedTextInput {
 }
 
 const TERMINAL_TEXT_INPUT_SUPPRESS_WINDOW: Duration = Duration::from_millis(350);
+
+const TERMINAL_SEARCH_MAX_MATCHES: usize = 1000;
 
 #[derive(Debug, Default)]
 struct TerminalScrollHandleState {
@@ -157,7 +167,19 @@ impl TerminalView {
             config.colors.clone(),
         );
         let focus_handle = cx.focus_handle();
-        let observe_model = cx.observe(&model, |_, _, cx| cx.notify());
+        let observe_model = cx.observe(&model, |view: &mut Self, model, cx| {
+            let title = model.read(cx).osc_title();
+            if title != view.osc_title {
+                view.osc_title = title.clone();
+                // The observer runs while this view is under its update lease;
+                // it must hand the VALUE to the app and never trigger a
+                // read-back of this view (entity re-entrancy panic).
+                if let Some(observer) = view.title_observer.clone() {
+                    observer(title, cx);
+                }
+            }
+            cx.notify();
+        });
         let observe_blink_manager = cx.observe(&blink_manager, |_, _, cx| cx.notify());
 
         Self {
@@ -181,6 +203,14 @@ impl TerminalView {
             focus_in_subscription: None,
             focus_out_subscription: None,
             focus_observer: None,
+            title_observer: None,
+            search_observer: None,
+            osc_title: None,
+            search_open: false,
+            search_input: None,
+            search_matches: Vec::new(),
+            search_match_index: 0,
+            _search_input_subscription: None,
             link_opener: None,
             selection_autoscroll: None,
             _observe_model: observe_model,
@@ -273,6 +303,122 @@ impl TerminalView {
         self.link_opener = Some(Arc::new(opener));
     }
 
+    pub fn set_title_observer<F>(&mut self, observer: F)
+    where
+        F: Fn(Option<String>, &mut Context<TerminalView>) + 'static,
+    {
+        self.title_observer = Some(Arc::new(observer));
+    }
+
+    pub fn set_search_observer<F>(&mut self, observer: F)
+    where
+        F: Fn(bool, &mut Context<TerminalView>) + 'static,
+    {
+        self.search_observer = Some(Arc::new(observer));
+    }
+
+    pub fn search_is_open(&self) -> bool {
+        self.search_open
+    }
+
+    /// Shell-set window title (OSC 0/2); None when the shell never set one.
+    pub fn osc_title(&self) -> Option<&str> {
+        self.osc_title
+            .as_deref()
+            .filter(|title| !title.trim().is_empty())
+    }
+
+    fn search_bar_icon_button(
+        &self,
+        id: &'static str,
+        icon: HeroIconName,
+        on_click: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .id(id)
+            .flex_none()
+            .size(px(20.0))
+            .rounded(px(4.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor_pointer()
+            .hover(|style| style.bg(cx.theme().secondary))
+            .on_click(cx.listener(move |view, _, window, cx| on_click(view, window, cx)))
+            .child(
+                Icon::new(icon)
+                    .size_3()
+                    .text_color(cx.theme().muted_foreground),
+            )
+    }
+
+    fn render_search_bar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let Some(input) = self.search_input.clone() else {
+            return div().into_any_element();
+        };
+        let count = self.search_matches.len();
+        let counter = if count == 0 {
+            "0/0".to_string()
+        } else {
+            format!("{}/{}", self.search_match_index + 1, count)
+        };
+        div()
+            .id("terminal-search-bar")
+            .absolute()
+            .top(px(8.0))
+            .right(px(16.0))
+            .occlude()
+            .flex()
+            .items_center()
+            .gap_1()
+            .px(px(6.0))
+            .py(px(4.0))
+            .rounded(px(8.0))
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().popover)
+            .shadow_md()
+            .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                if event.keystroke.key.eq_ignore_ascii_case("escape") {
+                    view.close_search(window, cx);
+                    cx.stop_propagation();
+                }
+            }))
+            .child(
+                Input::new(&input)
+                    .appearance(false)
+                    .with_size(ComponentSize::Small)
+                    .w(px(180.0)),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .text_size(px(11.0))
+                    .text_color(cx.theme().muted_foreground)
+                    .child(counter),
+            )
+            .child(self.search_bar_icon_button(
+                "terminal-search-prev",
+                HeroIconName::ChevronUp,
+                |view, _window, cx| view.step_search(-1, cx),
+                cx,
+            ))
+            .child(self.search_bar_icon_button(
+                "terminal-search-next",
+                HeroIconName::ChevronDown,
+                |view, _window, cx| view.step_search(1, cx),
+                cx,
+            ))
+            .child(self.search_bar_icon_button(
+                "terminal-search-close",
+                HeroIconName::XMark,
+                |view, window, cx| view.close_search(window, cx),
+                cx,
+            ))
+            .into_any_element()
+    }
+
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if is_copy_keystroke(&event.keystroke) {
             if self.copy_selected_text(cx) {
@@ -296,9 +442,159 @@ impl TerminalView {
             return;
         }
 
-        if self.handle_terminal_keystroke(&event.keystroke, cx) {
+        if self.handle_app_terminal_keystroke(&event.keystroke, window, cx) {
             cx.stop_propagation();
         }
+    }
+
+    /// Window-level shortcuts (select-all) plus the PTY keystroke path. Find
+    /// is not handled here: the global cmd-f binding consumes the keystroke
+    /// and routes through the EditorSearch action into open_search.
+    pub fn handle_app_terminal_keystroke(
+        &mut self,
+        keystroke: &Keystroke,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if is_select_all_keystroke(keystroke) {
+            self.select_all(cx);
+            return true;
+        }
+        self.handle_terminal_keystroke(keystroke, cx)
+    }
+
+    fn select_all(&mut self, cx: &mut Context<Self>) {
+        let range = self.model.update(cx, |model, _| model.select_all());
+        self.selection.lock().set_range(range);
+        cx.notify();
+    }
+
+    pub fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let was_open = self.search_open;
+        self.search_open = true;
+        if !was_open {
+            if let Some(observer) = self.search_observer.clone() {
+                observer(true, cx);
+            }
+        }
+        let input = match self.search_input.clone() {
+            Some(input) => input,
+            None => {
+                let placeholder = codux_runtime::i18n::translate(
+                    &self.config.language,
+                    "terminal.search.placeholder",
+                    "Search",
+                );
+                let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+                self._search_input_subscription =
+                    Some(cx.subscribe_in(&input, window, Self::on_search_input_event));
+                self.search_input = Some(input.clone());
+                input
+            }
+        };
+        input.update(cx, |state, cx| state.focus(window, cx));
+        // Reopening with a previous query: refresh its matches against the
+        // current buffer so Enter cycling works right away.
+        let query = input.read(cx).value().to_string();
+        if !query.trim().is_empty() {
+            self.run_search(query, cx);
+        }
+        cx.notify();
+    }
+
+    fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.search_open {
+            return;
+        }
+        self.search_open = false;
+        if let Some(observer) = self.search_observer.clone() {
+            observer(false, cx);
+        }
+        self.search_matches.clear();
+        self.search_match_index = 0;
+        self.selection.lock().clear();
+        self.model.update(cx, |model, _| model.clear_selection());
+        self.focus_handle.focus(window, cx);
+        cx.notify();
+    }
+
+    pub fn search_contains_focused(&self, window: &Window, cx: &App) -> bool {
+        self.search_open
+            && self
+                .search_input
+                .as_ref()
+                .is_some_and(|input| input.read(cx).focus_handle(cx).contains_focused(window, cx))
+    }
+
+    fn on_search_input_event(
+        &mut self,
+        input: &Entity<InputState>,
+        event: &InputEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            InputEvent::Change => {
+                let query = input.read(cx).value().to_string();
+                self.run_search(query, cx);
+                cx.notify();
+            }
+            InputEvent::PressEnter { shift, .. } => {
+                if self.search_matches.is_empty() {
+                    let query = input.read(cx).value().to_string();
+                    self.run_search(query, cx);
+                } else if *shift {
+                    self.step_search(-1, cx);
+                } else {
+                    self.step_search(1, cx);
+                }
+                cx.notify();
+            }
+            _ => {}
+        }
+        let _ = window;
+    }
+
+    fn run_search(&mut self, query: String, cx: &mut Context<Self>) {
+        self.search_match_index = 0;
+        if query.trim().is_empty() {
+            self.search_matches.clear();
+            self.selection.lock().clear();
+            self.model.update(cx, |model, _| model.clear_selection());
+            return;
+        }
+        self.search_matches = self
+            .model
+            .read(cx)
+            .search_buffer(&query, TERMINAL_SEARCH_MAX_MATCHES);
+        if self.search_matches.is_empty() {
+            self.selection.lock().clear();
+            self.model.update(cx, |model, _| model.clear_selection());
+        } else {
+            self.jump_to_search_match(0, cx);
+        }
+    }
+
+    fn step_search(&mut self, delta: i32, cx: &mut Context<Self>) {
+        let count = self.search_matches.len();
+        if count == 0 {
+            return;
+        }
+        let index = (self.search_match_index as i32 + delta).rem_euclid(count as i32) as usize;
+        self.jump_to_search_match(index, cx);
+        cx.notify();
+    }
+
+    fn jump_to_search_match(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(range) = self.search_matches.get(index).copied() else {
+            return;
+        };
+        self.search_match_index = index;
+        self.selection.lock().set_range(range);
+        self.model.update(cx, |model, _| {
+            model.selection.set_range(range);
+            model.scroll_line_to_center(range.start.line);
+        });
     }
 
     pub fn handle_terminal_keystroke(

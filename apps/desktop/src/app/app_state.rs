@@ -52,6 +52,12 @@ pub struct CoduxApp {
     pub(in crate::app) root_focus_handle: Option<FocusHandle>,
     pub(in crate::app) terminals: Vec<TerminalTab>,
     pub(in crate::app) terminal_pane_registry: HashMap<String, TerminalPane>,
+    /// terminal_id → shell OSC title, reported by pane title observers; snapshot
+    /// builders read this map instead of the view entities (re-entrancy).
+    pub(in crate::app) terminal_osc_titles: HashMap<String, String>,
+    /// Terminal ids with an open search bar (same observer pattern); the pane
+    /// toolbar hides while its search bar is shown.
+    pub(in crate::app) terminal_search_open: std::collections::HashSet<String>,
     /// Terminal ids with a host attach currently in flight. Each remote attach
     /// mints a fresh host PTY, so a racing restore that slipped past the pane
     /// registry could open a second PTY for one terminal and orphan it; this
@@ -353,6 +359,7 @@ pub struct CoduxApp {
     pub(in crate::app) task_column_header_view: Option<gpui::Entity<TaskColumnHeaderView>>,
     pub(in crate::app) task_worktree_list_view: Option<gpui::Entity<TaskWorktreeListView>>,
     pub(in crate::app) task_session_list_view: Option<gpui::Entity<TaskSessionListView>>,
+    pub(in crate::app) task_terminal_list_view: Option<gpui::Entity<TaskTerminalListView>>,
     pub(in crate::app) workspace_column_view: Option<gpui::Entity<WorkspaceColumnView>>,
     pub(in crate::app) workspace_toolbar_view:
         Option<gpui::Entity<workspace_views::WorkspaceToolbarView>>,

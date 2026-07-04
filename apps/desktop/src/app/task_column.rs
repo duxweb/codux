@@ -12,6 +12,7 @@ use gpui::ListSizingBehavior;
 pub(in crate::app) struct TaskColumnView {
     header_view: gpui::Entity<TaskColumnHeaderView>,
     worktree_list_view: gpui::Entity<TaskWorktreeListView>,
+    terminal_list_view: gpui::Entity<TaskTerminalListView>,
     session_list_view: gpui::Entity<TaskSessionListView>,
 }
 
@@ -67,6 +68,7 @@ impl Render for TaskColumnView {
         task_column_content(
             self.header_view.clone(),
             self.worktree_list_view.clone(),
+            self.terminal_list_view.clone(),
             self.session_list_view.clone(),
         )
         .into_any_element()
@@ -84,10 +86,12 @@ impl CoduxApp {
         }
         let header_view = self.task_column_header_view(cx);
         let worktree_list_view = self.task_worktree_list_view(cx);
+        let terminal_list_view = self.task_terminal_list_view(cx);
         let session_list_view = self.task_session_list_view(cx);
         let view = cx.new(|_| TaskColumnView {
             header_view,
             worktree_list_view,
+            terminal_list_view,
             session_list_view,
         });
         self.task_column_view = Some(view.clone());
@@ -97,6 +101,7 @@ impl CoduxApp {
     pub(in crate::app) fn update_task_column_child_views(&mut self, cx: &mut Context<Self>) {
         let _ = self.task_column_header_view(cx);
         let _ = self.task_worktree_list_view(cx);
+        let _ = self.task_terminal_list_view(cx);
         let _ = self.task_session_list_view(cx);
     }
 }
@@ -109,6 +114,7 @@ struct TaskColumnLabels {
     no_sessions_title: String,
     no_branch: String,
     sessions: String,
+    terminals: String,
     changed_format: String,
     create: String,
     refresh: String,
@@ -129,6 +135,7 @@ fn task_column_labels(language: &str) -> TaskColumnLabels {
         no_sessions_title: tr("ai.sessions.empty", "No Sessions"),
         no_branch: tr("git.branch.none", "No Branch"),
         sessions: tr("ai.sessions.history", "Session History"),
+        terminals: tr("terminal.title", "Terminal"),
         changed_format: tr("worktree.sidebar.changed_format", "%@ changed"),
         create: tr("worktree.create.title", "New Worktree"),
         refresh: tr("common.refresh", "Refresh"),
@@ -224,6 +231,55 @@ impl Render for TaskWorktreeListView {
 }
 
 #[derive(Clone, PartialEq)]
+struct TaskTerminalRow {
+    pane_index: usize,
+    title: String,
+    subtitle: Option<String>,
+    active: bool,
+}
+
+#[derive(Clone, PartialEq)]
+pub(in crate::app) struct TaskTerminalListSnapshot {
+    labels: TaskColumnLabels,
+    terminals: Vec<TaskTerminalRow>,
+}
+
+pub(in crate::app) struct TaskTerminalListView {
+    app_entity: gpui::Entity<CoduxApp>,
+    snapshot: TaskTerminalListSnapshot,
+    scroll_handle: UniformListScrollHandle,
+}
+
+impl TaskTerminalListView {
+    fn set_snapshot(&mut self, snapshot: TaskTerminalListSnapshot, cx: &mut Context<Self>) {
+        if self.snapshot == snapshot {
+            return;
+        }
+        if self.snapshot.terminals.len() != snapshot.terminals.len() {
+            codux_runtime::runtime_trace::runtime_trace(
+                "task-terminal-list",
+                &format!("rows={}", snapshot.terminals.len()),
+            );
+        }
+        self.snapshot = snapshot;
+        cx.notify();
+    }
+}
+
+impl Render for TaskTerminalListView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        terminal_list_area(
+            self.snapshot.terminals.clone(),
+            self.snapshot.labels.clone(),
+            self.scroll_handle.clone(),
+            self.app_entity.clone(),
+            cx,
+        )
+        .into_any_element()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub(in crate::app) struct TaskSessionListSnapshot {
     labels: TaskColumnLabels,
     sessions: Vec<TaskSessionRow>,
@@ -297,6 +353,25 @@ impl CoduxApp {
         view
     }
 
+    fn task_terminal_list_view(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> gpui::Entity<TaskTerminalListView> {
+        let snapshot = self.task_terminal_list_snapshot();
+        if let Some(view) = self.task_terminal_list_view.clone() {
+            view.update(cx, |view, cx| view.set_snapshot(snapshot, cx));
+            return view;
+        }
+        let app_entity = cx.entity();
+        let view = cx.new(|_| TaskTerminalListView {
+            app_entity,
+            snapshot,
+            scroll_handle: UniformListScrollHandle::new(),
+        });
+        self.task_terminal_list_view = Some(view.clone());
+        view
+    }
+
     fn task_session_list_view(
         &mut self,
         cx: &mut Context<Self>,
@@ -363,6 +438,42 @@ impl CoduxApp {
         TaskWorktreeListSnapshot { labels, worktrees }
     }
 
+    fn task_terminal_list_snapshot(&self) -> TaskTerminalListSnapshot {
+        let labels = task_column_labels(&self.state.settings.language);
+        let ai_titles = terminal_ai_titles_by_terminal_id(&self.state.ai_runtime_state.sessions);
+        let active_terminal_id = self.active_terminal_runtime_id();
+        let terminals = self
+            .main_terminal()
+            .map(|tab| {
+                tab.panes
+                    .iter()
+                    .enumerate()
+                    .map(|(index, slot)| {
+                        let terminal_id = Self::terminal_slot_terminal_id(tab, index, slot);
+                        let osc_title = terminal_id
+                            .as_deref()
+                            .and_then(|id| self.terminal_osc_titles.get(id));
+                        let (title, subtitle) = terminal_pane_display_title(
+                            slot,
+                            &ai_titles,
+                            osc_title.map(String::as_str),
+                            &labels.language,
+                        );
+                        TaskTerminalRow {
+                            pane_index: index,
+                            title,
+                            subtitle,
+                            active: !active_terminal_id.is_empty()
+                                && terminal_id.as_deref() == Some(active_terminal_id.as_str()),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        TaskTerminalListSnapshot { labels, terminals }
+    }
+
     fn task_session_list_snapshot(&self) -> TaskSessionListSnapshot {
         let labels = task_column_labels(&self.state.settings.language);
         let sessions = self
@@ -380,10 +491,12 @@ impl CoduxApp {
 fn task_column_content(
     header_view: gpui::Entity<TaskColumnHeaderView>,
     worktree_list_view: gpui::Entity<TaskWorktreeListView>,
+    terminal_list_view: gpui::Entity<TaskTerminalListView>,
     session_list_view: gpui::Entity<TaskSessionListView>,
 ) -> impl IntoElement {
-    // Fixed 5:5 split: worktrees on the top half, session history below —
-    // no resizable divider, matching the flat design.
+    // Worktrees and session history share the leftover height; the terminal
+    // list in between has a row-count-derived fixed height (max 6 rows, then
+    // scrolls) because uniform_list has no intrinsic content size.
     div()
         .flex()
         .flex_col()
@@ -402,11 +515,16 @@ fn task_column_content(
                 .flex_col()
                 .child(
                     div()
-                        .flex_none()
-                        .h(relative(0.5))
+                        .flex_1()
                         .min_h_0()
                         .overflow_hidden()
                         .child(gpui::AnyView::from(worktree_list_view)),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .overflow_hidden()
+                        .child(gpui::AnyView::from(terminal_list_view)),
                 )
                 .child(
                     div()
@@ -684,10 +802,124 @@ fn recent_session_area(
         )
 }
 
+const TERMINAL_LIST_ROW_HEIGHT: f32 = 34.0;
+const TERMINAL_LIST_MAX_VISIBLE_ROWS: usize = 6;
+
+fn terminal_list_area(
+    terminals: Vec<TaskTerminalRow>,
+    labels: TaskColumnLabels,
+    scroll_handle: UniformListScrollHandle,
+    app_entity: gpui::Entity<CoduxApp>,
+    cx: &mut Context<TaskTerminalListView>,
+) -> impl IntoElement {
+    let count = terminals.len();
+    if count == 0 {
+        // Auto-height section: no terminals, no space.
+        return div().into_any_element();
+    }
+    // Deterministic height from the row count: uniform_list has no intrinsic
+    // content size, so an auto-height ancestor would collapse this section.
+    let visible_rows = count.min(TERMINAL_LIST_MAX_VISIBLE_ROWS);
+    let height = 32.0 + visible_rows as f32 * TERMINAL_LIST_ROW_HEIGHT + 8.0;
+    let terminals = Rc::new(terminals);
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .h(px(height))
+        .child(session_section_heading(labels.terminals.clone(), count, cx))
+        .child(
+            div()
+                .w_full()
+                .min_w_0()
+                .flex_1()
+                .min_h_0()
+                .px_2()
+                .pb_2()
+                .overflow_hidden()
+                .child(codux_uniform_list(
+                    "task-column-terminals",
+                    terminals,
+                    scroll_handle,
+                    None,
+                    cx,
+                    move |terminal, _index, _window, cx| {
+                        div()
+                            .w_full()
+                            .min_w_0()
+                            .h(px(TERMINAL_LIST_ROW_HEIGHT))
+                            .pb(px(4.0))
+                            .child(terminal_compact_row(terminal, app_entity.clone(), cx))
+                            .into_any_element()
+                    },
+                )),
+        )
+        .into_any_element()
+}
+
+fn terminal_compact_row(
+    terminal: TaskTerminalRow,
+    app_entity: gpui::Entity<CoduxApp>,
+    cx: &mut Context<TaskTerminalListView>,
+) -> impl IntoElement {
+    let pane_index = terminal.pane_index;
+    div()
+        .id(SharedString::from(format!("compact-terminal-{pane_index}")))
+        .w_full()
+        .min_w_0()
+        .h_full()
+        .rounded(px(8.0))
+        .px_3()
+        .flex()
+        .items_center()
+        .gap_2()
+        .when(terminal.active, |this| {
+            this.bg(theme::elevate(color(theme::BG_COLUMN), 0.07))
+        })
+        .cursor_pointer()
+        .hover(|style| style.bg(theme::elevate(color(theme::BG_COLUMN), 0.07)))
+        .on_click(move |_, window, cx| {
+            cx.update_entity(&app_entity, |app, cx| {
+                if app.workspace_view != WorkspaceView::Terminal {
+                    app.set_workspace_view(WorkspaceView::Terminal, window, cx);
+                }
+                app.select_terminal_pane(pane_index, window, cx);
+            });
+        })
+        .child(
+            Icon::new(HeroIconName::CommandLine)
+                .size_3p5()
+                .flex_none()
+                .text_color(cx.theme().muted_foreground),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_sm()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(color(theme::TEXT))
+                .truncate()
+                .child(terminal.title),
+        )
+        .when_some(terminal.subtitle, |this, subtitle| {
+            this.child(
+                div()
+                    .flex_none()
+                    .max_w(px(90.0))
+                    .text_size(rems(0.75))
+                    .line_height(rems(1.0))
+                    .text_color(color(theme::TEXT_DIM))
+                    .truncate()
+                    .child(subtitle),
+            )
+        })
+}
+
 fn session_section_heading(
     title: String,
     count: usize,
-    cx: &mut Context<TaskSessionListView>,
+    cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
     div()
         .h(px(32.0))
