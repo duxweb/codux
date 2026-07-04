@@ -4,6 +4,12 @@ Important changes to this project are documented here.
 
 ## [Unreleased]
 
+## [2.0.0-rc.1] - 2026-07-04
+
+### Changed
+
+- Aligned the Flutter mobile release with Codux 2.0.0-rc.1. No mobile protocol changes are required for this release candidate.
+
 ## [2.0.0-beta.8] - 2026-07-02
 
 ### Fixed
