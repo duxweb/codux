@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::ui_helpers::codux_tooltip_container;
+use crate::app::workspace_shared::workspace_i18n;
 use gpui::Anchor;
 use gpui_component::popover::Popover;
 
@@ -945,6 +946,7 @@ fn workspace_pet_fingerprint(app: &CoduxApp) -> u64 {
 #[derive(Clone, PartialEq)]
 pub(in crate::app) struct TerminalWorkspaceSnapshot {
     loading: bool,
+    language: String,
     layout_key: String,
     top_ratios: Vec<f64>,
     top_grid: TerminalTopGrid,
@@ -972,6 +974,7 @@ impl TerminalWorkspaceSnapshot {
 
 #[derive(Clone)]
 struct TerminalPaneViewSnapshot {
+    terminal_id: Option<String>,
     view: Option<gpui::Entity<TerminalView>>,
     title: String,
     subtitle: Option<String>,
@@ -979,7 +982,10 @@ struct TerminalPaneViewSnapshot {
 
 impl PartialEq for TerminalPaneViewSnapshot {
     fn eq(&self, other: &Self) -> bool {
-        if self.title != other.title || self.subtitle != other.subtitle {
+        if self.terminal_id != other.terminal_id
+            || self.title != other.title
+            || self.subtitle != other.subtitle
+        {
             return false;
         }
         match (&self.view, &other.view) {
@@ -1087,6 +1093,7 @@ impl Render for TerminalWorkspaceView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let main = terminal_main_split_area(
             self.app_entity.clone(),
+            &self.snapshot.language,
             self.snapshot.main_panes.clone(),
             &self.snapshot.layout_key,
             &self.snapshot.top_ratios,
@@ -1208,9 +1215,11 @@ impl CoduxApp {
             .map(|tab| {
                 tab.panes
                     .iter()
-                    .map(|slot| {
+                    .enumerate()
+                    .map(|(index, slot)| {
                         let (title, subtitle) = terminal_pane_display_title(slot, &ai_titles);
                         TerminalPaneViewSnapshot {
+                            terminal_id: Self::terminal_slot_terminal_id(tab, index, slot),
                             view: slot.pane.as_ref().map(|pane| pane.view.clone()),
                             title,
                             subtitle,
@@ -1237,6 +1246,7 @@ impl CoduxApp {
         );
         TerminalWorkspaceSnapshot {
             loading: self.terminal_layout_loading,
+            language: self.state.settings.language.clone(),
             layout_key: super::ai_runtime_status::current_terminal_layout_storage_key(&self.state)
                 .unwrap_or_default(),
             top_ratios,
@@ -1325,6 +1335,7 @@ fn terminal_layout_key_for_element_id(key: &str) -> String {
 
 fn terminal_main_split_area(
     app_entity: gpui::Entity<CoduxApp>,
+    language: &str,
     panes: Vec<TerminalPaneViewSnapshot>,
     layout_key: &str,
     top_ratios: &[f64],
@@ -1360,6 +1371,7 @@ fn terminal_main_split_area(
     let content = terminal_split_node_element(
         app_entity.clone(),
         layout_key,
+        language,
         panes,
         &tree,
         Vec::new(),
@@ -1656,6 +1668,7 @@ fn terminal_pane_drop_target_in_node(
 fn terminal_split_node_element(
     app_entity: gpui::Entity<CoduxApp>,
     layout_key: &str,
+    language: &str,
     panes: Vec<TerminalPaneViewSnapshot>,
     node: &TerminalSplitNode,
     path: Vec<usize>,
@@ -1673,6 +1686,7 @@ fn terminal_split_node_element(
                 terminal_pane(
                     app_entity,
                     *pane,
+                    language,
                     pane_count,
                     slot,
                     open_split_menu_pane,
@@ -1720,6 +1734,7 @@ fn terminal_split_node_element(
                 let child_element = terminal_split_node_element(
                     app_entity.clone(),
                     layout_key,
+                    language,
                     panes.clone(),
                     child,
                     child_path,
@@ -1827,6 +1842,7 @@ fn terminal_top_ratios_from_sizes(sizes: &[Pixels]) -> Option<Vec<f64>> {
 fn terminal_pane(
     app_entity: gpui::Entity<CoduxApp>,
     index: usize,
+    language: &str,
     pane_count: usize,
     slot: TerminalPaneViewSnapshot,
     open_split_menu_pane: Option<usize>,
@@ -1835,6 +1851,9 @@ fn terminal_pane(
     let close_id = SharedString::from(format!("terminal-pane-close-{index}"));
     let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
     let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
+    let session_drop_entity = app_entity.clone();
+    let pane_view = slot.view.clone();
+    let drop_terminal_id = slot.terminal_id.clone();
 
     // Flat pane: hairline divider against the previous column, controls float
     // over the terminal's top-right corner and appear on hover.
@@ -1858,7 +1877,7 @@ fn terminal_pane(
                 .min_w_0()
                 .min_h_0()
                 .overflow_hidden()
-                .child(match slot.view {
+                .child(match pane_view {
                     Some(view) => gpui::AnyView::from(view).into_any_element(),
                     None => div()
                         .size_full()
@@ -1867,7 +1886,11 @@ fn terminal_pane(
                         .justify_center()
                         .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
                         .text_color(color(theme::TEXT_DIM))
-                        .child("Terminal mounting...")
+                        .child(workspace_i18n(
+                            language,
+                            "terminal.detached.mounting",
+                            "Mounting terminal...",
+                        ))
                         .into_any_element(),
                 }),
         )
@@ -1894,7 +1917,11 @@ fn terminal_pane(
                     app_entity.clone(),
                     float_id,
                     HeroIconName::ArrowTopRightOnSquare,
-                    "浮窗",
+                    SharedString::from(workspace_i18n(
+                        language,
+                        "terminal.detach",
+                        "Open in Separate Window",
+                    )),
                     pane_count > 1,
                     cx,
                     move |app, window, cx| app.float_terminal_pane(index, window, cx),
@@ -1910,11 +1937,54 @@ fn terminal_pane(
                     app_entity,
                     close_id,
                     HeroIconName::XMark,
-                    "关闭分屏",
+                    SharedString::from(workspace_i18n(
+                        language,
+                        "terminal.split.close",
+                        "Close Split",
+                    )),
                     pane_count > 1,
                     cx,
                     move |app, window, cx| app.close_terminal_pane(index, window, cx),
                 )),
+        )
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .left_0()
+                .invisible()
+                .p_2()
+                .group_drag_over::<TaskSessionDrag>("terminal-pane", |this| this.visible())
+                .on_drop(
+                    cx.listener(move |_view, drag: &TaskSessionDrag, window, cx| {
+                        let session_id = drag.session_id.clone();
+                        let terminal_id = drop_terminal_id.clone();
+                        defer_terminal_workspace_app_update(
+                            session_drop_entity.clone(),
+                            window,
+                            cx,
+                            move |app, window, app_cx| {
+                                app.paste_ai_session_restore_to_main_pane(
+                                    terminal_id.as_deref(),
+                                    &session_id,
+                                    window,
+                                    app_cx,
+                                );
+                            },
+                        );
+                        cx.stop_propagation();
+                    }),
+                )
+                .child(
+                    div()
+                        .size_full()
+                        .rounded(px(10.0))
+                        .border_1()
+                        .border_color(color(theme::ACCENT).opacity(0.70))
+                        .bg(color(theme::ACCENT).opacity(0.12)),
+                ),
         )
         .into_any_element()
 }
@@ -2197,7 +2267,7 @@ fn terminal_pane_control_button(
     app_entity: gpui::Entity<CoduxApp>,
     id: SharedString,
     icon: HeroIconName,
-    tooltip: &'static str,
+    tooltip: SharedString,
     enabled: bool,
     cx: &mut Context<TerminalWorkspaceView>,
     on_click: impl Fn(&mut CoduxApp, &mut Window, &mut Context<CoduxApp>) + 'static,

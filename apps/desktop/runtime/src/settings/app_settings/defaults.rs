@@ -59,7 +59,7 @@ pub(super) fn default_ai_tool_permission_mode() -> String {
 }
 
 pub(super) fn default_codex_effort() -> String {
-    "medium".to_string()
+    "none".to_string()
 }
 
 pub(super) fn default_memory_user_recall() -> i32 {

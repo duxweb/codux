@@ -221,7 +221,8 @@ use self::{
     ssh_profile_editor::ssh_profile_editor_workspace,
     status_bar::StatusBarView,
     task_column::{
-        TaskColumnHeaderView, TaskColumnView, TaskSessionListView, TaskWorktreeListView,
+        TaskColumnHeaderView, TaskColumnView, TaskSessionDrag, TaskSessionListView,
+        TaskWorktreeListView,
     },
     terminal_float::terminal_float_window,
     terminal_state::{

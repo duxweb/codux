@@ -236,7 +236,7 @@ fn default_permission_mode() -> String {
 }
 
 fn default_codex_effort() -> String {
-    "medium".to_string()
+    "none".to_string()
 }
 
 fn runtime_temp_dir() -> PathBuf {
@@ -253,6 +253,26 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("codux-gpui-tools-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn sync_defaults_codex_effort_to_none() {
+        let support_dir = temp_support_dir();
+        let output_path = support_dir.join("tmp/tool-permissions.json");
+        let service = ToolPermissionsService {
+            settings_path: support_dir.join("settings.json"),
+            output_path: output_path.clone(),
+        };
+
+        let summary = service.sync();
+        let written =
+            serde_json::from_str::<Value>(&fs::read_to_string(output_path).unwrap()).unwrap();
+
+        assert!(summary.available);
+        assert_eq!(summary.codex_effort, "none");
+        assert_eq!(written["codexEffort"], "none");
+
+        fs::remove_dir_all(support_dir).unwrap();
     }
 
     #[test]

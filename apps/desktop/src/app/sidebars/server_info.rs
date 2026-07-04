@@ -3,7 +3,7 @@ use codux_runtime::{
     RemoteHostDiskMetrics, RemoteHostMetrics, RemoteHostProcessMetrics, i18n::translate,
     settings::locale_from_language_setting,
 };
-const SERVER_INFO_POLL_INTERVAL: Duration = Duration::from_secs(2);
+const SERVER_INFO_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const SERVER_INFO_VALUE_TEXT: f32 = 0.875;
 const SERVER_INFO_VALUE_LARGE_TEXT: f32 = 1.65;
 #[derive(Clone, PartialEq)]

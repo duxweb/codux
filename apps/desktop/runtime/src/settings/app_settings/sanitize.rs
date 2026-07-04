@@ -217,6 +217,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
         "none" => "none".to_string(),
         "minimal" => "minimal".to_string(),
         "low" => "low".to_string(),
+        "medium" => "medium".to_string(),
         "high" => "high".to_string(),
         "xhigh" => "xhigh".to_string(),
         _ => default_codex_effort(),

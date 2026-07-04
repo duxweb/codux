@@ -332,7 +332,7 @@ configured_codex_effort() {
     configured_effort="$(json_string_key_fallback "${config_path}" "codexEffort" || true)"
   fi
   case "${configured_effort}" in
-    none|minimal|low|medium|high|xhigh)
+    minimal|low|medium|high|xhigh)
       print -r -- "${configured_effort}"
       ;;
   esac

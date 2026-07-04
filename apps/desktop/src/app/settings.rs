@@ -4278,7 +4278,7 @@ fn settings_runtime_tool_block(
                 settings_select_impl(
                     "settings-codex-effort",
                     codex_effort,
-                    codex_effort_options(),
+                    codex_effort_options(language),
                     window,
                     cx,
                     language,
@@ -5244,18 +5244,57 @@ fn settings_remote_relay_custom_fields(
         .into_any_element()
 }
 
-fn codex_effort_options() -> Vec<(String, SharedString)> {
+fn codex_effort_options(language: &str) -> Vec<(String, SharedString)> {
     vec![
-        ("none", "None"),
-        ("minimal", "Minimal"),
-        ("low", "Low"),
-        ("medium", "Medium"),
-        ("high", "High"),
-        ("xhigh", "XHigh"),
+        (
+            "none".to_string(),
+            SharedString::from(settings_text(
+                language,
+                "settings.ai.tool.reasoning_effort.default",
+                "Default",
+            )),
+        ),
+        (
+            "minimal".to_string(),
+            SharedString::from(settings_text(
+                language,
+                "settings.ai.tool.reasoning_effort.minimal",
+                "Minimal",
+            )),
+        ),
+        (
+            "low".to_string(),
+            SharedString::from(settings_text(
+                language,
+                "settings.ai.tool.reasoning_effort.low",
+                "Low",
+            )),
+        ),
+        (
+            "medium".to_string(),
+            SharedString::from(settings_text(
+                language,
+                "settings.ai.tool.reasoning_effort.medium",
+                "Medium",
+            )),
+        ),
+        (
+            "high".to_string(),
+            SharedString::from(settings_text(
+                language,
+                "settings.ai.tool.reasoning_effort.high",
+                "High",
+            )),
+        ),
+        (
+            "xhigh".to_string(),
+            SharedString::from(settings_text(
+                language,
+                "settings.ai.tool.reasoning_effort.xhigh",
+                "XHigh",
+            )),
+        ),
     ]
-    .into_iter()
-    .map(|(value, label)| opt(value, label))
-    .collect()
 }
 
 fn git_provider_options(settings: &SettingsSummary, language: &str) -> Vec<(String, SharedString)> {

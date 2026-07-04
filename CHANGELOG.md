@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-rc.1] - 2026-07-04
+
+### Added
+
+- Added bottom time axes to the AI usage trend and heatmap charts, including localized month labels for the visible heatmap range.
+- Added drag-and-drop restore from AI session history into terminal panes, pasting the restore command for user confirmation.
+
+### Fixed
+
+- Reduced Server panel host metrics polling and cached disk metrics between refreshes to avoid noisy macOS volume-space queries.
+- Preserved rotated desktop runtime logs across restarts, included recent rotations in runtime log previews, and wrote Rust panic payloads, source locations, and backtraces to `runtime-rust.log`.
+- Changed the default Codex reasoning effort to Default/none so Codux follows Codex's own configuration unless the user selects an explicit effort.
+- Made Codex wrappers reload tool permission settings on each launch and avoid passing `model_reasoning_effort` when the effort is Default.
+- Fixed PowerShell wrapper reasoning-effort validation and config-key detection to match the shell wrapper.
+
 ## [2.0.0-beta.11] - 2026-07-04
 
 ### Added

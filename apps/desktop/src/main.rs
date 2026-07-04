@@ -24,12 +24,15 @@ use gpui_component::Root;
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::cell::Cell;
+use std::panic;
 use std::rc::Rc;
 
 fn main() -> Result<()> {
     if handle_cli_args() {
         return Ok(());
     }
+
+    install_panic_logger();
 
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     disable_macos_autofill_heuristics();
@@ -92,6 +95,35 @@ fn main() -> Result<()> {
     });
 
     Ok(())
+}
+
+fn install_panic_logger() {
+    let default_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        let location = info
+            .location()
+            .map(|location| {
+                format!(
+                    "{}:{}:{}",
+                    location.file(),
+                    location.line(),
+                    location.column()
+                )
+            })
+            .unwrap_or_else(|| "unknown location".to_string());
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        codux_runtime::runtime_trace::runtime_trace(
+            "panic",
+            &format!("{payload} at {location}\n{backtrace}"),
+        );
+        default_hook(info);
+    }));
 }
 
 fn handle_cli_args() -> bool {

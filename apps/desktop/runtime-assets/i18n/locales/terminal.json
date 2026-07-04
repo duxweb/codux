@@ -16,7 +16,16 @@
       "terminal.main": "Main Terminal",
       "terminal.split.default_format": "Split %d",
       "terminal.close.confirm_split": "Zum Schliessen der aktuellen Teilung erneut %@ drucken",
-      "terminal.default_format": "Terminal %d"
+      "terminal.default_format": "Terminal %d",
+      "terminal.ai_restore.no_session": "Keine KI-Sitzung zum Wiederherstellen.",
+      "terminal.ai_restore.pasted": "Wiederherstellungsbefehl für KI-Sitzung eingefügt.",
+      "terminal.ai_restore.no_main_terminal": "Kein Hauptterminal zum Wiederherstellen der Sitzung.",
+      "terminal.ai_restore.split_limit": "Maximale Anzahl an Splits erreicht.",
+      "terminal.ai_restore.no_workspace": "Kein Arbeitsbereich für das Terminal ausgewählt.",
+      "terminal.ai_restore.restore_send_failed_format": "Split erstellt; Senden des Wiederherstellungsbefehls fehlgeschlagen: %@",
+      "terminal.ai_restore.restored": "AI-Sitzung im Hauptsplit wiederhergestellt.",
+      "terminal.ai_restore.paste_failed_format": "Wiederherstellungsbefehl konnte nicht eingefügt werden: %@",
+      "terminal.split.not_found": "Terminal-Split nicht gefunden."
     },
     "en": {
       "terminal.closed": "Closed terminal.",
@@ -38,7 +47,16 @@
       "terminal.handoff.tablet": "Tablet",
       "terminal.handoff.inUse": "is using this terminal",
       "terminal.handoff.takeOver": "Take over",
-      "terminal.default_format": "Terminal %d"
+      "terminal.default_format": "Terminal %d",
+      "terminal.ai_restore.no_session": "No AI session to restore.",
+      "terminal.ai_restore.pasted": "AI session restore command pasted.",
+      "terminal.ai_restore.no_main_terminal": "No main terminal to restore the session.",
+      "terminal.ai_restore.split_limit": "Main split limit reached.",
+      "terminal.ai_restore.no_workspace": "No selected workspace for the terminal.",
+      "terminal.ai_restore.restore_send_failed_format": "AI session split created; restore send failed: %@",
+      "terminal.ai_restore.restored": "AI session restored in the main split.",
+      "terminal.ai_restore.paste_failed_format": "Failed to paste restore command: %@",
+      "terminal.split.not_found": "Terminal split not found."
     },
     "es": {
       "terminal.closed": "Closed terminal.",
@@ -56,7 +74,16 @@
       "terminal.main": "Main Terminal",
       "terminal.split.default_format": "Split %d",
       "terminal.close.confirm_split": "Pulsa %@ de nuevo para cerrar la división actual",
-      "terminal.default_format": "Terminal %d"
+      "terminal.default_format": "Terminal %d",
+      "terminal.ai_restore.no_session": "No hay una sesión de IA para restaurar.",
+      "terminal.ai_restore.pasted": "Comando de restauración de sesión de IA pegado.",
+      "terminal.ai_restore.no_main_terminal": "No hay terminal principal para restaurar la sesión.",
+      "terminal.ai_restore.split_limit": "Se alcanzó el límite de divisiones.",
+      "terminal.ai_restore.no_workspace": "No hay espacio de trabajo seleccionado para el terminal.",
+      "terminal.ai_restore.restore_send_failed_format": "División creada; falló el envío del comando de restauración: %@",
+      "terminal.ai_restore.restored": "Sesión de IA restaurada en la división principal.",
+      "terminal.ai_restore.paste_failed_format": "No se pudo pegar el comando de restauración: %@",
+      "terminal.split.not_found": "No se encontró la división de terminal."
     },
     "fr": {
       "terminal.closed": "Closed terminal.",
@@ -74,7 +101,16 @@
       "terminal.main": "Main Terminal",
       "terminal.split.default_format": "Split %d",
       "terminal.close.confirm_split": "Appuyez de nouveau sur %@ pour fermer la division actuelle",
-      "terminal.default_format": "Terminal %d"
+      "terminal.default_format": "Terminal %d",
+      "terminal.ai_restore.no_session": "Aucune session IA à restaurer.",
+      "terminal.ai_restore.pasted": "Commande de restauration de session IA collée.",
+      "terminal.ai_restore.no_main_terminal": "Aucun terminal principal pour restaurer la session.",
+      "terminal.ai_restore.split_limit": "Limite de divisions atteinte.",
+      "terminal.ai_restore.no_workspace": "Aucun espace de travail sélectionné pour le terminal.",
+      "terminal.ai_restore.restore_send_failed_format": "Division créée ; échec de l'envoi de la commande de restauration : %@",
+      "terminal.ai_restore.restored": "Session IA restaurée dans la division principale.",
+      "terminal.ai_restore.paste_failed_format": "Impossible de coller la commande de restauration : %@",
+      "terminal.split.not_found": "Split de terminal introuvable."
     },
     "ja": {
       "terminal.closed": "Closed terminal.",
@@ -92,7 +128,16 @@
       "terminal.main": "Main Terminal",
       "terminal.split.default_format": "Split %d",
       "terminal.close.confirm_split": "現在の分割を閉じるには %@ をもう一度押してください",
-      "terminal.default_format": "Terminal %d"
+      "terminal.default_format": "Terminal %d",
+      "terminal.ai_restore.no_session": "復元する AI セッションがありません。",
+      "terminal.ai_restore.pasted": "AI セッション復元コマンドを貼り付けました。",
+      "terminal.ai_restore.no_main_terminal": "セッションを復元するメインターミナルがありません。",
+      "terminal.ai_restore.split_limit": "分割数が上限に達しました。",
+      "terminal.ai_restore.no_workspace": "ターミナル用のワークスペースが選択されていません。",
+      "terminal.ai_restore.restore_send_failed_format": "分割を作成しましたが、復元コマンドの送信に失敗しました: %@",
+      "terminal.ai_restore.restored": "メイン分割で AI セッションを復元しました。",
+      "terminal.ai_restore.paste_failed_format": "復元コマンドを貼り付けられませんでした: %@",
+      "terminal.split.not_found": "ターミナル分割が見つかりません。"
     },
     "ko": {
       "terminal.closed": "Closed terminal.",
@@ -110,7 +155,16 @@
       "terminal.main": "Main Terminal",
       "terminal.split.default_format": "Split %d",
       "terminal.close.confirm_split": "현재 분할을 닫으려면 %@를 한 번 더 누르세요",
-      "terminal.default_format": "Terminal %d"
+      "terminal.default_format": "Terminal %d",
+      "terminal.ai_restore.no_session": "복원할 AI 세션이 없습니다.",
+      "terminal.ai_restore.pasted": "AI 세션 복원 명령을 붙여넣었습니다.",
+      "terminal.ai_restore.no_main_terminal": "세션을 복원할 메인 터미널이 없습니다.",
+      "terminal.ai_restore.split_limit": "분할 개수가 상한에 도달했습니다.",
+      "terminal.ai_restore.no_workspace": "터미널에 선택된 워크스페이스가 없습니다.",
+      "terminal.ai_restore.restore_send_failed_format": "분할을 생성했지만 복원 명령 전송에 실패했습니다: %@",
+      "terminal.ai_restore.restored": "메인 분할에서 AI 세션을 복원했습니다.",
+      "terminal.ai_restore.paste_failed_format": "복원 명령을 붙여넣지 못했습니다: %@",
+      "terminal.split.not_found": "터미널 분할을 찾을 수 없습니다."
     },
     "pt-BR": {
       "terminal.closed": "Closed terminal.",
@@ -128,7 +182,16 @@
       "terminal.main": "Main Terminal",
       "terminal.split.default_format": "Split %d",
       "terminal.close.confirm_split": "Pressione %@ novamente para fechar a divisão atual",
-      "terminal.default_format": "Terminal %d"
+      "terminal.default_format": "Terminal %d",
+      "terminal.ai_restore.no_session": "Nenhuma sessão de IA para restaurar.",
+      "terminal.ai_restore.pasted": "Comando de restauração da sessão de IA colado.",
+      "terminal.ai_restore.no_main_terminal": "Nenhum terminal principal para restaurar a sessão.",
+      "terminal.ai_restore.split_limit": "Limite de divisões atingido.",
+      "terminal.ai_restore.no_workspace": "Nenhum espaço de trabalho selecionado para o terminal.",
+      "terminal.ai_restore.restore_send_failed_format": "Divisão criada; falha ao enviar o comando de restauração: %@",
+      "terminal.ai_restore.restored": "Sessão de IA restaurada na divisão principal.",
+      "terminal.ai_restore.paste_failed_format": "Falha ao colar o comando de restauração: %@",
+      "terminal.split.not_found": "Divisão do terminal não encontrada."
     },
     "ru": {
       "terminal.closed": "Closed terminal.",
@@ -146,7 +209,16 @@
       "terminal.main": "Main Terminal",
       "terminal.split.default_format": "Split %d",
       "terminal.close.confirm_split": "Нажмите %@ еще раз, чтобы закрыть текущее разделение",
-      "terminal.default_format": "Terminal %d"
+      "terminal.default_format": "Terminal %d",
+      "terminal.ai_restore.no_session": "Нет AI-сессии для восстановления.",
+      "terminal.ai_restore.pasted": "Команда восстановления AI-сессии вставлена.",
+      "terminal.ai_restore.no_main_terminal": "Нет основного терминала для восстановления сессии.",
+      "terminal.ai_restore.split_limit": "Достигнут предел разделений.",
+      "terminal.ai_restore.no_workspace": "Не выбрано рабочее пространство для терминала.",
+      "terminal.ai_restore.restore_send_failed_format": "Разделение создано; не удалось отправить команду восстановления: %@",
+      "terminal.ai_restore.restored": "Сессия ИИ восстановлена в основном разделении.",
+      "terminal.ai_restore.paste_failed_format": "Не удалось вставить команду восстановления: %@",
+      "terminal.split.not_found": "Сплит терминала не найден."
     },
     "zh-Hans": {
       "terminal.closed": "已关闭终端。",
@@ -168,7 +240,16 @@
       "terminal.handoff.tablet": "平板",
       "terminal.handoff.inUse": "正在使用此终端",
       "terminal.handoff.takeOver": "接管",
-      "terminal.default_format": "终端 %d"
+      "terminal.default_format": "终端 %d",
+      "terminal.ai_restore.no_session": "没有可恢复的 AI 会话。",
+      "terminal.ai_restore.pasted": "已粘贴 AI 会话恢复命令。",
+      "terminal.ai_restore.no_main_terminal": "没有可用于恢复会话的主终端。",
+      "terminal.ai_restore.split_limit": "主分屏数量已达上限。",
+      "terminal.ai_restore.no_workspace": "未选择终端所属的工作区。",
+      "terminal.ai_restore.restore_send_failed_format": "已创建分屏，但恢复命令发送失败：%@",
+      "terminal.ai_restore.restored": "已在主分屏恢复 AI 会话。",
+      "terminal.ai_restore.paste_failed_format": "粘贴恢复命令失败：%@",
+      "terminal.split.not_found": "找不到终端分屏。"
     },
     "zh-Hant": {
       "terminal.closed": "已關閉終端機。",
@@ -190,7 +271,16 @@
       "terminal.handoff.tablet": "平板",
       "terminal.handoff.inUse": "正在使用此終端",
       "terminal.handoff.takeOver": "接管",
-      "terminal.default_format": "終端 %d"
+      "terminal.default_format": "終端 %d",
+      "terminal.ai_restore.no_session": "沒有可復原的 AI 會話。",
+      "terminal.ai_restore.pasted": "已貼上 AI 會話復原命令。",
+      "terminal.ai_restore.no_main_terminal": "沒有可用於還原工作階段的主終端。",
+      "terminal.ai_restore.split_limit": "主分割數量已達上限。",
+      "terminal.ai_restore.no_workspace": "未選擇終端所屬的工作區。",
+      "terminal.ai_restore.restore_send_failed_format": "已建立分割，但還原命令傳送失敗：%@",
+      "terminal.ai_restore.restored": "已在主分割還原 AI 工作階段。",
+      "terminal.ai_restore.paste_failed_format": "貼上復原命令失敗：%@",
+      "terminal.split.not_found": "找不到終端機分屏。"
     }
   }
 }

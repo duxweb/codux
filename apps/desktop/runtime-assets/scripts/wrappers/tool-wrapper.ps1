@@ -508,6 +508,9 @@ $modelKey = Tool-Model-Key $Tool
 $permissionMode = if ($settings -and $permissionKey) { [string]$settings.$permissionKey } else { "" }
 $configuredModel = if ($settings -and $modelKey) { [string]$settings.$modelKey } else { "" }
 $codexEffort = if ($settings) { [string]$settings.codexEffort } else { "" }
+if ($codexEffort -notin @("minimal", "low", "medium", "high", "xhigh")) {
+  $codexEffort = ""
+}
 
 $launchArgs = @($ToolArgs)
 if ($Tool -ne "kiro-cli" -and -not [string]::IsNullOrWhiteSpace($configuredModel) -and -not (Has-Option-Value $launchArgs @("--model", "-m"))) {
@@ -518,7 +521,7 @@ if ($Tool -ne "kiro-cli" -and -not [string]::IsNullOrWhiteSpace($configuredModel
   }
 }
 
-if ($Tool -eq "codex" -and -not [string]::IsNullOrWhiteSpace($codexEffort) -and -not (Has-Option-Value $launchArgs @("-c", "--config"))) {
+if ($Tool -eq "codex" -and -not [string]::IsNullOrWhiteSpace($codexEffort) -and -not (Has-Config-Key $launchArgs "model_reasoning_effort")) {
   $launchArgs = @("-c", "model_reasoning_effort=`"$codexEffort`"") + $launchArgs
 }
 

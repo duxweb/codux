@@ -46,7 +46,19 @@
       "stats.tooltip.output": "Ausgabe",
       "stats.tooltip.requests": "Anfragen",
       "stats.tooltip.token": "Token",
-      "stats.tooltip.total": "Gesamt"
+      "stats.tooltip.total": "Gesamt",
+      "stats.month.short.january": "Jan",
+      "stats.month.short.february": "Feb",
+      "stats.month.short.march": "Mär",
+      "stats.month.short.april": "Apr",
+      "stats.month.short.may": "Mai",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Jul",
+      "stats.month.short.august": "Aug",
+      "stats.month.short.september": "Sep",
+      "stats.month.short.october": "Okt",
+      "stats.month.short.november": "Nov",
+      "stats.month.short.december": "Dez"
     },
     "en": {
       "stats.by_model": "Model Ranking",
@@ -94,7 +106,19 @@
       "stats.tooltip.output": "Output",
       "stats.tooltip.requests": "Requests",
       "stats.tooltip.token": "Token",
-      "stats.tooltip.total": "Total"
+      "stats.tooltip.total": "Total",
+      "stats.month.short.january": "Jan",
+      "stats.month.short.february": "Feb",
+      "stats.month.short.march": "Mar",
+      "stats.month.short.april": "Apr",
+      "stats.month.short.may": "May",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Jul",
+      "stats.month.short.august": "Aug",
+      "stats.month.short.september": "Sep",
+      "stats.month.short.october": "Oct",
+      "stats.month.short.november": "Nov",
+      "stats.month.short.december": "Dec"
     },
     "es": {
       "stats.by_model": "Ranking de modelos",
@@ -142,7 +166,19 @@
       "stats.tooltip.output": "Salida",
       "stats.tooltip.requests": "Solicitudes",
       "stats.tooltip.token": "Token",
-      "stats.tooltip.total": "Total"
+      "stats.tooltip.total": "Total",
+      "stats.month.short.january": "Ene",
+      "stats.month.short.february": "Feb",
+      "stats.month.short.march": "Mar",
+      "stats.month.short.april": "Abr",
+      "stats.month.short.may": "May",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Jul",
+      "stats.month.short.august": "Ago",
+      "stats.month.short.september": "Sep",
+      "stats.month.short.october": "Oct",
+      "stats.month.short.november": "Nov",
+      "stats.month.short.december": "Dic"
     },
     "fr": {
       "stats.by_model": "Classement modèles",
@@ -190,7 +226,19 @@
       "stats.tooltip.output": "Sortie",
       "stats.tooltip.requests": "Requêtes",
       "stats.tooltip.token": "Token",
-      "stats.tooltip.total": "Total"
+      "stats.tooltip.total": "Total",
+      "stats.month.short.january": "Janv.",
+      "stats.month.short.february": "Févr.",
+      "stats.month.short.march": "Mars",
+      "stats.month.short.april": "Avr.",
+      "stats.month.short.may": "May",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Juil.",
+      "stats.month.short.august": "Août",
+      "stats.month.short.september": "Sept.",
+      "stats.month.short.october": "Oct.",
+      "stats.month.short.november": "Nov.",
+      "stats.month.short.december": "Déc."
     },
     "ja": {
       "stats.by_model": "モデル順位",
@@ -238,7 +286,19 @@
       "stats.tooltip.output": "出力",
       "stats.tooltip.requests": "リクエスト",
       "stats.tooltip.token": "トークン",
-      "stats.tooltip.total": "合計"
+      "stats.tooltip.total": "合計",
+      "stats.month.short.january": "Jan",
+      "stats.month.short.february": "Feb",
+      "stats.month.short.march": "Mar",
+      "stats.month.short.april": "Apr",
+      "stats.month.short.may": "May",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Jul",
+      "stats.month.short.august": "Aug",
+      "stats.month.short.september": "Sep",
+      "stats.month.short.october": "Oct",
+      "stats.month.short.november": "Nov",
+      "stats.month.short.december": "Dec"
     },
     "ko": {
       "stats.by_model": "모델 순위",
@@ -286,7 +346,19 @@
       "stats.tooltip.output": "출력",
       "stats.tooltip.requests": "요청",
       "stats.tooltip.token": "토큰",
-      "stats.tooltip.total": "총계"
+      "stats.tooltip.total": "총계",
+      "stats.month.short.january": "Jan",
+      "stats.month.short.february": "Feb",
+      "stats.month.short.march": "Mar",
+      "stats.month.short.april": "Apr",
+      "stats.month.short.may": "May",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Jul",
+      "stats.month.short.august": "Aug",
+      "stats.month.short.september": "Sep",
+      "stats.month.short.october": "Oct",
+      "stats.month.short.november": "Nov",
+      "stats.month.short.december": "Dec"
     },
     "pt-BR": {
       "stats.by_model": "Ranking de modelos",
@@ -334,7 +406,19 @@
       "stats.tooltip.output": "Saída",
       "stats.tooltip.requests": "Requisições",
       "stats.tooltip.token": "Token",
-      "stats.tooltip.total": "Total"
+      "stats.tooltip.total": "Total",
+      "stats.month.short.january": "Jan",
+      "stats.month.short.february": "Fev",
+      "stats.month.short.march": "Mar",
+      "stats.month.short.april": "Abr",
+      "stats.month.short.may": "Mai",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Jul",
+      "stats.month.short.august": "Ago",
+      "stats.month.short.september": "Set",
+      "stats.month.short.october": "Out",
+      "stats.month.short.november": "Nov",
+      "stats.month.short.december": "Dez"
     },
     "ru": {
       "stats.by_model": "Рейтинг моделей",
@@ -382,7 +466,19 @@
       "stats.tooltip.output": "Вывод",
       "stats.tooltip.requests": "Запросы",
       "stats.tooltip.token": "Токен",
-      "stats.tooltip.total": "Итого"
+      "stats.tooltip.total": "Итого",
+      "stats.month.short.january": "Янв",
+      "stats.month.short.february": "Фев",
+      "stats.month.short.march": "Мар",
+      "stats.month.short.april": "Апр",
+      "stats.month.short.may": "Май",
+      "stats.month.short.june": "Июн",
+      "stats.month.short.july": "Июл",
+      "stats.month.short.august": "Авг",
+      "stats.month.short.september": "Сен",
+      "stats.month.short.october": "Окт",
+      "stats.month.short.november": "Ноя",
+      "stats.month.short.december": "Дек"
     },
     "zh-Hans": {
       "stats.by_model": "模型排名",
@@ -430,7 +526,19 @@
       "stats.tooltip.output": "输出",
       "stats.tooltip.requests": "请求",
       "stats.tooltip.token": "Token",
-      "stats.tooltip.total": "总计"
+      "stats.tooltip.total": "总计",
+      "stats.month.short.january": "Jan",
+      "stats.month.short.february": "Feb",
+      "stats.month.short.march": "Mar",
+      "stats.month.short.april": "Apr",
+      "stats.month.short.may": "May",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Jul",
+      "stats.month.short.august": "Aug",
+      "stats.month.short.september": "Sep",
+      "stats.month.short.october": "Oct",
+      "stats.month.short.november": "Nov",
+      "stats.month.short.december": "Dec"
     },
     "zh-Hant": {
       "stats.by_model": "模型排名",
@@ -478,7 +586,19 @@
       "stats.tooltip.output": "輸出",
       "stats.tooltip.requests": "請求",
       "stats.tooltip.token": "Token",
-      "stats.tooltip.total": "總計"
+      "stats.tooltip.total": "總計",
+      "stats.month.short.january": "Jan",
+      "stats.month.short.february": "Feb",
+      "stats.month.short.march": "Mar",
+      "stats.month.short.april": "Apr",
+      "stats.month.short.may": "May",
+      "stats.month.short.june": "Jun",
+      "stats.month.short.july": "Jul",
+      "stats.month.short.august": "Aug",
+      "stats.month.short.september": "Sep",
+      "stats.month.short.october": "Oct",
+      "stats.month.short.november": "Nov",
+      "stats.month.short.december": "Dec"
     }
   }
 }

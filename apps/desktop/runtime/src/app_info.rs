@@ -2,6 +2,7 @@ use crate::runtime_paths::{
     app_display_name, app_support_dir, live_log_path, runtime_log_path, runtime_log_preview_path,
     runtime_temp_dir,
 };
+use crate::runtime_trace::rotated_log_paths;
 use crate::settings::AppSettings;
 use crate::update::UpdateService;
 pub use crate::update::UpdateStatus;
@@ -18,7 +19,6 @@ use std::process::Command;
 use url::Url;
 
 const TAURI_UPDATER_PUBLIC_KEY: &str = "RWTIDGGsK4geAihw4QK08H+tw5BUDYrQDww6GRCVQKWtH6RvOVe/huaA";
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppAboutMetadata {
@@ -323,7 +323,7 @@ fn write_runtime_log_preview_file(source: &Path, destination: &Path) -> Result<(
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    let lines = tail_runtime_log_lines(source, 1200, 256 * 1024)?;
+    let lines = tail_runtime_log_family_lines(source, 1200, 256 * 1024)?;
     let mut output = String::new();
     output.push_str(&format!("{} runtime log preview\n\n", app_display_name()));
     for line in lines {
@@ -331,6 +331,39 @@ fn write_runtime_log_preview_file(source: &Path, destination: &Path) -> Result<(
         output.push('\n');
     }
     fs::write(destination, output).map_err(|error| error.to_string())
+}
+
+fn tail_runtime_log_family_lines(
+    source: &Path,
+    max_lines: usize,
+    max_bytes: usize,
+) -> Result<VecDeque<String>, String> {
+    let mut lines = VecDeque::with_capacity(max_lines);
+    for path in rotated_log_paths(source).into_iter().rev() {
+        let Ok(file_lines) = tail_runtime_log_lines(&path, max_lines, max_bytes) else {
+            continue;
+        };
+        append_runtime_log_lines(&mut lines, file_lines, max_lines);
+    }
+    append_runtime_log_lines(
+        &mut lines,
+        tail_runtime_log_lines(source, max_lines, max_bytes)?,
+        max_lines,
+    );
+    Ok(lines)
+}
+
+fn append_runtime_log_lines(
+    lines: &mut VecDeque<String>,
+    new_lines: impl IntoIterator<Item = String>,
+    max_lines: usize,
+) {
+    for line in new_lines {
+        lines.push_back(line);
+        if lines.len() > max_lines {
+            let _ = lines.pop_front();
+        }
+    }
 }
 
 fn tail_runtime_log_lines(
@@ -354,15 +387,13 @@ fn tail_runtime_log_lines(
 
     let tail = String::from_utf8_lossy(&buffer);
     let mut lines = VecDeque::with_capacity(max_lines);
-    for line in tail.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        lines.push_back(line.to_string());
-        if lines.len() > max_lines {
-            let _ = lines.pop_front();
-        }
-    }
+    append_runtime_log_lines(
+        &mut lines,
+        tail.lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(str::to_string),
+        max_lines,
+    );
     Ok(lines)
 }
 
@@ -1001,6 +1032,41 @@ mod tests {
         assert_eq!(value["notificationChannels"]["b"]["token"], "");
         assert_eq!(value["ai"]["providers"][0]["apiKey"], "******");
         assert_eq!(value["ai"]["providers"][0]["api_key"], "******");
+    }
+
+    #[test]
+    fn runtime_log_preview_includes_recent_rotated_log() {
+        let directory =
+            std::env::temp_dir().join(format!("codux-runtime-preview-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("runtime-rust.log");
+        let destination = directory.join("runtime-rust-preview.log");
+        fs::write(source.with_file_name("runtime-rust.log.1"), "previous\n").unwrap();
+        fs::write(&source, "current\n").unwrap();
+
+        write_runtime_log_preview_file(&source, &destination).unwrap();
+
+        let preview = fs::read_to_string(&destination).unwrap();
+        assert!(preview.contains("previous"));
+        assert!(preview.contains("current"));
+        assert!(preview.find("previous") < preview.find("current"));
+
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn runtime_log_preview_requires_current_log() {
+        let directory =
+            std::env::temp_dir().join(format!("codux-runtime-preview-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("runtime-rust.log");
+        fs::write(source.with_file_name("runtime-rust.log.1"), "previous\n").unwrap();
+
+        let result = tail_runtime_log_family_lines(&source, 1200, 256 * 1024);
+
+        assert!(result.is_err());
+
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]

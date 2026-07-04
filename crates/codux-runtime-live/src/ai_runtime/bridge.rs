@@ -1452,6 +1452,105 @@ printf 'TOOL=%s
 
     #[cfg(not(windows))]
     #[test]
+    fn codex_wrapper_reads_tool_permissions_on_each_launch() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        let dir = std::env::temp_dir().join(format!(
+            "codux-codex-wrapper-hot-settings-{}",
+            Uuid::new_v4()
+        ));
+        let bridge =
+            AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+        bridge.stage_assets().unwrap();
+
+        let real_bin = dir.join("real-bin");
+        fs::create_dir_all(&real_bin).unwrap();
+        let fake_codex = real_bin.join("codex");
+        fs::write(&fake_codex, "#!/bin/sh\nprintf '%s\n' \"$@\"\n").unwrap();
+        let mut permissions = fs::metadata(&fake_codex).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_codex, permissions).unwrap();
+
+        let permissions_file = dir.join("tool-permissions.json");
+        let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+
+        write_codex_test_permissions(&permissions_file, "low");
+        let first = Command::new(bridge.wrapper_bin_dir().join("codex"))
+            .env("PATH", &search_path)
+            .env("DMUX_ORIGINAL_PATH", &search_path)
+            .env("DMUX_SESSION_ID", "terminal-1")
+            .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+            .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+            .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+            .output()
+            .unwrap();
+        assert!(first.status.success());
+        let first_args = String::from_utf8_lossy(&first.stdout);
+        assert!(
+            first_args
+                .lines()
+                .any(|arg| arg == "model_reasoning_effort=\"low\""),
+            "{first_args}"
+        );
+
+        write_codex_test_permissions(&permissions_file, "none");
+        let second = Command::new(bridge.wrapper_bin_dir().join("codex"))
+            .env("PATH", &search_path)
+            .env("DMUX_ORIGINAL_PATH", &search_path)
+            .env("DMUX_SESSION_ID", "terminal-1")
+            .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+            .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+            .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+            .output()
+            .unwrap();
+        assert!(second.status.success());
+        let second_args = String::from_utf8_lossy(&second.stdout);
+        assert!(
+            second_args
+                .lines()
+                .all(|arg| !arg.starts_with("model_reasoning_effort=")),
+            "{second_args}"
+        );
+
+        write_codex_test_permissions(&permissions_file, "high");
+        let third = Command::new(bridge.wrapper_bin_dir().join("codex"))
+            .env("PATH", &search_path)
+            .env("DMUX_ORIGINAL_PATH", &search_path)
+            .env("DMUX_SESSION_ID", "terminal-1")
+            .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+            .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+            .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+            .output()
+            .unwrap();
+        assert!(third.status.success());
+        let third_args = String::from_utf8_lossy(&third.stdout);
+        assert!(
+            third_args
+                .lines()
+                .any(|arg| arg == "model_reasoning_effort=\"high\""),
+            "{third_args}"
+        );
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(not(windows))]
+    fn write_codex_test_permissions(path: &Path, effort: &str) {
+        fs::write(
+            path,
+            serde_json::json!({
+                "codex": "fullAccess",
+                "codexModel": "gpt-5.7",
+                "codexEffort": effort
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    #[cfg(not(windows))]
+    #[test]
     fn codex_wrapper_applies_tool_permissions_when_helper_is_broken() {
         use std::os::unix::fs::PermissionsExt;
         use std::process::Command;

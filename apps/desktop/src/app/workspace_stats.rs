@@ -23,8 +23,8 @@ const STATS_HEATMAP_MIN_COLUMNS: usize = 8;
 const STATS_HEATMAP_MAX_COLUMNS: usize = 260;
 const STATS_HEATMAP_CELL_SIZE: f32 = 13.0;
 const STATS_HEATMAP_GAP: f32 = 3.0;
-const STATS_CHART_CARD_HEIGHT: f32 = 174.0;
-const STATS_CHART_BODY_HEIGHT: f32 = 112.0;
+const STATS_CHART_CARD_HEIGHT: f32 = 198.0;
+const STATS_CHART_BODY_HEIGHT: f32 = 90.0;
 const STATS_FILTER_TEXT_SIZE: Rems = Rems(0.75);
 const STATS_FILTER_LINE_HEIGHT: Rems = Rems(1.0);
 const STATS_TABLE_BASE_WIDTH: f32 = 1200.0;
@@ -80,6 +80,11 @@ struct StatsTrendBucket {
     total_tokens: i64,
     no_cache_tokens: i64,
     request_count: i64,
+}
+
+struct StatsHeatmapMonthLabel {
+    label: String,
+    columns: usize,
 }
 
 impl PartialEq for StatsWorkspaceSnapshot {
@@ -635,44 +640,67 @@ fn stats_trend_bars(
     max_value: i64,
     language: String,
 ) -> impl IntoElement {
+    let axis = stats_trend_axis_labels(&buckets, &language);
     div()
         .mt(px(16.0))
         .flex()
-        .items_end()
-        .justify_between()
-        .w_full()
-        .h(px(STATS_CHART_BODY_HEIGHT))
-        .children(buckets.into_iter().enumerate().map(move |(index, bucket)| {
-            let value = bucket.total_tokens.max(0);
-            let ratio = if max_value <= 0 {
-                0.0
-            } else {
-                value as f32 / max_value as f32
-            };
-            codux_tooltip_container(
-                app_entity.clone(),
-                SharedString::from(format!("stats-trend-bucket-{index}")),
-                trend_bucket_tooltip(&language, bucket),
-            )
-            .flex_1()
-            .min_w(px(0.0))
-            .h_full()
-            .flex()
-            .items_end()
-            .justify_center()
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(STATS_TREND_MAX_BAR_WIDTH))
-                    .h(px(
-                        8.0 + ratio.clamp(0.0, 1.0) * (STATS_CHART_BODY_HEIGHT - 8.0)
-                    ))
-                    .rounded(px(3.0))
-                    .bg(color(theme::ACCENT))
-                    .opacity(if value > 0 { 0.95 } else { 0.14 }),
-            )
-            .into_any_element()
-        }))
+        .flex_col()
+        .child(
+            div()
+                .flex()
+                .items_end()
+                .justify_between()
+                .w_full()
+                .h(px(STATS_CHART_BODY_HEIGHT))
+                .children(buckets.into_iter().enumerate().map(move |(index, bucket)| {
+                    let value = bucket.total_tokens.max(0);
+                    let ratio = if max_value <= 0 {
+                        0.0
+                    } else {
+                        value as f32 / max_value as f32
+                    };
+                    codux_tooltip_container(
+                        app_entity.clone(),
+                        SharedString::from(format!("stats-trend-bucket-{index}")),
+                        trend_bucket_tooltip(&language, bucket),
+                    )
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .h_full()
+                    .flex()
+                    .items_end()
+                    .justify_center()
+                    .child(
+                        div()
+                            .w_full()
+                            .max_w(px(STATS_TREND_MAX_BAR_WIDTH))
+                            .h(px(
+                                8.0 + ratio.clamp(0.0, 1.0) * (STATS_CHART_BODY_HEIGHT - 8.0)
+                            ))
+                            .rounded(px(3.0))
+                            .bg(color(theme::ACCENT))
+                            .opacity(if value > 0 { 0.95 } else { 0.14 }),
+                    )
+                    .into_any_element()
+                })),
+        )
+        .child(
+            div()
+                .mt(px(8.0))
+                .h(px(1.0))
+                .bg(color(theme::ACCENT).opacity(0.22)),
+        )
+        .child(
+            div()
+                .mt(px(7.0))
+                .flex()
+                .justify_between()
+                .gap(px(16.0))
+                .text_size(rems(0.75))
+                .line_height(rems(1.0))
+                .text_color(color(theme::TEXT_MUTED))
+                .children(axis),
+        )
 }
 
 fn stats_rank_card(
@@ -809,51 +837,78 @@ fn stats_heatmap_card(
         .skip(first_column)
         .flat_map(|column| column.iter().cloned())
         .collect::<Vec<_>>();
+    let month_labels = stats_heatmap_month_labels(&cells, &snapshot.language);
+    let visible_width = visible_columns as f32 * STATS_HEATMAP_CELL_SIZE
+        + visible_columns.saturating_sub(1) as f32 * STATS_HEATMAP_GAP;
     stats_section_card(title, cx)
         .min_h(px(STATS_CHART_CARD_HEIGHT))
         .child(
             div()
                 .mt(px(12.0))
                 .w_full()
-                .flex()
-                .gap(px(STATS_HEATMAP_GAP))
                 .overflow_hidden()
-                .children(
-                    cells
-                        .chunks(STATS_HEATMAP_ROWS)
-                        .enumerate()
-                        .map(|(column, days)| {
-                            let app_entity = app_entity.clone();
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .w(px(visible_width))
+                        .flex()
+                        .gap(px(STATS_HEATMAP_GAP))
+                        .children(cells.chunks(STATS_HEATMAP_ROWS).enumerate().map(
+                            |(column, days)| {
+                                let app_entity = app_entity.clone();
+                                div()
+                                    .w(px(STATS_HEATMAP_CELL_SIZE))
+                                    .flex_none()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(STATS_HEATMAP_GAP))
+                                    .children(days.iter().cloned().enumerate().map(
+                                        move |(row, cell)| {
+                                            let tooltip =
+                                                heatmap_cell_tooltip(&snapshot.language, &cell);
+                                            codux_tooltip_container(
+                                                app_entity.clone(),
+                                                SharedString::from(format!(
+                                                    "stats-heatmap-{column}-{row}"
+                                                )),
+                                                tooltip,
+                                            )
+                                            .size(px(STATS_HEATMAP_CELL_SIZE))
+                                            .rounded(px(4.0))
+                                            .bg(if cell.is_known {
+                                                color(theme::ACCENT)
+                                            } else {
+                                                inactive
+                                            })
+                                            .opacity(cell.opacity.clamp(0.0, 1.0))
+                                            .into_any_element()
+                                        },
+                                    ))
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(
+                    div()
+                        .mt(px(8.0))
+                        .w(px(visible_width))
+                        .flex()
+                        .gap(px(STATS_HEATMAP_GAP))
+                        .text_size(rems(0.75))
+                        .line_height(rems(1.0))
+                        .text_color(color(theme::TEXT_MUTED))
+                        .children(month_labels.into_iter().map(|month| {
+                            let width = month.columns as f32 * STATS_HEATMAP_CELL_SIZE
+                                + month.columns.saturating_sub(1) as f32 * STATS_HEATMAP_GAP;
                             div()
-                                .w(px(STATS_HEATMAP_CELL_SIZE))
+                                .w(px(width))
                                 .flex_none()
-                                .flex()
-                                .flex_col()
-                                .gap(px(STATS_HEATMAP_GAP))
-                                .children(days.iter().cloned().enumerate().map(
-                                    move |(row, cell)| {
-                                        let tooltip =
-                                            heatmap_cell_tooltip(&snapshot.language, &cell);
-                                        codux_tooltip_container(
-                                            app_entity.clone(),
-                                            SharedString::from(format!(
-                                                "stats-heatmap-{column}-{row}"
-                                            )),
-                                            tooltip,
-                                        )
-                                        .size(px(STATS_HEATMAP_CELL_SIZE))
-                                        .rounded(px(4.0))
-                                        .bg(if cell.is_known {
-                                            color(theme::ACCENT)
-                                        } else {
-                                            inactive
-                                        })
-                                        .opacity(cell.opacity.clamp(0.0, 1.0))
-                                        .into_any_element()
-                                    },
-                                ))
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .child(month.label)
                                 .into_any_element()
-                        }),
+                        })),
                 ),
         )
 }
@@ -965,6 +1020,61 @@ fn stats_date_label(day: Option<f64>) -> String {
     }
 }
 
+fn stats_month_axis_label(month: u32, language: &str) -> String {
+    match locale_from_language_setting(language).as_str() {
+        "zh-Hans" | "zh-Hant" | "ja" => format!("{month}月"),
+        "ko" => format!("{month}월"),
+        _ => match month {
+            1 => stats_text(language, "stats.month.short.january", "Jan"),
+            2 => stats_text(language, "stats.month.short.february", "Feb"),
+            3 => stats_text(language, "stats.month.short.march", "Mar"),
+            4 => stats_text(language, "stats.month.short.april", "Apr"),
+            5 => stats_text(language, "stats.month.short.may", "May"),
+            6 => stats_text(language, "stats.month.short.june", "Jun"),
+            7 => stats_text(language, "stats.month.short.july", "Jul"),
+            8 => stats_text(language, "stats.month.short.august", "Aug"),
+            9 => stats_text(language, "stats.month.short.september", "Sep"),
+            10 => stats_text(language, "stats.month.short.october", "Oct"),
+            11 => stats_text(language, "stats.month.short.november", "Nov"),
+            12 => stats_text(language, "stats.month.short.december", "Dec"),
+            _ => String::new(),
+        },
+    }
+}
+
+fn stats_heatmap_month_labels(
+    cells: &[codux_runtime::ai_history::AIHistoryHeatmapCellView],
+    language: &str,
+) -> Vec<StatsHeatmapMonthLabel> {
+    let mut labels = Vec::<StatsHeatmapMonthLabel>::new();
+    let mut current_month = None::<u32>;
+    for column in cells.chunks(STATS_HEATMAP_ROWS) {
+        let Some(day) = column.first().and_then(|cell| {
+            chrono::Local
+                .timestamp_opt(cell.day as i64, 0)
+                .single()
+                .map(|date| date.month())
+        }) else {
+            continue;
+        };
+        if current_month != Some(day) {
+            labels.push(StatsHeatmapMonthLabel {
+                label: stats_month_axis_label(day, language),
+                columns: 1,
+            });
+            current_month = Some(day);
+        } else if let Some(label) = labels.last_mut() {
+            label.columns += 1;
+        }
+    }
+    for label in &mut labels {
+        if label.columns < 2 {
+            label.label.clear();
+        }
+    }
+    labels
+}
+
 fn stats_heatmap_visible_columns(container_width: Option<Pixels>) -> usize {
     let Some(width) = container_width else {
         return STATS_HEATMAP_DEFAULT_COLUMNS;
@@ -1025,6 +1135,72 @@ fn trend_bucket_time_range(bucket: StatsTrendBucket) -> String {
             end.minute()
         ),
         _ => String::new(),
+    }
+}
+
+fn trend_bucket_axis_label(language: &str, bucket: StatsTrendBucket) -> String {
+    let timestamp = f64::from_bits(bucket.start_bits);
+    match chrono::Local.timestamp_opt(timestamp as i64, 0).single() {
+        Some(time) => match locale_from_language_setting(language).as_str() {
+            "zh-Hans" | "zh-Hant" | "ja" => format!(
+                "{}月{}日 {:02}:{:02}",
+                time.month(),
+                time.day(),
+                time.hour(),
+                time.minute()
+            ),
+            "ko" => format!(
+                "{}월 {}일 {:02}:{:02}",
+                time.month(),
+                time.day(),
+                time.hour(),
+                time.minute()
+            ),
+            _ => format!(
+                "{:02}/{:02} {:02}:{:02}",
+                time.month(),
+                time.day(),
+                time.hour(),
+                time.minute()
+            ),
+        },
+        None => String::new(),
+    }
+}
+
+fn stats_trend_axis_labels(buckets: &[StatsTrendBucket], language: &str) -> Vec<AnyElement> {
+    if buckets.is_empty() {
+        return Vec::new();
+    }
+    stats_trend_axis_indexes(buckets.len())
+        .into_iter()
+        .enumerate()
+        .map(|(position, index)| {
+            let mut item = div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .child(trend_bucket_axis_label(language, buckets[index]));
+            if position == 1 && buckets.len() >= 3 {
+                item = item.text_align(gpui::TextAlign::Center);
+            } else if position > 0 {
+                item = item.text_align(gpui::TextAlign::Right);
+            }
+            item.into_any_element()
+        })
+        .collect()
+}
+
+fn stats_trend_axis_indexes(bucket_count: usize) -> Vec<usize> {
+    if bucket_count == 0 {
+        Vec::new()
+    } else if bucket_count == 1 {
+        vec![0]
+    } else if bucket_count < 3 {
+        vec![0, bucket_count - 1]
+    } else {
+        vec![0, bucket_count / 2, bucket_count - 1]
     }
 }
 
@@ -1774,10 +1950,14 @@ mod tests {
 
     #[test]
     fn trend_bucket_tooltip_total_always_includes_cache() {
+        let start = chrono::Local
+            .with_ymd_and_hms(2026, 7, 4, 13, 30, 0)
+            .unwrap()
+            .timestamp() as f64;
         let tooltip = trend_bucket_tooltip(
             "english",
             StatsTrendBucket {
-                start_bits: 0.0f64.to_bits(),
+                start_bits: start.to_bits(),
                 input_tokens: 80,
                 output_tokens: 20,
                 cached_input_tokens: 40,
@@ -1787,10 +1967,75 @@ mod tests {
             },
         );
 
-        assert!(tooltip.contains("Input 80"));
-        assert!(tooltip.contains("Output 20"));
-        assert!(tooltip.contains("Cache 40"));
-        assert!(tooltip.contains("Total 140"));
+        assert_eq!(
+            tooltip,
+            "07/04 13:30 - 14:00\nInput 80\nOutput 20\nCache 40\nTotal 140"
+        );
+    }
+
+    #[test]
+    fn month_axis_label_uses_current_language() {
+        assert_eq!(stats_month_axis_label(7, "simplifiedChinese"), "7月");
+        assert_eq!(stats_month_axis_label(7, "english"), "Jul");
+    }
+
+    #[test]
+    fn heatmap_month_labels_group_visible_columns() {
+        let jan_22 = chrono::Local
+            .with_ymd_and_hms(2026, 1, 22, 0, 0, 0)
+            .unwrap()
+            .timestamp() as f64;
+        let jan_29 = chrono::Local
+            .with_ymd_and_hms(2026, 1, 29, 0, 0, 0)
+            .unwrap()
+            .timestamp() as f64;
+        let feb_5 = chrono::Local
+            .with_ymd_and_hms(2026, 2, 5, 0, 0, 0)
+            .unwrap()
+            .timestamp() as f64;
+        let mut cells = Vec::new();
+        for day in [jan_22, jan_29, feb_5] {
+            for row in 0..STATS_HEATMAP_ROWS {
+                cells.push(codux_runtime::ai_history::AIHistoryHeatmapCellView {
+                    day: day + row as f64 * 24.0 * 60.0 * 60.0,
+                    ..Default::default()
+                });
+            }
+        }
+
+        let labels = stats_heatmap_month_labels(&cells, "english");
+
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0].label, "Jan");
+        assert_eq!(labels[0].columns, 2);
+        assert_eq!(labels[1].label, "");
+        assert_eq!(labels[1].columns, 1);
+    }
+
+    #[test]
+    fn trend_bucket_axis_label_includes_date_and_time() {
+        let start = chrono::Local
+            .with_ymd_and_hms(2026, 7, 4, 13, 45, 0)
+            .unwrap()
+            .timestamp() as f64;
+        let bucket = StatsTrendBucket {
+            start_bits: start.to_bits(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            trend_bucket_axis_label("simplifiedChinese", bucket),
+            "7月4日 13:45"
+        );
+        assert_eq!(trend_bucket_axis_label("english", bucket), "07/04 13:45");
+    }
+
+    #[test]
+    fn trend_axis_indexes_do_not_duplicate_single_bucket() {
+        assert_eq!(stats_trend_axis_indexes(0), Vec::<usize>::new());
+        assert_eq!(stats_trend_axis_indexes(1), vec![0]);
+        assert_eq!(stats_trend_axis_indexes(2), vec![0, 1]);
+        assert_eq!(stats_trend_axis_indexes(5), vec![0, 2, 4]);
     }
 
     #[test]

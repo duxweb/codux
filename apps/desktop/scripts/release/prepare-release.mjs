@@ -10,8 +10,7 @@ const rawRef = process.argv[2] || process.env.GITHUB_REF_NAME || "";
 const rawChannel = process.argv[3] || process.env.RELEASE_CHANNEL || "";
 const version = normalizeVersion(rawRef);
 const tagName = normalizeReleaseTag(rawRef, version);
-const channel =
-  rawChannel === "stable" || rawChannel === "beta" ? rawChannel : version.includes("-") ? "beta" : "stable";
+const channel = rawChannel === "stable" || rawChannel === "beta" ? rawChannel : automaticReleaseChannel(version);
 
 if (!dryRun) {
   updateCargoVersion("apps/desktop/Cargo.toml", version);
@@ -69,6 +68,13 @@ function normalizeReleaseTag(value, nextVersion) {
     return trimmed;
   }
   return `v${nextVersion}`;
+}
+
+function automaticReleaseChannel(nextVersion) {
+  if (/-rc(?:[.-]|$)/i.test(nextVersion)) {
+    return "stable";
+  }
+  return nextVersion.includes("-") ? "beta" : "stable";
 }
 
 function updateCargoVersion(relativePath, nextVersion) {

@@ -14,6 +14,31 @@ mod tests {
     }
 
     #[test]
+    fn defaults_codex_effort_to_none() {
+        let support_dir = temp_dir("settings-default-codex-effort");
+        let tool_permissions =
+            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).summary();
+        assert_eq!(tool_permissions.codex_effort, "none");
+
+        let service = SettingsService::new(support_dir.clone());
+        service
+            .set_codex_effort("bad")
+            .expect("sanitize codex effort");
+        let tool_permissions =
+            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).summary();
+        assert_eq!(tool_permissions.codex_effort, "none");
+
+        service
+            .set_codex_effort("medium")
+            .expect("accept medium codex effort");
+        let tool_permissions =
+            crate::tool_permissions::ToolPermissionsService::new(support_dir.clone()).summary();
+        assert_eq!(tool_permissions.codex_effort, "medium");
+
+        fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
     fn terminal_font_family_survives_app_settings_reload() {
         let support_dir = temp_dir("settings-terminal-font-family");
         let service = crate::runtime_state::RuntimeService::new(support_dir.clone());
@@ -193,7 +218,7 @@ mod tests {
                   "codewhaleModel": "",
                   "kimiModel": "",
                   "mimoModel": "",
-                  "codexEffort": "medium"
+                  "codexEffort": "none"
                 },
                 "providers": [
                   {

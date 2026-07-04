@@ -369,7 +369,13 @@
       "settings.window_style.ui_opacity": "Oberfläche",
       "settings.window_style.terminal_opacity": "Terminal",
       "settings.window_style.ui_help": "Milchglas für Seitenleiste und Spaltenköpfe (100 % = einfarbig).",
-      "settings.window_style.terminal_help": "Transparenz des Terminal-Hintergrunds (100 % = einfarbig)."
+      "settings.window_style.terminal_help": "Transparenz des Terminal-Hintergrunds (100 % = einfarbig).",
+      "settings.ai.tool.reasoning_effort.default": "Standard",
+      "settings.ai.tool.reasoning_effort.minimal": "Minimal",
+      "settings.ai.tool.reasoning_effort.low": "Niedrig",
+      "settings.ai.tool.reasoning_effort.medium": "Mittel",
+      "settings.ai.tool.reasoning_effort.high": "Hoch",
+      "settings.ai.tool.reasoning_effort.xhigh": "Sehr hoch"
     },
     "en": {
       "settings.ai_auto_refresh": "AI Auto Refresh",
@@ -742,7 +748,13 @@
       "settings.window_style.ui_opacity": "Opacity",
       "settings.window_style.terminal_opacity": "Terminal",
       "settings.window_style.ui_help": "Frosted-glass opacity for the sidebar, headers, panels and cards; the terminal stays a bit more opaque. Drag to 100% for solid.",
-      "settings.window_style.terminal_help": "Terminal background transparency (drag to 100% for solid)."
+      "settings.window_style.terminal_help": "Terminal background transparency (drag to 100% for solid).",
+      "settings.ai.tool.reasoning_effort.default": "Default",
+      "settings.ai.tool.reasoning_effort.minimal": "Minimal",
+      "settings.ai.tool.reasoning_effort.low": "Low",
+      "settings.ai.tool.reasoning_effort.medium": "Medium",
+      "settings.ai.tool.reasoning_effort.high": "High",
+      "settings.ai.tool.reasoning_effort.xhigh": "XHigh"
     },
     "es": {
       "settings.ai_auto_refresh": "Actualización automática de IA",
@@ -1113,7 +1125,13 @@
       "settings.window_style.ui_opacity": "Interfaz",
       "settings.window_style.terminal_opacity": "Terminal",
       "settings.window_style.ui_help": "Vidrio esmerilado para la barra lateral y encabezados (100 % = sólido).",
-      "settings.window_style.terminal_help": "Transparencia del fondo del terminal (100 % = sólido)."
+      "settings.window_style.terminal_help": "Transparencia del fondo del terminal (100 % = sólido).",
+      "settings.ai.tool.reasoning_effort.default": "Predeterminado",
+      "settings.ai.tool.reasoning_effort.minimal": "Mínimo",
+      "settings.ai.tool.reasoning_effort.low": "Bajo",
+      "settings.ai.tool.reasoning_effort.medium": "Medio",
+      "settings.ai.tool.reasoning_effort.high": "Alto",
+      "settings.ai.tool.reasoning_effort.xhigh": "Muy alto"
     },
     "fr": {
       "settings.ai_auto_refresh": "Actualisation auto IA",
@@ -1484,7 +1502,13 @@
       "settings.window_style.ui_opacity": "Interface",
       "settings.window_style.terminal_opacity": "Terminal",
       "settings.window_style.ui_help": "Verre dépoli pour la barre latérale et les en-têtes (100 % = uni).",
-      "settings.window_style.terminal_help": "Transparence du fond du terminal (100 % = uni)."
+      "settings.window_style.terminal_help": "Transparence du fond du terminal (100 % = uni).",
+      "settings.ai.tool.reasoning_effort.default": "Par défaut",
+      "settings.ai.tool.reasoning_effort.minimal": "Minimal",
+      "settings.ai.tool.reasoning_effort.low": "Faible",
+      "settings.ai.tool.reasoning_effort.medium": "Moyen",
+      "settings.ai.tool.reasoning_effort.high": "Élevé",
+      "settings.ai.tool.reasoning_effort.xhigh": "Très élevé"
     },
     "ja": {
       "settings.ai_auto_refresh": "AI 自動更新",
@@ -1855,7 +1879,13 @@
       "settings.window_style.ui_opacity": "インターフェース",
       "settings.window_style.terminal_opacity": "ターミナル",
       "settings.window_style.ui_help": "サイドバーと列ヘッダーのすりガラス（100% で単色）。",
-      "settings.window_style.terminal_help": "ターミナル背景の透明度（100% で単色）。"
+      "settings.window_style.terminal_help": "ターミナル背景の透明度（100% で単色）。",
+      "settings.ai.tool.reasoning_effort.default": "デフォルト",
+      "settings.ai.tool.reasoning_effort.minimal": "最小",
+      "settings.ai.tool.reasoning_effort.low": "低",
+      "settings.ai.tool.reasoning_effort.medium": "中",
+      "settings.ai.tool.reasoning_effort.high": "高",
+      "settings.ai.tool.reasoning_effort.xhigh": "最高"
     },
     "ko": {
       "settings.ai_auto_refresh": "AI 자동 새로고침",
@@ -2226,7 +2256,13 @@
       "settings.window_style.ui_opacity": "인터페이스",
       "settings.window_style.terminal_opacity": "터미널",
       "settings.window_style.ui_help": "사이드바와 열 헤더의 프로스트 글래스 (100%면 단색).",
-      "settings.window_style.terminal_help": "터미널 배경 투명도 (100%면 단색)."
+      "settings.window_style.terminal_help": "터미널 배경 투명도 (100%면 단색).",
+      "settings.ai.tool.reasoning_effort.default": "기본값",
+      "settings.ai.tool.reasoning_effort.minimal": "최소",
+      "settings.ai.tool.reasoning_effort.low": "낮음",
+      "settings.ai.tool.reasoning_effort.medium": "중간",
+      "settings.ai.tool.reasoning_effort.high": "높음",
+      "settings.ai.tool.reasoning_effort.xhigh": "매우 높음"
     },
     "pt-BR": {
       "settings.ai_auto_refresh": "Atualização automática de IA",
@@ -2597,7 +2633,13 @@
       "settings.window_style.ui_opacity": "Interface",
       "settings.window_style.terminal_opacity": "Terminal",
       "settings.window_style.ui_help": "Vidro fosco para a barra lateral e cabeçalhos (100% = sólido).",
-      "settings.window_style.terminal_help": "Transparência do fundo do terminal (100% = sólido)."
+      "settings.window_style.terminal_help": "Transparência do fundo do terminal (100% = sólido).",
+      "settings.ai.tool.reasoning_effort.default": "Padrão",
+      "settings.ai.tool.reasoning_effort.minimal": "Mínimo",
+      "settings.ai.tool.reasoning_effort.low": "Baixo",
+      "settings.ai.tool.reasoning_effort.medium": "Médio",
+      "settings.ai.tool.reasoning_effort.high": "Alto",
+      "settings.ai.tool.reasoning_effort.xhigh": "Muito alto"
     },
     "ru": {
       "settings.ai_auto_refresh": "Автообновление ИИ",
@@ -2968,7 +3010,13 @@
       "settings.window_style.ui_opacity": "Интерфейс",
       "settings.window_style.terminal_opacity": "Терминал",
       "settings.window_style.ui_help": "Матовое стекло для боковой панели и заголовков (100% — сплошной).",
-      "settings.window_style.terminal_help": "Прозрачность фона терминала (100% — сплошной)."
+      "settings.window_style.terminal_help": "Прозрачность фона терминала (100% — сплошной).",
+      "settings.ai.tool.reasoning_effort.default": "По умолчанию",
+      "settings.ai.tool.reasoning_effort.minimal": "Минимум",
+      "settings.ai.tool.reasoning_effort.low": "Низкий",
+      "settings.ai.tool.reasoning_effort.medium": "Средний",
+      "settings.ai.tool.reasoning_effort.high": "Высокий",
+      "settings.ai.tool.reasoning_effort.xhigh": "Очень высокий"
     },
     "zh-Hans": {
       "settings.ai_auto_refresh": "AI 自动刷新",
@@ -3341,7 +3389,13 @@
       "settings.window_style.ui_opacity": "透明度",
       "settings.window_style.terminal_opacity": "终端",
       "settings.window_style.ui_help": "侧栏、标题、面板与卡片的毛玻璃浓度；终端会自动更实一些。拖到 100% 即为纯色。",
-      "settings.window_style.terminal_help": "终端背景透明度（拖到 100% 即为纯色）。"
+      "settings.window_style.terminal_help": "终端背景透明度（拖到 100% 即为纯色）。",
+      "settings.ai.tool.reasoning_effort.default": "默认",
+      "settings.ai.tool.reasoning_effort.minimal": "极低",
+      "settings.ai.tool.reasoning_effort.low": "低",
+      "settings.ai.tool.reasoning_effort.medium": "中",
+      "settings.ai.tool.reasoning_effort.high": "高",
+      "settings.ai.tool.reasoning_effort.xhigh": "极高"
     },
     "zh-Hant": {
       "settings.ai_auto_refresh": "AI 自動重新整理",
@@ -3714,7 +3768,13 @@
       "settings.window_style.ui_opacity": "透明度",
       "settings.window_style.terminal_opacity": "終端",
       "settings.window_style.ui_help": "側欄、標題、面板與卡片的毛玻璃濃度；終端會自動更實一些。拖到 100% 即為純色。",
-      "settings.window_style.terminal_help": "終端背景透明度（拖到 100% 即為純色）。"
+      "settings.window_style.terminal_help": "終端背景透明度（拖到 100% 即為純色）。",
+      "settings.ai.tool.reasoning_effort.default": "預設",
+      "settings.ai.tool.reasoning_effort.minimal": "極低",
+      "settings.ai.tool.reasoning_effort.low": "低",
+      "settings.ai.tool.reasoning_effort.medium": "中",
+      "settings.ai.tool.reasoning_effort.high": "高",
+      "settings.ai.tool.reasoning_effort.xhigh": "極高"
     }
   }
 }

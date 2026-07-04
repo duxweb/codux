@@ -130,7 +130,7 @@ fn sanitize_codex_effort(value: &str) -> String {
         "medium" => "medium",
         "high" => "high",
         "xhigh" => "xhigh",
-        _ => "medium",
+        _ => "none",
     }
     .to_string()
 }

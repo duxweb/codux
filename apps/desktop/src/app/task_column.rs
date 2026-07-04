@@ -15,6 +15,29 @@ pub(in crate::app) struct TaskColumnView {
     session_list_view: gpui::Entity<TaskSessionListView>,
 }
 
+#[derive(Clone)]
+pub(in crate::app) struct TaskSessionDrag {
+    pub(in crate::app) session_id: String,
+    pub(in crate::app) title: String,
+}
+
+impl Render for TaskSessionDrag {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_3()
+            .py(px(6.0))
+            .rounded(px(8.0))
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().popover)
+            .text_sm()
+            .text_color(color(theme::TEXT))
+            .max_w(px(220.0))
+            .truncate()
+            .child(self.title.clone())
+    }
+}
+
 #[derive(Clone, PartialEq)]
 struct TaskWorktreeRow {
     id: String,
@@ -933,6 +956,10 @@ fn ai_session_compact_row(
     let menu_session_id = session.id.clone();
     let last_seen = relative_time_label_for_language(session.last_seen_at, &labels.language);
     let restore_entity = app_entity.clone();
+    let drag_payload = TaskSessionDrag {
+        session_id: session.id.clone(),
+        title: session.title.clone(),
+    };
     div()
         .id(SharedString::from(format!(
             "compact-session-{}",
@@ -948,6 +975,10 @@ fn ai_session_compact_row(
         .py(px(8.0))
         .cursor_pointer()
         .hover(|style| style.bg(theme::elevate(color(theme::BG_COLUMN), 0.07)))
+        .on_drag(drag_payload, move |drag, _, _, cx| {
+            cx.stop_propagation();
+            cx.new(|_| drag.clone())
+        })
         .on_double_click(move |_, window, cx| {
             cx.update_entity(&restore_entity, |app, cx| {
                 app.selected_ai_session_id = Some(restore_session_id.clone());

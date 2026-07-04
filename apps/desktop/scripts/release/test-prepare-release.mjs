@@ -68,6 +68,22 @@ assert.doesNotMatch(notes, /codux-\*/);
 assert.doesNotMatch(notes, /latest\.json/);
 assert.doesNotMatch(notes, /updater\.app\.tar\.gz/);
 
+const rcChannelResult = spawnSync(
+  "node",
+  ["apps/desktop/scripts/release/prepare-release.mjs", "v2.0.0-rc.1", "--dry-run"],
+  {
+    cwd: root,
+    env: {
+      ...process.env,
+      RELEASE_NOTES_PATH: path.join(tempDir, "rc-release-notes.md"),
+    },
+    encoding: "utf8",
+  },
+);
+
+assert.equal(rcChannelResult.status, 0, rcChannelResult.stderr || rcChannelResult.stdout);
+assert.match(rcChannelResult.stdout, /^channel=stable$/m);
+
 const missingNotesResult = spawnSync(
   "node",
   ["apps/desktop/scripts/release/prepare-release.mjs", "v9.9.9-beta.99", "--dry-run"],
