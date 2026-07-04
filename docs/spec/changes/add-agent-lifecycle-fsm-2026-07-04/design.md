@@ -12,7 +12,7 @@ Sibling projects solve this differently:
 
 - Goals:
   - Per-terminal-pane agent lifecycle state with a proper FSM and hysteresis (no flicker)
-  - Floating overlay chip on each pane showing status dot + agent name + model
+  - Status dot on each task-column terminal row (agent name + model already shown as the row subtitle)
   - Zero runtime crate changes (desktop-only feature)
   - Works for all agents codux already supports (Claude Code, Codex, Kiro, etc.)
 
@@ -32,9 +32,9 @@ Sibling projects solve this differently:
 - **Rationale**: `AIActivityState` is per-project and lacks `Working`/`Exited` granularity. The pane-level indicator needs finer states and hysteresis. Keeping both avoids coupling two render targets.
 - **Alternative considered**: Add hysteresis to `AIActivityState` and make it per-pane. Rejected — would break the existing project-level consumers (pet, project column).
 
-### Decision: Floating overlay chip (not a header strip)
-- **Rationale**: A header strip would reduce terminal real estate and require layout changes. A floating chip at `absolute().top_2().left_2()` mirrors the existing control buttons at `top_2().right_2()` — no layout change, clean for bare panes (hidden when no agent).
-- **Alternative considered**: Full-width header strip with title + status. Rejected by user — too heavy.
+### Decision: Status dot on task-column terminal rows (not a pane overlay)
+- **Rationale**: The point of the feature is spotting which terminal needs attention *without* opening it — that is the sidebar terminal list, not the pane itself. An open pane already shows the agent's status in its content. The terminal rows already display agent name + model as subtitle (`terminal_ai_titles_by_terminal_id`), so the row only needs the status dot.
+- **Alternatives considered**: (a) Full-width header strip — rejected, too heavy. (b) Floating overlay chip at `top_2().left_2()` on each pane — implemented in v1, rejected by user after trying it: redundant with visible pane content, and invisible exactly when you need it (pane not open). Removed in favor of the row indicator.
 
 ### Decision: Input from `session.state` string (not raw `ScreenSignal`)
 - **Rationale**: `session.state` is already the fused output of hooks + screen signal + transcript monitoring. Tapping it directly avoids re-implementing fusion. Trade-off: inherits the supervisor's poll interval (`POLL_INTERVAL_SECONDS`) for responsiveness.

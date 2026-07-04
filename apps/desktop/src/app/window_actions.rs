@@ -293,7 +293,6 @@ impl CoduxApp {
             pending_runtime_refresh: None,
             ai_runtime_state_save_tick: 0,
             pane_agent_lifecycle: HashMap::new(),
-            pane_agent_chip_collapsed: HashSet::new(),
             dismissed_worktree_ai_completion_at: HashMap::new(),
             ai_index_progress_visible_until: 0.0,
             ai_index_progress_generation: 0,

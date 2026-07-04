@@ -1,6 +1,7 @@
 use gpui_component::{InteractiveElementExt as _, menu::ContextMenuExt as _};
 
-use super::ai_runtime_status::AIActivityState;
+use super::agent_display::agent_lifecycle_status_dot;
+use super::ai_runtime_status::{AIActivityState, AgentLifecycleState};
 use super::scroll_compat::codux_uniform_list_with_sizing;
 use super::ui_helpers::{codux_tooltip_container, titlebar_drag_area};
 use super::{
@@ -241,6 +242,7 @@ struct TaskTerminalRow {
     pane_index: usize,
     title: String,
     subtitle: Option<String>,
+    lifecycle: Option<AgentLifecycleState>,
     active: bool,
     collapsed: bool,
     collapsed_index: Option<usize>,
@@ -475,6 +477,10 @@ impl CoduxApp {
                             pane_index: index,
                             title,
                             subtitle,
+                            lifecycle: terminal_id
+                                .as_deref()
+                                .and_then(|id| self.pane_agent_lifecycle.get(id))
+                                .map(|lifecycle| lifecycle.state),
                             active: !active_terminal_id.is_empty()
                                 && terminal_id.as_deref() == Some(active_terminal_id.as_str()),
                             collapsed: false,
@@ -500,6 +506,7 @@ impl CoduxApp {
                 pane_index: 0,
                 title,
                 subtitle,
+                lifecycle: None,
                 active: false,
                 collapsed: true,
                 collapsed_index: Some(collapsed_index),
@@ -1018,6 +1025,15 @@ fn terminal_compact_row(
                 .text_color(title_color)
                 .truncate()
                 .child(terminal.title),
+        )
+        .when_some(
+            terminal
+                .lifecycle
+                .filter(|state| *state != AgentLifecycleState::Idle),
+            |this, state| {
+                let animation_id = format!("task-terminal-dot-{pane_index}");
+                this.child(agent_lifecycle_status_dot(state, &animation_id))
+            },
         )
         .when(collapsed, |this| {
             this.child(

@@ -125,12 +125,6 @@ impl CoduxApp {
             sessions.iter().map(|session| session.terminal_id.as_str()).collect();
         self.pane_agent_lifecycle
             .retain(|terminal_id, _| active_terminal_ids.contains(terminal_id.as_str()));
-        self.prune_pane_agent_chip_collapsed();
-    }
-
-    pub(in crate::app) fn prune_pane_agent_chip_collapsed(&mut self) {
-        self.pane_agent_chip_collapsed
-            .retain(|terminal_id| self.pane_agent_lifecycle.contains_key(terminal_id));
     }
 }
 

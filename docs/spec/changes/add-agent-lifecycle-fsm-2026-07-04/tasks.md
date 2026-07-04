@@ -1,6 +1,6 @@
 ---
 created_at: 2026-07-04T00:00:00Z
-updated_at: 2026-07-04T23:05:00Z
+updated_at: 2026-07-04T23:45:00Z
 completed_at:
 ---
 
@@ -73,3 +73,12 @@ completed_at:
 - [x] 7.4 Run `cargo check` on `apps/desktop`
 - [x] 7.5 Run `cargo test` on `apps/desktop`
 - [x] 7.6 Verify no regressions in existing `AIActivityState` consumers (pet, project column)
+
+## 8. Rework: sidebar row indicator instead of pane chip (user feedback on v1)
+
+- [x] 8.1 Remove the floating chip: `terminal_pane_agent_chip_element`, `AgentPaneChipSnapshot`, the chip render in `workspace_terminal.rs` `terminal_panes()` and in `workspace_views.rs` `terminal_pane()`, the `agent_chip` field on `TerminalPaneViewSnapshot` (+ its `PartialEq` line), and the chip build in `terminal_workspace_snapshot()`
+- [x] 8.2 Remove the collapse state: `pane_agent_chip_collapsed` field (+ inits in `app_lifecycle.rs` / `window_actions.rs`), `prune_pane_agent_chip_collapsed`, and its call in `sync_pane_agent_lifecycle`
+- [x] 8.3 Remove now-unused display helpers `humanize_tool_name` / `shorten_model_name` (+ their tests); keep `reduce_motion_enabled` (used by the row dot)
+- [x] 8.4 Add `lifecycle: Option<AgentLifecycleState>` to `TaskTerminalRow`, built in `task_terminal_list_snapshot()` from `pane_agent_lifecycle` (None for collapsed rows / no session)
+- [x] 8.5 Render the status dot in `terminal_compact_row()` (spinning blue `Working` with reduce-motion fallback, static amber `Waiting`, green check `Completed`, nothing for `Idle`/None), placed before the subtitle
+- [ ] 8.6 Re-run `cargo check` + `cargo test -p codux`; manual test replaces 7.2: row dot spins while agent works, turns amber on prompt, brief green check on completion

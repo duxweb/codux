@@ -12,13 +12,12 @@ The terminal workspace shows model name and pane count but does not indicate whe
 - **New `AgentLifecycleState` enum** (`Idle | Working | Waiting | Completed`) replacing the coarse mapping currently used for `AIActivityState` at the pane level, with a proper finite-state machine governing valid transitions; turn completion is derived from the `responding → idle` session-state edge (agent exit is handled by removing the pane's lifecycle entry, not by a state)
 - **Hysteresis layer** (`PaneAgentLifecycle`) with minimum-hold timers, idle debounce, completed decay, and transition locks to prevent flicker on rapid agent state changes
 - **Per-terminal-pane state tracking** stored on the desktop app state, updated on each runtime inventory refresh
-- **Floating overlay chip** on each terminal pane showing `[status-dot] Agent · Model`, visible only when an AI session is bound to the pane; collapsible by the user
-- **Display helpers**: `humanize_tool_name()` and `shorten_model_name()` for rendering agent identity
+- **Status dot on task-column terminal rows** showing the lifecycle state (spinning blue working / amber waiting / brief green check), visible only when an AI session is bound to that terminal — so the user can see which terminal needs attention without opening it. (v1 shipped a floating overlay chip on the panes; rejected after trying it — the open pane already shows the agent's status — and replaced by the sidebar row indicator.)
 - No runtime crate changes; no new IPC messages; all data flows through the existing `AISessionSnapshot` → runtime inventory → desktop path
 
 ## Impact
 
-- Affected specs: `agent-lifecycle` (new), `terminal-pane-overlay` (new)
+- Affected specs: `agent-lifecycle` (new), `terminal-list-indicator` (new)
 - Affected code:
   - `apps/desktop/src/app/ai_runtime_status.rs` — extend with new enum + FSM
   - `apps/desktop/src/app/agent_lifecycle.rs` — new file for hysteresis struct

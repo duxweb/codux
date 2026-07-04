@@ -1,10 +1,5 @@
 use super::*;
 use crate::app::ui_helpers::codux_tooltip_container;
-use super::agent_display::{humanize_tool_name, reduce_motion_enabled, shorten_model_name};
-use super::ai_runtime_status::AgentLifecycleState;
-use gpui::{Animation, AnimationExt as _, Transformation, ease_in_out, percentage};
-use std::collections::HashMap;
-use std::time::Duration;
 
 impl CoduxApp {
     /// Overlay descriptor for the terminal when the selected project's remote
@@ -72,23 +67,6 @@ impl CoduxApp {
         };
         let pane_count = active.panes.len();
         let link_overlay = self.selected_project_terminal_link_overlay();
-        let sessions_by_terminal: HashMap<
-            &str,
-            &codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
-        > = self
-            .state
-            .ai_runtime_state
-            .sessions
-            .iter()
-            .map(|session| (session.terminal_id.as_str(), session))
-            .collect();
-        let lifecycle_by_terminal: HashMap<&str, AgentLifecycleState> = self
-            .pane_agent_lifecycle
-            .iter()
-            .map(|(terminal_id, lifecycle)| (terminal_id.as_str(), lifecycle.state))
-            .collect();
-        let collapsed_terminal_ids = self.pane_agent_chip_collapsed.clone();
-
         div()
             .relative()
             .flex()
@@ -102,40 +80,6 @@ impl CoduxApp {
                 let close_id = SharedString::from(format!("terminal-pane-close-{index}"));
                 let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
                 let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
-                let terminal_id = Self::terminal_slot_terminal_id(active, index, slot);
-                let session = terminal_id
-                    .as_deref()
-                    .and_then(|id| sessions_by_terminal.get(id).copied());
-                let lifecycle_state = terminal_id
-                    .as_deref()
-                    .and_then(|id| lifecycle_by_terminal.get(id).copied())
-                    .unwrap_or(AgentLifecycleState::Idle);
-                let collapsed = terminal_id
-                    .as_deref()
-                    .is_some_and(|id| collapsed_terminal_ids.contains(id));
-                let agent_chip = session.and_then(|session| {
-                    let show = !collapsed || lifecycle_state == AgentLifecycleState::Waiting;
-                    show.then(|| {
-                        let terminal_id =
-                            terminal_id.clone().expect("session binding requires terminal_id");
-                        let collapse_terminal_id = terminal_id.clone();
-                        terminal_pane_agent_chip_element(
-                            &terminal_id,
-                            lifecycle_state,
-                            &session.tool,
-                            session.model.as_deref(),
-                        )
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |app, _event, _window, cx| {
-                            cx.stop_propagation();
-                            let id = collapse_terminal_id.clone();
-                            app.pane_agent_chip_collapsed.insert(id);
-                            cx.notify();
-                        }))
-                        .into_any_element()
-                    })
-                });
-
                 div()
                     .relative()
                     .group("terminal-pane")
@@ -171,7 +115,6 @@ impl CoduxApp {
                                 .into_any_element(),
                         }),
                     )
-                    .when_some(agent_chip, |pane, chip| pane.child(chip))
                     .child(
                         div()
                             .absolute()
@@ -211,90 +154,6 @@ impl CoduxApp {
                     )
                     .into_any_element()
             }))
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub(in crate::app) struct AgentPaneChipSnapshot {
-    pub state: AgentLifecycleState,
-    pub tool: String,
-    pub model: Option<String>,
-    pub collapsed: bool,
-}
-
-pub(in crate::app) fn terminal_pane_agent_chip_element(
-    terminal_id: &str,
-    lifecycle_state: AgentLifecycleState,
-    tool: &str,
-    model: Option<&str>,
-) -> gpui::Stateful<gpui::Div> {
-    let chip_id = SharedString::from(format!("terminal-pane-agent-chip-{terminal_id}"));
-    let label = agent_chip_label(tool, model);
-
-    div()
-        .id(chip_id)
-        .absolute()
-        .top_2()
-        .left_2()
-        .flex()
-        .items_center()
-        .gap_1()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .bg(theme::elevate(color(theme::BG_TERMINAL), 0.08).opacity(0.92))
-        .text_size(rems(0.75))
-        .text_color(color(theme::TEXT_MUTED))
-        .child(agent_lifecycle_status_dot(lifecycle_state, terminal_id))
-        .child(label)
-}
-
-fn agent_chip_label(tool: &str, model: Option<&str>) -> String {
-    let name = humanize_tool_name(tool);
-    match model.filter(|model| !model.trim().is_empty()) {
-        Some(model) => format!("{} · {}", name, shorten_model_name(model)),
-        None => name,
-    }
-}
-
-fn agent_lifecycle_status_dot(
-    lifecycle_state: AgentLifecycleState,
-    terminal_id: &str,
-) -> AnyElement {
-    match lifecycle_state {
-        AgentLifecycleState::Idle => div().into_any_element(),
-        AgentLifecycleState::Working => {
-            if reduce_motion_enabled() {
-                return div()
-                    .flex_none()
-                    .size(px(6.0))
-                    .rounded_full()
-                    .bg(color(theme::ACCENT))
-                    .into_any_element();
-            }
-
-            Icon::new(HeroIconName::ArrowPath)
-                .size(px(8.0))
-                .text_color(color(theme::ACCENT))
-                .with_animation(
-                    SharedString::from(format!("agent-chip-working-{terminal_id}")),
-                    Animation::new(Duration::from_millis(900))
-                        .repeat()
-                        .with_easing(ease_in_out),
-                    |icon, delta| icon.transform(Transformation::rotate(percentage(delta))),
-                )
-                .into_any_element()
-        }
-        AgentLifecycleState::Waiting => div()
-            .flex_none()
-            .size(px(6.0))
-            .rounded_full()
-            .bg(color(theme::ORANGE))
-            .into_any_element(),
-        AgentLifecycleState::Completed => Icon::new(HeroIconName::Check)
-            .size(px(10.0))
-            .text_color(color(theme::GREEN))
-            .into_any_element(),
     }
 }
 

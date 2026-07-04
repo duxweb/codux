@@ -1,8 +1,6 @@
 use super::*;
 use crate::app::ui_helpers::codux_tooltip_container;
 use crate::app::workspace_shared::workspace_i18n;
-use crate::app::workspace_terminal::{AgentPaneChipSnapshot, terminal_pane_agent_chip_element};
-use super::ai_runtime_status::AgentLifecycleState;
 use gpui::Anchor;
 use gpui_component::popover::Popover;
 
@@ -981,7 +979,6 @@ struct TerminalPaneViewSnapshot {
     title: String,
     subtitle: Option<String>,
     search_open: bool,
-    agent_chip: Option<AgentPaneChipSnapshot>,
 }
 
 impl PartialEq for TerminalPaneViewSnapshot {
@@ -990,7 +987,6 @@ impl PartialEq for TerminalPaneViewSnapshot {
             || self.title != other.title
             || self.subtitle != other.subtitle
             || self.search_open != other.search_open
-            || self.agent_chip != other.agent_chip
         {
             return false;
         }
@@ -1216,16 +1212,6 @@ impl CoduxApp {
 
     pub(in crate::app) fn terminal_workspace_snapshot(&self) -> TerminalWorkspaceSnapshot {
         let ai_titles = terminal_ai_titles_by_terminal_id(&self.state.ai_runtime_state.sessions);
-        let sessions_by_terminal: HashMap<
-            &str,
-            &codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
-        > = self
-            .state
-            .ai_runtime_state
-            .sessions
-            .iter()
-            .map(|session| (session.terminal_id.as_str(), session))
-            .collect();
         let main_panes = self
             .main_terminal()
             .map(|tab| {
@@ -1246,32 +1232,12 @@ impl CoduxApp {
                         let search_open = terminal_id
                             .as_deref()
                             .is_some_and(|id| self.terminal_search_open.contains(id));
-                        let lifecycle_state = terminal_id
-                            .as_deref()
-                            .and_then(|id| {
-                                self.pane_agent_lifecycle
-                                    .get(id)
-                                    .map(|lifecycle| lifecycle.state)
-                            })
-                            .unwrap_or(AgentLifecycleState::Idle);
-                        let collapsed = terminal_id.as_deref().is_some_and(|id| {
-                            self.pane_agent_chip_collapsed.contains(id)
-                        });
-                        let agent_chip = terminal_id.as_deref().and_then(|id| {
-                            sessions_by_terminal.get(id).map(|session| AgentPaneChipSnapshot {
-                                state: lifecycle_state,
-                                tool: session.tool.clone(),
-                                model: session.model.clone(),
-                                collapsed,
-                            })
-                        });
                         TerminalPaneViewSnapshot {
                             terminal_id,
                             view: slot.pane.as_ref().map(|pane| pane.view.clone()),
                             title,
                             subtitle,
                             search_open,
-                            agent_chip,
                         }
                     })
                     .collect::<Vec<_>>()
@@ -1958,38 +1924,6 @@ fn terminal_pane(
     let drop_terminal_id = slot.terminal_id.clone();
     // The search bar floats over the same top-right corner as the controls.
     let search_open = slot.search_open;
-    let agent_chip = slot.agent_chip.and_then(|chip| {
-        let show = !chip.collapsed || chip.state == AgentLifecycleState::Waiting;
-        show.then(|| {
-            let terminal_id = slot
-                .terminal_id
-                .as_deref()
-                .expect("session binding requires terminal_id");
-            let collapse_terminal_id = terminal_id.to_string();
-            let chip_app_entity = app_entity.clone();
-            terminal_pane_agent_chip_element(
-                terminal_id,
-                chip.state,
-                &chip.tool,
-                chip.model.as_deref(),
-            )
-            .cursor_pointer()
-            .on_click(cx.listener(move |_view, _event, window, cx| {
-                cx.stop_propagation();
-                let id = collapse_terminal_id.clone();
-                defer_terminal_workspace_app_update(
-                    chip_app_entity.clone(),
-                    window,
-                    cx,
-                    move |app, _window, app_cx| {
-                        app.pane_agent_chip_collapsed.insert(id);
-                        app_cx.notify();
-                    },
-                );
-            }))
-            .into_any_element()
-        })
-    });
 
     // Flat pane: hairline divider against the previous column, controls float
     // over the terminal's top-right corner and appear on hover.
@@ -2030,7 +1964,6 @@ fn terminal_pane(
                         .into_any_element(),
                 }),
         )
-        .when_some(agent_chip, |pane, chip| pane.child(chip))
         .when(!search_open, |pane| {
             pane.child(
                 div()

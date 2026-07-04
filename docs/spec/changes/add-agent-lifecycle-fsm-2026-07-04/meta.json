@@ -4,7 +4,7 @@
   "status": "implementing",
   "capabilities": [
     "agent-lifecycle",
-    "terminal-pane-overlay"
+    "terminal-list-indicator"
   ],
   "implementation_started_at": "2026-07-04T22:23:02Z",
   "updated_at": "2026-07-04T22:23:02Z"
