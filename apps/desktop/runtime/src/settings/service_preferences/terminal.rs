@@ -1,4 +1,15 @@
 impl SettingsService {
+    fn set_numeric_string(
+        &self,
+        key: &str,
+        value: &str,
+        default: i64,
+        min: i64,
+        max: i64,
+    ) -> Result<SettingsSummary, String> {
+        self.update_string(key, numeric_string(value, default, min, max).to_string())
+    }
+
     pub fn set_terminal_scrollback_lines(&self, lines: usize) -> Result<SettingsSummary, String> {
         self.update_string(
             "terminalScrollbackLines",
@@ -7,8 +18,11 @@ impl SettingsService {
     }
 
     pub fn set_terminal_font_size(&self, size: &str) -> Result<SettingsSummary, String> {
-        let size = numeric_string(size, 14, 10, 28).to_string();
-        self.update_string("terminalFontSize", size)
+        self.set_numeric_string("terminalFontSize", size, 14, 8, 28)
+    }
+
+    pub fn set_terminal_padding(&self, padding: &str) -> Result<SettingsSummary, String> {
+        self.set_numeric_string("terminalPadding", padding, 0, 0, 40)
     }
 
     pub fn set_terminal_font_family(&self, family: &str) -> Result<SettingsSummary, String> {
@@ -30,13 +44,13 @@ impl SettingsService {
     }
 
     pub fn set_terminal_scrollback_value(&self, lines: &str) -> Result<SettingsSummary, String> {
-        let lines = numeric_string(lines, 2000, 200, 10_000).to_string();
-        self.update_string("terminalScrollbackLines", lines)
+        self.set_numeric_string("terminalScrollbackLines", lines, 2000, 200, 10_000)
     }
 
     pub fn cycle_terminal_font_size(&self) -> Result<SettingsSummary, String> {
-        let current = numeric_string(&self.summary().terminal_font_size, 14, 10, 28);
+        let current = numeric_string(&self.summary().terminal_font_size, 14, 8, 28);
         let next = match current {
+            8 => 10,
             10 => 12,
             12 => 14,
             14 => 16,
@@ -44,7 +58,7 @@ impl SettingsService {
             18 => 20,
             20 => 24,
             24 => 28,
-            28 => 10,
+            28 => 8,
             _ => 14,
         };
         self.update_string("terminalFontSize", next.to_string())

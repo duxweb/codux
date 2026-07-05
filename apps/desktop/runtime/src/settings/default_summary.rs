@@ -10,6 +10,7 @@ impl Default for SettingsSummary {
             shows_dock_badge: true,
             terminal_font_family: String::new(),
             terminal_font_size: "14".to_string(),
+            terminal_padding: "0".to_string(),
             terminal_scrollback_lines: "2000".to_string(),
             terminal_paste_images_as_paths: true,
             file_open_default: "edit".to_string(),

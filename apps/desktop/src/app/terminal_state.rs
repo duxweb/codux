@@ -23,7 +23,7 @@ use codux_runtime::{
     tool_permissions::ToolPermissionsSummary,
     worktree::WorktreeInfo,
 };
-use gpui::{WindowAppearance, px};
+use gpui::{Edges, WindowAppearance, px};
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use uuid::Uuid;
@@ -1152,8 +1152,14 @@ pub(in crate::app) fn terminal_config_for_settings(
         .terminal_font_size
         .parse::<f32>()
         .unwrap_or(14.0)
-        .clamp(10.0, 28.0);
+        .clamp(8.0, 28.0);
     config.font_size = px(font_size);
+    let padding = settings
+        .terminal_padding
+        .parse::<f32>()
+        .unwrap_or(0.0)
+        .clamp(0.0, 40.0);
+    config.padding = Edges::all(px(padding));
     config.scrollback = settings
         .terminal_scrollback_lines
         .parse::<usize>()

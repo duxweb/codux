@@ -146,6 +146,10 @@ pub(super) fn default_terminal_font_size() -> String {
     "14".to_string()
 }
 
+pub(super) fn default_terminal_padding() -> String {
+    "0".to_string()
+}
+
 pub(super) fn default_terminal_scrollback_lines() -> String {
     "2000".to_string()
 }

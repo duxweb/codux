@@ -63,6 +63,10 @@ impl RuntimeService {
         self.update_settings_with_side_effects(|settings| settings.set_terminal_font_size(size))
     }
 
+    pub fn set_terminal_padding(&self, padding: &str) -> Result<SettingsSummary, String> {
+        self.update_settings_with_side_effects(|settings| settings.set_terminal_padding(padding))
+    }
+
     pub fn set_terminal_font_family(&self, family: &str) -> Result<SettingsSummary, String> {
         self.update_settings_with_side_effects(|settings| settings.set_terminal_font_family(family))
     }

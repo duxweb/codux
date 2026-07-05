@@ -846,6 +846,8 @@ class MobileSettings {
   static const standardTerminalFontSize = 14.0;
   static const List<double> appTextScaleSteps = [0.875, 1.0, 1.125];
   static const List<double> terminalFontSizeSteps = [
+    10.0,
+    11.0,
     12.0,
     13.0,
     14.0,

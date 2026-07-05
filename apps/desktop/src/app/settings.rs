@@ -31,6 +31,7 @@ use gpui_component::{
     switch::Switch,
 };
 use qrcode::{EcLevel, QrCode, types::Color as QrColor};
+use std::ops::RangeInclusive;
 
 const CODUX_MOBILE_DOWNLOAD_URL: &str = "https://codux.dux.cn/features/mobile/";
 const SETTINGS_FORM_TEXT_SIZE: Rems = Rems(0.875);
@@ -2048,6 +2049,20 @@ fn settings_general_pane(
                         cx,
                         language,
                         |app, value, window, cx| app.set_terminal_font_size(value, window, cx),
+                    ),
+                )
+                .into_any_element(),
+                settings_row(
+                    settings_text(language, "settings.terminal_padding", "Terminal Padding"),
+                    None,
+                    settings_select_impl(
+                        "settings-terminal-padding",
+                        &settings.terminal_padding,
+                        terminal_padding_options(),
+                        window,
+                        cx,
+                        language,
+                        |app, value, window, cx| app.set_terminal_padding(value, window, cx),
                     ),
                 )
                 .into_any_element(),
@@ -5077,13 +5092,21 @@ fn terminal_font_family_options(
     options
 }
 
-fn terminal_font_size_options() -> Vec<(String, SharedString)> {
-    (10..=28)
+fn numeric_range_options(range: RangeInclusive<i64>) -> Vec<(String, SharedString)> {
+    range
         .map(|value| {
             let value = value.to_string();
             (value.clone(), SharedString::from(value))
         })
         .collect()
+}
+
+fn terminal_font_size_options() -> Vec<(String, SharedString)> {
+    numeric_range_options(8..=28)
+}
+
+fn terminal_padding_options() -> Vec<(String, SharedString)> {
+    numeric_range_options(0..=40)
 }
 
 fn pet_speech_mode_options(language: &str) -> Vec<(String, SharedString)> {

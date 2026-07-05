@@ -45,6 +45,8 @@ pub struct AppSettings {
     pub terminal_font_family: String,
     #[serde(default = "default_terminal_font_size")]
     pub terminal_font_size: String,
+    #[serde(default = "default_terminal_padding")]
+    pub terminal_padding: String,
     #[serde(default = "default_terminal_scrollback_lines")]
     pub terminal_scrollback_lines: String,
     #[serde(default = "default_terminal_paste_images_as_paths")]

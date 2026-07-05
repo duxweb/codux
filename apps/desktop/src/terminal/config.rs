@@ -44,7 +44,7 @@ pub fn terminal_config() -> TerminalConfig {
         rows: 32,
         scrollback: 3_000,
         line_height_multiplier: DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER,
-        padding: Edges::all(px(10.0)),
+        padding: Edges::all(px(0.0)),
         colors,
         paste_images_as_paths: true,
         language: String::new(),
@@ -99,7 +99,7 @@ fn default_terminal_font_family() -> &'static str {
     }
 }
 
-const DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER: f32 = 1.45;
+const DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER: f32 = 1.2;
 const TERMINAL_SCROLL_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const TERMINAL_OUTPUT_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 // Cap on how many output bytes are fed to the VT engine in a single flush.

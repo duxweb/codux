@@ -158,7 +158,7 @@ class _RemoteTerminalPaneState extends State<RemoteTerminalPane> {
         : 0.0;
     // Inset the terminal grid from the panel edges so the content isn't flush
     // against the surrounding container.
-    const terminalPadding = EdgeInsets.all(12);
+    const terminalPadding = EdgeInsets.all(4);
 
     return MediaQuery.removeViewInsets(
       context: context,

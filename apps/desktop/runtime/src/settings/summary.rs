@@ -44,8 +44,13 @@ fn summary_from_raw(raw: &Map<String, Value>) -> SettingsSummary {
         terminal_font_size: raw
             .get("terminalFontSize")
             .and_then(Value::as_str)
-            .map(|value| numeric_string(value, 14, 10, 28).to_string())
+            .map(|value| numeric_string(value, 14, 8, 28).to_string())
             .unwrap_or(defaults.terminal_font_size),
+        terminal_padding: raw
+            .get("terminalPadding")
+            .and_then(Value::as_str)
+            .map(|value| numeric_string(value, 0, 0, 40).to_string())
+            .unwrap_or(defaults.terminal_padding),
         terminal_scrollback_lines: raw
             .get("terminalScrollbackLines")
             .and_then(Value::as_str)

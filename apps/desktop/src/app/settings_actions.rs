@@ -48,6 +48,29 @@ impl CoduxApp {
         self.invalidate_ui_region(cx, UiRegion::Root);
     }
 
+    pub(super) fn set_terminal_padding(
+        &mut self,
+        padding: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.state.settings.terminal_padding == padding {
+            return;
+        }
+        self.save_settings_async(
+            "set_terminal_padding",
+            "saving terminal padding",
+            move |service| service.set_terminal_padding(&padding),
+            |app, settings, cx| {
+                app.apply_async_settings_summary(settings);
+                app.apply_terminal_text_settings(cx);
+                app.invalidate_ui_region(cx, UiRegion::Root);
+            },
+            cx,
+        );
+        self.invalidate_ui_region(cx, UiRegion::Root);
+    }
+
     pub(super) fn set_terminal_scrollback_lines(
         &mut self,
         lines: String,

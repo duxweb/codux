@@ -10,6 +10,7 @@ pub struct SettingsSummary {
     pub shows_dock_badge: bool,
     pub terminal_font_family: String,
     pub terminal_font_size: String,
+    pub terminal_padding: String,
     pub terminal_scrollback_lines: String,
     pub terminal_paste_images_as_paths: bool,
     pub file_open_default: String,

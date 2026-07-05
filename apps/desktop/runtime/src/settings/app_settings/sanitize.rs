@@ -39,6 +39,9 @@ pub(super) fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
     if settings.terminal_font_size.trim().is_empty() {
         settings.terminal_font_size = default_terminal_font_size();
     }
+    if settings.terminal_padding.trim().is_empty() {
+        settings.terminal_padding = default_terminal_padding();
+    }
     settings.terminal_scrollback_lines =
         sanitize_terminal_scrollback_lines(&settings.terminal_scrollback_lines);
     if settings.icon_style.trim().is_empty() {
