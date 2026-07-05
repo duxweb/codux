@@ -141,6 +141,13 @@ impl CoduxApp {
             let state_before_tick = entry.state;
             entry.tick(input, now);
             if pane_lifecycle_sync_entry_changed(existed_before, state_before_tick, entry.state) {
+                codux_runtime::runtime_trace::runtime_trace(
+                    "agent-lifecycle",
+                    &format!(
+                        "terminal={} {:?}->{:?} session_state={}",
+                        session.terminal_id, state_before_tick, entry.state, session.state
+                    ),
+                );
                 changed = true;
             }
         }
@@ -152,6 +159,10 @@ impl CoduxApp {
                 true
             } else {
                 if pane_lifecycle_prune_changed(entry.state) {
+                    codux_runtime::runtime_trace::runtime_trace(
+                        "agent-lifecycle",
+                        &format!("terminal={terminal_id} pruned was={:?}", entry.state),
+                    );
                     changed = true;
                 }
                 false
