@@ -18,7 +18,15 @@ pub fn app_support_dir() -> PathBuf {
 }
 
 pub fn runtime_temp_dir() -> PathBuf {
-    std::env::temp_dir().join(app_slug())
+    // Canonicalize the temp root so codex's Seatbelt sees /private/var (the kernel path), not the /var alias — the mismatch EPERMs sandboxed temp writes.
+    static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| {
+        let base = std::env::temp_dir();
+        std::fs::canonicalize(&base)
+            .unwrap_or(base)
+            .join(app_slug())
+    })
+    .clone()
 }
 
 pub fn runtime_log_path() -> PathBuf {

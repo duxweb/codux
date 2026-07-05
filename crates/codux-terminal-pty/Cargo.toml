@@ -8,3 +8,6 @@ codux-terminal-core = { path = "../codux-terminal-core" }
 portable-pty = "0.9"
 parking_lot = "0.12"
 uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

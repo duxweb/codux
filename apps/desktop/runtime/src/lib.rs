@@ -58,6 +58,7 @@ pub mod runtime_trace;
 pub mod settings;
 pub mod ssh;
 pub mod system_fonts;
+pub mod system_limits;
 pub mod terminal_layout;
 pub mod terminal_runtime;
 pub mod tool_permissions;

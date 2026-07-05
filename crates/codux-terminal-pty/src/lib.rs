@@ -75,6 +75,11 @@ impl LocalPtyProcessHandle {
     }
 
     pub fn kill(&self) -> Result<(), String> {
+        // Kill the whole process group (the shell is its group leader via PTY setsid) so AI descendants die too — else they hold the PTY slave open and leak the reader fd+thread until app restart.
+        #[cfg(unix)]
+        if let Some(pid) = self.inner.shell_pid {
+            unsafe { libc::killpg(pid as libc::pid_t, libc::SIGKILL) };
+        }
         self.inner
             .killer
             .lock()

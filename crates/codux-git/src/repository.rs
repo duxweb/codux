@@ -20,7 +20,13 @@ fn git_status_from_repo(repo: &GitRepository) -> GitSummary {
     let upstream = upstream_branch_name(repo);
     let (ahead, behind) = ahead_behind(repo).unwrap_or((0, 0));
     let head_pushed = head_commit_pushed_from_repo(repo);
-    let raw_changed_files = flatten_status_files(repo);
+    let (raw_changed_files, status_error) = match git2_status_files(repo) {
+        Ok((staged, unstaged, untracked)) => {
+            (flatten_unique_status_files(staged, unstaged, untracked), None)
+        }
+        // Surface the errno instead of a silent empty panel — the swallow made EPERM/EMFILE incidents undiagnosable.
+        Err(error) => (Vec::new(), Some(error)),
+    };
     let changed_files = collapse_path_status_files(raw_changed_files.clone(), "");
     let branches = git2_branches(repo, git2::BranchType::Local, &branch);
     let remote_branches = git2_branches(repo, git2::BranchType::Remote, &branch)
@@ -57,7 +63,7 @@ fn git_status_from_repo(repo: &GitRepository) -> GitSummary {
         unstaged,
         untracked,
         is_repository: true,
-        error: None,
+        error: status_error,
         changed_files,
         branches,
         remote_branches,
@@ -89,7 +95,7 @@ fn git_status_snapshot_from_repo(repo: &GitRepository) -> GitStatusSnapshot {
     let branch = current_branch_name(repo);
     let upstream = upstream_branch_name(repo);
     let (ahead, behind) = ahead_behind(repo).unwrap_or((0, 0));
-    let (staged, unstaged, untracked) = git2_status_files(repo);
+    let (staged, unstaged, untracked) = git2_status_files(repo).unwrap_or_default();
     let branches = git2_branches(repo, git2::BranchType::Local, &branch);
     let remote_branch_summaries = git2_branches(repo, git2::BranchType::Remote, &branch)
         .into_iter()
@@ -175,12 +181,12 @@ fn git_review_from_repo(repo: &GitRepository, base_branch: Option<&str>) -> GitR
 }
 
 fn flatten_status_files(repo: &GitRepository) -> Vec<GitFileStatus> {
-    let (staged, unstaged, untracked) = git2_status_files(repo);
+    let (staged, unstaged, untracked) = git2_status_files(repo).unwrap_or_default();
     flatten_unique_status_files(staged, unstaged, untracked)
 }
 
 fn flatten_path_status_files(repo: &GitRepository, directory_path: &str) -> Vec<GitFileStatus> {
-    let (staged, unstaged, untracked) = git2_path_status_files(repo, directory_path);
+    let (staged, unstaged, untracked) = git2_path_status_files(repo, directory_path).unwrap_or_default();
     flatten_unique_status_files(staged, unstaged, untracked)
 }
 
@@ -281,14 +287,14 @@ fn flatten_unique_status_files(
 
 fn git2_status_files(
     repo: &GitRepository,
-) -> (Vec<GitFileStatus>, Vec<GitFileStatus>, Vec<GitFileStatus>) {
+) -> Result<(Vec<GitFileStatus>, Vec<GitFileStatus>, Vec<GitFileStatus>), String> {
     git2_status_files_with_options(repo, false, None, MAX_GIT_STATUS_FILES)
 }
 
 fn git2_path_status_files(
     repo: &GitRepository,
     directory_path: &str,
-) -> (Vec<GitFileStatus>, Vec<GitFileStatus>, Vec<GitFileStatus>) {
+) -> Result<(Vec<GitFileStatus>, Vec<GitFileStatus>, Vec<GitFileStatus>), String> {
     git2_status_files_with_options(
         repo,
         true,
@@ -302,7 +308,7 @@ fn git2_status_files_with_options(
     recurse_untracked_dirs: bool,
     directory_path: Option<&str>,
     max_files: usize,
-) -> (Vec<GitFileStatus>, Vec<GitFileStatus>, Vec<GitFileStatus>) {
+) -> Result<(Vec<GitFileStatus>, Vec<GitFileStatus>, Vec<GitFileStatus>), String> {
     let mut options = git2::StatusOptions::new();
     options
         .include_untracked(true)
@@ -318,10 +324,9 @@ fn git2_status_files_with_options(
         options.pathspec(format!("{}/**", directory_path.trim_end_matches('/')));
     }
 
-    let statuses = match repo.statuses(Some(&mut options)) {
-        Ok(statuses) => statuses,
-        Err(_) => return (Vec::new(), Vec::new(), Vec::new()),
-    };
+    let statuses = repo
+        .statuses(Some(&mut options))
+        .map_err(|error| error.message().to_string())?;
 
     let mut staged = Vec::new();
     let mut unstaged = Vec::new();
@@ -355,5 +360,5 @@ fn git2_status_files_with_options(
             break;
         }
     }
-    (staged, unstaged, untracked)
+    Ok((staged, unstaged, untracked))
 }

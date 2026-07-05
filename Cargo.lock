@@ -1569,6 +1569,7 @@ name = "codux-terminal-pty"
 version = "1.8.1"
 dependencies = [
  "codux-terminal-core",
+ "libc",
  "parking_lot",
  "portable-pty",
  "uuid",

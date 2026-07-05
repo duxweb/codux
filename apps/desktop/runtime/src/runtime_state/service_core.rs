@@ -188,7 +188,14 @@ impl RuntimeService {
         directory_path: Option<&str>,
     ) -> Vec<FileEntry> {
         self.try_reload_project_files(project_path, directory_path)
-            .unwrap_or_default()
+            .unwrap_or_else(|error| {
+                // Log the errno instead of a silent empty tree (EPERM/EMFILE under fd pressure or a sandbox/TCC denial).
+                crate::runtime_trace::runtime_trace(
+                    "files",
+                    &format!("reload failed project={project_path}: {error}"),
+                );
+                Vec::new()
+            })
     }
 
     pub fn try_reload_project_files(

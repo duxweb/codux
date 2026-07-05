@@ -33,6 +33,7 @@ fn main() -> Result<()> {
     }
 
     install_panic_logger();
+    codux_runtime::system_limits::raise_open_file_limit();
 
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     disable_macos_autofill_heuristics();

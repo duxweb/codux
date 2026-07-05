@@ -918,7 +918,14 @@ impl TerminalPtySession {
             clear_env: true,
             command_mode: LocalPtyCommandMode::InteractiveLogin,
         })
-        .map_err(anyhow::Error::msg)
+        .map_err(|error| {
+            // Log the raw errno; this is the only record when a terminal silently fails to open (EMFILE/EPERM under fd pressure or a sandbox denial).
+            crate::ai_runtime::runtime_log_line(
+                "terminal",
+                &format!("spawn failed shell={shell} cwd={cwd:?}: {error}"),
+            );
+            anyhow::Error::msg(error)
+        })
         .with_context(|| format!("failed to spawn shell {shell}"))?;
         let stdin_writer = Arc::new(parking_lot::Mutex::new(process.writer));
         let input_capture = Arc::new(parking_lot::Mutex::new(TerminalInputCapture::new(
@@ -3214,7 +3221,10 @@ fn resolved_login_shell_path(shell: &str, home: &str, user: &str) -> Option<Stri
             return value.clone();
         }
         let resolved = resolve_login_shell_path_uncached(shell, home, user);
-        cache.lock().insert(key, resolved.clone());
+        // Only cache a real path; caching None would strand a one-off failure for the whole process (same trap as the env-capture fix).
+        if resolved.is_some() {
+            cache.lock().insert(key, resolved.clone());
+        }
         resolved
     }
 }
