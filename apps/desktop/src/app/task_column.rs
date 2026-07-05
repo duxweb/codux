@@ -1,6 +1,6 @@
 use gpui_component::{InteractiveElementExt as _, menu::ContextMenuExt as _};
 
-use super::agent_display::{agent_lifecycle_color, agent_lifecycle_status_dot};
+use super::agent_display::{agent_lifecycle_color, agent_lifecycle_status_dot, spin_icon};
 use super::ai_runtime_status::{AIActivityState, AgentLifecycleState};
 use super::scroll_compat::codux_uniform_list_with_sizing;
 use super::ui_helpers::{codux_tooltip_container, titlebar_drag_area};
@@ -1051,17 +1051,7 @@ fn terminal_compact_row(
             terminal
                 .lifecycle
                 .filter(|state| *state != AgentLifecycleState::Idle),
-            |this, state| {
-                let animation_id = if collapsed {
-                    format!(
-                        "task-terminal-dot-collapsed-{}",
-                        collapsed_index.unwrap_or(0)
-                    )
-                } else {
-                    format!("task-terminal-dot-{pane_index}")
-                };
-                this.child(agent_lifecycle_status_dot(state, &animation_id))
-            },
+            |this, state| this.child(agent_lifecycle_status_dot(state)),
         )
         .when(
             collapsed
@@ -1163,7 +1153,6 @@ fn worktree_compact_row(
     cx: &mut Context<TaskWorktreeListView>,
 ) -> impl IntoElement {
     let worktree_id = worktree.id.clone();
-    let dot_worktree_id = worktree.id.clone();
     let menu_worktree_id = worktree.id.clone();
     let menu_worktree_path = worktree.path.clone();
     let is_default = worktree.is_default;
@@ -1173,6 +1162,7 @@ fn worktree_compact_row(
         worktree.id.clone()
     };
     let activity_state = worktree.activity_state;
+    let dot_pulsing = worktree.lifecycle == Some(AgentLifecycleState::Working);
     let select_entity = app_entity.clone();
     div()
         .id(SharedString::from(format!(
@@ -1200,7 +1190,7 @@ fn worktree_compact_row(
                 app.select_worktree(worktree_id.clone(), window, cx)
             });
         })
-        .child(worktree_activity_dot(activity_state))
+        .child(worktree_activity_dot(activity_state, dot_pulsing))
         .child(
             div()
                 .flex()
@@ -1231,10 +1221,6 @@ fn worktree_compact_row(
                         ),
                 ),
         )
-        .when_some(worktree.lifecycle, |this, state| {
-            let animation_id = format!("task-worktree-dot-{dot_worktree_id}");
-            this.child(agent_lifecycle_status_dot(state, &animation_id))
-        })
         .child(
             div()
                 .flex()
@@ -1303,38 +1289,31 @@ fn worktree_compact_row(
         })
 }
 
-fn worktree_activity_dot(state: AIActivityState) -> AnyElement {
-    match state {
-        AIActivityState::Idle => div()
-            .w(px(10.0))
-            .h(px(10.0))
-            .rounded_full()
-            .flex_shrink_0()
-            .bg(color(theme::ACCENT))
-            .into_any_element(),
-        AIActivityState::Running => div()
-            .w(px(10.0))
-            .h(px(10.0))
-            .flex_shrink_0()
-            .rounded_full()
-            .bg(color(theme::ORANGE))
-            .into_any_element(),
-        AIActivityState::Review => div()
-            .w(px(10.0))
-            .h(px(10.0))
-            .flex_shrink_0()
-            .rounded_full()
-            .border_2()
-            .border_color(color(theme::ORANGE))
-            .into_any_element(),
-        AIActivityState::Done => div()
-            .w(px(10.0))
-            .h(px(10.0))
-            .rounded_full()
-            .flex_shrink_0()
-            .bg(color(theme::GREEN))
-            .into_any_element(),
-    }
+fn worktree_activity_dot(state: AIActivityState, pulsing: bool) -> AnyElement {
+    // Fixed-width slot centring the indicator, so the row text never shifts as
+    // it swaps between a 10px static dot and the 12px ring spinner.
+    let inner = if pulsing {
+        spin_icon(color(theme::ORANGE), 12.0)
+    } else {
+        let dot = div().size(px(10.0)).rounded_full();
+        match state {
+            AIActivityState::Idle => dot.bg(color(theme::ACCENT)).into_any_element(),
+            AIActivityState::Running => dot.bg(color(theme::ORANGE)).into_any_element(),
+            AIActivityState::Review => dot
+                .border_2()
+                .border_color(color(theme::ORANGE))
+                .into_any_element(),
+            AIActivityState::Done => dot.bg(color(theme::GREEN)).into_any_element(),
+        }
+    };
+    div()
+        .flex_none()
+        .size(px(12.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(inner)
+        .into_any_element()
 }
 
 fn worktree_row_title(worktree: &WorktreeInfo, no_branch: &str) -> String {
@@ -1459,19 +1438,10 @@ fn ai_session_compact_row(
                 .text_color(color(theme::TEXT_DIM))
                 .child(
                     div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.0))
                         .min_w_0()
                         .flex_1()
-                        .child(
-                            div()
-                                .size(px(6.0))
-                                .flex_none()
-                                .rounded_full()
-                                .bg(color(theme::TEXT_DIM).opacity(0.55)),
-                        )
-                        .child(div().min_w_0().truncate().child(session.source.clone())),
+                        .truncate()
+                        .child(session.source.clone()),
                 )
                 .child(div().flex_shrink_0().text_right().child(format!(
                     "{} · {}",

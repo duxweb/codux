@@ -2,6 +2,12 @@ use super::*;
 use chrono::Timelike as _;
 
 pub(in crate::app) const DESKTOP_PET_COMPLETION_VISIBLE_SECONDS: f64 = 10.0;
+/// A running session keeps its plan snapshot even after the agent stops touching
+/// it, so a finished/abandoned plan (e.g. 3/4 with the last item never checked)
+/// would pin the "N/M" bubble indefinitely. Only treat the plan as live progress
+/// while it was updated within this window — mirrors the runtime's live-turn
+/// staleness horizon (RUNNING_STALE_SECONDS).
+const DESKTOP_PET_PLAN_FRESH_SECONDS: f64 = 240.0;
 
 #[derive(Clone)]
 struct DesktopPetLabels {
@@ -247,7 +253,7 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
     {
         // A fully-completed plan is not live progress — ignore it so the bubble
         // falls through to the preview/running line instead of pinning "N/N".
-        if let Some(plan_items) = desktop_pet_plan_items(session)
+        if let Some(plan_items) = desktop_pet_plan_items(session, now)
             .filter(|items| items.iter().any(|item| item.status != "completed"))
         {
             let completed = plan_items
@@ -300,8 +306,14 @@ fn desktop_pet_session_project_label(
 
 fn desktop_pet_plan_items(
     session: &codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
+    now: f64,
 ) -> Option<Vec<DesktopPetPlanItem>> {
     let plan = session.plan.as_ref()?;
+    // A plan the agent hasn't touched in a while is finished/abandoned work, not
+    // live progress — let the bubble fall through to the running preview instead.
+    if now - plan.updated_at > DESKTOP_PET_PLAN_FRESH_SECONDS {
+        return None;
+    }
     let mut items = plan
         .items
         .iter()
@@ -1186,10 +1198,14 @@ mod tests {
     fn runtime_activity_line_prefers_running_plan_items() {
         let mut session = runtime_session("running");
         session.latest_assistant_preview = Some("Fallback text".to_string());
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs_f64())
+            .unwrap_or(0.0);
         session.plan = Some(codux_runtime::ai_runtime::AIPlanSnapshot {
             source: "codex".to_string(),
             session_id: "session-a".to_string(),
-            updated_at: 10.0,
+            updated_at: now,
             items: vec![
                 codux_runtime::ai_runtime::AIPlanItem {
                     text: "Read logs".to_string(),
@@ -1218,6 +1234,31 @@ mod tests {
         assert_eq!(line.plan_items[0].status, "completed");
         assert_eq!(line.plan_items[1].text, "Patch parser");
         assert_eq!(line.plan_items[1].status, "in_progress");
+    }
+
+    #[test]
+    fn runtime_activity_line_ignores_stale_plan() {
+        let mut session = runtime_session("running");
+        session.latest_assistant_preview = Some("Fallback text".to_string());
+        session.plan = Some(codux_runtime::ai_runtime::AIPlanSnapshot {
+            source: "codex".to_string(),
+            session_id: "session-a".to_string(),
+            updated_at: 10.0,
+            items: vec![codux_runtime::ai_runtime::AIPlanItem {
+                text: "Patch parser".to_string(),
+                status: "in_progress".to_string(),
+                priority: None,
+            }],
+        });
+        let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
+            sessions: vec![session],
+            ..Default::default()
+        };
+
+        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+
+        assert!(line.plan_items.is_empty());
+        assert_eq!(line.text, "Fallback text");
     }
 
     #[test]

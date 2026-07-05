@@ -172,6 +172,27 @@ impl CoduxApp {
         )
     }
 
+    pub(in crate::app) fn any_pane_agent_working(&self) -> bool {
+        self.pane_agent_lifecycle
+            .values()
+            .any(|lifecycle| lifecycle.state == AgentLifecycleState::Working)
+    }
+
+    // Force the dot-bearing views to repaint so their ping re-reads its phase;
+    // bypasses the snapshot-diff skip since only the pulse phase moves. GPUI
+    // replays the (unchanged) terminal, so this is just the small dot views.
+    pub(in crate::app) fn pulse_agent_dots(&self, cx: &mut gpui::Context<Self>) {
+        if let Some(view) = &self.task_worktree_list_view {
+            view.update(cx, |_, cx| cx.notify());
+        }
+        if let Some(view) = &self.task_terminal_list_view {
+            view.update(cx, |_, cx| cx.notify());
+        }
+        if let Some(view) = &self.project_column_view {
+            view.update(cx, |_, cx| cx.notify());
+        }
+    }
+
     pub(in crate::app) fn sync_pane_agent_lifecycle(&mut self) -> bool {
         let now = Instant::now();
         let sessions = &self.state.ai_runtime_state.sessions;

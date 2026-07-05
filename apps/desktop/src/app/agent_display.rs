@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::Instant;
 
-use gpui::{Animation, AnimationExt as _, Transformation, ease_in_out, percentage};
+use gpui::{Transformation, percentage};
 
 use super::ai_runtime_status::AgentLifecycleState;
 use super::*;
@@ -58,43 +58,76 @@ fn defaults_reduce_motion_enabled() -> bool {
         .unwrap_or(false)
 }
 
-pub(in crate::app) fn agent_lifecycle_status_dot(
-    lifecycle_state: AgentLifecycleState,
-    animation_id: &str,
-) -> AnyElement {
-    match lifecycle_state {
-        AgentLifecycleState::Idle => div().into_any_element(),
-        AgentLifecycleState::Working => {
-            if reduce_motion_enabled() {
-                return div()
-                    .flex_none()
-                    .size(px(6.0))
-                    .rounded_full()
-                    .bg(color(theme::ACCENT))
-                    .into_any_element();
-            }
+// Phase (0..1 over ~1.1s). The motion is driven by the runtime pulse timer
+// repainting only the small dot views while an agent works — NOT a 60fps
+// with_animation, which would force a full-window redraw every frame.
+fn ping_phase() -> f32 {
+    const PERIOD_SECS: f32 = 1.1;
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    (EPOCH.get_or_init(Instant::now).elapsed().as_secs_f32() / PERIOD_SECS) % 1.0
+}
 
-            Icon::new(HeroIconName::ArrowPath)
-                .size(px(8.0))
-                .text_color(color(theme::ACCENT))
-                .with_animation(
-                    SharedString::from(animation_id.to_string()),
-                    Animation::new(Duration::from_millis(900))
-                        .repeat()
-                        .with_easing(ease_in_out),
-                    |icon, delta| icon.transform(Transformation::rotate(percentage(delta))),
-                )
-                .into_any_element()
-        }
+/// Reusable "ping" dot: a solid dot with an expanding, fading ring behind it
+/// (Tailwind animate-ping style). Reduce-motion renders just the solid dot.
+pub(in crate::app) fn ping_dot(dot_color: gpui::Hsla, size: f32) -> AnyElement {
+    let dot = || div().flex_none().size(px(size)).rounded_full().bg(dot_color);
+    if reduce_motion_enabled() {
+        return dot().into_any_element();
+    }
+    let phase = ping_phase();
+    let ring = size * (1.0 + 1.7 * phase);
+    let ring_alpha = 0.75 * (1.0 - phase);
+    let offset = (size - ring) / 2.0;
+    div()
+        .relative()
+        .flex_none()
+        .size(px(size))
+        .child(
+            div()
+                .absolute()
+                .top(px(offset))
+                .left(px(offset))
+                .size(px(ring))
+                .rounded_full()
+                .bg(dot_color.opacity(ring_alpha)),
+        )
+        .child(dot())
+        .into_any_element()
+}
+
+/// Reusable ring spinner (Tailwind animate-spin look): gpui-component's
+/// loader-circle arc rotated by the current phase, advanced by the runtime
+/// pulse timer (no 60fps with_animation; the SVG rasterizes once, rotation is
+/// a GPU transform).
+pub(in crate::app) fn spin_icon(icon_color: gpui::Hsla, size: f32) -> AnyElement {
+    let icon = Icon::new(gpui_component::IconName::LoaderCircle)
+        .size(px(size))
+        .text_color(icon_color);
+    if reduce_motion_enabled() {
+        return icon.into_any_element();
+    }
+    icon.transform(Transformation::rotate(percentage(ping_phase())))
+        .into_any_element()
+}
+
+pub(in crate::app) fn agent_lifecycle_status_dot(lifecycle_state: AgentLifecycleState) -> AnyElement {
+    let inner = match lifecycle_state {
+        AgentLifecycleState::Idle | AgentLifecycleState::Completed => return div().into_any_element(),
+        AgentLifecycleState::Working => spin_icon(color(theme::ACCENT), 12.0),
         AgentLifecycleState::Waiting => div()
-            .flex_none()
             .size(px(6.0))
             .rounded_full()
             .bg(color(theme::ORANGE))
             .into_any_element(),
-        AgentLifecycleState::Completed => Icon::new(HeroIconName::Check)
-            .size(px(10.0))
-            .text_color(color(theme::GREEN))
-            .into_any_element(),
-    }
+    };
+    // Fixed-width slot so the subtitle doesn't shift between the 12px spinner
+    // and the 6px waiting dot.
+    div()
+        .flex_none()
+        .size(px(12.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(inner)
+        .into_any_element()
 }

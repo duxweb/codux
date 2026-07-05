@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-rc.3] - 2026-07-05
+
+### Added
+
+- Added a terminal-pane sidebar in the task column, including collapsed pane rows and per-pane agent lifecycle indicators.
+- Added Japanese and Korean README translations, plus latest mobile download links and LINUX DO community support links.
+
+### Changed
+
+- Refined agent status indicators with lightweight pulse/spinner rendering for task, project, and terminal rows without full-window animation churn.
+- Improved terminal and session list copy, selection behavior, wheel scrolling, and collapsed-session docking in the task column.
+
+### Fixed
+
+- Improved terminal stability under file-descriptor pressure by raising the open-file limit, killing PTY process groups, avoiding one-off shell path failure caching, and logging terminal/git/file access failures.
+- Fixed agent lifecycle refresh paths so pane/worktree indicators update from the correct state domain and repaint when lifecycle transitions occur.
+- Fixed stale desktop pet plan bubbles so abandoned or old plan snapshots no longer pin outdated progress text.
+- Fixed collapsed task-column rerender behavior, startup repaint paths, and related agent lifecycle review findings.
+
 ## [2.0.0-rc.2] - 2026-07-04
 
 ### Added

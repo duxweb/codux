@@ -1,3 +1,4 @@
+use super::agent_display::ping_dot;
 use super::ai_runtime_status::AIActivityState;
 use super::app_state::CoduxTooltipPlacement;
 use super::ui_helpers::{codux_tooltip_container_with_placement, titlebar_drag_area};
@@ -1016,10 +1017,7 @@ fn project_activity_badge(
             .absolute()
             .right(px(-2.0))
             .top(px(-2.0))
-            .w(px(10.0))
-            .h(px(10.0))
-            .rounded_full()
-            .bg(color(theme::ORANGE))
+            .child(ping_dot(color(theme::ORANGE), 10.0))
             .into_any_element(),
         AIActivityState::Review => div()
             .absolute()
