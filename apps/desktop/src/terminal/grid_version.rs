@@ -144,8 +144,9 @@ mod grid_version_tests {
             test_text_run(0, 2, "ab", false),
             test_text_run(2, 2, "CD", true),
         ];
-        let line = combine_terminal_row_runs(&runs, test_gap_font(), test_gap_color())
-            .expect("simple row combines");
+        let (lines, leftover) = combine_terminal_row_runs(runs, test_gap_font(), test_gap_color());
+        assert!(leftover.is_empty(), "both spans should combine");
+        let line = lines.into_iter().next().expect("simple row combines");
         assert_eq!(line.text, "abCD");
         assert_eq!(line.start_col, 0);
         assert_eq!(line.runs.len(), 2, "two style runs, one shaped line");
@@ -164,7 +165,11 @@ mod grid_version_tests {
             test_text_run(0, 2, "ab", false),
             test_text_run(5, 2, "CD", false),
         ];
-        let line = combine_terminal_row_runs(&runs, test_gap_font(), test_gap_color())
+        let (lines, leftover) = combine_terminal_row_runs(runs, test_gap_font(), test_gap_color());
+        assert!(leftover.is_empty(), "both spans should combine");
+        let line = lines
+            .into_iter()
+            .next()
             .expect("simple row with a gap combines");
         assert_eq!(line.text, "ab   CD"); // 3-column gap -> 3 spaces
         assert_eq!(
@@ -180,7 +185,9 @@ mod grid_version_tests {
         // re-flow by natural advance and break grid alignment, so it must keep
         // the per-span path.
         let runs = vec![test_text_run(0, 2, "中", false)];
-        assert!(combine_terminal_row_runs(&runs, test_gap_font(), test_gap_color()).is_none());
+        let (lines, leftover) = combine_terminal_row_runs(runs, test_gap_font(), test_gap_color());
+        assert!(lines.is_empty());
+        assert_eq!(leftover.len(), 1);
     }
 
     #[test]
@@ -188,7 +195,65 @@ mod grid_version_tests {
         // Defensive: a cell whose text is more than one char for one column
         // (e.g. a grapheme cluster) is not a 1:1 char/cell mapping.
         let runs = vec![test_text_run(0, 1, "a\u{0301}", false)]; // "á" as a + combining accent
-        assert!(combine_terminal_row_runs(&runs, test_gap_font(), test_gap_color()).is_none());
+        let (lines, leftover) = combine_terminal_row_runs(runs, test_gap_font(), test_gap_color());
+        assert!(lines.is_empty());
+        assert_eq!(leftover.len(), 1);
+    }
+
+    #[test]
+    fn combining_mark_cell_stays_in_one_paint_segment() {
+        // A cell whose text is a base char plus a combining mark (e.g. "á" as
+        // "a" + U+0301) must be shaped and painted as one unit at its own
+        // column, not split per Rust `char` — otherwise the mark would be
+        // displaced into the next column instead of stacking on the base.
+        let run = test_text_run(3, 1, "a\u{0301}", false);
+        assert_eq!(run.segments.len(), 1, "one cell, one paint segment");
+        assert_eq!(run.segments[0].col, 3);
+        assert_eq!(
+            &run.text[run.segments[0].byte_start..][..run.segments[0].byte_len],
+            "a\u{0301}"
+        );
+    }
+
+    #[test]
+    fn merged_run_keeps_one_segment_per_originating_cell() {
+        // Simple (1:1 char-to-cell) ASCII cells can be merged into one run's
+        // `text` buffer, but each originating cell keeps its own segment so a
+        // later non-ASCII cell appended to the same run (e.g. after further
+        // upstream changes) would still be positioned by cell, not by char.
+        let mut run = test_text_run(0, 1, "a", false);
+        run.append_text("b", 1);
+        run.append_text("c", 1);
+        assert_eq!(run.text, "abc");
+        assert_eq!(run.segments.len(), 3);
+        assert_eq!(
+            run.segments.iter().map(|s| s.col).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+    }
+
+    #[test]
+    fn combine_keeps_combining_around_a_noncombinable_span() {
+        // A wide/non-combinable span in the middle of a row must not block the
+        // ASCII spans before and after it from still combining into their own
+        // shaped lines.
+        let runs = vec![
+            test_text_run(0, 2, "ab", false),
+            test_text_run(2, 2, "CD", false),
+            test_text_run(4, 2, "中", false),
+            test_text_run(6, 2, "ef", false),
+            test_text_run(8, 2, "GH", false),
+        ];
+        let (lines, leftover) = combine_terminal_row_runs(runs, test_gap_font(), test_gap_color());
+        assert_eq!(leftover.len(), 1, "only the wide span stays per-span");
+        assert_eq!(leftover[0].text, "中");
+        assert_eq!(
+            lines.len(),
+            2,
+            "spans before and after the wide span each combine"
+        );
+        assert_eq!(lines[0].text, "abCD");
+        assert_eq!(lines[1].text, "efGH");
     }
 
     #[test]

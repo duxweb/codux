@@ -185,7 +185,7 @@ impl TerminalRenderer {
                 background_rects.extend(prepared.background_rects);
                 graphics.extend(prepared.graphics);
                 text_runs.extend(prepared.text_runs);
-                lines.extend(prepared.line);
+                lines.extend(prepared.lines);
             }
             let cursor_line = content.viewport_start_line + content.cursor.row as i32;
             if content.display_row_for_line(cursor_line) == Some(row) {
@@ -377,17 +377,17 @@ impl TerminalRenderer {
         let mut text_runs = Vec::new();
         self.prepare_row_backgrounds(0, cells, default_bg, &mut background_rects);
         self.prepare_row_text(0, cells, &mut text_runs, &mut graphics, None);
-        // Prefer a single shaped line for simple rows; on success the per-span
-        // runs are dropped so the row is shaped/painted once instead of N times.
-        let line = self.combine_row_runs(&text_runs);
-        if line.is_some() {
-            text_runs.clear();
-        }
+        // Combine maximal contiguous runs of simple (1:1 char-to-cell, ASCII)
+        // spans into single shaped lines, so the row is shaped/painted once
+        // instead of once per span; any remaining wide/multi-codepoint/
+        // non-ASCII spans stay in text_runs and are painted per-span. One such
+        // span no longer blocks the rest of the row from combining.
+        let (lines, text_runs) = self.combine_row_runs(text_runs);
         let prepared = TerminalPreparedRow {
             background_rects,
             graphics,
             text_runs,
-            line,
+            lines,
         };
         let mut cache = self.cache.lock();
         if cache.rows.len() > TERMINAL_ROW_CACHE_LIMIT {
@@ -690,6 +690,22 @@ impl TerminalRenderer {
     }
 }
 
+/// One originating terminal cell's byte range within a `TerminalTextRun`'s
+/// `text`. A cell's text can hold more than one codepoint (a base character
+/// plus combining/zero-width marks attached by the terminal model), so cells
+/// must be shaped and painted as a whole unit at `col` rather than split by
+/// Rust `char` — splitting would displace combining marks into the next
+/// column instead of stacking them on the base glyph. `hash` is computed once
+/// when the cell's text is appended so paint can hit the shape cache without
+/// re-hashing every frame.
+#[derive(Clone, Copy)]
+struct TerminalTextSegment {
+    col: usize,
+    byte_start: usize,
+    byte_len: usize,
+    hash: u64,
+}
+
 #[derive(Clone)]
 struct TerminalTextRun {
     row: usize,
@@ -698,6 +714,7 @@ struct TerminalTextRun {
     text: String,
     style: TextRun,
     text_hash: u64,
+    segments: Vec<TerminalTextSegment>,
 }
 
 impl TerminalTextRun {
@@ -709,6 +726,12 @@ impl TerminalTextRun {
         style: TextRun,
     ) -> Self {
         let text_hash = terminal_text_run_hash(&text);
+        let segments = vec![TerminalTextSegment {
+            col: start_col,
+            byte_start: 0,
+            byte_len: text.len(),
+            hash: text_hash,
+        }];
         Self {
             row,
             start_col,
@@ -716,6 +739,7 @@ impl TerminalTextRun {
             text,
             style,
             text_hash,
+            segments,
         }
     }
 
@@ -749,7 +773,16 @@ impl TerminalTextRun {
     }
 
     fn append_text(&mut self, text: &str, width_cols: usize) {
+        let byte_start = self.text.len();
+        let col = self.start_col + self.width_cols;
+        let hash = terminal_text_run_hash(text);
         self.text.push_str(text);
+        self.segments.push(TerminalTextSegment {
+            col,
+            byte_start,
+            byte_len: text.len(),
+            hash,
+        });
         self.width_cols += width_cols;
         self.style.len += text.len();
         self.text_hash = terminal_text_run_hash(&self.text);
@@ -762,30 +795,62 @@ impl TerminalTextRun {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let run = TextRun {
-            len: self.text.len(),
-            ..self.style.clone()
-        };
-        let text = self.text.as_str();
-        let shaped = window.text_system().shape_line_by_hash(
-            self.text_hash,
-            text.len(),
-            renderer.font_size,
-            &[run],
-            None,
-            || SharedString::from(text.to_string()),
-        );
-        let _ = shaped.paint(
-            Point {
-                x: origin.x + renderer.cell_width * self.start_col as f32,
-                y: origin.y + renderer.cell_height * self.row as f32,
-            },
-            renderer.cell_height,
-            TextAlign::Left,
-            None,
-            window,
-            cx,
-        );
+        if self.text.is_ascii() {
+            let run = TextRun {
+                len: self.text.len(),
+                ..self.style.clone()
+            };
+            let text = self.text.as_str();
+            let shaped = window.text_system().shape_line_by_hash(
+                self.text_hash,
+                text.len(),
+                renderer.font_size,
+                &[run],
+                None,
+                || SharedString::from(text.to_string()),
+            );
+            let _ = shaped.paint(
+                Point {
+                    x: origin.x + renderer.cell_width * self.start_col as f32,
+                    y: origin.y + renderer.cell_height * self.row as f32,
+                },
+                renderer.cell_height,
+                TextAlign::Left,
+                None,
+                window,
+                cx,
+            );
+            return;
+        }
+        // Non-ASCII text may trigger font fallback with advances that differ
+        // from cell_width, so each originating cell is shaped and positioned
+        // individually rather than as one natural-advance line. Painting by
+        // `segments` (one per cell) rather than by `char` keeps a cell's base
+        // character and any combining marks together as a single shaped unit.
+        for segment in &self.segments {
+            let chunk = &self.text[segment.byte_start..segment.byte_start + segment.byte_len];
+            let mut run = self.style.clone();
+            run.len = chunk.len();
+            let shaped = window.text_system().shape_line_by_hash(
+                segment.hash,
+                chunk.len(),
+                renderer.font_size,
+                &[run],
+                None,
+                || SharedString::from(chunk.to_string()),
+            );
+            let _ = shaped.paint(
+                Point {
+                    x: origin.x + renderer.cell_width * segment.col as f32,
+                    y: origin.y + renderer.cell_height * self.row as f32,
+                },
+                renderer.cell_height,
+                TextAlign::Left,
+                None,
+                window,
+                cx,
+            );
+        }
     }
 }
 
@@ -795,12 +860,13 @@ fn terminal_text_run_hash(text: &str) -> u64 {
     hasher.finish()
 }
 
-/// One terminal row painted as a single shaped line carrying multiple style
-/// runs, so GPUI shapes and paints it once per row instead of once per style
-/// span. Only built for "simple" rows (every painted cell is a single-codepoint,
-/// width-1 glyph) so the natural glyph advances line up exactly with the cell
-/// grid; rows with wide (CJK) or multi-codepoint cells fall back to the
-/// per-span path to keep grid alignment intact.
+/// A maximal run of a row's "simple" spans (single-codepoint, width-1,
+/// ASCII glyphs) painted as a single shaped line carrying multiple style
+/// runs, so GPUI shapes and paints them once instead of once per style span.
+/// A row can contain several of these interleaved with per-span spans (wide
+/// CJK or multi-codepoint cells) that must keep the per-span path to hold
+/// grid alignment — one such span no longer prevents the rest of the row
+/// from combining.
 #[derive(Clone)]
 struct TerminalRowLine {
     row: usize,
@@ -859,29 +925,76 @@ fn terminal_row_line_layout_hash(text: &str, runs: &[TextRun]) -> u64 {
 }
 
 impl TerminalRenderer {
-    /// Combine a row's already-built per-span runs into a single shaped line,
-    /// filling inter-span column gaps with spaces. Returns `None` (keeping the
-    /// per-span path) when any span is not a 1:1 char-to-cell run, so wide/CJK
-    /// rows are never re-flowed by natural advances.
-    fn combine_row_runs(&self, runs: &[TerminalTextRun]) -> Option<TerminalRowLine> {
+    /// Combine a row's already-built per-span runs into as few shaped lines as
+    /// possible: maximal contiguous groups of 1:1 char-to-cell ASCII spans are
+    /// merged into a `TerminalRowLine` each (so those spans are shaped/painted
+    /// once instead of once per span), while any wide (CJK), multi-codepoint,
+    /// or non-ASCII span is returned unmodified in the leftover run list to
+    /// keep the per-span path — without forcing the rest of the row's simple
+    /// spans to give up combining too.
+    fn combine_row_runs(
+        &self,
+        runs: Vec<TerminalTextRun>,
+    ) -> (Vec<TerminalRowLine>, Vec<TerminalTextRun>) {
         combine_terminal_row_runs(runs, self.font(false, false), self.palette.foreground())
     }
 }
 
 fn combine_terminal_row_runs(
-    runs: &[TerminalTextRun],
+    runs: Vec<TerminalTextRun>,
     gap_font: Font,
+    gap_color: Hsla,
+) -> (Vec<TerminalRowLine>, Vec<TerminalTextRun>) {
+    let mut lines = Vec::new();
+    let mut leftover = Vec::new();
+    let mut group: Vec<TerminalTextRun> = Vec::new();
+
+    for run in runs {
+        // Only 1:1 char-to-cell ASCII spans are safe to re-flow as one shaped
+        // line by natural glyph advances; wide (CJK) or multi-codepoint cells
+        // keep their own grid columns, and non-ASCII text may trigger font
+        // fallback with advances that differ from cell_width.
+        if run.text.chars().count() == run.width_cols && run.text.is_ascii() {
+            group.push(run);
+            continue;
+        }
+        flush_combinable_group(&mut group, &gap_font, gap_color, &mut lines, &mut leftover);
+        leftover.push(run);
+    }
+    flush_combinable_group(&mut group, &gap_font, gap_color, &mut lines, &mut leftover);
+
+    (lines, leftover)
+}
+
+/// Turns a maximal group of combinable spans into one `TerminalRowLine`
+/// (dropping the group), or moves it to `leftover` unchanged when it's too
+/// small to be worth combining (or, defensively, if building the line fails).
+fn flush_combinable_group(
+    group: &mut Vec<TerminalTextRun>,
+    gap_font: &Font,
+    gap_color: Hsla,
+    lines: &mut Vec<TerminalRowLine>,
+    leftover: &mut Vec<TerminalTextRun>,
+) {
+    if group.len() < 2 {
+        leftover.append(group);
+        return;
+    }
+    match build_terminal_row_line(group, gap_font, gap_color) {
+        Some(line) => {
+            lines.push(line);
+            group.clear();
+        }
+        None => leftover.append(group),
+    }
+}
+
+fn build_terminal_row_line(
+    runs: &[TerminalTextRun],
+    gap_font: &Font,
     gap_color: Hsla,
 ) -> Option<TerminalRowLine> {
     let first = runs.first()?;
-    // Only 1:1 char-to-cell spans are safe to re-flow as one line; wide (CJK) or
-    // multi-codepoint cells keep the per-span path so their grid columns hold.
-    if runs
-        .iter()
-        .any(|run| run.text.chars().count() != run.width_cols)
-    {
-        return None;
-    }
     let row = first.row;
     let start_col = first.start_col;
     let mut text = String::new();
