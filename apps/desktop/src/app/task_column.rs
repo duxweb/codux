@@ -1129,7 +1129,8 @@ fn session_section_heading(
                             !app.task_section_sessions_collapsed;
                     }
                 }
-                app.update_task_column_child_views(cx);
+                // Getter (not just child refresh) syncs the collapsed flag into the view and notifies it, so the docked flex re-renders now.
+                let _ = app.task_column_view(cx);
             });
         })
         .child(

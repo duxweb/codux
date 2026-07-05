@@ -84,7 +84,11 @@ impl PaneAgentLifecycle {
                 self.working_waiting_lock_until = Some(now + WORKING_WAITING_LOCK);
                 self.locked_reverse_input = Some(AgentLifecycleInput::Prompt);
             }
-            _ => {}
+            // Left the Working/Waiting pair, so drop the flap guard or it wrongly blocks a real resume.
+            _ => {
+                self.working_waiting_lock_until = None;
+                self.locked_reverse_input = None;
+            }
         }
     }
 
@@ -319,6 +323,26 @@ mod tests {
         let too_soon = after_hold + Duration::from_millis(200);
         lifecycle.tick(Some(AgentLifecycleInput::Busy), too_soon);
         assert_eq!(lifecycle.state, AgentLifecycleState::Waiting);
+    }
+
+    #[test]
+    fn transition_lock_cleared_after_leaving_the_pair() {
+        // Working->Waiting sets a Busy lock; once the machine moves on to
+        // Completed, a genuine resume (Busy) must not be suppressed.
+        let base = base_instant();
+        let mut lifecycle = PaneAgentLifecycle::new(base);
+        lifecycle.tick(Some(AgentLifecycleInput::Busy), base);
+        let after_hold = base + Duration::from_millis(2000);
+        lifecycle.tick(Some(AgentLifecycleInput::Prompt), after_hold);
+        assert_eq!(lifecycle.state, AgentLifecycleState::Waiting);
+
+        let settle = after_hold + Duration::from_millis(100);
+        lifecycle.tick(Some(AgentLifecycleInput::Settle), settle);
+        assert_eq!(lifecycle.state, AgentLifecycleState::Completed);
+
+        let resume = settle + Duration::from_millis(100);
+        lifecycle.tick(Some(AgentLifecycleInput::Busy), resume);
+        assert_eq!(lifecycle.state, AgentLifecycleState::Working);
     }
 
     #[test]

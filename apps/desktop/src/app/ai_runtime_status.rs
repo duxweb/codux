@@ -18,15 +18,6 @@ pub(in crate::app) enum AgentLifecycleInput {
 }
 
 impl AgentLifecycleState {
-    pub(in crate::app) fn allowed_transitions(self) -> &'static [AgentLifecycleState] {
-        match self {
-            Self::Idle => &[Self::Working, Self::Waiting],
-            Self::Working => &[Self::Waiting, Self::Completed, Self::Idle],
-            Self::Waiting => &[Self::Working, Self::Completed],
-            Self::Completed => &[Self::Working, Self::Waiting, Self::Idle],
-        }
-    }
-
     pub(in crate::app) fn transition(self, input: AgentLifecycleInput) -> Option<Self> {
         match (self, input) {
             (Self::Idle, AgentLifecycleInput::Busy) => Some(Self::Working),
@@ -393,28 +384,6 @@ mod tests {
                 &worktree_activity,
             ),
             AIActivityState::Running
-        );
-    }
-
-    #[test]
-    fn agent_lifecycle_allowed_transitions_match_fsm() {
-        use AgentLifecycleState::{Completed, Idle, Waiting, Working};
-
-        assert_eq!(
-            Idle.allowed_transitions(),
-            &[Working, Waiting]
-        );
-        assert_eq!(
-            Working.allowed_transitions(),
-            &[Waiting, Completed, Idle]
-        );
-        assert_eq!(
-            Waiting.allowed_transitions(),
-            &[Working, Completed]
-        );
-        assert_eq!(
-            Completed.allowed_transitions(),
-            &[Working, Waiting, Idle]
         );
     }
 

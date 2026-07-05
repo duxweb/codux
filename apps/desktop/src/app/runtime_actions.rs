@@ -216,6 +216,8 @@ impl CoduxApp {
                         UiRegion::StatusBar,
                         UiRegion::WorkspaceAssistant,
                         UiRegion::AIStatsSidebar,
+                        // Paint agent chips for sessions already live at launch.
+                        UiRegion::TaskColumn,
                     ],
                 );
                 app.refresh_window_runtime_data(cx);
