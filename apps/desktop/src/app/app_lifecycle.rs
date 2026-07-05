@@ -84,6 +84,13 @@ impl CoduxApp {
             Some(&mut boot_pending_terminals),
             cx,
         )?;
+        let collapsed_terminal_panes = collapsed_terminal_slots_from_layout(
+            &state.terminal_layout,
+            &state.terminal_runtime,
+            false,
+            &terminal_pane_registry,
+            &terminal_manager,
+        );
         let selected_ai_provider_id = state
             .settings
             .ai_providers
@@ -336,6 +343,8 @@ impl CoduxApp {
             runtime_ready: false,
             pending_runtime_refresh: None,
             ai_runtime_state_save_tick: 0,
+            pane_agent_lifecycle: HashMap::new(),
+            agent_git_refresh_after: None,
             dismissed_worktree_ai_completion_at: HashMap::new(),
             ai_index_progress_visible_until: 0.0,
             ai_index_progress_generation: 0,
@@ -416,6 +425,8 @@ impl CoduxApp {
             assistant_panel: None,
             project_column_collapsed: true,
             task_column_collapsed: false,
+            task_section_terminals_collapsed: false,
+            task_section_sessions_collapsed: false,
             project_list_state: None,
             remote_link_states: std::collections::HashMap::new(),
             remote_saved_host_ids,
@@ -425,6 +436,7 @@ impl CoduxApp {
             task_worktree_list_view: None,
             task_session_list_view: None,
             task_terminal_list_view: None,
+            collapsed_terminal_panes,
             workspace_column_view: None,
             workspace_toolbar_view: None,
             workspace_body_view: None,

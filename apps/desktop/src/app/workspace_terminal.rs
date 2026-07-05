@@ -27,7 +27,7 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn terminal_workspace_body(
-        &self,
+        &mut self,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         div()
@@ -50,7 +50,7 @@ impl CoduxApp {
             )
     }
 
-    fn terminal_main_split_area(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn terminal_main_split_area(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -61,13 +61,12 @@ impl CoduxApp {
             .child(self.terminal_panes(cx))
     }
 
-    pub(in crate::app) fn terminal_panes(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(in crate::app) fn terminal_panes(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(active) = self.main_terminal() else {
             return div().flex_1().size_full();
         };
         let pane_count = active.panes.len();
         let link_overlay = self.selected_project_terminal_link_overlay();
-
         div()
             .relative()
             .flex()

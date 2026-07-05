@@ -90,6 +90,7 @@ mod tests {
             top_grid: TerminalTopGrid::default(),
             split_tree: None,
             bottom_ratio: 0.32,
+            collapsed_panes: Vec::new(),
             error: None,
         };
 
@@ -156,6 +157,7 @@ mod tests {
             top_grid: TerminalTopGrid::default(),
             split_tree: None,
             bottom_ratio: 0.32,
+            collapsed_panes: Vec::new(),
             error: None,
         };
         let runtime = TerminalRuntimeSummary {
@@ -230,6 +232,7 @@ mod tests {
             top_grid: TerminalTopGrid::default(),
             split_tree: None,
             bottom_ratio: 0.32,
+            collapsed_panes: Vec::new(),
             error: None,
         };
 
@@ -403,6 +406,7 @@ mod tests {
             },
             split_tree: None,
             bottom_ratio: 0.32,
+            collapsed_panes: Vec::new(),
             error: None,
         };
 

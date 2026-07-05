@@ -98,6 +98,8 @@ use std::{
 };
 
 mod about;
+mod agent_display;
+mod agent_lifecycle;
 mod ai_history_mapping;
 mod ai_memory_actions;
 mod ai_runtime_status;
@@ -231,6 +233,7 @@ use self::{
         refresh_terminal_pane_config, restore_terminal_tabs_skeleton, spawn_terminal_tabs,
         terminal_config_for_settings, terminal_launch_context, terminal_layout_is_foreign_to_owner,
         terminal_pane_summary, terminal_pane_terminal_id, terminal_pty_config_for_terminal_id,
+        collapsed_terminal_slots_from_layout,
         terminal_restore_plan_for_language, terminal_split_tree_equal,
         terminal_split_tree_for_panes, terminal_split_tree_insert_pane,
         terminal_split_tree_insert_pane_root, terminal_split_tree_location_for_pane,

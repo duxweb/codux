@@ -441,6 +441,135 @@ impl CoduxApp {
         self.invalidate_terminal_workspace(cx);
     }
 
+    pub(in crate::app) fn collapse_terminal_pane(
+        &mut self,
+        pane_index: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab_index) = (!self.terminals.is_empty()).then_some(0) else {
+            return;
+        };
+        if self.terminals[tab_index].panes.len() <= 1 {
+            self.status_message = "keep at least one main split pane".to_string();
+            self.invalidate_terminal_workspace(cx);
+            return;
+        }
+        if pane_index >= self.terminals[tab_index].panes.len() {
+            return;
+        }
+
+        let pane_count = self.terminals[tab_index].panes.len();
+        let top_ratios = terminal_top_ratios_for_panes(
+            self.state.terminal_layout.top_ratios.clone(),
+            pane_count,
+        );
+        let grid = terminal_top_grid_for_panes(
+            self.state.terminal_layout.top_grid.clone(),
+            &top_ratios,
+            pane_count,
+        );
+        let tree = terminal_split_tree_for_panes(
+            self.state.terminal_layout.split_tree.clone(),
+            &grid,
+            &top_ratios,
+            pane_count,
+        )
+        .unwrap_or(TerminalSplitNode::Leaf { pane: 0 });
+        let split_tree = terminal_split_tree_remove_pane(&tree, pane_index);
+        self.refresh_terminal_slot_snapshots();
+        let mut slot = self.terminals[tab_index].panes.remove(pane_index);
+        let title = slot.title.clone();
+        if slot.pane.is_none() {
+            if slot.terminal_id.is_none() {
+                self.terminals[tab_index].panes.insert(pane_index, slot);
+                self.status_message =
+                    "terminal pane cannot be collapsed without a stable session".to_string();
+                self.invalidate_terminal_workspace(cx);
+                return;
+            }
+            let pty_config = self.terminal_pty_config_for_slot(&slot);
+            match TerminalPane::spawn_with_pty_config(
+                cx,
+                self.terminal_manager.clone(),
+                pty_config,
+                self.terminal_config_from_settings(),
+            ) {
+                Ok(pane) => {
+                    self.register_terminal_pane(slot.terminal_id.as_deref(), &pane, cx);
+                    slot.pane = Some(pane);
+                }
+                Err(error) => {
+                    self.terminals[tab_index].panes.insert(pane_index, slot);
+                    self.status_message =
+                        format!("failed to attach collapsed terminal pane: {error}");
+                    self.invalidate_terminal_workspace(cx);
+                    return;
+                }
+            }
+        }
+        self.set_terminal_split_tree(split_tree);
+        self.collapsed_terminal_panes.push(slot);
+        self.status_message = format!("terminal pane collapsed: {title}");
+        self.sync_terminal_state_after_layout_change(cx);
+        self.invalidate_task_column(cx);
+        self.invalidate_terminal_workspace(cx);
+    }
+
+    pub(in crate::app) fn restore_collapsed_terminal(
+        &mut self,
+        collapsed_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if collapsed_index >= self.collapsed_terminal_panes.len() {
+            return;
+        }
+        let Some(tab_index) = (!self.terminals.is_empty()).then_some(0) else {
+            return;
+        };
+        let slot = self.collapsed_terminal_panes.remove(collapsed_index);
+        let title = slot.title.clone();
+
+        let pane_count = self.terminals[tab_index].panes.len();
+        let top_ratios = terminal_top_ratios_for_panes(
+            self.state.terminal_layout.top_ratios.clone(),
+            pane_count,
+        );
+        let grid = terminal_top_grid_for_panes(
+            self.state.terminal_layout.top_grid.clone(),
+            &top_ratios,
+            pane_count,
+        );
+        let tree = terminal_split_tree_for_panes(
+            self.state.terminal_layout.split_tree.clone(),
+            &grid,
+            &top_ratios,
+            pane_count,
+        )
+        .unwrap_or(TerminalSplitNode::Leaf { pane: 0 });
+        let insert_index = self.terminals[tab_index].panes.len();
+        let (split_tree, insert_index) =
+            match terminal_split_tree_with_restored_location(&tree, None, insert_index) {
+                Ok(result) => result,
+                Err(error) => {
+                    self.collapsed_terminal_panes.insert(collapsed_index, slot);
+                    self.status_message = error.to_string();
+                    self.invalidate_terminal_workspace(cx);
+                    return;
+                }
+            };
+        let insert_index = insert_index.min(self.terminals[tab_index].panes.len());
+        self.terminals[tab_index].panes.insert(insert_index, slot);
+        self.set_terminal_split_tree(Some(split_tree));
+        self.status_message = format!("terminal pane restored: {title}");
+        self.sync_terminal_state_after_layout_change(cx);
+        self.invalidate_task_column(cx);
+        self.invalidate_terminal_workspace(cx);
+        let pane_to_focus = insert_index;
+        self.select_terminal_pane(pane_to_focus, window, cx);
+    }
+
     pub(in crate::app) fn float_terminal_pane(
         &mut self,
         pane_index: usize,

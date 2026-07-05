@@ -188,6 +188,7 @@ impl CoduxApp {
                     Ok(Ok((tool_permissions, snapshot, summary))) => {
                         app.state.tool_permissions = tool_permissions;
                         app.state.ai_runtime_state = summary;
+                        let _ = app.sync_pane_agent_lifecycle();
                         app.state.refresh_ai_history_stats();
                         app.status_message = format!(
                             "runtime ready · {} session{}",

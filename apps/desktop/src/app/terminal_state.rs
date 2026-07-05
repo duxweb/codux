@@ -176,6 +176,9 @@ pub(in crate::app) fn normalize_terminal_restore_state(
     layout
         .top_panes
         .retain(|pane| !terminal_id_is_foreign_to_owner(&pane.terminal_id, owner_id));
+    layout
+        .collapsed_panes
+        .retain(|pane| !terminal_id_is_foreign_to_owner(&pane.terminal_id, owner_id));
     layout.tabs.clear();
     if layout.top_panes.is_empty() {
         layout = default_terminal_layout_for_owner(Some(owner_id), language);
@@ -204,6 +207,9 @@ pub(in crate::app) fn structural_terminal_layout(
     migrate_legacy_tabs_to_top_panes(&mut layout);
     layout
         .top_panes
+        .retain(|pane| !pane.terminal_id.trim().is_empty());
+    layout
+        .collapsed_panes
         .retain(|pane| !pane.terminal_id.trim().is_empty());
     layout.tabs.clear();
     layout.top_ratios =
@@ -855,6 +861,7 @@ pub(in crate::app) fn terminal_layout_is_foreign_to_owner(
     layout
         .top_panes
         .iter()
+        .chain(layout.collapsed_panes.iter())
         .map(|pane| pane.terminal_id.as_str())
         .any(|terminal_id| terminal_id_is_foreign_to_owner(terminal_id, owner_id))
 }
@@ -1264,4 +1271,75 @@ pub(in crate::app) fn terminal_pane_summary(slot: &TerminalPaneSlot) -> Terminal
         title: slot.title.clone(),
         terminal_id: slot.terminal_id.clone().unwrap_or_default(),
     }
+}
+
+pub(in crate::app) fn collapsed_terminal_slots_from_layout(
+    layout: &TerminalLayoutSummary,
+    runtime: &TerminalRuntimeSummary,
+    filter_dead_sessions: bool,
+    terminal_pane_registry: &HashMap<String, TerminalPane>,
+    terminal_manager: &Arc<TerminalManager>,
+) -> Vec<TerminalPaneSlot> {
+    let visible_terminal_ids = layout
+        .top_panes
+        .iter()
+        .map(|pane| pane.terminal_id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    layout
+        .collapsed_panes
+        .iter()
+        .filter(|pane| {
+            let terminal_id = pane.terminal_id.trim();
+            !terminal_id.is_empty() && !visible_terminal_ids.contains(terminal_id)
+        })
+        .filter(|pane| {
+            if !filter_dead_sessions {
+                return true;
+            }
+            collapsed_terminal_session_is_live(
+                &pane.terminal_id,
+                runtime,
+                terminal_pane_registry,
+                terminal_manager,
+            )
+        })
+        .map(|pane| {
+            let terminal_id = pane.terminal_id.trim().to_string();
+            let session = runtime_session_by_terminal_id(runtime, &terminal_id);
+            TerminalPaneSlot {
+                title: if pane.title.trim().is_empty() {
+                    "Terminal".to_string()
+                } else {
+                    pane.title.clone()
+                },
+                terminal_id: Some(terminal_id),
+                pane: None,
+                restored_output_bytes: session
+                    .map(|session| session.output_bytes)
+                    .unwrap_or_default(),
+                restored_output_tail: session
+                    .map(|session| session.output_tail.clone())
+                    .unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
+fn collapsed_terminal_session_is_live(
+    terminal_id: &str,
+    runtime: &TerminalRuntimeSummary,
+    terminal_pane_registry: &HashMap<String, TerminalPane>,
+    terminal_manager: &Arc<TerminalManager>,
+) -> bool {
+    let terminal_id = terminal_id.trim();
+    if terminal_id.is_empty() {
+        return false;
+    }
+    if terminal_pane_registry.contains_key(terminal_id) {
+        return true;
+    }
+    if runtime_session_by_terminal_id(runtime, terminal_id).is_some() {
+        return true;
+    }
+    terminal_manager.output_snapshot(terminal_id).is_ok()
 }

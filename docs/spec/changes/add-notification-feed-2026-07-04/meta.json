@@ -1,0 +1,10 @@
+{
+  "change_id": "add-notification-feed",
+  "created_at": "2026-07-04",
+  "status": "proposed",
+  "capabilities": [
+    "notification-feed",
+    "notification-popover"
+  ],
+  "updated_at": "2026-07-04T00:00:00Z"
+}

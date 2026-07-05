@@ -51,6 +51,11 @@ pub struct CoduxApp {
     pub(in crate::app) window_mode: AppWindowMode,
     pub(in crate::app) root_focus_handle: Option<FocusHandle>,
     pub(in crate::app) terminals: Vec<TerminalTab>,
+    /// Terminal panes collapsed (minimized) into the left task-column sidebar.
+    /// Persisted per worktree in `TerminalLayoutSummary::collapsed_panes` and
+    /// kept in the in-memory layout cache; PTY sessions stay alive across
+    /// project/worktree switches and are reattached on demand when restored.
+    pub(in crate::app) collapsed_terminal_panes: Vec<TerminalPaneSlot>,
     pub(in crate::app) terminal_pane_registry: HashMap<String, TerminalPane>,
     /// terminal_id → shell OSC title, reported by pane title observers; snapshot
     /// builders read this map instead of the view entities (re-entrancy).
@@ -260,6 +265,8 @@ pub struct CoduxApp {
     pub(in crate::app) runtime_ready: bool,
     pub(in crate::app) pending_runtime_refresh: Option<RuntimeScheduledRefresh>,
     pub(in crate::app) ai_runtime_state_save_tick: u64,
+    pub(in crate::app) pane_agent_lifecycle: HashMap<String, super::agent_lifecycle::PaneAgentLifecycle>,
+    pub(in crate::app) agent_git_refresh_after: Option<std::time::Instant>,
     pub(in crate::app) dismissed_worktree_ai_completion_at: HashMap<String, f64>,
     pub(in crate::app) ai_index_progress_visible_until: f64,
     pub(in crate::app) ai_index_progress_generation: u64,
@@ -344,6 +351,8 @@ pub struct CoduxApp {
     pub(in crate::app) assistant_panel: Option<AssistantPanel>,
     pub(in crate::app) project_column_collapsed: bool,
     pub(in crate::app) task_column_collapsed: bool,
+    pub(in crate::app) task_section_terminals_collapsed: bool,
+    pub(in crate::app) task_section_sessions_collapsed: bool,
     pub(in crate::app) project_list_state: Option<gpui::Entity<ProjectListState>>,
     /// Last polled client→host link state per host device id. Drives the project
     /// connection badge and triggers terminal re-attach when a host reconnects.

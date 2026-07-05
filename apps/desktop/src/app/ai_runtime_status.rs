@@ -2,6 +2,55 @@ use super::*;
 use codux_runtime::ai_runtime_state::{AIRuntimeProjectPhaseSummary, AIRuntimeProjectStateSummary};
 use std::collections::HashMap;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(in crate::app) enum AgentLifecycleState {
+    Idle,
+    Working,
+    Waiting,
+    Completed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(in crate::app) enum AgentLifecycleInput {
+    Busy,
+    Prompt,
+    Settle,
+}
+
+impl AgentLifecycleState {
+    pub(in crate::app) fn allowed_transitions(self) -> &'static [AgentLifecycleState] {
+        match self {
+            Self::Idle => &[Self::Working, Self::Waiting],
+            Self::Working => &[Self::Waiting, Self::Completed, Self::Idle],
+            Self::Waiting => &[Self::Working, Self::Completed],
+            Self::Completed => &[Self::Working, Self::Waiting, Self::Idle],
+        }
+    }
+
+    pub(in crate::app) fn transition(self, input: AgentLifecycleInput) -> Option<Self> {
+        match (self, input) {
+            (Self::Idle, AgentLifecycleInput::Busy) => Some(Self::Working),
+            (Self::Idle, AgentLifecycleInput::Prompt) => Some(Self::Waiting),
+            (Self::Working, AgentLifecycleInput::Prompt) => Some(Self::Waiting),
+            (Self::Working, AgentLifecycleInput::Settle) => Some(Self::Completed),
+            (Self::Waiting, AgentLifecycleInput::Busy) => Some(Self::Working),
+            (Self::Waiting, AgentLifecycleInput::Settle) => Some(Self::Completed),
+            (Self::Completed, AgentLifecycleInput::Busy) => Some(Self::Working),
+            (Self::Completed, AgentLifecycleInput::Prompt) => Some(Self::Waiting),
+            _ => None,
+        }
+    }
+
+    pub(in crate::app) fn from_session_state(state: &str) -> Option<AgentLifecycleInput> {
+        match state {
+            "running" | "responding" => Some(AgentLifecycleInput::Busy),
+            "needs-input" | "needsInput" => Some(AgentLifecycleInput::Prompt),
+            "idle" | "completed" => Some(AgentLifecycleInput::Settle),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::app) enum AIActivityState {
     Idle,
@@ -345,5 +394,104 @@ mod tests {
             ),
             AIActivityState::Running
         );
+    }
+
+    #[test]
+    fn agent_lifecycle_allowed_transitions_match_fsm() {
+        use AgentLifecycleState::{Completed, Idle, Waiting, Working};
+
+        assert_eq!(
+            Idle.allowed_transitions(),
+            &[Working, Waiting]
+        );
+        assert_eq!(
+            Working.allowed_transitions(),
+            &[Waiting, Completed, Idle]
+        );
+        assert_eq!(
+            Waiting.allowed_transitions(),
+            &[Working, Completed]
+        );
+        assert_eq!(
+            Completed.allowed_transitions(),
+            &[Working, Waiting, Idle]
+        );
+    }
+
+    #[test]
+    fn agent_lifecycle_valid_input_transitions() {
+        use AgentLifecycleInput::{Busy, Prompt, Settle};
+        use AgentLifecycleState::{Completed, Idle, Waiting, Working};
+
+        assert_eq!(Idle.transition(Busy), Some(Working));
+        assert_eq!(Idle.transition(Prompt), Some(Waiting));
+        assert_eq!(Working.transition(Prompt), Some(Waiting));
+        assert_eq!(Working.transition(Settle), Some(Completed));
+        assert_eq!(Waiting.transition(Busy), Some(Working));
+        assert_eq!(Waiting.transition(Settle), Some(Completed));
+        assert_eq!(Completed.transition(Busy), Some(Working));
+        assert_eq!(Completed.transition(Prompt), Some(Waiting));
+    }
+
+    #[test]
+    fn agent_lifecycle_noop_input_pairs_leave_state_unchanged() {
+        use AgentLifecycleInput::{Busy, Prompt, Settle};
+        use AgentLifecycleState::{Completed, Idle, Waiting, Working};
+
+        assert_eq!(Idle.transition(Settle), None);
+        assert_eq!(Working.transition(Busy), None);
+        assert_eq!(Waiting.transition(Prompt), None);
+        assert_eq!(Completed.transition(Settle), None);
+        assert_eq!(Idle.transition(Busy).and_then(|s| s.transition(Busy)), None);
+    }
+
+    #[test]
+    fn agent_lifecycle_from_session_state_maps_runtime_values() {
+        use AgentLifecycleInput::{Busy, Prompt, Settle};
+
+        assert_eq!(
+            AgentLifecycleState::from_session_state("running"),
+            Some(Busy)
+        );
+        assert_eq!(
+            AgentLifecycleState::from_session_state("needs-input"),
+            Some(Prompt)
+        );
+        assert_eq!(
+            AgentLifecycleState::from_session_state("completed"),
+            Some(Settle)
+        );
+        assert_eq!(
+            AgentLifecycleState::from_session_state("idle"),
+            Some(Settle)
+        );
+        assert_eq!(
+            AgentLifecycleState::from_session_state("responding"),
+            Some(Busy)
+        );
+        assert_eq!(
+            AgentLifecycleState::from_session_state("needsInput"),
+            Some(Prompt)
+        );
+        assert_eq!(AgentLifecycleState::from_session_state(""), None);
+        assert_eq!(AgentLifecycleState::from_session_state("unknown"), None);
+    }
+
+    #[test]
+    fn agent_lifecycle_idle_prompt_is_prompt_at_startup() {
+        use AgentLifecycleInput::Prompt;
+        use AgentLifecycleState::{Idle, Waiting};
+
+        assert_eq!(Idle.transition(Prompt), Some(Waiting));
+    }
+
+    #[test]
+    fn agent_lifecycle_working_settle_is_turn_completion() {
+        use AgentLifecycleInput::{Busy, Settle};
+        use AgentLifecycleState::{Completed, Idle, Working};
+
+        let state = Idle.transition(Busy).expect("busy from idle");
+        assert_eq!(state, Working);
+        assert_eq!(state.transition(Settle), Some(Completed));
     }
 }

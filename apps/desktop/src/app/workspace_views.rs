@@ -1917,6 +1917,7 @@ fn terminal_pane(
 ) -> AnyElement {
     let close_id = SharedString::from(format!("terminal-pane-close-{index}"));
     let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
+    let collapse_id = SharedString::from(format!("terminal-pane-collapse-{index}"));
     let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
     let session_drop_entity = app_entity.clone();
     let pane_view = slot.view.clone();
@@ -1995,6 +1996,19 @@ fn terminal_pane(
                         pane_count > 1,
                         cx,
                         move |app, window, cx| app.float_terminal_pane(index, window, cx),
+                    ))
+                    .child(terminal_pane_control_button(
+                        app_entity.clone(),
+                        collapse_id,
+                        HeroIconName::ChevronDown,
+                        SharedString::from(workspace_i18n(
+                            language,
+                            "terminal.collapse",
+                            "Collapse to Sidebar",
+                        )),
+                        pane_count > 1,
+                        cx,
+                        move |app, window, cx| app.collapse_terminal_pane(index, window, cx),
                     ))
                     .child(terminal_pane_split_button(
                         app_entity.clone(),

@@ -100,6 +100,14 @@ impl CoduxApp {
     }
 
     pub(super) fn refresh_git_panel_state_async(&mut self, cx: &mut Context<Self>) {
+        self.refresh_git_panel_state_async_impl(false, cx);
+    }
+
+    pub(super) fn refresh_git_panel_state_async_quiet(&mut self, cx: &mut Context<Self>) {
+        self.refresh_git_panel_state_async_impl(true, cx);
+    }
+
+    fn refresh_git_panel_state_async_impl(&mut self, quiet: bool, cx: &mut Context<Self>) {
         if self.git_review_refreshing {
             return;
         }
@@ -150,13 +158,15 @@ impl CoduxApp {
                 app.git_review_refreshing = false;
                 app.normalize_selected_git_file();
                 app.normalize_selected_git_branch();
-                app.status_message = format!(
-                    "git status reloaded: {} changed, {} staged, {} unstaged, {} untracked",
-                    app.state.git.changed_files.len(),
-                    app.state.git.staged,
-                    app.state.git.unstaged,
-                    app.state.git.untracked
-                );
+                if !quiet {
+                    app.status_message = format!(
+                        "git status reloaded: {} changed, {} staged, {} unstaged, {} untracked",
+                        app.state.git.changed_files.len(),
+                        app.state.git.staged,
+                        app.state.git.unstaged,
+                        app.state.git.untracked
+                    );
+                }
                 app.runtime_trace(
                     "git",
                     &format!(
@@ -714,6 +724,7 @@ impl CoduxApp {
                 layout_snapshot.top_grid,
                 layout_snapshot.split_tree,
                 layout_snapshot.bottom_ratio,
+                layout_snapshot.collapsed_panes,
             ) {
                 codux_runtime::runtime_trace::runtime_trace(
                     "terminal-layout",
@@ -1291,6 +1302,7 @@ impl CoduxApp {
         self.terminals = terminals;
         self.active_terminal_id = active_terminal_id;
         self.next_terminal_index = next_terminal_index;
+        self.restore_collapsed_panes_for_layout(true, cx);
         let pending_terminals =
             self.mount_visible_terminal_views_for_restore(&restore_plan, &base_pty_config, cx);
         let pending_count = pending_terminals.len();

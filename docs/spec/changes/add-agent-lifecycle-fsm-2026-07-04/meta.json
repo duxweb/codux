@@ -1,0 +1,11 @@
+{
+  "change_id": "add-agent-lifecycle-fsm",
+  "created_at": "2026-07-04T00:00:00Z",
+  "status": "implementing",
+  "capabilities": [
+    "agent-lifecycle",
+    "terminal-list-indicator"
+  ],
+  "implementation_started_at": "2026-07-04T22:23:02Z",
+  "updated_at": "2026-07-04T22:23:02Z"
+}

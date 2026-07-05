@@ -32,6 +32,8 @@ pub struct TerminalLayoutSummary {
     pub split_tree: Option<TerminalSplitNode>,
     #[serde(default = "default_bottom_ratio")]
     pub bottom_ratio: f64,
+    #[serde(default)]
+    pub collapsed_panes: Vec<TerminalPaneSummary>,
     pub error: Option<String>,
 }
 
@@ -162,6 +164,7 @@ impl TerminalLayoutService {
             TerminalTopGrid::default(),
             None,
             bottom_ratio,
+            Vec::new(),
         )
     }
 
@@ -174,6 +177,7 @@ impl TerminalLayoutService {
         top_grid: TerminalTopGrid,
         split_tree: Option<TerminalSplitNode>,
         bottom_ratio: f64,
+        collapsed_panes: Vec<TerminalPaneSummary>,
     ) -> Result<TerminalLayoutSummary, String> {
         if tabs.is_empty() && top_panes.is_empty() {
             return Err("Terminal layout is empty.".to_string());
@@ -186,6 +190,7 @@ impl TerminalLayoutService {
             top_grid,
             split_tree,
             bottom_ratio,
+            collapsed_panes,
             error: None,
         };
         self.save_summary(project_id, layout)
@@ -244,6 +249,9 @@ fn sanitize_terminal_layout(mut layout: TerminalLayoutSummary) -> Option<Termina
         .collect();
     layout.split_tree = split_tree;
     layout.bottom_ratio = clamp_ratio(layout.bottom_ratio, 0.16, 0.58, default_bottom_ratio());
+    layout
+        .collapsed_panes
+        .retain(|pane| !pane.terminal_id.trim().is_empty());
     Some(layout)
 }
 
@@ -691,7 +699,7 @@ mod tests {
             top_grid: TerminalTopGrid::default(),
             split_tree: None,
             bottom_ratio: 0.72,
-            error: None,
+            ..Default::default()
         };
 
         let value = serde_json::to_value(&layout).expect("serialize layout");
@@ -760,7 +768,7 @@ mod tests {
             top_grid: TerminalTopGrid::default(),
             split_tree: None,
             bottom_ratio: 0.24,
-            error: None,
+            ..Default::default()
         })
         .expect("layout should sanitize");
 
@@ -795,7 +803,7 @@ mod tests {
             tabs: Vec::new(),
             active_terminal_id: String::new(),
             bottom_ratio: 0.24,
-            error: None,
+            ..Default::default()
         })
         .expect("layout should sanitize");
 
@@ -836,7 +844,7 @@ mod tests {
             tabs: Vec::new(),
             active_terminal_id: String::new(),
             bottom_ratio: 0.24,
-            error: None,
+            ..Default::default()
         })
         .expect("layout should sanitize");
 
@@ -871,7 +879,7 @@ mod tests {
             tabs: Vec::new(),
             active_terminal_id: String::new(),
             bottom_ratio: 0.24,
-            error: None,
+            ..Default::default()
         };
 
         let json = serde_json::to_string(&layout).expect("serialize layout");
