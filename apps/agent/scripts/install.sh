@@ -15,6 +15,10 @@
 #   --dir <path>        install / locate dir                        (CODUX_INSTALL_DIR=path)
 #   --mirror <prefix>   prepend a download mirror (slow GitHub?)    (CODUX_DOWNLOAD_BASE=prefix)
 #   --setup             run `codux config` + `codux install` after  (CODUX_SETUP=1)
+#   --device-name <n>   set the host name during --setup            (CODUX_DEVICE_NAME=n)
+#   --relay-preset <p>  set relay: global|china-tencent|china-aliyun|custom
+#   --relay-url <url>   set a custom relay URL                      (CODUX_RELAY_URL=url)
+#   --relay-auth <tok>  set custom relay auth token                 (CODUX_RELAY_AUTHENTICATION=tok)
 #   --uninstall         remove the host (stops it, removes service + binary)
 #   --purge             with --uninstall, also delete the data dir  (config, pairings, logs)
 #   --help              show this help
@@ -28,6 +32,10 @@ VERSION="${CODUX_VERSION:-}"
 INSTALL_DIR="${CODUX_INSTALL_DIR:-}"
 MIRROR="${CODUX_DOWNLOAD_BASE:-}"
 RUN_SETUP="${CODUX_SETUP:-0}"
+DEVICE_NAME="${CODUX_DEVICE_NAME:-}"
+RELAY_PRESET="${CODUX_RELAY_PRESET:-}"
+RELAY_URL="${CODUX_RELAY_URL:-}"
+RELAY_AUTHENTICATION="${CODUX_RELAY_AUTHENTICATION:-}"
 PURGE=0
 
 say()  { printf '%s\n' "$*"; }
@@ -53,6 +61,10 @@ Options (pass after `sh -s --`, or as env vars):
   --dir <path>        install / locate dir                        (CODUX_INSTALL_DIR=path)
   --mirror <prefix>   prepend a download mirror (slow GitHub?)    (CODUX_DOWNLOAD_BASE=prefix)
   --setup             run `codux config` + `codux install` after  (CODUX_SETUP=1)
+  --device-name <n>   set the host name during --setup            (CODUX_DEVICE_NAME=n)
+  --relay-preset <p>  set relay: global|china-tencent|china-aliyun|custom
+  --relay-url <url>   set a custom relay URL                      (CODUX_RELAY_URL=url)
+  --relay-auth <tok>  set custom relay auth token                 (CODUX_RELAY_AUTHENTICATION=tok)
   --uninstall         remove the host (stops it, removes service + binary)
   --purge             with --uninstall, also delete the data dir  (config, pairings, logs)
   --help              show this help
@@ -142,6 +154,35 @@ find_installed_binary() {
 
 data_dir() { printf '%s' "${CODUX_AGENT_DATA_DIR:-$HOME/.codux-agent}"; }
 
+append_config_arg() {
+  # Append one CLI option to CONFIG_ARGS. Values are single shell words here;
+  # eval is avoided by replaying the list with `set --`.
+  CONFIG_ARGS="${CONFIG_ARGS}
+$1
+$2"
+}
+
+run_config_setup() {
+  CONFIG_ARGS=""
+  [ -n "$DEVICE_NAME" ] && append_config_arg "--device-name" "$DEVICE_NAME"
+  [ -n "$RELAY_PRESET" ] && append_config_arg "--relay-preset" "$RELAY_PRESET"
+  [ -n "$RELAY_URL" ] && append_config_arg "--relay-url" "$RELAY_URL"
+  [ -n "$RELAY_AUTHENTICATION" ] && append_config_arg "--relay-authentication" "$RELAY_AUTHENTICATION"
+
+  if [ -n "$CONFIG_ARGS" ]; then
+    set --
+    while IFS= read -r item; do
+      [ -n "$item" ] || continue
+      set -- "$@" "$item"
+    done <<EOF
+$CONFIG_ARGS
+EOF
+    "$DEST" config "$@"
+  else
+    "$DEST" config
+  fi
+}
+
 do_install() {
   OS="$(detect_os)"
   ARCH="$(detect_arch)"
@@ -199,9 +240,9 @@ do_install() {
   esac
 
   if [ "$RUN_SETUP" = "1" ]; then
-    if [ -t 0 ]; then
+    if [ -t 0 ] || [ -n "$DEVICE_NAME$RELAY_PRESET$RELAY_URL$RELAY_AUTHENTICATION" ]; then
       info "Running setup…"
-      "$DEST" config
+      run_config_setup
       "$DEST" install
     else
       warn "--setup needs an interactive terminal; run '$BIN_NAME config && $BIN_NAME install' yourself."
@@ -263,6 +304,14 @@ while [ $# -gt 0 ]; do
     --mirror)      MIRROR="${2:?--mirror needs a value}"; shift ;;
     --mirror=*)    MIRROR="${1#*=}" ;;
     --setup)       RUN_SETUP="1" ;;
+    --device-name) DEVICE_NAME="${2:?--device-name needs a value}"; shift ;;
+    --device-name=*) DEVICE_NAME="${1#*=}" ;;
+    --relay-preset) RELAY_PRESET="${2:?--relay-preset needs a value}"; shift ;;
+    --relay-preset=*) RELAY_PRESET="${1#*=}" ;;
+    --relay-url)   RELAY_URL="${2:?--relay-url needs a value}"; shift ;;
+    --relay-url=*) RELAY_URL="${1#*=}" ;;
+    --relay-auth|--relay-authentication) RELAY_AUTHENTICATION="${2:?--relay-auth needs a value}"; shift ;;
+    --relay-auth=*|--relay-authentication=*) RELAY_AUTHENTICATION="${1#*=}" ;;
     --uninstall)   MODE="uninstall" ;;
     --purge)       PURGE="1" ;;
     -h|--help)     show_help; exit 0 ;;

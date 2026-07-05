@@ -7,18 +7,33 @@ use qrcode::QrCode;
 use qrcode::render::unicode;
 use std::time::Duration;
 
-use crate::{cmd_start, runstate};
+use crate::{cmd_config, cmd_service, cmd_start, config_store::CoduxConfig, runstate};
+
+#[derive(Clone, Debug, Default)]
+pub struct PairArgs {
+    pub relay_preset: Option<String>,
+    pub relay_url: Option<String>,
+    pub relay_authentication: Option<String>,
+}
+
+impl PairArgs {
+    fn has_relay_override(&self) -> bool {
+        self.relay_preset.is_some()
+            || self.relay_url.is_some()
+            || self.relay_authentication.is_some()
+    }
+}
 
 /// Print the pasteable pairing ticket for the desktop to connect.
-pub fn link() -> Result<(), String> {
-    let ticket = ensure_ticket()?;
+pub fn link(args: PairArgs) -> Result<(), String> {
+    let ticket = ensure_ticket(args)?;
     println!("{ticket}");
     Ok(())
 }
 
 /// Render the pairing QR code in the terminal, with the host status above it.
-pub fn qrcode() -> Result<(), String> {
-    let ticket = ensure_ticket()?;
+pub fn qrcode(args: PairArgs) -> Result<(), String> {
+    let ticket = ensure_ticket(args)?;
     if let Some(status) = runstate::read_status() {
         println!(
             "Host running · started {} · device “{}”",
@@ -36,7 +51,24 @@ pub fn qrcode() -> Result<(), String> {
 
 /// Return the published pairing ticket, starting the host in the background if
 /// it isn't already running.
-fn ensure_ticket() -> Result<String, String> {
+fn ensure_ticket(args: PairArgs) -> Result<String, String> {
+    if args.has_relay_override() {
+        let mut config = CoduxConfig::load();
+        config.ensure_identity();
+        let changed = cmd_config::apply_relay_args(
+            &mut config,
+            args.relay_preset.as_deref(),
+            args.relay_url.as_deref(),
+            args.relay_authentication.as_deref(),
+        )?;
+        if changed {
+            config.save()?;
+            if runstate::is_running() {
+                println!("Relay changed — restarting Codux host…");
+                cmd_service::stop()?;
+            }
+        }
+    }
     if !runstate::is_running() {
         println!("Codux host is not running — starting it…");
         cmd_start::run(true)?;

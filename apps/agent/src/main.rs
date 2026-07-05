@@ -41,7 +41,20 @@ enum Command {
     /// Show the version and protocol revision.
     Version,
     /// Interactive setup wizard — writes/updates codux.toml.
-    Config,
+    Config {
+        /// Set the device name without prompting.
+        #[arg(long)]
+        device_name: Option<String>,
+        /// Set the relay preset (global, china-tencent, china-aliyun, custom).
+        #[arg(long)]
+        relay_preset: Option<String>,
+        /// Set a custom relay URL. Implies --relay-preset custom.
+        #[arg(long)]
+        relay_url: Option<String>,
+        /// Set the custom relay auth token.
+        #[arg(long)]
+        relay_authentication: Option<String>,
+    },
     /// Install and enable Codux as a system startup service.
     Install,
     /// Stop and remove the system service.
@@ -57,9 +70,29 @@ enum Command {
     /// Show whether the host is running, since when, and how many devices.
     Status,
     /// Print the pairing QR code in the terminal (starts the host if needed).
-    Qrcode,
+    Qrcode {
+        /// Switch relay before generating the QR.
+        #[arg(long)]
+        relay_preset: Option<String>,
+        /// Switch to a custom relay URL before generating the QR.
+        #[arg(long)]
+        relay_url: Option<String>,
+        /// Set the custom relay auth token before generating the QR.
+        #[arg(long)]
+        relay_authentication: Option<String>,
+    },
     /// Print the pairing ticket for the desktop to paste (starts the host if needed).
-    Link,
+    Link {
+        /// Switch relay before printing the link.
+        #[arg(long)]
+        relay_preset: Option<String>,
+        /// Switch to a custom relay URL before printing the link.
+        #[arg(long)]
+        relay_url: Option<String>,
+        /// Set the custom relay auth token before printing the link.
+        #[arg(long)]
+        relay_authentication: Option<String>,
+    },
     /// Check for a newer release and update in place.
     Update {
         /// Include beta pre-releases in the update channel.
@@ -105,14 +138,40 @@ fn main() {
             print_version();
             Ok(())
         }
-        Some(Command::Config) => cmd_config::run(),
+        Some(Command::Config {
+            device_name,
+            relay_preset,
+            relay_url,
+            relay_authentication,
+        }) => cmd_config::run(cmd_config::ConfigArgs {
+            device_name,
+            relay_preset,
+            relay_url,
+            relay_authentication,
+        }),
         Some(Command::Install) => cmd_service::install(),
         Some(Command::Uninstall) => cmd_service::uninstall(),
         Some(Command::Start { detach }) => cmd_start::run(detach),
         Some(Command::Stop) => cmd_service::stop(),
         Some(Command::Status) => cmd_service::status(),
-        Some(Command::Qrcode) => cmd_pair::qrcode(),
-        Some(Command::Link) => cmd_pair::link(),
+        Some(Command::Qrcode {
+            relay_preset,
+            relay_url,
+            relay_authentication,
+        }) => cmd_pair::qrcode(cmd_pair::PairArgs {
+            relay_preset,
+            relay_url,
+            relay_authentication,
+        }),
+        Some(Command::Link {
+            relay_preset,
+            relay_url,
+            relay_authentication,
+        }) => cmd_pair::link(cmd_pair::PairArgs {
+            relay_preset,
+            relay_url,
+            relay_authentication,
+        }),
         Some(Command::Update { beta }) => cmd_update::run(VERSION, beta),
         Some(Command::Device) => cmd_device::list(),
         Some(Command::DeviceDel { id }) => cmd_device::del(&id),

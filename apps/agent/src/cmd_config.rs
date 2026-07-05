@@ -7,7 +7,28 @@ use dialoguer::{Input, Select};
 
 use crate::config_store::{CoduxConfig, RELAY_PRESET_CUSTOM};
 
-pub fn run() -> Result<(), String> {
+#[derive(Clone, Debug, Default)]
+pub struct ConfigArgs {
+    pub device_name: Option<String>,
+    pub relay_preset: Option<String>,
+    pub relay_url: Option<String>,
+    pub relay_authentication: Option<String>,
+}
+
+impl ConfigArgs {
+    pub fn is_non_interactive(&self) -> bool {
+        self.device_name.is_some()
+            || self.relay_preset.is_some()
+            || self.relay_url.is_some()
+            || self.relay_authentication.is_some()
+    }
+}
+
+pub fn run(args: ConfigArgs) -> Result<(), String> {
+    if args.is_non_interactive() {
+        return run_non_interactive(args);
+    }
+
     let mut config = CoduxConfig::load();
     let existed = CoduxConfig::exists();
     config.ensure_identity();
@@ -92,6 +113,86 @@ pub fn run() -> Result<(), String> {
     );
     println!("Run `codux start` to launch the host, then `codux qrcode` to pair.");
     Ok(())
+}
+
+fn run_non_interactive(args: ConfigArgs) -> Result<(), String> {
+    let mut config = CoduxConfig::load();
+    let existed = CoduxConfig::exists();
+    config.ensure_identity();
+
+    if let Some(device_name) = args.device_name {
+        let device_name = device_name.trim();
+        if device_name.is_empty() {
+            return Err("device name cannot be empty".to_string());
+        }
+        config.device_name = device_name.to_string();
+    }
+
+    apply_relay_args(
+        &mut config,
+        args.relay_preset.as_deref(),
+        args.relay_url.as_deref(),
+        args.relay_authentication.as_deref(),
+    )?;
+    config.ensure_identity();
+    config.save()?;
+
+    println!(
+        "{} {}",
+        if existed { "Updated" } else { "Created" },
+        crate::paths::config_path().display()
+    );
+    println!("relay: {}", config.relay_preset);
+    Ok(())
+}
+
+pub fn apply_relay_args(
+    config: &mut CoduxConfig,
+    relay_preset: Option<&str>,
+    relay_url: Option<&str>,
+    relay_authentication: Option<&str>,
+) -> Result<bool, String> {
+    let before = (
+        config.relay_preset.clone(),
+        config.relay_url.clone(),
+        config.relay_authentication.clone(),
+    );
+    if let Some(url) = relay_url.map(str::trim).filter(|url| !url.is_empty()) {
+        if let Some(preset) = relay_preset
+            .map(str::trim)
+            .filter(|preset| !preset.is_empty())
+        {
+            if preset != RELAY_PRESET_CUSTOM {
+                return Err("--relay-url can only be used with --relay-preset custom".to_string());
+            }
+        }
+        config.relay_preset = RELAY_PRESET_CUSTOM.to_string();
+        config.relay_url = url.to_string();
+    } else if let Some(preset) = relay_preset
+        .map(str::trim)
+        .filter(|preset| !preset.is_empty())
+    {
+        let normalized =
+            codux_remote_transport::normalize_remote_relay_preset(preset, &config.relay_url);
+        if normalized == RELAY_PRESET_CUSTOM && config.relay_url.trim().is_empty() {
+            return Err("custom relay requires --relay-url".to_string());
+        }
+        config.relay_preset = normalized;
+        if config.relay_preset != RELAY_PRESET_CUSTOM {
+            config.relay_url = String::new();
+        }
+    }
+    if let Some(authentication) = relay_authentication {
+        config.relay_authentication = authentication.trim().to_string();
+    } else if config.relay_preset != RELAY_PRESET_CUSTOM {
+        config.relay_authentication = String::new();
+    }
+    Ok(before
+        != (
+            config.relay_preset.clone(),
+            config.relay_url.clone(),
+            config.relay_authentication.clone(),
+        ))
 }
 
 /// A relay is reachable if an HTTPS request to it completes (any status). Connect
