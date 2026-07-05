@@ -195,3 +195,11 @@ pub(super) fn is_managed_update_endpoint(endpoint: &str) -> bool {
             | "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json"
     )
 }
+
+pub(super) fn default_git_file_view_mode() -> String {
+    "tree".to_string()
+}
+
+pub(super) fn default_git_review_compare_mode() -> String {
+    "workingTree".to_string()
+}

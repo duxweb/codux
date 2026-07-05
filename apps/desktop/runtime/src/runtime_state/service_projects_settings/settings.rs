@@ -174,6 +174,20 @@ impl RuntimeService {
         self.update_settings_with_side_effects(|settings| settings.set_git_refresh(seconds))
     }
 
+    pub fn cycle_git_file_view_mode(&self) -> Result<SettingsSummary, String> {
+        self.update_settings_with_side_effects(|settings| settings.cycle_git_file_view_mode())
+    }
+
+    pub fn set_git_file_view_mode(&self, mode: &str) -> Result<SettingsSummary, String> {
+        self.update_settings_with_side_effects(|settings| settings.set_git_file_view_mode(mode))
+    }
+
+    pub fn set_git_review_compare_mode(&self, mode: &str) -> Result<SettingsSummary, String> {
+        self.update_settings_with_side_effects(|settings| {
+            settings.set_git_review_compare_mode(mode)
+        })
+    }
+
     pub fn cycle_ai_refresh(&self) -> Result<SettingsSummary, String> {
         self.update_settings_with_side_effects(|settings| settings.cycle_ai_refresh())
     }

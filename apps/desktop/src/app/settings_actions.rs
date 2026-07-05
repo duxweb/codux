@@ -674,6 +674,54 @@ impl CoduxApp {
         self.invalidate_ui_region(cx, UiRegion::Root);
     }
 
+    pub(super) fn cycle_git_file_view_mode(&mut self, cx: &mut Context<Self>) {
+        self.save_settings_async(
+            "cycle_git_file_view_mode",
+            "switching Git layout",
+            |service| service.cycle_git_file_view_mode(),
+            |app, settings, cx| {
+                app.apply_async_settings_summary(settings);
+                app.invalidate_git_panel(cx);
+            },
+            cx,
+        );
+    }
+
+    pub(super) fn set_git_file_view_mode(
+        &mut self,
+        mode: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.save_settings_async(
+            "set_git_file_view_mode",
+            "saving Git layout",
+            move |service| service.set_git_file_view_mode(&mode),
+            |app, settings, cx| {
+                app.apply_async_settings_summary(settings);
+                app.invalidate_git_panel(cx);
+            },
+            cx,
+        );
+    }
+
+    pub(super) fn set_git_review_compare_mode(
+        &mut self,
+        mode: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.save_settings_async(
+            "set_git_review_compare_mode",
+            "switching Git compare mode",
+            move |service| service.set_git_review_compare_mode(&mode),
+            |app, settings, cx| {
+                app.apply_async_settings_summary(settings);
+                app.reload_git_review_for_compare_mode_change(cx);
+            },
+            cx,
+        );
+    }
+
     pub(super) fn set_ai_refresh(
         &mut self,
         seconds: String,

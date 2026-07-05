@@ -26,7 +26,7 @@ impl GitService {
             .map(str::trim)
             .filter(|value| !value.is_empty() && *value != "current branch");
         if let Some(base) = base {
-            return git2_commit_diff_to_string(&repo, base, Some(&file_path), 3);
+            return git2_commit_to_workdir_diff_to_string(&repo, base, Some(&file_path), 3);
         }
 
         let staged =
@@ -84,13 +84,13 @@ impl GitService {
             .filter(|value| !value.is_empty() && *value != "current branch");
         let head_content = git2_blob_or_empty(&repo, "HEAD", &file_path);
         let base_content = base.map(|reference| git2_blob_or_empty(&repo, reference, &file_path));
-        let index_content = git2_index_blob(&repo, &file_path).ok();
         let worktree_content = read_worktree_file(repo_root(&repo), &file_path).unwrap_or_default();
-        let is_untracked = base.is_none() && is_untracked_path_git2(&repo, &file_path);
+        let is_untracked = is_untracked_path_git2(&repo, &file_path);
         let diff = if is_untracked {
             String::new()
         } else if let Some(base) = base {
-            git2_commit_diff_to_string(&repo, base, Some(&file_path), 0).unwrap_or_default()
+            git2_commit_to_workdir_diff_to_string(&repo, base, Some(&file_path), 0)
+                .unwrap_or_default()
         } else {
             let unstaged = git2_diff_to_string(&repo, DiffTarget::Worktree, Some(&file_path), 0)
                 .unwrap_or_default();
@@ -115,7 +115,6 @@ impl GitService {
             path: file_path,
             head_content,
             base_content,
-            index_content,
             worktree_content,
             added_lines,
             deleted_lines,

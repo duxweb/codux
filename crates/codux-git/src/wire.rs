@@ -48,6 +48,11 @@ pub fn wire_status_summary(summary: GitSummary) -> WireStatusSummary {
             .into_iter()
             .map(|value| serde_json::to_value(value).unwrap_or(Value::Null))
             .collect(),
+        flat_changed_files: summary
+            .flat_changed_files
+            .into_iter()
+            .map(|value| serde_json::to_value(value).unwrap_or(Value::Null))
+            .collect(),
         branches: wire_branches(&summary.branches),
         remote_branches: summary.remote_branches,
         remotes: summary

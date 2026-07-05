@@ -209,3 +209,24 @@ fn pet_mut(raw: &mut Map<String, Value>) -> Result<&mut Map<String, Value>, Stri
         .as_object_mut()
         .ok_or_else(|| "Pet settings are invalid.".to_string())
 }
+
+pub(super) fn git_mut(raw: &mut Map<String, Value>) -> Result<&mut Map<String, Value>, String> {
+    raw.entry("git".to_string())
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| "Git settings are invalid.".to_string())
+}
+
+pub(super) fn sanitize_git_file_view_mode(value: &str) -> String {
+    match value.trim() {
+        "flatten" => "flatten".to_string(),
+        _ => "tree".to_string(),
+    }
+}
+
+pub(super) fn sanitize_git_review_compare_mode(value: &str) -> String {
+    match value.trim() {
+        "originToWorkingTree" => "originToWorkingTree".to_string(),
+        _ => "workingTree".to_string(),
+    }
+}

@@ -495,6 +495,12 @@ fn git_fingerprint(git: &GitSummary) -> u64 {
                 .collect::<Vec<_>>(),
         ),
         hash_sidebar_value(
+            &git.flat_changed_files
+                .iter()
+                .map(git_file_status_fingerprint)
+                .collect::<Vec<_>>(),
+        ),
+        hash_sidebar_value(
             &git.branches
                 .iter()
                 .map(|branch| (branch.name.clone(), branch.is_current))
@@ -569,6 +575,7 @@ fn git_interaction_fingerprint(app: &CoduxApp) -> u64 {
                 .and_then(|project| project.git_default_push_remote_name.clone()),
             app.git_clone_remote_url.clone(),
             app.state.settings.language.clone(),
+            app.state.settings.git_file_view_mode.clone(),
             app.git_remote_editor_open,
         )),
         hash_sidebar_value(&(

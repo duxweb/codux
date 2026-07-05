@@ -566,6 +566,7 @@ fn git_summary_from_payload(value: &serde_json::Value) -> crate::git::GitSummary
             .and_then(Value::as_str)
             .map(str::to_string),
         changed_files: parse_typed(value, "changedFiles"),
+        flat_changed_files: parse_typed(value, "flatChangedFiles"),
         branches: parse_typed(value, "branches"),
         remote_branches: parse_typed(value, "remoteBranches"),
         remotes: parse_typed(value, "remotes"),
