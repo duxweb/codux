@@ -458,6 +458,11 @@ fn remote_git_status_payload_matches_domain_shape() {
                 index_status: "modified".to_string(),
                 worktree_status: "modified".to_string(),
             }],
+            flat_changed_files: vec![crate::git::GitFileStatus {
+                path: "src/main.rs".to_string(),
+                index_status: "modified".to_string(),
+                worktree_status: "modified".to_string(),
+            }],
             branches: vec![crate::git::GitBranchSummary {
                 name: "main".to_string(),
                 is_current: true,
@@ -486,6 +491,13 @@ fn remote_git_status_payload_matches_domain_shape() {
     assert_eq!(
         payload
             .get("changedFiles")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        payload
+            .get("flatChangedFiles")
             .and_then(serde_json::Value::as_array)
             .map(Vec::len),
         Some(1)

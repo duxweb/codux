@@ -91,6 +91,14 @@ pub(super) fn sanitize_settings(mut settings: AppSettings) -> AppSettings {
     } else if settings.update.enabled && is_managed_update_endpoint(&settings.update.endpoint) {
         settings.update.endpoint = update_endpoint_for_channel(&settings.update.channel);
     }
+    settings.git.file_view_mode = match settings.git.file_view_mode.trim() {
+        "flatten" => "flatten".to_string(),
+        _ => "tree".to_string(),
+    };
+    settings.git.review_compare_mode = match settings.git.review_compare_mode.trim() {
+        "originToWorkingTree" => "originToWorkingTree".to_string(),
+        _ => "workingTree".to_string(),
+    };
     settings
 }
 

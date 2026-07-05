@@ -117,7 +117,7 @@ impl CoduxApp {
         let Some(scope_key) = current_worktree_scope_key(&self.state) else {
             return;
         };
-        let base_branch = self.git_review.base_branch.clone();
+        let base_branch = self.effective_review_base_branch();
         let runtime_service = self.runtime_service.clone();
         let generation = self.project_switch_generation;
         self.git_review_refreshing = true;

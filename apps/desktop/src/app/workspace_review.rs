@@ -11,6 +11,7 @@ pub(in crate::app) struct ReviewWorkspaceSnapshot {
     review: GitReviewSummary,
     expanded_dirs: HashSet<String>,
     refreshing: bool,
+    flatten: bool,
     content: Option<GitReviewContentSummary>,
     derived_rows: Option<sidebars::GitReviewDerivedRows>,
     labels: Rc<sidebars::GitSidebarLabels>,
@@ -78,6 +79,7 @@ impl CoduxApp {
             review: self.git_review.clone(),
             expanded_dirs: self.git_expanded_dirs.clone(),
             refreshing: self.git_review_refreshing,
+            flatten: self.state.settings.git_file_view_mode == "flatten",
             content,
             derived_rows,
             labels,
@@ -124,6 +126,7 @@ impl CoduxApp {
                 self.selected_git_file.clone(),
                 expanded_dirs,
                 self.git_review_refreshing,
+                self.state.settings.git_file_view_mode.clone(),
             )),
             super::workspace_views::workspace_view_hash(&self.git_review_content.as_ref().map(
                 |content| {
@@ -134,7 +137,6 @@ impl CoduxApp {
                         content.deleted_lines.clone(),
                         content.head_content.len(),
                         content.base_content.as_ref().map(|value| value.len()),
-                        content.index_content.as_ref().map(|value| value.len()),
                         content.worktree_content.len(),
                     )
                 },
@@ -149,6 +151,7 @@ pub(in crate::app) struct ReviewFileListSnapshot {
     selected_path: Option<String>,
     expanded_dirs: HashSet<String>,
     refreshing: bool,
+    flatten: bool,
     labels: Rc<sidebars::GitSidebarLabels>,
     fingerprint: u64,
 }
@@ -185,12 +188,14 @@ impl ReviewWorkspaceSnapshot {
             selected_path: self.selected_path.clone(),
             expanded_dirs: self.expanded_dirs.clone(),
             refreshing: self.refreshing,
+            flatten: self.flatten,
             labels: self.labels.clone(),
             fingerprint: super::workspace_views::workspace_view_hash(&(
                 self.review_file_fingerprint(),
                 self.selected_path.clone(),
                 expanded_dirs,
                 self.refreshing,
+                self.flatten,
             )),
         }
     }
@@ -352,6 +357,7 @@ pub(in crate::app) fn review_file_list(
         &snapshot.expanded_dirs,
         snapshot.refreshing,
         snapshot.labels,
+        snapshot.flatten,
         cx,
     )
     .into_any_element()
@@ -382,7 +388,6 @@ fn review_content_fingerprint(content: Option<&GitReviewContentSummary>) -> Opti
             content.deleted_lines.clone(),
             content.head_content.len(),
             content.base_content.as_ref().map(|value| value.len()),
-            content.index_content.as_ref().map(|value| value.len()),
             content.worktree_content.len(),
         ))
     })

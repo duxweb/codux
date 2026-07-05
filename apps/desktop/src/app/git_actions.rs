@@ -27,18 +27,10 @@ impl CoduxApp {
         } else {
             content.head_content.as_str()
         };
-        let new_content = content
-            .index_content
-            .as_deref()
-            .unwrap_or(content.worktree_content.as_str());
         let final_content = content.worktree_content.as_str();
-        let branch_content =
-            (self.git_review.mode == "taskBranch").then_some(content.head_content.as_str());
         self.git_review_derived_rows = Some(super::sidebars::build_git_review_derived_rows(
             original_content,
-            new_content,
             final_content,
-            branch_content,
             &content.deleted_lines,
             &content.added_lines,
         ));
@@ -768,7 +760,7 @@ impl CoduxApp {
         let Some(scope_key) = super::app_state::current_worktree_scope_key(&self.state) else {
             return;
         };
-        let base_branch = self.git_review.base_branch.clone();
+        let base_branch = self.effective_review_base_branch();
         let runtime_service = self.runtime_service.clone();
         let generation = self.project_switch_generation;
         self.selected_git_file = Some(file_path.clone());
@@ -915,7 +907,7 @@ impl CoduxApp {
                 );
                 let view = cx.new(|_| app);
                 let service = view.read(cx).runtime_service.clone();
-                let base_branch = view.read(cx).git_review.base_branch.clone();
+                let base_branch = view.read(cx).effective_review_base_branch();
                 let diff_project_path = project_path.clone();
                 let diff_selected_file = selected_file.clone();
                 view.update(cx, |_app, cx| {
@@ -991,11 +983,50 @@ impl CoduxApp {
         }
     }
 
+    pub(super) fn effective_review_base_branch(&self) -> Option<String> {
+        if self.state.settings.git_review_compare_mode == "originToWorkingTree" {
+            let upstream = self.state.git.upstream.as_deref();
+            if upstream.map(|value| !value.is_empty()).unwrap_or(false) {
+                return upstream.map(|value| value.to_string());
+            }
+            for candidate in ["origin/main", "origin/master"] {
+                if self.state.git.remote_branches.iter().any(|branch| branch == candidate) {
+                    return Some(candidate.to_string());
+                }
+            }
+            None
+        } else {
+            None
+        }
+    }
+
     pub(super) fn refresh_git_review_for_project(&mut self, project_path: &str) {
+        let base_branch = self.effective_review_base_branch();
         self.git_review = self
             .runtime_service
-            .reload_project_git_review(project_path, self.git_review.base_branch.as_deref());
+            .reload_project_git_review(project_path, base_branch.as_deref());
         merge_git_review_status_files(&mut self.git_review, &self.state.git);
+    }
+
+    pub(super) fn reload_git_review_for_compare_mode_change(&mut self, cx: &mut Context<Self>) {
+        let Some(project_path) = self.selected_worktree_path() else {
+            return;
+        };
+        self.refresh_git_review_for_project(&project_path);
+        if let Some(file_path) = self.selected_git_file.clone() {
+            let base_branch = self.effective_review_base_branch();
+            self.git_diff_preview = self
+                .runtime_service
+                .read_project_git_review_diff(&project_path, &file_path, base_branch.as_deref())
+                .unwrap_or_else(|error| format!("failed to reload diff: {error}"));
+            let content = self.runtime_service.read_project_git_review_file_content(
+                &project_path,
+                &file_path,
+                base_branch.as_deref(),
+            );
+            self.set_git_review_derived_content(content);
+        }
+        self.invalidate_git_panel(cx);
     }
 
     pub(super) fn normalize_selected_git_branch(&mut self) {
@@ -1745,18 +1776,19 @@ impl CoduxApp {
                     } else if let Some(file_path) = completion.diff_file_to_reload.as_deref()
                         && self.selected_git_file.is_some()
                     {
+                        let base_branch = self.effective_review_base_branch();
                         self.git_diff_preview = self
                             .runtime_service
                             .read_project_git_review_diff(
                                 &project_path,
                                 file_path,
-                                self.git_review.base_branch.as_deref(),
+                                base_branch.as_deref(),
                             )
                             .unwrap_or_else(|error| format!("failed to reload diff: {error}"));
                         let content = self.runtime_service.read_project_git_review_file_content(
                             &project_path,
                             file_path,
-                            self.git_review.base_branch.as_deref(),
+                            base_branch.as_deref(),
                         );
                         self.set_git_review_derived_content(content);
                     }

@@ -28,6 +28,14 @@ impl SettingsService {
         Ok(summary_from_raw(&raw))
     }
 
+    pub fn update_git_string(&self, key: &str, value: String) -> Result<SettingsSummary, String> {
+        let mut raw = self.raw_settings();
+        let git = git_mut(&mut raw)?;
+        git.insert(key.to_string(), Value::String(value));
+        self.save_raw_settings(&raw)?;
+        Ok(summary_from_raw(&raw))
+    }
+
     fn toggle_pet_bool(&self, key: &str, default: bool) -> Result<SettingsSummary, String> {
         let mut raw = self.raw_settings();
         let pet = pet_mut(&mut raw)?;

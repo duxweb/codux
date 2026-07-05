@@ -8,6 +8,7 @@ fn summary_from_raw(raw: &Map<String, Value>) -> SettingsSummary {
     let remote = raw.get("remote").and_then(Value::as_object);
     let update = raw.get("update").and_then(Value::as_object);
     let pet = raw.get("pet").and_then(Value::as_object);
+    let git = raw.get("git").and_then(Value::as_object);
 
     SettingsSummary {
         language: string_value(raw, "language", defaults.language),
@@ -370,6 +371,16 @@ fn summary_from_raw(raw: &Map<String, Value>) -> SettingsSummary {
             .and_then(Value::as_str)
             .map(|value| numeric_string(value, 3, 1, 86_400).to_string())
             .unwrap_or(defaults.developer_refresh),
+        git_file_view_mode: git
+            .and_then(|git| git.get("fileViewMode"))
+            .and_then(Value::as_str)
+            .map(sanitize_git_file_view_mode)
+            .unwrap_or(defaults.git_file_view_mode),
+        git_review_compare_mode: git
+            .and_then(|git| git.get("reviewCompareMode"))
+            .and_then(Value::as_str)
+            .map(sanitize_git_review_compare_mode)
+            .unwrap_or(defaults.git_review_compare_mode),
         shortcuts: raw
             .get("shortcuts")
             .and_then(Value::as_object)

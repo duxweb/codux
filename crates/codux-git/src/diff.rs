@@ -20,17 +20,19 @@ fn git2_diff_to_string(
     diff_to_string(&diff)
 }
 
-fn git2_commit_diff_to_string(
+/// Diffs `base` against the current index + working directory (i.e. what
+/// would ship if pushed) rather than just committed history, so staged and
+/// unstaged edits on top of `base` are included.
+fn git2_commit_to_workdir_diff_to_string(
     repo: &GitRepository,
     base: &str,
     path: Option<&str>,
     context_lines: u32,
 ) -> Result<String, String> {
     let base_tree = resolve_commit_tree(repo, base)?;
-    let head_tree = head_tree(repo)?;
     let mut options = git2_diff_options(path, context_lines);
     let diff = repo
-        .diff_tree_to_tree(Some(&base_tree), Some(&head_tree), Some(&mut options))
+        .diff_tree_to_workdir_with_index(Some(&base_tree), Some(&mut options))
         .map_err(|error| error.message().to_string())?;
     diff_to_string(&diff)
 }
@@ -262,17 +264,6 @@ fn git2_blob(repo: &GitRepository, reference: &str, path: &str) -> Result<String
     let blob = object
         .as_blob()
         .ok_or_else(|| "Git object is not a blob.".to_string())?;
-    Ok(String::from_utf8_lossy(blob.content()).to_string())
-}
-
-fn git2_index_blob(repo: &GitRepository, path: &str) -> Result<String, String> {
-    let index = repo.index().map_err(|error| error.message().to_string())?;
-    let Some(entry) = index.get_path(Path::new(path), 0) else {
-        return Err("File is not in the index.".to_string());
-    };
-    let blob = repo
-        .find_blob(entry.id)
-        .map_err(|error| error.message().to_string())?;
     Ok(String::from_utf8_lossy(blob.content()).to_string())
 }
 

@@ -2986,6 +2986,72 @@ fn settings_git_pane(
         settings_card(
             Some(settings_text(
                 language,
+                "settings.git.file_panel",
+                "File Panel",
+            )),
+            None,
+            vec![
+                settings_row(
+                    settings_text(
+                        language,
+                        "settings.git.file_view_mode",
+                        "Layout",
+                    ),
+                    Some(settings_text(
+                        language,
+                        "settings.git.file_view_mode.help",
+                        "Tree groups changed files by directory. Flatten lists them directly under each section.",
+                    )),
+                    settings_select_impl(
+                        "settings-git-file-view-mode",
+                        &settings.git_file_view_mode,
+                        vec![
+                            opt("tree", "Tree"),
+                            opt("flatten", "Flatten"),
+                        ],
+                        window,
+                        cx,
+                        language,
+                        |app, value, window, cx| {
+                            app.set_git_file_view_mode(value, window, cx)
+                        },
+                    ),
+                )
+                .into_any_element(),
+                settings_row(
+                    settings_text(
+                        language,
+                        "settings.git.review_compare_mode",
+                        "Review Compare",
+                    ),
+                    Some(settings_text(
+                        language,
+                        "settings.git.review_compare_mode.help",
+                        "Working Tree audits only uncommitted changes. Origin to Working Tree shows everything not pushed upstream.",
+                    )),
+                    settings_select_impl(
+                        "settings-git-review-compare-mode",
+                        &settings.git_review_compare_mode,
+                        vec![
+                            opt("workingTree", "Working Tree"),
+                            opt("originToWorkingTree", "Origin to Working Tree"),
+                        ],
+                        window,
+                        cx,
+                        language,
+                        |app, value, _window, cx| {
+                            app.set_git_review_compare_mode(value, cx)
+                        },
+                    ),
+                )
+                .into_any_element(),
+            ],
+            cx,
+        )
+        .into_any_element(),
+        settings_card(
+            Some(settings_text(
+                language,
                 "settings.ai.git_commit_message",
                 "Git Commit Message",
             )),

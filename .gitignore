@@ -7,6 +7,9 @@
 /apps/desktop/runtime/target/
 /apps/desktop/runtime/Cargo.lock
 /plan/
+/.codux/
+/.cursor/
+/.omo/
 
 # Monorepo app build outputs
 /apps/mobile/.dart_tool/

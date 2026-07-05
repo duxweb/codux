@@ -64,9 +64,20 @@ pub struct AppSettings {
     #[serde(default)]
     pub remote: RemoteSettings,
     #[serde(default)]
+    pub git: GitSettings,
+    #[serde(default)]
     pub developer_hud: bool,
     #[serde(default = "default_developer_refresh")]
     pub developer_refresh: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitSettings {
+    #[serde(default = "default_git_file_view_mode")]
+    pub file_view_mode: String,
+    #[serde(default = "default_git_review_compare_mode")]
+    pub review_compare_mode: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

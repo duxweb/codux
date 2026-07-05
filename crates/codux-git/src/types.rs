@@ -12,6 +12,10 @@ pub struct GitSummary {
     pub is_repository: bool,
     pub error: Option<String>,
     pub changed_files: Vec<GitFileStatus>,
+    /// Same files as `changed_files` but never collapsed into directory
+    /// markers — the source list for flatten-mode display (no folders).
+    #[serde(default)]
+    pub flat_changed_files: Vec<GitFileStatus>,
     pub branches: Vec<GitBranchSummary>,
     pub remote_branches: Vec<String>,
     pub remotes: Vec<GitRemoteSummary>,
@@ -94,7 +98,6 @@ pub struct GitReviewContentSummary {
     pub path: String,
     pub head_content: String,
     pub base_content: Option<String>,
-    pub index_content: Option<String>,
     pub worktree_content: String,
     pub added_lines: Vec<usize>,
     pub deleted_lines: Vec<usize>,

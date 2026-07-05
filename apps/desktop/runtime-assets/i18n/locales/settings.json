@@ -375,7 +375,12 @@
       "settings.ai.tool.reasoning_effort.low": "Niedrig",
       "settings.ai.tool.reasoning_effort.medium": "Mittel",
       "settings.ai.tool.reasoning_effort.high": "Hoch",
-      "settings.ai.tool.reasoning_effort.xhigh": "Sehr hoch"
+      "settings.ai.tool.reasoning_effort.xhigh": "Sehr hoch",
+      "settings.git.file_panel": "Dateipanel",
+      "settings.git.file_view_mode": "Layout",
+      "settings.git.file_view_mode.help": "Baum gruppiert geänderte Dateien nach Verzeichnis. Flach listet sie direkt unter jedem Abschnitt auf.",
+      "settings.git.review_compare_mode": "Review-Vergleich",
+      "settings.git.review_compare_mode.help": "Arbeitsbaum prüft nur nicht committete Änderungen. Origin zu Arbeitsbaum zeigt alles, was nicht hochgeladen wurde."
     },
     "en": {
       "settings.ai_auto_refresh": "AI Auto Refresh",
@@ -754,7 +759,12 @@
       "settings.ai.tool.reasoning_effort.low": "Low",
       "settings.ai.tool.reasoning_effort.medium": "Medium",
       "settings.ai.tool.reasoning_effort.high": "High",
-      "settings.ai.tool.reasoning_effort.xhigh": "XHigh"
+      "settings.ai.tool.reasoning_effort.xhigh": "XHigh",
+      "settings.git.file_panel": "File Panel",
+      "settings.git.file_view_mode": "Layout",
+      "settings.git.file_view_mode.help": "Tree groups changed files by directory. Flatten lists them directly under each section.",
+      "settings.git.review_compare_mode": "Review Compare",
+      "settings.git.review_compare_mode.help": "Working Tree audits only uncommitted changes. Origin to Working Tree shows everything not pushed upstream."
     },
     "es": {
       "settings.ai_auto_refresh": "Actualización automática de IA",
@@ -1131,7 +1141,12 @@
       "settings.ai.tool.reasoning_effort.low": "Bajo",
       "settings.ai.tool.reasoning_effort.medium": "Medio",
       "settings.ai.tool.reasoning_effort.high": "Alto",
-      "settings.ai.tool.reasoning_effort.xhigh": "Muy alto"
+      "settings.ai.tool.reasoning_effort.xhigh": "Muy alto",
+      "settings.git.file_panel": "Panel de archivos",
+      "settings.git.file_view_mode": "Diseño",
+      "settings.git.file_view_mode.help": "Árbol agrupa los archivos modificados por directorio. Plano los lista directamente bajo cada sección.",
+      "settings.git.review_compare_mode": "Comparación de revisión",
+      "settings.git.review_compare_mode.help": "Árbol de trabajo audita solo cambios no confirmados. Origin a árbol de trabajo muestra todo lo no empujado."
     },
     "fr": {
       "settings.ai_auto_refresh": "Actualisation auto IA",
@@ -1508,7 +1523,12 @@
       "settings.ai.tool.reasoning_effort.low": "Faible",
       "settings.ai.tool.reasoning_effort.medium": "Moyen",
       "settings.ai.tool.reasoning_effort.high": "Élevé",
-      "settings.ai.tool.reasoning_effort.xhigh": "Très élevé"
+      "settings.ai.tool.reasoning_effort.xhigh": "Très élevé",
+      "settings.git.file_panel": "Panneau de fichiers",
+      "settings.git.file_view_mode": "Disposition",
+      "settings.git.file_view_mode.help": "Arborescence regroupe les fichiers modifiés par répertoire. Liste les affiche directement sous chaque section.",
+      "settings.git.review_compare_mode": "Comparaison de révision",
+      "settings.git.review_compare_mode.help": "Arbre de travail audite uniquement les modifications non validées. Origin vers arbre de travail montre tout ce qui n'est pas poussé."
     },
     "ja": {
       "settings.ai_auto_refresh": "AI 自動更新",
@@ -1885,7 +1905,12 @@
       "settings.ai.tool.reasoning_effort.low": "低",
       "settings.ai.tool.reasoning_effort.medium": "中",
       "settings.ai.tool.reasoning_effort.high": "高",
-      "settings.ai.tool.reasoning_effort.xhigh": "最高"
+      "settings.ai.tool.reasoning_effort.xhigh": "最高",
+      "settings.git.file_panel": "ファイルパネル",
+      "settings.git.file_view_mode": "レイアウト",
+      "settings.git.file_view_mode.help": "ツリーは変更されたファイルをディレクトリ別にグループ化します。フラットは各セクションの下に直接表示します。",
+      "settings.git.review_compare_mode": "レビュー比較",
+      "settings.git.review_compare_mode.help": "ワーキングツリーはコミットされていない変更のみ監査します。Origin to Working Treeはプッシュされていないすべてを表示します。"
     },
     "ko": {
       "settings.ai_auto_refresh": "AI 자동 새로고침",
@@ -2262,7 +2287,12 @@
       "settings.ai.tool.reasoning_effort.low": "낮음",
       "settings.ai.tool.reasoning_effort.medium": "중간",
       "settings.ai.tool.reasoning_effort.high": "높음",
-      "settings.ai.tool.reasoning_effort.xhigh": "매우 높음"
+      "settings.ai.tool.reasoning_effort.xhigh": "매우 높음",
+      "settings.git.file_panel": "파일 패널",
+      "settings.git.file_view_mode": "레이아웃",
+      "settings.git.file_view_mode.help": "트리는 변경된 파일을 디렉토리별로 그룹화합니다. 플랫은 각 섹션 아래에 직접 나열합니다.",
+      "settings.git.review_compare_mode": "리뷰 비교",
+      "settings.git.review_compare_mode.help": "워킹 트리는 커밋되지 않은 변경만 감사합니다. Origin to Working Tree는 푸시되지 않은 모든 것을 표시합니다."
     },
     "pt-BR": {
       "settings.ai_auto_refresh": "Atualização automática de IA",
@@ -2639,7 +2669,12 @@
       "settings.ai.tool.reasoning_effort.low": "Baixo",
       "settings.ai.tool.reasoning_effort.medium": "Médio",
       "settings.ai.tool.reasoning_effort.high": "Alto",
-      "settings.ai.tool.reasoning_effort.xhigh": "Muito alto"
+      "settings.ai.tool.reasoning_effort.xhigh": "Muito alto",
+      "settings.git.file_panel": "Painel de arquivos",
+      "settings.git.file_view_mode": "Layout",
+      "settings.git.file_view_mode.help": "Árvore agrupa arquivos alterados por diretório. Plano os lista diretamente sob cada seção.",
+      "settings.git.review_compare_mode": "Comparação de revisão",
+      "settings.git.review_compare_mode.help": "Working Tree audita apenas alterações não commitadas. Origin to Working Tree mostra tudo não enviado."
     },
     "ru": {
       "settings.ai_auto_refresh": "Автообновление ИИ",
@@ -3016,7 +3051,12 @@
       "settings.ai.tool.reasoning_effort.low": "Низкий",
       "settings.ai.tool.reasoning_effort.medium": "Средний",
       "settings.ai.tool.reasoning_effort.high": "Высокий",
-      "settings.ai.tool.reasoning_effort.xhigh": "Очень высокий"
+      "settings.ai.tool.reasoning_effort.xhigh": "Очень высокий",
+      "settings.git.file_panel": "Панель файлов",
+      "settings.git.file_view_mode": "Макет",
+      "settings.git.file_view_mode.help": "Дерево группирует изменённые файлы по каталогам. Плоский список показывает их напрямую под каждой секцией.",
+      "settings.git.review_compare_mode": "Сравнение ревью",
+      "settings.git.review_compare_mode.help": "Рабочее дерево проверяет только незафиксированные изменения. Origin to Working Tree показывает всё, что не отправлено."
     },
     "zh-Hans": {
       "settings.ai_auto_refresh": "AI 自动刷新",
@@ -3395,7 +3435,12 @@
       "settings.ai.tool.reasoning_effort.low": "低",
       "settings.ai.tool.reasoning_effort.medium": "中",
       "settings.ai.tool.reasoning_effort.high": "高",
-      "settings.ai.tool.reasoning_effort.xhigh": "极高"
+      "settings.ai.tool.reasoning_effort.xhigh": "极高",
+      "settings.git.file_panel": "文件面板",
+      "settings.git.file_view_mode": "布局",
+      "settings.git.file_view_mode.help": "树形按目录分组已更改的文件。扁平在每个部分下直接列出它们。",
+      "settings.git.review_compare_mode": "审查比较",
+      "settings.git.review_compare_mode.help": "工作树仅审查未提交的更改。Origin to Working Tree 显示所有未推送到上游的内容。"
     },
     "zh-Hant": {
       "settings.ai_auto_refresh": "AI 自動重新整理",
@@ -3774,7 +3819,12 @@
       "settings.ai.tool.reasoning_effort.low": "低",
       "settings.ai.tool.reasoning_effort.medium": "中",
       "settings.ai.tool.reasoning_effort.high": "高",
-      "settings.ai.tool.reasoning_effort.xhigh": "極高"
+      "settings.ai.tool.reasoning_effort.xhigh": "極高",
+      "settings.git.file_panel": "檔案面板",
+      "settings.git.file_view_mode": "佈局",
+      "settings.git.file_view_mode.help": "樹狀按目錄分組已變更的檔案。扁平在每個區段下直接列出它們。",
+      "settings.git.review_compare_mode": "審查比較",
+      "settings.git.review_compare_mode.help": "工作樹僅審查未提交的變更。Origin to Working Tree 顯示所有未推送到上游的內容。"
     }
   }
 }

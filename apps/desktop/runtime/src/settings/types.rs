@@ -75,6 +75,8 @@ pub struct SettingsSummary {
     pub pet_speech_temporary_muted: bool,
     pub developer_hud: bool,
     pub developer_refresh: String,
+    pub git_file_view_mode: String,
+    pub git_review_compare_mode: String,
     pub shortcuts: HashMap<String, String>,
 }
 

@@ -75,6 +75,8 @@ impl Default for SettingsSummary {
             pet_speech_temporary_muted: false,
             developer_hud: false,
             developer_refresh: "3".to_string(),
+            git_file_view_mode: "tree".to_string(),
+            git_review_compare_mode: "workingTree".to_string(),
             shortcuts: HashMap::new(),
         }
     }

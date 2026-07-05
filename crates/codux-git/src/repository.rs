@@ -20,7 +20,8 @@ fn git_status_from_repo(repo: &GitRepository) -> GitSummary {
     let upstream = upstream_branch_name(repo);
     let (ahead, behind) = ahead_behind(repo).unwrap_or((0, 0));
     let head_pushed = head_commit_pushed_from_repo(repo);
-    let (raw_changed_files, status_error) = match git2_status_files(repo) {
+    let (raw_changed_files, status_error) =
+        match git2_status_files_with_options(repo, true, None, MAX_GIT_STATUS_FILES) {
         Ok((staged, unstaged, untracked)) => {
             (flatten_unique_status_files(staged, unstaged, untracked), None)
         }
@@ -65,6 +66,7 @@ fn git_status_from_repo(repo: &GitRepository) -> GitSummary {
         is_repository: true,
         error: status_error,
         changed_files,
+        flat_changed_files: raw_changed_files,
         branches,
         remote_branches,
         remotes,
@@ -129,11 +131,41 @@ fn git_review_from_repo(repo: &GitRepository, base_branch: Option<&str>) -> GitR
         .map(str::to_string);
 
     if let Some(base) = base {
-        let files = git2_commit_review_files(repo, &base).unwrap_or_default();
+        let mut files = git2_commit_review_files(repo, &base).unwrap_or_default();
+        let mut seen_paths: HashSet<String> =
+            files.iter().map(|file| file.path.clone()).collect();
+        let changed_files = flatten_status_files(repo);
+        let stats = working_tree_review_stats_git2(repo);
+        for file in changed_files.iter().filter(|file| {
+            let index = file.index_status.trim();
+            !index.is_empty() && index != "?"
+        }) {
+            push_review_file_from_status(&mut files, &mut seen_paths, file, "staged", &stats, root);
+        }
+        for file in changed_files
+            .iter()
+            .filter(|file| !is_untracked_status(file) && !file.worktree_status.trim().is_empty())
+        {
+            push_review_file_from_status(
+                &mut files,
+                &mut seen_paths,
+                file,
+                "modified",
+                &stats,
+                root,
+            );
+        }
+        for file in changed_files
+            .iter()
+            .filter(|file| is_untracked_status(file))
+        {
+            push_review_file_from_status(&mut files, &mut seen_paths, file, "added", &stats, root);
+        }
+        files.sort_by(|left, right| left.path.cmp(&right.path));
         let diff_stat = review_diff_stat(&files);
         return GitReviewSummary {
             mode: "taskBranch".to_string(),
-            title: "Worktree Review".to_string(),
+            title: "Branch Review".to_string(),
             base_branch: Some(base),
             diff_stat,
             files,
@@ -181,7 +213,8 @@ fn git_review_from_repo(repo: &GitRepository, base_branch: Option<&str>) -> GitR
 }
 
 fn flatten_status_files(repo: &GitRepository) -> Vec<GitFileStatus> {
-    let (staged, unstaged, untracked) = git2_status_files(repo).unwrap_or_default();
+    let (staged, unstaged, untracked) =
+        git2_status_files_with_options(repo, true, None, MAX_GIT_STATUS_FILES).unwrap_or_default();
     flatten_unique_status_files(staged, unstaged, untracked)
 }
 

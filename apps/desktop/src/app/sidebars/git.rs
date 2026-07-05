@@ -57,9 +57,7 @@ pub(in crate::app) struct GitSidebarLabels {
     restore_commit: String,
     review_changed_files: String,
     review_original: String,
-    review_new_file: String,
     review_final_file: String,
-    review_branch: String,
     review_select_file: String,
     review_empty: String,
     review_no_repository: String,
@@ -69,8 +67,10 @@ pub(in crate::app) struct GitSidebarLabels {
 #[derive(Clone, PartialEq)]
 pub(in crate::app) struct GitFilesPanelSnapshot {
     language: String,
+    view_mode: String,
     branch: String,
     changed_files: Vec<(String, String, String)>,
+    flat_changed_files: Vec<(String, String, String)>,
     expanded_sections: Vec<String>,
     expanded_dirs: Vec<String>,
     tree_children: Vec<(String, Vec<(String, String, String)>)>,
@@ -98,26 +98,27 @@ impl Render for GitFilesPanelView {
         let app_entity = self.app_entity.clone();
         app_entity.update(cx, |app, cx| {
             let labels = Rc::new(GitSidebarLabels::load(&app.state.settings.language));
-            let staged = app
-                .state
-                .git
-                .changed_files
+            let flatten = app.state.settings.git_file_view_mode.as_str() == "flatten";
+            // Flatten mode must show every individual file with no folder
+            // grouping, so it uses the uncollapsed list — `changed_files`
+            // collapses deep directories into folder markers for lazy tree
+            // expansion, which would otherwise leak "folder" rows into flatten.
+            let source_files = if flatten {
+                &app.state.git.flat_changed_files
+            } else {
+                &app.state.git.changed_files
+            };
+            let staged = source_files
                 .iter()
                 .filter(|file| is_git_staged_file(file))
                 .cloned()
                 .collect::<Vec<_>>();
-            let changed = app
-                .state
-                .git
-                .changed_files
+            let changed = source_files
                 .iter()
                 .filter(|file| is_git_worktree_file(file))
                 .cloned()
                 .collect::<Vec<_>>();
-            let untracked = app
-                .state
-                .git
-                .changed_files
+            let untracked = source_files
                 .iter()
                 .filter(|file| is_git_untracked_file(file))
                 .cloned()
@@ -134,6 +135,7 @@ impl Render for GitFilesPanelView {
                 &app.selected_git_files,
                 labels,
                 app.git_files_scroll_handle.clone(),
+                flatten,
                 cx,
             )
             .into_any_element()
@@ -244,11 +246,19 @@ impl CoduxApp {
 
         GitFilesPanelSnapshot {
             language: self.state.settings.language.clone(),
+            view_mode: self.state.settings.git_file_view_mode.clone(),
             branch: self.state.git.branch.clone(),
             changed_files: self
                 .state
                 .git
                 .changed_files
+                .iter()
+                .map(git_file_status_tuple)
+                .collect(),
+            flat_changed_files: self
+                .state
+                .git
+                .flat_changed_files
                 .iter()
                 .map(git_file_status_tuple)
                 .collect(),
@@ -366,9 +376,7 @@ impl GitSidebarLabels {
             restore_commit: tr("git.history.restore_local", "Restore to This Commit"),
             review_changed_files: tr("worktree.review.changed_files", "Changed Files"),
             review_original: tr("worktree.review.column.original", "Original"),
-            review_new_file: tr("worktree.review.column.new", "New File"),
             review_final_file: tr("worktree.review.column.final", "Final File"),
-            review_branch: tr("worktree.review.column.branch", "Branch"),
             review_select_file: tr(
                 "worktree.review.select_file",
                 "Select a changed file to compare.",
@@ -532,7 +540,28 @@ fn git_panel_header(
                 .flex()
                 .items_center()
                 .when(git.is_repository, |this| {
+                    let flatten = cx
+                        .entity()
+                        .read(cx)
+                        .state
+                        .settings
+                        .git_file_view_mode
+                        .as_str()
+                        == "flatten";
+                    let view_icon = if flatten {
+                        HeroIconName::ListBullet
+                    } else {
+                        HeroIconName::RectangleGroup
+                    };
                     this.child(assistant_header_icon_button(
+                        "git-sidebar-view-mode",
+                        view_icon,
+                        cx,
+                        |app, _event, _window, cx| {
+                            app.cycle_git_file_view_mode(cx);
+                        },
+                    ))
+                    .child(assistant_header_icon_button(
                         "git-sidebar-ai",
                         HeroIconName::Sparkles,
                         cx,
@@ -1483,6 +1512,7 @@ fn git_files_panel(
     selected_files: &HashSet<String>,
     labels: Rc<GitSidebarLabels>,
     scroll_handle: VirtualListScrollHandle,
+    flatten: bool,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let rows = Rc::new(git_status_virtual_rows(
@@ -1495,6 +1525,7 @@ fn git_files_panel(
         selected_file,
         selected_files,
         &labels,
+        flatten,
     ));
     let item_sizes = Rc::new(
         rows.iter()
@@ -1889,6 +1920,7 @@ enum GitStatusVirtualRow {
         active: bool,
         selected_files: HashSet<String>,
         depth: usize,
+        show_path: bool,
         labels: Rc<GitFileMenuLabels>,
     },
     Limit {
@@ -1900,13 +1932,35 @@ enum GitStatusVirtualRow {
 const GIT_STATUS_GROUP_TOP_PADDING: f32 = 4.0;
 const GIT_STATUS_GROUP_BOTTOM_PADDING: f32 = 8.0;
 
+fn git_file_status_parent_dir(file: &GitFileStatus, show_path: bool) -> Option<String> {
+    if !show_path || file.path.ends_with('/') {
+        return None;
+    }
+    file.path
+        .trim_end_matches('/')
+        .rsplit_once('/')
+        .map(|(dir, _)| dir.to_string())
+}
+
+const GIT_STATUS_FILE_ROW_HEIGHT: f32 = 24.0;
+const GIT_STATUS_FILE_ROW_WITH_PATH_HEIGHT: f32 = 36.0;
+
 impl GitStatusVirtualRow {
     fn height(&self) -> Pixels {
         match self {
             Self::GroupHeader { .. } => px(40.0),
             Self::Spacer { height } => px(*height),
             Self::Empty { .. } => px(42.0),
-            Self::Dir { .. } | Self::File { .. } => px(24.0),
+            Self::Dir { .. } => px(GIT_STATUS_FILE_ROW_HEIGHT),
+            Self::File {
+                file, show_path, ..
+            } => {
+                if git_file_status_parent_dir(file, *show_path).is_some() {
+                    px(GIT_STATUS_FILE_ROW_WITH_PATH_HEIGHT)
+                } else {
+                    px(GIT_STATUS_FILE_ROW_HEIGHT)
+                }
+            }
             Self::Limit { .. } => px(32.0),
         }
     }
@@ -1945,6 +1999,7 @@ impl GitStatusVirtualRow {
                 active,
                 selected_files,
                 depth,
+                show_path,
                 labels,
             } => {
                 let selected_path = active.then(|| file.path.clone());
@@ -1953,6 +2008,7 @@ impl GitStatusVirtualRow {
                     selected_path.as_deref(),
                     &selected_files,
                     depth,
+                    show_path,
                     labels,
                     cx,
                 )
@@ -1980,6 +2036,7 @@ fn git_status_virtual_rows(
     selected_file: Option<&str>,
     selected_files: &HashSet<String>,
     labels: &GitSidebarLabels,
+    flatten: bool,
 ) -> Vec<GitStatusVirtualRow> {
     let mut rows = Vec::new();
     let file_menu_labels = Rc::new(GitFileMenuLabels::from(labels));
@@ -1996,6 +2053,7 @@ fn git_status_virtual_rows(
         labels.tree_limit.clone(),
         file_menu_labels.clone(),
         rows.is_empty(),
+        flatten,
         &mut rows,
     );
     append_git_status_group_virtual_rows(
@@ -2011,6 +2069,7 @@ fn git_status_virtual_rows(
         labels.tree_limit.clone(),
         file_menu_labels.clone(),
         rows.is_empty(),
+        flatten,
         &mut rows,
     );
     append_git_status_group_virtual_rows(
@@ -2026,6 +2085,7 @@ fn git_status_virtual_rows(
         labels.tree_limit.clone(),
         file_menu_labels,
         rows.is_empty(),
+        flatten,
         &mut rows,
     );
     rows
@@ -2044,6 +2104,7 @@ fn append_git_status_group_virtual_rows(
     tree_limit: String,
     file_menu_labels: Rc<GitFileMenuLabels>,
     first: bool,
+    flatten: bool,
     rows: &mut Vec<GitStatusVirtualRow>,
 ) {
     let expanded = expanded_sections.contains(id);
@@ -2069,18 +2130,37 @@ fn append_git_status_group_virtual_rows(
         return;
     }
     let start_len = rows.len();
-    append_git_status_virtual_directory_rows(
-        id,
-        "",
-        files,
-        0,
-        expanded_dirs,
-        tree_children,
-        selected_file,
-        selected_files,
-        file_menu_labels,
-        rows,
-    );
+    if flatten {
+        for file in files.iter() {
+            if rows.len() >= MAX_GIT_STATUS_TREE_ROWS {
+                break;
+            }
+            let active = selected_file
+                .map(|path| path == file.path.as_str())
+                .unwrap_or(false);
+            rows.push(GitStatusVirtualRow::File {
+                file: file.clone(),
+                active,
+                selected_files: selected_files.clone(),
+                depth: 0,
+                show_path: true,
+                labels: file_menu_labels.clone(),
+            });
+        }
+    } else {
+        append_git_status_virtual_directory_rows(
+            id,
+            "",
+            files,
+            0,
+            expanded_dirs,
+            tree_children,
+            selected_file,
+            selected_files,
+            file_menu_labels,
+            rows,
+        );
+    }
     let appended = rows.len().saturating_sub(start_len);
     if appended >= MAX_GIT_STATUS_TREE_ROWS {
         rows.push(GitStatusVirtualRow::Limit {
@@ -2154,6 +2234,7 @@ fn append_git_status_virtual_directory_rows(
             active,
             selected_files: selected_files.clone(),
             depth,
+            show_path: false,
             labels: file_menu_labels.clone(),
         });
     }
@@ -2583,6 +2664,7 @@ fn git_status_file_row(
     selected_file: Option<&str>,
     selected_files: &HashSet<String>,
     depth: usize,
+    show_path: bool,
     labels: Rc<GitFileMenuLabels>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
@@ -2595,15 +2677,20 @@ fn git_status_file_row(
         || selected_files.contains(&file.path);
     let file_path = file.path.clone();
     let menu_file_path = file.path.clone();
-    let file_name = file
-        .path
-        .trim_end_matches('/')
+    let is_dir_status = file.path.ends_with('/');
+    let trimmed_path = file.path.trim_end_matches('/');
+    let file_name = trimmed_path
         .rsplit('/')
         .next()
         .filter(|name| !name.trim().is_empty())
         .unwrap_or(file.path.as_str())
         .to_string();
-    let is_dir_status = file.path.ends_with('/');
+    let parent_dir = git_file_status_parent_dir(&file, show_path);
+    let row_height = if parent_dir.is_some() {
+        GIT_STATUS_FILE_ROW_WITH_PATH_HEIGHT
+    } else {
+        GIT_STATUS_FILE_ROW_HEIGHT
+    };
     let app_entity = cx.entity();
 
     div()
@@ -2613,7 +2700,7 @@ fn git_status_file_row(
         )))
         .w_full()
         .min_w_0()
-        .h(px(24.0))
+        .h(px(row_height))
         .pl(px(46.0 + depth as f32 * 18.0))
         .pr_3()
         .flex()
@@ -2653,11 +2740,30 @@ fn git_status_file_row(
                 .child(
                     div()
                         .ml(px(8.0))
+                        .flex()
+                        .flex_col()
+                        .justify_center()
                         .min_w_0()
-                        .text_size(rems(0.875))
-                        .line_height(rems(1.125))
-                        .truncate()
-                        .child(file_name),
+                        .gap(px(1.0))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .text_size(rems(0.875))
+                                .line_height(rems(1.125))
+                                .truncate()
+                                .child(file_name),
+                        )
+                        .when_some(parent_dir, |this, parent_dir| {
+                            this.child(
+                                div()
+                                    .min_w_0()
+                                    .text_size(rems(0.6875))
+                                    .line_height(rems(1.0))
+                                    .text_color(color(theme::TEXT_DIM))
+                                    .truncate()
+                                    .child(parent_dir),
+                            )
+                        }),
                 ),
         )
         .child(
@@ -3416,7 +3522,6 @@ pub(in crate::app) fn git_review_workspace(
         let message = git_review_error_message(&error, labels.as_ref());
         return git_review_empty_workspace(message).into_any_element();
     }
-    let task_branch_mode = review.mode == "taskBranch";
     let original_title = labels.review_original.clone();
     let body = div()
         .flex()
@@ -3477,28 +3582,12 @@ pub(in crate::app) fn git_review_workspace(
                     cx,
                 ))
                 .child(git_review_content_panel(
-                    "git-review-new-code",
-                    labels.review_new_file.as_str(),
-                    derived_rows.new_file.clone(),
-                    VirtualListScrollHandle::from(code_scroll_handle.clone()),
-                    cx,
-                ))
-                .child(git_review_content_panel(
                     "git-review-final-code",
                     labels.review_final_file.as_str(),
                     derived_rows.final_file.clone(),
                     VirtualListScrollHandle::from(code_scroll_handle.clone()),
                     cx,
                 ))
-                .when(task_branch_mode, |this| {
-                    this.child(git_review_content_panel(
-                        "git-review-branch-code",
-                        labels.review_branch.as_str(),
-                        derived_rows.branch.clone().unwrap_or_default(),
-                        VirtualListScrollHandle::from(code_scroll_handle.clone()),
-                        cx,
-                    ))
-                })
         });
     body.into_any_element()
 }
@@ -3550,9 +3639,7 @@ enum GitReviewLineTone {
 #[derive(Clone, Default)]
 pub(in crate::app) struct GitReviewDerivedRows {
     original: Rc<Vec<GitReviewAlignedCell>>,
-    new_file: Rc<Vec<GitReviewAlignedCell>>,
     final_file: Rc<Vec<GitReviewAlignedCell>>,
-    branch: Option<Rc<Vec<GitReviewAlignedCell>>>,
 }
 
 #[derive(Clone, Default)]
@@ -3686,23 +3773,17 @@ fn git_review_code_line(cell: GitReviewAlignedCell, content_width: Pixels) -> An
 
 pub(in crate::app) fn build_git_review_derived_rows(
     original_content: &str,
-    new_content: &str,
     final_content: &str,
-    branch_content: Option<&str>,
     deleted_lines: &[usize],
     added_lines: &[usize],
 ) -> GitReviewDerivedRows {
     let original_lines = split_review_lines(original_content);
-    let new_lines = split_review_lines(new_content);
     let final_lines = split_review_lines(final_content);
-    let branch_lines = branch_content.map(split_review_lines);
     let deleted = deleted_lines.iter().copied().collect::<HashSet<_>>();
     let added = added_lines.iter().copied().collect::<HashSet<_>>();
 
     let mut original_cells = Vec::new();
-    let mut new_cells = Vec::new();
     let mut final_cells = Vec::new();
-    let mut branch_cells = branch_lines.as_ref().map(|_| Vec::new());
     let mut old_line = 1usize;
     let mut new_line = 1usize;
 
@@ -3731,31 +3812,15 @@ pub(in crate::app) fn build_git_review_derived_rows(
                     old_number,
                     Some(GitReviewLineTone::Deletion),
                 ));
-                new_cells.push(review_cell(
-                    &new_lines,
-                    new_number,
-                    Some(GitReviewLineTone::Addition),
-                ));
                 final_cells.push(review_cell(
                     &final_lines,
                     new_number,
                     Some(GitReviewLineTone::Addition),
                 ));
-                if let (Some(lines), Some(cells)) = (&branch_lines, &mut branch_cells) {
-                    cells.push(review_cell(
-                        lines,
-                        new_number,
-                        Some(GitReviewLineTone::Addition),
-                    ));
-                }
             }
         } else {
             original_cells.push(review_cell(&original_lines, Some(old_line), None));
-            new_cells.push(review_cell(&new_lines, Some(new_line), None));
             final_cells.push(review_cell(&final_lines, Some(new_line), None));
-            if let (Some(lines), Some(cells)) = (&branch_lines, &mut branch_cells) {
-                cells.push(review_cell(lines, Some(new_line), None));
-            }
             old_line += 1;
             new_line += 1;
         }
@@ -3763,9 +3828,7 @@ pub(in crate::app) fn build_git_review_derived_rows(
 
     GitReviewDerivedRows {
         original: Rc::new(original_cells),
-        new_file: Rc::new(new_cells),
         final_file: Rc::new(final_cells),
-        branch: branch_cells.map(Rc::new),
     }
 }
 
@@ -3796,6 +3859,7 @@ pub(in crate::app) fn git_review_file_list(
     expanded_dirs: &HashSet<String>,
     refreshing: bool,
     labels: Rc<GitSidebarLabels>,
+    flatten: bool,
     cx: &mut Context<workspace_views::ReviewFileListView>,
 ) -> impl IntoElement {
     let expanded_dirs = expanded_dirs.clone();
@@ -3856,18 +3920,50 @@ pub(in crate::app) fn git_review_file_list(
                 .min_h_0()
                 .overflow_y_scrollbar()
                 .py_2()
-                .children(git_review_directory_rows(
-                    &review.files,
-                    "",
-                    0,
-                    selected_path,
-                    &expanded_dirs,
-                    labels.clone(),
-                    app_entity.clone(),
-                    cx,
-                ))
+                .children(if flatten {
+                    git_review_flat_rows(
+                        &review.files,
+                        selected_path,
+                        labels.clone(),
+                        app_entity.clone(),
+                        cx,
+                    )
+                } else {
+                    git_review_directory_rows(
+                        &review.files,
+                        "",
+                        0,
+                        selected_path,
+                        &expanded_dirs,
+                        labels.clone(),
+                        app_entity.clone(),
+                        cx,
+                    )
+                })
                 .into_any_element()
         })
+}
+
+fn git_review_flat_rows(
+    files: &[GitReviewFile],
+    selected_path: Option<&str>,
+    labels: Rc<GitSidebarLabels>,
+    app_entity: gpui::Entity<CoduxApp>,
+    cx: &mut Context<workspace_views::ReviewFileListView>,
+) -> Vec<AnyElement> {
+    let mut rows = Vec::new();
+    for file in files {
+        if rows.len() >= MAX_GIT_REVIEW_TREE_ROWS {
+            rows.push(git_review_tree_limit_row(files.len(), &labels).into_any_element());
+            break;
+        }
+        let selected = selected_path == Some(file.path.as_str());
+        rows.push(
+            git_review_file_row(file.clone(), selected, 0, true, app_entity.clone(), cx)
+                .into_any_element(),
+        );
+    }
+    rows
 }
 
 fn git_review_directory_rows(
@@ -3912,7 +4008,8 @@ fn git_review_directory_rows(
         }
         let selected = selected_path == Some(file.path.as_str());
         rows.push(
-            git_review_file_row(file, selected, depth, app_entity.clone(), cx).into_any_element(),
+            git_review_file_row(file, selected, depth, false, app_entity.clone(), cx)
+                .into_any_element(),
         );
     }
     rows
@@ -3940,23 +4037,30 @@ fn git_review_file_row(
     file: GitReviewFile,
     selected: bool,
     depth: usize,
+    show_path: bool,
     app_entity: gpui::Entity<CoduxApp>,
     cx: &mut Context<workspace_views::ReviewFileListView>,
 ) -> impl IntoElement {
     let path = file.path.clone();
     let badge = git_review_status_badge(&file.status);
-    let file_name = file
-        .path
-        .trim_end_matches('/')
+    let trimmed_path = file.path.trim_end_matches('/');
+    let file_name = trimmed_path
         .rsplit('/')
         .next()
         .filter(|name| !name.trim().is_empty())
         .unwrap_or(file.path.as_str())
         .to_string();
+    let parent_dir = show_path
+        .then(|| trimmed_path.rsplit_once('/').map(|(dir, _)| dir.to_string()))
+        .flatten();
     Button::new(format!("review-file-{path}"))
         .ghost()
         .w_full()
-        .h(px(24.0))
+        .h(if parent_dir.is_some() {
+            px(36.0)
+        } else {
+            px(24.0)
+        })
         .px_2()
         .rounded_sm()
         .text_color(if selected {
@@ -3995,12 +4099,32 @@ fn git_review_file_row(
                             div()
                                 .flex_1()
                                 .ml(px(8.0))
+                                .flex()
+                                .flex_col()
+                                .justify_center()
                                 .min_w_0()
                                 .max_w_full()
-                                .truncate()
-                                .text_size(rems(0.875))
-                                .line_height(rems(1.125))
-                                .child(file_name),
+                                .gap(px(1.0))
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .max_w_full()
+                                        .truncate()
+                                        .text_size(rems(0.875))
+                                        .line_height(rems(1.125))
+                                        .child(file_name),
+                                )
+                                .when_some(parent_dir, |this, parent_dir| {
+                                    this.child(
+                                        div()
+                                            .min_w_0()
+                                            .truncate()
+                                            .text_size(rems(0.6875))
+                                            .line_height(rems(1.0))
+                                            .text_color(color(theme::TEXT_DIM))
+                                            .child(parent_dir),
+                                    )
+                                }),
                         ),
                 )
                 .child(git_review_stats_cells(

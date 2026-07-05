@@ -1,3 +1,12 @@
+impl Default for GitSettings {
+    fn default() -> Self {
+        Self {
+            file_view_mode: default_git_file_view_mode(),
+            review_compare_mode: default_git_review_compare_mode(),
+        }
+    }
+}
+
 impl Default for RemoteSettings {
     fn default() -> Self {
         Self {
@@ -152,6 +161,7 @@ impl Default for AppSettings {
             shortcuts: HashMap::new(),
             update: UpdateSettings::default(),
             remote: RemoteSettings::default(),
+            git: GitSettings::default(),
             developer_hud: false,
             developer_refresh: default_developer_refresh(),
         }

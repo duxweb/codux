@@ -248,15 +248,15 @@ mod tests {
 
         let review = GitService::review(repo.to_str().expect("repo"), None);
         assert!(
-            review.files.iter().any(|file| file.path == "bulk/"),
-            "review should show the untracked directory"
-        );
-        assert!(
             review
                 .files
                 .iter()
-                .all(|file| !file.path.starts_with("bulk/nested/")),
-            "review should not recurse into untracked directories"
+                .any(|file| file.path == "bulk/nested/a.txt"),
+            "review should show individual untracked files"
+        );
+        assert!(
+            review.files.iter().all(|file| file.path != "bulk/"),
+            "review should not show untracked directory markers"
         );
 
         let diff = GitService::review_file_diff(
@@ -283,7 +283,6 @@ mod tests {
 
         assert_eq!(content.path, "new.txt");
         assert_eq!(content.head_content, "");
-        assert_eq!(content.index_content, None);
         assert_eq!(content.worktree_content, "one\ntwo\n");
         assert_eq!(content.deleted_lines, Vec::<usize>::new());
         assert_eq!(content.added_lines, vec![1, 2]);
