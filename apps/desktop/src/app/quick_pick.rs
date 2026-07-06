@@ -15,10 +15,10 @@ use gpui_component::{
 
 /// Compact VS Code-like row height.
 const ROW_HEIGHT: f32 = 30.0;
-/// Title strip height (matches the Quick Input overlay).
-const TITLE_HEIGHT: f32 = 30.0;
-/// Search input strip height (input + bottom border).
-const SEARCH_HEIGHT: f32 = 37.0;
+/// Search input strip height (Large input + bottom border).
+const SEARCH_HEIGHT: f32 = 45.0;
+/// Inset around the rows so the selected pill doesn't touch the edges.
+const LIST_PADDING: f32 = 8.0;
 /// List area grows with content up to this many rows, then scrolls.
 const MAX_VISIBLE_ROWS: usize = 12;
 
@@ -97,7 +97,12 @@ impl ListDelegate for QuickPickDelegate {
     ) -> Option<Self::Item> {
         let item = self.filtered.get(ix.row)?;
         Some(
-            ListItem::new(ix).py_0().h(px(ROW_HEIGHT)).text_sm().child(
+            ListItem::new(ix)
+                .py_0()
+                .h(px(ROW_HEIGHT))
+                .rounded(px(6.))
+                .text_sm()
+                .child(
                 h_flex()
                     .gap_2()
                     .min_w_0()
@@ -174,9 +179,8 @@ pub fn show_quick_pick(
     window: &mut Window,
     cx: &mut App,
 ) {
-    // One string serves as both the title strip and the search placeholder.
-    let title = title.into();
-    let placeholder = title.clone();
+    // The title doubles as the search placeholder (no separate title strip).
+    let placeholder = title.into();
     let on_confirm: OnConfirm = Rc::new(on_confirm);
     let state = cx.new(|cx| {
         ListState::new(
@@ -195,14 +199,11 @@ pub fn show_quick_pick(
     let list = state.clone();
     window.open_dialog(cx, move |dialog, _window, cx| {
         // Height tracks the filtered result count, VS Code style.
-        let rows = list
-            .read(cx)
-            .delegate()
-            .filtered
-            .len()
-            .clamp(1, MAX_VISIBLE_ROWS);
-        let list_height = px(SEARCH_HEIGHT + rows as f32 * ROW_HEIGHT);
-        let theme = cx.theme();
+        let count = list.read(cx).delegate().filtered.len();
+        let rows = count.clamp(1, MAX_VISIBLE_ROWS);
+        // The empty row renders outside the padded rows area.
+        let inset = if count == 0 { 0.0 } else { LIST_PADDING * 2.0 };
+        let list_height = px(SEARCH_HEIGHT + inset + rows as f32 * ROW_HEIGHT);
         dialog
             .close_button(false)
             .w(px(560.))
@@ -210,24 +211,11 @@ pub fn show_quick_pick(
             .gap_0()
             .min_h(px(0.))
             .child(
-                // Same title strip as the Quick Input overlay.
-                div()
-                    .h(px(TITLE_HEIGHT))
-                    .px_3()
-                    .flex()
-                    .items_center()
-                    .flex_shrink_0()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .border_b_1()
-                    .border_color(theme.border)
-                    .child(title.clone()),
-            )
-            .child(
                 div().h(list_height).w_full().child(
                     List::new(&list)
-                        .small()
-                        .search_placeholder(placeholder.clone()),
+                        .large()
+                        .search_placeholder(placeholder.clone())
+                        .p(px(LIST_PADDING)),
                 ),
             )
     });

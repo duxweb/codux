@@ -709,20 +709,32 @@ impl RemoteController {
     }
 
     /// Generic git mutation — replies with the refreshed `git.status` payload.
-    pub fn git_invoke(&self, op: &str, project_path: &str, args: Value) -> Result<Value, String> {
+    pub fn git_invoke(
+        &self,
+        project_id: &str,
+        op: &str,
+        project_path: &str,
+        args: Value,
+    ) -> Result<Value, String> {
         self.request(
             REMOTE_GIT_STATUS,
             REMOTE_GIT_INVOKE,
-            json!({ "projectPath": project_path, "op": op, "args": args }),
+            json!({ "projectId": project_id, "projectPath": project_path, "op": op, "args": args }),
         )
     }
 
     /// Generic git read — returns the `result` payload for `op`.
-    pub fn git_read(&self, op: &str, project_path: &str, args: Value) -> Result<Value, String> {
+    pub fn git_read(
+        &self,
+        project_id: &str,
+        op: &str,
+        project_path: &str,
+        args: Value,
+    ) -> Result<Value, String> {
         let reply = self.request(
             REMOTE_GIT_READ,
             REMOTE_GIT_READ,
-            json!({ "projectPath": project_path, "op": op, "args": args }),
+            json!({ "projectId": project_id, "projectPath": project_path, "op": op, "args": args }),
         )?;
         Ok(reply.get("result").cloned().unwrap_or(Value::Null))
     }

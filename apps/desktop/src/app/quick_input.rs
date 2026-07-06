@@ -10,7 +10,7 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme as _, Sizable as _, WindowExt as _,
-    input::{Input, InputEvent, InputState, SelectAll},
+    input::{Input, InputState, SelectAll},
     v_flex,
 };
 
@@ -40,17 +40,19 @@ impl Render for QuickInputView {
             )
             .child(
                 div()
-                    .h(px(37.))
-                    .px_2()
+                    .h(px(52.))
+                    .px_3()
                     .flex()
                     .items_center()
-                    .child(Input::new(&self.input).small().p_0().appearance(false)),
+                    .child(Input::new(&self.input).large().p_0().appearance(false)),
             )
     }
 }
 
 /// Show a centered Quick Input overlay. `on_confirm` receives the trimmed
 /// text on Enter (empty only when `allow_empty`); the overlay then dismisses.
+/// Enter is consumed by the Dialog layer (`ConfirmDialog`), so confirmation is
+/// wired through the dialog's `on_ok` — not the input's own Enter event.
 /// Requires the window root to render `Root::render_dialog_layer` (see
 /// `app_render`).
 pub fn show_quick_input(
@@ -67,38 +69,37 @@ pub fn show_quick_input(
     let initial_value = initial_value.into();
     let on_confirm: OnConfirm = Rc::new(on_confirm);
 
-    let view = cx.new(|cx| {
-        let input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder(placeholder)
-                .default_value(initial_value)
-        });
-        cx.subscribe_in(
-            &input,
-            window,
-            move |_: &mut QuickInputView, state, event, window, cx| {
-                if let InputEvent::PressEnter { .. } = event {
-                    let value = state.read(cx).value().trim().to_string();
-                    if value.is_empty() && !allow_empty {
-                        return;
-                    }
-                    window.close_dialog(cx);
-                    (on_confirm)(value, window, cx);
-                }
-            },
-        )
-        .detach();
-        QuickInputView { title, input }
+    let input = cx.new(|cx| {
+        InputState::new(window, cx)
+            .placeholder(placeholder)
+            .default_value(initial_value)
+    });
+    let view = cx.new(|_| QuickInputView {
+        title,
+        input: input.clone(),
     });
 
     let dialog_view = view.clone();
     window.open_dialog(cx, move |dialog, _window, _cx| {
+        let input = input.clone();
+        let on_confirm = on_confirm.clone();
         dialog
             .close_button(false)
             .w(px(560.))
             .p_0()
             .gap_0()
             .min_h(px(0.))
+            .on_ok(move |_, window, cx| {
+                let value = input.read(cx).value().trim().to_string();
+                if value.is_empty() && !allow_empty {
+                    return false;
+                }
+                // Close ourselves first: the callback may open a follow-up
+                // overlay that must stay on top of the dialog stack.
+                window.close_dialog(cx);
+                (on_confirm)(value, window, cx);
+                false
+            })
             .child(dialog_view.clone())
     });
 

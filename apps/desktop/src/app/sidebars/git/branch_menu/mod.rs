@@ -72,6 +72,7 @@ pub(super) fn git_branch_dropdown_menu(
                 }),
         )
         .item(checkout_to_item(
+            labels.checkout_to.clone(),
             labels.clone(),
             branches.clone(),
             remote_refs.clone(),
@@ -113,7 +114,7 @@ pub(super) fn git_branch_dropdown_menu(
                     .disabled(!has_commits)
                     .on_click(move |_, window, cx| {
                         cx.update_entity(&edit_entity, |app, cx| {
-                            app.load_last_git_commit_message(window, cx)
+                            app.edit_last_git_commit_message(window, cx)
                         });
                     }),
             )
@@ -295,6 +296,15 @@ pub(super) fn git_branch_dropdown_menu(
         window,
         cx,
         move |menu, _window, _cx| {
+            let menu = menu
+                .item(checkout_to_item(
+                    format!("{}…", branch_labels.switch_branch),
+                    branch_labels.clone(),
+                    branch_all.clone(),
+                    branch_remote_refs.clone(),
+                    branch_entity.clone(),
+                ))
+                .separator();
             let menu = branch_pick_item(
                 menu,
                 format!("{}…", branch_labels.merge),
@@ -581,7 +591,8 @@ pub(super) fn git_branch_dropdown_menu(
             let menu = menu.item(
                 PopupMenuItem::new(format!("{}…", remote_menu_labels.copy_url))
                     .icon(HeroIconName::DocumentDuplicate)
-                    .disabled(copy_remotes.is_empty())
+                    // Match the picker filter: only non-empty URLs count.
+                    .disabled(!copy_remotes.iter().any(|remote| !remote.url.trim().is_empty()))
                     .on_click(move |_, window, cx| {
                         let items: Vec<QuickPickItem> = copy_remotes
                             .iter()
@@ -818,6 +829,7 @@ struct GitBranchMenuLabels {
     pull: String,
     push: String,
     checkout_to: String,
+    switch_branch: String,
     fetch: String,
     fetch_prune: String,
     sync: String,
@@ -875,6 +887,7 @@ impl GitBranchMenuLabels {
             pull: tr("git.remote.pull", "Pull"),
             push: tr("git.remote.push", "Push"),
             checkout_to: tr("git.menu.checkout_to", "Checkout To..."),
+            switch_branch: tr("git.branch.switch", "Switch Branch"),
             fetch: tr("git.remote.fetch", "Fetch"),
             fetch_prune: tr("git.remote.fetch_prune", "Fetch (Prune)"),
             sync: tr("git.remote.sync", "Sync"),

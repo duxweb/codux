@@ -275,11 +275,11 @@ impl RuntimeService {
         op: &str,
         args: serde_json::Value,
     ) -> Option<Result<crate::git::GitSummary, String>> {
-        let device_id = self.host_device_for_project_path(project_path)?;
+        let (device_id, project_id) = self.remote_project_for_path(project_path)?;
         Some(
             self.remote_controllers
                 .controller_for(&device_id)
-                .and_then(|controller| controller.git_invoke(op, project_path, args))
+                .and_then(|controller| controller.git_invoke(&project_id, op, project_path, args))
                 .map(|value| git_summary_from_payload(&value)),
         )
     }
@@ -293,11 +293,11 @@ impl RuntimeService {
         op: &str,
         args: serde_json::Value,
     ) -> Option<Result<crate::git::GitSummary, String>> {
-        let device_id = self.host_device_for_project_path(project_path)?;
+        let (device_id, project_id) = self.remote_project_for_path(project_path)?;
         Some(
             self.remote_controllers
                 .controller_for_blocking(&device_id, REMOTE_CONNECT_TIMEOUT)
-                .and_then(|controller| controller.git_invoke(op, project_path, args))
+                .and_then(|controller| controller.git_invoke(&project_id, op, project_path, args))
                 .map(|value| git_summary_from_payload(&value)),
         )
     }
@@ -309,11 +309,11 @@ impl RuntimeService {
         op: &str,
         args: serde_json::Value,
     ) -> Option<Result<serde_json::Value, String>> {
-        let device_id = self.host_device_for_project_path(project_path)?;
+        let (device_id, project_id) = self.remote_project_for_path(project_path)?;
         Some(
             self.remote_controllers
                 .controller_for(&device_id)
-                .and_then(|controller| controller.git_read(op, project_path, args)),
+                .and_then(|controller| controller.git_read(&project_id, op, project_path, args)),
         )
     }
 
@@ -322,12 +322,13 @@ impl RuntimeService {
     pub(crate) fn remote_git_summary(
         &self,
         device_id: &str,
+        project_id: &str,
         project_path: &str,
     ) -> crate::git::GitSummary {
         match self
             .remote_controllers
             .controller_for(device_id)
-            .and_then(|controller| controller.git_status("", project_path))
+            .and_then(|controller| controller.git_status(project_id, project_path))
         {
             Ok(value) => git_summary_from_payload(&value),
             Err(error) => crate::git::GitSummary {
@@ -397,11 +398,20 @@ impl RuntimeService {
     /// The device hosting the project at `project_path`, if it is a remote
     /// project. Used to route a project's domains over the controller.
     pub(crate) fn host_device_for_project_path(&self, project_path: &str) -> Option<String> {
+        self.remote_project_for_path(project_path)
+            .map(|(device_id, _)| device_id)
+    }
+
+    pub(crate) fn remote_project_for_path(&self, project_path: &str) -> Option<(String, String)> {
         crate::project_store::ProjectStore::new(self.support_dir.clone())
             .projects_snapshot()
             .into_iter()
             .find(|project| project.path == project_path)
-            .and_then(|project| project.host_device_id)
+            .and_then(|project| {
+                project
+                    .host_device_id
+                    .map(|device_id| (device_id, project.id))
+            })
     }
 
     /// The `(device_id, project_path)` of the remote project with `project_id`,

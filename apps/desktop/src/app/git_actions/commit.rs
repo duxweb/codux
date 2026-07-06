@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::quick_input::show_quick_input;
 
 impl CoduxApp {
     pub(in crate::app) fn normalize_selected_git_file(&mut self) {
@@ -340,26 +341,24 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for Git commit message".to_string();
-            self.invalidate_git_panel(cx);
+            self.show_git_action_error(
+                self.text(
+                    "git.error.commit_message_failed",
+                    "Git commit message failed",
+                ),
+                self.text(
+                    "git.error.no_selected_commit_message_project",
+                    "No selected project for Git commit message.",
+                ),
+                cx,
+            );
             return;
         };
-        match self
-            .runtime_service
-            .read_project_git_last_commit_message(&project.path)
-        {
-            Ok(message) if !message.trim().is_empty() => {
-                self.git_commit_message = message;
-                self.git_commit_message_revision =
-                    self.git_commit_message_revision.saturating_add(1);
-                self.status_message = "loaded last Git commit message".to_string();
-            }
-            Ok(_) => {
-                self.status_message = "last Git commit has no summary".to_string();
-            }
-            Err(error) => {
-                self.status_message = format!("failed to load last Git commit message: {error}");
-            }
+        let project_path = project.path.clone();
+        if let Some(message) = self.read_non_empty_last_git_commit_message(&project_path, cx) {
+            self.git_commit_message = message;
+            self.git_commit_message_revision = self.git_commit_message_revision.saturating_add(1);
+            self.status_message = "loaded last Git commit message".to_string();
         }
         self.invalidate_git_panel(cx);
     }
@@ -370,8 +369,14 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for Git amend".to_string();
-            self.invalidate_git_panel(cx);
+            self.show_git_action_error(
+                self.text("git.error.amend_failed", "Git amend failed"),
+                self.text(
+                    "git.error.no_selected_amend_project",
+                    "No selected project for Git amend.",
+                ),
+                cx,
+            );
             return;
         };
         let project_id = project.id.clone();
@@ -383,29 +388,174 @@ impl CoduxApp {
             .chars()
             .take(500)
             .collect::<String>();
-        let message = if draft_message.is_empty() {
-            match self
-                .runtime_service
-                .read_project_git_last_commit_message(&project_path)
-            {
-                Ok(message) if !message.trim().is_empty() => message,
-                Ok(_) => {
-                    self.status_message = "last Git commit has no summary".to_string();
-                    self.invalidate_git_panel(cx);
-                    return;
-                }
-                Err(error) => {
-                    self.status_message =
-                        format!("failed to load last Git commit message: {error}");
-                    self.invalidate_git_panel(cx);
-                    return;
-                }
-            }
+        let Some(message) = (if draft_message.is_empty() {
+            self.read_non_empty_last_git_commit_message(&project_path, cx)
         } else {
-            draft_message
+            Some(draft_message)
+        }) else {
+            self.invalidate_git_panel(cx);
+            return;
+        };
+        self.start_amend_last_git_commit(
+            project_id,
+            project_path,
+            format!("amended last Git commit: {message}"),
+            message,
+            true,
+            cx,
+        );
+    }
+
+    pub(in crate::app) fn edit_last_git_commit_message(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project) = &self.state.selected_project else {
+            self.show_git_action_error(
+                self.text("git.error.amend_failed", "Git amend failed"),
+                self.text(
+                    "git.error.no_selected_amend_project",
+                    "No selected project for Git amend.",
+                ),
+                cx,
+            );
+            return;
+        };
+        if self.git_running_operation.is_some() {
+            self.show_git_action_error(
+                self.text("git.error.amend_failed", "Git amend failed"),
+                self.text(
+                    "git.error.operation_running",
+                    "Git operation is already running.",
+                ),
+                cx,
+            );
+            return;
+        }
+
+        let project_path = project.path.clone();
+        let Some(message) = self.read_non_empty_last_git_commit_message(&project_path, cx) else {
+            self.invalidate_git_panel(cx);
+            return;
         };
 
-        let worker_message = message.clone();
+        let app_entity = cx.entity();
+        show_quick_input(
+            self.text(
+                "git.history.edit_last_commit_message",
+                "Edit Last Commit Message",
+            ),
+            self.text(
+                "git.commit.edit_last_message.placeholder",
+                "Enter a new commit message",
+            ),
+            message,
+            false,
+            move |message, _window, cx| {
+                app_entity.update(cx, |app, cx| {
+                    app.amend_last_git_commit_with_message(message, cx);
+                });
+            },
+            window,
+            cx,
+        );
+        self.status_message = "editing last Git commit message".to_string();
+        self.invalidate_git_panel(cx);
+    }
+
+    fn amend_last_git_commit_with_message(&mut self, message: String, cx: &mut Context<Self>) {
+        let Some(project) = &self.state.selected_project else {
+            self.show_git_action_error(
+                self.text("git.error.amend_failed", "Git amend failed"),
+                self.text(
+                    "git.error.no_selected_amend_project",
+                    "No selected project for Git amend.",
+                ),
+                cx,
+            );
+            return;
+        };
+        let message = message.trim().chars().take(500).collect::<String>();
+        if message.is_empty() {
+            self.show_git_action_error(
+                self.text("git.error.amend_failed", "Git amend failed"),
+                self.text(
+                    "git.commit.message.empty",
+                    "Commit message cannot be empty.",
+                ),
+                cx,
+            );
+            return;
+        }
+
+        let project_id = project.id.clone();
+        let project_path = project.path.clone();
+        self.start_amend_last_git_commit(
+            project_id,
+            project_path,
+            self.text(
+                "git.commit.edit_last_message.success",
+                "Edited the last commit message.",
+            ),
+            message,
+            false,
+            cx,
+        );
+    }
+
+    fn read_non_empty_last_git_commit_message(
+        &mut self,
+        project_path: &str,
+        cx: &mut Context<Self>,
+    ) -> Option<String> {
+        match self
+            .runtime_service
+            .read_project_git_last_commit_message(project_path)
+        {
+            Ok(message) if !message.trim().is_empty() => Some(message),
+            Ok(_) => {
+                self.show_git_action_error(
+                    self.text(
+                        "git.error.commit_message_failed",
+                        "Git commit message failed",
+                    ),
+                    self.text(
+                        "git.error.last_commit_message_empty",
+                        "Last Git commit has no summary.",
+                    ),
+                    cx,
+                );
+                None
+            }
+            Err(error) => {
+                self.show_git_action_error(
+                    self.text(
+                        "git.error.commit_message_failed",
+                        "Git commit message failed",
+                    ),
+                    self.text(
+                        "git.error.load_last_commit_message_failed_format",
+                        "Failed to load last Git commit message: %@",
+                    )
+                    .replace("%@", &error),
+                    cx,
+                );
+                None
+            }
+        }
+    }
+
+    fn start_amend_last_git_commit(
+        &mut self,
+        project_id: String,
+        project_path: String,
+        success_message: String,
+        message: String,
+        clear_commit_message: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let worker_message = message;
         self.start_project_git_operation(
             project_id,
             project_path,
@@ -415,9 +565,9 @@ impl CoduxApp {
             },
             move |service, path| service.amend_project_git_last_commit(&path, &worker_message),
             GitOperationCompletion {
-                success_message: format!("amended last Git commit: {message}"),
+                success_message,
                 failure_prefix: "failed to amend last Git commit".to_string(),
-                clear_commit_message: true,
+                clear_commit_message,
                 refresh_review: true,
                 clear_selected_branch: false,
                 selected_branch: None,

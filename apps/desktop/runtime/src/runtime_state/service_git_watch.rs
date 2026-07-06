@@ -29,8 +29,8 @@ impl RuntimeService {
         self.unwatch_project_git(project_path)
     }
     pub fn reload_project_git(&self, project_path: &str) -> git::GitSummary {
-        if let Some(device_id) = self.host_device_for_project_path(project_path) {
-            return self.remote_git_summary(&device_id, project_path);
+        if let Some((device_id, project_id)) = self.remote_project_for_path(project_path) {
+            return self.remote_git_summary(&device_id, &project_id, project_path);
         }
         refresh_git_summary(&self.support_dir, project_path)
     }

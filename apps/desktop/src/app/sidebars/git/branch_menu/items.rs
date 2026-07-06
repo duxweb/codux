@@ -1,17 +1,18 @@
 use super::*;
 
 pub(super) fn checkout_to_item(
+    label: String,
     labels: Rc<GitBranchMenuLabels>,
     branches: Vec<GitBranchSummary>,
     remote_refs: Vec<String>,
     app_entity: gpui::Entity<CoduxApp>,
 ) -> PopupMenuItem {
     const CREATE_ID: &str = "\u{0}create-branch";
-    PopupMenuItem::new(labels.checkout_to.clone())
+    PopupMenuItem::new(label)
         .icon(HeroIconName::ArrowPathRoundedSquare)
         .on_click(move |_, window, cx| {
             let mut items = vec![
-                QuickPickItem::new(CREATE_ID, format!("＋ {}", labels.new_branch))
+                QuickPickItem::new(CREATE_ID, labels.new_branch.clone())
                     .icon(Icon::new(HeroIconName::Plus)),
             ];
             for branch in &branches {

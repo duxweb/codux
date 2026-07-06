@@ -7,13 +7,25 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         let Some(project) = &self.state.selected_project else {
-            self.status_message = "no selected project for Git init".to_string();
-            self.invalidate_git_panel(cx);
+            self.show_git_action_error(
+                self.text("git.error.init_failed", "Git init failed"),
+                self.text(
+                    "git.error.no_selected_init_project",
+                    "No selected project for Git init.",
+                ),
+                cx,
+            );
             return;
         };
         if self.git_running_operation.is_some() {
-            self.status_message = "Git operation is already running".to_string();
-            self.invalidate_git_panel(cx);
+            self.show_git_action_error(
+                self.text("git.error.init_failed", "Git init failed"),
+                self.text(
+                    "git.error.operation_running",
+                    "Git operation is already running.",
+                ),
+                cx,
+            );
             return;
         }
         let project_id = project.id.clone();

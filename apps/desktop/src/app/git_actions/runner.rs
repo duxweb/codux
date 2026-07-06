@@ -1,6 +1,19 @@
 use super::*;
 
 impl CoduxApp {
+    pub(super) fn show_git_action_error(
+        &mut self,
+        title: impl Into<String>,
+        message: impl Into<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let title = title.into();
+        let message = message.into();
+        self.status_message = title.clone();
+        self.show_system_error_alert(title, message, cx);
+        self.invalidate_git_panel(cx);
+    }
+
     pub(in crate::app) fn start_project_git_operation(
         &mut self,
         project_id: String,
@@ -11,8 +24,14 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) {
         if self.git_running_operation.is_some() {
-            self.status_message = "Git operation is already running".to_string();
-            self.invalidate_git_panel(cx);
+            self.show_git_action_error(
+                self.text("git.error.operation_failed", "Git operation failed"),
+                self.text(
+                    "git.error.operation_running",
+                    "Git operation is already running.",
+                ),
+                cx,
+            );
             return;
         }
 

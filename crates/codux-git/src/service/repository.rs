@@ -18,6 +18,9 @@ impl GitService {
         if !path.exists() {
             return Err(format!("Project path does not exist: {}", path.display()));
         }
+        if GitRepository::discover(path).is_ok() {
+            return Ok(());
+        }
         GitRepository::init(path)
             .map(|_| ())
             .map_err(|error| error.message().to_string())

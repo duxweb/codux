@@ -483,55 +483,34 @@ fn make_handler(
                 }
             }
             REMOTE_GIT_STATUS => {
-                let project_id = payload
-                    .get("projectId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let project_path = payload
-                    .get("projectPath")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
+                let (project_id, project_path) = git_project_target(&payload);
                 Some((
                     REMOTE_GIT_STATUS,
                     git_status_payload(
-                        project_id,
-                        project_path,
-                        codux_git::wire::status(project_path),
+                        project_id.as_str(),
+                        project_path.as_str(),
+                        codux_git::wire::status(&project_path),
                     ),
                 ))
             }
             REMOTE_GIT_INVOKE => {
-                let project_id = payload
-                    .get("projectId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let project_path = payload
-                    .get("projectPath")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
+                let (project_id, project_path) = git_project_target(&payload);
                 let op = payload.get("op").and_then(Value::as_str).unwrap_or("");
                 let args = payload.get("args").cloned().unwrap_or(Value::Null);
-                match codux_git::wire::invoke(project_path, op, &args) {
+                match codux_git::wire::invoke(&project_path, op, &args) {
                     Ok(()) => Some((
                         REMOTE_GIT_STATUS,
                         git_status_payload(
-                            project_id,
-                            project_path,
-                            codux_git::wire::status(project_path),
+                            project_id.as_str(),
+                            project_path.as_str(),
+                            codux_git::wire::status(&project_path),
                         ),
                     )),
                     Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
                 }
             }
             REMOTE_GIT_READ => {
-                let project_id = payload
-                    .get("projectId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let project_path = payload
-                    .get("projectPath")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
+                let (project_id, project_path) = git_project_target(&payload);
                 let op = payload.get("op").and_then(Value::as_str).unwrap_or("");
                 let args = payload.get("args").cloned().unwrap_or(Value::Null);
                 // `stored_state` is a full status payload (needs the project
@@ -542,14 +521,14 @@ fn make_handler(
                         json!({
                             "op": op,
                             "result": git_status_payload(
-                                project_id,
-                                project_path,
-                                codux_git::wire::status(project_path),
+                        project_id.as_str(),
+                        project_path.as_str(),
+                                codux_git::wire::status(&project_path),
                             ),
                         }),
                     ))
                 } else {
-                    match codux_git::wire::read(project_path, op, &args) {
+                    match codux_git::wire::read(&project_path, op, &args) {
                         Ok(result) => {
                             Some((REMOTE_GIT_READ, json!({ "op": op, "result": result })))
                         }
@@ -742,6 +721,33 @@ fn make_handler(
             }
         }
     })
+}
+
+/// Resolve the git target project: id → stored path, path → stored id, then
+/// the raw payload values (mirrors the desktop host's resolution).
+fn git_project_target(payload: &Value) -> (String, String) {
+    let project_id = payload
+        .get("projectId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    let project_path = payload
+        .get("projectPath")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    let items = AgentProjectStore::new().list();
+    if !project_id.is_empty()
+        && let Some(item) = items.iter().find(|item| item.id == project_id)
+    {
+        return (item.id.clone(), item.path.clone());
+    }
+    if !project_path.is_empty()
+        && let Some(item) = items.iter().find(|item| item.path == project_path)
+    {
+        return (item.id.clone(), item.path.clone());
+    }
+    (project_id.to_string(), project_path.to_string())
 }
 
 fn random_token() -> String {

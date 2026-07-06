@@ -217,7 +217,8 @@ impl CoduxApp {
                 self.status_message = "Git cancel requested".to_string();
             }
             Err(error) => {
-                self.status_message = format!("Git cancel failed: {error}");
+                let title = self.text("git.error.operation_failed", "Git operation failed");
+                self.show_git_action_error(title, error, cx);
             }
         }
         self.invalidate_git_panel(cx);
@@ -309,7 +310,8 @@ impl CoduxApp {
                 };
             }
             Err(error) => {
-                self.status_message = format!("failed to save default Git push remote: {error}");
+                let title = self.text("git.error.operation_failed", "Git operation failed");
+                self.show_git_action_error(title, error, cx);
             }
         }
         self.invalidate_git_panel(cx);

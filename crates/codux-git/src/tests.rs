@@ -468,7 +468,12 @@ mod tests {
 
         // Tag create / list / delete.
         GitService::create_tag(path, "v1.0.0", None).expect("create tag");
-        assert_eq!(GitService::status(path).tags, vec!["v1.0.0".to_string()]);
+        let tagged = GitService::status(path);
+        assert_eq!(tagged.tags, vec!["v1.0.0".to_string()]);
+        assert_eq!(
+            tagged.commits.first().and_then(|c| c.decorations.clone()),
+            Some("v1.0.0".to_string())
+        );
         GitService::delete_tag(path, "v1.0.0").expect("delete tag");
         assert!(GitService::status(path).tags.is_empty());
 
@@ -476,6 +481,41 @@ mod tests {
         let current = GitService::status(path).branch;
         GitService::rename_branch(path, &current, "renamed-branch").expect("rename");
         assert_eq!(GitService::status(path).branch, "renamed-branch");
+    }
+
+    #[test]
+    fn amend_last_commit_message_works_without_staged_changes() {
+        let repo = temp_dir("git-amend-message-only");
+        let path = repo.to_str().expect("repo");
+        GitService::init(path).expect("init repo");
+        let repository = GitRepository::open(&repo).expect("open repo");
+        let mut config = repository.config().expect("config");
+        config
+            .set_str("user.email", "codux@example.test")
+            .expect("email");
+        config.set_str("user.name", "Codux").expect("name");
+        fs::write(repo.join("a.txt"), "one\n").expect("file");
+        GitService::stage_file(path, "a.txt").expect("stage");
+        GitService::commit_staged(path, "initial").expect("commit");
+
+        GitService::amend_last_commit_message(path, "renamed commit").expect("amend message");
+
+        assert_eq!(
+            GitService::last_commit_message(path).expect("last message"),
+            "renamed commit"
+        );
+        assert!(GitService::status(path).changed_files.is_empty());
+    }
+
+    #[test]
+    fn init_existing_repository_is_ok() {
+        let repo = temp_dir("git-init-existing");
+        let path = repo.to_str().expect("repo");
+        GitService::init(path).expect("init repo");
+
+        GitService::init(path).expect("init existing repo");
+
+        assert!(GitService::status(path).is_repository);
     }
 
     #[test]

@@ -13,7 +13,7 @@ fn create_commit_git2(
     let tree = repo
         .find_tree(tree_id)
         .map_err(|error| error.message().to_string())?;
-    if !commit_tree_has_changes(repo, &tree) {
+    if !amend && !commit_tree_has_changes(repo, &tree) {
         return Err("No staged changes to commit.".to_string());
     }
     let signature = repo_signature(repo)?;
@@ -24,21 +24,17 @@ fn create_commit_git2(
         .into_iter()
         .collect::<Vec<_>>();
     if amend {
-        let parent = parents
+        let head = parents
             .first()
             .ok_or_else(|| "No commit to amend.".to_string())?;
-        let parent_refs = (0..parent.parent_count())
-            .filter_map(|index| parent.parent(index).ok())
-            .collect::<Vec<_>>();
-        let parent_refs = parent_refs.iter().collect::<Vec<_>>();
-        return repo
-            .commit(
+        return head
+            .amend(
                 Some("HEAD"),
-                &signature,
-                &signature,
-                message,
-                &tree,
-                &parent_refs,
+                None,
+                Some(&signature),
+                None,
+                Some(message),
+                Some(&tree),
             )
             .map_err(|error| error.message().to_string());
     }

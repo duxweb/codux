@@ -1046,6 +1046,8 @@ fn configure_component_theme(
     theme.list_hover = hover_surface;
     theme.list_active = accent_bg;
     theme.list_active_border = accent.opacity(if is_dark { 0.46 } else { 0.36 });
+    // Flat selection: filled row without the border ring (list + table rows).
+    theme.list.active_highlight = false;
     theme.list_head = header;
     theme.list_even = background;
     theme.table = background;

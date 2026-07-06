@@ -9,6 +9,10 @@ pub(super) fn git_history_panel(
     let commits = Rc::new(git.commits.clone());
     let commit_count = commits.len();
     let menu_labels = Rc::new(GitHistoryMenuLabels::from(labels.as_ref()));
+    let head_label = SharedString::from(match git.branch.as_str() {
+        "" | "HEAD" | "uninitialized" => "HEAD".to_string(),
+        branch => format!("HEAD->{branch}"),
+    });
     let item_sizes = Rc::new(vec![size(px(1.0), px(44.0)); commit_count]);
     div()
         .size_full()
@@ -60,6 +64,7 @@ pub(super) fn git_history_panel(
                                             index == 0,
                                             index == 0,
                                             index + 1 >= commit_count,
+                                            head_label.clone(),
                                             menu_labels.clone(),
                                             cx,
                                         )
@@ -82,10 +87,20 @@ fn git_history_timeline_row(
     active: bool,
     is_first: bool,
     is_last: bool,
+    head_label: SharedString,
     labels: Rc<GitHistoryMenuLabels>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let title = commit.title.clone();
+    // Comma-joined tag names from the commit log (see git2_commit_log).
+    let tags: Vec<SharedString> = commit
+        .decorations
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .filter(|name| !name.is_empty())
+        .map(|name| SharedString::from(name.to_string()))
+        .collect();
     let author = commit.author.clone();
     let relative_time = commit.relative_time.clone();
     let hash = commit.hash.clone();
@@ -188,11 +203,24 @@ fn git_history_timeline_row(
                             .text_size(rems(0.75))
                             .line_height(rems(0.875))
                             .text_color(color(theme::ACCENT))
-                            .child("HEAD->main")
+                            .whitespace_nowrap()
+                            .child(head_label.clone())
                             .into_any_element()
                     } else {
                         div().into_any_element()
-                    }),
+                    })
+                    .children(tags.iter().cloned().map(|tag| {
+                        div()
+                            .rounded(px(6.0))
+                            .px_2()
+                            .py(px(2.0))
+                            .bg(color(theme::ORANGE).opacity(0.16))
+                            .text_size(rems(0.75))
+                            .line_height(rems(0.875))
+                            .text_color(color(theme::ORANGE))
+                            .whitespace_nowrap()
+                            .child(tag)
+                    })),
             )
             .child(
                 div()
