@@ -24,7 +24,7 @@ use gpui::{
 };
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::{Scrollbar, ScrollbarAxis, ScrollbarHandle, ScrollbarShow};
-use gpui_component::{ActiveTheme, Icon, Sizable, Size as ComponentSize};
+use gpui_component::{ActiveTheme, Icon, Sizable, Size as ComponentSize, WindowExt};
 use parking_lot::Mutex;
 use regex::Regex;
 use std::{

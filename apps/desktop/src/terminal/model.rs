@@ -21,6 +21,8 @@ struct TerminalModel {
     last_engine_resize_at: Option<Instant>,
     engine_resize_flush_pending: bool,
     color_scheme_state: TerminalColorSchemeState,
+    notify_scan_tail: Vec<u8>,
+    last_bell_at: Option<Instant>,
     title: Option<String>,
     exited: bool,
     focused: bool,
@@ -81,20 +83,19 @@ impl TerminalModel {
             config.scrollback,
             Some(responder),
         )));
-        // OSC 52: engine-decoded clipboard stores hop from the worker thread
-        // to the UI thread, where the system clipboard lives.
-        let (clipboard_tx, clipboard_rx) = flume::unbounded::<String>();
+        // Transient engine events (OSC 52 stores, BEL) hop from the worker
+        // thread to the UI thread, where clipboard and bell live.
+        let (engine_event_tx, engine_event_rx) =
+            flume::unbounded::<codux_terminal_core::TerminalScreenEvent>();
         screen
             .lock()
-            .set_clipboard_sink(Arc::new(move |text: &str| {
-                let _ = clipboard_tx.send(text.to_string());
+            .set_event_sink(Arc::new(move |event: codux_terminal_core::TerminalScreenEvent| {
+                let _ = engine_event_tx.send(event);
             }));
         cx.spawn(async move |this: WeakEntity<Self>, cx| {
-            while let Ok(text) = clipboard_rx.recv_async().await {
+            while let Ok(event) = engine_event_rx.recv_async().await {
                 if this
-                    .update(cx, |_, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    })
+                    .update(cx, |model, cx| model.handle_engine_event(event, cx))
                     .is_err()
                 {
                     break;
@@ -189,6 +190,8 @@ impl TerminalModel {
             last_engine_resize_at: None,
             engine_resize_flush_pending: false,
             color_scheme_state: TerminalColorSchemeState::default(),
+            notify_scan_tail: Vec::new(),
+            last_bell_at: None,
             title: None,
             exited: false,
             focused: false,
@@ -292,6 +295,9 @@ impl TerminalModel {
             update_terminal_color_scheme_state(bytes, &mut self.color_scheme_state);
         self.respond_to_color_scheme_queries(color_scheme_update.query_count);
         self.respond_to_osc_color_queries(&color_scheme_update);
+        for notification in scan_terminal_osc_notifications(bytes, &mut self.notify_scan_tail) {
+            self.show_osc_notification(notification, cx);
+        }
         self.process_bytes(bytes);
         trace_terminal_protocol_bytes(
             bytes,
@@ -494,6 +500,49 @@ impl TerminalModel {
         self.write_bytes(terminal_color_scheme_report_for(
             self.effective_scheme_is_dark(),
         ));
+    }
+
+    fn handle_engine_event(
+        &mut self,
+        event: codux_terminal_core::TerminalScreenEvent,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            codux_terminal_core::TerminalScreenEvent::ClipboardStore(text) => {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            }
+            codux_terminal_core::TerminalScreenEvent::Bell => self.on_bell(),
+        }
+    }
+
+    // TUIs can emit BEL bursts (one per rejected keystroke repeat); collapse
+    // them to at most two beeps per second.
+    fn on_bell(&mut self) {
+        const BELL_MIN_INTERVAL: Duration = Duration::from_millis(500);
+        if self
+            .last_bell_at
+            .is_some_and(|at| at.elapsed() < BELL_MIN_INTERVAL)
+        {
+            return;
+        }
+        self.last_bell_at = Some(Instant::now());
+        terminal_bell_beep();
+    }
+
+    fn show_osc_notification(&self, notification: TerminalOscNotification, cx: &mut Context<Self>) {
+        cx.defer(move |cx| {
+            let Some(window) = cx.active_window() else {
+                return;
+            };
+            let _ = window.update(cx, |_, window, cx| {
+                let mut note =
+                    gpui_component::notification::Notification::info(notification.body.clone());
+                if let Some(title) = notification.title.clone() {
+                    note = note.title(title);
+                }
+                window.push_notification(note, cx);
+            });
+        });
     }
 
     fn effective_scheme_is_dark(&self) -> bool {
@@ -1015,6 +1064,8 @@ impl TerminalModel {
             last_engine_resize_at: None,
             engine_resize_flush_pending: false,
             color_scheme_state: TerminalColorSchemeState::default(),
+            notify_scan_tail: Vec::new(),
+            last_bell_at: None,
             title: None,
             exited: false,
             focused: false,

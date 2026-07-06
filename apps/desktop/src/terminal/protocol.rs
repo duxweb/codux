@@ -243,6 +243,126 @@ fn update_terminal_color_scheme_state(
     update
 }
 
+struct TerminalOscNotification {
+    title: Option<String>,
+    body: String,
+}
+
+/// OSC 9 (iTerm2-style) and OSC 777;notify (urxvt/foot) desktop
+/// notifications, scanned from raw output like the OSC color queries above
+/// (alacritty ignores both sequences). `scan_tail` carries unfinished
+/// sequences across reads.
+fn scan_terminal_osc_notifications(
+    bytes: &[u8],
+    scan_tail: &mut Vec<u8>,
+) -> Vec<TerminalOscNotification> {
+    const PREFIX_9: &[u8] = b"\x1b]9;";
+    const PREFIX_777: &[u8] = b"\x1b]777;notify;";
+    // Notifications are short; anything longer is some other payload stream.
+    const MAX_PAYLOAD: usize = 1024;
+
+    let old_tail_len = scan_tail.len();
+    let mut scan = Vec::with_capacity(old_tail_len + bytes.len());
+    scan.extend_from_slice(scan_tail);
+    scan.extend_from_slice(bytes);
+
+    let mut notifications = Vec::new();
+    let mut unterminated_start = None;
+    let mut index = 0;
+    while index < scan.len() {
+        let (prefix, with_title) = if scan[index..].starts_with(PREFIX_777) {
+            (PREFIX_777, true)
+        } else if scan[index..].starts_with(PREFIX_9) {
+            (PREFIX_9, false)
+        } else {
+            index += 1;
+            continue;
+        };
+        let payload_start = index + prefix.len();
+        let mut cursor = payload_start;
+        let mut terminator = None;
+        while cursor < scan.len() && cursor - payload_start <= MAX_PAYLOAD {
+            match scan[cursor] {
+                0x07 => {
+                    terminator = Some((cursor, cursor + 1));
+                    break;
+                }
+                0x1b if scan.get(cursor + 1) == Some(&b'\\') => {
+                    terminator = Some((cursor, cursor + 2));
+                    break;
+                }
+                _ => cursor += 1,
+            }
+        }
+        let Some((payload_end, sequence_end)) = terminator else {
+            if cursor - payload_start > MAX_PAYLOAD {
+                index = cursor;
+                continue;
+            }
+            // Sequence split across reads: keep it in the tail and retry.
+            unterminated_start = Some(index);
+            break;
+        };
+        // Sequences fully inside the carried tail were already reported.
+        if sequence_end > old_tail_len {
+            let payload = String::from_utf8_lossy(&scan[payload_start..payload_end]);
+            let notification = if with_title {
+                let (title, body) = payload.split_once(';').unwrap_or(("", payload.as_ref()));
+                TerminalOscNotification {
+                    title: (!title.is_empty()).then(|| title.to_string()),
+                    body: body.to_string(),
+                }
+            } else {
+                TerminalOscNotification {
+                    title: None,
+                    body: payload.to_string(),
+                }
+            };
+            // OSC 9;<digit>;... is ConEmu-style progress, not a notification.
+            let progress = !with_title
+                && notification
+                    .body
+                    .split_once(';')
+                    .is_some_and(|(kind, _)| kind.chars().all(|ch| ch.is_ascii_digit()));
+            if !notification.body.is_empty() && !progress {
+                notifications.push(notification);
+            }
+        }
+        index = sequence_end;
+    }
+
+    let keep_from = unterminated_start
+        .unwrap_or_else(|| scan.len().saturating_sub(PREFIX_777.len().saturating_sub(1)));
+    scan_tail.clear();
+    scan_tail.extend_from_slice(&scan[keep_from..]);
+
+    notifications
+}
+
+#[cfg(target_os = "macos")]
+fn terminal_bell_beep() {
+    #[link(name = "AppKit", kind = "framework")]
+    unsafe extern "C" {
+        fn NSBeep();
+    }
+    unsafe { NSBeep() }
+}
+
+#[cfg(target_os = "windows")]
+fn terminal_bell_beep() {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBeep(u_type: u32) -> i32;
+    }
+    // 0 = MB_OK, the default system alert sound.
+    unsafe {
+        MessageBeep(0);
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn terminal_bell_beep() {}
+
 fn terminal_color_scheme_report_for(dark: bool) -> &'static [u8] {
     if dark {
         b"\x1b[?997;1n"

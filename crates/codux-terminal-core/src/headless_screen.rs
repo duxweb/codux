@@ -18,9 +18,17 @@ use crate::TerminalInputMode;
 /// Invoked on the screen worker thread.
 pub type TerminalPtyResponder = Arc<dyn Fn(&[u8]) + Send + Sync>;
 
-/// Receives OSC 52 clipboard-store payloads (already base64-decoded by the
-/// engine). Only live output triggers it; replayed history never does.
-pub type TerminalClipboardSink = Arc<dyn Fn(&str) + Send + Sync>;
+/// Transient engine events for the embedder (not screen state). Only live
+/// output triggers them; replayed history never does.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TerminalScreenEvent {
+    /// OSC 52 clipboard store, already base64-decoded by the engine.
+    ClipboardStore(String),
+    /// BEL / CSI bell.
+    Bell,
+}
+
+pub type TerminalScreenEventSink = Arc<dyn Fn(TerminalScreenEvent) + Send + Sync>;
 
 const PROCESS_CHUNK_BYTES: usize = 64 * 1024;
 const TERMINAL_CELL_WIDTH_PX: u32 = 10;
@@ -176,8 +184,8 @@ impl HeadlessTerminalScreen {
         }
     }
 
-    pub fn set_clipboard_sink(&mut self, sink: TerminalClipboardSink) {
-        self.engine.send(TerminalScreenCommand::SetClipboardSink(sink));
+    pub fn set_event_sink(&mut self, sink: TerminalScreenEventSink) {
+        self.engine.send(TerminalScreenCommand::SetEventSink(sink));
     }
 
     pub fn process(&mut self, bytes: &[u8]) {
@@ -478,7 +486,7 @@ impl TerminalScreenEngine {
 enum TerminalScreenCommand {
     Process(Vec<u8>),
     ProcessReplay(Vec<u8>),
-    SetClipboardSink(TerminalClipboardSink),
+    SetEventSink(TerminalScreenEventSink),
     Resize {
         cols: usize,
         rows: usize,
@@ -568,7 +576,7 @@ struct TerminalScreenWorker {
     rows: usize,
     scrollback: usize,
     responder: Option<TerminalPtyResponder>,
-    clipboard_sink: Option<TerminalClipboardSink>,
+    event_sink: Option<TerminalScreenEventSink>,
     title: Option<String>,
 }
 
@@ -602,7 +610,7 @@ impl TerminalScreenWorker {
             rows,
             scrollback,
             responder,
-            clipboard_sink: None,
+            event_sink: None,
             title: None,
         }
     }
@@ -640,8 +648,13 @@ impl TerminalScreenWorker {
                 // OSC 52 write; loads are ignored (remote clipboard reads are
                 // a data leak, matching most terminals' default).
                 Event::ClipboardStore(_, text) => {
-                    if let Some(sink) = self.clipboard_sink.as_ref() {
-                        sink(&text);
+                    if let Some(sink) = self.event_sink.as_ref() {
+                        sink(TerminalScreenEvent::ClipboardStore(text));
+                    }
+                }
+                Event::Bell => {
+                    if let Some(sink) = self.event_sink.as_ref() {
+                        sink(TerminalScreenEvent::Bell);
                     }
                 }
                 // OSC color queries are intentionally not answered here; the
@@ -673,8 +686,8 @@ impl TerminalScreenWorker {
             match command {
                 TerminalScreenCommand::Process(bytes) => self.feed(&bytes, true),
                 TerminalScreenCommand::ProcessReplay(bytes) => self.feed(&bytes, false),
-                TerminalScreenCommand::SetClipboardSink(sink) => {
-                    self.clipboard_sink = Some(sink);
+                TerminalScreenCommand::SetEventSink(sink) => {
+                    self.event_sink = Some(sink);
                 }
                 TerminalScreenCommand::Resize { mut cols, mut rows } => {
                     // Layout settling queues resizes back-to-back, and every
@@ -1569,17 +1582,24 @@ mod tests {
     }
 
     #[test]
-    fn osc52_clipboard_store_reaches_sink_only_for_live_output() {
-        let stored = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    fn engine_events_reach_sink_only_for_live_output() {
+        let stored = Arc::new(std::sync::Mutex::new(Vec::<TerminalScreenEvent>::new()));
         let sink_stored = stored.clone();
         let mut screen = HeadlessTerminalScreen::new(20, 4, 100);
-        screen.set_clipboard_sink(Arc::new(move |text: &str| {
-            sink_stored.lock().unwrap().push(text.to_string());
+        screen.set_event_sink(Arc::new(move |event: TerminalScreenEvent| {
+            sink_stored.lock().unwrap().push(event);
         }));
-        screen.process(b"\x1b]52;c;aGVsbG8=\x07"); // "hello"
-        screen.process_replay(b"\x1b]52;c;aWdub3Jl\x07"); // replayed history: ignored
+        screen.process(b"\x1b]52;c;aGVsbG8=\x07"); // OSC 52 "hello"
+        screen.process(b"ding\x07"); // BEL
+        screen.process_replay(b"\x1b]52;c;aWdub3Jl\x07\x07"); // replayed history: ignored
         let _ = screen.snapshot(); // worker barrier
-        assert_eq!(*stored.lock().unwrap(), vec!["hello".to_string()]);
+        assert_eq!(
+            *stored.lock().unwrap(),
+            vec![
+                TerminalScreenEvent::ClipboardStore("hello".to_string()),
+                TerminalScreenEvent::Bell,
+            ]
+        );
     }
 
     #[test]

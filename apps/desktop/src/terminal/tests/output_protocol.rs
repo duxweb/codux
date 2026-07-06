@@ -130,6 +130,30 @@ fn color_scheme_protocol_tracks_subscription_and_queries_across_chunks() {
     assert!(!state.updates_enabled);
 }
 #[test]
+fn osc_notifications_parse_titles_chunks_and_skip_progress() {
+    let mut tail = Vec::new();
+
+    // OSC 9 body, OSC 777 title;body, ConEmu progress filtered out.
+    let found = scan_terminal_osc_notifications(
+        b"\x1b]9;done building\x07\x1b]777;notify;Build;finished ok\x1b\\\x1b]9;4;1;50\x07",
+        &mut tail,
+    );
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[0].title, None);
+    assert_eq!(found[0].body, "done building");
+    assert_eq!(found[1].title.as_deref(), Some("Build"));
+    assert_eq!(found[1].body, "finished ok");
+
+    // A sequence split across reads is carried in the tail and reported once.
+    let first = scan_terminal_osc_notifications(b"\x1b]9;par", &mut tail);
+    assert!(first.is_empty());
+    let second = scan_terminal_osc_notifications(b"tial\x07", &mut tail);
+    assert_eq!(second.len(), 1);
+    assert_eq!(second[0].body, "partial");
+    let third = scan_terminal_osc_notifications(b"no sequences here", &mut tail);
+    assert!(third.is_empty());
+}
+#[test]
 fn osc_color_queries_tracked_across_chunks() {
     let mut state = TerminalColorSchemeState::default();
 
