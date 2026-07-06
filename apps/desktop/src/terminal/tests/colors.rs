@@ -68,13 +68,19 @@ fn default_terminal_line_height_matches_renderer_cell_height() {
     assert!(config.paste_images_as_paths);
 }
 #[test]
-fn terminal_builtin_graphics_cover_box_and_block_ranges_only() {
+fn terminal_builtin_graphics_cover_box_block_and_powerline_ranges() {
     assert!(terminal_builtin_graphic(0x2502).is_some());
     assert!(terminal_builtin_graphic(0x2588).is_some());
     assert!(terminal_builtin_graphic(0x2595).is_some());
     assert!(terminal_builtin_graphic('a' as u32).is_none());
     assert_eq!(terminal_cell_codepoint("│"), Some(0x2502));
     assert_eq!(terminal_cell_codepoint("ab"), None);
+    // Powerline separators are cell-exact vectors, not symbol-font glyphs.
+    assert!(terminal_builtin_graphic(0xE0B0).is_some());
+    assert!(terminal_builtin_graphic(0xE0B4).is_some());
+    assert!(terminal_builtin_graphic(0xE0BF).is_some());
+    assert!(terminal_builtin_graphic(0xE0C0).is_none());
+    assert!(terminal_builtin_graphic(0xF017).is_none());
 }
 #[test]
 fn terminal_clipboard_image_payload_detection_filters_data_and_html() {

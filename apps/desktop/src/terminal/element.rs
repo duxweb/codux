@@ -272,6 +272,118 @@ impl TerminalGraphicCell {
             TerminalCellGraphic::Box(graphic) => {
                 self.paint_box(graphic, bounds, window);
             }
+            TerminalCellGraphic::Powerline(graphic) => {
+                self.paint_powerline(graphic, bounds, window);
+            }
+        }
+    }
+
+    fn paint_powerline(
+        &self,
+        graphic: TerminalPowerlineGraphic,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+    ) {
+        let x = f32::from(bounds.origin.x);
+        let y = f32::from(bounds.origin.y);
+        let right = x + f32::from(bounds.size.width);
+        let bottom = y + f32::from(bounds.size.height);
+        let middle = (y + bottom) * 0.5;
+        let stroke = 1.0;
+        match graphic {
+            TerminalPowerlineGraphic::TriangleRight => {
+                self.paint_polygon(&[(x, y), (right, middle), (x, bottom)], window);
+            }
+            TerminalPowerlineGraphic::TriangleLeft => {
+                self.paint_polygon(&[(right, y), (x, middle), (right, bottom)], window);
+            }
+            TerminalPowerlineGraphic::ChevronRight => {
+                self.paint_polyline(&[(x, y), (right, middle), (x, bottom)], stroke, window);
+            }
+            TerminalPowerlineGraphic::ChevronLeft => {
+                self.paint_polyline(&[(right, y), (x, middle), (right, bottom)], stroke, window);
+            }
+            TerminalPowerlineGraphic::SemicircleRight => {
+                self.paint_polygon(&terminal_semicircle_points(x, y, right, bottom, true), window);
+            }
+            TerminalPowerlineGraphic::SemicircleLeft => {
+                self.paint_polygon(&terminal_semicircle_points(x, y, right, bottom, false), window);
+            }
+            TerminalPowerlineGraphic::SemicircleRightLine => {
+                self.paint_polyline(
+                    &terminal_semicircle_points(x, y, right, bottom, true),
+                    stroke,
+                    window,
+                );
+            }
+            TerminalPowerlineGraphic::SemicircleLeftLine => {
+                self.paint_polyline(
+                    &terminal_semicircle_points(x, y, right, bottom, false),
+                    stroke,
+                    window,
+                );
+            }
+            TerminalPowerlineGraphic::TriangleLowerLeft => {
+                self.paint_polygon(&[(x, y), (right, bottom), (x, bottom)], window);
+            }
+            TerminalPowerlineGraphic::TriangleLowerRight => {
+                self.paint_polygon(&[(right, y), (right, bottom), (x, bottom)], window);
+            }
+            TerminalPowerlineGraphic::TriangleUpperLeft => {
+                self.paint_polygon(&[(x, y), (right, y), (x, bottom)], window);
+            }
+            TerminalPowerlineGraphic::TriangleUpperRight => {
+                self.paint_polygon(&[(x, y), (right, y), (right, bottom)], window);
+            }
+            TerminalPowerlineGraphic::DiagonalBack => {
+                self.paint_polyline(&[(x, y), (right, bottom)], stroke, window);
+            }
+            TerminalPowerlineGraphic::DiagonalForward => {
+                self.paint_polyline(&[(x, bottom), (right, y)], stroke, window);
+            }
+        }
+    }
+
+    fn paint_polygon(&self, points: &[(f32, f32)], window: &mut Window) {
+        let Some((first, rest)) = points.split_first() else {
+            return;
+        };
+        let mut path = gpui::Path::new(Point {
+            x: px(first.0),
+            y: px(first.1),
+        });
+        for (x, y) in rest {
+            path.line_to(Point {
+                x: px(*x),
+                y: px(*y),
+            });
+        }
+        path.line_to(Point {
+            x: px(first.0),
+            y: px(first.1),
+        });
+        window.paint_path(path, self.color);
+    }
+
+    fn paint_polyline(&self, points: &[(f32, f32)], thickness: f32, window: &mut Window) {
+        for pair in points.windows(2) {
+            let (x0, y0) = pair[0];
+            let (x1, y1) = pair[1];
+            let length = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
+            if length <= f32::EPSILON {
+                continue;
+            }
+            let nx = -(y1 - y0) / length * thickness * 0.5;
+            let ny = (x1 - x0) / length * thickness * 0.5;
+            self.paint_polygon(
+                &[
+                    (x0 + nx, y0 + ny),
+                    (x1 + nx, y1 + ny),
+                    (x1 - nx, y1 - ny),
+                    (x0 - nx, y0 - ny),
+                ],
+                window,
+            );
         }
     }
 
@@ -423,6 +535,29 @@ impl TerminalGraphicCell {
             Default::default(),
         ));
     }
+}
+
+fn terminal_semicircle_points(
+    x: f32,
+    y: f32,
+    right: f32,
+    bottom: f32,
+    bulge_right: bool,
+) -> Vec<(f32, f32)> {
+    let width = right - x;
+    let half_height = (bottom - y) * 0.5;
+    let middle = y + half_height;
+    let (flat_x, direction) = if bulge_right { (x, 1.0) } else { (right, -1.0) };
+    (0..=16)
+        .map(|step| {
+            let angle = -std::f32::consts::FRAC_PI_2
+                + std::f32::consts::PI * step as f32 / 16.0;
+            (
+                flat_x + direction * width * angle.cos(),
+                middle + half_height * angle.sin(),
+            )
+        })
+        .collect()
 }
 
 fn terminal_cell_bounds(

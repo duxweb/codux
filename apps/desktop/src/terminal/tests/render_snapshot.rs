@@ -2,6 +2,53 @@ use super::super::*;
 use super::fixtures::*;
 
 #[test]
+fn nerd_font_private_use_cells_use_symbol_font_and_stay_grid_anchored() {
+    let renderer = TerminalRenderer::new(
+        default_terminal_font_family().to_string(),
+        px(14.0),
+        DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER,
+        ColorPalette::default(),
+    );
+    let mut clock = test_cell(
+        TerminalScreenColor::Default,
+        TerminalScreenColor::Default,
+        false,
+        false,
+    );
+    clock.text = "\u{f017}".to_string();
+    let mut plain = clock.clone();
+    plain.text = "a".to_string();
+    let cells = vec![
+        TerminalIndexedCell {
+            point: TerminalPoint { line: 0, column: 0 },
+            cell: clock,
+        },
+        TerminalIndexedCell {
+            point: TerminalPoint { line: 0, column: 1 },
+            cell: plain,
+        },
+    ];
+
+    let mut text_runs = Vec::new();
+    let mut graphics = Vec::new();
+    renderer.prepare_row_text(0, &cells, &mut text_runs, &mut graphics, None);
+
+    assert_eq!(text_runs.len(), 2);
+    assert_eq!(
+        text_runs[0].style.font.family.as_ref(),
+        TERMINAL_SYMBOL_FONT_FAMILY
+    );
+    assert_eq!(
+        text_runs[1].style.font.family.as_ref(),
+        default_terminal_font_family()
+    );
+    assert!(renderer.combine_row_runs(&text_runs).is_none());
+
+    assert!(terminal_cell_is_private_use("\u{f0954}"));
+    assert!(!terminal_cell_is_private_use("a"));
+    assert!(!terminal_cell_is_private_use("拼"));
+}
+#[test]
 fn processed_output_updates_live_terminal_before_paint_snapshot() {
     let mut state = TerminalModel::new_for_test(10, 4, 100);
     state.process_bytes(b"before");

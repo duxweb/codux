@@ -2,6 +2,27 @@
 enum TerminalCellGraphic {
     Block(TerminalBlockGraphic),
     Box(TerminalBoxGraphic),
+    Powerline(TerminalPowerlineGraphic),
+}
+
+// Powerline separators (U+E0B0–U+E0BF) are drawn as cell-exact vectors: font
+// glyphs follow the em box and leave gaps against the padded terminal cell.
+#[derive(Clone, Copy)]
+enum TerminalPowerlineGraphic {
+    TriangleRight,
+    ChevronRight,
+    TriangleLeft,
+    ChevronLeft,
+    SemicircleRight,
+    SemicircleRightLine,
+    SemicircleLeft,
+    SemicircleLeftLine,
+    TriangleLowerLeft,
+    DiagonalBack,
+    TriangleLowerRight,
+    DiagonalForward,
+    TriangleUpperLeft,
+    TriangleUpperRight,
 }
 
 #[derive(Clone, Copy)]
@@ -42,12 +63,35 @@ fn terminal_cell_codepoint(text: &str) -> Option<u32> {
 }
 
 fn terminal_builtin_graphic(codepoint: u32) -> Option<TerminalCellGraphic> {
+    if (0xE0B0..=0xE0BF).contains(&codepoint) {
+        return terminal_powerline_graphic(codepoint).map(TerminalCellGraphic::Powerline);
+    }
     if !(0x2500..=0x259F).contains(&codepoint) {
         return None;
     }
     terminal_block_graphic(codepoint)
         .map(TerminalCellGraphic::Block)
         .or_else(|| terminal_box_graphic(codepoint).map(TerminalCellGraphic::Box))
+}
+
+fn terminal_powerline_graphic(codepoint: u32) -> Option<TerminalPowerlineGraphic> {
+    match codepoint {
+        0xE0B0 => Some(TerminalPowerlineGraphic::TriangleRight),
+        0xE0B1 => Some(TerminalPowerlineGraphic::ChevronRight),
+        0xE0B2 => Some(TerminalPowerlineGraphic::TriangleLeft),
+        0xE0B3 => Some(TerminalPowerlineGraphic::ChevronLeft),
+        0xE0B4 => Some(TerminalPowerlineGraphic::SemicircleRight),
+        0xE0B5 => Some(TerminalPowerlineGraphic::SemicircleRightLine),
+        0xE0B6 => Some(TerminalPowerlineGraphic::SemicircleLeft),
+        0xE0B7 => Some(TerminalPowerlineGraphic::SemicircleLeftLine),
+        0xE0B8 => Some(TerminalPowerlineGraphic::TriangleLowerLeft),
+        0xE0B9 | 0xE0BF => Some(TerminalPowerlineGraphic::DiagonalBack),
+        0xE0BA => Some(TerminalPowerlineGraphic::TriangleLowerRight),
+        0xE0BB | 0xE0BD => Some(TerminalPowerlineGraphic::DiagonalForward),
+        0xE0BC => Some(TerminalPowerlineGraphic::TriangleUpperLeft),
+        0xE0BE => Some(TerminalPowerlineGraphic::TriangleUpperRight),
+        _ => None,
+    }
 }
 
 fn terminal_block_graphic(codepoint: u32) -> Option<TerminalBlockGraphic> {

@@ -11,12 +11,23 @@ struct TerminalRenderer {
     cache: Arc<Mutex<TerminalRenderCache>>,
 }
 
+// Bundled with the app (runtime-assets/fonts/nerd-font-symbols); covers the
+// Nerd Font PUA icons (starship, eza …) that regular families lack.
+const TERMINAL_SYMBOL_FONT_FAMILY: &str = "Symbols Nerd Font Mono";
+
+// Nerd Font glyphs live in the BMP private use area and supplementary PUA-A.
+fn terminal_cell_is_private_use(text: &str) -> bool {
+    terminal_cell_codepoint(text)
+        .is_some_and(|codepoint| matches!(codepoint, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD))
+}
+
 #[derive(Clone)]
 struct TerminalFonts {
     normal: Font,
     bold: Font,
     italic: Font,
     bold_italic: Font,
+    symbol: Font,
 }
 
 impl TerminalFonts {
@@ -35,6 +46,13 @@ impl TerminalFonts {
             bold: font(FontWeight::SEMIBOLD, FontStyle::Normal),
             italic: font(FontWeight::NORMAL, FontStyle::Italic),
             bold_italic: font(FontWeight::SEMIBOLD, FontStyle::Italic),
+            symbol: Font {
+                family: TERMINAL_SYMBOL_FONT_FAMILY.into(),
+                features: FontFeatures::disable_ligatures(),
+                fallbacks: None,
+                weight: FontWeight::NORMAL,
+                style: FontStyle::Normal,
+            },
         }
     }
 
@@ -496,13 +514,18 @@ impl TerminalRenderer {
 
             let (fg, _) = self.cell_render_colors(cell);
             let text = cell.text.clone();
+            let symbol = terminal_cell_is_private_use(&text);
             let link_underline = underline_range
                 .as_ref()
                 .is_some_and(|range| range.contains(&col));
             let underline = cell.underline || link_underline;
             let run = TextRun {
                 len: text.len(),
-                font: self.font(cell.bold, cell.italic),
+                font: if symbol {
+                    self.fonts.symbol.clone()
+                } else {
+                    self.font(cell.bold, cell.italic)
+                },
                 color: fg,
                 background_color: None,
                 underline: underline.then_some(UnderlineStyle {
@@ -515,7 +538,14 @@ impl TerminalRenderer {
                     color: Some(fg),
                 }),
             };
-            if current_run.as_ref().is_some_and(|current| {
+            if symbol {
+                // Symbol glyph advances differ from the cell grid: keep every
+                // icon a standalone span so it stays anchored to its column.
+                if let Some(current) = current_run.take() {
+                    text_runs.push(current);
+                }
+                text_runs.push(TerminalTextRun::from_text(row, col, text, cell_width, run));
+            } else if current_run.as_ref().is_some_and(|current| {
                 current.can_append(row, col, cell_width, pending_spaces, &run)
             }) {
                 if let Some(current) = current_run.as_mut() {
@@ -874,12 +904,13 @@ fn combine_terminal_row_runs(
     gap_color: Hsla,
 ) -> Option<TerminalRowLine> {
     let first = runs.first()?;
-    // Only 1:1 char-to-cell spans are safe to re-flow as one line; wide (CJK) or
-    // multi-codepoint cells keep the per-span path so their grid columns hold.
-    if runs
-        .iter()
-        .any(|run| run.text.chars().count() != run.width_cols)
-    {
+    // Only 1:1 char-to-cell spans are safe to re-flow as one line; wide (CJK),
+    // multi-codepoint, or symbol-font cells keep the per-span path so their
+    // grid columns hold (symbol glyph advances don't match the primary font).
+    if runs.iter().any(|run| {
+        run.text.chars().count() != run.width_cols
+            || run.style.font.family.as_ref() == TERMINAL_SYMBOL_FONT_FAMILY
+    }) {
         return None;
     }
     let row = first.row;
