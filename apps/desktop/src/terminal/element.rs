@@ -278,6 +278,64 @@ impl TerminalGraphicCell {
             TerminalCellGraphic::Underline(graphic) => {
                 self.paint_underline(graphic, bounds, window);
             }
+            TerminalCellGraphic::Braille(dots) => {
+                self.paint_braille(dots, bounds, window);
+            }
+            TerminalCellGraphic::Sextant(fills) => {
+                self.paint_sextant(fills, bounds, window);
+            }
+        }
+    }
+
+    fn paint_braille(&self, dots: u8, bounds: Bounds<Pixels>, window: &mut Window) {
+        let x = f32::from(bounds.origin.x);
+        let y = f32::from(bounds.origin.y);
+        let sub_width = f32::from(bounds.size.width) * 0.5;
+        let sub_height = f32::from(bounds.size.height) * 0.25;
+        let dot = (sub_width.min(sub_height) * 0.5).max(1.0);
+        // Unicode braille dot order: bits 0-2 left rows 0-2, 3-5 right rows
+        // 0-2, 6 left row 3, 7 right row 3.
+        const DOT_CELLS: [(f32, f32); 8] = [
+            (0.0, 0.0),
+            (0.0, 1.0),
+            (0.0, 2.0),
+            (1.0, 0.0),
+            (1.0, 1.0),
+            (1.0, 2.0),
+            (0.0, 3.0),
+            (1.0, 3.0),
+        ];
+        for (bit, (col, row)) in DOT_CELLS.iter().enumerate() {
+            if dots & (1 << bit) == 0 {
+                continue;
+            }
+            let center_x = x + sub_width * (col + 0.5);
+            let center_y = y + sub_height * (row + 0.5);
+            self.paint_rect(
+                center_x - dot * 0.5,
+                center_y - dot * 0.5,
+                center_x + dot * 0.5,
+                center_y + dot * 0.5,
+                window,
+            );
+        }
+    }
+
+    fn paint_sextant(&self, fills: u8, bounds: Bounds<Pixels>, window: &mut Window) {
+        for bit in 0..6 {
+            if fills & (1 << bit) == 0 {
+                continue;
+            }
+            let col = (bit % 2) as f32;
+            let row = (bit / 2) as f32;
+            self.paint_fraction(
+                bounds,
+                col * 0.5,
+                row / 3.0,
+                0.5,
+                1.0 / 3.0,
+                window,
+            );
         }
     }
 

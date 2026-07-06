@@ -81,6 +81,25 @@ fn terminal_builtin_graphics_cover_box_block_and_powerline_ranges() {
     assert!(terminal_builtin_graphic(0xE0BF).is_some());
     assert!(terminal_builtin_graphic(0xE0C0).is_none());
     assert!(terminal_builtin_graphic(0xF017).is_none());
+    // Braille (btop graphs) and legacy-computing sextants.
+    assert!(terminal_builtin_graphic(0x2800).is_some());
+    assert!(terminal_builtin_graphic(0x28FF).is_some());
+    assert!(terminal_builtin_graphic(0x1FB00).is_some());
+    assert!(terminal_builtin_graphic(0x1FB3B).is_some());
+    assert!(terminal_builtin_graphic(0x1FB3C).is_none());
+    // Sextant fill indexes skip the half/full-block gaps.
+    assert!(matches!(
+        terminal_builtin_graphic(0x1FB00),
+        Some(TerminalCellGraphic::Sextant(1))
+    ));
+    assert!(matches!(
+        terminal_builtin_graphic(0x1FB14),
+        Some(TerminalCellGraphic::Sextant(22))
+    ));
+    assert!(matches!(
+        terminal_builtin_graphic(0x1FB3B),
+        Some(TerminalCellGraphic::Sextant(62))
+    ));
 }
 #[test]
 fn terminal_clipboard_image_payload_detection_filters_data_and_html() {

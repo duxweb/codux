@@ -4,6 +4,11 @@ enum TerminalCellGraphic {
     Box(TerminalBoxGraphic),
     Powerline(TerminalPowerlineGraphic),
     Underline(TerminalUnderlineGraphic),
+    /// U+2800-28FF dot bitmap (bit i = dot i+1 in Unicode braille order).
+    Braille(u8),
+    /// U+1FB00-1FB3B legacy-computing 2x3 fill bitmap (bit 0 = top-left,
+    /// row-major).
+    Sextant(u8),
 }
 
 // SGR 4:x underline shapes gpui's native run underline can't draw; painted
@@ -91,12 +96,32 @@ fn terminal_builtin_graphic(codepoint: u32) -> Option<TerminalCellGraphic> {
     if (0xE0B0..=0xE0BF).contains(&codepoint) {
         return terminal_powerline_graphic(codepoint).map(TerminalCellGraphic::Powerline);
     }
+    if (0x2800..=0x28FF).contains(&codepoint) {
+        return Some(TerminalCellGraphic::Braille((codepoint - 0x2800) as u8));
+    }
+    if (0x1FB00..=0x1FB3B).contains(&codepoint) {
+        return Some(TerminalCellGraphic::Sextant(terminal_sextant_pattern(
+            codepoint,
+        )));
+    }
     if !(0x2500..=0x259F).contains(&codepoint) {
         return None;
     }
     terminal_block_graphic(codepoint)
         .map(TerminalCellGraphic::Block)
         .or_else(|| terminal_box_graphic(codepoint).map(TerminalCellGraphic::Box))
+}
+
+// The sextant range skips the patterns that already exist as half/full
+// blocks (left column, right column, full), so the fill index jumps by one
+// at each gap.
+fn terminal_sextant_pattern(codepoint: u32) -> u8 {
+    let index = codepoint - 0x1FB00;
+    match index {
+        0..=19 => (index + 1) as u8,
+        20..=39 => (index + 2) as u8,
+        _ => (index + 3) as u8,
+    }
 }
 
 fn terminal_powerline_graphic(codepoint: u32) -> Option<TerminalPowerlineGraphic> {

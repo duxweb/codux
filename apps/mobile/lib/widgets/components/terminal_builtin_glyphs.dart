@@ -3,15 +3,42 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 class TerminalBuiltinGraphic {
-  const TerminalBuiltinGraphic.block(this.block) : box = null, powerline = null;
-  const TerminalBuiltinGraphic.box(this.box) : block = null, powerline = null;
+  const TerminalBuiltinGraphic.block(this.block)
+    : box = null,
+      powerline = null,
+      braille = null,
+      sextant = null;
+  const TerminalBuiltinGraphic.box(this.box)
+    : block = null,
+      powerline = null,
+      braille = null,
+      sextant = null;
   const TerminalBuiltinGraphic.powerline(this.powerline)
     : block = null,
-      box = null;
+      box = null,
+      braille = null,
+      sextant = null;
+  const TerminalBuiltinGraphic.braille(this.braille)
+    : block = null,
+      box = null,
+      powerline = null,
+      sextant = null;
+  const TerminalBuiltinGraphic.sextant(this.sextant)
+    : block = null,
+      box = null,
+      powerline = null,
+      braille = null;
 
   final TerminalBlockGraphic? block;
   final TerminalBoxGraphic? box;
   final TerminalPowerlineGraphic? powerline;
+
+  /// U+2800-28FF dot bitmap (bit i = dot i+1 in Unicode braille order).
+  final int? braille;
+
+  /// U+1FB00-1FB3B legacy-computing 2x3 fill bitmap (bit 0 = top-left,
+  /// row-major).
+  final int? sextant;
 }
 
 /// Powerline separators (U+E0B0–U+E0BF) are drawn as cell-exact vectors: font
@@ -122,6 +149,12 @@ TerminalBuiltinGraphic? terminalBuiltinGraphic(int codepoint) {
         ? null
         : TerminalBuiltinGraphic.powerline(powerline);
   }
+  if (codepoint >= 0x2800 && codepoint <= 0x28ff) {
+    return TerminalBuiltinGraphic.braille(codepoint - 0x2800);
+  }
+  if (codepoint >= 0x1fb00 && codepoint <= 0x1fb3b) {
+    return TerminalBuiltinGraphic.sextant(_sextantPattern(codepoint));
+  }
   if (codepoint < 0x2500 || codepoint > 0x259f) return null;
   final block = _terminalBlockGraphic(codepoint);
   if (block != null) return TerminalBuiltinGraphic.block(block);
@@ -173,7 +206,69 @@ void paintTerminalBuiltinGraphic(
     return;
   }
   final powerline = graphic.powerline;
-  if (powerline != null) _paintPowerline(canvas, paint, bounds, powerline);
+  if (powerline != null) {
+    _paintPowerline(canvas, paint, bounds, powerline);
+    return;
+  }
+  final braille = graphic.braille;
+  if (braille != null) {
+    _paintBraille(canvas, paint, bounds, braille);
+    return;
+  }
+  final sextant = graphic.sextant;
+  if (sextant != null) _paintSextant(canvas, paint, bounds, sextant);
+}
+
+// The sextant range skips the patterns that already exist as half/full
+// blocks (left column, right column, full), so the fill index jumps by one
+// at each gap.
+int _sextantPattern(int codepoint) {
+  final index = codepoint - 0x1fb00;
+  if (index <= 19) return index + 1;
+  if (index <= 39) return index + 2;
+  return index + 3;
+}
+
+// Unicode braille dot order: bits 0-2 left rows 0-2, 3-5 right rows 0-2,
+// 6 left row 3, 7 right row 3.
+const List<(double, double)> _brailleDotCells = [
+  (0, 0),
+  (0, 1),
+  (0, 2),
+  (1, 0),
+  (1, 1),
+  (1, 2),
+  (0, 3),
+  (1, 3),
+];
+
+void _paintBraille(Canvas canvas, Paint paint, Rect bounds, int dots) {
+  final subWidth = bounds.width * 0.5;
+  final subHeight = bounds.height * 0.25;
+  final dot = math.max(math.min(subWidth, subHeight) * 0.5, 1.0);
+  for (var bit = 0; bit < 8; bit += 1) {
+    if (dots & (1 << bit) == 0) continue;
+    final (col, row) = _brailleDotCells[bit];
+    final centerX = bounds.left + subWidth * (col + 0.5);
+    final centerY = bounds.top + subHeight * (row + 0.5);
+    _paintRect(
+      canvas,
+      paint,
+      centerX - dot * 0.5,
+      centerY - dot * 0.5,
+      centerX + dot * 0.5,
+      centerY + dot * 0.5,
+    );
+  }
+}
+
+void _paintSextant(Canvas canvas, Paint paint, Rect bounds, int fills) {
+  for (var bit = 0; bit < 6; bit += 1) {
+    if (fills & (1 << bit) == 0) continue;
+    final col = (bit % 2).toDouble();
+    final row = (bit ~/ 2).toDouble();
+    _paintFraction(canvas, paint, bounds, col * 0.5, row / 3, 0.5, 1 / 3);
+  }
 }
 
 void _paintPowerline(
