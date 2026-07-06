@@ -34,22 +34,37 @@ pub(super) const UNIX_PASSTHROUGH_ENV_KEYS: &[&str] =
     &["TMPDIR", "SSH_AUTH_SOCK", "__CF_USER_TEXT_ENCODING"];
 #[cfg(windows)]
 pub(super) const WINDOWS_PASSTHROUGH_ENV_KEYS: &[&str] = &[
+    // Core system paths. A missing SystemDrive/ProgramData makes Windows
+    // components write literal `%SystemDrive%\...` dirs into the cwd.
+    "SystemDrive",
     "SystemRoot",
     "WINDIR",
+    "ProgramData",
+    "ALLUSERSPROFILE",
+    "PUBLIC",
+    "DriverData",
     "COMSPEC",
     "PATHEXT",
+    "OS",
     "TEMP",
     "TMP",
     "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
     "APPDATA",
     "LOCALAPPDATA",
     "ProgramFiles",
     "ProgramFiles(x86)",
     "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
     "USERNAME",
     "USERDOMAIN",
+    "COMPUTERNAME",
     "OneDrive",
     "PROCESSOR_ARCHITECTURE",
+    "NUMBER_OF_PROCESSORS",
     "PSModulePath",
 ];
 

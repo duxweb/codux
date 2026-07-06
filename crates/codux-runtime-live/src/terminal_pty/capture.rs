@@ -29,6 +29,33 @@ pub(super) struct CaptureReader {
     event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
     info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
     pending_utf8: Vec<u8>,
+    raw_capture: Option<std::fs::File>,
+}
+
+// Debug lever: CODUX_TERMINAL_CAPTURE=<dir|1> appends each session's raw PTY
+// output to terminal-<session>.ans for offline replay of rendering bugs.
+fn raw_capture_file(session_id: &str) -> Option<std::fs::File> {
+    let value = std::env::var("CODUX_TERMINAL_CAPTURE").ok()?;
+    let value = value.trim();
+    if value.is_empty() || value == "0" || value.eq_ignore_ascii_case("false") {
+        return None;
+    }
+    let candidate = std::path::PathBuf::from(value);
+    let dir = if candidate.is_dir() {
+        candidate
+    } else {
+        std::env::temp_dir().join("codux-terminal-capture")
+    };
+    std::fs::create_dir_all(&dir).ok()?;
+    let name: String = session_id
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .collect();
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join(format!("terminal-{name}.ans")))
+        .ok()
 }
 
 impl CaptureReader {
@@ -42,6 +69,7 @@ impl CaptureReader {
         event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
         info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
     ) -> Self {
+        let raw_capture = raw_capture_file(&session_id);
         Self {
             session_id,
             inner,
@@ -52,6 +80,7 @@ impl CaptureReader {
             event_subscribers,
             info,
             pending_utf8: Vec::new(),
+            raw_capture,
         }
     }
 }
@@ -65,6 +94,9 @@ impl Read for CaptureReader {
         }
         if read > 0 {
             let bytes = &buf[..read];
+            if let Some(file) = self.raw_capture.as_mut() {
+                let _ = file.write_all(bytes);
+            }
             self.output_capture.lock().push(bytes);
             self.screen.lock().process(bytes);
             self.broadcast_output(bytes);
