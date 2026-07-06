@@ -592,7 +592,11 @@ pub(super) fn git_branch_dropdown_menu(
                 PopupMenuItem::new(format!("{}…", remote_menu_labels.copy_url))
                     .icon(HeroIconName::DocumentDuplicate)
                     // Match the picker filter: only non-empty URLs count.
-                    .disabled(!copy_remotes.iter().any(|remote| !remote.url.trim().is_empty()))
+                    .disabled(
+                        !copy_remotes
+                            .iter()
+                            .any(|remote| !remote.url.trim().is_empty()),
+                    )
                     .on_click(move |_, window, cx| {
                         let items: Vec<QuickPickItem> = copy_remotes
                             .iter()

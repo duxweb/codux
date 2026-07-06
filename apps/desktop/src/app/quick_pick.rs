@@ -103,23 +103,23 @@ impl ListDelegate for QuickPickDelegate {
                 .rounded(px(6.))
                 .text_sm()
                 .child(
-                h_flex()
-                    .gap_2()
-                    .min_w_0()
-                    .when_some(item.icon.clone(), |this, icon| {
-                        this.child(icon.size_4().text_color(cx.theme().muted_foreground))
-                    })
-                    .child(div().truncate().child(item.label.clone()))
-                    .when_some(item.description.clone(), |this, description| {
-                        this.child(
-                            div()
-                                .text_xs()
-                                .truncate()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(description),
-                        )
-                    }),
-            ),
+                    h_flex()
+                        .gap_2()
+                        .min_w_0()
+                        .when_some(item.icon.clone(), |this, icon| {
+                            this.child(icon.size_4().text_color(cx.theme().muted_foreground))
+                        })
+                        .child(div().truncate().child(item.label.clone()))
+                        .when_some(item.description.clone(), |this, description| {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .truncate()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(description),
+                            )
+                        }),
+                ),
         )
     }
 
