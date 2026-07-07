@@ -62,6 +62,7 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn terminal_panes(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let chat_pane = self.chat_split_open.then(|| self.chat_split_pane(cx));
         let Some(active) = self.main_terminal() else {
             return div().flex_1().size_full();
         };
@@ -80,6 +81,7 @@ impl CoduxApp {
                 let close_id = SharedString::from(format!("terminal-pane-close-{index}"));
                 let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
                 let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
+                let chat_id = SharedString::from(format!("terminal-pane-chat-{index}"));
                 div()
                     .relative()
                     .group("terminal-pane")
@@ -136,10 +138,18 @@ impl CoduxApp {
                             .child(terminal_pane_control_button(
                                 add_id,
                                 HeroIconName::Plus,
-                                "新建分屏",
+                                "新建终端分屏",
                                 true,
                                 cx,
                                 |app, _event, window, cx| app.split_terminal(window, cx),
+                            ))
+                            .child(terminal_pane_control_button(
+                                chat_id,
+                                HeroIconName::Sparkles,
+                                "AI 对话分屏",
+                                true,
+                                cx,
+                                |app, _event, window, cx| app.toggle_chat_split(window, cx),
                             ))
                             .child(terminal_pane_control_button(
                                 close_id,
@@ -154,6 +164,64 @@ impl CoduxApp {
                     )
                     .into_any_element()
             }))
+            .children(chat_pane)
+    }
+
+    /// The AI chat pane rendered as one more terminal split: same chrome as a
+    /// terminal pane, hosting the per-worktree ChatPanel instead of a PTY.
+    fn chat_split_pane(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let panel = self
+            .selected_worktree_path()
+            .and_then(|cwd| self.chat_panels.get(&cwd).cloned());
+        div()
+            .relative()
+            .group("terminal-pane")
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .border_l_1()
+            .border_color(color(theme::BORDER_SOFT))
+            .child(div().flex_1().min_w_0().min_h_0().child(match panel {
+                Some(panel) => gpui::AnyView::from(panel).into_any_element(),
+                // Worktree switched while the pane is open: the panel for this
+                // worktree does not exist yet and creating it needs a Window,
+                // so reuse the click-to-open mount pattern of terminal panes.
+                None => div()
+                    .id("terminal-pane-chat-mount")
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
+                    .text_color(color(theme::TEXT_DIM))
+                    .on_click(cx.listener(|app, _event, window, cx| {
+                        app.ensure_chat_panel(window, cx);
+                        cx.notify();
+                    }))
+                    .child("点击开启 AI 对话")
+                    .into_any_element(),
+            }))
+            .child(
+                div()
+                    .absolute()
+                    .top_2()
+                    .right_2()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(terminal_pane_control_button(
+                        SharedString::from("terminal-pane-chat-close"),
+                        HeroIconName::XMark,
+                        "关闭对话分屏",
+                        true,
+                        cx,
+                        |app, _event, window, cx| app.toggle_chat_split(window, cx),
+                    )),
+            )
+            .into_any_element()
     }
 }
 

@@ -98,6 +98,7 @@ use std::{
 };
 
 mod about;
+mod agent_chat;
 mod agent_display;
 mod agent_lifecycle;
 mod ai_history_mapping;

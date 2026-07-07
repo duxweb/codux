@@ -3,6 +3,7 @@ members = [
     "apps/desktop",
     "apps/desktop/runtime",
     "apps/agent",
+    "crates/codux-agent-driver",
     "crates/codux-ai-history",
     "crates/codux-ai-sessions",
     "crates/codux-git",

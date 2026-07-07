@@ -1300,6 +1300,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "cocoa 0.26.0",
+ "codux-agent-driver",
  "codux-runtime",
  "codux-terminal-core",
  "core-foundation-sys",
@@ -1352,6 +1353,15 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "codux-agent-driver"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

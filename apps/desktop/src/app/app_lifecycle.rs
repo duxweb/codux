@@ -418,6 +418,8 @@ impl CoduxApp {
             workspace_view: WorkspaceView::Terminal,
             stats_time_range: StatsTimeRange::ThirtyDays,
             workspace_split: None,
+            chat_split_open: false,
+            chat_panels: HashMap::new(),
             assistant_panel: None,
             project_column_collapsed: true,
             task_column_collapsed: false,
