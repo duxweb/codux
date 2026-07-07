@@ -513,6 +513,8 @@ pub(in crate::app) struct ChatView {
     pending_user_inputs: Vec<UserInputRequest>,
     /// Selected option per (request token, question id).
     user_input_choice: HashMap<(String, String), String>,
+    /// Free-text question input subscriptions already installed.
+    user_input_subscribed: std::collections::HashSet<(String, String)>,
     /// Permission escalations (item/permissions/requestApproval).
     pending_permissions: Vec<PermissionRequest>,
     /// Current turn's todo plan; replaced wholesale, cleared on turn start.
@@ -647,6 +649,7 @@ impl ChatView {
             pending_approvals: Vec::new(),
             pending_user_inputs: Vec::new(),
             user_input_choice: HashMap::new(),
+            user_input_subscribed: std::collections::HashSet::new(),
             pending_permissions: Vec::new(),
             plan: None,
             last_error: None,
@@ -751,14 +754,27 @@ impl ChatView {
                 self.starting = false;
                 self.busy = false;
                 self.turn_started = None;
+                self.clear_pending_interactions();
                 self.status = SharedString::from(format!("Error: {err}"));
                 false
             }
             ChatMsg::Event(ev) => {
                 match ev {
-                    AgentEvent::ApprovalRequest(req) => self.pending_approvals.push(req),
-                    AgentEvent::UserInputRequest(req) => self.pending_user_inputs.push(req),
-                    AgentEvent::PermissionRequest(req) => self.pending_permissions.push(req),
+                    AgentEvent::ApprovalRequest(req) => {
+                        if self.busy {
+                            self.pending_approvals.push(req);
+                        }
+                    }
+                    AgentEvent::UserInputRequest(req) => {
+                        if self.busy {
+                            self.pending_user_inputs.push(req);
+                        }
+                    }
+                    AgentEvent::PermissionRequest(req) => {
+                        if self.busy {
+                            self.pending_permissions.push(req);
+                        }
+                    }
                     AgentEvent::TurnPlan { explanation, steps } => {
                         self.plan = Some((explanation, steps));
                     }
@@ -769,6 +785,7 @@ impl ChatView {
                         self.status = SharedString::from(notice_text(&kind, &message));
                     }
                     AgentEvent::TurnStarted => {
+                        self.clear_pending_interactions();
                         self.plan = None;
                         self.last_error = None;
                         self.status = SharedString::from("Generating…");
@@ -796,6 +813,7 @@ impl ChatView {
                         }
                         self.busy = false;
                         self.turn_started = None;
+                        self.clear_pending_interactions();
                         self.status = SharedString::from("Ready");
                         self.pump_queue();
                         self.update_queue_status();
@@ -804,6 +822,7 @@ impl ChatView {
                     AgentEvent::Error(err) => {
                         self.busy = false;
                         self.turn_started = None;
+                        self.clear_pending_interactions();
                         self.status = SharedString::from("Ready");
                         self.last_error = Some(err);
                         self.pump_queue();
@@ -883,6 +902,14 @@ impl ChatView {
         }
     }
 
+    fn clear_pending_interactions(&mut self) {
+        self.pending_approvals.clear();
+        self.pending_user_inputs.clear();
+        self.user_input_choice.clear();
+        self.user_input_subscribed.clear();
+        self.pending_permissions.clear();
+    }
+
     /// Fetch prior threads for this cwd (uses the live session's connection).
     fn load_threads(&mut self) {
         let Some(session) = self.session.clone() else {
@@ -910,6 +937,7 @@ impl ChatView {
         self.pending_approvals.clear();
         self.pending_user_inputs.clear();
         self.user_input_choice.clear();
+        self.user_input_subscribed.clear();
         self.pending_permissions.clear();
         self.plan = None;
         self.last_error = None;
@@ -941,6 +969,7 @@ impl ChatView {
         self.pending_approvals.clear();
         self.pending_user_inputs.clear();
         self.user_input_choice.clear();
+        self.user_input_subscribed.clear();
         self.pending_permissions.clear();
         self.plan = None;
         self.last_error = None;
@@ -969,6 +998,7 @@ impl ChatView {
             });
         }
         self.pending_send.clear();
+        self.clear_pending_interactions();
         self.busy = false;
         self.turn_started = None;
         self.status = SharedString::from("Interrupted");
@@ -1107,10 +1137,8 @@ impl ChatView {
 
         match cmd {
             "/interrupt" => {
-                std::thread::spawn(move || {
-                    let _ = session.interrupt();
-                });
-                self.status = SharedString::from("Interrupting…");
+                self.stop(cx);
+                return;
             }
             "/compact" => {
                 std::thread::spawn(move || {
@@ -1325,7 +1353,42 @@ impl ChatView {
         value: String,
         cx: &mut Context<Self>,
     ) {
-        self.user_input_choice.insert((token, qid), value);
+        self.user_input_choice
+            .insert((token.clone(), qid), value);
+        self.try_submit_selected_user_input(token, cx);
+        cx.notify();
+    }
+
+    fn try_submit_selected_user_input(&mut self, token: String, cx: &mut Context<Self>) {
+        let Some(pos) = self
+            .pending_user_inputs
+            .iter()
+            .position(|req| req.token == token)
+        else {
+            return;
+        };
+        let req = &self.pending_user_inputs[pos];
+        if req.questions.iter().any(|q| q.options.is_empty()) {
+            return;
+        }
+        let mut answers: Vec<(String, Vec<String>)> = Vec::new();
+        for q in &req.questions {
+            let Some(choice) = self
+                .user_input_choice
+                .get(&(token.clone(), q.id.clone()))
+                .cloned()
+                .filter(|choice| !choice.is_empty())
+            else {
+                return;
+            };
+            answers.push((q.id.clone(), vec![choice]));
+        }
+        if let Some(session) = &self.session {
+            let _ = session.respond_user_input(&token, answers);
+        }
+        self.pending_user_inputs.remove(pos);
+        self.user_input_choice.retain(|(t, _), _| t != &token);
+        self.user_input_subscribed.retain(|(t, _)| t != &token);
         cx.notify();
     }
 
@@ -1360,7 +1423,7 @@ impl ChatView {
                 Some(c) if !c.is_empty() => c,
                 _ => other_text,
             };
-            if answer.is_empty() && !q.options.is_empty() {
+            if answer.is_empty() {
                 self.status = SharedString::from("请先回答所有问题");
                 cx.notify();
                 return;
@@ -1372,6 +1435,7 @@ impl ChatView {
         }
         self.pending_user_inputs.remove(pos);
         self.user_input_choice.retain(|(t, _), _| t != &token);
+        self.user_input_subscribed.retain(|(t, _)| t != &token);
         cx.notify();
     }
 
@@ -1569,8 +1633,8 @@ impl Render for ChatView {
             .iter()
             .map(|req| self.render_approval(req, pal, mono.clone(), cx))
             .collect();
-        let user_inputs: Vec<Div> = self
-            .pending_user_inputs
+        let user_input_requests = self.pending_user_inputs.clone();
+        let user_inputs: Vec<Div> = user_input_requests
             .iter()
             .map(|req| self.render_user_input(req, pal, window, cx))
             .collect();
@@ -2088,7 +2152,7 @@ impl ChatView {
     /// rows, `isOther`/optionless questions get a free-text (masked if secret)
     /// input, one submit per request.
     fn render_user_input(
-        &self,
+        &mut self,
         req: &UserInputRequest,
         pal: Pal,
         window: &mut Window,
@@ -2099,30 +2163,16 @@ impl ChatView {
         let mut card = div()
             .flex()
             .flex_col()
-            .gap_2()
-            .rounded(px(10.0))
-            .p(px(10.0))
-            .border_1()
-            .border_color(pal.primary.opacity(0.4))
-            .bg(pal.primary.opacity(0.06))
-            .child(
-                div()
-                    .text_size(pal.sm)
-                    .text_color(pal.primary)
-                    .child("需要你的回答"),
-            );
+            .min_w_0()
+            .gap_1()
+            .max_w(gpui::relative(0.82))
+            .p(px(6.0));
         for q in &req.questions {
-            if !q.header.is_empty() {
-                card = card.child(
-                    div()
-                        .text_size(pal.xs)
-                        .text_color(pal.muted)
-                        .child(q.header.clone()),
-                );
-            }
             card = card.child(
                 div()
-                    .text_size(pal.md)
+                    .min_w_0()
+                    .whitespace_normal()
+                    .text_size(pal.body)
                     .text_color(pal.fg)
                     .child(q.question.clone()),
             );
@@ -2143,12 +2193,12 @@ impl ChatView {
                         )))
                         .flex()
                         .items_center()
-                        .gap_2()
+                        .gap_1()
                         .rounded(px(6.0))
-                        .px(px(8.0))
-                        .py(px(5.0))
+                        .px(px(6.0))
+                        .py(px(3.0))
                         .cursor_pointer()
-                        .when(is_selected, |s| s.bg(pal.primary.opacity(0.12)))
+                        .when(is_selected, |s| s.bg(pal.primary.opacity(0.1)))
                         .hover(|s| s.bg(pal.bubble))
                         .on_click(cx.listener(move |view, _e, _w, cx| {
                             view.choose_user_input(
@@ -2170,7 +2220,7 @@ impl ChatView {
                         .child(
                             div()
                                 .flex_none()
-                                .text_size(pal.md)
+                                .text_size(pal.body)
                                 .text_color(pal.fg)
                                 .child(opt.label.clone()),
                         )
@@ -2180,7 +2230,7 @@ impl ChatView {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_size(pal.sm)
+                                    .text_size(pal.body)
                                     .text_color(pal.muted)
                                     .child(opt.description.clone()),
                             )
@@ -2195,32 +2245,41 @@ impl ChatView {
                     move |window, cx| {
                         InputState::new(window, cx)
                             .placeholder("输入回答…")
+                            .submit_on_enter(true)
                             .masked(is_secret)
                     },
                 );
                 others.push((q.id.clone(), input.clone()));
                 card = card.child(
                     div()
-                        .rounded(px(8.0))
-                        .border_1()
-                        .border_color(pal.border)
-                        .p(px(4.0))
-                        .child(Input::new(&input).appearance(false)),
+                        .mt(px(4.0))
+                        .min_w_0()
+                        .rounded(px(6.0))
+                        .bg(pal.secondary.opacity(0.55))
+                        .px(px(6.0))
+                        .py(px(2.0))
+                        .child(Input::new(&input).with_size(Size::Small).appearance(false)),
                 );
             }
         }
-        let submit_token = token.clone();
-        card.child(
-            div().flex().justify_end().child(
-                Button::new(SharedString::from(format!("uiq-submit-{}", req.token)))
-                    .primary()
-                    .with_size(Size::Small)
-                    .child("提交回答")
-                    .on_click(cx.listener(move |view, _e, _w, cx| {
-                        view.submit_user_input(submit_token.clone(), others.clone(), cx)
-                    })),
-            ),
-        )
+        for (qid, input) in &others {
+            if self
+                .user_input_subscribed
+                .insert((req.token.clone(), qid.clone()))
+            {
+                let enter_token = token.clone();
+                let enter_others = others.clone();
+                cx.subscribe_in(input, window, move |view, _input, event, _window, cx| {
+                    if let InputEvent::PressEnter { shift, .. } = event
+                        && !*shift
+                    {
+                        view.submit_user_input(enter_token.clone(), enter_others.clone(), cx);
+                    }
+                })
+                .detach();
+            }
+        }
+        div().flex().w_full().min_w_0().child(card)
     }
 
     /// Permission-escalation card: grant the requested profile for this turn or
