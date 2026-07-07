@@ -1025,7 +1025,7 @@ fn terminal_pane_chat_button(
                         div()
                             .px_2()
                             .py_1()
-                            .text_size(rems(0.6875))
+                            .text_size(px(12.0))
                             .text_color(cx.theme().secondary_foreground)
                             .child(workspace_i18n(
                                 &language,
@@ -1148,7 +1148,7 @@ fn chat_agent_menu_row(
         .child(
             div()
                 .flex_1()
-                .text_size(rems(0.75))
+                .text_size(px(12.0))
                 .text_color(if enabled {
                     color(theme::TEXT)
                 } else {
@@ -1173,7 +1173,7 @@ fn chat_agent_menu_row(
         row.opacity(0.55)
             .child(
                 div()
-                    .text_size(rems(0.625))
+                    .text_size(px(11.0))
                     .text_color(color(theme::TEXT_DIM))
                     .child(workspace_i18n(
                         language,
