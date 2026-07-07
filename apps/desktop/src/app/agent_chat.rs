@@ -19,10 +19,10 @@ use codux_agent_driver::{
 };
 use flume::Sender;
 use gpui::{
-    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, InteractiveElement,
-    IntoElement, ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div, img,
-    prelude::FluentBuilder as _, px, rems,
+    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, FollowMode,
+    InteractiveElement, IntoElement, ListAlignment, ListState, ParentElement, PathPromptOptions,
+    Render, SharedString, StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div, img,
+    list, prelude::FluentBuilder as _, px, rems,
 };
 use gpui_component::{
     ActiveTheme, Icon, Sizable, Size,
@@ -176,6 +176,16 @@ pub(in crate::app) enum ChatViewEvent {
     NewTab,
 }
 
+/// One virtualized transcript row: a single message, or a run of consecutive
+/// activity items, referencing `ChatView::items` by index range. `fingerprint`
+/// captures everything height-affecting, so reconciliation splices (re-measures)
+/// only rows that actually changed and the scroll position is preserved.
+#[derive(Clone, PartialEq)]
+struct Block {
+    range: std::ops::Range<usize>,
+    fingerprint: u64,
+}
+
 /// Messages from the off-thread session machinery into the view.
 enum ChatMsg {
     Note(String),
@@ -302,7 +312,14 @@ pub(in crate::app) struct ChatView {
     item_times: HashMap<String, SharedString>,
     status: SharedString,
     input: Entity<InputState>,
-    scroll: ScrollHandle,
+    /// Virtualized transcript: only visible rows are rendered/measured, so long
+    /// sessions scroll smoothly instead of re-laying-out every message.
+    list_state: ListState,
+    /// Row blocks (message / activity-run) referencing `items` by range.
+    blocks: Vec<Block>,
+    /// Per-item UI version, bumped by height-changing toggles (expand / group /
+    /// inline edit) so the affected row is re-measured via a minimal splice.
+    item_versions: HashMap<String, u64>,
     access: Access,
     model: Option<String>,
     effort: SharedString,
@@ -388,6 +405,10 @@ impl ChatView {
                 }
             }
         });
+        // Bottom alignment + tail follow = chat-log semantics: stick to the end
+        // while streaming, stop when the user scrolls up, re-engage at bottom.
+        let list_state = ListState::new(0, ListAlignment::Bottom, px(512.0));
+        list_state.set_follow_mode(FollowMode::Tail);
         // Connect eagerly so the model/effort/access dropdowns and the `/` palette
         // populate from the server before the user types anything.
         spawn_session(
@@ -414,7 +435,9 @@ impl ChatView {
             item_times: HashMap::new(),
             status: SharedString::from("空闲"),
             input,
-            scroll: ScrollHandle::new(),
+            list_state,
+            blocks: Vec::new(),
+            item_versions: HashMap::new(),
             access: Access::WorkspaceWrite,
             model: None,
             effort: SharedString::from("medium"),
@@ -457,8 +480,6 @@ impl ChatView {
     /// many delta events per second; cloning the timeline and re-rendering per
     /// event is what made it lag, so we coalesce a whole batch into one update.
     fn handle_batch(&mut self, batch: Vec<ChatMsg>, cx: &mut Context<Self>) {
-        // Decide follow BEFORE adding content (reflects the pre-batch scroll pos).
-        let follow = self.near_bottom();
         let mut refresh = false;
         for msg in batch {
             refresh |= self.apply_msg(msg);
@@ -473,9 +494,8 @@ impl ChatView {
                     .entry(item.id.clone())
                     .or_insert_with(|| SharedString::from(now.clone()));
             }
-        }
-        if follow {
-            self.scroll.scroll_to_bottom();
+            // Tail follow (set on the list state) auto-scrolls on growth.
+            self.sync_blocks();
         }
         cx.notify();
     }
@@ -602,16 +622,9 @@ impl ChatView {
         }
         self.pump_queue();
         self.update_queue_status();
-        self.scroll.scroll_to_bottom(); // user's own send always jumps to bottom
+        // The user's own send always jumps to the bottom and re-arms tail follow.
+        self.list_state.set_follow_mode(FollowMode::Tail);
         cx.notify();
-    }
-
-    /// True if the message list is scrolled to within ~120px of the bottom, i.e.
-    /// the user is "following" and we may auto-scroll on new content.
-    fn near_bottom(&self) -> bool {
-        let off = self.scroll.offset().y; // <= 0 as content scrolls up
-        let max = self.scroll.max_offset().y; // >= 0 total scrollable
-        (max + off) <= px(120.0)
     }
 
     /// Send the next queued turn if the session is idle (not busy) and connected.
@@ -664,7 +677,9 @@ impl ChatView {
         }
         self.items.clear();
         self.item_times.clear();
+        self.item_versions.clear();
         self.pending_approvals.clear();
+        self.sync_blocks();
         self.last_completed = None;
         self.busy = false;
         self.starting = true;
@@ -713,24 +728,31 @@ impl ChatView {
         })
         .detach();
         input.update(cx, |s, cx| s.focus(window, cx));
-        self.editing = Some((id, input));
+        self.editing = Some((id.clone(), input));
+        self.bump_item(&id);
         cx.notify();
     }
 
     fn cancel_edit(&mut self, cx: &mut Context<Self>) {
-        self.editing = None;
+        if let Some((id, _)) = self.editing.take() {
+            self.bump_item(&id);
+        }
         cx.notify();
     }
 
     fn toggle_expand(&mut self, id: String, cx: &mut Context<Self>) {
         if !self.expanded.remove(&id) {
-            self.expanded.insert(id);
+            self.expanded.insert(id.clone());
         }
+        // Per-file diff keys look like "<item id>::<path>"; the row is the item.
+        let base = id.split("::").next().unwrap_or(&id).to_string();
+        self.bump_item(&base);
         cx.notify();
     }
 
     fn toggle_group(&mut self, key: String, currently_open: bool, cx: &mut Context<Self>) {
-        self.group_open.insert(key, !currently_open);
+        self.group_open.insert(key.clone(), !currently_open);
+        self.bump_item(&key);
         cx.notify();
     }
 
@@ -754,6 +776,7 @@ impl ChatView {
         if let Some(pos) = self.items.iter().position(|it| it.id == id) {
             self.items.truncate(pos);
         }
+        self.sync_blocks();
         self.busy = true;
         self.status = SharedString::from("重发中…");
         std::thread::spawn(move || {
@@ -1036,6 +1059,80 @@ impl ChatView {
         self.effort = SharedString::from(effort);
         cx.notify();
     }
+
+    /// Bump an item's UI version (its row height changed) and reconcile.
+    fn bump_item(&mut self, id: &str) {
+        *self.item_versions.entry(id.to_string()).or_insert(0) += 1;
+        self.sync_blocks();
+    }
+
+    /// Rebuild the block list from `items` and reconcile the virtualized list
+    /// with a minimal splice: streaming appends re-measure only the changed
+    /// tail, and a reader scrolled up in history keeps their position.
+    fn sync_blocks(&mut self) {
+        let mut blocks: Vec<Block> = Vec::new();
+        let mut group_start: Option<usize> = None;
+        for (ix, it) in self.items.iter().enumerate() {
+            if it.kind == TimelineKind::Reasoning && it.text.is_empty() {
+                continue; // placeholders are filtered at render too
+            }
+            let is_msg = matches!(
+                it.kind,
+                TimelineKind::UserPrompt | TimelineKind::AssistantMessage
+            );
+            if is_msg {
+                if let Some(start) = group_start.take() {
+                    blocks.push(self.make_block(start..ix));
+                }
+                blocks.push(self.make_block(ix..ix + 1));
+            } else if group_start.is_none() {
+                group_start = Some(ix);
+            }
+        }
+        if let Some(start) = group_start {
+            blocks.push(self.make_block(start..self.items.len()));
+        }
+
+        let old = &self.blocks;
+        if *old == blocks {
+            return;
+        }
+        let mut prefix = 0;
+        while prefix < old.len() && prefix < blocks.len() && old[prefix] == blocks[prefix] {
+            prefix += 1;
+        }
+        let mut suffix = 0;
+        while suffix < old.len() - prefix
+            && suffix < blocks.len() - prefix
+            && old[old.len() - 1 - suffix] == blocks[blocks.len() - 1 - suffix]
+        {
+            suffix += 1;
+        }
+        self.list_state
+            .splice(prefix..old.len() - suffix, blocks.len() - suffix - prefix);
+        self.blocks = blocks;
+    }
+
+    fn make_block(&self, range: std::ops::Range<usize>) -> Block {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for it in &self.items[range.clone()] {
+            it.id.hash(&mut h);
+            it.text.len().hash(&mut h);
+            it.output.len().hash(&mut h);
+            match it.status {
+                ItemStatus::InProgress => 0u8,
+                ItemStatus::Completed => 1u8,
+                ItemStatus::Failed => 2u8,
+            }
+            .hash(&mut h);
+            self.item_versions.get(&it.id).copied().unwrap_or(0).hash(&mut h);
+        }
+        Block {
+            range,
+            fingerprint: h.finish(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1064,41 +1161,15 @@ impl Render for ChatView {
             bubble: theme.secondary,
         };
         let input_bg = theme.background;
-        let mono = theme.mono_font_family.clone();
-
         let input_value = self.input.read(cx).value().to_string();
 
-        // Build display blocks: messages render standalone; runs of consecutive
-        // activity items (commands/reasoning/tools/files) coalesce into one
-        // collapsible group, like the codex desktop transcript.
-        let mut rows: Vec<Div> = Vec::new();
-        let mut group: Vec<&TimelineItem> = Vec::new();
-        for it in &self.items {
-            if it.kind == TimelineKind::Reasoning && it.text.is_empty() {
-                continue; // skip empty reasoning placeholders
-            }
-            let is_msg = matches!(
-                it.kind,
-                TimelineKind::UserPrompt | TimelineKind::AssistantMessage
-            );
-            if is_msg {
-                if !group.is_empty() {
-                    rows.push(self.render_activity_block(&group, pal, mono.clone(), cx));
-                    group.clear();
-                }
-                rows.push(self.render_row(it, pal, mono.clone(), cx));
-            } else {
-                group.push(it);
-            }
-        }
-        if !group.is_empty() {
-            rows.push(self.render_activity_block(&group, pal, mono.clone(), cx));
-        }
         let approvals: Vec<Div> = self
             .pending_approvals
             .iter()
             .map(|req| self.render_approval(req, pal, cx))
             .collect();
+        let has_rows = !self.blocks.is_empty();
+        let show_done = !self.busy && self.last_completed.is_some();
 
         div()
             .flex()
@@ -1108,55 +1179,107 @@ impl Render for ChatView {
             .min_h_0()
             .child(
                 div()
-                    .id("agent-chat-scroll")
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll)
-                    .p(px(12.0))
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .when(rows.is_empty() && approvals.is_empty(), |this| {
+                    .when(!has_rows, |this| this.child(render_empty_state(pal)))
+                    // Virtualized transcript: only visible rows render/measure,
+                    // so long sessions scroll smoothly.
+                    .when(has_rows, |this| {
                         this.child(
-                            div()
-                                .text_size(rems(0.82))
-                                .text_color(pal.muted)
-                                .child("发一条消息开始 Codex 会话。"),
+                            list(
+                                self.list_state.clone(),
+                                cx.processor(|view, ix: usize, window, cx| {
+                                    view.render_block(ix, window, cx)
+                                }),
+                            )
+                            .size_full(),
                         )
-                    })
-                    .children(rows)
-                    .children(approvals)
-                    .when(self.show_working(), |this| {
-                        let secs = self
-                            .turn_started
-                            .map(|t| t.elapsed().as_secs())
-                            .unwrap_or(0);
-                        let elapsed = if secs >= 60 {
-                            format!("{}m {}s", secs / 60, secs % 60)
-                        } else {
-                            format!("{secs}s")
-                        };
-                        let tokens = self.last_usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
-                        let meta = if tokens > 0 {
-                            format!("已执行 {elapsed} · ↓ {}", fmt_tokens(tokens))
-                        } else {
-                            format!("已执行 {elapsed}")
-                        };
-                        this.child(render_working(pal, self.working_word(), meta, secs % 2 == 0))
-                    })
-                    // After a turn finishes, leave a "完成" footer with its time/tokens.
-                    .when(!self.busy && self.last_completed.is_some(), |this| {
-                        let (secs, tokens) = self.last_completed.unwrap();
-                        this.child(render_done(pal, secs, tokens))
                     }),
             )
+            // Pinned strip: pending approvals and the working/done footer stay
+            // visible above the composer instead of scrolling with history.
+            .when(!approvals.is_empty() || self.show_working() || show_done, |this| {
+                this.child(
+                    div()
+                        .flex_none()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .px(px(12.0))
+                        .pt(px(8.0))
+                        .children(approvals)
+                        .when(self.show_working(), |this| {
+                            let secs = self
+                                .turn_started
+                                .map(|t| t.elapsed().as_secs())
+                                .unwrap_or(0);
+                            let elapsed = if secs >= 60 {
+                                format!("{}m {}s", secs / 60, secs % 60)
+                            } else {
+                                format!("{secs}s")
+                            };
+                            let tokens =
+                                self.last_usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
+                            let meta = if tokens > 0 {
+                                format!("已执行 {elapsed} · ↓ {}", fmt_tokens(tokens))
+                            } else {
+                                format!("已执行 {elapsed}")
+                            };
+                            this.child(render_working(pal, self.working_word(), meta, secs % 2 == 0))
+                        })
+                        .when(show_done, |this| {
+                            let (secs, tokens) = self.last_completed.unwrap();
+                            this.child(render_done(pal, secs, tokens))
+                        }),
+                )
+            })
             .child(self.render_composer(pal, input_bg, &input_value, cx))
     }
 }
 
 impl ChatView {
+    /// Render one virtualized transcript row (called by the list for visible
+    /// rows only). `blocks[ix]` names an `items` range; a single item renders
+    /// as its message/card, a run renders as a collapsible activity group.
+    fn render_block(
+        &mut self,
+        ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let Some(block) = self.blocks.get(ix).cloned() else {
+            return div().into_any_element();
+        };
+        let theme = cx.theme();
+        let pal = Pal {
+            fg: theme.foreground,
+            muted: theme.muted_foreground,
+            border: theme.border,
+            secondary: theme.secondary,
+            primary: theme.primary,
+            primary_fg: theme.primary_foreground,
+            danger: theme.danger,
+            bubble: theme.secondary,
+        };
+        let mono = theme.mono_font_family.clone();
+        let refs: Vec<&TimelineItem> = self.items[block.range]
+            .iter()
+            .filter(|it| !(it.kind == TimelineKind::Reasoning && it.text.is_empty()))
+            .collect();
+        let row = match refs.as_slice() {
+            [] => div(),
+            [single] => self.render_row(single, pal, mono, cx),
+            _ => self.render_activity_block(&refs, pal, mono, cx),
+        };
+        div()
+            .px(px(12.0))
+            .pt(if ix == 0 { px(12.0) } else { px(0.0) })
+            .pb(px(12.0))
+            .child(row)
+            .into_any_element()
+    }
+
     fn render_row(
         &self,
         item: &TimelineItem,
@@ -1208,7 +1331,9 @@ impl ChatView {
                             .rounded(px(12.0))
                             .px(px(12.0))
                             .py(px(8.0))
-                            .bg(pal.bubble)
+                            .bg(pal.primary.opacity(0.1))
+                            .border_1()
+                            .border_color(pal.primary.opacity(0.18))
                             .text_size(rems(0.85))
                             .text_color(pal.fg)
                             .child(text),
@@ -1351,10 +1476,11 @@ impl ChatView {
             .flex()
             .flex_col()
             .gap_2()
-            .rounded(px(8.0))
+            .rounded(px(10.0))
             .p(px(10.0))
             .border_1()
-            .border_color(pal.primary)
+            .border_color(pal.primary.opacity(0.4))
+            .bg(pal.primary.opacity(0.06))
             .child(
                 div()
                     .text_size(rems(0.72))
@@ -2002,33 +2128,75 @@ fn fmt_tokens(t: u64) -> String {
     }
 }
 
+/// Centered placeholder shown before the first message.
+fn render_empty_state(pal: Pal) -> Div {
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap_3()
+        .child(
+            div()
+                .size(px(44.0))
+                .rounded(px(12.0))
+                .bg(pal.primary.opacity(0.1))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Icon::new(HeroIconName::Sparkles)
+                        .size_4()
+                        .text_color(pal.primary),
+                ),
+        )
+        .child(
+            div()
+                .text_size(rems(0.9))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(pal.fg)
+                .child("开始与 Codex 对话"),
+        )
+        .child(
+            div()
+                .text_size(rems(0.74))
+                .text_color(pal.muted)
+                .child("输入 / 调出命令 · @ 引用文件 · Shift+Enter 换行"),
+        )
+}
+
 /// Working indicator shown for the whole turn: theme-color verb + elapsed time /
 /// token meta (codex CLI style, e.g. "执行命令… 已执行 2m 18s · ↓ 5.8k"). Updated
 /// once a second by the heartbeat — intentionally NOT a 60fps animation, which
 /// would force the whole transcript to re-render every frame.
 fn render_working(pal: Pal, word: &str, meta: String, pulse: bool) -> Div {
-    div()
-        .flex()
-        .w_full()
-        .items_center()
-        .gap_2()
-        .py(px(4.0))
-        // A small dot that blinks once a second (cheap, no per-frame animation).
-        .child(
-            div()
-                .size(px(7.0))
-                .rounded_full()
-                .bg(pal.primary)
-                .opacity(if pulse { 1.0 } else { 0.4 }),
-        )
-        .child(
-            div()
-                .text_size(rems(0.85))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(pal.primary)
-                .child(format!("{word}…")),
-        )
-        .child(div().text_size(rems(0.74)).text_color(pal.muted).child(meta))
+    div().flex().w_full().child(
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .rounded_full()
+            .px(px(10.0))
+            .py(px(4.0))
+            .bg(pal.primary.opacity(0.08))
+            // A small dot that blinks once a second (cheap, no per-frame animation).
+            .child(
+                div()
+                    .size(px(7.0))
+                    .rounded_full()
+                    .bg(pal.primary)
+                    .opacity(if pulse { 1.0 } else { 0.4 }),
+            )
+            .child(
+                div()
+                    .text_size(rems(0.8))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(pal.primary)
+                    .child(format!("{word}…")),
+            )
+            .child(div().text_size(rems(0.72)).text_color(pal.muted).child(meta)),
+    )
 }
 
 /// "完成" footer after a turn: a check + elapsed time + output tokens. Derived
@@ -2171,6 +2339,7 @@ impl ChatView {
             .rounded(px(8.0))
             .border_1()
             .border_color(pal.border)
+            .bg(pal.secondary.opacity(0.35))
             .overflow_hidden()
             .child(header);
         if open {
@@ -2345,7 +2514,11 @@ impl ChatView {
             .min_w_0()
             .rounded(px(8.0))
             .overflow_hidden()
-            .when(!nested, |s| s.border_1().border_color(pal.border))
+            .when(!nested, |s| {
+                s.border_1()
+                    .border_color(pal.border)
+                    .bg(pal.secondary.opacity(0.35))
+            })
             .child(header);
 
         if expanded && has_body {
