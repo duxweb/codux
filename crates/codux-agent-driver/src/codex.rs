@@ -58,7 +58,15 @@ impl AgentDriver for CodexAgentDriver {
         env.extend(self.env.iter().cloned());
         AgentInvocation {
             program: self.program.clone(),
-            args: vec!["app-server".into(), "--listen".into(), "stdio://".into()],
+            // default_mode_request_user_input lets codex raise option-picker
+            // questions (item/tool/requestUserInput) outside plan mode.
+            args: vec![
+                "app-server".into(),
+                "--enable".into(),
+                "default_mode_request_user_input".into(),
+                "--listen".into(),
+                "stdio://".into(),
+            ],
             env,
         }
     }
@@ -711,7 +719,12 @@ fn notification_to_events(inner: &Inner, method: &str, params: &Value) -> Vec<Ag
         }
         "turn/completed" => {
             *inner.current_turn.lock() = None;
-            vec![AgentEvent::TurnCompleted]
+            vec![AgentEvent::TurnCompleted {
+                duration_ms: params
+                    .get("turn")
+                    .and_then(|t| t.get("durationMs"))
+                    .and_then(Value::as_u64),
+            }]
         }
         "item/started" => params
             .get("item")
@@ -924,13 +937,17 @@ fn server_request_to_event(inner: &Inner, id: Value, method: &str, params: &Valu
 
 fn parse_usage(u: &Value) -> TokenUsage {
     let total = u.get("total").cloned().unwrap_or(Value::Null);
-    let g = |k: &str| total.get(k).and_then(Value::as_u64).unwrap_or(0);
+    let last = u.get("last").cloned().unwrap_or(Value::Null);
+    let g = |v: &Value, k: &str| v.get(k).and_then(Value::as_u64).unwrap_or(0);
     TokenUsage {
-        total_tokens: g("totalTokens"),
-        input_tokens: g("inputTokens"),
-        output_tokens: g("outputTokens"),
-        cached_input_tokens: g("cachedInputTokens"),
-        reasoning_output_tokens: g("reasoningOutputTokens"),
+        total_tokens: g(&total, "totalTokens"),
+        input_tokens: g(&total, "inputTokens"),
+        output_tokens: g(&total, "outputTokens"),
+        cached_input_tokens: g(&total, "cachedInputTokens"),
+        reasoning_output_tokens: g(&total, "reasoningOutputTokens"),
+        last_total_tokens: g(&last, "totalTokens"),
+        last_input_tokens: g(&last, "inputTokens"),
+        last_output_tokens: g(&last, "outputTokens"),
         model_context_window: u.get("modelContextWindow").and_then(Value::as_u64),
     }
 }

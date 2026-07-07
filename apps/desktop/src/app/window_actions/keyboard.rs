@@ -135,10 +135,19 @@ impl CoduxApp {
         self.focused_terminal_view(window, cx).or_else(|| {
             (self.workspace_view == WorkspaceView::Terminal
                 && !self.file_sidebar_contains_focused(window, cx)
-                && !self.terminal_search_contains_focused(window, cx))
+                && !self.terminal_search_contains_focused(window, cx)
+                && !self.chat_contains_focused(window, cx))
             .then(|| self.active_terminal_view())
             .flatten()
         })
+    }
+
+    // Chat panes live inside the Terminal view mode; while one owns focus the
+    // active-terminal fallback must not double-deliver keystrokes.
+    fn chat_contains_focused(&self, window: &Window, cx: &mut Context<Self>) -> bool {
+        self.chat_views
+            .values()
+            .any(|view| view.read(cx).contains_focused(window, cx))
     }
 
     pub(super) fn terminal_search_contains_focused(

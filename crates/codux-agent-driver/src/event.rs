@@ -14,6 +14,10 @@ pub struct TokenUsage {
     pub output_tokens: u64,
     pub cached_input_tokens: u64,
     pub reasoning_output_tokens: u64,
+    /// The current/most-recent turn's usage (the protocol's `last` breakdown).
+    pub last_total_tokens: u64,
+    pub last_input_tokens: u64,
+    pub last_output_tokens: u64,
     pub model_context_window: Option<u64>,
 }
 
@@ -131,6 +135,9 @@ pub enum AgentEvent {
     /// the protocol method, `message` its human text when the wire carries one.
     Notice { kind: String, message: String },
     Status(String),
-    TurnCompleted,
+    TurnCompleted {
+        /// Server-reported turn duration, when the wire carries one.
+        duration_ms: Option<u64>,
+    },
     Error(String),
 }

@@ -491,6 +491,9 @@ impl EventEmitter<ChatViewEvent> for ChatView {}
 pub(in crate::app) struct ChatView {
     /// Weak app handle for live settings reads (weak: the app owns chat views).
     app: WeakEntity<crate::app::CoduxApp>,
+    /// Tracked on the root so the app's terminal key routing can tell when the
+    /// chat pane (input, question cards, …) owns focus.
+    focus_handle: gpui::FocusHandle,
     cwd: String,
     codex_program: String,
     session: Option<Arc<dyn AgentSession>>,
@@ -499,11 +502,9 @@ pub(in crate::app) struct ChatView {
     busy: bool,
     /// When the current turn started (for the "Working (Ns)" elapsed counter).
     turn_started: Option<Instant>,
-    /// Output-token count at the current turn's start (to show the per-turn delta).
-    tokens_at_turn_start: u64,
-    /// Summary of the last finished turn: (elapsed secs, output tokens) — shown as
-    /// a "完成" footer after generation ends.
-    last_completed: Option<(u64, u64)>,
+    /// Per-turn completion footers pinned to each turn's last item id:
+    /// (elapsed secs, that turn's output tokens). Survives in the transcript.
+    turn_done: HashMap<String, (u64, u64)>,
     /// Turns composed before the session finished connecting; flushed on Started.
     pending_send: Vec<Vec<UserInputPart>>,
     items: Vec<TimelineItem>,
@@ -633,14 +634,14 @@ impl ChatView {
         );
         Self {
             app,
+            focus_handle: cx.focus_handle(),
             cwd,
             codex_program,
             session: None,
             starting: true,
             busy: false,
             turn_started: None,
-            tokens_at_turn_start: 0,
-            last_completed: None,
+            turn_done: HashMap::new(),
             pending_send: Vec::new(),
             items: Vec::new(),
             pending_approvals: Vec::new(),
@@ -772,16 +773,27 @@ impl ChatView {
                         self.last_error = None;
                         self.status = SharedString::from("Generating…");
                     }
-                    AgentEvent::TurnCompleted => {
-                        // Freeze a "完成" summary for the turn that just ended.
-                        let secs = self.turn_started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
+                    AgentEvent::TurnCompleted { duration_ms } => {
+                        // Prefer the server's own duration and per-turn (`last`)
+                        // token breakdown over locally derived numbers.
+                        let secs = duration_ms
+                            .map(|ms| ms.div_ceil(1000))
+                            .or_else(|| self.turn_started.map(|t| t.elapsed().as_secs()))
+                            .unwrap_or(0);
                         let tokens = self
                             .last_usage
                             .as_ref()
-                            .map(|u| u.output_tokens)
-                            .unwrap_or(0)
-                            .saturating_sub(self.tokens_at_turn_start);
-                        self.last_completed = Some((secs, tokens));
+                            .map(|u| u.last_output_tokens)
+                            .unwrap_or(0);
+                        // Pin a permanent per-turn footer to the turn's last item.
+                        if let Some(last_id) = self
+                            .session
+                            .as_ref()
+                            .and_then(|s| s.timeline_snapshot().last().map(|it| it.id.clone()))
+                        {
+                            self.turn_done.insert(last_id.clone(), (secs, tokens));
+                            *self.item_versions.entry(last_id).or_insert(0) += 1;
+                        }
                         self.busy = false;
                         self.turn_started = None;
                         self.status = SharedString::from("Ready");
@@ -856,8 +868,6 @@ impl ChatView {
         let parts = self.pending_send.remove(0);
         self.busy = true;
         self.turn_started = Some(Instant::now());
-        self.tokens_at_turn_start = self.last_usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
-        self.last_completed = None; // clear previous footer while this turn runs
         self.status = SharedString::from("Generating…");
         std::thread::spawn(move || {
             let _ = session.send_user_turn(parts);
@@ -903,8 +913,8 @@ impl ChatView {
         self.pending_permissions.clear();
         self.plan = None;
         self.last_error = None;
+        self.turn_done.clear();
         self.sync_blocks();
-        self.last_completed = None;
         self.busy = false;
         self.starting = true;
         self.status = SharedString::from("Connecting…");
@@ -934,8 +944,8 @@ impl ChatView {
         self.pending_permissions.clear();
         self.plan = None;
         self.last_error = None;
+        self.turn_done.clear();
         self.sync_blocks();
-        self.last_completed = None;
         self.busy = false;
         self.starting = true;
         self.status = SharedString::from("Resuming…");
@@ -1170,8 +1180,12 @@ impl ChatView {
     fn usage_summary(&self) -> SharedString {
         match &self.last_usage {
             Some(u) => SharedString::from(format!(
-                "Usage · total {} (input {} / output {} / cached {})",
-                u.total_tokens, u.input_tokens, u.output_tokens, u.cached_input_tokens
+                "Usage · total {} (input {} / output {} / cached {}) · last turn ↓ {}",
+                u.total_tokens,
+                u.input_tokens,
+                u.output_tokens,
+                u.cached_input_tokens,
+                u.last_output_tokens
             )),
             None => SharedString::from("No token usage yet"),
         }
@@ -1404,6 +1418,11 @@ impl ChatView {
         cx.notify();
     }
 
+    /// Whether any part of this chat pane (composer, cards) owns window focus.
+    pub(in crate::app) fn contains_focused(&self, window: &Window, cx: &gpui::App) -> bool {
+        self.focus_handle.contains_focused(window, cx)
+    }
+
     /// 正文字号实时读终端字号设置，与终端一致；其余层级固定。
     fn body_font(&self, cx: &gpui::App) -> gpui::Pixels {
         self.app
@@ -1418,7 +1437,29 @@ impl ChatView {
                     .unwrap_or(14.0)
                     .clamp(8.0, 28.0))
             })
-            .unwrap_or_else(text_body)
+            .unwrap_or_else(|| px(14.0))
+    }
+
+    /// Palette + type ramp. Colors come from the theme; sizes derive from the
+    /// terminal font size: body N, titles/menus N-1, secondary N-2, stamps N-3.
+    fn pal(&self, cx: &mut Context<Self>) -> Pal {
+        let body = self.body_font(cx);
+        let floor = |v: gpui::Pixels| if v < px(10.0) { px(10.0) } else { v };
+        let theme = cx.theme();
+        Pal {
+            fg: theme.foreground,
+            muted: theme.muted_foreground,
+            border: theme.border,
+            secondary: theme.secondary,
+            primary: theme.primary,
+            primary_fg: theme.primary_foreground,
+            danger: theme.danger,
+            bubble: theme.secondary,
+            body,
+            md: floor(body - px(1.0)),
+            sm: floor(body - px(2.0)),
+            xs: floor(body - px(3.0)),
+        }
     }
 
     /// Bump an item's UI version (its row height changed) and reconcile.
@@ -1507,26 +1548,22 @@ struct Pal {
     primary_fg: gpui::Hsla,
     danger: gpui::Hsla,
     bubble: gpui::Hsla,
+    /// Type ramp derived from the terminal font size (see [`ChatView::pal`]).
+    body: gpui::Pixels,
+    md: gpui::Pixels,
+    sm: gpui::Pixels,
+    xs: gpui::Pixels,
 }
 
 impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let pal = self.pal(cx);
         let theme = cx.theme();
-        let pal = Pal {
-            fg: theme.foreground,
-            muted: theme.muted_foreground,
-            border: theme.border,
-            secondary: theme.secondary,
-            primary: theme.primary,
-            primary_fg: theme.primary_foreground,
-            danger: theme.danger,
-            bubble: theme.secondary,
-        };
         let input_bg = theme.background;
+        let mono = theme.mono_font_family.clone();
         let input_value = self.input.read(cx).value().to_string();
         let compact = self.container_width.is_some_and(|w| w < px(460.0));
 
-        let mono = theme.mono_font_family.clone();
         let approvals: Vec<Div> = self
             .pending_approvals
             .iter()
@@ -1552,14 +1589,12 @@ impl Render for ChatView {
             .clone()
             .map(|message| self.render_error(message, pal, cx));
         let has_rows = !self.blocks.is_empty();
-        let show_done = !self.busy && self.last_completed.is_some();
         let has_pinned = !approvals.is_empty()
             || !user_inputs.is_empty()
             || !permissions.is_empty()
             || plan_card.is_some()
             || error_card.is_some()
-            || self.show_working()
-            || show_done;
+            || self.show_working();
 
         div()
             .flex()
@@ -1567,6 +1602,7 @@ impl Render for ChatView {
             .size_full()
             .min_w_0()
             .min_h_0()
+            .track_focus(&self.focus_handle)
             .on_prepaint({
                 let view = cx.entity();
                 move |bounds, _, cx| {
@@ -1628,18 +1664,17 @@ impl Render for ChatView {
                             } else {
                                 format!("{secs}s")
                             };
-                            let tokens =
-                                self.last_usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
+                            let tokens = self
+                                .last_usage
+                                .as_ref()
+                                .map(|u| u.last_output_tokens)
+                                .unwrap_or(0);
                             let meta = if tokens > 0 {
                                 format!("{elapsed} · ↓ {}", fmt_tokens(tokens))
                             } else {
                                 elapsed.clone()
                             };
                             this.child(render_working(pal, self.working_word(), meta, secs % 2 == 0))
-                        })
-                        .when(show_done, |this| {
-                            let (secs, tokens) = self.last_completed.unwrap();
-                            this.child(render_done(pal, secs, tokens))
                         }),
                 )
             })
@@ -1660,18 +1695,8 @@ impl ChatView {
         let Some(block) = self.blocks.get(ix).cloned() else {
             return div().into_any_element();
         };
-        let theme = cx.theme();
-        let pal = Pal {
-            fg: theme.foreground,
-            muted: theme.muted_foreground,
-            border: theme.border,
-            secondary: theme.secondary,
-            primary: theme.primary,
-            primary_fg: theme.primary_foreground,
-            danger: theme.danger,
-            bubble: theme.secondary,
-        };
-        let mono = theme.mono_font_family.clone();
+        let pal = self.pal(cx);
+        let mono = cx.theme().mono_font_family.clone();
         let refs: Vec<&TimelineItem> = self.items[block.range]
             .iter()
             .filter(|it| !(it.kind == TimelineKind::Reasoning && it.text.is_empty()))
@@ -1681,11 +1706,22 @@ impl ChatView {
             [single] => self.render_row(single, pal, mono, cx),
             _ => self.render_activity_block(&refs, pal, mono, cx),
         };
+        // A turn that ended on an item in this block keeps its footer forever.
+        let done_meta = refs
+            .iter()
+            .rev()
+            .find_map(|it| self.turn_done.get(&it.id).copied());
         div()
+            .flex()
+            .flex_col()
+            .gap_1()
             .px(px(12.0))
             .pt(if ix == 0 { px(12.0) } else { px(0.0) })
             .pb(px(12.0))
             .child(row)
+            .when_some(done_meta, |this, (secs, tokens)| {
+                this.child(render_done(pal, secs, tokens))
+            })
             .into_any_element()
     }
 
@@ -1743,7 +1779,7 @@ impl ChatView {
                             .bg(pal.primary.opacity(0.1))
                             .border_1()
                             .border_color(pal.primary.opacity(0.18))
-                            .text_size(self.body_font(cx))
+                            .text_size(pal.body)
                             .text_color(pal.fg)
                             .child(text),
                     )
@@ -1809,7 +1845,7 @@ impl ChatView {
                             .gap_2()
                             .child(
                                 div()
-                                    .text_size(text_xs())
+                                    .text_size(pal.xs)
                                     .text_color(pal.muted)
                                     .child("回车保存并重发，会清除后续消息"),
                             )
@@ -1856,12 +1892,15 @@ impl ChatView {
                 div()
                     .w_full()
                     .min_w_0()
-                    .text_size(self.body_font(cx))
+                    .text_size(pal.body)
                     .text_color(pal.fg)
-                    .child(TextView::markdown(
-                        SharedString::from(format!("md-{}", item.id)),
-                        text,
-                    )),
+                    .child(
+                        TextView::markdown(
+                            SharedString::from(format!("md-{}", item.id)),
+                            text,
+                        )
+                        .selectable(true),
+                    ),
             )
             .child(
                 meta_row(time.clone(), pal)
@@ -1941,19 +1980,19 @@ impl ChatView {
             .bg(pal.primary.opacity(0.06))
             .child(
                 div()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.primary)
                     .child(title),
             )
             .child(
                 div()
-                    .text_size(if is_cmd { text_sm() } else { text_md() })
+                    .text_size(if is_cmd { pal.sm } else { pal.md })
                     .text_color(pal.fg)
                     .when(is_cmd, |s| s.font_family(mono))
                     .child(req.summary.clone()),
             )
             .when_some(cwd, |this, cwd| {
-                this.child(div().text_size(text_xs()).text_color(pal.muted).child(cwd))
+                this.child(div().text_size(pal.xs).text_color(pal.muted).child(cwd))
             })
             .child(
                 div()
@@ -2027,7 +2066,7 @@ impl ChatView {
             .bg(pal.primary.opacity(0.06))
             .child(
                 div()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.primary)
                     .child("需要你的回答"),
             );
@@ -2035,14 +2074,14 @@ impl ChatView {
             if !q.header.is_empty() {
                 card = card.child(
                     div()
-                        .text_size(text_xs())
+                        .text_size(pal.xs)
                         .text_color(pal.muted)
                         .child(q.header.clone()),
                 );
             }
             card = card.child(
                 div()
-                    .text_size(text_md())
+                    .text_size(pal.md)
                     .text_color(pal.fg)
                     .child(q.question.clone()),
             );
@@ -2090,7 +2129,7 @@ impl ChatView {
                         .child(
                             div()
                                 .flex_none()
-                                .text_size(text_md())
+                                .text_size(pal.md)
                                 .text_color(pal.fg)
                                 .child(opt.label.clone()),
                         )
@@ -2100,7 +2139,7 @@ impl ChatView {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_size(text_sm())
+                                    .text_size(pal.sm)
                                     .text_color(pal.muted)
                                     .child(opt.description.clone()),
                             )
@@ -2161,18 +2200,18 @@ impl ChatView {
             .bg(pal.primary.opacity(0.06))
             .child(
                 div()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.primary)
                     .child("需要批准 · 扩展权限"),
             )
             .when_some(req.reason.clone(), |this, reason| {
-                this.child(div().text_size(text_md()).text_color(pal.fg).child(reason))
+                this.child(div().text_size(pal.md).text_color(pal.fg).child(reason))
             })
-            .child(div().text_size(text_sm()).text_color(pal.muted).child(summary))
+            .child(div().text_size(pal.sm).text_color(pal.muted).child(summary))
             .when(!req.cwd.is_empty(), |this| {
                 this.child(
                     div()
-                        .text_size(text_xs())
+                        .text_size(pal.xs)
                         .text_color(pal.muted)
                         .child(req.cwd.clone()),
                 )
@@ -2248,7 +2287,7 @@ impl ChatView {
                 div()
                     .flex_1()
                     .min_w_0()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.danger)
                     .child(message),
             )
@@ -2278,13 +2317,13 @@ impl ChatView {
             .px(px(10.0))
             .py(px(6.0))
             .child(Icon::new(HeroIconName::Clock).size_3().text_color(pal.muted))
-            .child(div().text_size(text_xs()).text_color(pal.muted).child("Queued"))
+            .child(div().text_size(pal.xs).text_color(pal.muted).child("Queued"))
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.fg)
                     .child(queued_label(parts)),
             )
@@ -2420,7 +2459,7 @@ impl ChatView {
                                                 )
                                             }),
                                     )
-                                    .child(self.access_button(access, access_color, compact, cx)),
+                                    .child(self.access_button(access, access_color, pal, compact, cx)),
                             )
                             // Right cluster: model, effort, send.
                             .child(
@@ -2457,7 +2496,7 @@ impl ChatView {
                 div()
                     .max_w(px(160.0))
                     .truncate()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.fg)
                     .child(att.label()),
             )
@@ -2485,7 +2524,7 @@ impl ChatView {
             return menu.child(
                 div()
                     .p(px(8.0))
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.muted)
                     .child("输入以搜索文件…"),
             );
@@ -2528,7 +2567,7 @@ impl ChatView {
                 .py(px(4.0))
                 .child(
                     div()
-                        .text_size(text_xs())
+                        .text_size(pal.xs)
                         .text_color(pal.muted)
                         .child("历史会话"),
                 )
@@ -2551,7 +2590,7 @@ impl ChatView {
             return menu.child(
                 div()
                     .p(px(8.0))
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.muted)
                     .child("没有历史会话"),
             );
@@ -2579,14 +2618,14 @@ impl ChatView {
                             .flex_1()
                             .min_w_0()
                             .truncate()
-                            .text_size(text_md())
+                            .text_size(pal.md)
                             .text_color(pal.fg)
                             .child(t.preview.clone()),
                     )
                     .child(
                         div()
                             .flex_none()
-                            .text_size(text_xs())
+                            .text_size(pal.xs)
                             .text_color(pal.muted)
                             .child(when),
                     ),
@@ -2599,6 +2638,7 @@ impl ChatView {
         &self,
         access: Access,
         color: gpui::Hsla,
+        pal: Pal,
         compact: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -2632,7 +2672,7 @@ impl ChatView {
                     .text_color(color)
                     .child(Icon::new(HeroIconName::ExclamationTriangle).size_3())
                     .when(!compact, |s| {
-                        s.child(div().text_size(text_sm()).child(access.label()))
+                        s.child(div().text_size(pal.sm).child(access.label()))
                     })
                     .child(Icon::new(HeroIconName::ChevronDown).size_3()),
             )
@@ -2667,7 +2707,7 @@ impl ChatView {
                     .gap_1()
                     .text_color(pal.muted)
                     .child(Icon::new(HeroIconName::CubeTransparent).size_3())
-                    .when(!compact, |s| s.child(div().text_size(text_sm()).child(label)))
+                    .when(!compact, |s| s.child(div().text_size(pal.sm).child(label)))
                     .child(Icon::new(HeroIconName::ChevronDown).size_3()),
             )
             .dropdown_menu(move |mut menu, _window, _cx| {
@@ -2720,7 +2760,7 @@ impl ChatView {
                     .gap_1()
                     .text_color(pal.muted)
                     .child(Icon::new(HeroIconName::CpuChip).size_3())
-                    .when(!compact, |s| s.child(div().text_size(text_sm()).child(label)))
+                    .when(!compact, |s| s.child(div().text_size(pal.sm).child(label)))
                     .child(Icon::new(HeroIconName::ChevronDown).size_3()),
             )
             .dropdown_menu(move |menu, _window, _cx| {
@@ -2815,7 +2855,7 @@ impl ChatView {
             return menu.child(
                 div()
                     .p(px(8.0))
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.muted)
                     .child("无匹配命令"),
             );
@@ -2843,7 +2883,7 @@ impl ChatView {
                     .px(px(8.0))
                     .pt(px(6.0))
                     .pb(px(2.0))
-                    .text_size(text_xs())
+                    .text_size(pal.xs)
                     .text_color(pal.muted)
                     .child("技能 (skills)"),
             );
@@ -2870,20 +2910,6 @@ fn relative_w() -> gpui::DefiniteLength {
     gpui::relative(0.9)
 }
 
-// 统一字号：消息正文跟随终端字号（默认 14px），标题/菜单/卡片 12px，辅助 11px，时间戳/徽标 10px。
-fn text_body() -> gpui::Pixels {
-    px(14.0)
-}
-fn text_md() -> gpui::Pixels {
-    px(12.0)
-}
-fn text_sm() -> gpui::Pixels {
-    px(11.0)
-}
-fn text_xs() -> gpui::Pixels {
-    px(10.0)
-}
-
 /// One row in the `/` palette: icon + name + (truncated) description.
 fn slash_row(
     id: SharedString,
@@ -2907,7 +2933,7 @@ fn slash_row(
         .when_some(icon, |this, ic| {
             this.child(Icon::new(ic).size_4().text_color(pal.muted))
         })
-        .child(div().flex_none().text_size(text_md()).text_color(pal.fg).child(name))
+        .child(div().flex_none().text_size(pal.md).text_color(pal.fg).child(name))
         .when(!desc.is_empty(), |this| {
             // flex_1 + truncate:中文没有词边界,任由布局收缩会塌成一列单字。
             this.child(
@@ -2915,7 +2941,7 @@ fn slash_row(
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.muted)
                     .child(desc),
             )
@@ -2973,14 +2999,14 @@ fn render_empty_state(pal: Pal) -> Div {
         )
         .child(
             div()
-                .text_size(text_md())
+                .text_size(pal.md)
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(pal.fg)
                 .child("开始与 Codex 对话"),
         )
         .child(
             div()
-                .text_size(text_sm())
+                .text_size(pal.sm)
                 .text_color(pal.muted)
                 .child("输入 / 调出命令 · @ 引用文件 · Shift+Enter 换行"),
         )
@@ -3010,12 +3036,12 @@ fn render_working(pal: Pal, word: &str, meta: String, pulse: bool) -> Div {
             )
             .child(
                 div()
-                    .text_size(text_md())
+                    .text_size(pal.md)
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(pal.primary)
                     .child(format!("{word}…")),
             )
-            .child(div().text_size(text_sm()).text_color(pal.muted).child(meta)),
+            .child(div().text_size(pal.sm).text_color(pal.muted).child(meta)),
     )
 }
 
@@ -3039,7 +3065,7 @@ fn render_done(pal: Pal, secs: u64, tokens: u64) -> Div {
         .gap_2()
         .py(px(2.0))
         .child(Icon::new(HeroIconName::Check).size_3().text_color(pal.muted))
-        .child(div().text_size(text_sm()).text_color(pal.muted).child(meta))
+        .child(div().text_size(pal.sm).text_color(pal.muted).child(meta))
 }
 
 /// The turn's todo plan (turn/plan/updated), pinned while the turn runs.
@@ -3082,7 +3108,7 @@ fn render_plan(explanation: Option<&str>, steps: &[PlanStep], pal: Pal) -> Div {
                     div()
                         .flex_1()
                         .min_w_0()
-                        .text_size(text_sm())
+                        .text_size(pal.sm)
                         .text_color(color)
                         .child(step.step.clone()),
                 ),
@@ -3103,10 +3129,10 @@ fn render_plan(explanation: Option<&str>, steps: &[PlanStep], pal: Pal) -> Div {
                 .items_center()
                 .gap_2()
                 .child(Icon::new(HeroIconName::Bars3).size_3().text_color(pal.muted))
-                .child(div().text_size(text_xs()).text_color(pal.muted).child("Plan"))
+                .child(div().text_size(pal.xs).text_color(pal.muted).child("Plan"))
                 .child(
                     div()
-                        .text_size(text_xs())
+                        .text_size(pal.xs)
                         .text_color(pal.muted)
                         .child(format!("{done}/{}", steps.len())),
                 ),
@@ -3114,7 +3140,7 @@ fn render_plan(explanation: Option<&str>, steps: &[PlanStep], pal: Pal) -> Div {
         .when_some(explanation.filter(|e| !e.is_empty()), |this, explanation| {
             this.child(
                 div()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.muted)
                     .child(explanation.to_string()),
             )
@@ -3204,7 +3230,7 @@ fn meta_row(time: SharedString, pal: Pal) -> Div {
         .flex()
         .items_center()
         .gap_1()
-        .child(div().text_size(text_xs()).text_color(pal.muted).child(time))
+        .child(div().text_size(pal.xs).text_color(pal.muted).child(time))
 }
 
 fn icon_action(
@@ -3294,7 +3320,7 @@ impl ChatView {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_size(text_sm())
+                    .text_size(pal.sm)
                     .text_color(pal.fg)
                     .child(summary),
             )
@@ -3376,7 +3402,7 @@ impl ChatView {
                 div()
                     .max_w(px(220.0))
                     .truncate()
-                    .text_size(text_xs())
+                    .text_size(pal.xs)
                     .text_color(pal.muted)
                     .child(name),
             )
@@ -3468,13 +3494,13 @@ impl ChatView {
             })
             .child(status)
             .child(Icon::new(icon).size_3().text_color(pal.muted))
-            .child(div().flex_none().text_size(text_xs()).text_color(pal.muted).child(label))
+            .child(div().flex_none().text_size(pal.xs).text_color(pal.muted).child(label))
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_size(if is_cmd { text_sm() } else { text_md() })
+                    .text_size(if is_cmd { pal.sm } else { pal.md })
                     .text_color(pal.fg)
                     .when(is_cmd, |s| s.font_family(mono.clone()))
                     .child(primary),
@@ -3519,7 +3545,7 @@ impl ChatView {
             if !body_text.is_empty() {
                 body = body.child(
                     div()
-                        .text_size(text_md())
+                        .text_size(pal.md)
                         .text_color(if is_reasoning { pal.muted } else { pal.fg })
                         .child(body_text),
                 );
@@ -3573,7 +3599,7 @@ impl ChatView {
                                         .min_w_0()
                                         .truncate()
                                         .font_family(mono.clone())
-                                        .text_size(text_sm())
+                                        .text_size(pal.sm)
                                         .text_color(pal.fg)
                                         .child(short_path(path)),
                                 )
@@ -3590,7 +3616,7 @@ impl ChatView {
                                         .items_center()
                                         .gap_1()
                                         .text_color(pal.muted)
-                                        .child(div().text_size(text_sm()).child("打开方式"))
+                                        .child(div().text_size(pal.sm).child("打开方式"))
                                         .child(Icon::new(HeroIconName::ChevronDown).size_3()),
                                 )
                                 .dropdown_menu(move |menu, _window, _cx| {
@@ -3617,7 +3643,7 @@ impl ChatView {
                 body = body.child(
                     div()
                         .font_family(mono)
-                        .text_size(text_sm())
+                        .text_size(pal.sm)
                         .text_color(pal.muted)
                         .child(item.output.trim_end().to_string()),
                 );
@@ -3725,7 +3751,7 @@ fn diff_badges(add: usize, del: usize, pal: Pal) -> Div {
         .flex_none()
         .items_center()
         .gap_2()
-        .text_size(text_xs())
+        .text_size(pal.xs)
         .when(add > 0, |s| {
             s.child(div().text_color(diff_green()).child(format!("+{add}")))
         })
@@ -3738,7 +3764,7 @@ fn diff_badges(add: usize, del: usize, pal: Pal) -> Div {
 fn render_diff(diff: &str, pal: Pal, mono: SharedString) -> Div {
     let add = diff_green();
     let del = pal.danger;
-    let mut block = div().flex().flex_col().font_family(mono).text_size(text_sm());
+    let mut block = div().flex().flex_col().font_family(mono).text_size(pal.sm);
     for line in diff.lines() {
         let color = if line.starts_with("@@") {
             pal.primary
