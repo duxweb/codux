@@ -436,9 +436,9 @@ fn spawn_session(
     resume: Option<String>,
 ) {
     std::thread::spawn(move || {
-        let _ = tx.send(ChatMsg::Note("解析 codex…".into()));
+        let _ = tx.send(ChatMsg::Note("Resolving codex…".into()));
         let (program, path_env) = resolve_codex(&wrapper);
-        let _ = tx.send(ChatMsg::Note("启动 app-server…".into()));
+        let _ = tx.send(ChatMsg::Note("Starting app-server…".into()));
         let mut env = Vec::new();
         if !path_env.is_empty() {
             env.push(("PATH".to_string(), path_env));
@@ -453,7 +453,7 @@ fn spawn_session(
         let sink = Box::new(move |ev: &AgentEvent| {
             let _ = sink_tx.send(ChatMsg::Event(ev.clone()));
         });
-        let _ = tx.send(ChatMsg::Note("握手中…".into()));
+        let _ = tx.send(ChatMsg::Note("Handshaking…".into()));
         // The driver kind is the single switch point for codex / claude / opencode.
         let started = match &resume {
             Some(tid) => resume_session(AgentKind::Codex, program, env, &cfg, tid, sink),
@@ -650,7 +650,7 @@ impl ChatView {
             plan: None,
             last_error: None,
             item_times: HashMap::new(),
-            status: SharedString::from("空闲"),
+            status: SharedString::from("Idle"),
             input,
             list_state,
             blocks: Vec::new(),
@@ -712,7 +712,7 @@ impl ChatView {
             ChatMsg::Started(session) => {
                 self.session = Some(session);
                 self.starting = false;
-                self.status = SharedString::from("就绪");
+                self.status = SharedString::from("Ready");
                 self.pump_queue();
                 self.update_queue_status();
                 true
@@ -750,7 +750,7 @@ impl ChatView {
                 self.starting = false;
                 self.busy = false;
                 self.turn_started = None;
-                self.status = SharedString::from(format!("错误: {err}"));
+                self.status = SharedString::from(format!("Error: {err}"));
                 false
             }
             ChatMsg::Event(ev) => {
@@ -770,7 +770,7 @@ impl ChatView {
                     AgentEvent::TurnStarted => {
                         self.plan = None;
                         self.last_error = None;
-                        self.status = SharedString::from("生成中…");
+                        self.status = SharedString::from("Generating…");
                     }
                     AgentEvent::TurnCompleted => {
                         // Freeze a "完成" summary for the turn that just ended.
@@ -784,7 +784,7 @@ impl ChatView {
                         self.last_completed = Some((secs, tokens));
                         self.busy = false;
                         self.turn_started = None;
-                        self.status = SharedString::from("就绪");
+                        self.status = SharedString::from("Ready");
                         self.pump_queue();
                         self.update_queue_status();
                     }
@@ -792,13 +792,13 @@ impl ChatView {
                     AgentEvent::Error(err) => {
                         self.busy = false;
                         self.turn_started = None;
-                        self.status = SharedString::from("就绪");
+                        self.status = SharedString::from("Ready");
                         self.last_error = Some(err);
                         self.pump_queue();
                         self.update_queue_status();
                     }
                     AgentEvent::Status(_) => {}
-                    _ => self.status = SharedString::from("生成中…"),
+                    _ => self.status = SharedString::from("Generating…"),
                 }
                 true
             }
@@ -858,7 +858,7 @@ impl ChatView {
         self.turn_started = Some(Instant::now());
         self.tokens_at_turn_start = self.last_usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
         self.last_completed = None; // clear previous footer while this turn runs
-        self.status = SharedString::from("生成中…");
+        self.status = SharedString::from("Generating…");
         std::thread::spawn(move || {
             let _ = session.send_user_turn(parts);
         });
@@ -867,9 +867,9 @@ impl ChatView {
     /// Reflect queue/connection state in the status line.
     fn update_queue_status(&mut self) {
         if !self.pending_send.is_empty() {
-            self.status = SharedString::from(format!("已排队 {} 条", self.pending_send.len()));
+            self.status = SharedString::from(format!("Queued {}", self.pending_send.len()));
         } else if self.session.is_none() {
-            self.status = SharedString::from("连接中…");
+            self.status = SharedString::from("Connecting…");
         }
     }
 
@@ -907,7 +907,7 @@ impl ChatView {
         self.last_completed = None;
         self.busy = false;
         self.starting = true;
-        self.status = SharedString::from("连接中…");
+        self.status = SharedString::from("Connecting…");
         spawn_session(
             self.tx.clone(),
             self.cwd.clone(),
@@ -938,7 +938,7 @@ impl ChatView {
         self.last_completed = None;
         self.busy = false;
         self.starting = true;
-        self.status = SharedString::from("恢复会话…");
+        self.status = SharedString::from("Resuming…");
         spawn_session(
             self.tx.clone(),
             self.cwd.clone(),
@@ -961,7 +961,7 @@ impl ChatView {
         self.pending_send.clear();
         self.busy = false;
         self.turn_started = None;
-        self.status = SharedString::from("已中断");
+        self.status = SharedString::from("Interrupted");
         cx.notify();
     }
 
@@ -1033,7 +1033,7 @@ impl ChatView {
         }
         self.sync_blocks();
         self.busy = true;
-        self.status = SharedString::from("重发中…");
+        self.status = SharedString::from("Resending…");
         std::thread::spawn(move || {
             let _ = session.rollback(num_turns);
             session.truncate_timeline_before(&id);
@@ -1050,7 +1050,7 @@ impl ChatView {
             return;
         }
         self.starting = true;
-        self.status = SharedString::from("连接中…");
+        self.status = SharedString::from("Connecting…");
         spawn_session(
             self.tx.clone(),
             self.cwd.clone(),
@@ -1089,7 +1089,7 @@ impl ChatView {
         }
 
         let Some(session) = self.session.clone() else {
-            self.status = SharedString::from("正在连接 Codex…");
+            self.status = SharedString::from("Connecting to Codex…");
             self.ensure_session();
             cx.notify();
             return;
@@ -1100,19 +1100,19 @@ impl ChatView {
                 std::thread::spawn(move || {
                     let _ = session.interrupt();
                 });
-                self.status = SharedString::from("中断中…");
+                self.status = SharedString::from("Interrupting…");
             }
             "/compact" => {
                 std::thread::spawn(move || {
                     let _ = session.compact();
                 });
-                self.status = SharedString::from("压缩中…");
+                self.status = SharedString::from("Compacting…");
             }
             "/review" => {
                 std::thread::spawn(move || {
                     let _ = session.review_uncommitted();
                 });
-                self.status = SharedString::from("审查未提交改动中…");
+                self.status = SharedString::from("Reviewing…");
             }
             "/model" => {
                 if arg.is_empty() {
@@ -1121,7 +1121,7 @@ impl ChatView {
                 } else {
                     session.set_model(Some(arg.to_string()));
                     self.model = Some(arg.to_string());
-                    self.status = SharedString::from(format!("模型: {arg}"));
+                    self.status = SharedString::from(format!("Model: {arg}"));
                 }
             }
             "/effort" => {
@@ -1131,7 +1131,7 @@ impl ChatView {
                 } else {
                     session.set_effort(Some(arg.to_string()));
                     self.effort = SharedString::from(arg.to_string());
-                    self.status = SharedString::from(format!("推理强度: {arg}"));
+                    self.status = SharedString::from(format!("Effort: {arg}"));
                 }
             }
             other => self.status = SharedString::from(format!("未知命令: {other}")),
@@ -1156,24 +1156,24 @@ impl ChatView {
     fn working_word(&self) -> &'static str {
         match self.items.last() {
             Some(it) => match it.kind {
-                TimelineKind::Reasoning => "思考中",
-                TimelineKind::Command => "执行命令",
-                TimelineKind::FileChange => "修改文件",
-                TimelineKind::ToolCall => "调用工具",
-                TimelineKind::AssistantMessage if it.status == ItemStatus::InProgress => "撰写回复",
-                _ => "工作中",
+                TimelineKind::Reasoning => "Thinking",
+                TimelineKind::Command => "Running command",
+                TimelineKind::FileChange => "Editing files",
+                TimelineKind::ToolCall => "Calling tool",
+                TimelineKind::AssistantMessage if it.status == ItemStatus::InProgress => "Writing",
+                _ => "Working",
             },
-            None => "工作中",
+            None => "Working",
         }
     }
 
     fn usage_summary(&self) -> SharedString {
         match &self.last_usage {
             Some(u) => SharedString::from(format!(
-                "用量 · 合计 {} (输入 {} / 输出 {} / 缓存 {})",
+                "Usage · total {} (input {} / output {} / cached {})",
                 u.total_tokens, u.input_tokens, u.output_tokens, u.cached_input_tokens
             )),
-            None => SharedString::from("暂无 token 用量数据"),
+            None => SharedString::from("No token usage yet"),
         }
     }
 
@@ -1551,12 +1551,6 @@ impl Render for ChatView {
             .last_error
             .clone()
             .map(|message| self.render_error(message, pal, cx));
-        let queued: Vec<Div> = self
-            .pending_send
-            .iter()
-            .enumerate()
-            .map(|(idx, parts)| self.render_queued(idx, parts, pal, cx))
-            .collect();
         let has_rows = !self.blocks.is_empty();
         let show_done = !self.busy && self.last_completed.is_some();
         let has_pinned = !approvals.is_empty()
@@ -1564,7 +1558,6 @@ impl Render for ChatView {
             || !permissions.is_empty()
             || plan_card.is_some()
             || error_card.is_some()
-            || !queued.is_empty()
             || self.show_working()
             || show_done;
 
@@ -1625,7 +1618,6 @@ impl Render for ChatView {
                         .children(user_inputs)
                         .children(permissions)
                         .when_some(error_card, |this, card| this.child(card))
-                        .children(queued)
                         .when(self.show_working(), |this| {
                             let secs = self
                                 .turn_started
@@ -1639,9 +1631,9 @@ impl Render for ChatView {
                             let tokens =
                                 self.last_usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
                             let meta = if tokens > 0 {
-                                format!("已执行 {elapsed} · ↓ {}", fmt_tokens(tokens))
+                                format!("{elapsed} · ↓ {}", fmt_tokens(tokens))
                             } else {
-                                format!("已执行 {elapsed}")
+                                elapsed.clone()
                             };
                             this.child(render_working(pal, self.working_word(), meta, secs % 2 == 0))
                         })
@@ -2271,7 +2263,7 @@ impl ChatView {
             ))
     }
 
-    /// One queued (not yet sent) turn: content preview + remove.
+    /// One queued (not yet sent) turn inside the composer-top dock.
     fn render_queued(
         &self,
         idx: usize,
@@ -2283,14 +2275,10 @@ impl ChatView {
             .flex()
             .items_center()
             .gap_2()
-            .rounded(px(10.0))
             .px(px(10.0))
             .py(px(6.0))
-            .border_1()
-            .border_color(pal.border)
-            .bg(pal.secondary.opacity(0.35))
             .child(Icon::new(HeroIconName::Clock).size_3().text_color(pal.muted))
-            .child(div().text_size(text_xs()).text_color(pal.muted).child("排队中"))
+            .child(div().text_size(text_xs()).text_color(pal.muted).child("Queued"))
             .child(
                 div()
                     .flex_1()
@@ -2339,6 +2327,26 @@ impl ChatView {
             .map(|(i, a)| self.render_attachment_chip(i, a, pal, cx))
             .collect();
 
+        // Queued turns dock onto the composer top (codex app style): slightly
+        // narrower, top-rounded only, visually attached to the box below.
+        let queued_dock = (!self.pending_send.is_empty()).then(|| {
+            let mut dock = div()
+                .mx(px(12.0))
+                .rounded_tl(px(10.0))
+                .rounded_tr(px(10.0))
+                .border_t_1()
+                .border_l_1()
+                .border_r_1()
+                .border_color(pal.border)
+                .bg(pal.secondary.opacity(0.5))
+                .flex()
+                .flex_col();
+            for (idx, parts) in self.pending_send.iter().enumerate() {
+                dock = dock.child(self.render_queued(idx, parts, pal, cx));
+            }
+            dock
+        });
+
         div()
             .flex_none()
             .flex()
@@ -2349,7 +2357,8 @@ impl ChatView {
             .when(show_mention, |this| this.child(self.render_mention_menu(pal, cx)))
             .when(self.show_threads, |this| this.child(self.render_threads_menu(pal, cx)))
             .child(
-                div()
+                div().flex().flex_col().children(queued_dock).child(
+                    div()
                     .flex()
                     .flex_col()
                     .gap_2()
@@ -2424,6 +2433,7 @@ impl ChatView {
                                     .child(self.send_button(pal, cx)),
                             ),
                     ),
+                ),
             )
     }
 
@@ -3018,9 +3028,9 @@ fn render_done(pal: Pal, secs: u64, tokens: u64) -> Div {
         format!("{secs}s")
     };
     let meta = if tokens > 0 {
-        format!("完成 · 用时 {elapsed} · ↓ {}", fmt_tokens(tokens))
+        format!("Done · {elapsed} · ↓ {}", fmt_tokens(tokens))
     } else {
-        format!("完成 · 用时 {elapsed}")
+        format!("Done · {elapsed}")
     };
     div()
         .flex()
@@ -3093,7 +3103,7 @@ fn render_plan(explanation: Option<&str>, steps: &[PlanStep], pal: Pal) -> Div {
                 .items_center()
                 .gap_2()
                 .child(Icon::new(HeroIconName::Bars3).size_3().text_color(pal.muted))
-                .child(div().text_size(text_xs()).text_color(pal.muted).child("计划"))
+                .child(div().text_size(text_xs()).text_color(pal.muted).child("Plan"))
                 .child(
                     div()
                         .text_size(text_xs())
@@ -3115,10 +3125,10 @@ fn render_plan(explanation: Option<&str>, steps: &[PlanStep], pal: Pal) -> Div {
 /// User-facing text for advisory notices (compaction, reroute, warnings).
 fn notice_text(kind: &str, message: &str) -> String {
     let label = match kind {
-        "thread/compacted" => "上下文已压缩",
-        "model/rerouted" => "模型已自动切换",
-        "deprecationNotice" => "弃用提示",
-        _ => "提示",
+        "thread/compacted" => "Context compacted",
+        "model/rerouted" => "Model rerouted",
+        "deprecationNotice" => "Deprecation notice",
+        _ => "Notice",
     };
     if message.is_empty() {
         label.to_string()
@@ -3260,9 +3270,9 @@ impl ChatView {
             Icon::new(HeroIconName::Check).size_3().text_color(pal.muted).into_any_element()
         };
         let summary = if running {
-            format!("执行中… {} 步", items.len())
+            format!("Running… {} steps", items.len())
         } else {
-            format!("已执行 {} 步", items.len())
+            format!("Ran {} steps", items.len())
         };
         let key2 = key.clone();
         let header = div()
@@ -3387,15 +3397,15 @@ impl ChatView {
             return self.render_image(item, p, pal, cx);
         }
         let (label, icon) = match item.item_type.as_str() {
-            "webSearch" => ("搜索", HeroIconName::MagnifyingGlass),
+            "webSearch" => ("Search", HeroIconName::MagnifyingGlass),
             "mcpToolCall" => ("MCP", HeroIconName::Cog6Tooth),
-            "contextCompaction" => ("压缩", HeroIconName::ArchiveBoxArrowDown),
+            "contextCompaction" => ("Compact", HeroIconName::ArchiveBoxArrowDown),
             _ => match item.kind {
-                TimelineKind::Reasoning => ("思考", HeroIconName::LightBulb),
-                TimelineKind::Command => ("命令", HeroIconName::CommandLine),
-                TimelineKind::FileChange => ("文件", HeroIconName::DocumentText),
-                TimelineKind::Plan => ("计划", HeroIconName::Bars3),
-                _ => ("工具", HeroIconName::Cog6Tooth),
+                TimelineKind::Reasoning => ("Thinking", HeroIconName::LightBulb),
+                TimelineKind::Command => ("Command", HeroIconName::CommandLine),
+                TimelineKind::FileChange => ("File", HeroIconName::DocumentText),
+                TimelineKind::Plan => ("Plan", HeroIconName::Bars3),
+                _ => ("Tool", HeroIconName::Cog6Tooth),
             },
         };
         let is_cmd = item.kind == TimelineKind::Command;
@@ -3675,9 +3685,9 @@ fn file_changes(item: &TimelineItem) -> Vec<(String, String)> {
 
 fn filechange_summary(changes: &[(String, String)]) -> String {
     match changes {
-        [] => "文件改动".into(),
-        [(p, _)] => format!("编辑了 {}", short_path(p)),
-        _ => format!("已编辑 {} 个文件", changes.len()),
+        [] => "File changes".into(),
+        [(p, _)] => format!("Edited {}", short_path(p)),
+        _ => format!("Edited {} files", changes.len()),
     }
 }
 
