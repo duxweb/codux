@@ -142,7 +142,7 @@ mod terminal_layout;
 mod terminal_view;
 
 use column_views::{assistant_panel_available, workspace_toolbar_fingerprint};
-use terminal_layout::terminal_main_split_area;
+use terminal_layout::{terminal_chat_pane, terminal_main_split_area};
 use terminal_view::TerminalPaneViewSnapshot;
 
 pub(in crate::app) use column_views::{

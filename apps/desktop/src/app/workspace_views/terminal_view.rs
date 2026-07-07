@@ -9,6 +9,8 @@ pub(in crate::app) struct TerminalWorkspaceSnapshot {
     pub(super) top_grid: TerminalTopGrid,
     pub(super) split_tree: Option<TerminalSplitNode>,
     pub(super) main_panes: Vec<TerminalPaneViewSnapshot>,
+    pub(super) chat_open: bool,
+    pub(super) chat_panel: Option<gpui::Entity<crate::app::agent_chat::ChatPanel>>,
 }
 
 impl TerminalWorkspaceSnapshot {
@@ -176,18 +178,42 @@ impl Render for TerminalWorkspaceView {
             self.open_split_menu_pane,
             cx,
         );
+        // Chat pane rendered as one more terminal split column; the prepaint
+        // probe stays on the terminal column only so split ratios keep using
+        // the real terminal width.
+        let chat_pane = self.snapshot.chat_open.then(|| {
+            terminal_chat_pane(
+                self.app_entity.clone(),
+                &self.snapshot.language,
+                self.snapshot.chat_panel.clone(),
+                cx,
+            )
+        });
 
         div()
             .flex()
-            .flex_col()
-            .flex_1()
-            .flex_basis(px(0.0))
+            .flex_row()
+            .size_full()
             .min_w_0()
             .min_h_0()
-            .w_full()
-            .h_full()
-            .on_prepaint({
-                let view = cx.entity();
+            .child(terminal_column(main, cx.entity()))
+            .children(chat_pane)
+    }
+}
+
+fn terminal_column(
+    main: AnyElement,
+    view: gpui::Entity<TerminalWorkspaceView>,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .flex_basis(px(0.0))
+        .min_w_0()
+        .min_h_0()
+        .h_full()
+        .on_prepaint({
                 move |bounds, _, cx| {
                     view.update(cx, |view, cx| {
                         let height = bounds.size.height;
@@ -217,5 +243,4 @@ impl Render for TerminalWorkspaceView {
                     .overflow_hidden()
                     .child(main),
             )
-    }
 }

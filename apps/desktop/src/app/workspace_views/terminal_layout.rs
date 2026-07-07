@@ -536,6 +536,7 @@ fn terminal_pane(
     let float_id = SharedString::from(format!("terminal-pane-float-{index}"));
     let collapse_id = SharedString::from(format!("terminal-pane-collapse-{index}"));
     let add_id = SharedString::from(format!("terminal-pane-add-{index}"));
+    let chat_id = SharedString::from(format!("terminal-pane-chat-{index}"));
     let session_drop_entity = app_entity.clone();
     let pane_view = slot.view.clone();
     let drop_terminal_id = slot.terminal_id.clone();
@@ -635,6 +636,19 @@ fn terminal_pane(
                         cx,
                     ))
                     .child(terminal_pane_control_button(
+                        app_entity.clone(),
+                        chat_id,
+                        HeroIconName::Sparkles,
+                        SharedString::from(workspace_i18n(
+                            language,
+                            "terminal.chat.open",
+                            "AI Chat Split",
+                        )),
+                        true,
+                        cx,
+                        move |app, window, cx| app.toggle_chat_split(window, cx),
+                    ))
+                    .child(terminal_pane_control_button(
                         app_entity,
                         close_id,
                         HeroIconName::XMark,
@@ -687,6 +701,99 @@ fn terminal_pane(
                         .border_color(color(theme::ACCENT).opacity(0.70))
                         .bg(color(theme::ACCENT).opacity(0.12)),
                 ),
+        )
+        .into_any_element()
+}
+
+/// The AI chat pane rendered as one more terminal split column: same chrome
+/// and hover controls as a terminal pane, hosting the per-worktree ChatPanel.
+pub(super) fn terminal_chat_pane(
+    app_entity: gpui::Entity<CoduxApp>,
+    language: &str,
+    panel: Option<gpui::Entity<crate::app::agent_chat::ChatPanel>>,
+    cx: &mut Context<TerminalWorkspaceView>,
+) -> AnyElement {
+    let mount_entity = app_entity.clone();
+    div()
+        .id("terminal-chat-pane")
+        .relative()
+        .group("terminal-chat-pane")
+        .flex()
+        .flex_col()
+        .flex_1()
+        .flex_basis(px(0.0))
+        .size_full()
+        .min_w_0()
+        .min_h_0()
+        .overflow_hidden()
+        .border_l_1()
+        .border_color(color(theme::BORDER_SOFT))
+        .child(
+            div()
+                .flex_1()
+                .flex_basis(px(0.0))
+                .min_w_0()
+                .min_h_0()
+                .overflow_hidden()
+                .child(match panel {
+                    Some(panel) => gpui::AnyView::from(panel).into_any_element(),
+                    // Worktree switched while the pane is open: the panel for
+                    // this worktree does not exist yet and creating it needs a
+                    // Window, so reuse the click-to-open mount pattern.
+                    None => div()
+                        .id("terminal-chat-pane-mount")
+                        .size_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
+                        .text_color(color(theme::TEXT_DIM))
+                        .on_click(cx.listener(move |_view, _event, window, cx| {
+                            defer_terminal_workspace_app_update(
+                                mount_entity.clone(),
+                                window,
+                                cx,
+                                |app, window, app_cx| {
+                                    app.ensure_chat_panel(window, app_cx);
+                                    app.update_terminal_workspace_view(app_cx);
+                                },
+                            );
+                        }))
+                        .child(workspace_i18n(
+                            language,
+                            "terminal.chat.start",
+                            "Click to start AI chat",
+                        ))
+                        .into_any_element(),
+                }),
+        )
+        .child(
+            div()
+                .absolute()
+                .top(px(6.0))
+                .right(px(8.0))
+                .flex()
+                .items_center()
+                .gap_1()
+                .rounded(px(6.0))
+                .p(px(2.0))
+                .bg(theme::elevate(color(theme::BG_TERMINAL), 0.08).opacity(0.92))
+                .opacity(0.0)
+                .group_hover("terminal-chat-pane", |style| style.opacity(1.0))
+                .child(terminal_pane_control_button(
+                    app_entity,
+                    SharedString::from("terminal-chat-pane-close"),
+                    HeroIconName::XMark,
+                    SharedString::from(workspace_i18n(
+                        language,
+                        "terminal.chat.close",
+                        "Close Chat Split",
+                    )),
+                    true,
+                    cx,
+                    |app, window, cx| app.toggle_chat_split(window, cx),
+                )),
         )
         .into_any_element()
 }

@@ -300,6 +300,10 @@ impl CoduxApp {
             top_grid,
             split_tree,
             main_panes,
+            chat_open: self.chat_split_open,
+            chat_panel: self
+                .selected_worktree_path()
+                .and_then(|cwd| self.chat_panels.get(&cwd).cloned()),
         }
     }
 }

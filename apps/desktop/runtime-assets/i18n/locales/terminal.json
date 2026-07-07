@@ -30,7 +30,11 @@
       "terminal.menu.copy": "Kopieren",
       "terminal.menu.paste": "Einfügen",
       "terminal.menu.selectAll": "Alles auswählen",
-      "terminal.menu.clear": "Leeren"
+      "terminal.menu.clear": "Leeren",
+      "terminal.collapse": "In Seitenleiste einklappen",
+      "terminal.chat.open": "KI-Chat-Split",
+      "terminal.chat.close": "Chat-Split schließen",
+      "terminal.chat.start": "Klicken, um den KI-Chat zu starten"
     },
     "en": {
       "terminal.closed": "Closed terminal.",
@@ -66,7 +70,11 @@
       "terminal.menu.copy": "Copy",
       "terminal.menu.paste": "Paste",
       "terminal.menu.selectAll": "Select All",
-      "terminal.menu.clear": "Clear"
+      "terminal.menu.clear": "Clear",
+      "terminal.collapse": "Collapse to Sidebar",
+      "terminal.chat.open": "AI Chat Split",
+      "terminal.chat.close": "Close Chat Split",
+      "terminal.chat.start": "Click to start AI chat"
     },
     "es": {
       "terminal.closed": "Closed terminal.",
@@ -98,7 +106,11 @@
       "terminal.menu.copy": "Copiar",
       "terminal.menu.paste": "Pegar",
       "terminal.menu.selectAll": "Seleccionar todo",
-      "terminal.menu.clear": "Limpiar"
+      "terminal.menu.clear": "Limpiar",
+      "terminal.collapse": "Contraer a la barra lateral",
+      "terminal.chat.open": "Panel de chat de IA",
+      "terminal.chat.close": "Cerrar panel de chat",
+      "terminal.chat.start": "Haz clic para iniciar el chat de IA"
     },
     "fr": {
       "terminal.closed": "Closed terminal.",
@@ -130,7 +142,11 @@
       "terminal.menu.copy": "Copier",
       "terminal.menu.paste": "Coller",
       "terminal.menu.selectAll": "Tout sélectionner",
-      "terminal.menu.clear": "Effacer"
+      "terminal.menu.clear": "Effacer",
+      "terminal.collapse": "Réduire dans la barre latérale",
+      "terminal.chat.open": "Volet de chat IA",
+      "terminal.chat.close": "Fermer le volet de chat",
+      "terminal.chat.start": "Cliquez pour démarrer le chat IA"
     },
     "ja": {
       "terminal.closed": "Closed terminal.",
@@ -162,7 +178,11 @@
       "terminal.menu.copy": "コピー",
       "terminal.menu.paste": "貼り付け",
       "terminal.menu.selectAll": "すべて選択",
-      "terminal.menu.clear": "クリア"
+      "terminal.menu.clear": "クリア",
+      "terminal.collapse": "サイドバーに折りたたむ",
+      "terminal.chat.open": "AI チャット分割",
+      "terminal.chat.close": "チャット分割を閉じる",
+      "terminal.chat.start": "クリックして AI チャットを開始"
     },
     "ko": {
       "terminal.closed": "Closed terminal.",
@@ -194,7 +214,11 @@
       "terminal.menu.copy": "복사",
       "terminal.menu.paste": "붙여넣기",
       "terminal.menu.selectAll": "모두 선택",
-      "terminal.menu.clear": "지우기"
+      "terminal.menu.clear": "지우기",
+      "terminal.collapse": "사이드바로 접기",
+      "terminal.chat.open": "AI 채팅 분할",
+      "terminal.chat.close": "채팅 분할 닫기",
+      "terminal.chat.start": "클릭하여 AI 채팅 시작"
     },
     "pt-BR": {
       "terminal.closed": "Closed terminal.",
@@ -226,7 +250,11 @@
       "terminal.menu.copy": "Copiar",
       "terminal.menu.paste": "Colar",
       "terminal.menu.selectAll": "Selecionar tudo",
-      "terminal.menu.clear": "Limpar"
+      "terminal.menu.clear": "Limpar",
+      "terminal.collapse": "Recolher para a barra lateral",
+      "terminal.chat.open": "Divisão de chat de IA",
+      "terminal.chat.close": "Fechar divisão de chat",
+      "terminal.chat.start": "Clique para iniciar o chat de IA"
     },
     "ru": {
       "terminal.closed": "Closed terminal.",
@@ -258,7 +286,11 @@
       "terminal.menu.copy": "Копировать",
       "terminal.menu.paste": "Вставить",
       "terminal.menu.selectAll": "Выделить всё",
-      "terminal.menu.clear": "Очистить"
+      "terminal.menu.clear": "Очистить",
+      "terminal.collapse": "Свернуть в боковую панель",
+      "terminal.chat.open": "Панель ИИ-чата",
+      "terminal.chat.close": "Закрыть панель чата",
+      "terminal.chat.start": "Нажмите, чтобы начать чат с ИИ"
     },
     "zh-Hans": {
       "terminal.closed": "已关闭终端。",
@@ -294,7 +326,11 @@
       "terminal.menu.copy": "复制",
       "terminal.menu.paste": "粘贴",
       "terminal.menu.selectAll": "全选",
-      "terminal.menu.clear": "清屏"
+      "terminal.menu.clear": "清屏",
+      "terminal.collapse": "收起到侧栏",
+      "terminal.chat.open": "AI 对话分屏",
+      "terminal.chat.close": "关闭对话分屏",
+      "terminal.chat.start": "点击开启 AI 对话"
     },
     "zh-Hant": {
       "terminal.closed": "已關閉終端機。",
@@ -330,7 +366,11 @@
       "terminal.menu.copy": "複製",
       "terminal.menu.paste": "貼上",
       "terminal.menu.selectAll": "全選",
-      "terminal.menu.clear": "清除畫面"
+      "terminal.menu.clear": "清除畫面",
+      "terminal.collapse": "收起到側欄",
+      "terminal.chat.open": "AI 對話分屏",
+      "terminal.chat.close": "關閉對話分屏",
+      "terminal.chat.start": "點擊開啟 AI 對話"
     }
   }
 }

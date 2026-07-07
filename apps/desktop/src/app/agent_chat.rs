@@ -45,6 +45,7 @@ impl crate::app::CoduxApp {
             self.chat_split_open = true;
             self.ensure_chat_panel(window, cx);
         }
+        self.update_terminal_workspace_view(cx);
         cx.notify();
     }
 
